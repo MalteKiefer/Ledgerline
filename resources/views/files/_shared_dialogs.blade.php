@@ -21,10 +21,7 @@
                     <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.share_title') }}</h3>
                     <p class="mt-0.5 truncate text-sm text-gray-500 dark:text-gray-400" x-text="unifiedShare.row?.name"></p>
                 </div>
-                <button type="button" @click="closeUnifiedShare()"
-                    class="ml-4 shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-accent/5">
-                    <x-icon name="x-mark" class="h-5 w-5" />
-                </button>
+                <x-icon-button name="x-mark" @click="closeUnifiedShare()" aria-label="{{ __('common.close') }}" class="ml-4 shrink-0" />
             </div>
 
             {{-- Tab bar: People (folders only) | Link (files + personal folders only).
@@ -65,11 +62,7 @@
                                 {{ __('files.share_convert_hint') }}
                             </p>
                             <div class="flex justify-end">
-                                <button type="button"
-                                    @click="enableSharing()"
-                                    class="rounded-xl ll-accent px-4 py-2 text-sm font-medium text-white">
-                                    {{ __('files.share_enable') }}
-                                </button>
+                                <x-button variant="primary" @click="enableSharing()">{{ __('files.share_enable') }}</x-button>
                             </div>
                         </div>
                     </template>
@@ -86,10 +79,10 @@
                                         @keydown.enter="lookUpFolderRecipient()"
                                         placeholder="{{ __('files.folder_recipient') }}"
                                         class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
-                                    <button type="button" @click="lookUpFolderRecipient()"
-                                        :disabled="shareFolderDialog.lookingUp || ! shareFolderDialog.identifier.trim()"
-                                        class="shrink-0 rounded-xl ll-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-                                        x-text="shareFolderDialog.lookingUp ? '…' : '{{ __('files.folder_look_up') }}'"></button>
+                                    <x-button variant="primary" @click="lookUpFolderRecipient()"
+                                        ::disabled="shareFolderDialog.lookingUp || ! shareFolderDialog.identifier.trim()"
+                                        class="shrink-0"
+                                        x-text="shareFolderDialog.lookingUp ? '…' : '{{ __('files.folder_look_up') }}'"></x-button>
                                 </div>
                             </div>
 
@@ -112,12 +105,9 @@
                                         </select>
                                     </div>
                                     <div class="flex justify-end">
-                                        <button type="button"
-                                            @click="unifiedInvite()"
-                                            :disabled="shareFolderDialog.sharing"
-                                            class="rounded-xl ll-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+                                        <x-button variant="primary" @click="unifiedInvite()" ::disabled="shareFolderDialog.sharing">
                                             <span x-text="shareFolderDialog.sharing ? '…' : '{{ __('files.folder_invite') }}'"></span>
-                                        </button>
+                                        </x-button>
                                     </div>
                                 </div>
                             </template>
@@ -137,7 +127,7 @@
 
                                 <template x-if="managingFolderVaultLoading">
                                     <div class="py-4 text-center text-sm text-gray-400">
-                                        <span class="animate-spin inline-block"><x-icon name="arrow-path" class="h-5 w-5" /></span>
+                                        <x-icon name="arrow-path" class="h-5 w-5 inline-block animate-spin" />
                                     </div>
                                 </template>
 
@@ -145,7 +135,7 @@
                                     <div>
                                         <template x-if="rotatingFolderKeys">
                                             <div class="py-3 text-center text-sm text-gray-500 dark:text-gray-400">
-                                                <span class="animate-spin inline-block mr-2"><x-icon name="arrow-path" class="h-4 w-4 inline" /></span>
+                                                <x-icon name="arrow-path" class="h-4 w-4 inline mr-2 animate-spin" />
                                                 <span>{{ __('files.folder_rotating_keys') }}</span>
                                             </div>
                                         </template>
@@ -208,12 +198,9 @@
 
                             {{-- Footer: delete shared folder (manage only) + close --}}
                             <div class="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800">
-                                <button type="button"
+                                <x-button variant="danger" size="sm" icon="trash"
                                     x-show="sharedFolders.find(f => f.vaultId === unifiedShare.vaultId)?.role === 'manage'"
-                                    @click="deleteSharedFolder(unifiedShare.vaultId); closeUnifiedShare()"
-                                    class="rounded-md px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
-                                    <x-icon name="trash" class="inline h-3.5 w-3.5 mr-1" />{{ __('files.folder_delete') }}
-                                </button>
+                                    @click="deleteSharedFolder(unifiedShare.vaultId); closeUnifiedShare()">{{ __('files.folder_delete') }}</x-button>
                                 <button type="button" @click="closeUnifiedShare()"
                                     class="rounded-md px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('common.close') }}</button>
                             </div>
@@ -244,10 +231,7 @@
                         <div class="mt-1 flex items-center gap-2">
                             <input type="text" readonly :value="share.link" @focus="$event.target.select()"
                                 class="w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-xs text-gray-700 dark:text-gray-300">
-                            <button type="button" @click="copyShareLink()" title="{{ __('gallery.share_copy') }}"
-                                class="shrink-0 rounded-md bg-gray-100 dark:bg-gray-800 p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
-                                <x-icon name="clipboard" class="h-4 w-4" />
-                            </button>
+                            <x-icon-button name="clipboard" size="sm" @click="copyShareLink()" title="{{ __('gallery.share_copy') }}" aria-label="{{ __('gallery.share_copy') }}" class="shrink-0" />
                         </div>
                         <p class="mt-2 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">{{ __('gallery.share_active_hint') }}</p>
                     </div>
@@ -278,18 +262,10 @@
                         <div class="ml-auto flex gap-2">
                             <button type="button" @click="closeUnifiedShare()"
                                 class="rounded-md px-3 py-2 text-sm font-medium text-gray-500 hover:bg-accent/5">{{ __('gallery.share_close') }}</button>
-                            <button type="button" x-show="! _shareSrc()?.share"
-                                @click="createShare()"
-                                :disabled="share.busy"
-                                class="inline-flex items-center gap-1.5 ll-accent rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50">
-                                <x-icon name="link" class="h-4 w-4" />{{ __('gallery.share_create_link') }}
-                            </button>
-                            <button type="button" x-show="_shareSrc()?.share" x-cloak
-                                @click="updateShare()"
-                                :disabled="share.busy"
-                                class="inline-flex items-center gap-1.5 ll-accent rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50">
-                                {{ __('gallery.share_update') }}
-                            </button>
+                            <x-button variant="primary" icon="link" x-show="! _shareSrc()?.share"
+                                @click="createShare()" ::disabled="share.busy">{{ __('gallery.share_create_link') }}</x-button>
+                            <x-button variant="primary" x-show="_shareSrc()?.share" x-cloak
+                                @click="updateShare()" ::disabled="share.busy">{{ __('gallery.share_update') }}</x-button>
                         </div>
                     </div>
                 </div>

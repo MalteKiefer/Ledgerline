@@ -23,7 +23,7 @@
 
             <label class="flex items-center gap-2">
                 <input type="checkbox" name="paperless_enabled" value="1" @checked(old('paperless_enabled', $settings->paperless_enabled))
-                    class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-accent">
+                    class="rounded border-gray-300 dark:border-gray-700 focus:ring-accent">
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.paperless_enabled') }}</span>
             </label>
 
@@ -43,9 +43,8 @@
             </div>
 
             <div class="mt-5 flex flex-wrap items-center gap-2">
-                <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.save') }}</button>
-                <button type="button" @click="test()" :disabled="busy"
-                    class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent disabled:opacity-50" x-text="busy === 'test' ? config.testing : @js(__('settings.paperless_test'))"></button>
+                <x-button variant="primary" type="submit">{{ __('settings.save') }}</x-button>
+                <x-button variant="secondary" @click="test()" ::disabled="busy" x-text="busy === 'test' ? config.testing : @js(__('settings.paperless_test'))" />
                 <span x-show="testResult" x-cloak :class="testOk ? 'text-green-600' : 'text-red-600 dark:text-red-400'" class="text-sm w-full break-words" x-text="testResult"></span>
             </div>
         </form>
@@ -54,8 +53,7 @@
         <div class="mt-6 ll-card">
             <div class="flex items-center justify-between gap-3">
                 <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.paperless_cache_heading') }}</h2>
-                <button type="button" @click="sync()" :disabled="busy"
-                    class="rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent disabled:opacity-50" x-text="busy === 'sync' ? config.syncing : @js(__('settings.paperless_sync_now'))"></button>
+                <x-button variant="secondary" size="sm" @click="sync()" ::disabled="busy" x-text="busy === 'sync' ? config.syncing : @js(__('settings.paperless_sync_now'))" />
             </div>
             <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                 <div class="rounded-md bg-gray-50 dark:bg-gray-800 p-3">

@@ -25,12 +25,12 @@
             </label>
             <div class="flex items-end gap-2">
                 <x-button variant="primary" type="submit">{{ __('settings.seclog_apply') }}</x-button>
-                <a href="{{ route('settings.security-log') }}" class="inline-flex min-h-9 items-center rounded-xl border border-black/[0.08] dark:border-white/10 px-3 text-sm font-medium text-gray-600 dark:text-gray-300 transition hover:border-accent hover:text-accent">{{ __('settings.seclog_reset') }}</a>
+                <x-button variant="secondary" size="sm" :href="route('settings.security-log')">{{ __('settings.seclog_reset') }}</x-button>
             </div>
         </div>
         <div class="mt-3 flex flex-wrap gap-2 border-t border-black/[0.06] dark:border-white/10 pt-3">
-            <button type="submit" name="export" value="csv" class="inline-flex items-center gap-1.5 rounded-xl border border-black/[0.08] dark:border-white/10 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 transition hover:border-accent hover:text-accent"><x-icon name="arrow-down-tray" class="h-4 w-4" />{{ __('settings.seclog_export_csv') }}</button>
-            <button type="submit" name="export" value="json" class="inline-flex items-center gap-1.5 rounded-xl border border-black/[0.08] dark:border-white/10 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 transition hover:border-accent hover:text-accent"><x-icon name="arrow-down-tray" class="h-4 w-4" />{{ __('settings.seclog_export_json') }}</button>
+            <x-button variant="secondary" size="sm" type="submit" name="export" value="csv" icon="arrow-down-tray">{{ __('settings.seclog_export_csv') }}</x-button>
+            <x-button variant="secondary" size="sm" type="submit" name="export" value="json" icon="arrow-down-tray">{{ __('settings.seclog_export_json') }}</x-button>
         </div>
     </form>
 

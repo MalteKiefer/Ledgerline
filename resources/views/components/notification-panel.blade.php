@@ -2,7 +2,7 @@
      notificationBell() Alpine scope (open/items/unread/…). Shared by the
      desktop bar and the mobile top strip. --}}
 <div x-show="open" x-cloak
-    class="absolute right-0 z-40 mt-2 w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-lg">
+    class="absolute right-0 z-40 mt-2 w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
     <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-3 py-2">
         <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('notifications.title') }}</span>
         <button type="button" x-show="unread > 0" @click="markAllRead()" class="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">{{ __('notifications.mark_all_read') }}</button>

@@ -76,9 +76,9 @@
         <div class="mx-auto mt-16 max-w-md ll-card !p-8 text-center">
             <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
             <p class="mt-3 text-sm text-gray-600 dark:text-gray-400" x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-            <button type="button" @click="$dispatch('vault-panel')" class="mt-5 inline-flex min-h-11 items-center gap-1.5 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">
-                <x-icon name="lock-open" class="h-4 w-4" /><span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-            </button>
+            <x-button variant="primary" icon="lock-open" @click="$dispatch('vault-panel')" class="mt-5">
+                <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
+            </x-button>
         </div>
     </template>
 
@@ -218,7 +218,7 @@
               </div>
               <div x-show="view === 'health'" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
                 <span class="text-xs text-gray-500 dark:text-gray-400" x-text="healthCount ? (healthCount + ' {{ __('passwords.health_issues') }}') : '{{ __('passwords.health_ok') }}'"></span>
-                <button type="button" @click="checkBreaches()" :disabled="breachChecking" class="shrink-0 rounded-md ll-accent px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>
+                <x-button variant="primary" size="sm" @click="checkBreaches()" ::disabled="breachChecking" class="shrink-0" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'" />
               </div>
               {{-- Trash view header: count + empty-trash --}}
               <div x-show="view === 'trash'" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
@@ -428,7 +428,7 @@
                 </div>
                 <div class="mt-5 flex justify-end gap-2">
                   <button type="button" @click="cancelEdit()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-accent/5">{{ __('passwords.cancel') }}</button>
-                  <button type="button" @click="save()" class="rounded-md ll-accent px-4 py-2 text-sm font-medium text-white">{{ __('passwords.save') }}</button>
+                  <x-button variant="primary" @click="save()">{{ __('passwords.save') }}</x-button>
                 </div>
               </div>
             </template>
@@ -661,7 +661,7 @@
                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.recipient_identifier') }}</label>
                 <div class="mt-1 flex items-center gap-2">
                   <input type="text" x-model="shareDialog.identifier" @keydown.enter="lookUpRecipient()" placeholder="{{ __('passwords.recipient_identifier') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
-                  <button type="button" @click="lookUpRecipient()" :disabled="shareDialog.lookingUp || ! shareDialog.identifier.trim()" class="shrink-0 rounded-md ll-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50" x-text="shareDialog.lookingUp ? '…' : '{{ __('passwords.look_up') }}'"></button>
+                  <x-button variant="primary" @click="lookUpRecipient()" ::disabled="shareDialog.lookingUp || ! shareDialog.identifier.trim()" class="shrink-0" x-text="shareDialog.lookingUp ? '…' : '{{ __('passwords.look_up') }}'" />
                 </div>
               </div>
               <template x-if="shareDialog.resolved && shareDialog.fingerprintStatus !== 'changed'">
@@ -686,9 +686,9 @@
             </div>
             <div class="mt-5 flex justify-end gap-2">
               <button type="button" @click="closeShareDialog()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-accent/5">{{ __('passwords.cancel') }}</button>
-              <button type="button" x-show="shareDialog.resolved && shareDialog.fingerprintStatus !== 'changed'" @click="confirmShare()" :disabled="shareDialog.sharing" class="rounded-md ll-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+              <x-button variant="primary" x-show="shareDialog.resolved && shareDialog.fingerprintStatus !== 'changed'" @click="confirmShare()" ::disabled="shareDialog.sharing">
                 <span x-text="shareDialog.sharing ? '…' : '{{ __('passwords.share') }}'"></span>
-              </button>
+              </x-button>
             </div>
           </div>
         </div>
@@ -764,7 +764,7 @@
 
             <div class="mt-5 flex justify-end gap-2">
               <button type="button" @click="gen.open = false" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-accent/5">{{ __('passwords.cancel') }}</button>
-              <button type="button" @click="applyGen()" class="rounded-md ll-accent px-4 py-2 text-sm font-medium text-white" x-text="gen.target ? '{{ __('passwords.generate_apply') }}' : '{{ __('passwords.copy') }}'"></button>
+              <x-button variant="primary" @click="applyGen()" x-text="gen.target ? '{{ __('passwords.generate_apply') }}' : '{{ __('passwords.copy') }}'" />
             </div>
           </div>
         </div>
@@ -824,14 +824,12 @@
                 <span>{{ __('passwords.export_confirm') }}</span>
               </label>
               <div x-show="exportConfirmed" x-cloak class="mt-3 flex gap-2">
-                <button type="button" @click="exportJson()" :disabled="exportWorking" class="inline-flex items-center gap-1.5 rounded-md ll-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">
-                  <x-icon name="document-arrow-down" class="h-3.5 w-3.5" />
+                <x-button variant="primary" size="sm" icon="document-arrow-down" @click="exportJson()" ::disabled="exportWorking">
                   {{ __('passwords.export_json') }}
-                </button>
-                <button type="button" @click="exportCsv()" :disabled="exportWorking" class="inline-flex items-center gap-1.5 rounded-md ll-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">
-                  <x-icon name="document-text" class="h-3.5 w-3.5" />
+                </x-button>
+                <x-button variant="primary" size="sm" icon="document-text" @click="exportCsv()" ::disabled="exportWorking">
                   {{ __('passwords.export_csv') }}
-                </button>
+                </x-button>
               </div>
             </div>
 
@@ -886,7 +884,7 @@
             <p class="break-all font-mono text-4xl leading-relaxed tracking-widest sm:text-5xl">
               <template x-for="(ch, i) in bigChars()" :key="i"><span :class="ch.cls" x-text="ch.c === ' ' ? ' ' : ch.c"></span></template>
             </p>
-            <button type="button" @click="closeBig()" class="mt-8 rounded-md ll-accent px-5 py-2 text-sm font-medium text-white">{{ __('passwords.close') }}</button>
+            <x-button variant="primary" @click="closeBig()" class="mt-8">{{ __('passwords.close') }}</x-button>
           </div>
         </div>
 

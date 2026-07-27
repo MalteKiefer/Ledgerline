@@ -40,7 +40,7 @@
                                 @if ($g->max_connected_devices)<span>{{ __('settings.users_devices') }}: {{ $g->max_connected_devices }}</span>@endif
                             </div>
                         </div>
-                        <button type="button" @click="open = (open === {{ $g->id }} ? null : {{ $g->id }})" class="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-black/[0.06] hover:text-gray-700 dark:hover:bg-white/10"><x-icon name="pencil" class="h-4 w-4" /></button>
+                        <x-icon-button name="pencil" tone="gray" size="sm" class="shrink-0" @click="open = (open === {{ $g->id }} ? null : {{ $g->id }})" :aria-label="__('common.edit')" />
                     </div>
                     <div x-show="open === {{ $g->id }}" x-cloak class="mt-4 border-t border-black/[0.06] dark:border-white/10 pt-4">
                         <form method="POST" action="{{ route('settings.groups.update', $g) }}" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -52,7 +52,7 @@
                             <form method="POST" action="{{ route('settings.groups.destroy', $g) }}"
                                   x-on:submit="if (! confirm(@js(__('settings.groups_delete_confirm')))) $event.preventDefault()">
                                 @csrf @method('DELETE')
-                                <button type="submit" class="text-xs text-red-600 hover:underline">{{ __('settings.groups_delete') }}</button>
+                                <x-button variant="danger" size="sm" type="submit">{{ __('settings.groups_delete') }}</x-button>
                             </form>
                         </div>
                     </div>

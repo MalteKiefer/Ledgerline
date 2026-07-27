@@ -117,7 +117,7 @@
     @auth
         <div x-data="toastHub({})" class="fixed bottom-4 right-4 z-50 space-y-2" x-cloak>
             <template x-for="t in items" :key="t.id">
-                <div class="flex items-center gap-3 rounded-md bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
+                <div class="flex items-center gap-3 rounded-2xl bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
                     <span x-text="t.message"></span>
                     <template x-if="t.url"><a :href="t.url" class="font-medium underline" x-text="t.linkLabel"></a></template>
                     <button type="button" @click="dismiss(t.id)" class="text-gray-400 hover:text-white" aria-label="close"><x-icon name="x-mark" class="h-4 w-4" /></button>
@@ -128,7 +128,7 @@
         {{-- Shared square-crop modal (window.llCrop) — used by contacts + gallery --}}
         <div x-data="cropModal()" x-show="open" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" @keydown.escape.window="cancel()">
             <div class="absolute inset-0 bg-gray-900/60" @click="cancel()"></div>
-            <div class="relative w-full max-w-sm rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+            <div class="relative w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 p-4 shadow-xl">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('contacts.crop_title') }}</h3>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('contacts.crop_hint') }}</p>
                 <div class="mx-auto mt-3 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 select-none touch-none"

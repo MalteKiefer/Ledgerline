@@ -62,11 +62,9 @@
             <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
             <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
                x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-            <button type="button" @click="$dispatch('vault-panel')"
-                class="mt-5 inline-flex min-h-11 items-center gap-1.5 rounded-md ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">
-                <x-icon name="lock-open" class="h-4 w-4" />
+            <x-button variant="primary" class="mt-5" icon="lock-open" @click="$dispatch('vault-panel')">
                 <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-            </button>
+            </x-button>
         </div>
     </template>
 
@@ -289,10 +287,8 @@
                     </p>
 
                     <div class="flex flex-wrap gap-2">
-                        <button type="button" @click="stopFast()"
-                            class="rounded-lg ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">{{ __('health.fasting_stop') }}</button>
-                        <button type="button" @click="openFastEditor(activeFast)"
-                            class="rounded-lg border border-black/[0.08] dark:border-white/10 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-accent/5">{{ __('health.fasting_edit') }}</button>
+                        <x-button variant="danger" @click="stopFast()">{{ __('health.fasting_stop') }}</x-button>
+                        <x-button variant="secondary" @click="openFastEditor(activeFast)">{{ __('health.fasting_edit') }}</x-button>
                     </div>
                   </div>
                 </template>
@@ -338,12 +334,8 @@
                                     <div class="truncate text-xs text-gray-400 dark:text-gray-500" x-text="fmtDate(f.start)"></div>
                                 </div>
                                 <div class="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
-                                    <button type="button" @click="openFastEditor(f)" class="rounded-lg p-1.5 text-gray-400 hover:bg-black/[0.06] hover:text-gray-700 dark:hover:bg-white/10 dark:hover:text-gray-200" :title="@js(__('health.fasting_edit'))">
-                                        <x-icon name="pencil" class="h-4 w-4" />
-                                    </button>
-                                    <button type="button" @click="deleteFast(f)" class="rounded-lg p-1.5 text-gray-400 hover:bg-red-500/10 hover:text-red-600" :title="@js(__('health.delete'))">
-                                        <x-icon name="trash" class="h-4 w-4" />
-                                    </button>
+                                    <x-icon-button name="pencil" size="sm" @click="openFastEditor(f)" ::title="@js(__('health.fasting_edit'))" aria-label="{{ __('health.fasting_edit') }}" />
+                                    <x-icon-button name="trash" tone="red" size="sm" @click="deleteFast(f)" ::title="@js(__('health.delete'))" aria-label="{{ __('health.delete') }}" />
                                 </div>
                             </div>
                         </template>
@@ -363,22 +355,15 @@
                         <p class="text-xs text-gray-400 dark:text-gray-500" x-text="unitLabel(selectedMetric)"></p>
                     </div>
                     <div class="flex items-center gap-2 flex-wrap">
-                        <button type="button" @click="exportCsv(selectedMetric)"
-                            class="no-print inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:border-accent hover:text-accent"
-                            x-show="entriesFor(selectedMetric).length > 0">
-                            <x-icon name="arrow-down-tray" class="h-4 w-4" />
+                        <x-button variant="secondary" size="sm" icon="arrow-down-tray" class="no-print" @click="exportCsv(selectedMetric)" x-show="entriesFor(selectedMetric).length > 0">
                             {{ __('health.export_csv') }}
-                        </button>
-                        <button type="button" @click="enterReport()"
-                            class="no-print inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:border-accent hover:text-accent">
-                            <x-icon name="document-text" class="h-4 w-4" />
+                        </x-button>
+                        <x-button variant="secondary" size="sm" icon="document-text" class="no-print" @click="enterReport()">
                             {{ __('health.report') }}
-                        </button>
-                        <button type="button" @click="openAdd()"
-                            class="inline-flex min-h-9 items-center gap-1.5 rounded-lg ll-accent px-3 py-2 text-sm font-medium hover:brightness-105">
-                            <x-icon name="plus" class="h-4 w-4" />
+                        </x-button>
+                        <x-button variant="primary" size="sm" icon="plus" @click="openAdd()">
                             {{ __('health.add_measurement') }}
-                        </button>
+                        </x-button>
                     </div>
                 </div>
 
@@ -474,14 +459,8 @@
                                     <td class="py-2.5 pr-4 text-gray-500 dark:text-gray-400 max-w-xs truncate" x-text="e.note || ''"></td>
                                     <td class="py-2.5 text-right">
                                         <span class="flex justify-end gap-1 md:invisible md:group-hover:visible">
-                                            <button type="button" @click="openEdit(e)" title="{{ __('health.edit_measurement') }}"
-                                                class="rounded p-1 text-gray-400 hover:text-accent">
-                                                <x-icon name="pencil" class="h-3.5 w-3.5" />
-                                            </button>
-                                            <button type="button" @click="deleteEntry(e)" title="{{ __('health.delete_confirm') }}"
-                                                class="rounded p-1 text-gray-400 hover:text-red-500">
-                                                <x-icon name="trash" class="h-3.5 w-3.5" />
-                                            </button>
+                                            <x-icon-button name="pencil" size="sm" @click="openEdit(e)" title="{{ __('health.edit_measurement') }}" aria-label="{{ __('health.edit_measurement') }}" />
+                                            <x-icon-button name="trash" tone="red" size="sm" @click="deleteEntry(e)" title="{{ __('health.delete_confirm') }}" aria-label="{{ __('health.delete_confirm') }}" />
                                         </span>
                                     </td>
                                 </tr>
@@ -500,16 +479,12 @@
 
         {{-- Report toolbar (hidden when printing) --}}
         <div class="no-print flex items-center justify-between">
-            <button type="button" @click="exitReport()"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                <x-icon name="arrow-left" class="h-4 w-4" />
+            <x-button variant="secondary" icon="arrow-left" @click="exitReport()">
                 {{ __('health.report_back') }}
-            </button>
-            <button type="button" @click="window.print()"
-                class="inline-flex items-center gap-1.5 rounded-lg ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">
-                <x-icon name="printer" class="h-4 w-4" />
+            </x-button>
+            <x-button variant="primary" icon="printer" @click="window.print()">
                 {{ __('health.report_print') }}
-            </button>
+            </x-button>
         </div>
 
         {{-- Master data block --}}
@@ -700,14 +675,12 @@
 
             {{-- Actions --}}
             <div class="flex justify-end gap-2 pt-1">
-                <button type="button" @click="closeEditor()"
-                    class="rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                <x-button variant="secondary" @click="closeEditor()">
                     {{ __('common.cancel') }}
-                </button>
-                <button type="button" @click="saveEditor()"
-                    class="rounded-lg ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">
+                </x-button>
+                <x-button variant="primary" @click="saveEditor()">
                     {{ __('health.save') }}
-                </button>
+                </x-button>
             </div>
         </div>
       </div>
@@ -754,14 +727,12 @@
             </div>
 
             <div class="flex justify-end gap-2 pt-1">
-                <button type="button" @click="closeFastEditor()"
-                    class="rounded-lg border border-black/[0.08] dark:border-white/10 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-black/[0.04] dark:hover:bg-white/5">
+                <x-button variant="secondary" @click="closeFastEditor()">
                     {{ __('common.cancel') }}
-                </button>
-                <button type="button" @click="saveFastEdit()"
-                    class="rounded-lg ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">
+                </x-button>
+                <x-button variant="primary" @click="saveFastEdit()">
                     {{ __('health.save') }}
-                </button>
+                </x-button>
             </div>
         </div>
       </div>

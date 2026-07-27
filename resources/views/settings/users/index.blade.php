@@ -28,11 +28,10 @@
                 @if (session('invite_sent'))<p class="mt-0.5 text-xs text-green-600 dark:text-green-400">{{ __('settings.users_invite_emailed') }}</p>@endif
                 <div class="mt-2 flex items-center gap-2">
                     <input type="text" readonly :value="url" class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#1c1c1e] px-3 py-2 text-xs text-gray-700 dark:text-gray-300" onclick="this.select()">
-                    <button type="button" @click="navigator.clipboard.writeText(url); copied = true; setTimeout(() => copied = false, 1500)"
-                        class="shrink-0 rounded-lg bg-accent/10 px-3 py-2 text-xs font-medium text-accent hover:bg-accent/20">
+                    <x-button variant="secondary" size="sm" class="shrink-0" @click="navigator.clipboard.writeText(url); copied = true; setTimeout(() => copied = false, 1500)">
                         <span x-show="! copied">{{ __('settings.users_invite_copy') }}</span>
                         <span x-show="copied" x-cloak>{{ __('settings.users_invite_copied') }}</span>
-                    </button>
+                    </x-button>
                 </div>
                 <p class="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">{{ __('settings.users_invite_hint') }}</p>
             </div>
@@ -102,7 +101,7 @@
                                 <span class="inline-flex items-center gap-1"><x-icon name="clock" class="h-3 w-3" />{{ $u->last_login_at ? $u->last_login_at->diffForHumans() : __('settings.users_never_logged_in') }}</span>
                             </div>
                         </div>
-                        <button type="button" @click="open = (open === {{ $u->id }} ? null : {{ $u->id }})" class="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-black/[0.06] hover:text-gray-700 dark:hover:bg-white/10"><x-icon name="pencil" class="h-4 w-4" /></button>
+                        <x-icon-button name="pencil" tone="gray" size="sm" class="shrink-0" @click="open = (open === {{ $u->id }} ? null : {{ $u->id }})" :aria-label="__('common.edit')" />
                     </div>
 
                     <div x-show="open === {{ $u->id }}" x-cloak class="mt-4 border-t border-black/[0.06] dark:border-white/10 pt-4">
@@ -125,27 +124,27 @@
                                     <option value="720">{{ __('settings.users_invite_ttl_30d') }}</option>
                                 </select>
                             </div>
-                            <button type="submit" class="rounded-lg bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20">{{ __('settings.users_invite_create') }}</button>
+                            <x-button variant="primary" size="sm" type="submit">{{ __('settings.users_invite_create') }}</x-button>
                             @if ($mailEnabled)
-                                <button type="submit" name="send" value="1" class="rounded-lg px-3 py-1.5 text-xs font-medium text-accent hover:underline">{{ __('settings.users_invite_send') }}</button>
+                                <x-button variant="secondary" size="sm" type="submit" name="send" value="1">{{ __('settings.users_invite_send') }}</x-button>
                             @endif
                         </form>
                         <div class="mt-2 flex flex-wrap items-center gap-3">
                             <form method="POST" action="{{ route('settings.users.reset', $u) }}">
                                 @csrf
-                                <button type="submit" class="text-xs text-accent hover:underline">{{ __('settings.users_reset') }}</button>
+                                <x-button variant="secondary" size="sm" type="submit">{{ __('settings.users_reset') }}</x-button>
                             </form>
                             @if ($u->two_factor_confirmed_at)
                                 <form method="POST" action="{{ route('settings.users.reset2fa', $u) }}"
                                       x-on:submit="if (! confirm(@js(__('settings.users_2fa_reset_confirm')))) $event.preventDefault()">
                                     @csrf
-                                    <button type="submit" class="text-xs text-accent hover:underline">{{ __('settings.users_2fa_reset') }}</button>
+                                    <x-button variant="secondary" size="sm" type="submit">{{ __('settings.users_2fa_reset') }}</x-button>
                                 </form>
                             @endif
                             <form method="POST" action="{{ route('settings.users.destroy', $u) }}"
                                   x-on:submit="if (! confirm(@js(__('settings.users_delete_confirm')))) $event.preventDefault()">
                                 @csrf @method('DELETE')
-                                <button type="submit" class="text-xs text-red-600 hover:underline">{{ __('settings.users_delete') }}</button>
+                                <x-button variant="danger" size="sm" type="submit">{{ __('settings.users_delete') }}</x-button>
                             </form>
                         </div>
                     </div>

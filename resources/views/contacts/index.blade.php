@@ -34,11 +34,9 @@
             <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
             <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
                x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-            <button type="button" @click="$dispatch('vault-panel')"
-                class="mt-5 inline-flex min-h-11 items-center gap-1.5 rounded-md ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">
-                <x-icon name="lock-open" class="h-4 w-4" />
+            <x-button variant="primary" icon="lock-open" class="mt-5" @click="$dispatch('vault-panel')">
                 <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-            </button>
+            </x-button>
         </div>
     </template>
 
@@ -80,7 +78,7 @@
             </div>
             <div x-show="allCategories.length" class="flex flex-wrap gap-1 border-b border-gray-100 dark:border-gray-800 p-2">
                 <template x-for="t in allCategories" :key="t">
-                    <button type="button" @click="activeTag = (activeTag === t ? '' : t)" class="rounded px-2 py-0.5 text-xs" :class="activeTag === t ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'" x-text="t"></button>
+                    <button type="button" @click="activeTag = (activeTag === t ? '' : t)" class="rounded px-2 py-0.5 text-xs" :class="activeTag === t ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200'" x-text="t"></button>
                 </template>
             </div>
             <div class="min-h-0 flex-1 overflow-y-auto">
@@ -137,19 +135,19 @@
                         <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="displayName(current)"></h2>
                         <p x-show="! editing && (current.title || current.org)" x-cloak class="truncate text-sm text-gray-500 dark:text-gray-400" x-text="[current.title, current.org].filter(Boolean).join(' · ')"></p>
                         <div class="mt-1 flex items-center gap-2">
-                            <button type="button" @click="toggleFavorite(current)" :class="current.favorite ? 'text-amber-400' : 'text-gray-300 dark:text-gray-600'" title="{{ __('contacts.favorite') }}"><x-icon name="star" class="h-4 w-4" /></button>
+                            <x-icon-button name="star" tone="gray" size="sm" @click="toggleFavorite(current)" ::class="current.favorite ? 'text-amber-400' : 'text-gray-300 dark:text-gray-600'" title="{{ __('contacts.favorite') }}" />
                             <button type="button" x-show="editing && current.avatarRef" @click="removeAvatar(current)" class="text-xs text-gray-400 hover:text-red-600">{{ __('contacts.remove_avatar') }}</button>
                             <span class="ml-auto flex items-center gap-1">
-                                <button type="button" x-show="! editing && view !== 'trash'" @click="startEdit()" title="{{ __('contacts.edit') }}" class="rounded p-1 text-gray-500 hover:bg-accent/5"><x-icon name="pencil" class="h-4 w-4" /></button>
-                                <button type="button" x-show="editing" @click="save(); editing = false" class="rounded-md ll-accent px-3 py-1 text-xs font-medium">{{ __('contacts.done') }}</button>
-                                <button type="button" @click="exportOne(current)" title="{{ __('contacts.export') }}" class="rounded p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
+                                <x-icon-button name="pencil" tone="gray" size="sm" x-show="! editing && view !== 'trash'" @click="startEdit()" title="{{ __('contacts.edit') }}" />
+                                <x-button variant="primary" size="sm" x-show="editing" @click="save(); editing = false">{{ __('contacts.done') }}</x-button>
+                                <x-icon-button name="arrow-down-tray" tone="gray" size="sm" @click="exportOne(current)" title="{{ __('contacts.export') }}" />
                                 <template x-if="view === 'trash'">
                                     <span class="flex gap-1">
-                                        <button type="button" @click="restore(current)" title="{{ __('contacts.restore') }}" class="rounded p-1 text-gray-400 hover:text-gray-700"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
-                                        <button type="button" @click="remove(current)" title="{{ __('contacts.delete_forever') }}" class="rounded p-1 text-gray-400 hover:text-red-600"><x-icon name="trash" class="h-4 w-4" /></button>
+                                        <x-icon-button name="arrow-uturn-left" tone="gray" size="sm" @click="restore(current)" title="{{ __('contacts.restore') }}" />
+                                        <x-icon-button name="trash" tone="gray" size="sm" @click="remove(current)" title="{{ __('contacts.delete_forever') }}" class="hover:!text-red-600" />
                                     </span>
                                 </template>
-                                <button type="button" x-show="view !== 'trash'" @click="trash(current)" title="{{ __('contacts.to_trash') }}" class="rounded p-1 text-gray-400 hover:text-red-600"><x-icon name="trash" class="h-4 w-4" /></button>
+                                <x-icon-button name="trash" tone="gray" size="sm" x-show="view !== 'trash'" @click="trash(current)" title="{{ __('contacts.to_trash') }}" class="hover:!text-red-600" />
                             </span>
                         </div>
                     </div>

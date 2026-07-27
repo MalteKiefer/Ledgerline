@@ -15,11 +15,9 @@
             <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
             <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
                x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-            <button type="button" @click="$dispatch('vault-panel')"
-                class="mt-5 inline-flex min-h-11 items-center gap-1.5 rounded-md ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">
-                <x-icon name="lock-open" class="h-4 w-4" />
+            <x-button variant="primary" icon="lock-open" class="mt-5" @click="$dispatch('vault-panel')">
                 <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-            </button>
+            </x-button>
         </div>
     </template>
 
@@ -74,11 +72,11 @@
                                 </div>
                             </div>
                             <div class="flex shrink-0 items-center gap-1">
-                                <a x-show="t.url" :href="t.url" target="_blank" rel="noopener" @click.stop title="{{ __('todos.open_link') }}" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-uturn-right" class="h-4 w-4" /></a>
-                                <button type="button" @click.stop="toggleMark(t)" title="{{ __('todos.marked_label') }}" class="rounded p-1" :class="t.marked ? 'text-red-500' : 'text-gray-300 hover:text-gray-500'"><x-icon name="heart" class="h-4 w-4" /></button>
-                                <button type="button" x-show="view !== 'trash'" @click.stop="trashTask(t)" title="{{ __('todos.delete') }}" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600"><x-icon name="trash" class="h-4 w-4" /></button>
-                                <button type="button" x-show="view === 'trash'" @click.stop="restoreTask(t)" title="{{ __('todos.restore') }}" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
-                                <button type="button" x-show="view === 'trash'" @click.stop="deleteForever(t)" title="{{ __('todos.delete') }}" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                                <a x-show="t.url" :href="t.url" target="_blank" rel="noopener" @click.stop title="{{ __('todos.open_link') }}" class="inline-flex min-h-8 min-w-8 items-center justify-center rounded-lg p-1.5 text-gray-500 transition hover:bg-accent/5 hover:text-accent dark:text-gray-400"><x-icon name="arrow-uturn-right" class="h-4 w-4" /></a>
+                                <x-icon-button name="heart" tone="gray" size="sm" @click.stop="toggleMark(t)" title="{{ __('todos.marked_label') }}" ::class="t.marked ? 'text-red-500' : 'text-gray-300 hover:text-gray-500'" />
+                                <x-icon-button name="trash" tone="gray" size="sm" x-show="view !== 'trash'" @click.stop="trashTask(t)" title="{{ __('todos.delete') }}" class="hover:!text-red-600" />
+                                <x-icon-button name="arrow-uturn-left" tone="gray" size="sm" x-show="view === 'trash'" @click.stop="restoreTask(t)" title="{{ __('todos.restore') }}" />
+                                <x-icon-button name="x-mark" tone="gray" size="sm" x-show="view === 'trash'" @click.stop="deleteForever(t)" title="{{ __('todos.delete') }}" class="hover:!text-red-600" />
                             </div>
                         </li>
                     </template>
@@ -96,7 +94,7 @@
             <div class="relative flex max-h-[92vh] w-full max-w-lg flex-col rounded-2xl bg-white dark:bg-[#1c1c1e] shadow-xl" x-show="editing">
                 <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-5 py-3">
                     <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="editing?.id ? @js(__('todos.edit')) : @js(__('todos.new_task'))"></h3>
-                    <button type="button" @click="closeEditor()" class="text-gray-400 dark:text-gray-500 hover:text-gray-600" aria-label="{{ __('todos.cancel') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                    <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeEditor()" aria-label="{{ __('todos.cancel') }}" />
                 </div>
                 <template x-if="editing">
                 <div class="min-h-0 flex-1 space-y-4 overflow-auto p-5">
@@ -144,8 +142,8 @@
                 </div>
                 </template>
                 <div class="flex items-center justify-end gap-3 border-t border-gray-100 dark:border-gray-800 px-5 py-3">
-                    <button type="button" @click="closeEditor()" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">{{ __('todos.cancel') }}</button>
-                    <button type="button" @click="saveTask()" class="rounded-md ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">{{ __('todos.save') }}</button>
+                    <x-button variant="secondary" @click="closeEditor()">{{ __('todos.cancel') }}</x-button>
+                    <x-button variant="primary" @click="saveTask()">{{ __('todos.save') }}</x-button>
                 </div>
             </div>
         </div>

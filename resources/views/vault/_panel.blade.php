@@ -93,8 +93,8 @@
                         <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
                         <p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">{{ __('vault.warning') }}</p>
                         <div class="mt-5 flex justify-end gap-3">
-                            <button type="button" @click="open = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
-                            <button type="button" @click="doSetup()" :disabled="busy" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium disabled:opacity-50">{{ __('vault.create') }}</button>
+                            <x-button variant="secondary" @click="open = false">{{ __('common.cancel') }}</x-button>
+                            <x-button variant="primary" @click="doSetup()" ::disabled="busy">{{ __('vault.create') }}</x-button>
                         </div>
                     </div>
                 </template>
@@ -106,7 +106,7 @@
                         <p class="mt-2 text-sm text-gray-600">{{ __('vault.recovery_hint') }}</p>
                         <pre class="mt-3 select-all whitespace-pre-wrap break-all rounded-md bg-gray-100 p-3 font-mono text-sm text-gray-900" x-text="recovery"></pre>
                         <div class="mt-5 flex justify-end">
-                            <button type="button" @click="open = false" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium">{{ __('vault.saved_it') }}</button>
+                            <x-button variant="primary" @click="open = false">{{ __('vault.saved_it') }}</x-button>
                         </div>
                     </div>
                 </template>
@@ -121,7 +121,7 @@
                         <label class="mt-3 flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" x-model="publicComputer" class="rounded border-gray-300 text-gray-900 focus:ring-0">{{ __('vault.public_computer') }}</label>
                         <div class="mt-4 flex items-center justify-between">
                             <button type="button" @click="mode = 'recover'; error = ''" class="text-sm text-gray-500 hover:text-gray-900">{{ __('vault.forgot') }}</button>
-                            <button type="button" @click="doUnlock()" :disabled="busy" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium disabled:opacity-50">{{ __('vault.unlock') }}</button>
+                            <x-button variant="primary" @click="doUnlock()" ::disabled="busy">{{ __('vault.unlock') }}</x-button>
                         </div>
                     </div>
                 </template>
@@ -135,8 +135,8 @@
                         <input type="password" x-model="pass2" @keydown.enter="doChange()" placeholder="{{ __('vault.change_new') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
                         <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
                         <div class="mt-5 flex justify-end gap-3">
-                            <button type="button" @click="open = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
-                            <button type="button" @click="doChange()" :disabled="busy" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium disabled:opacity-50">{{ __('vault.change') }}</button>
+                            <x-button variant="secondary" @click="open = false">{{ __('common.cancel') }}</x-button>
+                            <x-button variant="primary" @click="doChange()" ::disabled="busy">{{ __('vault.change') }}</x-button>
                         </div>
                     </div>
                 </template>
@@ -150,7 +150,7 @@
                         <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
                         <div class="mt-5 flex items-center justify-between">
                             <button type="button" @click="mode = 'unlock'; error = ''" class="text-sm text-gray-500 hover:text-gray-900">{{ __('common.cancel') }}</button>
-                            <button type="button" @click="doRecover()" :disabled="busy" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium disabled:opacity-50">{{ __('vault.restore') }}</button>
+                            <x-button variant="primary" @click="doRecover()" ::disabled="busy">{{ __('vault.restore') }}</x-button>
                         </div>
                     </div>
                 </template>
@@ -164,7 +164,7 @@
                         <input type="password" x-model="pass2" @keydown.enter="doSetNew()" placeholder="{{ __('vault.passphrase_confirm') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
                         <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
                         <div class="mt-5 flex justify-end">
-                            <button type="button" @click="doSetNew()" :disabled="busy" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium disabled:opacity-50">{{ __('vault.change') }}</button>
+                            <x-button variant="primary" @click="doSetNew()" ::disabled="busy">{{ __('vault.change') }}</x-button>
                         </div>
                     </div>
                 </template>
