@@ -52,4 +52,16 @@ return [
     'confirm_title' => 'Подтвердите пароль',
     'confirm_intro' => 'Пожалуйста, подтвердите пароль, чтобы продолжить.',
     'confirm_button' => 'Подтвердить',
+
+    // Invite / reset link (mail-independent)
+    'invite_title' => 'Задайте пароль',
+    'invite_subtitle' => 'Выберите пароль для :email.',
+    'invite_password_hint' => 'Не менее 12 символов.',
+    'invite_button' => 'Задать пароль и войти',
+    'invite_invalid' => 'Эта ссылка недействительна, истекла или уже использована.',
+    'invite_mail_subject' => 'Ваша ссылка для входа',
+    'invite_mail_greeting' => 'Здравствуйте!',
+    'invite_mail_line' => 'Нажмите кнопку ниже, чтобы задать пароль и войти.',
+    'invite_mail_action' => 'Задать пароль',
+    'invite_mail_expires' => 'Срок действия ссылки истекает :time.',
 ];

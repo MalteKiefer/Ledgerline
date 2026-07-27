@@ -52,4 +52,16 @@ return [
     'confirm_title' => 'Passwort bestätigen',
     'confirm_intro' => 'Bitte bestätige dein Passwort, um fortzufahren.',
     'confirm_button' => 'Bestätigen',
+
+    // Invite / reset link (mail-independent)
+    'invite_title' => 'Passwort festlegen',
+    'invite_subtitle' => 'Wähle ein Passwort für :email.',
+    'invite_password_hint' => 'Mindestens 12 Zeichen.',
+    'invite_button' => 'Passwort setzen und anmelden',
+    'invite_invalid' => 'Dieser Link ist ungültig, abgelaufen oder wurde bereits verwendet.',
+    'invite_mail_subject' => 'Dein Login-Link',
+    'invite_mail_greeting' => 'Hallo!',
+    'invite_mail_line' => 'Nutze den Button unten, um dein Passwort zu setzen und dich anzumelden.',
+    'invite_mail_action' => 'Passwort setzen',
+    'invite_mail_expires' => 'Dieser Link läuft am :time ab.',
 ];

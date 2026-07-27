@@ -22,6 +22,22 @@
             <div class="mt-4 rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">{{ __('settings.users_mail_off') }}</div>
         @endif
 
+        @if (session('invite_url'))
+            <div class="mt-4 ll-card border-accent/30" x-data="{ copied: false, url: @js(session('invite_url')) }">
+                <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ __('settings.users_invite_ready') }}</p>
+                @if (session('invite_sent'))<p class="mt-0.5 text-xs text-green-600 dark:text-green-400">{{ __('settings.users_invite_emailed') }}</p>@endif
+                <div class="mt-2 flex items-center gap-2">
+                    <input type="text" readonly :value="url" class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#1c1c1e] px-3 py-2 text-xs text-gray-700 dark:text-gray-300" onclick="this.select()">
+                    <button type="button" @click="navigator.clipboard.writeText(url); copied = true; setTimeout(() => copied = false, 1500)"
+                        class="shrink-0 rounded-lg bg-accent/10 px-3 py-2 text-xs font-medium text-accent hover:bg-accent/20">
+                        <span x-show="! copied">{{ __('settings.users_invite_copy') }}</span>
+                        <span x-show="copied" x-cloak>{{ __('settings.users_invite_copied') }}</span>
+                    </button>
+                </div>
+                <p class="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">{{ __('settings.users_invite_hint') }}</p>
+            </div>
+        @endif
+
         {{-- Self-registration toggle --}}
         <div class="mt-5 ll-card">
             <form method="POST" action="{{ route('settings.registration') }}" class="flex items-center justify-between gap-3">
@@ -89,6 +105,23 @@
                             <div class="flex flex-wrap items-center gap-2 sm:col-span-2">
                                 <x-button type="submit">{{ __('settings.save') }}</x-button>
                             </div>
+                        </form>
+                        {{-- Mail-independent invite / reset link: copy-paste or email, with a chosen validity. --}}
+                        <form method="POST" action="{{ route('settings.users.invite', $u) }}" class="mt-3 flex flex-wrap items-end gap-2 border-t border-black/[0.06] dark:border-white/10 pt-3">
+                            @csrf
+                            <div>
+                                <label class="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">{{ __('settings.users_invite_validity') }}</label>
+                                <select name="ttl_hours" class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                                    <option value="1">{{ __('settings.users_invite_ttl_1h') }}</option>
+                                    <option value="24" selected>{{ __('settings.users_invite_ttl_24h') }}</option>
+                                    <option value="168">{{ __('settings.users_invite_ttl_7d') }}</option>
+                                    <option value="720">{{ __('settings.users_invite_ttl_30d') }}</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="rounded-lg bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20">{{ __('settings.users_invite_create') }}</button>
+                            @if ($mailEnabled)
+                                <button type="submit" name="send" value="1" class="rounded-lg px-3 py-1.5 text-xs font-medium text-accent hover:underline">{{ __('settings.users_invite_send') }}</button>
+                            @endif
                         </form>
                         <div class="mt-2 flex flex-wrap items-center gap-3">
                             <form method="POST" action="{{ route('settings.users.reset', $u) }}">
