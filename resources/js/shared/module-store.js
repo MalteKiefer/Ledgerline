@@ -85,6 +85,22 @@ export function makeStore(module, blankFn) {
 
         reset() { this.data = null; this.version = 0; this.ready = false; this.loaded = false; this._base = null; clearTimeout(this._timer); },
 
+        // Proactively pull the latest server manifest and merge our pending in-memory
+        // delta onto it IN PLACE (bound refs stay live) — like the 409 rebase but
+        // without a write. Used where a caller must observe another device's records
+        // before acting (e.g. invoice numbering must see invoices issued elsewhere to
+        // avoid a duplicate number). Best-effort: offline keeps the in-memory copy.
+        async refresh() {
+            if (! this.loaded) return;
+            try {
+                const server = await this._fetchManifest();
+                const merged = mergeManifest(this._base ?? server.data, this.data, server.data);
+                applyInPlace(this.data, merged);
+                this.version = server.version;
+                this._base = structuredClone(this.data);
+            } catch (e) { /* offline / transient — keep the in-memory copy */ }
+        },
+
         touch() {
             clearTimeout(this._timer);
             this._timer = setTimeout(() => this.flush(), 800);

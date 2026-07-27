@@ -65,6 +65,15 @@
             </x-slot:actions>
           </x-page-heading>
 
+          {{-- GoBD: unique, gapless numbers. If a concurrent finalize on two devices ever
+               produced a duplicate number, alert the owner prominently to correct it. --}}
+          <template x-if="duplicateNumbers.length">
+            <div class="mt-4 rounded-xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+              <p class="font-semibold">{{ __('invoices.dup_warning_title') }}</p>
+              <p class="mt-0.5 text-xs" x-text="'{{ __('invoices.dup_warning_body') }} ' + duplicateNumbers.join(', ')"></p>
+            </div>
+          </template>
+
           @unless ($s->company_name)
             <p class="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
               {{ __('invoices.company_missing') }} <a href="{{ route('settings.company.edit') }}" class="font-medium underline">{{ __('settings.company_section') }}</a>
