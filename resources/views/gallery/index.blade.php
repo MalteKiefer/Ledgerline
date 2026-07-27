@@ -184,7 +184,7 @@
           </div>
 
           <template x-if="isSearching && ! displayGroups.length && ! searching">
-            <p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_results') }}</p>
+            <x-empty-state class="mt-10">{{ __('gallery.no_results') }}</x-empty-state>
           </template>
           <template x-if="! isSearching && ! libraryPhotos.length && ! progress.active && ! uploading">
             <button type="button" @click="$refs.picker.click()"
@@ -305,7 +305,7 @@
               <x-icon name="trash" class="h-4 w-4" />{{ __('gallery.empty_trash') }}
             </button>
           </div>
-          <template x-if="! trashCount()"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.trash_empty') }}</p></template>
+          <template x-if="! trashCount()"><x-empty-state class="mt-10">{{ __('gallery.trash_empty') }}</x-empty-state></template>
           <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
             <template x-for="p in trashedPhotos" :key="p.id">
               <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
@@ -330,7 +330,7 @@
             <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.memories') }}</h2>
             <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('gallery.memories_hint') }}</p>
           </div>
-          <template x-if="! memoryCount()"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.memories_empty') }}</p></template>
+          <template x-if="! memoryCount()"><x-empty-state class="mt-10">{{ __('gallery.memories_empty') }}</x-empty-state></template>
           <template x-for="grp in memories" :key="grp.year">
             <section class="mb-6">
               <h3 class="mb-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300" x-text="grp.yearsAgo === 1 ? '{{ __('gallery.memories_year_ago') }}' : grp.yearsAgo + ' {{ __('gallery.memories_years_ago') }}'"></h3>
@@ -353,7 +353,7 @@
         {{-- FAVORITES --}}
         <div x-show="view === 'favorites'">
           <h2 class="mb-4 text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.favorites') }} <span class="ml-1 text-sm font-normal tabular-nums text-gray-400" x-text="favoriteCount()"></span></h2>
-          <template x-if="! favoriteCount()"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.favorites_empty') }}</p></template>
+          <template x-if="! favoriteCount()"><x-empty-state class="mt-10">{{ __('gallery.favorites_empty') }}</x-empty-state></template>
           <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
             <template x-for="p in favoritePhotos" :key="p.id">
               <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
@@ -377,7 +377,7 @@
         <div x-show="view === 'archive'">
           <h2 class="mb-4 text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.archive') }} <span class="ml-1 text-sm font-normal tabular-nums text-gray-400" x-text="archiveCount()"></span></h2>
           <p class="mb-4 -mt-2 text-xs text-gray-400 dark:text-gray-500">{{ __('gallery.archive_hint') }}</p>
-          <template x-if="! archiveCount()"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.archive_empty') }}</p></template>
+          <template x-if="! archiveCount()"><x-empty-state class="mt-10">{{ __('gallery.archive_empty') }}</x-empty-state></template>
           <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
             <template x-for="p in archivedPhotos" :key="p.id">
               <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
@@ -440,7 +440,7 @@
                   <button type="button" @click="deleteAlbum(currentAlbum)" title="{{ __('gallery.delete_album') }}" class="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"><x-icon name="trash" class="h-4 w-4" /></button>
                 </div>
               </div>
-              <template x-if="! albumCount(currentAlbum)"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.album_empty') }}</p></template>
+              <template x-if="! albumCount(currentAlbum)"><x-empty-state class="mt-10">{{ __('gallery.album_empty') }}</x-empty-state></template>
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
                 <template x-for="p in albumPhotos(currentAlbum)" :key="p.id">
                   <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800" x-intersect.once="thumbFor(p)">

@@ -58,9 +58,7 @@
                          Show hint + single primary "Enable sharing" button. --}}
                     <template x-if="! unifiedShare.vaultId">
                         <div class="space-y-3">
-                            <p class="rounded-lg bg-blue-50 dark:bg-blue-900/20 px-3 py-2 text-sm text-blue-700 dark:text-blue-300">
-                                {{ __('files.share_convert_hint') }}
-                            </p>
+                            <x-alert variant="info">{{ __('files.share_convert_hint') }}</x-alert>
                             <div class="flex justify-end">
                                 <x-button variant="primary" @click="enableSharing()">{{ __('files.share_enable') }}</x-button>
                             </div>
@@ -117,9 +115,7 @@
                                 class="rounded-lg bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-700 dark:text-red-300">{{ __('files.folder_fingerprint_changed') }}</p>
 
                             {{-- Notice (error / info) --}}
-                            <p x-show="shareFolderDialog.notice" x-cloak
-                                class="rounded-lg bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
-                                x-text="shareFolderDialog.notice"></p>
+                            <x-alert variant="warning" x-show="shareFolderDialog.notice" x-cloak x-text="shareFolderDialog.notice" />
 
                             {{-- Members list --}}
                             <div class="border-t border-gray-100 dark:border-gray-800 pt-4">

@@ -56,7 +56,7 @@
 
       {{-- Album grid --}}
       <div x-show="state === 'ready'" x-cloak>
-        <template x-if="! photos.length"><p class="mt-16 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.album_empty') }}</p></template>
+        <template x-if="! photos.length"><x-empty-state class="mt-16">{{ __('gallery.album_empty') }}</x-empty-state></template>
         <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
           <template x-for="p in photos" :key="p.id">
             <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800" x-intersect.once="thumbFor(p)">

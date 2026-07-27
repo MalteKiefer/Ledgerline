@@ -267,7 +267,7 @@
             <input type="search" x-model="custQuery" placeholder="{{ __('invoices.picker_search') }}" class="mt-3 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
             <div class="mt-3 max-h-72 space-y-1 overflow-y-auto">
               <template x-if="! custSuggestions().length">
-                <p class="py-6 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.picker_empty') }}</p>
+                <x-empty-state class="py-6">{{ __('invoices.picker_empty') }}</x-empty-state>
               </template>
               <template x-for="c in custSuggestions()" :key="c.id">
                 <button type="button" @click="pickCustomer(c)" class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-accent/5">
