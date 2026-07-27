@@ -74,7 +74,7 @@ Route::prefix('s/{token}')->name('public.share.')->group(function (): void {
 // Guest-only routes: the login page and the Pocket-ID OIDC handshake. The OIDC
 // endpoints are throttled to blunt handshake replay/hammering.
 Route::middleware('guest')->group(function (): void {
-    Route::view('/login', 'auth.login')->name('login');
+    // GET /login + POST /login|/logout are owned by Fortify (see FortifyServiceProvider).
     Route::get('/auth/redirect', [PocketIdController::class, 'redirect'])->middleware('throttle:30,1')->name('auth.redirect');
     Route::get('/auth/callback', [PocketIdController::class, 'callback'])->middleware('throttle:30,1')->name('auth.callback');
 });
@@ -177,7 +177,7 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/settings/backup/runs/{run}/cancel', [SettingsBackupController::class, 'cancelRun'])->name('settings.backup.runs.cancel');
     });
 
-    Route::post('/logout', [PocketIdController::class, 'logout'])->name('logout');
+    // POST /logout is owned by Fortify (AuthenticatedSessionController@destroy).
 
     // Zero-knowledge gallery: the client holds all keys and renders entirely
     // from the sealed index + decrypted blobs. The server ships only the shell

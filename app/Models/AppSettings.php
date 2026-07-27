@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
  * There is only ever one row; use current() to fetch (or lazily create) it.
  */
 #[Fillable([
+    'allow_registration',
     'gallery_trip_gap_days',
     'gallery_trip_radius_km',
     'gallery_filename_template',
@@ -103,6 +104,7 @@ class AppSettings extends Model
             'max_connected_devices' => 'integer',
             // Notification/mail credentials: usable in the clear at runtime but
             // encrypted at rest (so they are not readable in a database backup).
+            'allow_registration' => 'boolean',
             'mail_enabled' => 'boolean',
             'smtp_port' => 'integer',
             'smtp_host' => 'encrypted',

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Models\AppSettings;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Events\ScheduledTaskFailed;
@@ -62,6 +63,7 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('pubkey-lookup', fn (Request $request) => Limit::perMinute(30)->by($request->user()?->id ?: $request->ip()));
 
         $this->applySettingOverrides();
+        $this->applyMailSettings();
 
         // Record each scheduled maintenance task's last run + outcome so the
         // System settings page can show whether the cron is alive.
@@ -159,6 +161,40 @@ class AppServiceProvider extends ServiceProvider
                 'bool' => (bool) $v,
                 default => is_scalar($v) ? (string) $v : '',
             }]);
+        }
+    }
+
+    /**
+     * Bridge the admin-configured DB SMTP settings onto Laravel's mailer so
+     * Fortify's password-reset / email-verification notifications send through the
+     * SAME SMTP the Notifications settings page configures (ChannelNotifier uses a
+     * raw transport; config/mail defaults to `log`). Build/no-DB safe.
+     */
+    private function applyMailSettings(): void
+    {
+        try {
+            if (! Schema::hasTable('app_settings')) {
+                return;
+            }
+            $s = AppSettings::current();
+            if (! $s->mail_enabled || ! filled($s->smtp_host)) {
+                return;
+            }
+            $encryption = is_scalar($s->smtp_encryption) ? (string) $s->smtp_encryption : 'tls';
+            $scheme = $encryption === 'ssl' ? 'smtps' : 'smtp';
+            $host = parse_url((string) config('app.url'), PHP_URL_HOST);
+            config([
+                'mail.default' => 'smtp',
+                'mail.mailers.smtp.scheme' => $scheme,
+                'mail.mailers.smtp.host' => (string) $s->smtp_host,
+                'mail.mailers.smtp.port' => $s->smtp_port ?: ($scheme === 'smtps' ? 465 : 587),
+                'mail.mailers.smtp.username' => filled($s->smtp_username) ? (string) $s->smtp_username : null,
+                'mail.mailers.smtp.password' => filled($s->smtp_password) ? (string) $s->smtp_password : null,
+                'mail.from.address' => filled($s->smtp_from_address) ? (string) $s->smtp_from_address : ('no-reply@'.(is_string($host) ? $host : 'localhost')),
+                'mail.from.name' => filled($s->smtp_from_name) ? (string) $s->smtp_from_name : (string) config('app.name'),
+            ]);
+        } catch (\Throwable) {
+            // build / no-DB: keep config defaults.
         }
     }
 }

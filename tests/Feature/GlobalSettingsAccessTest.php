@@ -12,36 +12,25 @@ class GlobalSettingsAccessTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_non_admin_cannot_open_infra_settings_when_group_configured(): void
+    public function test_non_admin_cannot_open_infra_settings(): void
     {
-        config()->set('services.pocketid.admin_group', 'admins');
-        $this->actingAs(User::factory()->create(['groups' => ['users']]));
+        $this->actingAs(User::factory()->create()); // role 'user'
 
         $this->get(route('settings.system.edit'))->assertForbidden();
         // Personal settings stay open.
         $this->get(route('settings.files.edit'))->assertOk();
     }
 
-    public function test_admin_group_member_can_open_infra_settings(): void
+    public function test_admin_can_open_infra_settings(): void
     {
-        config()->set('services.pocketid.admin_group', 'admins');
-        $this->actingAs(User::factory()->create(['groups' => ['staff', 'admins']]));
-
-        $this->get(route('settings.system.edit'))->assertOk();
-    }
-
-    public function test_everyone_may_when_no_admin_group_configured(): void
-    {
-        config()->set('services.pocketid.admin_group', null);
-        $this->actingAs(User::factory()->create(['groups' => []]));
+        $this->actingAs(User::factory()->admin()->create());
 
         $this->get(route('settings.system.edit'))->assertOk();
     }
 
     public function test_settings_index_redirects_non_admins_to_profile(): void
     {
-        config()->set('services.pocketid.admin_group', 'admins');
-        $this->actingAs(User::factory()->create(['groups' => []]));
+        $this->actingAs(User::factory()->create());
 
         // Settings is admin-only now; personal preferences live under the profile.
         $this->get(route('settings'))->assertRedirect(route('profile'));
@@ -49,8 +38,7 @@ class GlobalSettingsAccessTest extends TestCase
 
     public function test_settings_index_shows_only_admin_sections_for_admins(): void
     {
-        config()->set('services.pocketid.admin_group', 'admins');
-        $this->actingAs(User::factory()->create(['groups' => ['admins']]));
+        $this->actingAs(User::factory()->admin()->create());
 
         $this->get(route('settings'))->assertOk()
             ->assertSee(__('settings.admin_heading'))
