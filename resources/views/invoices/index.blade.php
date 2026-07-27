@@ -33,6 +33,9 @@
         statusPaid: @js(__('invoices.status_paid')),
         csvImported: @js(__('invoices.csv_imported')),
         csvBadFormat: @js(__('invoices.csv_bad_format')),
+        importSummaryLabel: @js(__('invoices.import_summary_label')),
+        importDone: @js(__('invoices.import_done')),
+        importFailed: @js(__('invoices.import_load_failed')),
      })">
 
     {{-- Zero-knowledge gate: invoices decrypt with the vault key. --}}
@@ -59,6 +62,8 @@
         <div x-show="view === 'list'">
           <x-page-heading :title="__('invoices.title')">
             <x-slot:actions>
+              <input type="file" x-ref="pdfImport" accept="application/pdf,.pdf" multiple class="hidden" @change="importPdfs($event.target.files); $event.target.value = ''">
+              <x-button variant="secondary" @click="$refs.pdfImport.click()" icon="arrow-up-tray">{{ __('invoices.import_pdf') }}</x-button>
               <x-button variant="primary" @click="newInvoice()"><x-icon name="plus" class="mr-1.5 h-4 w-4" />{{ __('invoices.new') }}</x-button>
             </x-slot:actions>
           </x-page-heading>
@@ -482,6 +487,70 @@
             </template>
           </div>
         </template>
+      </div>
+    </template>
+
+    {{-- ===================== PDF IMPORT REVIEW ===================== --}}
+    <template x-teleport="body">
+      <div x-show="importReview" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="! importReview?.running && cancelImport()">
+        <div class="absolute inset-0 bg-gray-900/50" @click="! importReview?.running && cancelImport()"></div>
+        <div class="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+          <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-5 py-3">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.import_title') }}</h3>
+            <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelImport()" x-show="! importReview?.running" aria-label="{{ __('common.close') }}" />
+          </div>
+
+          {{-- Parsing progress --}}
+          <template x-if="importReview?.running">
+            <div class="flex items-center justify-center gap-3 px-5 py-16 text-sm text-gray-500 dark:text-gray-400">
+              <x-icon name="arrow-path" class="h-5 w-5 animate-spin" />
+              <span x-text="'{{ __('invoices.import_parsing') }}'.replace(':done', importReview.done).replace(':total', importReview.total)"></span>
+            </div>
+          </template>
+
+          {{-- Review list --}}
+          <template x-if="importReview && ! importReview.running">
+            <div class="flex min-h-0 flex-1 flex-col">
+              <div class="border-b border-gray-100 dark:border-gray-800 px-5 py-2.5 text-xs text-gray-500 dark:text-gray-400">
+                <span x-text="'{{ __('invoices.import_summary') }}'.replace(':n', importReview.items.length)"></span>
+                <span x-show="importReview.failed" class="text-red-600 dark:text-red-400" x-text="' · ' + '{{ __('invoices.import_failed_n') }}'.replace(':n', importReview.failed)"></span>
+              </div>
+              <div class="min-h-0 flex-1 overflow-auto px-5 py-3">
+                <table class="w-full text-sm">
+                  <thead class="text-left text-xs text-gray-400 dark:text-gray-500">
+                    <tr>
+                      <th class="pb-2 pr-2"></th>
+                      <th class="pb-2 pr-3">{{ __('invoices.col_number') }}</th>
+                      <th class="pb-2 pr-3">{{ __('invoices.col_date') }}</th>
+                      <th class="pb-2 pr-3">{{ __('invoices.col_customer') }}</th>
+                      <th class="pb-2 pl-3 text-right">{{ __('invoices.col_total') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
+                    <template x-for="row in importReview.items" :key="row.id">
+                      <tr :class="row._warnings.length ? 'text-amber-700 dark:text-amber-400' : 'text-gray-800 dark:text-gray-200'">
+                        <td class="py-2 pr-2"><input type="checkbox" x-model="row.selected" class="rounded"></td>
+                        <td class="py-2 pr-3 tabular-nums" x-text="row.number || '—'"></td>
+                        <td class="py-2 pr-3 tabular-nums" x-text="row.issueDate || '—'"></td>
+                        <td class="max-w-[16rem] truncate py-2 pr-3" x-text="row.customer.name || '—'" :title="row.customer.name"></td>
+                        <td class="py-2 pl-3 text-right tabular-nums" x-text="fmtMoney((row._parsedGross ?? computeTotals(row).gross), row.currency, 'de')"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+              <div class="flex items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-800 px-5 py-3">
+                <span class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.import_hint') }}</span>
+                <div class="flex items-center gap-3">
+                  <x-button variant="secondary" @click="cancelImport()">{{ __('common.cancel') }}</x-button>
+                  <x-button variant="primary" @click="confirmImport()" ::disabled="! importSelectedCount">
+                    <span x-text="'{{ __('invoices.import_confirm') }}'.replace(':n', importSelectedCount)"></span>
+                  </x-button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
       </div>
     </template>
   </div>

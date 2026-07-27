@@ -1,6 +1,7 @@
 // invoices component. Extracted from app.js.
 import { zkModule, bootStore } from '../shared/zk-module';
 import { nextSeq, duplicateNumbers as dupNumbers } from '../shared/invoice-numbering';
+import { parseInvoiceFilename, parseInvoiceText, buildImportedInvoice } from '../shared/invoice-pdf-import';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
 import { jsonHeaders } from '../shared/api';
 
@@ -151,6 +152,75 @@ export default (config = {}, labels = {}) => ({
             this.saveSoon();
             window.llToast?.((labels.csvImported || ':n lines imported.').replace(':n', lines.length));
         } catch (e) { window.llToast?.(labels.csvBadFormat || 'Could not read CSV.'); }
+    },
+
+    // ---- Historical PDF invoice import (zero-knowledge, client-side) ----
+    // Reads each PDF's text with pdf.js and turns it into a paid, single-net-line draft
+    // (filename → number/date/customer, text → money). Everything stays in the browser;
+    // the user reviews the parsed list before anything is saved.
+    importReview: null, // { items:[draft], total, done, failed, running }
+
+    async importPdfs(fileList) {
+        const files = [...(fileList || [])].filter((f) => /\.pdf$/i.test(f.name));
+        if (! files.length) return;
+        this.importReview = { items: [], total: files.length, done: 0, failed: 0, running: true };
+        let pdfjs;
+        try {
+            pdfjs = await import('pdfjs-dist');
+            pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+        } catch (e) { this.importReview = null; window.llToast?.(labels.importFailed || 'PDF engine failed to load.'); return; }
+        const summaryLabel = labels.importSummaryLabel || 'Rechnungsbetrag';
+        for (const file of files) {
+            try {
+                const bytes = new Uint8Array(await file.arrayBuffer());
+                const doc = await pdfjs.getDocument({ data: bytes.slice(0), isEvalSupported: false }).promise;
+                let text = '';
+                for (let i = 1; i <= doc.numPages; i++) {
+                    const page = await doc.getPage(i);
+                    const content = await page.getTextContent();
+                    text += content.items.map((it) => it.str).join(' ') + '\n';
+                }
+                const draft = buildImportedInvoice(
+                    parseInvoiceFilename(file.name),
+                    parseInvoiceText(text),
+                    { id: window.LLInvoicesStore.newId(), currency: this.company.currency || 'EUR', summaryLabel },
+                );
+                draft.selected = true;
+                draft._file = file.name;
+                this.importReview.items.push(draft);
+            } catch (e) { this.importReview.failed++; }
+            this.importReview.done++;
+        }
+        this.importReview.running = false;
+        // Sort by issue date so the review reads chronologically.
+        this.importReview.items.sort((a, b) => (a.issueDate || '').localeCompare(b.issueDate || ''));
+    },
+
+    get importSelectedCount() { return (this.importReview?.items || []).filter((i) => i.selected).length; },
+    cancelImport() { this.importReview = null; },
+
+    // Commit the reviewed drafts as records. Imported invoices keep their ORIGINAL
+    // number (historical) — no new number is minted; the duplicate-number banner still
+    // guards against a clash with the ongoing series.
+    async confirmImport() {
+        const picked = (this.importReview?.items || []).filter((i) => i.selected);
+        if (! picked.length) { this.importReview = null; return; }
+        for (const draft of picked) {
+            const inv = {
+                id: draft.id, number: draft.number, status: 'paid',
+                issueDate: draft.issueDate || this._today(),
+                dueDate: draft.dueDate || draft.issueDate || this._today(),
+                currency: draft.currency, lang: draft.lang || 'de',
+                customer: draft.customer,
+                lines: draft.lines, note: draft.note || '', footer: draft.footer || '',
+                trashed: false, imported: true, updated: new Date().toISOString(),
+            };
+            inv.totals = this.computeTotals(inv);
+            this.invoices.unshift(inv);
+        }
+        this._save();
+        window.llToast?.((labels.importDone || ':n invoices imported.').replace(':n', picked.length));
+        this.importReview = null;
     },
 
     trash(inv) { inv.trashed = new Date().toISOString(); this._save(); if (this.current === inv) this.backToList(); },
