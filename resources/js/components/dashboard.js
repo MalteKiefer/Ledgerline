@@ -69,12 +69,13 @@ export default (config = {}, labels = {}) => ({
         while (! vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
         if (! vault.unlocked) { this.state = 'locked'; return; }
 
-        await Promise.all(['todos', 'contacts', 'health', 'bookmarks', 'invoices']
+        await Promise.all(['todos', 'contacts', 'health', 'bookmarks']
             .map((m) => (window.LLModuleStore[m].loaded ? null : window.LLModuleStore[m].load())));
         if (! window.LLFilesStore.loaded) await window.LLFilesStore.load();
-        // Notes + passwords graduated to sharded stores (spec §3b).
+        // Notes + passwords + invoices graduated to sharded stores (spec §3b).
         if (! window.LLNotesStore.loaded) await window.LLNotesStore.load();
         if (! window.LLPasswordsStore.loaded) await window.LLPasswordsStore.load();
+        if (! window.LLInvoicesStore.loaded) await window.LLInvoicesStore.load();
 
         this.state = 'ready';
         try { this.galleryReady = await bootGalleryStore(this.$store); } catch (_e) { this.galleryReady = false; }
@@ -96,6 +97,7 @@ export default (config = {}, labels = {}) => ({
     get _contacts() { return window.LLModuleStore.contacts?.data ?? null; },
     get _passwords() { return window.LLPasswordsStore?.data ?? null; },
     get _health() { return window.LLModuleStore.health?.data ?? null; },
+    get _invoices() { return window.LLInvoicesStore?.data ?? null; },
     get _files() { return window.LLFilesStore?.data ?? null; },
     get _g() { return this.galleryReady ? (window.LLGalleryStore?.data ?? null) : null; },
 
@@ -118,7 +120,7 @@ export default (config = {}, labels = {}) => ({
             passwords: (this._passwords?.secrets ?? []).length,
             contacts: (this._contacts?.contacts ?? []).length,
             bookmarks: (window.LLModuleStore.bookmarks?.data?.bookmarks ?? []).length,
-            invoices: (window.LLModuleStore.invoices?.data?.invoices ?? []).length,
+            invoices: (this._invoices?.invoices ?? []).length,
             files: (this._files?.files ?? []).filter((f) => ! f.trashed).length,
         };
     },

@@ -101,6 +101,15 @@ window.LLPasswordsStore = makeShardedStore({
     ],
 });
 
+// Invoices graduated to a sharded store too (spec §3b) — they grow with sending/import
+// and must stay loss-safe for tax records. Each invoice is one shard record; numbering
+// safety is derived client-side from the invoices, not a store scalar (see invoices.js).
+window.LLInvoicesStore = makeShardedStore({
+    prefix: '/invoices',
+    recordKey: 'invoices',
+    collections: [],
+});
+
 
 // Wait for the vault, then load the sealed gallery index once.
 // App-wide confirm modal store (replaces native window.confirm everywhere).

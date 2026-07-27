@@ -3,6 +3,7 @@
 use App\Support\UserData\ExploreData;
 use App\Support\UserData\FilesData;
 use App\Support\UserData\GalleryData;
+use App\Support\UserData\InvoicesData;
 use App\Support\UserData\NotesData;
 use App\Support\UserData\PaperlessData;
 use App\Support\UserData\PasswordsData;
@@ -19,6 +20,7 @@ return [
         GalleryData::class,
         NotesData::class,
         PasswordsData::class,
+        InvoicesData::class,
         ExploreData::class,
         SharedData::class,
         PaperlessData::class,
