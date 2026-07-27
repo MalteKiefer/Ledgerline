@@ -41,6 +41,27 @@ class GalleryShareTest extends TestCase
         ], $extra))->assertOk()->json('token');
     }
 
+    public function test_a_stale_share_update_is_rejected_with_409(): void
+    {
+        $owner = User::factory()->create();
+        $ref = (string) Str::uuid();
+        Storage::disk(config('files.disk'))->put('gallery/'.$ref, 'ciphertext');
+        GalleryBlob::create(['blob' => $ref, 'user_id' => $owner->id, 'size' => 10, 'created_at' => now()]);
+        $token = $this->createShare($owner, [$ref]); // version 0
+
+        // Update with the correct version → bumps to 1.
+        $this->actingAs($owner)->putJson(route('gallery.shares.update', $token), [
+            'sealed_manifest' => 'S2', 'blob_refs' => [$ref], 'allow_download' => false, 'expected_version' => 0,
+        ])->assertOk()->assertJson(['version' => 1]);
+
+        // A stale editor still on version 0 is refused — no clobber.
+        $this->actingAs($owner)->putJson(route('gallery.shares.update', $token), [
+            'sealed_manifest' => 'S3', 'blob_refs' => [$ref], 'allow_download' => false, 'expected_version' => 0,
+        ])->assertStatus(409)->assertJson(['error' => 'version_conflict', 'version' => 1]);
+
+        $this->assertSame('S2', PublicShare::where('token', $token)->first()->sealed_manifest);
+    }
+
     public function test_owner_creates_a_share_and_public_can_read_it(): void
     {
         $owner = User::factory()->create();

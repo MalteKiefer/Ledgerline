@@ -624,9 +624,9 @@ export default (config = {}, labels = {}) => ({
             const sk = await window.ShareCrypto.newKey();
             const { sealed, refs } = await this._buildShareManifest(sk);
             if (! refs.length) { this.share.error = labels.shareEmpty || 'empty'; this.share.busy = false; return; }
-            const { token } = await postForm(config.fileSharesUrl, this._shareBody(sealed, refs));
+            const { token, version } = await postForm(config.fileSharesUrl, this._shareBody(sealed, refs));
             const src = this._shareSrc();
-            if (src) src.share = { token, sk, kind: this.share.kind, hasPassword: ! ! this.share.password.trim(), expiresAt: this.share.expiresAt || null, created: new Date().toISOString() };
+            if (src) src.share = { token, sk, kind: this.share.kind, hasPassword: ! ! this.share.password.trim(), expiresAt: this.share.expiresAt || null, created: new Date().toISOString(), version: version ?? 0 };
             this.share.hasPassword = ! ! this.share.password.trim();
             this.share.password = '';
             this.share.link = this._shareLink(token, sk);
@@ -641,7 +641,11 @@ export default (config = {}, labels = {}) => ({
             const { sealed, refs } = await this._buildShareManifest(src.share.sk);
             const body = this._shareBody(sealed, refs);
             if (! this.share.password.trim() && ! src.share.hasPassword) body.clear_password = true;
-            await postForm(`${config.fileSharesUrl}/${src.share.token}`, body, 'PUT');
+            // Optimistic concurrency: 409 (→ error) rather than clobber a concurrent
+            // edit from another device. Older shares have no version → blind path.
+            if (src.share.version != null) body.expected_version = src.share.version;
+            const upd = await postForm(`${config.fileSharesUrl}/${src.share.token}`, body, 'PUT');
+            if (upd && upd.version != null) src.share.version = upd.version;
             src.share.expiresAt = this.share.expiresAt || null;
             if (this.share.password.trim()) { src.share.hasPassword = true; this.share.hasPassword = true; } else if (body.clear_password) { src.share.hasPassword = false; this.share.hasPassword = false; }
             this.share.password = '';

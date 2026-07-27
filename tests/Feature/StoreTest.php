@@ -43,6 +43,20 @@ class StoreTest extends TestCase
         $this->assertSame(1, (int) ModuleStore::query()->where('user_id', $user->id)->where('module', 'notes')->value('version'));
     }
 
+    public function test_a_version_conflict_leaves_a_store_conflict_trail(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user)->putJson(route('module-store.save', 'notes'), ['ciphertext' => 'a', 'version' => 0])->assertOk();
+        // Stale write at version 0 (server is at 1) → 409.
+        $this->actingAs($user)->putJson(route('module-store.save', 'notes'), ['ciphertext' => 'b', 'version' => 0])->assertStatus(409);
+
+        $this->assertDatabaseHas('blob_audit_log', [
+            'module' => 'store:notes',
+            'action' => 'store_conflict',
+            'result' => 'conflict',
+        ]);
+    }
+
     public function test_each_write_leaves_a_forensic_root_write_trail(): void
     {
         $user = User::factory()->create();

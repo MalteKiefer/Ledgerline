@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
  * only carries the ciphertext and the coarse access controls.
  *
  * @property int $user_id
+ * @property int $version
  * @property list<string> $blob_refs
  * @property bool $allow_download
  * @property Carbon|null $expires_at
@@ -32,6 +33,7 @@ class PublicShare extends Model
             'allow_download' => 'boolean',
             'expires_at' => 'datetime',
             'last_viewed_at' => 'datetime',
+            'version' => 'integer',
         ];
     }
 

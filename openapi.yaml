@@ -429,6 +429,11 @@ components:
           type: string
           description: URL-safe token that identifies the share link.
           example: a1b2c3d4e5f6
+        version:
+          type: integer
+          description: >
+            Optimistic-concurrency version of the share record. Echo it as
+            expected_version on the next update to avoid clobbering a concurrent edit.
 
     VaultResponse:
       type: object
@@ -438,6 +443,12 @@ components:
         configured:
           type: boolean
           description: Whether the caller has set up a vault.
+        version:
+          type: integer
+          description: >
+            Optimistic-concurrency version. Echo it as expected_version when
+            rotating (PUT /vault) so a stale passphrase change is rejected (409)
+            instead of clobbering a concurrent rotate on another device.
         salt:
           type: string
           nullable: true
@@ -1348,6 +1359,13 @@ paths:
                   type: boolean
                   default: false
                   description: If true, removes the current password protection.
+                expected_version:
+                  type: integer
+                  description: >
+                    Optional optimistic-concurrency guard (see the create/update
+                    response version). On mismatch the update is rejected (409)
+                    instead of clobbering a concurrent edit. Omit for the legacy
+                    blind (version-bumping) behaviour.
       responses:
         "200":
           description: Share updated.
@@ -1357,6 +1375,8 @@ paths:
                 $ref: "#/components/schemas/TokenResponse"
         "404":
           description: Share not found or not owned by caller.
+        "409":
+          description: Version conflict — the share was updated elsewhere; re-read and retry.
         "422":
           description: Validation error.
         "429":
@@ -3855,6 +3875,14 @@ paths:
                   type: boolean
                   default: false
                   description: If true, removes the current password protection.
+                expected_version:
+                  type: integer
+                  description: >
+                    Optional optimistic-concurrency guard: the version the client
+                    based this edit on (from the create/update response). If it does
+                    not match the server's current version the update is rejected
+                    (409) instead of clobbering a concurrent edit. Omit for the
+                    legacy blind (version-bumping) behaviour.
       responses:
         "200":
           description: Share updated.
@@ -3864,6 +3892,8 @@ paths:
                 $ref: "#/components/schemas/TokenResponse"
         "404":
           description: Share not found or not owned by caller.
+        "409":
+          description: Version conflict — the share was updated elsewhere; re-read and retry.
         "422":
           description: Validation error.
         "429":

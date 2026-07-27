@@ -58,13 +58,22 @@ trait ManagesPublicShares
             'has_password' => $share->password_hash !== null,
         ]);
 
-        return response()->json(['token' => $token]);
+        return response()->json(['token' => $token, 'version' => (int) $share->version]);
     }
 
     protected function updateShareRecord(Request $request, string $token): JsonResponse
     {
         $share = $this->ownedShare($request, $token);
-        $request->validate($this->shareRules() + ['clear_password' => ['boolean']]);
+        $request->validate($this->shareRules() + ['clear_password' => ['boolean'], 'expected_version' => ['sometimes', 'integer', 'min:0']]);
+
+        // Optimistic concurrency (store merge-safety spec §6.4): a stale editor is
+        // rejected with 409 rather than clobbering a newer share manifest. Optional —
+        // older clients omit expected_version and keep the blind (version-bumping)
+        // behaviour. The manifest is an owner-derived snapshot, so no client-side
+        // merge is needed; the client just re-reads on 409.
+        if ($request->has('expected_version') && (int) $share->version !== $request->integer('expected_version')) {
+            return response()->json(['error' => 'version_conflict', 'version' => (int) $share->version], 409);
+        }
 
         $this->applyShareData($share, $request);
         if ($request->boolean('clear_password')) {
@@ -75,9 +84,10 @@ trait ManagesPublicShares
                 $share->password_hash = Hash::make($password);
             }
         }
+        $share->version = (int) $share->version + 1;
         $share->save();
 
-        return response()->json(['token' => $share->token]);
+        return response()->json(['token' => $share->token, 'version' => (int) $share->version]);
     }
 
     /**

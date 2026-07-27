@@ -26,6 +26,12 @@ use Illuminate\Support\Facades\Auth;
 ])]
 class Vault extends Model
 {
+    /** @return array<string, string> */
+    protected function casts(): array
+    {
+        return ['version' => 'integer'];
+    }
+
     /** The current user's vault row, if they have set up encryption. */
     public static function current(): ?self
     {
