@@ -82,13 +82,13 @@
     <template x-if="state === 'ready'">
       <div>
         {{-- ===================== FINANCE HUB (tabs) ===================== --}}
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('messages.nav.finance') }}</h1>
-          <div class="inline-flex flex-wrap rounded-xl bg-black/[0.04] dark:bg-white/10 p-0.5 text-sm font-medium">
+        <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('messages.nav.finance') }}</h1>
+        <div class="mt-4 -mx-1 overflow-x-auto px-1 pb-1">
+          <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/10 p-0.5 text-sm font-medium">
             @php $tabs = ['dashboard' => 'tab_dashboard', 'invoices' => 'tab_invoices', 'payments' => 'tab_payments', 'receipts' => 'tab_receipts', 'stats' => 'tab_stats']; @endphp
             @foreach ($tabs as $key => $lbl)
               <button type="button" @click="setSection('{{ $key }}')"
-                class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-colors"
+                class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 transition-colors"
                 :class="section === '{{ $key }}' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-accent'">
                 {{ __('invoices.'.$lbl) }}@if ($key === 'receipts')<span class="text-[10px] font-normal text-gray-400 dark:text-gray-500">({{ __('invoices.coming_soon') }})</span>@endif
               </button>
