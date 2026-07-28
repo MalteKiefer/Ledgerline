@@ -10,6 +10,7 @@ import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
 import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears } from '../shared/finance-stats';
+import { PAYMENT_TYPES, paymentIcon, paymentTint, paymentSubtitle, isValidPaymentMethod, sortedPaymentMethods, blankPaymentMethod, cardNetworkOf } from '../shared/payment-methods';
 
 // One-time dual-read migration from the old single-blob module store (/store/invoices)
 // to the sharded store (LLInvoicesStore, spec §3b). Runs only while the sharded store is
@@ -47,7 +48,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices' }, onLock: (self) => { self.view = 'list'; self.current = null; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices', paymentMethods: 'paymentMethods' }, onLock: (self) => { self.view = 'list'; self.current = null; self.payEditing = null; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -57,11 +58,11 @@ export default (config = {}, labels = {}) => ({
     filterStatus: '',    // '' | draft | sent | paid
     _printing: null,     // invoice rendered into the hidden print sheet
     // Finance section: the page is a "Finanzen" hub with tabs. Invoices are one tab.
-    section: 'dashboard', // 'dashboard' | 'receipts' | 'invoices' | 'stats'
+    section: 'dashboard', // 'dashboard' | 'receipts' | 'invoices' | 'payments' | 'stats'
 
     async init() {
         const h = (location.hash || '').replace('#', '');
-        if (['dashboard', 'receipts', 'invoices', 'stats'].includes(h)) this.section = h;
+        if (['dashboard', 'receipts', 'invoices', 'payments', 'stats'].includes(h)) this.section = h;
         await this._initZk();
         if (this.state === 'ready') this.reconcileBlobs();
     },
@@ -98,6 +99,44 @@ export default (config = {}, labels = {}) => ({
         const loc = document.documentElement.lang || 'de';
         try { return new Intl.DateTimeFormat(loc, { month: 'short' }).format(new Date(2000, (m || 1) - 1, 1)); }
         catch (e) { return String(m); }
+    },
+
+    // ---- Payment methods (bank accounts, cards, …) — sealed in the finance store ----
+    paymentMethods: [],
+    payEditing: null,       // the record being created/edited (a working copy)
+    payIsNew: false,
+    payTypeOptions: PAYMENT_TYPES,
+    get sortedPayments() { return sortedPaymentMethods(this.paymentMethods); },
+    payIcon(type) { return paymentIcon(type); },
+    payTint(type) { return paymentTint(type); },
+    paySubtitle(pm) { return paymentSubtitle(pm); },
+    payTypeLabel(type) { return labels['pay_type_' + type] || type; },
+    newPayment(type = 'bank') { this.payEditing = blankPaymentMethod(type); this.payIsNew = true; },
+    editPayment(pm) { this.payEditing = JSON.parse(JSON.stringify(pm)); this.payEditing.id = pm.id; this.payIsNew = false; },
+    cancelPayment() { this.payEditing = null; },
+    // Autofill the card network from the typed number (user can still override).
+    payCardInput() { if (this.payEditing?.type === 'card') this.payEditing.cardNetwork = cardNetworkOf(this.payEditing.cardNumber); },
+    savePayment() {
+        const pm = this.payEditing;
+        if (! isValidPaymentMethod(pm)) { window.llToast?.(labels.pay_invalid || 'Please fill in the required fields.'); return; }
+        pm.updated = new Date().toISOString();
+        if (this.payIsNew) {
+            pm.id = window.LLInvoicesStore.newId();
+            pm.created = pm.updated;
+            this.paymentMethods.push(pm);
+        } else {
+            const i = this.paymentMethods.findIndex((p) => p.id === pm.id);
+            if (i >= 0) Object.assign(this.paymentMethods[i], pm);
+        }
+        this._save();
+        this.payEditing = null;
+    },
+    async removePayment(pm) {
+        if (! await this.$store.confirm.ask(labels.pay_delete_confirm || 'Delete this payment method?')) return;
+        const i = this.paymentMethods.indexOf(pm);
+        if (i >= 0) this.paymentMethods.splice(i, 1);
+        this._save();
+        if (this.payEditing && this.payEditing.id === pm.id) this.payEditing = null;
     },
 
     // ---- Derived ----
