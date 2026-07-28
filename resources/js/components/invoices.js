@@ -271,6 +271,7 @@ export default (config = {}, labels = {}) => ({
         this.exportBusy = false;
     },
     async removeReceipt(tx, r) {
+        if (r.locked) return; // auto-attached invoice — cannot be removed, only added to
         if (! await this.$store.confirm.ask(labels.receipt_delete_confirm || 'Remove this receipt?')) return;
         const i = (tx.receipts || []).indexOf(r);
         if (i >= 0) tx.receipts.splice(i, 1);
