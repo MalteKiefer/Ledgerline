@@ -23,6 +23,11 @@ describe('receipt OCR analysis', () => {
         expect(extractDate(RESTAURANT)).toBe('2026-07-17');
         expect(extractDate('Kauf am 3.9.24')).toBe('2024-09-03');
         expect(extractDate('2026-02-01 stuff')).toBe('2026-02-01');
+        expect(extractDate('Rechnungsdatum 27. Juli 2026')).toBe('2026-07-27'); // German month name
+        expect(extractDate('July 27, 2026')).toBe('2026-07-27'); // English month name
+    });
+    it('classifies Google One as Software', () => {
+        expect(analyzeReceiptText('Google Commerce Limited\nGoogle One\nGesamtsumme 9,99').category).toBe('Software');
     });
     it('extracts the merchant from the first meaningful line', () => {
         expect(extractMerchant(RESTAURANT)).toBe('Ristorante Da Mario');
