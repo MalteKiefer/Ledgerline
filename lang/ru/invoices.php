@@ -254,6 +254,8 @@ return [
     'project_pick_search' => 'Поиск чеков…',
     'project_pick_none' => 'Чеки не найдены.',
     'project_pick_done' => 'Готово',
+    'stat_project_costs' => 'Расходы проекта',
+    'stat_revenue_section' => 'Выручка (бизнес)',
     'stat_project_business' => 'Расходы проекта (бизнес)',
     'stat_project_private' => 'Расходы проекта (личное)',
     'receipt_reanalyze' => 'Распознать заново',

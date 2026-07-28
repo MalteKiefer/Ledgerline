@@ -254,6 +254,8 @@ return [
     'project_pick_search' => 'Belege suchen…',
     'project_pick_none' => 'Keine Belege gefunden.',
     'project_pick_done' => 'Fertig',
+    'stat_project_costs' => 'Projektkosten',
+    'stat_revenue_section' => 'Umsatz (geschäftlich)',
     'stat_project_business' => 'Projektkosten (geschäftlich)',
     'stat_project_private' => 'Projektkosten (privat)',
     'receipt_reanalyze' => 'Neu erkennen',
