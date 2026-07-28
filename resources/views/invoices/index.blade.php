@@ -114,6 +114,65 @@
               <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.expenses_soon') }}</p>
             </div>
           </div>
+
+          {{-- VAT advance return (Umsatzsteuer-Voranmeldung) for the current year --}}
+          <div class="ll-card mt-4 !p-0 overflow-hidden">
+            <div class="flex items-center gap-2 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+              <span class="ll-chip h-7 w-7 rounded-lg" style="background:#e2915a"><x-icon name="receipt-percent" class="h-4 w-4 text-white" /></span>
+              <div>
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.vat_title') }}</h3>
+                <p class="text-xs text-gray-400 dark:text-gray-500" x-text="vatReturn.year + ' · ' + vatReturn.count + ' {{ __('invoices.invoice_count') }}'"></p>
+              </div>
+            </div>
+            {{-- Net / VAT / gross totals --}}
+            <div class="grid grid-cols-1 divide-y divide-black/[0.06] dark:divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div class="px-5 py-4">
+                <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_net') }}</p>
+                <p class="mt-1 text-xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(vatReturn.net)"></p>
+              </div>
+              <div class="px-5 py-4">
+                <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_owed') }}</p>
+                <p class="mt-1 text-xl font-semibold tabular-nums text-accent" x-text="fmtMoney(vatReturn.vat)"></p>
+              </div>
+              <div class="px-5 py-4">
+                <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_gross') }}</p>
+                <p class="mt-1 text-xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(vatReturn.gross)"></p>
+              </div>
+            </div>
+            {{-- Breakdown by rate --}}
+            <template x-if="vatReturn.byRate.length">
+              <div class="border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+                <p class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.vat_by_rate') }}</p>
+                <table class="w-full text-sm">
+                  <thead class="text-left text-xs text-gray-400 dark:text-gray-500">
+                    <tr><th class="pb-1 pr-3 font-normal">{{ __('invoices.vat_rate') }}</th><th class="pb-1 pr-3 font-normal text-right">{{ __('invoices.vat_net') }}</th><th class="pb-1 font-normal text-right">{{ __('invoices.vat_owed') }}</th></tr>
+                  </thead>
+                  <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
+                    <template x-for="b in vatReturn.byRate" :key="b.rate">
+                      <tr class="text-gray-800 dark:text-gray-200">
+                        <td class="py-1.5 pr-3 tabular-nums" x-text="b.rate + '%'"></td>
+                        <td class="py-1.5 pr-3 text-right tabular-nums" x-text="fmtMoney(b.net)"></td>
+                        <td class="py-1.5 text-right tabular-nums" x-text="fmtMoney(b.vat)"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </template>
+            {{-- Quarterly breakdown --}}
+            <div class="border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+              <p class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.vat_by_quarter') }}</p>
+              <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <template x-for="q in vatReturn.quarters" :key="q.q">
+                  <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                    <p class="text-xs text-gray-400 dark:text-gray-500" x-text="'Q' + q.q"></p>
+                    <p class="mt-0.5 text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(q.vat)"></p>
+                    <p class="text-[11px] text-gray-400 dark:text-gray-500" x-text="fmtMoney(q.net) + ' {{ __('invoices.vat_net_short') }}'"></p>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
         </div>
 
         {{-- ===================== RECEIPTS (coming soon) ===================== --}}
@@ -125,13 +184,99 @@
           </div>
         </div>
 
-        {{-- ===================== STATISTICS (coming soon) ===================== --}}
+        {{-- ===================== STATISTICS ===================== --}}
         <div x-show="section === 'stats'" class="mt-6">
-          <div class="ll-card flex flex-col items-center py-16 text-center">
-            <span class="ll-chip h-11 w-11" style="background:#3b9fd6"><x-icon name="chart-bar" class="h-5 w-5 text-white" /></span>
-            <p class="mt-4 text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.tab_stats') }}</p>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.stats_soon') }}</p>
-          </div>
+          <template x-if="! statsKpis.count && statsYear === {{ (int) date('Y') }}">
+            <x-empty-state icon="chart-bar">{{ __('invoices.stats_empty') }}</x-empty-state>
+          </template>
+          <template x-if="statsKpis.count || statsYear !== {{ (int) date('Y') }}">
+            <div>
+              {{-- Year selector --}}
+              <div class="mb-4 flex items-center gap-2">
+                <label class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stats_year') }}</label>
+                <select x-model.number="statsYear" class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] px-2 py-1 text-sm">
+                  <template x-for="y in statsYears" :key="y"><option :value="y" x-text="y"></option></template>
+                </select>
+              </div>
+
+              {{-- KPI row --}}
+              <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <div class="ll-card">
+                  <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_revenue') }}</p>
+                  <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(statsKpis.net)"></p>
+                  <template x-if="statsKpis.growthPct !== null">
+                    <p class="mt-0.5 flex items-center gap-1 text-xs" :class="statsKpis.growthPct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                      <x-icon ::name="statsKpis.growthPct >= 0 ? 'arrow-trending-up' : 'arrow-trending-down'" class="h-3.5 w-3.5" />
+                      <span x-text="(statsKpis.growthPct >= 0 ? '+' : '') + statsKpis.growthPct + '% {{ __('invoices.stat_vs_prev') }}'"></span>
+                    </p>
+                  </template>
+                </div>
+                <div class="ll-card">
+                  <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_invoices') }}</p>
+                  <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="statsKpis.count"></p>
+                </div>
+                <div class="ll-card">
+                  <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_avg') }}</p>
+                  <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(statsKpis.avg)"></p>
+                </div>
+                <div class="ll-card">
+                  <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_customers') }}</p>
+                  <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="statsKpis.customers"></p>
+                </div>
+              </div>
+
+              <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {{-- Monthly revenue bars --}}
+                <div class="ll-card">
+                  <p class="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.stat_monthly') }}</p>
+                  <div class="space-y-1.5">
+                    <template x-for="m in statsMonths" :key="m.month">
+                      <div class="flex items-center gap-2">
+                        <span class="w-8 shrink-0 text-xs text-gray-400 dark:text-gray-500" x-text="monthLabel(m.month)"></span>
+                        <div class="h-4 flex-1 overflow-hidden rounded bg-gray-100 dark:bg-gray-800">
+                          <div class="h-full ll-accent" :style="{ width: Math.round(m.net / statsMonthPeak * 100) + '%' }"></div>
+                        </div>
+                        <span class="w-24 shrink-0 text-right text-xs tabular-nums text-gray-600 dark:text-gray-300" x-text="m.net ? fmtMoney(m.net) : '—'"></span>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+
+                {{-- Revenue by customer --}}
+                <div class="ll-card">
+                  <p class="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.stat_by_customer') }}</p>
+                  <template x-if="! statsCustomers.length"><p class="text-sm text-gray-400 dark:text-gray-500">—</p></template>
+                  <div class="space-y-2">
+                    <template x-for="(c, i) in statsCustomers" :key="c.name">
+                      <div>
+                        <div class="flex items-baseline justify-between gap-2">
+                          <span class="truncate text-sm text-gray-800 dark:text-gray-200" x-text="c.name" :title="c.name"></span>
+                          <span class="shrink-0 text-sm tabular-nums text-gray-600 dark:text-gray-300" x-text="fmtMoney(c.net)"></span>
+                        </div>
+                        <div class="mt-1 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                          <div class="h-full ll-accent" :style="{ width: Math.round(c.net / (statsCustomers[0]?.net || 1) * 100) + '%' }"></div>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+
+              {{-- VAT by quarter for the selected year --}}
+              <div class="ll-card mt-4">
+                <p class="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100" x-text="'{{ __('invoices.vat_by_quarter') }} · ' + statsVat.year"></p>
+                <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <template x-for="q in statsVat.quarters" :key="q.q">
+                    <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                      <p class="text-xs text-gray-400 dark:text-gray-500" x-text="'Q' + q.q"></p>
+                      <p class="mt-0.5 text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(q.vat)"></p>
+                      <p class="text-[11px] text-gray-400 dark:text-gray-500" x-text="fmtMoney(q.net) + ' {{ __('invoices.vat_net_short') }}'"></p>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </template>
         </div>
 
         {{-- ===================== INVOICES TAB (list + editor) ===================== --}}

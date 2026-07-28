@@ -9,6 +9,7 @@ import { saveBlobAs } from '../shared/dom';
 import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
 import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
+import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears } from '../shared/finance-stats';
 
 // One-time dual-read migration from the old single-blob module store (/store/invoices)
 // to the sharded store (LLInvoicesStore, spec §3b). Runs only while the sharded store is
@@ -79,6 +80,24 @@ export default (config = {}, labels = {}) => ({
             if (y === year) { countYear++; if (inv.status === 'sent') outstandingYear += g; }
         }
         return { year, paidYear, outstandingYear, countYear, paidAll };
+    },
+
+    // ---- VAT advance return (Umsatzsteuer-Voranmeldung), current year ----
+    get vatReturn() { return vatReturn(this.invoices, new Date().getFullYear()); },
+
+    // ---- Statistics tab (year-scoped; the year is selectable) ----
+    statsYear: new Date().getFullYear(),
+    get statsYears() { const ys = activeYears(this.invoices); return ys.length ? ys : [new Date().getFullYear()]; },
+    get statsKpis() { return yearKpis(this.invoices, this.statsYear); },
+    get statsCustomers() { return revenueByCustomer(this.invoices, this.statsYear); },
+    get statsMonths() { return monthlyRevenue(this.invoices, this.statsYear); },
+    get statsVat() { return vatReturn(this.invoices, this.statsYear); },
+    // Largest monthly net in the selected year — scales the bar chart.
+    get statsMonthPeak() { return Math.max(1, ...this.statsMonths.map((m) => m.net)); },
+    monthLabel(m) {
+        const loc = document.documentElement.lang || 'de';
+        try { return new Intl.DateTimeFormat(loc, { month: 'short' }).format(new Date(2000, (m || 1) - 1, 1)); }
+        catch (e) { return String(m); }
     },
 
     // ---- Derived ----
