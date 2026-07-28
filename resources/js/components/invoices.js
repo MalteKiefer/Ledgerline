@@ -7,6 +7,8 @@ import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
 import { jsonHeaders } from '../shared/api';
 import { saveBlobAs } from '../shared/dom';
 import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
+import { padBlob } from '../shared/padme';
+import { fetchBlobBuffer } from '../shared/blob-io';
 
 // One-time dual-read migration from the old single-blob module store (/store/invoices)
 // to the sharded store (LLInvoicesStore, spec §3b). Runs only while the sharded store is
@@ -60,6 +62,7 @@ export default (config = {}, labels = {}) => ({
         const h = (location.hash || '').replace('#', '');
         if (['dashboard', 'receipts', 'invoices', 'stats'].includes(h)) this.section = h;
         await this._initZk();
+        if (this.state === 'ready') this.reconcileBlobs();
     },
 
     setSection(s) { this.section = s; try { history.replaceState(null, '', '#' + s); } catch (e) { /* ignore */ } },
@@ -235,6 +238,7 @@ export default (config = {}, labels = {}) => ({
                 }
                 draft.selected = true;
                 draft._file = file.name;
+                draft._pdfBytes = bytes; // the original PDF, stored on import (GoBD)
                 this.importReview.items.push(draft);
             } catch (e) { this.importReview.failed++; }
             this.importReview.done++;
@@ -273,10 +277,17 @@ export default (config = {}, labels = {}) => ({
             };
             // Carry the current-year sequence so the app's number counter advances.
             if (draft.seq != null) inv.seq = draft.seq;
+            // Store the ORIGINAL PDF as a sealed blob (GoBD: the imported document is the
+            // authoritative record — the app must show it, not a regenerated one).
+            if (draft._pdfBytes) {
+                const pdf = await this._uploadPdf(draft._pdfBytes, draft._file || (draft.number + '.pdf'));
+                if (pdf) inv.pdf = pdf;
+            }
             inv.totals = this.computeTotals(inv);
             this.invoices.unshift(inv);
         }
         this._save();
+        this.reconcileBlobs(); // register the new pdf blobs in the live-set
         window.llToast?.((labels.importDone || ':n invoices imported.').replace(':n', picked.length));
         this.importReview = null;
     },
@@ -407,7 +418,43 @@ export default (config = {}, labels = {}) => ({
     },
     // Numbers assigned to more than one invoice — a GoBD violation the owner MUST fix
     // (a concurrent finalize on two offline devices is the only way to reach it).
-    get duplicateNumbers() { return dupNumbers(this.invoices); },
+    get duplicateNumbers() { return dupNumbers(this.activeInvoices); },
+
+    // Keep the imported original-PDF blobs alive against the daily orphan sweep — the
+    // live-set is every invoice's pdf blob PLUS the sharded record/collection refs (§11).
+    reconcileBlobs() {
+        if (! config.reconcileUrl) return;
+        const blobs = [];
+        for (const inv of (this.invoices || [])) if (inv.pdf?.blob) blobs.push(inv.pdf.blob);
+        for (const ref of window.LLInvoicesStore.shardRefs()) blobs.push(ref);
+        postForm(config.reconcileUrl, { blobs: [...new Set(blobs)] }).catch(() => {});
+    },
+
+    // Encrypt + upload the original imported PDF as a sealed blob (ZK). Returns
+    // { blob, key, name } or null on failure.
+    async _uploadPdf(bytes, name) {
+        try {
+            const enc = window.Vault.encryptContent(bytes, { name, mime: 'application/pdf' });
+            const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
+            const fd = new FormData();
+            fd.append('file', cipher);
+            const res = await fetch(config.uploadUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
+            if (! res.ok) return null;
+            return { blob: (await res.json()).id, key: enc.encFileKey, name };
+        } catch (e) { return null; }
+    },
+
+    // Open the stored original PDF of an imported invoice (decrypt client-side).
+    async openOriginalPdf(inv) {
+        if (! inv?.pdf?.blob) return;
+        try {
+            const buf = await fetchBlobBuffer(`${config.rawBase}/${inv.pdf.blob}`);
+            const plain = window.Vault.decryptFile(buf, inv.pdf.key);
+            const url = URL.createObjectURL(new Blob([plain], { type: 'application/pdf' }));
+            window.open(url, '_blank');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (e) { window.llToast?.(labels.downloadFailed || 'Could not open PDF.'); }
+    },
     async finalize(inv) {
         let i = inv || this.current;
         if (! i) return;
@@ -439,7 +486,10 @@ export default (config = {}, labels = {}) => ({
 
     // ---- Print / PDF (client-side, zero-knowledge) ----
     printInvoice(inv) {
-        this._printing = inv || this.current;
+        const i = inv || this.current;
+        // Imported invoices show their ORIGINAL PDF, never a regenerated sheet (GoBD).
+        if (i?.imported && i?.pdf?.blob) { this.openOriginalPdf(i); return; }
+        this._printing = i;
         this.$nextTick(() => { window.print(); });
     },
 });
