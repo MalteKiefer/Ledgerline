@@ -94,4 +94,6 @@ return [
     'export_all' => 'Экспортировать все',
     'imported' => 'Импортировано контактов: :n',
     'import_failed' => 'Не удалось прочитать файл vCard.',
+    'finance_receipts' => 'Финансовые чеки',
+    'finance_receipt' => 'Чек',
 ];

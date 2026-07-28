@@ -94,4 +94,6 @@ return [
     'export_all' => 'Alle exportieren',
     'imported' => ':n Kontakt(e) importiert',
     'import_failed' => 'vCard-Datei konnte nicht gelesen werden.',
+    'finance_receipts' => 'Finanzbelege',
+    'finance_receipt' => 'Beleg',
 ];

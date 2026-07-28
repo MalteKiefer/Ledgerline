@@ -400,6 +400,29 @@ export default (config = {}, labels = {}) => ({
             c.first = first; c.last = last;
         }
         this.currentId = c.id; this.editing = false; this.tagsValue = (c.categories ?? []).join(', ');
+        this._loadFinanceReceipts();
+    },
+    // Finance receipts linked to this contact (from the zero-knowledge finance store).
+    financeReceipts: [],
+    async _loadFinanceReceipts() {
+        this.financeReceipts = [];
+        try {
+            const store = window.LLInvoicesStore;
+            if (! store) return;
+            if (! store.loaded) await store.load();
+            const id = this.currentId, out = [];
+            for (const tx of (store.data?.transactions || [])) for (const r of (tx.receipts || [])) if (r.contactId === id) out.push({ r, tx });
+            out.sort((a, b) => (b.tx.date || '').localeCompare(a.tx.date || ''));
+            this.financeReceipts = out;
+        } catch (e) { /* best effort */ }
+    },
+    async openFinanceReceipt(r) {
+        try {
+            const bytes = await fetchDecrypt('/invoices/raw', r.blob, r.key);
+            const url = URL.createObjectURL(new Blob([bytes], { type: r.mime || 'application/octet-stream' }));
+            window.open(url, '_blank');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (e) { /* ignore */ }
     },
     // Localised label for a normalised contact-field type.
     typeLabel(t) {

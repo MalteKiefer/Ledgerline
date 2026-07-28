@@ -176,6 +176,21 @@
                         <p x-show="current.anniversary"><span class="text-xs text-gray-400">{{ __('contacts.anniversary') }}: </span><span class="text-accent" x-text="fmtDate(current.anniversary)"></span></p></div></template>
                     <template x-if="(current.categories||[]).length"><div class="flex flex-wrap gap-1"><template x-for="g in current.categories" :key="g"><span class="rounded bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs text-gray-700 dark:text-gray-300" x-text="g"></span></template></div></template>
                     <template x-if="current.note"><p class="whitespace-pre-wrap text-gray-700 dark:text-gray-300" x-text="current.note"></p></template>
+                    {{-- Finance receipts linked to this contact (from the zero-knowledge finance store) --}}
+                    <template x-if="financeReceipts.length">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.finance_receipts') }}</p>
+                            <div class="mt-1 space-y-1.5">
+                                <template x-for="doc in financeReceipts" :key="(doc.r.id || doc.r.blob) + doc.tx.id">
+                                    <button type="button" @click="openFinanceReceipt(doc.r)" class="flex w-full items-center gap-2 rounded-lg border border-black/[0.06] dark:border-white/10 px-2.5 py-1.5 text-left hover:bg-accent/5">
+                                        <x-icon name="document" class="h-4 w-4 shrink-0 text-gray-400" />
+                                        <span class="min-w-0 flex-1 truncate text-gray-800 dark:text-gray-200" x-text="doc.r.name || '{{ __('contacts.finance_receipt') }}'"></span>
+                                        <span class="shrink-0 text-xs tabular-nums text-gray-400" x-text="doc.tx.date"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
                 </div>
 
                 {{-- Editor form --}}
