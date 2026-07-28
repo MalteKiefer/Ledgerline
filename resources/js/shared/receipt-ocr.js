@@ -81,8 +81,8 @@ export function extractDate(text) {
     }
     let m = s.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
     if (m && okDate(Number(m[1]), Number(m[2]), Number(m[3]))) return `${m[1]}-${m[2]}-${m[3]}`;
-    // "27. Juli 2026" / "July 27, 2026" — month names.
-    m = s.match(/\b(\d{1,2})\.?\s+([A-Za-zäöüÄÖÜ]+)\.?\s+(\d{4})\b/);
+    // "27. Juli 2026" / "27-MAR-2025" — day, month name (space/dot/dash separators).
+    m = s.match(/\b(\d{1,2})[.\s-]+([A-Za-zäöüÄÖÜ]{3,})[.\s-]+(\d{4})\b/);
     if (m) { const mo = MONTHS[m[2].toLowerCase()]; if (mo) return `${m[3]}-${String(mo).padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
     m = s.match(/\b([A-Za-zäöüÄÖÜ]+)\.?\s+(\d{1,2}),?\s+(\d{4})\b/);
     if (m) { const mo = MONTHS[m[1].toLowerCase()]; if (mo) return `${m[3]}-${String(mo).padStart(2, '0')}-${m[2].padStart(2, '0')}`; }
@@ -93,24 +93,31 @@ export function extractDate(text) {
 // "Kundennummer" are skipped too. Kept specific to avoid eating real names.
 const MERCHANT_SKIP = /^(ihre|ihr\b|your|rechnung|invoice|beleg|quittung|gutschrift|credit ?note|datum|date|kunde|customer|seite|page|betreff|subject|from\b|bill ?to|ship ?to|paid\b|vat\b|ust|steuer|item|menge|position|betrag|summe|total|details|leistungen|verkauft|sold by|umsatzsteuer|payment|sequenz|order\b|bestell)/i;
 const COMPANY_SUFFIX = /\b(gmbh|mbh|ug|ag|kg|ohg|gbr|ltd|limited|llc|inc|corp|b\.?v\.?|s\.?[àa]\.?r\.?l|s\.?a\.?|ab|oy|llp|plc)\b|& co/i;
+// Collapse letter-spaced runs ("I n t e l l y T e c" → "IntellyTec"): 3+ single-letter
+// tokens in a row (some PDFs render tracked/letter-spaced headings as separate glyphs).
+// Requires ≥3 to avoid merging genuine initials ("J R Ewing" stays).
+const despace = (s) => String(s).replace(/(?:\b[A-Za-zÄÖÜäöü] ){2,}\b[A-Za-zÄÖÜäöü]\b/g, (m) => m.replace(/ /g, ''));
 // Trim a letterhead line to just the company name: split on | / • / · separators, drop a
-// trailing document word, and cut an address tail (", PF 3004", ", Industriestr. 25", …).
-const cleanMerchant = (l) => l.split(/\s*[|•·]\s*/)[0]
+// trailing document word/label, and cut an address tail (", PF 3004", ", Industriestr. 25").
+const cleanMerchant = (l) => despace(l).split(/\s*[|•·]\s*/)[0]
     .replace(/\s*(bill|ship)\s*to\b.*$/i, '')
+    .replace(/\s+(place\s*\/?\s*date|place of invoice|date of invoice|invoice (requested|number|date|no)\b|customer\b|kundennummer\b).*$/i, '')
     .replace(/,?\s*(pf\b|postfach|\d|[^,]*(?:stra(?:ß|ss)e|str\.|weg|ring|platz|allee|gasse)\b).*$/i, '')
     .replace(/\s+(invoice|rechnung|receipt|quittung|beleg)\s*$/i, '')
     .replace(/\s{2,}/g, ' ').trim().slice(0, 50);
 
 // Well-known brands whose invoices don't carry a clean "Brand GmbH" letterhead line
-// (marketplaces, US companies, e-mail receipts). Used as a merchant fallback.
+// (marketplaces, US companies, e-mail receipts, retailers). Used as a merchant fallback
+// when no company-legal-form line is found. Order = priority (first match wins).
 const BRANDS = [
     ['Amazon', /\bamazon\b/i], ['Apple', /\bapple\b/i], ['Google', /google/i], ['PayPal', /paypal/i],
     ['Backblaze', /backblaze/i], ['Microsoft', /microsoft/i], ['Netflix', /netflix/i], ['Spotify', /spotify/i],
-    ['eBay', /\bebay\b/i], ['Dropbox', /dropbox/i], ['Cloudflare', /cloudflare/i],
+    ['eBay', /\bebay\b/i], ['Dropbox', /dropbox/i], ['Cloudflare', /cloudflare/i], ['Adobe', /\badobe\b/i],
+    ['DeepL', /\bdeepl\b/i], ['Telekom', /\btelekom\b|magenta/i], ['Vodafone', /vodafone/i],
+    ['Kaufland', /kaufland/i], ['Edeka', /\bedeka\b/i], ['REWE', /\brewe\b/i], ['Lidl', /\blidl\b/i], ['Aldi', /\baldi\b/i],
+    ['IKEA', /\bikea\b/i], ['Deutsche Bahn', /deutsche bahn|\bbahn\.de\b/i], ['Hetzner', /hetzner/i], ['netcup', /netcup/i],
 ];
 export function detectBrand(text) { for (const [n, re] of BRANDS) if (re.test(String(text || ''))) return n; return ''; }
-// A candidate that is clearly the recipient / a label / an address, not the seller.
-const BAD_MERCHANT = /malte|kiefer|zahlbetrag|west palm|company\b|^original$|^kaufbeleg$/i;
 
 /**
  * The merchant/seller name. Prefer a line carrying a company legal form (GmbH, Ltd, LLC,
@@ -119,22 +126,24 @@ const BAD_MERCHANT = /malte|kiefer|zahlbetrag|west palm|company\b|^original$|^ka
  */
 export function extractMerchant(text) {
     const lines = String(text || '').split(/\r?\n/).map((s) => s.replace(/\s{2,}/g, ' ').trim()).filter(Boolean);
+    // 1. A company-legal-form line in the letterhead — almost always the seller.
     for (const l of lines.slice(0, 15)) {
         if (l.length < 3 || MERCHANT_SKIP.test(l) || ! COMPANY_SUFFIX.test(l)) continue;
         const c = cleanMerchant(l);
         if (c.length >= 3 && c.length <= 50) return c;
     }
-    let candidate = '';
+    // 2. A known brand keyword (Amazon, Adobe, Telekom, Kaufland, …) — beats a random
+    //    first line, which is often the recipient, a greeting or a table header.
+    const brand = detectBrand(String(text || ''));
+    if (brand) return brand;
+    // 3. First meaningful line.
     for (const l of lines.slice(0, 8)) {
         if (l.length < 3 || l.length > 42) continue;
         if (/^\d/.test(l) || /\d{2}[.:]\d{2}/.test(l) || /www\.|http|@|steuer|ust-?id|tel\.?:/i.test(l)) continue;
         if (MERCHANT_SKIP.test(l) || ! /[a-zäöüß]/i.test(l)) continue;
-        candidate = cleanMerchant(l); break;
+        return cleanMerchant(l);
     }
-    // A recognisable brand (Amazon, Apple, …) beats a recipient/label/address candidate.
-    const brand = detectBrand(String(text || ''));
-    if (brand && (! candidate || BAD_MERCHANT.test(candidate))) return brand;
-    return candidate;
+    return '';
 }
 
 // An invoice/receipt number when the document labels one ("Rechnungsnr.", "Invoice No",
@@ -143,7 +152,12 @@ export function extractMerchant(text) {
 const NUMBER_RE = /(?:rechnungs?\s*-?\s*(?:nr|nummer)|invoice\s*(?:no|number|#)|beleg\s*-?\s*nr|rg\s*-?\s*nr|receipt\s*(?:no|number))\.?\s*[:#]?\s*([A-Za-z]?[0-9][A-Za-z0-9./-]{1,24})/i;
 export function extractNumber(text) {
     const m = String(text || '').match(NUMBER_RE);
-    return m ? m[1].replace(/[.,;:]+$/, '') : '';
+    if (! m) return '';
+    const t = m[1].replace(/[.,;:]+$/, '');
+    if (/^\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}$/.test(t)) return '';      // a numeric date, not a number
+    if (/^\d{1,2}[.\/-][A-Za-z]{3,}[.\/-]\d{2,4}$/.test(t)) return ''; // "27-MAR-2025"
+    if (t.replace(/[^A-Za-z0-9]/g, '').length < 3) return '';          // too short/ambiguous ("25")
+    return t;
 }
 
 /**
