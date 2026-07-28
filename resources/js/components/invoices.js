@@ -603,18 +603,21 @@ export default (config = {}, labels = {}) => ({
         this._save();
     },
     // Manual expenses (cash / "hand" costs not tied to a bank booking).
-    newExpense(projectId) { this.expenseEditing = { projectId, amount: null, date: new Date().toISOString().slice(0, 10), note: '' }; },
-    editExpense(project, exp) { this.expenseEditing = { projectId: project.id, id: exp.id, amount: exp.amount, date: exp.date || '', note: exp.note || '' }; },
+    newExpense(projectId) { this.expenseEditing = { projectId, amount: null, date: new Date().toISOString().slice(0, 10), note: '', account: '', category: '' }; },
+    editExpense(project, exp) { this.expenseEditing = { projectId: project.id, id: exp.id, amount: exp.amount, date: exp.date || '', note: exp.note || '', account: exp.account || '', category: exp.category || '' }; },
     cancelExpense() { this.expenseEditing = null; },
     saveExpense() {
         const e = this.expenseEditing; if (! e) return;
         const amt = Number(e.amount); if (! Number.isFinite(amt) || amt <= 0) { window.llToast?.(labels.project_expense_invalid || 'Enter an amount.'); return; }
         const p = this.projects.find((x) => x.id === e.projectId); if (! p) return;
         p.expenses = p.expenses || [];
-        if (e.id) { const ex = p.expenses.find((x) => x.id === e.id); if (ex) { ex.amount = amt; ex.date = e.date || ''; ex.note = e.note || ''; } }
-        else { p.expenses.push({ id: window.LLInvoicesStore.newId(), amount: amt, date: e.date || '', note: e.note || '' }); }
+        const fields = { amount: amt, date: e.date || '', note: e.note || '', account: e.account || '', category: e.category || '' };
+        if (e.id) { const ex = p.expenses.find((x) => x.id === e.id); if (ex) Object.assign(ex, fields); }
+        else { p.expenses.push({ id: window.LLInvoicesStore.newId(), ...fields }); }
         this.expenseEditing = null; this._save();
     },
+    // The payment-method label for an expense's account id (managed under Zahlungsmittel).
+    expenseAccountName(id) { const pm = (this.paymentMethods || []).find((x) => x.id === id); return pm ? pm.label : ''; },
     async removeExpense(project, exp) {
         if (! project || ! exp) return;
         const p = this.projects.find((x) => x.id === project.id); if (! p) return;
