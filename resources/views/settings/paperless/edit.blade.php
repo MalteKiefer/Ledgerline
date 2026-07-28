@@ -44,7 +44,10 @@
 
             <div class="mt-5 flex flex-wrap items-center gap-2">
                 <x-button variant="primary" type="submit">{{ __('settings.save') }}</x-button>
-                <x-button variant="secondary" @click="test()" ::disabled="busy" x-text="busy === 'test' ? config.testing : @js(__('settings.paperless_test'))" />
+                <x-button variant="secondary" @click="test()" ::disabled="busy">
+                    <span x-show="busy === 'test'" x-text="config.testing"></span>
+                    <span x-show="busy !== 'test'">{{ __('settings.paperless_test') }}</span>
+                </x-button>
                 <span x-show="testResult" x-cloak :class="testOk ? 'text-green-600' : 'text-red-600 dark:text-red-400'" class="text-sm w-full break-words" x-text="testResult"></span>
             </div>
         </form>
@@ -53,7 +56,10 @@
         <div class="mt-6 ll-card">
             <div class="flex items-center justify-between gap-3">
                 <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.paperless_cache_heading') }}</h2>
-                <x-button variant="secondary" size="sm" @click="sync()" ::disabled="busy" x-text="busy === 'sync' ? config.syncing : @js(__('settings.paperless_sync_now'))" />
+                <x-button variant="secondary" size="sm" @click="sync()" ::disabled="busy">
+                    <span x-show="busy === 'sync'" x-text="config.syncing"></span>
+                    <span x-show="busy !== 'sync'">{{ __('settings.paperless_sync_now') }}</span>
+                </x-button>
             </div>
             <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                 <div class="rounded-md bg-gray-50 dark:bg-gray-800 p-3">

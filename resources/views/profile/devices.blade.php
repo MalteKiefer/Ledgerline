@@ -64,8 +64,8 @@
                         <p x-show="!d.syncing && d.syncSeen" class="truncate text-xs text-gray-400" x-text="'{{ __('account.devices_last_sync') }} ' + d.syncSeen"></p>
                     </div>
                     <div class="flex shrink-0 items-center gap-1">
-                        <x-icon-button name="exclamation-triangle" tone="red" x-on:click="wipeDevice(d.id)" x-show="!d.wipeRequested" ::title="@js(__('account.devices_wipe'))" aria-label="{{ __('account.devices_wipe') }}" />
-                        <x-icon-button name="trash" tone="red" x-on:click="revokeDevice(d.id)" ::title="@js(__('account.devices_revoke'))" aria-label="{{ __('account.devices_revoke') }}" />
+                        <x-icon-button name="exclamation-triangle" tone="red" x-on:click="wipeDevice(d.id)" x-show="!d.wipeRequested" title="{{ __('account.devices_wipe') }}" aria-label="{{ __('account.devices_wipe') }}" />
+                        <x-icon-button name="trash" tone="red" x-on:click="revokeDevice(d.id)" title="{{ __('account.devices_revoke') }}" aria-label="{{ __('account.devices_revoke') }}" />
                     </div>
                 </div>
             </template>
