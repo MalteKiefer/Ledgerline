@@ -187,6 +187,8 @@ return [
     'tx_counterparty' => 'Counterparty',
     'tx_purpose' => 'Purpose',
     'tx_type' => 'Type',
+    'per_page' => 'Per page',
+    'page_of' => 'Page :p of :n',
     'tx_vat' => 'VAT',
     'vatcat_none' => 'Choose…',
     'vatcat_19' => '19%',

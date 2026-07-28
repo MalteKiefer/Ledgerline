@@ -32,8 +32,14 @@ describe('invoice matching', () => {
         expect(matchInvoice({ amount: 1190, purpose: 'zahlung' }, two)).toBe(null);
     });
 
-    it('excludes already-paid invoices', () => {
-        expect(matchInvoice({ amount: 2380, purpose: '2026-003' }, invoices)).toBe(null);
+    it('still matches a paid invoice (imported invoices are created paid)', () => {
+        // 'c' is paid but not linked → a payment for it should still match by number.
+        expect(matchInvoice({ amount: 2380, purpose: '2026-003' }, invoices)?.id).toBe('c');
+    });
+
+    it('excludes invoices already linked to a payment', () => {
+        const linked = [inv({ id: 'p', number: '2026-009', paymentTxId: 'tx1' })]; // 1190, linked
+        expect(matchInvoice({ amount: 1190, purpose: '2026-009' }, linked)).toBe(null);
     });
 
     it('requires the amount to match to the cent', () => {

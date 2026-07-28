@@ -6,9 +6,13 @@ import { invoiceTotals } from './finance-stats.js';
 
 const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-/** Candidate issued invoices: not trashed, numbered, not a draft, not already paid. */
+/**
+ * Candidate issued invoices: not trashed, numbered, not a draft, and NOT already linked
+ * to a payment. Paid invoices stay eligible — imported invoices are created "paid", so
+ * excluding paid ones would leave them unmatchable; the guard is the payment link.
+ */
 function candidates(invoices) {
-    return (invoices || []).filter((inv) => ! inv.trashed && inv.number && inv.status !== 'draft' && inv.status !== 'paid');
+    return (invoices || []).filter((inv) => ! inv.trashed && inv.number && inv.status !== 'draft' && ! inv.paymentTxId);
 }
 
 /**

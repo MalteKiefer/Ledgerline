@@ -469,12 +469,10 @@
                         </tr>
                       </thead>
                       <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
-                        <template x-for="tx in accountTx" :key="tx.id">
+                        <template x-for="tx in pagedAccountTx" :key="tx.id">
                           <tr class="hover:bg-accent/5">
                             <td class="whitespace-nowrap px-4 py-2.5 tabular-nums text-gray-500 dark:text-gray-400" x-text="tx.date"></td>
-                            <td class="whitespace-nowrap px-4 py-2.5">
-                              <span class="inline-flex rounded-md bg-black/[0.04] dark:bg-white/10 px-2 py-0.5 text-xs font-medium text-gray-600 dark:text-gray-300" x-text="txTypeLabel(tx)"></span>
-                            </td>
+                            <td class="whitespace-nowrap px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400" x-text="txTypeLabel(tx)"></td>
                             <td class="max-w-[16rem] px-4 py-2.5">
                               <p class="truncate text-gray-800 dark:text-gray-200" x-text="tx.counterparty || '—'" :title="tx.counterparty"></p>
                               <p x-show="tx.iban && ! tx.invoiceId" class="truncate text-xs text-gray-400 dark:text-gray-500 tabular-nums" x-text="tx.iban"></p>
@@ -484,16 +482,19 @@
                             </td>
                             <td class="max-w-[22rem] truncate px-4 py-2.5 text-gray-500 dark:text-gray-400" x-text="tx.purpose" :title="tx.purpose"></td>
                             <td class="whitespace-nowrap px-4 py-2.5 text-right font-medium tabular-nums" :class="tx.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(tx.amount, tx.currency)"></td>
-                            {{-- VAT category: auto-guessed on import, else the user picks (19/16/7/0/private). --}}
+                            {{-- VAT category: a compact styled select; unselected shown in soft amber. --}}
                             <td class="whitespace-nowrap px-4 py-2.5">
-                              <select @change="setVatCat(tx, $event.target.value)"
-                                class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] py-1 pl-2 pr-7 text-xs"
-                                :class="! tx.vatCat && 'text-amber-600 dark:text-amber-400 ring-1 ring-amber-300 dark:ring-amber-700'">
-                                <option value="" :selected="! tx.vatCat">{{ __('invoices.vatcat_none') }}</option>
-                                <template x-for="c in vatCats" :key="c">
-                                  <option :value="c" :selected="tx.vatCat === c" x-text="vatCatLabel(c)"></option>
-                                </template>
-                              </select>
+                              <div class="relative inline-flex items-center">
+                                <select @change="setVatCat(tx, $event.target.value)"
+                                  class="appearance-none rounded-lg border-0 py-1 pl-2.5 pr-6 text-xs font-medium focus:ring-2 focus:ring-accent"
+                                  :class="tx.vatCat ? 'bg-black/[0.04] dark:bg-white/10 text-gray-700 dark:text-gray-200' : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400'">
+                                  <option value="" :selected="! tx.vatCat">{{ __('invoices.vatcat_none') }}</option>
+                                  <template x-for="c in vatCats" :key="c">
+                                    <option :value="c" :selected="tx.vatCat === c" x-text="vatCatLabel(c)"></option>
+                                  </template>
+                                </select>
+                                <x-icon name="chevron-down" class="pointer-events-none absolute right-1.5 h-3 w-3 text-gray-400" />
+                              </div>
                             </td>
                             {{-- Receipts: on every booking (income too). Paperclip + count; opens the panel. --}}
                             <td class="whitespace-nowrap px-4 py-2.5 text-center">
@@ -509,6 +510,20 @@
                         </template>
                       </tbody>
                     </table>
+                    {{-- Pagination --}}
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-black/[0.06] dark:border-white/10 px-4 py-2.5 text-sm">
+                      <div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        <span>{{ __('invoices.per_page') }}</span>
+                        <template x-for="n in [10, 25]" :key="n">
+                          <button type="button" @click="setTxPerPage(n)" class="rounded-md px-2 py-1 font-medium transition-colors" :class="txPerPage === n ? 'bg-accent/10 text-accent' : 'text-gray-500 hover:text-accent dark:text-gray-400'" x-text="n"></button>
+                        </template>
+                      </div>
+                      <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                        <span x-text="'{{ __('invoices.page_of') }}'.replace(':p', txPage).replace(':n', txPageCount)"></span>
+                        <x-icon-button name="chevron-left" tone="gray" size="sm" ::disabled="txPage <= 1" @click="txGoto(txPage - 1)" aria-label="prev" />
+                        <x-icon-button name="chevron-right" tone="gray" size="sm" ::disabled="txPage >= txPageCount" @click="txGoto(txPage + 1)" aria-label="next" />
+                      </div>
+                    </div>
                   </div>
                 </template>
 

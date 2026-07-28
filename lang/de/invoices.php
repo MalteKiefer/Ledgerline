@@ -187,6 +187,8 @@ return [
     'tx_counterparty' => 'Gegenkonto',
     'tx_purpose' => 'Verwendungszweck',
     'tx_type' => 'Art',
+    'per_page' => 'Pro Seite',
+    'page_of' => 'Seite :p von :n',
     'tx_vat' => 'USt',
     'vatcat_none' => 'Wählen…',
     'vatcat_19' => '19 %',
