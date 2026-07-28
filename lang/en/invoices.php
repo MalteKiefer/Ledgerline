@@ -230,6 +230,7 @@ return [
     'receipt_auto_attached' => ':n receipts matched by amount.',
     'receipt_dupes_skipped' => ':n duplicate(s) skipped.',
     'receipt_vat_detected' => 'Detected VAT rate',
+    'receipt_vat_label' => 'Tax rate',
     'assign_intro' => 'Assign this receipt (:n left)',
     'assign_by_amount' => 'Matches by amount',
     'assign_skip' => 'Skip',

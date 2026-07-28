@@ -230,6 +230,7 @@ return [
     'receipt_auto_attached' => 'Сопоставлено чеков по сумме: :n.',
     'receipt_dupes_skipped' => 'Пропущено дубликатов: :n.',
     'receipt_vat_detected' => 'Определённая ставка НДС',
+    'receipt_vat_label' => 'Ставка налога',
     'assign_intro' => 'Назначьте этот чек (осталось :n)',
     'assign_by_amount' => 'Совпадения по сумме',
     'assign_skip' => 'Пропустить',
