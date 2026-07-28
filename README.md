@@ -7,9 +7,11 @@ encrypted and decrypted in your browser (or in the native apps / browser
 extension). Even the person operating the server cannot read your data, and a
 full copy of the database and object store yields nothing but opaque blobs.
 
-Authentication is delegated to a [Pocket-ID](https://github.com/pocket-id/pocket-id)
-OIDC provider; the application stores no login passwords of its own. All assets
-are bundled and served locally — no external CDNs, fonts, or trackers.
+Authentication is **first-party** (Laravel Fortify): e-mail + password with
+optional TOTP two-factor. The app login is deliberately **separate** from the
+zero-knowledge vault passphrase — signing in never gives the server the keys to
+your data. All assets are bundled and served locally — no external CDNs, fonts,
+or trackers.
 
 > **New to the codebase?** `CLAUDE.md` is the working context + security decision
 > log. This README is the maintained feature + security description. The
@@ -70,7 +72,18 @@ are bundled and served locally — no external CDNs, fonts, or trackers.
   vaults**.
 - **Contacts** — zero-knowledge vCard 4.0 contacts (no CardDAV), encrypted
   avatars, address mini-maps, bidirectional link to gallery People.
-- **Invoices** — zero-knowledge invoicing with print/PDF templates.
+- **Finance** — a zero-knowledge finance hub. **Invoices** with print/PDF
+  templates, per-year GoBD-safe numbering, and ZUGFeRD/Factur-X (EN 16931) XML
+  export + e-invoice import. **Payment methods** (bank accounts / cards / PayPal,
+  IBAN & card numbers sealed). **Bank-statement import** (MT940 + CSV with a
+  column-mapping step, parsed client-side, signature dedup) with auto-matching of
+  incoming payments to invoices. **Receipts** — drag-and-drop upload, client-side
+  OCR + heuristic pattern recognition (merchant, total, date, invoice number,
+  category, VAT rate), content-hash (SHA-256) duplicate detection, a per-merchant
+  category learning component, an inline document preview beside the metadata, and
+  a ZIP export for the accountant. **Statistics** + a **VAT return** overview, all
+  computed client-side from the decrypted records. No server-side aggregation, no
+  plaintext columns.
 - **Explore** — a map-centric view unifying gallery photo/video pins with
   self-recorded/imported **GPS tracks** (GPX/KML/KMZ/TCX/FIT, parsed client-side)
   and automatic photo-to-track coupling. Track points, couplings and tolerances
@@ -100,9 +113,9 @@ are bundled and served locally — no external CDNs, fonts, or trackers.
 | Alpine.js     | 3.x (modular)  | `resources/js/app.js` + `shared/*` + `components/*`     |
 | libsodium     | wrappers-sumo  | Symmetric client crypto (`resources/js/vault.js`)       |
 | @noble/post-quantum + @noble/hashes | pinned | ML-KEM-768 + HKDF (PQ-hybrid KEM)          |
+| Laravel Fortify | 1.x          | First-party auth (email+password, TOTP 2FA, reset/verify) |
 | Laravel Sanctum | 4.x          | Bearer tokens for the mobile/CLI/extension API          |
 | sabre/dav     | 4.x            | WebDAV (files-over-WebDAV + a backup destination)       |
-| socialiteproviders/pocketid | 5.x | Pocket-ID OIDC provider                            |
 | immich-machine-learning | optional | Face detection + CLIP embeddings (profile-gated)      |
 
 ---
@@ -116,7 +129,7 @@ Ledgerline is designed to run as a Docker Compose stack. To operate it you need:
 | **Docker + Docker Compose** | Compose v2 (the `docker compose` plugin). The production image is built locally from the repo `Dockerfile`. |
 | **PostgreSQL 17 with pgvector** | Provided by the bundled `db` service (`pgvector/pgvector:pg17`). The `vector` extension backs CLIP / face-similarity duplicate detection. |
 | **Valkey 8** | Provided by the bundled `valkey` service. Redis-protocol compatible; used for cache, session and queue via the pure-PHP `predis` client (no `phpredis` extension needed). |
-| **A Pocket-ID OIDC provider** | [Pocket-ID](https://github.com/pocket-id/pocket-id) is the sole identity provider — the app has **no local password login**. You must register a Pocket-ID OAuth2 client and provide its base URL, client id/secret and redirect URI. |
+| **(No external identity provider)** | Authentication is first-party (Laravel Fortify): e-mail + password with optional TOTP 2FA. The first user is bootstrapped with `php artisan user:set-password` (mail-independent). An SMTP server is optional (configured in-app; used for password reset / verification / invite links) — without it, `user:set-password` and admin-generated invite links are the account-provisioning paths. |
 | **Object storage (optional but recommended)** | An S3-compatible bucket (Amazon S3, Cloudflare R2, Backblaze B2, Hetzner Object Storage, MinIO, …) for the private `files` blob disk. If omitted, blobs are stored on the local `app-storage` volume. |
 | **A TLS-terminating reverse proxy** | Production expects **Caddy on the host** (or any equivalent) in front of the app, which binds to `127.0.0.1:${APP_PORT}` only. The proxy terminates TLS 1.3 and forwards `X-Forwarded-*`. Secure cookies + HSTS are emitted when `SESSION_SECURE_COOKIE=true`. |
 | **Node.js 22 LTS** | Only for local (non-Docker) development / building assets. In the Docker build, assets are compiled in a Node 22 stage automatically. |
@@ -169,23 +182,25 @@ At minimum, fill these in `.env`:
 - `TRUSTED_PROXIES` — the private range(s) your host proxy reaches the container
   over. **Never `*`** in production behind a shared network.
 
-### 4. Configure the Pocket-ID OIDC client
+### 4. Create the first (admin) user
 
-Register an OAuth2 client in your Pocket-ID instance, then set:
+Authentication is first-party, so there is no external IdP to configure. After
+the stack is up (step 6), create the initial admin account from the CLI — this
+works with or without SMTP configured:
 
-```dotenv
-POCKETID_BASE_URL=https://id.example.com
-POCKETID_CLIENT_ID=…
-POCKETID_CLIENT_SECRET=…
-POCKETID_REDIRECT_URI=https://cloud.example.com/auth/callback   # = <APP_URL>/auth/callback
+```bash
+docker compose exec app php artisan user:set-password owner@example.com --admin
 ```
 
-The redirect URI must be registered verbatim in Pocket-ID. If you run a
-multi-user install and want the workspace-admin gate, expose the `groups` claim
-and set `POCKETID_ADMIN_GROUP` (see the config table). By default sign-in is
-**first-user-wins**: the first subject to authenticate claims the sole account
-and all others are rejected. Pin `POCKETID_ALLOWED_SUBS` / `POCKETID_ALLOWED_EMAILS`
-to restrict sign-in to explicit subjects / verified e-mails.
+The lowest-id user is the workspace admin (`users.role = admin`, a non-fillable
+privilege boundary); admins manage other users, per-user quota/device caps,
+groups, and workspace settings in the UI. Additional users are created by an
+admin (temporary password or a copy-/mail-able invite link with a chosen expiry).
+**Optional self-registration** is off by default (`allow_registration`); when
+enabled, new users are always `role = user` and go through e-mail verification.
+SMTP is configured **in-app** (Notifications settings) and, when present, powers
+password reset / verification / invite mails via the same transport as the other
+notifications; the `MAIL_MAILER=log` default is fine for a mail-less install.
 
 ### 5. Choose your blob storage
 
@@ -245,16 +260,18 @@ docker compose ps                              # every service healthy
 curl -fsS https://cloud.example.com/up         # → 200
 ```
 
-Then open `APP_URL`, sign in through Pocket-ID, and create your vault passphrase
-(store the one-time recovery key safely).
+Then open `APP_URL`, sign in with the e-mail + password you set in step 4, and
+create your vault passphrase (store the one-time recovery key safely). The vault
+passphrase is separate from your login and never leaves your browser.
 
 ### Local development (without Docker)
 
 ```bash
 composer install && npm install
 cp .env.example .env && php artisan key:generate
-# configure DB_*, REDIS_*, POCKETID_*, and the "files" S3 disk (MinIO locally)
+# configure DB_*, REDIS_*, and the "files" S3 disk (MinIO locally)
 php artisan migrate
+php artisan user:set-password you@example.com --admin   # first user
 npm run dev            # or: npm run build   (+ npm run build:ext for the extension)
 php artisan serve
 ```
@@ -285,7 +302,7 @@ stack will not function without it; everything else has a working default.
 | `APP_KEY` | Laravel app key (`php artisan key:generate --show`). Encrypts sessions + a few server-side non-content values; **never** the user vault. | — | **yes** |
 | `APP_DEBUG` | Debug pages (leak stack traces, env, config). Keep `false` in prod. | `false` | no |
 | `APP_URL` | Public URL; must be HTTPS in production. | `http://localhost` | **yes** (prod) |
-| `APP_VERSION` | Reported app version. | `1.505.49` (repo value) | no |
+| `APP_VERSION` | Reported app version. | `1.506.73` (repo value) | no |
 | `APP_LOCALE` | Default UI locale (`en`, `de`, `ru`). | `en` | no |
 | `APP_FALLBACK_LOCALE` | Locale used when a key is missing. | `en` | no |
 | `APP_FAKER_LOCALE` | Faker locale (dev/tests only). | `en_US` | no |
@@ -339,19 +356,23 @@ stack will not function without it; everything else has a working default.
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_DEFAULT_REGION` / `AWS_BUCKET` / `AWS_ENDPOINT` / `AWS_USE_PATH_STYLE_ENDPOINT` / `AWS_URL` | Generic `s3` disk credentials; the `FILES_S3_*` block falls back to these. | — | no |
 | `AWS_EC2_METADATA_DISABLED` | `true` — always pass explicit S3 keys; skip the IMDS probe (set in compose). | `true` (compose) | no |
 
-### Authentication (Pocket-ID OIDC)
+### Authentication (first-party — Laravel Fortify)
+
+Authentication is first-party; there are **no auth env vars to set**. Accounts are
+provisioned with `php artisan user:set-password {email} [--admin]` and managed in
+the UI (roles, per-user quota/device caps, groups). Self-registration and the
+password floor are workspace/framework settings, not env:
+
+| Setting | Purpose | Default |
+| --- | --- | --- |
+| `app_settings.allow_registration` (UI) | Allow public self-registration (with e-mail verification). Off = admins create users. | `false` |
+| `users.role` (`admin`/`user`, not fillable) | Admin manages users, limits, groups, workspace settings. Lowest-id user is admin after migration. | first user = `admin` |
+| Password policy | `Password::min(12)`, hashed with Argon2id (`HASH_DRIVER`). | 12-char min |
+| TOTP 2FA + recovery codes | Optional per-user, confirm-flow (Fortify `two_factor_*`). | opt-in |
+| SMTP | Configured in-app (Notifications settings) for reset/verify/invite mail. Absent → use `user:set-password` / invite links. | mail off |
 
 | Variable | Purpose | Default | Required |
 | --- | --- | --- | --- |
-| `POCKETID_BASE_URL` | OIDC issuer base URL of your Pocket-ID instance. | — | **yes** |
-| `POCKETID_CLIENT_ID` | OAuth2 client id. | — | **yes** |
-| `POCKETID_CLIENT_SECRET` | OAuth2 client secret (or `POCKETID_CLIENT_SECRET_FILE`). | — | **yes** |
-| `POCKETID_REDIRECT_URI` | OAuth2 redirect. Must equal `<APP_URL>/auth/callback`. | — | **yes** |
-| `POCKETID_USE_PKCE` | Use PKCE in the authorization-code flow. | `true` | no |
-| `POCKETID_LOGOUT_ENDPOINT` | Optional RP-initiated logout endpoint. | — | no |
-| `POCKETID_ADMIN_GROUP` | OIDC group whose members may change global/infra settings (backups of all users, workspace config). Empty is allowed only on a single-user install; **required** for multi-user (fail-closed). | — | multi-user only |
-| `POCKETID_ALLOWED_SUBS` | Comma list of OIDC subject ids permitted to sign in (empty = first-user-wins). | — | no |
-| `POCKETID_ALLOWED_EMAILS` | Comma list of verified e-mails permitted to sign in. | — | no |
 | `TRUSTED_PROXIES` | Private range(s) the host reverse-proxy uses. **Never `*`** in production — it lets a remote client forge `X-Forwarded-For` and spoof its source IP. | none | recommended |
 
 ### Device tokens (mobile / CLI / extension)
@@ -468,10 +489,9 @@ These are consumed by `docker-compose.yml` (not the application):
 | `NGINX_CLIENT_MAX_BODY_SIZE` | nginx upload limit (compose). | `560M` |
 
 > **Secrets from files.** Any of `APP_KEY`, `DB_PASSWORD`, `REDIS_PASSWORD`,
-> `POCKETID_CLIENT_SECRET`, `AWS_SECRET_ACCESS_KEY`, `FILES_S3_SECRET` can be
-> supplied via a `<KEY>_FILE` variable pointing at a mounted secret file instead
-> of the plain value — then remove the plain value so it never lands in the
-> container environment.
+> `AWS_SECRET_ACCESS_KEY`, `FILES_S3_SECRET` can be supplied via a `<KEY>_FILE`
+> variable pointing at a mounted secret file instead of the plain value — then
+> remove the plain value so it never lands in the container environment.
 
 See `.env.example` (local) and `.env.docker.example` (Docker) for annotated,
 copy-ready templates.
@@ -698,12 +718,16 @@ implementation — and is gated by the same conformance fixtures.
 
 ## Authentication & device tokens
 
-- **Sign-in** via Pocket-ID (OIDC, **PKCE + state**), matched on the stable `sub`.
-  The app stores no login passwords. A `groups` claim drives the admin gate
-  (fail-closed in multi-user).
-- **Vault unlock** is separate from sign-in (Proton-style): after signing in you
-  enter your vault passphrase once (trusted-device persistence vs. public-computer
-  idle lock as above).
+- **Sign-in** is first-party (Laravel Fortify): e-mail + password (Argon2id,
+  12-char minimum) with optional **TOTP 2FA** + recovery codes. Login is throttled
+  per e-mail+IP, the session id is regenerated on login, and the "public computer"
+  option ends the session on browser close. The `users.role` admin flag (a
+  non-fillable privilege boundary) drives the workspace-admin gate — fail-closed,
+  no owner/admin bypass on vault policies. Self-registration is off by default.
+- **Vault unlock** is separate from sign-in (Proton-style): signing in never
+  yields the vault keys — you enter your vault passphrase once (trusted-device
+  persistence vs. public-computer idle lock as above). Login and the ZK vault are
+  independent secrets.
 - **Mobile / CLI / extension pairing.** A signed-in owner authorises a new device
   by approving a QR (app) or a short-lived code (CLI/extension); the device
   collects a one-time Sanctum bearer. Tokens are **capped per user, expire,
@@ -808,7 +832,7 @@ index via `GET/PUT /files/store`; gallery via `GET/PUT /gallery/store`. There is
 **no per-record endpoint** (that would break zero-knowledge).
 
 See [`openapi.yaml`](openapi.yaml) for the complete machine-readable reference
-(OpenAPI 3.1, 95 operations, verified 1:1 against the route table).
+(OpenAPI 3.1, 120 operations, verified 1:1 against the route table).
 
 ---
 
