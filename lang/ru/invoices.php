@@ -237,6 +237,7 @@ return [
     'assign_remaining' => 'осталось :n',
     'assign_search_ph' => 'Поиск проводки или суммы (напр. -9,88)…',
     'assign_no_match' => 'Нет подходящей проводки.',
+    'assign_search_hint' => 'Нет совпадения по сумме — ищите выше.',
     'assign_preview_loading' => 'Загрузка предпросмотра…',
     'receipts_search' => 'Поиск чеков…',
     'receipts_count' => 'чеков: :n',

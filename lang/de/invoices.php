@@ -237,6 +237,7 @@ return [
     'assign_remaining' => 'noch :n',
     'assign_search_ph' => 'Buchung oder Betrag suchen (z. B. -9,88)…',
     'assign_no_match' => 'Keine passende Buchung.',
+    'assign_search_hint' => 'Kein Betrags-Treffer — oben suchen.',
     'assign_preview_loading' => 'Vorschau wird geladen…',
     'receipts_search' => 'Belege suchen…',
     'receipts_count' => ':n Belege',
