@@ -160,8 +160,25 @@ export function parseCsv(text) {
 }
 
 // The target fields a CSV column can map to. date + amount are required.
-export const TX_FIELDS = ['date', 'valueDate', 'amount', 'purpose', 'counterparty', 'iban', 'bic', 'bookingText', 'eref'];
+export const TX_FIELDS = ['date', 'valueDate', 'amount', 'purpose', 'counterparty', 'iban', 'bic', 'bookingText', 'eref', 'category'];
 export const TX_REQUIRED = ['date', 'amount'];
+
+// VAT categories a booking can carry (for the USt calculation). 'private' = Einlage /
+// Entnahme (owner deposit/withdrawal), excluded from VAT. '' = not yet decided.
+export const VAT_CATS = ['19', '16', '7', '0', 'private'];
+
+/**
+ * Best-effort guess of a booking's VAT category from its source category/purpose text.
+ * Returns '' when it cannot tell (the user then picks one).
+ */
+export function guessVatCat(tx) {
+    const s = `${tx.category || ''} ${tx.bookingText || ''} ${tx.purpose || ''}`.toLowerCase();
+    if (/privat|einlage|entnahme|privateinlage|privatentnahme|einkommensteuer|gehalt|lohn/.test(s)) return 'private';
+    let m = s.match(/(\d{1,2})\s*%/); // "19%", "Umsatzsteuer 7 %"
+    if (m && VAT_CATS.includes(m[1])) return m[1];
+    if (/umsatzsteuerfrei|steuerfrei|0\s*%/.test(s)) return '0';
+    return '';
+}
 
 // Header signatures of banks we recognise → column-name mapping (auto, no user step).
 const KNOWN_CSV = [
@@ -173,7 +190,7 @@ const KNOWN_CSV = [
     {
         name: 'generic-iso',
         needs: ['Buchungsdatum', 'Empfänger', 'Betrag'],
-        map: { date: 'Buchungsdatum', valueDate: 'Wertstellungsdatum', amount: 'Betrag', purpose: 'Verwendungszweck', counterparty: 'Empfänger', iban: 'IBAN', bookingText: 'Transaktionstyp', eref: 'end_to_end_id' },
+        map: { date: 'Buchungsdatum', valueDate: 'Wertstellungsdatum', amount: 'Betrag', purpose: 'Verwendungszweck', counterparty: 'Empfänger', iban: 'IBAN', bookingText: 'Transaktionstyp', eref: 'end_to_end_id', category: 'Kategorie' },
     },
 ];
 
@@ -217,6 +234,7 @@ export function applyCsvMapping(header, rows, map) {
             bic: String(get(row, 'bic') || '').trim(),
             bookingText: String(get(row, 'bookingText') || '').trim(),
             eref: String(get(row, 'eref') || '').trim() || (purposeRaw.match(/EREF\+([^\s]+)/i)?.[1] ?? ''),
+            category: String(get(row, 'category') || '').trim(),
         });
     }
     return { transactions, skipped };
