@@ -10,7 +10,7 @@ import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
 import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears } from '../shared/finance-stats';
-import { PAYMENT_TYPES, paymentIcon, paymentTint, paymentSubtitle, isValidPaymentMethod, sortedPaymentMethods, blankPaymentMethod, cardNetworkOf } from '../shared/payment-methods';
+import { PAYMENT_TYPES, paymentTint, paymentSubtitle, isValidPaymentMethod, sortedPaymentMethods, blankPaymentMethod, cardNetworkOf } from '../shared/payment-methods';
 
 // One-time dual-read migration from the old single-blob module store (/store/invoices)
 // to the sharded store (LLInvoicesStore, spec §3b). Runs only while the sharded store is
@@ -67,7 +67,11 @@ export default (config = {}, labels = {}) => ({
         if (this.state === 'ready') this.reconcileBlobs();
     },
 
-    setSection(s) { this.section = s; try { history.replaceState(null, '', '#' + s); } catch (e) { /* ignore */ } },
+    setSection(s) {
+        this.section = s;
+        try { history.replaceState(null, '', '#' + s); } catch (e) { /* ignore */ }
+        try { window.scrollTo({ top: 0 }); } catch (e) { /* ignore */ }
+    },
 
     // ---- Finance dashboard: income at a glance (expenses follow with receipts) ----
     get financeStats() {
@@ -107,7 +111,6 @@ export default (config = {}, labels = {}) => ({
     payIsNew: false,
     payTypeOptions: PAYMENT_TYPES,
     get sortedPayments() { return sortedPaymentMethods(this.paymentMethods); },
-    payIcon(type) { return paymentIcon(type); },
     payTint(type) { return paymentTint(type); },
     paySubtitle(pm) { return paymentSubtitle(pm); },
     payTypeLabel(type) { return labels['pay_type_' + type] || type; },
