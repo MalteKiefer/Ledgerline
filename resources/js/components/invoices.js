@@ -66,7 +66,7 @@ export default (config = {}, labels = {}) => ({
         const h = (location.hash || '').replace('#', '');
         if (['dashboard', 'receipts', 'invoices', 'payments', 'stats'].includes(h)) this.section = h;
         await this._initZk();
-        if (this.state === 'ready') this.reconcileBlobs();
+        if (this.state === 'ready') { this._ensureReceiptIds(); this.reconcileBlobs(); }
     },
 
     setSection(s) {
@@ -239,6 +239,86 @@ export default (config = {}, labels = {}) => ({
             const docs = (this.transactions || []).filter((t) => t.account === pm.id && t.vatCat !== 'private');
             return { pm, outgoing: docs.length, missing: docs.filter((t) => ! (t.receipts && t.receipts.length)).length };
         });
+    },
+
+    // ---- Belege document manager (flattened receipts across all bookings) ----
+    receiptCatSuggestions: ['Geschäftsessen', 'Bewirtung', 'Bürobedarf', 'Reisekosten', 'Fortbildung', 'Software', 'Hardware', 'Marketing', 'Miete', 'Versicherung', 'Kfz', 'Telekommunikation', 'Sonstiges'],
+    receiptQuery: '',
+    receiptDoc: null,     // the { r, tx } currently edited in the detail modal
+    receiptTagInput: '',
+    _receiptContacts: [],
+    // Give every stored receipt a stable id (once) so it can be edited/re-linked.
+    _ensureReceiptIds() {
+        let changed = false;
+        for (const tx of (this.transactions || [])) {
+            for (const r of (tx.receipts || [])) { if (! r.id) { r.id = window.LLInvoicesStore.newId(); changed = true; } }
+        }
+        if (changed) this._save();
+    },
+    // Every receipt with its owning booking, newest booking first.
+    get allReceipts() {
+        const out = [];
+        for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) out.push({ r, tx });
+        return out.sort((a, b) => (b.tx.date || '').localeCompare(a.tx.date || ''));
+    },
+    get filteredReceipts() {
+        const q = this.receiptQuery.trim().toLowerCase();
+        if (! q) return this.allReceipts;
+        return this.allReceipts.filter(({ r, tx }) =>
+            (r.name || '').toLowerCase().includes(q) || (r.note || '').toLowerCase().includes(q) ||
+            (r.category || '').toLowerCase().includes(q) || (r.tags || []).join(' ').toLowerCase().includes(q) ||
+            (tx.counterparty || '').toLowerCase().includes(q) || (tx.purpose || '').toLowerCase().includes(q));
+    },
+    async openReceiptDoc(doc) {
+        this.receiptDoc = doc;
+        this.receiptTagInput = (doc.r.tags || []).join(', ');
+        try { if (await bootStore(this.$store, 'contacts')) this._receiptContacts = (window.LLModuleStore.contacts.data.contacts || []).filter((c) => ! c.trashed); }
+        catch (e) { /* leave empty */ }
+    },
+    closeReceiptDoc() { this.receiptDoc = null; },
+    receiptContacts() {
+        const q = (this.receiptDoc?.r.contactQuery || '').trim().toLowerCase();
+        let list = this._receiptContacts;
+        if (q) list = list.filter((c) => (contactDisplayName(c) || '').toLowerCase().includes(q));
+        return [...list].sort((a, b) => (contactDisplayName(a) || '').localeCompare(contactDisplayName(b) || '')).slice(0, 8);
+    },
+    contactName(id) { const c = (this._receiptContacts || []).find((x) => x.id === id); return c ? contactDisplayName(c) : ''; },
+    setReceiptContact(c) { if (this.receiptDoc) { this.receiptDoc.r.contactId = c ? c.id : null; this.receiptDoc.r.contactName = c ? contactDisplayName(c) : ''; this.saveReceiptDoc(); } },
+    saveReceiptDoc() {
+        if (! this.receiptDoc) return;
+        this.receiptDoc.r.tags = this.receiptTagInput.split(',').map((t) => t.trim()).filter(Boolean);
+        this._save();
+    },
+    // Move a receipt to another booking (re-link).
+    relinkReceiptTo(tx) {
+        const doc = this.receiptDoc; if (! doc || ! tx || tx.id === doc.tx.id) { this.receiptRelink = false; return; }
+        const arr = doc.tx.receipts || []; const i = arr.indexOf(doc.r);
+        if (i >= 0) arr.splice(i, 1);
+        tx.receipts = tx.receipts || []; tx.receipts.push(doc.r);
+        doc.tx = tx; this.receiptRelink = false;
+        this._save(); this.reconcileBlobs();
+    },
+    receiptRelink: false,
+    get relinkCandidates() {
+        const q = (this.relinkQuery || '').trim().toLowerCase();
+        let list = (this.transactions || []).filter((t) => t.account === this.receiptDoc?.tx.account);
+        if (q) list = list.filter((t) => (t.counterparty || '').toLowerCase().includes(q) || (t.purpose || '').toLowerCase().includes(q) || (t.date || '').includes(q));
+        return list.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 12);
+    },
+    relinkQuery: '',
+    renameReceiptDoc() {
+        if (! this.receiptDoc) return;
+        const cur = this.receiptDoc.r.name || '';
+        this.$store.confirm.prompt(labels.receipt_rename || 'Rename receipt', { value: cur }).then((v) => {
+            if (v != null && v.trim()) { this.receiptDoc.r.name = v.trim(); this._save(); }
+        });
+    },
+    async deleteReceiptDoc() {
+        const doc = this.receiptDoc; if (! doc || doc.r.locked) return;
+        if (! await this.$store.confirm.ask(labels.receipt_delete_confirm || 'Remove this receipt?')) return;
+        const arr = doc.tx.receipts || []; const i = arr.indexOf(doc.r);
+        if (i >= 0) arr.splice(i, 1);
+        this.receiptDoc = null; this._save(); this.reconcileBlobs();
     },
     openReceipts(tx) { this.receiptTx = tx; },
     closeReceipts() { this.receiptTx = null; },
