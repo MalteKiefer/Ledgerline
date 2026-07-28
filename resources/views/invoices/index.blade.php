@@ -201,7 +201,33 @@
         <div x-show="section === 'receipts'" class="mt-6">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <input type="search" x-model.debounce.200ms="receiptQuery" placeholder="{{ __('invoices.receipts_search') }}" class="w-full max-w-xs rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-            <p class="text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.receipts_count') }}'.replace(':n', allReceipts.length)"></p>
+            <div class="flex items-center gap-3">
+              <p class="text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.receipts_count') }}'.replace(':n', allReceipts.length)"></p>
+              <template x-if="(transactions || []).length">
+                <x-button variant="primary" size="sm" icon="plus" @click="addBookingQuery=''; receiptAddPick = true">{{ __('invoices.receipts_add') }}</x-button>
+              </template>
+            </div>
+          </div>
+
+          {{-- Upload: pick a booking, then its receipts panel opens for drag & drop --}}
+          <div x-show="receiptAddPick" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="receiptAddPick = false">
+            <div class="absolute inset-0 bg-gray-900/50" @click="receiptAddPick = false"></div>
+            <div class="relative flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.receipts_pick_booking') }}</h3>
+                <x-icon-button name="x-mark" tone="gray" size="sm" @click="receiptAddPick = false" :aria-label="__('common.close')" />
+              </div>
+              <div class="px-5 py-3"><input type="search" x-model.debounce.200ms="addBookingQuery" placeholder="{{ __('invoices.receipt_relink_search') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></div>
+              <div class="min-h-0 flex-1 overflow-auto px-2 pb-2">
+                <template x-if="! addBookingCandidates.length"><p class="px-3 py-6 text-center text-sm text-gray-400 dark:text-gray-500">—</p></template>
+                <template x-for="cand in addBookingCandidates" :key="cand.id">
+                  <button type="button" @click="pickBookingForReceipt(cand)" class="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left hover:bg-accent/5">
+                    <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
+                    <span class="shrink-0 text-sm tabular-nums" :class="cand.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(cand.amount, cand.currency)"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
           </div>
 
           <template x-if="! filteredReceipts.length">

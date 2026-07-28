@@ -244,6 +244,16 @@ export default (config = {}, labels = {}) => ({
     // ---- Belege document manager (flattened receipts across all bookings) ----
     receiptCatSuggestions: ['Geschäftsessen', 'Bewirtung', 'Bürobedarf', 'Reisekosten', 'Fortbildung', 'Software', 'Hardware', 'Marketing', 'Miete', 'Versicherung', 'Kfz', 'Telekommunikation', 'Sonstiges'],
     receiptQuery: '',
+    // Upload from the Belege tab: pick a booking, then open its receipts panel.
+    receiptAddPick: false,
+    addBookingQuery: '',
+    get addBookingCandidates() {
+        const q = this.addBookingQuery.trim().toLowerCase();
+        let list = (this.transactions || []);
+        if (q) list = list.filter((t) => (t.counterparty || '').toLowerCase().includes(q) || (t.purpose || '').toLowerCase().includes(q) || (t.date || '').includes(q));
+        return list.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 25);
+    },
+    pickBookingForReceipt(tx) { this.receiptAddPick = false; this.openReceipts(tx); },
     receiptDoc: null,     // the { r, tx } currently edited in the detail modal
     receiptTagInput: '',
     _receiptContacts: [],

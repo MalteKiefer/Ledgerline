@@ -94,4 +94,6 @@ return [
     'export_all' => 'Export all',
     'imported' => ':n contact(s) imported',
     'import_failed' => 'Could not read that vCard file.',
+    'finance_receipts' => 'Finance receipts',
+    'finance_receipt' => 'Receipt',
 ];

@@ -227,6 +227,7 @@ return [
     'receipts_title' => 'Receipts',
     'receipts_none' => 'No receipts yet. Attach one or more.',
     'receipts_add' => 'Attach receipts',
+    'receipts_pick_booking' => 'Choose a booking to attach to',
     'receipts_uploading' => 'Uploading…',
     'receipts_missing' => ':n of :total bookings still need a document',
     'receipts_complete' => 'All bookings are documented',
