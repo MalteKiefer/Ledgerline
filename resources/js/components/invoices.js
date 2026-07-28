@@ -10,6 +10,7 @@ import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
 import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary } from '../shared/finance-stats';
+import { matchInvoice } from '../shared/invoice-match';
 import { PAYMENT_TYPES, paymentTint, paymentSubtitle, isValidPaymentMethod, sortedPaymentMethods, blankPaymentMethod, cardNetworkOf } from '../shared/payment-methods';
 import { detectFormat, parseMt940, parseCsv, detectCsvMapping, applyCsvMapping, enrichExisting, classifyTxType, guessVatCat, VAT_CATS, txSignature as txSig, TX_FIELDS, TX_REQUIRED } from '../shared/bank-statement';
 
@@ -190,6 +191,8 @@ export default (config = {}, labels = {}) => ({
     receiptTx: null,        // the transaction whose receipts panel is open
     receiptBusy: false,
     get outgoingTx() { return this.accountTx.filter((t) => t.amount < 0); },
+    // Income bookings not yet linked to an invoice (drives the "match invoices" action).
+    get unlinkedIncomeCount() { return this.accountTx.filter((t) => t.amount > 0 && ! t.invoiceId).length; },
     // How many of the account's outgoing bookings still have no receipt attached.
     get missingReceipts() { return this.outgoingTx.filter((t) => ! (t.receipts && t.receipts.length)).length; },
     receiptCount(tx) { return (tx.receipts || []).length; },
@@ -221,7 +224,10 @@ export default (config = {}, labels = {}) => ({
         if (ok) { this._save(); this.reconcileBlobs(); }
         else window.llToast?.(labels.receipt_failed || 'Upload failed.');
     },
-    openReceipt(r) { return this._openBlob(r); },
+    openReceipt(r) {
+        if (r.kind === 'invoice' && ! r.blob) return this.openInvoiceById(r.invoiceId); // app invoice → open its view
+        return this._openBlob(r);
+    },
     // ---- Bulk receipt export (ZIP) for the tax advisor ----
     exportBusy: false,
     exportDone: 0,
@@ -277,6 +283,57 @@ export default (config = {}, labels = {}) => ({
         if (i >= 0) tx.receipts.splice(i, 1);
         this._save();
         this.reconcileBlobs();
+    },
+
+    // ---- Invoice ↔ transaction matching (incoming payments) ----
+    // Link an income transaction to an issued invoice: mark it paid, remember the account,
+    // and attach the invoice to the booking as a LOCKED receipt (can't be removed, only
+    // added to). For an imported invoice the stored PDF is used; an app invoice opens the
+    // invoice view. Returns true if newly linked.
+    _linkInvoice(tx, inv, save = true) {
+        if (! tx || ! inv || tx.invoiceId === inv.id) return false;
+        tx.invoiceId = inv.id;
+        tx.invoiceNumber = inv.number; // also drives the ZIP export filename
+        inv.status = 'paid';
+        inv.paidAt = tx.date || this._today();
+        inv.paymentAccount = tx.account;
+        inv.paymentTxId = tx.id;
+        tx.receipts = tx.receipts || [];
+        if (! tx.receipts.some((r) => r.kind === 'invoice' && r.invoiceId === inv.id)) {
+            const rec = { kind: 'invoice', invoiceId: inv.id, invoiceNumber: inv.number, name: (labels.invoice_word || 'Invoice') + ' ' + inv.number, locked: true };
+            if (inv.pdf?.blob) { rec.blob = inv.pdf.blob; rec.key = inv.pdf.key; rec.mime = inv.pdf.mime || 'application/pdf'; }
+            tx.receipts.push(rec);
+        }
+        if (save) { this._save(); this.reconcileBlobs(); }
+        return true;
+    },
+    linkInvoice(tx, inv) { if (this._linkInvoice(tx, inv)) window.llToast?.((labels.match_linked || 'Linked invoice :n.').replace(':n', inv.number)); this.invoicePicker = null; },
+    // Auto-match every not-yet-linked income booking of the open account to an invoice.
+    rematchAll() {
+        let n = 0;
+        for (const tx of this.accountTx) {
+            if (tx.amount > 0 && ! tx.invoiceId) {
+                const inv = matchInvoice(tx, this.invoices);
+                if (inv && this._linkInvoice(tx, inv, false)) n++;
+            }
+        }
+        if (n) { this._save(); this.reconcileBlobs(); }
+        window.llToast?.((labels.match_done || ':n invoices matched.').replace(':n', n));
+    },
+    // Manual link picker: open issued invoices to choose from (for an income booking).
+    invoicePicker: null,
+    openInvoicePicker(tx) { this.invoicePicker = tx; },
+    get pickerInvoices() {
+        return (this.invoices || []).filter((i) => ! i.trashed && i.number && i.status !== 'draft')
+            .sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || ''));
+    },
+    // Open the invoice a locked receipt / booking refers to.
+    openInvoiceById(id) {
+        const inv = (this.invoices || []).find((i) => i.id === id);
+        if (! inv) { window.llToast?.(labels.match_gone || 'Invoice not found.'); return; }
+        this.receiptTx = null;
+        this.setSection('invoices');
+        this.open(inv);
     },
 
     // Read a statement file as text, tolerating Windows-1252 (common for Sparkasse CSVs).
@@ -339,6 +396,8 @@ export default (config = {}, labels = {}) => ({
             tx.account = acct;
             if (tx.vatCat == null) tx.vatCat = guessVatCat(tx); // auto where obvious, else '' (user picks)
             this.transactions.push(tx);
+            // Auto-link an incoming payment to a matching issued invoice (mark paid + attach).
+            if (tx.amount > 0) { const inv = matchInvoice(tx, this.invoices); if (inv) this._linkInvoice(tx, inv, false); }
         }
         // Enrich existing records with the newly-available fields.
         for (const u of (this.stmt.updates || [])) {
