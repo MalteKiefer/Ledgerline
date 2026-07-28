@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeReceiptText, extractTotal, extractDate, extractMerchant, extractNumber } from '../shared/receipt-ocr.js';
+import { analyzeReceiptText, extractTotal, extractDate, extractMerchant, extractNumber, extractVatRate } from '../shared/receipt-ocr.js';
 
 const RESTAURANT = `Ristorante Da Mario
 Hauptstraße 5, 95326 Kulmbach
@@ -85,6 +85,16 @@ describe('receipt OCR analysis', () => {
     });
     it('trims trailing document labels from the letterhead', () => {
         expect(extractMerchant('Alpha Layer GTS GmbH Place/Date of invoice Komenda\nInvoice')).toBe('Alpha Layer GTS GmbH');
+    });
+    it('detects the VAT rate, preferring the highest and honouring small-business', () => {
+        expect(extractVatRate('Zwischensumme 32,64\nzzgl. 19% MwSt 6,20\nRechnungsbetrag 38,84')).toBe('19');
+        expect(extractVatRate('Netto 100,00\nUSt 7,00 % 7,00\nBrutto 107,00')).toBe('7');
+        expect(extractVatRate('MwSt 7% 0,35\nMwSt 19% 0,57\nSumme 8,00')).toBe('19'); // mixed → highest
+        expect(extractVatRate('Kleinunternehmer gemäß § 19 UStG')).toBe('0');
+        expect(extractVatRate('Rabatt 19 auf alles\nSumme 50,00')).toBe(''); // "19" not near a VAT word
+    });
+    it('exposes vat from analyzeReceiptText', () => {
+        expect(analyzeReceiptText('Adobe\nUSt 19% 9,49\nGesamt 59,49').vat).toBe('19');
     });
     it('suggests tags (merchant + category), de-duplicated', () => {
         const a = analyzeReceiptText(RESTAURANT);

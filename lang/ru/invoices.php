@@ -227,6 +227,8 @@ return [
     'cats_default' => 'Стандарт',
     'cats_add_ph' => 'Новая категория',
     'receipt_auto_attached' => 'Сопоставлено чеков по сумме: :n.',
+    'receipt_dupes_skipped' => 'Пропущено дубликатов: :n.',
+    'receipt_vat_detected' => 'Определённая ставка НДС',
     'assign_intro' => 'Назначьте этот чек (осталось :n)',
     'assign_by_amount' => 'Совпадения по сумме',
     'assign_skip' => 'Пропустить',

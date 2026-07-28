@@ -227,6 +227,8 @@ return [
     'cats_default' => 'Standard',
     'cats_add_ph' => 'Neue Kategorie',
     'receipt_auto_attached' => ':n Belege per Betrag zugeordnet.',
+    'receipt_dupes_skipped' => ':n Duplikat(e) übersprungen.',
+    'receipt_vat_detected' => 'Erkannter Steuersatz',
     'assign_intro' => 'Diesen Beleg zuordnen (:n offen)',
     'assign_by_amount' => 'Treffer nach Betrag',
     'assign_skip' => 'Überspringen',

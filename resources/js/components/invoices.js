@@ -9,6 +9,7 @@ import { saveBlobAs } from '../shared/dom';
 import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
 import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
+import { fileSig } from '../shared/file-sig';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary } from '../shared/finance-stats';
 import { matchInvoice } from '../shared/invoice-match';
 import { extractDocText } from '../shared/doc-text';
@@ -295,12 +296,17 @@ export default (config = {}, labels = {}) => ({
         if (! files.length) return;
         this.autoUploadBusy = true;
         await this._ensureContactsLoaded(); // so we can match existing contacts before creating a partner
-        let attached = 0;
+        const seen = this._existingReceiptSigs();
+        let attached = 0, dupes = 0;
         for (const file of files) {
             try {
                 const bytes = new Uint8Array(await file.arrayBuffer());
+                // Content-hash dedup: skip a file whose bytes already exist as a receipt.
+                const sig = await fileSig(bytes.slice(0));
+                if (sig && seen.has(sig)) { dupes++; continue; }
                 const up = await this._uploadFile(bytes, file.name, file.type || 'application/octet-stream');
                 if (! up) continue;
+                if (sig) { up.sig = sig; seen.add(sig); }
                 up.id = window.LLInvoicesStore.newId();
                 // Recognise (text + total + category/tags) up front.
                 const text = await extractDocText(bytes.slice(0), up.mime, up.name);
@@ -313,7 +319,7 @@ export default (config = {}, labels = {}) => ({
                 }
                 // Find bookings whose absolute amount matches the receipt total (to the cent).
                 const cands = total != null ? (this.transactions || []).filter((t) => Math.abs(Math.abs(t.amount || 0) - total) < 0.005) : [];
-                if (cands.length === 1) { cands[0].receipts = cands[0].receipts || []; cands[0].receipts.push(up); this._autoPartner(up, cands[0]); this._renameReceipt(up, cands[0]); attached++; }
+                if (cands.length === 1) { cands[0].receipts = cands[0].receipts || []; cands[0].receipts.push(up); this._autoPartner(up, cands[0]); this._renameReceipt(up, cands[0]); this._applyReceiptVat(up, cands[0]); attached++; }
                 else { this._renameReceipt(up, null); this.receiptAssign.push({ up, total, cands: cands.slice(0, 12) }); }
             } catch (e) { /* skip */ }
         }
@@ -321,12 +327,19 @@ export default (config = {}, labels = {}) => ({
         this._save(); this.reconcileBlobs();
         if (this.receiptAssign.length) this._loadAssignPreview();
         if (attached) window.llToast?.((labels.receipt_auto_attached || ':n receipts matched by amount.').replace(':n', attached));
+        if (dupes) window.llToast?.((labels.receipt_dupes_skipped || ':n duplicate(s) skipped.').replace(':n', dupes));
+    },
+    // The content-hash signatures of every receipt already stored (dedup on upload).
+    _existingReceiptSigs() {
+        const set = new Set();
+        for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) if (r.sig) set.add(r.sig);
+        return set;
     },
     // Assign a pending (unmatched) receipt to a chosen booking.
     assignPending(idx, tx) {
         const p = this.receiptAssign[idx]; if (! p || ! tx) return;
         tx.receipts = tx.receipts || []; tx.receipts.push(p.up);
-        this._autoPartner(p.up, tx); this._renameReceipt(p.up, tx);
+        this._autoPartner(p.up, tx); this._renameReceipt(p.up, tx); this._applyReceiptVat(p.up, tx);
         this.receiptAssign.splice(idx, 1);
         this.assignQuery = '';
         this._save(); this.reconcileBlobs();
@@ -461,6 +474,7 @@ export default (config = {}, labels = {}) => ({
             await this._ensureContactsLoaded();
             this._autoPartner(r, doc.tx);
             this._renameReceipt(r, doc.tx);
+            this._applyReceiptVat(r, doc.tx);
             if (save) { this._save(); if (this.receiptDoc === doc) this.tagsValue = (r.tags || []).join(', '); }
             return true;
         } catch (e) { return false; }
@@ -584,17 +598,21 @@ export default (config = {}, labels = {}) => ({
         if (! files.length) return;
         this.receiptBusy = true;
         tx.receipts = tx.receipts || [];
-        let ok = 0;
+        const seen = this._existingReceiptSigs();
+        let ok = 0, dupes = 0;
         for (const file of files) {
             try {
                 const bytes = new Uint8Array(await file.arrayBuffer());
+                const sig = await fileSig(bytes.slice(0));
+                if (sig && seen.has(sig)) { dupes++; continue; }
                 const up = await this._uploadFile(bytes, file.name, file.type || 'application/octet-stream');
-                if (up) { up.id = window.LLInvoicesStore.newId(); tx.receipts.push(up); ok++; this._ocrReceipt(bytes.slice(0), up, tx); }
+                if (up) { if (sig) { up.sig = sig; seen.add(sig); } up.id = window.LLInvoicesStore.newId(); tx.receipts.push(up); ok++; this._ocrReceipt(bytes.slice(0), up, tx); }
             } catch (e) { /* skip this file */ }
         }
         this.receiptBusy = false;
         if (ok) { this._save(); this.reconcileBlobs(); }
-        else window.llToast?.(labels.receipt_failed || 'Upload failed.');
+        else if (! dupes) window.llToast?.(labels.receipt_failed || 'Upload failed.');
+        if (dupes) window.llToast?.((labels.receipt_dupes_skipped || ':n duplicate(s) skipped.').replace(':n', dupes));
     },
     // Background OCR of a freshly-uploaded receipt: extract text (searchable) and suggest
     // a category + tags (only fill empty fields). Runs client-side (ZK); best effort.
@@ -607,6 +625,7 @@ export default (config = {}, labels = {}) => ({
             await this._ensureContactsLoaded();
             this._autoPartner(r, tx);
             this._renameReceipt(r, tx);
+            this._applyReceiptVat(r, tx);
             this._save();
         } catch (e) { /* best effort */ }
     },
@@ -618,6 +637,12 @@ export default (config = {}, labels = {}) => ({
         if (a.date && ! r.date) r.date = a.date;
         if (a.total != null && r.total == null) r.total = a.total;
         if (a.number && ! r.number) r.number = a.number;
+        if (a.vat && ! r.vat) r.vat = a.vat;
+    },
+    // Adopt the receipt's detected VAT rate onto its booking when the booking's rate is
+    // still undecided (never overrides a value the import guessed or the user set).
+    _applyReceiptVat(r, tx) {
+        if (tx && r && r.vat && (tx.vatCat == null || tx.vatCat === '')) tx.vatCat = r.vat;
     },
     // Rename a receipt to "YYYYMMDD; Partner; Beleg / Rechnung <number>.<ext>" from the
     // recognised fields (date/partner/number), keeping the extension. Runs on upload and on

@@ -160,9 +160,25 @@ export function extractNumber(text) {
     return t;
 }
 
+// The document's VAT rate → '19' | '16' | '7' | '0' | '' (matches the booking vatCat
+// values, minus 'private'). Small-business / tax-free notes map to '0'; otherwise the
+// HIGHEST explicit rate that appears on a line mentioning VAT (MwSt/USt/VAT/…) wins — the
+// reduced 7 % on a mixed receipt shouldn't hide the 19 % that drives the tax. Line-based,
+// so it needs the line-preserving PDF text extraction.
+export function extractVatRate(text) {
+    const s = String(text || '');
+    if (/kleinunternehmer|§\s?19\s?ust|steuerfrei|reverse[-\s]?charge|nicht steuerbar|tax[-\s]?free/i.test(s)) return '0';
+    const rates = new Set();
+    for (const ln of s.split(/\r?\n/)) {
+        if (! /mwst|ust\b|u\.?st\.?|umsatzsteuer|\bvat\b|\btax\b|zzgl|steuer/i.test(ln)) continue;
+        for (const m of ln.matchAll(/\b(\d{1,2})(?:[.,]\d+)?\s*%/g)) if (['19', '16', '7'].includes(m[1])) rates.add(m[1]);
+    }
+    return rates.has('19') ? '19' : rates.has('16') ? '16' : rates.has('7') ? '7' : '';
+}
+
 /**
- * Analyse a receipt's OCR text: { merchant, category, total, date, number, tags[] }. tags
- * are a de-duplicated suggestion (merchant + category) the user can accept or edit.
+ * Analyse a receipt's OCR text: { merchant, category, total, date, number, vat, tags[] }.
+ * tags are a de-duplicated suggestion (merchant + category) the user can accept or edit.
  */
 export function analyzeReceiptText(text) {
     const low = String(text || '').toLowerCase();
@@ -172,6 +188,7 @@ export function analyzeReceiptText(text) {
     const total = extractTotal(text);
     const date = extractDate(text);
     const number = extractNumber(text);
+    const vat = extractVatRate(text);
     const tags = [...new Set([merchant, category].filter(Boolean))];
-    return { merchant, category, total, date, number, tags };
+    return { merchant, category, total, date, number, vat, tags };
 }
