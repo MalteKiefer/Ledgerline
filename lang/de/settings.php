@@ -324,6 +324,7 @@ return [
     'invoice_number_format_hint' => 'Platzhalter: YYYY = Jahr 4-stellig, YY = Jahr 2-stellig, MM = Monat, DD = Tag, NNNN = laufende Nummer (ein N pro Stelle). Beispiel: YYYY-NNNN → 2026-0042.',
     'invoice_next_number' => 'Nächste Nummer',
     'invoice_next_number_hint' => 'Der laufende Wert für die nächste Rechnung. Setze ihn, wenn du dieses Jahr schon Rechnungen geschrieben hast (z. B. 42). Leer = Start bei 1.',
+    'invoice_numbering_locked' => 'Die Nummerierung ist gesperrt, da dieses Jahr bereits Rechnungen bestehen (GoBD). Zum Neustart der Nummernfolge den Zyklus des laufenden Jahres unter Finanzen zurücksetzen — dabei werden die Rechnungen dieses Jahres gelöscht.',
     'invoice_default_vat_rate' => 'Standard-USt-Satz (%)',
     'invoice_payment_terms_days' => 'Zahlungsziel (Tage)',
     'invoice_footer_text' => 'Rechnungs-Fußzeile',

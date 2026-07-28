@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { maxSeq, nextSeq, duplicateNumbers } from '../shared/invoice-numbering.js';
+import { maxSeq, nextSeq, duplicateNumbers, maxSeqForYear, nextSeqForYear, invoicesInYear, invoiceYear } from '../shared/invoice-numbering.js';
 
 describe('invoice numbering (GoBD: unique, gapless)', () => {
     it('nextSeq derives from the real invoices, not just the scalar', () => {
@@ -39,5 +39,33 @@ describe('invoice numbering (GoBD: unique, gapless)', () => {
     it('no duplicates on a clean gapless sequence', () => {
         const invoices = [{ id: 'a', number: '1' }, { id: 'b', number: '2' }, { id: 'c', number: '3' }];
         expect(duplicateNumbers(invoices)).toEqual([]);
+    });
+
+    it('numbers per year: each year has its own sequence', () => {
+        const invoices = [
+            { id: 'a', seq: 3, issueDate: '2025-12-01' },
+            { id: 'b', seq: 12, issueDate: '2025-06-01' },
+            { id: 'c', seq: 2, issueDate: '2026-02-01' },
+        ];
+        expect(maxSeqForYear(invoices, 2025)).toBe(12);
+        expect(maxSeqForYear(invoices, 2026)).toBe(2);
+        expect(nextSeqForYear(invoices, 2026, 1)).toBe(3);   // 2026 continues at 3
+        expect(nextSeqForYear(invoices, 2027, 1)).toBe(1);   // a fresh year restarts at 1
+    });
+
+    it('a fresh year restarts at the floor after a reset (no other-year seq bleeds in)', () => {
+        const only2025 = [{ id: 'a', seq: 40, issueDate: '2025-09-01' }];
+        // 2026 has no invoices (e.g. after a cycle reset) → starts at 1, not 41.
+        expect(nextSeqForYear(only2025, 2026, 1)).toBe(1);
+    });
+
+    it('invoicesInYear returns active invoices dated in that year', () => {
+        const invoices = [
+            { id: 'a', issueDate: '2026-02-01' },
+            { id: 'b', issueDate: '2026-05-01', trashed: '2026-06-01' },
+            { id: 'c', issueDate: '2025-02-01' },
+        ];
+        expect(invoicesInYear(invoices, 2026).map((i) => i.id)).toEqual(['a']);
+        expect(invoiceYear(invoices[2])).toBe('2025');
     });
 });

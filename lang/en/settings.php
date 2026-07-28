@@ -324,6 +324,7 @@ return [
     'invoice_number_format_hint' => 'Placeholders: YYYY = 4-digit year, YY = 2-digit year, MM = month, DD = day, NNNN = sequence (one N per digit). Example: YYYY-NNNN → 2026-0042.',
     'invoice_next_number' => 'Next number',
     'invoice_next_number_hint' => 'The sequence value for the next invoice. Set this if you already issued invoices this year (e.g. 42). Leave empty to start at 1.',
+    'invoice_numbering_locked' => 'Numbering is locked because this year already has invoices (GoBD). To restart the sequence, reset the current-year cycle in Finance — this deletes this year\'s invoices.',
     'invoice_default_vat_rate' => 'Default VAT rate (%)',
     'invoice_payment_terms_days' => 'Payment terms (days)',
     'invoice_footer_text' => 'Invoice footer',

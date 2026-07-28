@@ -1,6 +1,6 @@
 // invoices component. Extracted from app.js.
 import { zkModule, bootStore } from '../shared/zk-module';
-import { nextSeq, duplicateNumbers as dupNumbers } from '../shared/invoice-numbering';
+import { nextSeqForYear, duplicateNumbers as dupNumbers, invoicesInYear, invoiceYear } from '../shared/invoice-numbering';
 import { parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, buildInvoiceFromXml } from '../shared/invoice-pdf-import';
 import { parseEInvoiceXml, looksLikeEInvoiceXml } from '../shared/einvoice-xml';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
@@ -474,7 +474,8 @@ export default (config = {}, labels = {}) => ({
     // mergeable scalar; the scalar is kept as a floor hint.
     _assignNumber(inv) {
         const floor = parseInt(this.company.next_number, 10) || 1;
-        const seq = nextSeq(this.invoices, 0, floor);
+        const year = String(inv.issueDate || this._today()).slice(0, 4);
+        const seq = nextSeqForYear(this.invoices, year, floor); // per-year: restarts each year
         inv.seq = seq; // the sequence is stored on the invoice; no mergeable scalar
         inv.number = this._formatNumber(this.company.number_format, seq, inv.issueDate);
     },
@@ -488,6 +489,41 @@ export default (config = {}, labels = {}) => ({
     // Numbers assigned to more than one invoice — a GoBD violation the owner MUST fix
     // (a concurrent finalize on two offline devices is the only way to reach it).
     get duplicateNumbers() { return dupNumbers(this.activeInvoices); },
+
+    // ---- Numbering cycle (per year) ----
+    get currentYear() { return String(new Date().getFullYear()); },
+    // Invoices dated in the current year — once any exist, the numbering format/counter
+    // is locked (GoBD: no changing the running sequence mid-year) until the cycle is reset.
+    get currentYearInvoices() { return invoicesInYear(this.invoices, this.currentYear); },
+    get numberingLocked() { return this.currentYearInvoices.length > 0; },
+    // The number the next invoice issued this year would receive (preview).
+    get nextNumberPreview() {
+        const floor = parseInt(this.company.next_number, 10) || 1;
+        const seq = nextSeqForYear(this.invoices, this.currentYear, floor);
+        return this._formatNumber(this.company.number_format, seq, this._today());
+    },
+    // Reset the current year's invoice cycle: DELETE every invoice dated this year so the
+    // numbering legitimately restarts at 1 (GoBD — you may only restart by removing the
+    // records). Irreversible; type-to-confirm the year. Past years are untouched.
+    async resetYearCycle() {
+        const year = this.currentYear;
+        const doomed = (this.invoices || []).filter((iv) => invoiceYear(iv) === year);
+        if (! doomed.length) { window.llToast?.(labels.cycle_none || 'No invoices for the current year.'); return; }
+        const typed = await this.$store.confirm.prompt(
+            (labels.cycle_reset_warn || 'This deletes all :n invoices dated :year. Type :year to confirm.')
+                .replace(/:n/g, doomed.length).replace(/:year/g, year),
+            { placeholder: year, ok: labels.cycle_reset_ok || 'Delete & reset' },
+        );
+        if (String(typed || '').trim() !== year) return;
+        for (const inv of doomed) {
+            const i = this.invoices.indexOf(inv);
+            if (i >= 0) this.invoices.splice(i, 1);
+        }
+        if (this.current && invoiceYear(this.current) === year) this.backToList();
+        this._save();
+        this.reconcileBlobs(); // release their original-PDF blobs (grace-gated sweep)
+        window.llToast?.((labels.cycle_reset_done || 'Cycle :year reset.').replace(':year', year));
+    },
 
     // Keep the imported original-PDF blobs alive against the daily orphan sweep — the
     // live-set is every invoice's pdf blob PLUS the sharded record/collection refs (§11).
