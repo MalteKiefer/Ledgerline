@@ -264,6 +264,7 @@ export default (config = {}, labels = {}) => ({
         const files = [...(fileList || [])];
         if (! files.length) return;
         this.autoUploadBusy = true;
+        await this._ensureContactsLoaded(); // so we can match existing contacts before creating a partner
         let attached = 0;
         for (const file of files) {
             try {
@@ -282,7 +283,7 @@ export default (config = {}, labels = {}) => ({
                 }
                 // Find bookings whose absolute amount matches the receipt total (to the cent).
                 const cands = total != null ? (this.transactions || []).filter((t) => Math.abs(Math.abs(t.amount || 0) - total) < 0.005) : [];
-                if (cands.length === 1) { cands[0].receipts = cands[0].receipts || []; cands[0].receipts.push(up); attached++; }
+                if (cands.length === 1) { cands[0].receipts = cands[0].receipts || []; cands[0].receipts.push(up); this._autoPartner(up, cands[0]); attached++; }
                 else { this.receiptAssign.push({ up, total, cands: cands.slice(0, 12) }); }
             } catch (e) { /* skip */ }
         }
@@ -294,6 +295,7 @@ export default (config = {}, labels = {}) => ({
     assignPending(idx, tx) {
         const p = this.receiptAssign[idx]; if (! p || ! tx) return;
         tx.receipts = tx.receipts || []; tx.receipts.push(p.up);
+        this._autoPartner(p.up, tx);
         this.receiptAssign.splice(idx, 1);
         this._save(); this.reconcileBlobs();
     },
@@ -399,6 +401,8 @@ export default (config = {}, labels = {}) => ({
                 r.ocr = text.slice(0, 200000);
                 this._applyAnalysis(r, analyzeReceiptText(text));
             }
+            await this._ensureContactsLoaded();
+            this._autoPartner(r, doc.tx);
             if (save) { this._save(); if (this.receiptDoc === doc) this.tagsValue = (r.tags || []).join(', '); }
             return true;
         } catch (e) { return false; }
@@ -472,6 +476,25 @@ export default (config = {}, labels = {}) => ({
         if (r.contactId) return this.contactName(r.contactId) || '';
         if (r.partnerId) { const p = (this.partners || []).find((x) => x.id === r.partnerId); return p ? p.name : ''; }
         return '';
+    },
+    async _ensureContactsLoaded() {
+        if ((this._receiptContacts || []).length) return;
+        try { if (await bootStore(this.$store, 'contacts')) this._receiptContacts = (window.LLModuleStore.contacts.data.contacts || []).filter((c) => ! c.trashed); }
+        catch (e) { /* leave empty */ }
+    },
+    // Auto-link a receipt to a business partner from the booking's counterparty (reliable)
+    // or the recognised merchant: match an existing contact/partner, else create a partner.
+    _autoPartner(r, tx) {
+        if (r.contactId || r.partnerId) return;
+        const name = String((tx && tx.counterparty) || r.merchant || '').trim();
+        if (name.length < 2) return;
+        const key = (s) => String(s || '').toLowerCase().replace(/\b(gmbh|ag|kg|ohg|ug|mbh|e\.?k\.?|co\.?|deutschland)\b/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+        const nk = key(name);
+        const contact = (this._receiptContacts || []).find((c) => key(contactDisplayName(c)) === nk);
+        if (contact) { r.contactId = contact.id; r.partnerName = contactDisplayName(contact); return; }
+        let partner = (this.partners || []).find((p) => key(p.name) === nk);
+        if (! partner) { partner = { id: window.LLInvoicesStore.newId(), name }; this.partners.push(partner); }
+        r.partnerId = partner.id; r.partnerName = partner.name;
     },
     openReceipts(tx) { this.receiptTx = tx; },
     closeReceipts() { this.receiptTx = null; },

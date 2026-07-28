@@ -3,17 +3,20 @@
 // same structured fields can later feed a Paperless push. Heuristic, German-first.
 
 // category → keyword pattern (first match wins; order = priority)
+// Order = priority (first match wins). Short/ambiguous tokens are anchored with \b on
+// BOTH sides so e.g. "kündbar" no longer matches "bar" (→ Geschäftsessen), and generic
+// words like "total"/"super" are avoided entirely (they appear on any receipt).
 const CATEGORY_RULES = [
-    ['Geschäftsessen', /restaurant|gastst[äa]tte|pizzeria|trattoria|bistro|imbiss|caf[ée]|kaffee|bar\b|brauhaus|wirtshaus|men[üu]|speisekarte|trinkgeld|bewirtung|mcdonald|burger|doner|d[öo]ner/i],
-    ['Reisekosten', /hotel|[üu]bernachtung|pension|hostel|db\b|deutsche bahn|bahn|ticket|flug|airline|lufthansa|ryanair|taxi|mietwagen|rental|boarding/i],
-    ['Kfz', /tankstelle|aral|shell|esso|jet\b|total\b|agip|omv|star\b|diesel|super\s?e?\d?\d?|benzin|kraftstoff|kfz|werkstatt|adac/i],
-    ['Bürobedarf', /b[üu]robedarf|staples|office|schreibwaren|papier|toner|druckerpatrone|ordner|kugelschreiber/i],
-    ['Software', /software|lizenz|licen[sc]e|subscription|abo\b|saas|adobe|microsoft|github|jetbrains|figma|slack|zoom/i],
-    ['Hardware', /media\s?markt|saturn|notebook|laptop|monitor|tastatur|festplatte|ssd|arbeitsspeicher|hardware|conrad|reichelt/i],
-    ['Telekommunikation', /telekom|vodafone|o2\b|1&1|mobilfunk|internet|dsl|glasfaser|prepaid/i],
-    ['Marketing', /werbung|anzeige|marketing|google ads|facebook ads|meta platforms|kampagne/i],
-    ['Versicherung', /versicherung|allianz|axa|huk|police|beitrag/i],
-    ['Fortbildung', /seminar|schulung|fortbildung|kurs\b|training|udemy|coursera|konferenz|workshop/i],
+    ['Telekommunikation', /\btelekom\b|vodafone|\bo2\b|1&1|mobilfunk|\bdsl\b|glasfaser|prepaid|magenta/i],
+    ['Reisekosten', /\bhotel\b|[üu]bernachtung|pension|hostel|deutsche bahn|\bflug\b|airline|lufthansa|ryanair|\btaxi\b|mietwagen|boarding|\bbahncard\b/i],
+    ['Kfz', /tankstelle|\baral\b|\bshell\b|\besso\b|\bagip\b|\bomv\b|diesel|benzin|kraftstoff|\bkfz\b|werkstatt|\badac\b/i],
+    ['Bürobedarf', /b[üu]robedarf|staples|schreibwaren|toner|druckerpatrone|kugelschreiber/i],
+    ['Software', /\bsoftware\b|lizenz|licen[sc]e|subscription|\bsaas\b|\badobe\b|microsoft|github|jetbrains|\bfigma\b|\bslack\b|\bzoom\b/i],
+    ['Hardware', /media\s?markt|\bsaturn\b|notebook|\blaptop\b|\bmonitor\b|tastatur|festplatte|\bssd\b|conrad|reichelt/i],
+    ['Marketing', /\bwerbung\b|google ads|facebook ads|meta platforms|\bkampagne\b/i],
+    ['Versicherung', /versicherung|\ballianz\b|\baxa\b|\bhuk\b|\bpolice\b/i],
+    ['Fortbildung', /\bseminar\b|\bschulung\b|fortbildung|udemy|coursera|\bkonferenz\b|\bworkshop\b/i],
+    ['Geschäftsessen', /restaurant|gastst[äa]tte|pizzeria|trattoria|bistro|imbiss|\bcaf[ée]\b|\bkaffee\b|\bbar\b|brauhaus|wirtshaus|speisekarte|trinkgeld|bewirtung|mcdonald|\bburger\b|d[öo]ner/i],
 ];
 
 /** Parse a German/EN amount ("12,90", "1.234,56", "9.99") → number or null. */
@@ -60,6 +63,8 @@ export function extractMerchant(text) {
     for (const l of lines.slice(0, 8)) {
         if (l.length < 3 || l.length > 42) continue;
         if (/^\d/.test(l) || /\d{2}[.:]\d{2}/.test(l) || /www\.|http|@|steuer|ust-?id|tel\.?:/i.test(l)) continue;
+        // Skip label/heading lines that aren't the seller's name.
+        if (/^(ihre|ihr|your|rechnung|invoice|beleg|quittung|datum|date|kunden|customer|seite|page|betreff|position)/i.test(l)) continue;
         if (! /[a-zäöüß]/i.test(l)) continue;
         return l.replace(/\s{2,}/g, ' ').trim();
     }
