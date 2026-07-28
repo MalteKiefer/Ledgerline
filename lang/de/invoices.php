@@ -158,6 +158,8 @@ return [
     'pay_bic' => 'BIC / SWIFT',
     'pay_bank_name' => 'Bank',
     'pay_account_no' => 'Kontonummer',
+    'pay_url' => 'Bank-Website',
+    'pay_url_hint' => 'Wir versuchen, das Logo der Bank zu laden.',
     'pay_card_number' => 'Kartennummer',
     'pay_card_network' => 'Netzwerk',
     'pay_card_expiry' => 'Gültig bis',

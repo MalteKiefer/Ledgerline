@@ -158,6 +158,8 @@ return [
     'pay_bic' => 'BIC / SWIFT',
     'pay_bank_name' => 'Банк',
     'pay_account_no' => 'Номер счёта',
+    'pay_url' => 'Сайт банка',
+    'pay_url_hint' => 'Мы попробуем загрузить логотип банка.',
     'pay_card_number' => 'Номер карты',
     'pay_card_network' => 'Платёжная система',
     'pay_card_expiry' => 'Действует до',

@@ -29,6 +29,7 @@
         uploadUrl: '{{ url('/invoices/upload') }}',
         rawBase: '{{ url('/invoices/raw') }}',
         reconcileUrl: '{{ url('/invoices/blobs/reconcile') }}',
+        iconUrl: '{{ url('/passwords/icon') }}',
      }, {
         deleteConfirm: @js(__('invoices.delete_confirm')),
         statusDraft: @js(__('invoices.status_draft')),
@@ -352,7 +353,8 @@
                   <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5"
                        :class="pm.type === 'bank' && 'cursor-pointer'"
                        @click="pm.type === 'bank' && openAccount(pm)">
-                    <span class="ll-chip h-9 w-9 rounded-xl shrink-0" :style="{ background: payTint(pm.type) }">@include('invoices._payment_icon', ['expr' => 'pm.type', 'cls' => 'h-4.5 w-4.5 text-white'])</span>
+                    <template x-if="payIconSrc(pm)"><img :src="payIconSrc(pm)" alt="" class="h-9 w-9 shrink-0 rounded-xl bg-white object-contain p-0.5 ring-1 ring-black/[0.06] dark:ring-white/10"></template>
+                    <template x-if="! payIconSrc(pm)"><span class="ll-chip h-9 w-9 rounded-xl shrink-0" :style="{ background: payTint(pm.type) }">@include('invoices._payment_icon', ['expr' => 'pm.type', 'cls' => 'h-4.5 w-4.5 text-white'])</span></template>
                     <div class="min-w-0 flex-1">
                       <p class="flex items-center gap-2 truncate text-sm font-medium text-gray-900 dark:text-gray-100">
                         <span class="truncate" x-text="pm.label"></span>
@@ -387,7 +389,8 @@
                 <div class="ll-card">
                   <div class="flex flex-wrap items-start justify-between gap-3">
                     <div class="flex items-center gap-3">
-                      <span class="ll-chip h-11 w-11 rounded-2xl" :style="{ background: payTint(payAccount.type) }">@include('invoices._payment_icon', ['expr' => 'payAccount.type', 'cls' => 'h-5 w-5 text-white'])</span>
+                      <template x-if="payIconSrc(payAccount)"><img :src="payIconSrc(payAccount)" alt="" class="h-11 w-11 rounded-2xl bg-white object-contain p-1 ring-1 ring-black/[0.06] dark:ring-white/10"></template>
+                      <template x-if="! payIconSrc(payAccount)"><span class="ll-chip h-11 w-11 rounded-2xl" :style="{ background: payTint(payAccount.type) }">@include('invoices._payment_icon', ['expr' => 'payAccount.type', 'cls' => 'h-5 w-5 text-white'])</span></template>
                       <div>
                         <p class="text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="payAccount.label"></p>
                         <p class="text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="paySubtitle(payAccount)"></p>
@@ -729,6 +732,11 @@
                         <div>
                           <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_account_no') }}</label>
                           <input type="text" x-model="payEditing.accountNumber" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums">
+                        </div>
+                        <div>
+                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_url') }}</label>
+                          <input type="url" x-model="payEditing.url" placeholder="https://meine-bank.de" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                          <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.pay_url_hint') }}</p>
                         </div>
                       </div>
                     </template>

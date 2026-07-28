@@ -158,6 +158,8 @@ return [
     'pay_bic' => 'BIC / SWIFT',
     'pay_bank_name' => 'Bank',
     'pay_account_no' => 'Account number',
+    'pay_url' => 'Bank website',
+    'pay_url_hint' => 'We try to fetch the bank’s logo.',
     'pay_card_number' => 'Card number',
     'pay_card_network' => 'Network',
     'pay_card_expiry' => 'Expires',
