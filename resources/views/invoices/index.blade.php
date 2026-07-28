@@ -427,13 +427,13 @@
                       <p class="mt-0.5 text-xl font-semibold tabular-nums text-red-600 dark:text-red-400" x-text="fmtMoney(accountExpense)"></p>
                     </div>
                   </div>
-                  {{-- Missing-receipts hint (outgoing bookings without an attached receipt) --}}
-                  <template x-if="outgoingTx.length">
+                  {{-- Missing-document hint (non-private bookings without a receipt/invoice) --}}
+                  <template x-if="documentableTx.length">
                     <div class="mt-4">
                       <template x-if="missingReceipts">
                         <div class="inline-flex items-center gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
                           <x-icon name="paper-clip" class="h-4 w-4" />
-                          <span x-text="'{{ __('invoices.receipts_missing') }}'.replace(':n', missingReceipts).replace(':total', outgoingTx.length)"></span>
+                          <span x-text="'{{ __('invoices.receipts_missing') }}'.replace(':n', missingReceipts).replace(':total', documentableTx.length)"></span>
                         </div>
                       </template>
                       <template x-if="! missingReceipts">
@@ -676,6 +676,38 @@
                       <input type="file" x-ref="receiptFile" accept="application/pdf,image/*" multiple class="hidden" @change="uploadReceipts($event.target.files); $event.target.value = ''">
                       <x-button variant="primary" size="sm" icon="arrow-up-tray" ::disabled="receiptBusy" @click="$refs.receiptFile.click()">{{ __('invoices.receipts_add') }}</x-button>
                     </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          {{-- ---- RECEIPT PREVIEW (quick look, decrypted client-side) ---- --}}
+          <div x-show="receiptPreview" x-cloak class="fixed inset-0 z-[1140] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeReceiptPreview()">
+            <div class="absolute inset-0 bg-gray-900/70" @click="closeReceiptPreview()"></div>
+            <div class="relative flex h-[90vh] w-full max-w-4xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <template x-if="receiptPreview">
+                <div class="flex min-h-0 flex-1 flex-col">
+                  <div class="flex items-center gap-3 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <x-icon name="document" class="h-5 w-5 shrink-0 text-gray-400" />
+                    <p class="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="receiptPreview.name" :title="receiptPreview.name"></p>
+                    <x-icon-button name="arrow-up-right" tone="gray" size="sm" @click="openReceiptInTab()" :aria-label="__('invoices.receipt_open_tab')" />
+                    <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeReceiptPreview()" :aria-label="__('common.close')" />
+                  </div>
+                  <div class="min-h-0 flex-1 overflow-auto bg-gray-50 dark:bg-black/40">
+                    <template x-if="previewIsImage">
+                      <div class="flex h-full w-full items-center justify-center p-3"><img :src="receiptPreview.url" alt="" class="max-h-full max-w-full object-contain"></div>
+                    </template>
+                    <template x-if="previewIsPdf">
+                      <iframe :src="receiptPreview.url" class="h-full w-full" title="receipt"></iframe>
+                    </template>
+                    <template x-if="! previewIsImage && ! previewIsPdf">
+                      <div class="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                        <x-icon name="document" class="h-8 w-8 text-gray-300 dark:text-gray-600" />
+                        <p>{{ __('invoices.receipt_no_preview') }}</p>
+                        <x-button variant="secondary" size="sm" icon="arrow-up-right" @click="openReceiptInTab()">{{ __('invoices.receipt_open_tab') }}</x-button>
+                      </div>
+                    </template>
                   </div>
                 </div>
               </template>
