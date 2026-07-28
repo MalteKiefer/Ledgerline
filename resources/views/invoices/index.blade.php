@@ -333,10 +333,10 @@
                       <datalist id="receiptCats"><template x-for="c in allCategories" :key="c"><option :value="c"></option></template></datalist>
                     </div>
 
-                    {{-- Tags --}}
+                    {{-- Tags (badge chips, like the other modules) --}}
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_tags') }}</label>
-                      <input type="text" x-model="receiptTagInput" @change="saveReceiptDoc()" placeholder="{{ __('invoices.receipt_tags_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <x-tag-field commit="saveReceiptDoc()" placeholder="{{ __('invoices.receipt_tags_ph') }}" />
                     </div>
 
                     {{-- Business partner (a contact, or a standalone partner) --}}
@@ -518,9 +518,18 @@
           <h2 class="mb-2 mt-7 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.cats_title') }}</h2>
           <p class="mb-2 px-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.cats_intro') }}</p>
           <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
+            {{-- Built-in default categories (not removable) --}}
+            <template x-for="c in receiptCatSuggestions" :key="'def-'+c">
+              <div class="flex items-center gap-3 px-4 py-2.5">
+                <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #e2915a"><x-icon name="hashtag" class="h-4 w-4" /></span>
+                <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="c"></span>
+                <x-badge variant="gray">{{ __('invoices.cats_default') }}</x-badge>
+              </div>
+            </template>
+            {{-- Custom categories (removable) --}}
             <template x-for="c in (financeCategories || [])" :key="c.name">
               <div class="group flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5">
-                <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #e2915a"><x-icon name="hashtag" class="h-4 w-4" /></span>
+                <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #59ad6b"><x-icon name="hashtag" class="h-4 w-4" /></span>
                 <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="c.name"></span>
                 <x-icon-button name="trash" tone="red" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="removeFinanceCategory(c)" :aria-label="__('common.delete')" />
               </div>

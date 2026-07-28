@@ -224,6 +224,7 @@ return [
     'cats_intro' => 'Eigene Beleg-Kategorien (zusätzlich zu den Vorschlägen).',
     'cats_empty' => 'Noch keine eigenen Kategorien.',
     'cats_add' => 'Hinzufügen',
+    'cats_default' => 'Standard',
     'cats_add_ph' => 'Neue Kategorie',
     'receipt_auto_attached' => ':n Belege per Betrag zugeordnet.',
     'assign_intro' => 'Diesen Beleg zuordnen (:n offen)',

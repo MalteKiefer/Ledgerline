@@ -310,7 +310,6 @@ export default (config = {}, labels = {}) => ({
         return list.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 20);
     },
     receiptDoc: null,     // the { r, tx } currently edited in the detail modal
-    receiptTagInput: '',
     _receiptContacts: [],
     // Give every stored receipt a stable id (once) so it can be edited/re-linked.
     _ensureReceiptIds() {
@@ -337,7 +336,7 @@ export default (config = {}, labels = {}) => ({
     },
     async openReceiptDoc(doc) {
         this.receiptDoc = doc;
-        this.receiptTagInput = (doc.r.tags || []).join(', ');
+        this.tagsValue = (doc.r.tags || []).join(", ");
         try { if (await bootStore(this.$store, 'contacts')) this._receiptContacts = (window.LLModuleStore.contacts.data.contacts || []).filter((c) => ! c.trashed); }
         catch (e) { /* leave empty */ }
     },
@@ -352,7 +351,7 @@ export default (config = {}, labels = {}) => ({
     setReceiptContact(c) { if (this.receiptDoc) { this.receiptDoc.r.contactId = c ? c.id : null; this.receiptDoc.r.contactName = c ? contactDisplayName(c) : ''; this.saveReceiptDoc(); } },
     saveReceiptDoc() {
         if (! this.receiptDoc) return;
-        this.receiptDoc.r.tags = this.receiptTagInput.split(',').map((t) => t.trim()).filter(Boolean);
+        this.receiptDoc.r.tags = (this.tagsValue || '').split(',').map((t) => t.trim()).filter(Boolean);
         this._save();
     },
     // Move a receipt to another booking (re-link).
@@ -400,7 +399,7 @@ export default (config = {}, labels = {}) => ({
                 r.ocr = text.slice(0, 200000);
                 this._applyAnalysis(r, analyzeReceiptText(text));
             }
-            if (save) { this._save(); if (this.receiptDoc === doc) this.receiptTagInput = (r.tags || []).join(', '); }
+            if (save) { this._save(); if (this.receiptDoc === doc) this.tagsValue = (r.tags || []).join(', '); }
             return true;
         } catch (e) { return false; }
     },
@@ -443,7 +442,9 @@ export default (config = {}, labels = {}) => ({
     get allCategories() { return [...new Set([...(this.financeCategories || []).map((c) => c.name), ...this.receiptCatSuggestions])]; },
     addFinanceCategory(name) {
         const n = String(name || '').trim(); if (! n) return;
-        if (! (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase())) { this.financeCategories.push({ name: n }); this._save(); }
+        const exists = (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase())
+            || this.receiptCatSuggestions.some((c) => c.toLowerCase() === n.toLowerCase());
+        if (! exists) { this.financeCategories.push({ name: n }); this._save(); }
         this.newCategoryName = '';
     },
     async removeFinanceCategory(c) { const i = this.financeCategories.indexOf(c); if (i >= 0) this.financeCategories.splice(i, 1); this._save(); },
