@@ -217,14 +217,30 @@ export default (config = {}, labels = {}) => ({
     stmt: null,             // import wizard state
     openAccount(pm) {
         this.payAccount = pm; this.payView = 'account'; this.txPage = 1;
+        this.txYear = new Date().getFullYear(); // default to the current year
         this.rematchAll(true); // auto-link payments to invoices on open (silent)
         try { window.scrollTo({ top: 0 }); } catch (e) { /* */ }
     },
     backToPayments() { this.payView = 'list'; this.payAccount = null; },
-    // Transactions of the open account, newest first.
+    // The open account's statement year (defaults to the current year on open).
+    txYear: new Date().getFullYear(),
+    setTxYear(y) { this.txYear = y; this.txPage = 1; },
+    // Years that have transactions for the open account (+ current year), newest first.
+    get accountTxYears() {
+        const id = this.payAccount?.id;
+        const set = new Set([new Date().getFullYear()]);
+        for (const t of (this.transactions || [])) {
+            if (t.account !== id || ! this._scopeMatch(this._txPrivate(t))) continue;
+            const y = parseInt(String(t.date || '').slice(0, 4), 10);
+            if (y) set.add(y);
+        }
+        return [...set].sort((a, b) => b - a);
+    },
+    // Transactions of the open account for the selected year, newest first.
     get accountTx() {
         const id = this.payAccount?.id;
-        return (this.transactions || []).filter((t) => t.account === id && this._scopeMatch(this._txPrivate(t))).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        const yr = this.txYear ? String(this.txYear) : null;
+        return (this.transactions || []).filter((t) => t.account === id && this._scopeMatch(this._txPrivate(t)) && (! yr || String(t.date || '').startsWith(yr))).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     },
     // Payment methods for the Zahlungsmittel tab, filtered by the global scope.
     get scopedPayments() { return this.sortedPayments.filter((pm) => this._scopeMatch(this._pmPrivate(pm))); },

@@ -1098,6 +1098,9 @@
                       </div>
                     </div>
                     <div class="flex flex-wrap items-center justify-end gap-2">
+                      <select @change="setTxYear(parseInt($event.target.value, 10))" class="appearance-none rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] px-2 py-1.5 text-sm" aria-label="{{ __('invoices.stats_year') }}">
+                        <template x-for="y in accountTxYears" :key="y"><option :value="y" :selected="txYear === y" x-text="y"></option></template>
+                      </select>
                       <template x-if="unlinkedIncomeCount">
                         <x-button variant="secondary" size="sm" icon="link" @click="rematchAll()">{{ __('invoices.match_run') }}</x-button>
                       </template>
