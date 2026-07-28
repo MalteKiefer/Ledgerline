@@ -107,7 +107,9 @@ window.LLPasswordsStore = makeShardedStore({
 window.LLInvoicesStore = makeShardedStore({
     prefix: '/invoices',
     recordKey: 'invoices',
-    collections: [],
+    // Payment methods (bank accounts, cards, …) live sealed in the finance store as a
+    // collection blob — sensitive (IBAN/card numbers), so zero-knowledge like invoices.
+    collections: [{ key: 'paymentMethods', rootRef: 'payRef', rootKey: 'payKey', rootHash: 'payHash' }],
 });
 
 

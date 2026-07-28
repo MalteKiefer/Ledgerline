@@ -40,6 +40,13 @@
         importDone: @js(__('invoices.import_done')),
         importFailed: @js(__('invoices.import_load_failed')),
         trashConfirm: @js(__('invoices.trash_confirm')),
+        pay_invalid: @js(__('invoices.pay_invalid')),
+        pay_delete_confirm: @js(__('invoices.pay_delete_confirm')),
+        pay_type_bank: @js(__('invoices.pay_type_bank')),
+        pay_type_card: @js(__('invoices.pay_type_card')),
+        pay_type_paypal: @js(__('invoices.pay_type_paypal')),
+        pay_type_cash: @js(__('invoices.pay_type_cash')),
+        pay_type_other: @js(__('invoices.pay_type_other')),
      })">
 
     {{-- Zero-knowledge gate: invoices decrypt with the vault key. --}}
@@ -66,12 +73,12 @@
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('messages.nav.finance') }}</h1>
           <div class="inline-flex flex-wrap rounded-xl bg-black/[0.04] dark:bg-white/10 p-0.5 text-sm font-medium">
-            @php $tabs = ['dashboard' => 'tab_dashboard', 'receipts' => 'tab_receipts', 'invoices' => 'tab_invoices', 'stats' => 'tab_stats']; @endphp
+            @php $tabs = ['dashboard' => 'tab_dashboard', 'invoices' => 'tab_invoices', 'payments' => 'tab_payments', 'receipts' => 'tab_receipts', 'stats' => 'tab_stats']; @endphp
             @foreach ($tabs as $key => $lbl)
               <button type="button" @click="setSection('{{ $key }}')"
                 class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-colors"
                 :class="section === '{{ $key }}' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-accent'">
-                {{ __('invoices.'.$lbl) }}@if ($key === 'receipts' || $key === 'stats')<span class="text-[10px] font-normal text-gray-400 dark:text-gray-500">({{ __('invoices.coming_soon') }})</span>@endif
+                {{ __('invoices.'.$lbl) }}@if ($key === 'receipts')<span class="text-[10px] font-normal text-gray-400 dark:text-gray-500">({{ __('invoices.coming_soon') }})</span>@endif
               </button>
             @endforeach
           </div>
@@ -277,6 +284,145 @@
               </div>
             </div>
           </template>
+        </div>
+
+        {{-- ===================== PAYMENT METHODS ===================== --}}
+        <div x-show="section === 'payments'" class="mt-6">
+          <x-page-heading :title="__('invoices.pay_title')" :subtitle="__('invoices.pay_intro')">
+            <x-slot:actions>
+              <div class="relative" x-data="{ open: false }" @click.outside="open = false">
+                <x-button variant="primary" icon="plus" @click="open = ! open">{{ __('invoices.pay_add') }}</x-button>
+                <div x-show="open" x-cloak x-transition class="absolute right-0 z-20 mt-2 w-52 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+                  <template x-for="t in payTypeOptions" :key="t.type">
+                    <button type="button" @click="newPayment(t.type); open = false" class="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-accent/5">
+                      <span class="ll-chip h-7 w-7 rounded-lg" :style="{ background: payTint(t.type) }"><x-icon ::name="payIcon(t.type)" class="h-4 w-4 text-white" /></span>
+                      <span x-text="payTypeLabel(t.type)"></span>
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </x-slot:actions>
+          </x-page-heading>
+
+          {{-- Empty state --}}
+          <template x-if="! sortedPayments.length">
+            <x-empty-state icon="wallet">{{ __('invoices.pay_empty') }}</x-empty-state>
+          </template>
+
+          {{-- List (iOS grouped) --}}
+          <template x-if="sortedPayments.length">
+            <div class="ll-card !p-0 overflow-hidden">
+              <div class="divide-y divide-black/[0.06] dark:divide-white/10">
+                <template x-for="pm in sortedPayments" :key="pm.id">
+                  <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5">
+                    <span class="ll-chip h-9 w-9 rounded-xl shrink-0" :style="{ background: payTint(pm.type) }"><x-icon ::name="payIcon(pm.type)" class="h-4.5 w-4.5 text-white" /></span>
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="pm.label"></p>
+                      <p class="truncate text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="paySubtitle(pm) || payTypeLabel(pm.type)"></p>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100">
+                      <x-icon-button name="pencil" tone="gray" size="sm" @click="editPayment(pm)" :aria-label="__('common.edit')" />
+                      <x-icon-button name="trash" tone="red" size="sm" @click="removePayment(pm)" :aria-label="__('common.delete')" />
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          {{-- Editor modal --}}
+          <div x-show="payEditing" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelPayment()">
+            <div class="absolute inset-0 bg-gray-900/50" @click="cancelPayment()"></div>
+            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <template x-if="payEditing">
+                <div class="flex min-h-0 flex-1 flex-col">
+                  <div class="flex items-center gap-2.5 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <span class="ll-chip h-8 w-8 rounded-xl" :style="{ background: payTint(payEditing.type) }"><x-icon ::name="payIcon(payEditing.type)" class="h-4.5 w-4.5 text-white" /></span>
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="payIsNew ? payTypeLabel(payEditing.type) : payEditing.label"></h3>
+                    <x-icon-button name="x-mark" tone="gray" size="sm" class="ml-auto" @click="cancelPayment()" :aria-label="__('common.close')" />
+                  </div>
+                  <div class="min-h-0 flex-1 space-y-3 overflow-auto px-5 py-4">
+                    {{-- Common: label + holder --}}
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_label') }}</label>
+                      <input type="text" x-model="payEditing.label" placeholder="{{ __('invoices.pay_label_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_holder') }}</label>
+                      <input type="text" x-model="payEditing.holder" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    </div>
+
+                    {{-- Bank fields --}}
+                    <template x-if="payEditing.type === 'bank'">
+                      <div class="space-y-3">
+                        <div>
+                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_iban') }}</label>
+                          <input type="text" x-model="payEditing.iban" placeholder="DE00 0000 0000 0000 0000 00" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm font-mono tabular-nums">
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                          <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_bic') }}</label>
+                            <input type="text" x-model="payEditing.bic" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                          </div>
+                          <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_bank_name') }}</label>
+                            <input type="text" x-model="payEditing.bankName" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                          </div>
+                        </div>
+                        <div>
+                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_account_no') }}</label>
+                          <input type="text" x-model="payEditing.accountNumber" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums">
+                        </div>
+                      </div>
+                    </template>
+
+                    {{-- Card fields --}}
+                    <template x-if="payEditing.type === 'card'">
+                      <div class="space-y-3">
+                        <div>
+                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_card_number') }}</label>
+                          <input type="text" inputmode="numeric" x-model="payEditing.cardNumber" @input="payCardInput()" placeholder="•••• •••• •••• ••••" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm font-mono tabular-nums">
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                          <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_card_network') }}</label>
+                            <select x-model="payEditing.cardNetwork" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                              <option value="visa">Visa</option>
+                              <option value="mastercard">Mastercard</option>
+                              <option value="amex">Amex</option>
+                              <option value="other">{{ __('invoices.pay_type_other') }}</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_card_expiry') }}</label>
+                            <input type="text" x-model="payEditing.cardExpiry" placeholder="MM/YY" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums">
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+
+                    {{-- PayPal fields --}}
+                    <template x-if="payEditing.type === 'paypal'">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_email') }}</label>
+                        <input type="email" x-model="payEditing.email" placeholder="name@example.com" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      </div>
+                    </template>
+
+                    {{-- Note (all types) --}}
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_note') }}</label>
+                      <textarea x-model="payEditing.note" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-end gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <x-button variant="secondary" @click="cancelPayment()">{{ __('common.cancel') }}</x-button>
+                    <x-button variant="primary" @click="savePayment()">{{ __('common.save') }}</x-button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
         </div>
 
         {{-- ===================== INVOICES TAB (list + editor) ===================== --}}
