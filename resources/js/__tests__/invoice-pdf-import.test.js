@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-    parseAmount, parseGermanDate, parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, parseInvoiceNumber, parseCustomer,
+    parseAmount, parseGermanDate, parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, parseInvoiceNumber, parseCustomer, importedSeq,
 } from '../shared/invoice-pdf-import.js';
 
 describe('invoice PDF import — primitives', () => {
@@ -154,5 +154,42 @@ describe('invoice PDF import — text is authoritative over the filename', () =>
         const c = parseCustomer('Kiefer Networks - Adalbert-Stifter-Str. 6 - 95512 Neudrossenfeld\nIntellyTec GmbH\nIngo Radermacher\nGrünenborn 1\n53797 Lohmar\nRechnung\nR-2024-00001');
         expect(c.name).toBe('IntellyTec GmbH');
         expect(c.address).toContain('53797 Lohmar');
+    });
+});
+
+describe('invoice PDF import — the current-year 2026 format', () => {
+    it('parses both decimal notations', () => {
+        expect(parseAmount('€157.50')).toBe(157.5);   // English dot
+        expect(parseAmount('149,85 €')).toBe(149.85);  // German comma
+        expect(parseAmount('1.071,00 €')).toBe(1071);  // German thousands
+        expect(parseAmount('$1,234.56')).toBe(1234.56); // English thousands
+    });
+    it('recognises the YYYY-NNN number (labeled and bare)', () => {
+        expect(parseInvoiceNumber('Rechnung #: 2026-001 Rechnungsdatum: 02.02.2026')).toBe('2026-001');
+        expect(parseInvoiceNumber('Rechnung Nr.:\nRechnungsdatum:\n2026-003\n30.04.2026')).toBe('2026-003');
+        expect(parseInvoiceNumber('… 2026-005 RECHNUNG …')).toBe('2026-005');
+    });
+    it('parses the English-decimal sheet (2026-001) to zero warnings', () => {
+        const text = 'Rechnung #: 2026-001\nRechnungsdatum: 02.02.2026\nFällig am: 16.02.2026\nRECHNUNG AN\nIntellyTec GmbH\nIngo Radermacher\nGrünenborn 1, 53797 Lohmar\nZwischensumme: €157.50\nSteuer (19%): €29.93\nGesamt: €187.43';
+        const inv = buildImportedInvoice({ number: '2026-001' }, parseInvoiceText(text), { id: 'a', currentYear: 2026 });
+        expect(inv.number).toBe('2026-001');
+        expect(inv.issueDate).toBe('2026-02-02');
+        expect(inv.dueDate).toBe('2026-02-16');
+        expect(inv.customer.name).toBe('IntellyTec GmbH');
+        expect(inv.lines[0].unitPrice).toBe(157.5);
+        expect(inv.lines[0].vatRate).toBe(19);
+        expect(inv.seq).toBe(1);
+        expect(inv._warnings).toEqual([]);
+    });
+    it('strips the seller from a two-column recipient (2026-005)', () => {
+        const c = parseCustomer('2026-005 RECHNUNG\nVON RECHNUNG AN\nKiefer Networks IntellyTec GmbH\nAdalbert-Stifter-Str. 6 Ingo Radermacher\n95512 Neudrossenfeld Grünenborn 1, 53797 Lohmar');
+        expect(c.name).toBe('IntellyTec GmbH');
+    });
+    it('sets a seq only for the current-year series', () => {
+        expect(importedSeq('2026-005', 2026)).toBe(5);
+        expect(importedSeq('2026-001', 2026)).toBe(1);
+        expect(importedSeq('2025-010', 2026)).toBeNull(); // different year
+        expect(importedSeq('R-00124', 2026)).toBeNull();  // different format
+        expect(importedSeq('20', 2026)).toBeNull();
     });
 });
