@@ -138,16 +138,14 @@
                             <x-icon-button name="star" tone="gray" size="sm" @click="toggleFavorite(current)" ::class="current.favorite ? 'text-amber-400' : 'text-gray-300 dark:text-gray-600'" title="{{ __('contacts.favorite') }}" />
                             <button type="button" x-show="editing && current.avatarRef" @click="removeAvatar(current)" class="text-xs text-gray-400 hover:text-red-600">{{ __('contacts.remove_avatar') }}</button>
                             <span class="ml-auto flex items-center gap-1">
-                                <x-icon-button name="pencil" tone="gray" size="sm" x-show="! editing && view !== 'trash'" @click="startEdit()" title="{{ __('contacts.edit') }}" />
                                 <x-button variant="primary" size="sm" x-show="editing" @click="save(); editing = false">{{ __('contacts.done') }}</x-button>
-                                <x-icon-button name="arrow-down-tray" tone="gray" size="sm" @click="exportOne(current)" title="{{ __('contacts.export') }}" />
-                                <template x-if="view === 'trash'">
-                                    <span class="flex gap-1">
-                                        <x-icon-button name="arrow-uturn-left" tone="gray" size="sm" @click="restore(current)" title="{{ __('contacts.restore') }}" />
-                                        <x-icon-button name="trash" tone="gray" size="sm" @click="remove(current)" title="{{ __('contacts.delete_forever') }}" class="hover:!text-red-600" />
-                                    </span>
-                                </template>
-                                <x-icon-button name="trash" tone="gray" size="sm" x-show="view !== 'trash'" @click="trash(current)" title="{{ __('contacts.to_trash') }}" class="hover:!text-red-600" />
+                                <x-action-menu :aria-label="__('common.actions')">
+                                    <x-action-menu-item icon="pencil" x-show="! editing && view !== 'trash'" @click="startEdit()">{{ __('contacts.edit') }}</x-action-menu-item>
+                                    <x-action-menu-item icon="arrow-down-tray" @click="exportOne(current)">{{ __('contacts.export') }}</x-action-menu-item>
+                                    <x-action-menu-item icon="arrow-uturn-left" x-show="view === 'trash'" @click="restore(current)">{{ __('contacts.restore') }}</x-action-menu-item>
+                                    <x-action-menu-item icon="trash" danger x-show="view === 'trash'" @click="remove(current)">{{ __('contacts.delete_forever') }}</x-action-menu-item>
+                                    <x-action-menu-item icon="trash" danger x-show="view !== 'trash'" @click="trash(current)">{{ __('contacts.to_trash') }}</x-action-menu-item>
+                                </x-action-menu>
                             </span>
                         </div>
                     </div>

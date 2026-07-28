@@ -1618,9 +1618,11 @@
                     </td>
                     <td class="px-4 py-2.5" @click.stop>
                       <div class="flex items-center justify-end gap-1">
-                        <x-icon-button name="pencil" size="sm" @click="open(inv)" title="{{ __('common.edit') }}" aria-label="{{ __('common.edit') }}" />
-                        <x-icon-button name="printer" size="sm" @click="printInvoice(inv)" title="{{ __('invoices.print') }}" aria-label="{{ __('invoices.print') }}" />
-                        <x-icon-button name="trash" tone="red" size="sm" @click="trash(inv)" title="{{ __('invoices.trash') }}" aria-label="{{ __('invoices.trash') }}" />
+                        <x-action-menu :aria-label="__('invoices.col_actions')">
+                          <x-action-menu-item icon="pencil" @click="open(inv)">{{ __('common.edit') }}</x-action-menu-item>
+                          <x-action-menu-item icon="printer" @click="printInvoice(inv)">{{ __('invoices.print') }}</x-action-menu-item>
+                          <x-action-menu-item icon="trash" danger @click="trash(inv)">{{ __('invoices.trash') }}</x-action-menu-item>
+                        </x-action-menu>
                       </div>
                     </td>
                   </tr>
@@ -1643,11 +1645,13 @@
                 x-text="statusLabel(current?.status)"></span>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <x-button variant="secondary" x-show="current?.imported && current?.pdf" @click="openOriginalPdf(current)"><x-icon name="document-text" class="mr-1.5 h-4 w-4" />{{ __('invoices.open_original') }}</x-button>
-              <x-button variant="secondary" x-show="! current?.imported || ! current?.pdf" @click="printInvoice(current)"><x-icon name="printer" class="mr-1.5 h-4 w-4" />{{ __('invoices.print') }}</x-button>
-              <x-button variant="secondary" @click="downloadZugferd(current)" icon="arrow-down-tray" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-button>
-              <x-button variant="secondary" x-show="! current?.imported && current?.status === 'draft'" @click="finalize(current)">{{ __('invoices.finalize') }}</x-button>
-              <x-button variant="secondary" x-show="! current?.imported && current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-button>
+              <x-action-menu :aria-label="__('invoices.col_actions')">
+                <x-action-menu-item icon="document-text" x-show="current?.imported && current?.pdf" @click="openOriginalPdf(current)">{{ __('invoices.open_original') }}</x-action-menu-item>
+                <x-action-menu-item icon="printer" x-show="! current?.imported || ! current?.pdf" @click="printInvoice(current)">{{ __('invoices.print') }}</x-action-menu-item>
+                <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
+                <x-action-menu-item icon="check" x-show="! current?.imported && current?.status === 'draft'" @click="finalize(current)">{{ __('invoices.finalize') }}</x-action-menu-item>
+                <x-action-menu-item icon="check-circle" x-show="! current?.imported && current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-action-menu-item>
+              </x-action-menu>
             </div>
           </div>
 

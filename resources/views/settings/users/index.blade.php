@@ -130,22 +130,24 @@
                             @endif
                         </form>
                         <div class="mt-2 flex flex-wrap items-center gap-3">
-                            <form method="POST" action="{{ route('settings.users.reset', $u) }}">
-                                @csrf
-                                <x-button variant="secondary" size="sm" type="submit">{{ __('settings.users_reset') }}</x-button>
-                            </form>
-                            @if ($u->two_factor_confirmed_at)
-                                <form method="POST" action="{{ route('settings.users.reset2fa', $u) }}"
-                                      x-on:submit="if (! confirm(@js(__('settings.users_2fa_reset_confirm')))) $event.preventDefault()">
+                            <x-action-menu align="left" :aria-label="__('common.actions')">
+                                <form method="POST" action="{{ route('settings.users.reset', $u) }}">
                                     @csrf
-                                    <x-button variant="secondary" size="sm" type="submit">{{ __('settings.users_2fa_reset') }}</x-button>
+                                    <x-action-menu-item icon="key" type="submit">{{ __('settings.users_reset') }}</x-action-menu-item>
                                 </form>
-                            @endif
-                            <form method="POST" action="{{ route('settings.users.destroy', $u) }}"
-                                  x-on:submit="if (! confirm(@js(__('settings.users_delete_confirm')))) $event.preventDefault()">
-                                @csrf @method('DELETE')
-                                <x-button variant="danger" size="sm" type="submit">{{ __('settings.users_delete') }}</x-button>
-                            </form>
+                                @if ($u->two_factor_confirmed_at)
+                                    <form method="POST" action="{{ route('settings.users.reset2fa', $u) }}"
+                                          x-on:submit="if (! confirm(@js(__('settings.users_2fa_reset_confirm')))) $event.preventDefault()">
+                                        @csrf
+                                        <x-action-menu-item icon="shield" type="submit">{{ __('settings.users_2fa_reset') }}</x-action-menu-item>
+                                    </form>
+                                @endif
+                                <form method="POST" action="{{ route('settings.users.destroy', $u) }}"
+                                      x-on:submit="if (! confirm(@js(__('settings.users_delete_confirm')))) $event.preventDefault()">
+                                    @csrf @method('DELETE')
+                                    <x-action-menu-item icon="trash" danger type="submit">{{ __('settings.users_delete') }}</x-action-menu-item>
+                                </form>
+                            </x-action-menu>
                         </div>
                     </div>
                 </div>

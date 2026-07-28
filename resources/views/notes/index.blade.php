@@ -70,14 +70,13 @@
                     </button>
                     <div class="flex items-center gap-2">
                         <input type="text" x-model="current.title" @input.debounce.800ms="save()" placeholder="{{ __('notes.title_placeholder') }}" class="w-full border-0 border-b border-gray-100 px-0 text-lg font-semibold text-gray-900 focus:border-accent focus:ring-accent">
-                        <x-icon-button name="bookmark" tone="gray" size="sm" @click="togglePin(current)" x-bind:title="current.pinned ? '{{ __('notes.unpin') }}' : '{{ __('notes.pin') }}'" ::class="current.pinned ? 'text-accent' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600'" />
-                        <template x-if="view === 'trash'">
-                            <span class="flex items-center gap-1">
-                                <x-icon-button name="arrow-uturn-left" tone="gray" size="sm" @click="restore(current)" title="{{ __('notes.restore') }}" />
-                                <x-icon-button name="trash" tone="gray" size="sm" @click="remove(current)" title="{{ __('notes.delete_forever') }}" class="hover:!text-red-600" />
-                            </span>
-                        </template>
-                        <x-icon-button name="trash" tone="gray" size="sm" x-show="view !== 'trash'" @click="trash(current)" title="{{ __('notes.to_trash') }}" class="hover:!text-red-600" />
+                        <x-action-menu :aria-label="__('common.actions')">
+                            <x-action-menu-item icon="bookmark" x-show="! current?.pinned" @click="togglePin(current)">{{ __('notes.pin') }}</x-action-menu-item>
+                            <x-action-menu-item icon="bookmark-solid" x-show="current?.pinned" @click="togglePin(current)">{{ __('notes.unpin') }}</x-action-menu-item>
+                            <x-action-menu-item icon="arrow-uturn-left" x-show="view === 'trash'" @click="restore(current)">{{ __('notes.restore') }}</x-action-menu-item>
+                            <x-action-menu-item icon="trash" danger x-show="view === 'trash'" @click="remove(current)">{{ __('notes.delete_forever') }}</x-action-menu-item>
+                            <x-action-menu-item icon="trash" danger x-show="view !== 'trash'" @click="trash(current)">{{ __('notes.to_trash') }}</x-action-menu-item>
+                        </x-action-menu>
                     </div>
                     <x-tag-field commit="save()" :placeholder="__('notes.tags_placeholder')" />
                     <textarea x-model="current.content" @input="save(); schedulePreview()" placeholder="{{ __('notes.content') }}" class="mt-3 min-h-0 w-full flex-1 rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
