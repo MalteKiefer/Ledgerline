@@ -488,60 +488,49 @@
           </template>
         </div>
 
-        {{-- ===================== SETTINGS (partners + categories) ===================== --}}
-        <div x-show="section === 'settings'" class="mt-6 space-y-6">
+        {{-- ===================== SETTINGS (partners + categories) — iOS grouped lists ===================== --}}
+        <div x-show="section === 'settings'" class="mt-6 mx-auto max-w-2xl">
           {{-- Business partners --}}
-          <div>
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.partners_title') }}</h2>
-                <p class="text-xs text-gray-500 dark:text-gray-400">{{ __('invoices.partners_intro') }}</p>
-              </div>
-              <x-button variant="primary" size="sm" icon="plus" @click="newPartner()">{{ __('invoices.partner_add') }}</x-button>
-            </div>
-            <template x-if="! sortedPartners.length">
-              <x-empty-state icon="user" class="mt-4">{{ __('invoices.partners_empty') }}</x-empty-state>
-            </template>
-            <template x-if="sortedPartners.length">
-              <div class="ll-card !p-0 mt-4 overflow-hidden">
-                <div class="divide-y divide-black/[0.06] dark:divide-white/10">
-                  <template x-for="p in sortedPartners" :key="p.id">
-                    <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5">
-                      <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="background:#6b7280"><x-icon name="user" class="h-4 w-4 text-white" /></span>
-                      <div class="min-w-0 flex-1">
-                        <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="p.name"></p>
-                        <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="[p.category, p.note].filter(Boolean).join(' · ')"></p>
-                      </div>
-                      <div class="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100">
-                        <x-icon-button name="pencil" tone="gray" size="sm" @click="editPartner(p)" :aria-label="__('common.edit')" />
-                        <x-icon-button name="trash" tone="red" size="sm" @click="removePartner(p)" :aria-label="__('common.delete')" />
-                      </div>
-                    </div>
-                  </template>
+          <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.partners_title') }}</h2>
+          <p class="mb-2 px-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partners_intro') }}</p>
+          <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
+            <template x-for="p in sortedPartners" :key="p.id">
+              <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5">
+                <span class="ll-chip h-9 w-9 shrink-0" style="--chip: #6b7280"><x-icon name="user" class="h-5 w-5" /></span>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="p.name"></p>
+                  <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="[p.category, p.note].filter(Boolean).join(' · ') || '—'"></p>
+                </div>
+                <div class="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100">
+                  <x-icon-button name="pencil" tone="gray" size="sm" @click="editPartner(p)" :aria-label="__('common.edit')" />
+                  <x-icon-button name="trash" tone="red" size="sm" @click="removePartner(p)" :aria-label="__('common.delete')" />
                 </div>
               </div>
             </template>
+            {{-- Add row --}}
+            <button type="button" @click="newPartner()" class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-accent/5">
+              <span class="ll-chip h-9 w-9 shrink-0" style="--chip: #7066f5"><x-icon name="plus" class="h-5 w-5" /></span>
+              <span class="text-sm font-medium text-accent">{{ __('invoices.partner_add') }}</span>
+            </button>
           </div>
 
           {{-- Categories --}}
-          <div>
-            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.cats_title') }}</h2>
-            <p class="text-xs text-gray-500 dark:text-gray-400">{{ __('invoices.cats_intro') }}</p>
-            <div class="ll-card mt-4">
-              <div class="flex flex-wrap gap-2">
-                <template x-for="c in (financeCategories || [])" :key="c.name">
-                  <span class="inline-flex items-center gap-1.5 rounded-lg bg-black/[0.04] dark:bg-white/10 px-2.5 py-1 text-sm text-gray-700 dark:text-gray-200">
-                    <span x-text="c.name"></span>
-                    <button type="button" @click="removeFinanceCategory(c)" class="text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-3.5 w-3.5" /></button>
-                  </span>
-                </template>
-                <template x-if="! (financeCategories || []).length"><span class="text-sm text-gray-400 dark:text-gray-500">{{ __('invoices.cats_empty') }}</span></template>
+          <h2 class="mb-2 mt-7 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.cats_title') }}</h2>
+          <p class="mb-2 px-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.cats_intro') }}</p>
+          <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
+            <template x-for="c in (financeCategories || [])" :key="c.name">
+              <div class="group flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5">
+                <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #e2915a"><x-icon name="hashtag" class="h-4 w-4" /></span>
+                <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="c.name"></span>
+                <x-icon-button name="trash" tone="red" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="removeFinanceCategory(c)" :aria-label="__('common.delete')" />
               </div>
-              <form @submit.prevent="addFinanceCategory(newCategoryName)" class="mt-3 flex items-center gap-2">
-                <input type="text" x-model="newCategoryName" placeholder="{{ __('invoices.cats_add_ph') }}" class="w-full max-w-xs rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                <x-button variant="secondary" size="sm" icon="plus" type="submit">{{ __('invoices.cats_add') }}</x-button>
-              </form>
-            </div>
+            </template>
+            {{-- Add row --}}
+            <form @submit.prevent="addFinanceCategory(newCategoryName)" class="flex items-center gap-3 px-4 py-2.5">
+              <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #7066f5"><x-icon name="plus" class="h-4 w-4" /></span>
+              <input type="text" x-model="newCategoryName" placeholder="{{ __('invoices.cats_add_ph') }}" class="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm focus:ring-0">
+              <x-button variant="secondary" size="sm" type="submit" ::disabled="! newCategoryName.trim()">{{ __('invoices.cats_add') }}</x-button>
+            </form>
           </div>
 
           {{-- Partner editor modal --}}
