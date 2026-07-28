@@ -70,7 +70,7 @@
                     </button>
                     <div class="flex items-center gap-2">
                         <input type="text" x-model="current.title" @input.debounce.800ms="save()" placeholder="{{ __('notes.title_placeholder') }}" class="w-full border-0 border-b border-gray-100 px-0 text-lg font-semibold text-gray-900 focus:border-accent focus:ring-accent">
-                        <x-icon-button name="bookmark" tone="gray" size="sm" @click="togglePin(current)" x-bind:title="current.pinned ? @js(__('notes.unpin')) : @js(__('notes.pin'))" ::class="current.pinned ? 'text-accent' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600'" />
+                        <x-icon-button name="bookmark" tone="gray" size="sm" @click="togglePin(current)" x-bind:title="current.pinned ? '{{ __('notes.unpin') }}' : '{{ __('notes.pin') }}'" ::class="current.pinned ? 'text-accent' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600'" />
                         <template x-if="view === 'trash'">
                             <span class="flex items-center gap-1">
                                 <x-icon-button name="arrow-uturn-left" tone="gray" size="sm" @click="restore(current)" title="{{ __('notes.restore') }}" />

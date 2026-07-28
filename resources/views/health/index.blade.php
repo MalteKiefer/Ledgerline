@@ -334,8 +334,8 @@
                                     <div class="truncate text-xs text-gray-400 dark:text-gray-500" x-text="fmtDate(f.start)"></div>
                                 </div>
                                 <div class="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
-                                    <x-icon-button name="pencil" size="sm" @click="openFastEditor(f)" ::title="@js(__('health.fasting_edit'))" aria-label="{{ __('health.fasting_edit') }}" />
-                                    <x-icon-button name="trash" tone="red" size="sm" @click="deleteFast(f)" ::title="@js(__('health.delete'))" aria-label="{{ __('health.delete') }}" />
+                                    <x-icon-button name="pencil" size="sm" @click="openFastEditor(f)" title="{{ __('health.fasting_edit') }}" aria-label="{{ __('health.fasting_edit') }}" />
+                                    <x-icon-button name="trash" tone="red" size="sm" @click="deleteFast(f)" title="{{ __('health.delete') }}" aria-label="{{ __('health.delete') }}" />
                                 </div>
                             </div>
                         </template>

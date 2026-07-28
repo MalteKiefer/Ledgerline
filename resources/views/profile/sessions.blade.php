@@ -23,7 +23,7 @@
                     @unless ($s['current'])
                         <form method="POST" action="{{ route('account.sessions.revoke', $s['id']) }}" class="shrink-0">
                             @csrf @method('DELETE')
-                            <x-icon-button name="x-mark" tone="red" type="submit" ::title="@js(__('account.sessions_revoke'))" aria-label="{{ __('account.sessions_revoke') }}" />
+                            <x-icon-button name="x-mark" tone="red" type="submit" title="{{ __('account.sessions_revoke') }}" aria-label="{{ __('account.sessions_revoke') }}" />
                         </form>
                     @endunless
                 </div>

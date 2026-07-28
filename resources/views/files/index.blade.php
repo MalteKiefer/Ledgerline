@@ -202,7 +202,7 @@
         {{-- Browser --}}
         <div class="mt-4 ll-card !p-0 overflow-hidden">
             <template x-if="rows.length === 0">
-                <x-empty-state class="px-4 py-10" x-text="trashView ? @js(__('files.trash_empty')) : @js(__('files.empty_explorer'))" />
+                <x-empty-state class="px-4 py-10" x-text="trashView ? '{{ __('files.trash_empty') }}' : '{{ __('files.empty_explorer') }}'" />
             </template>
             {{-- Grid view: image thumbnails, icon fallback --}}
             <template x-if="layout === 'grid' && rows.length > 0">

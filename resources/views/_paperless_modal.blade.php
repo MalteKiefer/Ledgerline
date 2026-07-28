@@ -107,8 +107,10 @@
 
             <div class="flex items-center justify-end gap-3 border-t border-gray-100 px-5 py-3 dark:border-gray-800">
                 <x-button variant="secondary" @click="$store.paperless.close()">{{ __('paperless.cancel') }}</x-button>
-                <x-button variant="primary" @click="$store.paperless.submit()" ::disabled="$store.paperless.submitting || $store.paperless.preparing || ! $store.paperless.file"
-                    x-text='$store.paperless.submitting ? @js(__("paperless.sending")) : @js(__("paperless.send"))'></x-button>
+                <x-button variant="primary" @click="$store.paperless.submit()" ::disabled="$store.paperless.submitting || $store.paperless.preparing || ! $store.paperless.file">
+                    <span x-show="! $store.paperless.submitting">{{ __('paperless.send') }}</span>
+                    <span x-show="$store.paperless.submitting" x-cloak>{{ __('paperless.sending') }}</span>
+                </x-button>
             </div>
         </div>
     </div>
