@@ -240,6 +240,8 @@ return [
     'project_no_receipts' => 'No receipts bundled here.',
     'receipt_project' => 'Project',
     'project_none' => 'No project',
+    'scope_label' => 'Scope',
+    'project_kind_inherited' => 'Inherited from parent (:kind)',
     'project_business_total' => 'Business',
     'project_private_total' => 'Private',
     'project_kind' => 'Type',

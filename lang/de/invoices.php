@@ -240,6 +240,8 @@ return [
     'project_no_receipts' => 'Keine Belege hier gebündelt.',
     'receipt_project' => 'Projekt',
     'project_none' => 'Kein Projekt',
+    'scope_label' => 'Bereich',
+    'project_kind_inherited' => 'Vom Elternprojekt übernommen (:kind)',
     'project_business_total' => 'Geschäftlich',
     'project_private_total' => 'Privat',
     'project_kind' => 'Art',
