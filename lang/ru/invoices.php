@@ -240,6 +240,8 @@ return [
     'project_no_receipts' => 'Здесь нет прикреплённых чеков.',
     'receipt_project' => 'Проект',
     'project_none' => 'Без проекта',
+    'scope_label' => 'Область',
+    'project_kind_inherited' => 'Наследуется от родителя (:kind)',
     'project_business_total' => 'Бизнес',
     'project_private_total' => 'Личное',
     'project_kind' => 'Тип',

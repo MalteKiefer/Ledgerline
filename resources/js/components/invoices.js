@@ -68,7 +68,21 @@ export default (config = {}, labels = {}) => ({
     filterStatus: '',    // '' | draft | sent | paid
     _printing: null,     // invoice rendered into the hidden print sheet
     // Finance section: the page is a "Finanzen" hub with tabs. Invoices are one tab.
-    section: 'dashboard', // 'dashboard' | 'receipts' | 'invoices' | 'payments' | 'stats'
+    section: 'dashboard', // 'dashboard' | 'receipts' | 'invoices' | 'payments' | 'projects' | 'stats' | 'settings'
+
+    // Global business/private scope, applied consistently across every finance tab.
+    // 'private' means: a transaction booked as a private draw/deposit (vatCat 'private'),
+    // a non-business payment method, a private project, or a receipt on any of those.
+    financeScope: 'all', // 'all' | 'business' | 'private'
+    setFinanceScope(s) { this.financeScope = s; this.projPage = 1; this.recPage = 1; this.invPage = 1; this.txPage = 1; },
+    _scopeMatch(isPrivate) { return this.financeScope === 'all' || (this.financeScope === 'private') === !! isPrivate; },
+    _txPrivate(tx) { return (tx && tx.vatCat) === 'private'; },
+    _pmPrivate(pm) { return ! (pm && pm.business); },
+    _receiptPrivate(d) {
+        if (! d || ! d.r) return false;
+        if (d.r.projectId) return this.effectiveKind(d.r.projectId) === 'private';
+        return this._txPrivate(d.tx);
+    },
 
     async init() {
         const h = (location.hash || '').replace('#', '');
@@ -210,8 +224,10 @@ export default (config = {}, labels = {}) => ({
     // Transactions of the open account, newest first.
     get accountTx() {
         const id = this.payAccount?.id;
-        return (this.transactions || []).filter((t) => t.account === id).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        return (this.transactions || []).filter((t) => t.account === id && this._scopeMatch(this._txPrivate(t))).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     },
+    // Payment methods for the Zahlungsmittel tab, filtered by the global scope.
+    get scopedPayments() { return this.sortedPayments.filter((pm) => this._scopeMatch(this._pmPrivate(pm))); },
     // ---- Pagination (shared page-size options across all finance tables) ----
     perPageOptions: [5, 10, 15, 20, 25, 50, 100],
     // Account transactions
@@ -412,12 +428,13 @@ export default (config = {}, labels = {}) => ({
     },
     get filteredReceipts() {
         const q = this.receiptQuery.trim().toLowerCase();
-        if (! q) return this.allReceipts;
-        return this.allReceipts.filter(({ r, tx }) =>
+        let list = this.allReceipts.filter((d) => this._scopeMatch(this._receiptPrivate(d)));
+        if (q) list = list.filter(({ r, tx }) =>
             (r.name || '').toLowerCase().includes(q) || (r.note || '').toLowerCase().includes(q) ||
             (r.category || '').toLowerCase().includes(q) || (r.tags || []).join(' ').toLowerCase().includes(q) ||
             (r.merchant || '').toLowerCase().includes(q) || (r.ocr || '').toLowerCase().includes(q) ||
             (tx.counterparty || '').toLowerCase().includes(q) || (tx.purpose || '').toLowerCase().includes(q));
+        return list;
     },
     async openReceiptDoc(doc) {
         this.receiptDoc = doc;
@@ -596,9 +613,12 @@ export default (config = {}, labels = {}) => ({
     cancelProject() { this.projectEditing = null; },
     saveProject() {
         const e = this.projectEditing; if (! e || ! String(e.name || '').trim()) return;
-        const kind = e.kind === 'private' ? 'private' : 'business';
+        // A sub-project always inherits its parent's kind; only a root project sets it.
+        const parent = e.parentId ? this.projects.find((x) => x.id === e.parentId) : null;
+        const kind = parent ? this.effectiveKind(parent.id) : (e.kind === 'private' ? 'private' : 'business');
         if (e.id) { const p = this.projects.find((x) => x.id === e.id); if (p) { p.name = e.name.trim(); p.parentId = e.parentId || null; p.note = e.note || ''; p.kind = kind; } }
         else { this.projects.push({ id: window.LLInvoicesStore.newId(), name: e.name.trim(), parentId: e.parentId || null, note: e.note || '', kind, expenses: [], created: new Date().toISOString() }); }
+        this._normalizeKinds(); // cascade the (possibly changed) root kind through the tree
         this.projectEditing = null; this._save();
     },
     async removeProject(p) {
@@ -641,14 +661,22 @@ export default (config = {}, labels = {}) => ({
     // Private vs business split (each project's OWN total, so the tree isn't double-counted).
     get projectKindSummary() {
         let business = 0, priv = 0;
-        for (const p of (this.projects || [])) { const t = this.projectOwnTotal(p.id); if (p.kind === 'private') priv += t; else business += t; }
+        for (const p of (this.projects || [])) { const t = this.projectOwnTotal(p.id); if (this.effectiveKind(p.id) === 'private') priv += t; else business += t; }
         return { business: Math.round(business * 100) / 100, private: Math.round(priv * 100) / 100 };
     },
     projectKindLabel(kind) { return kind === 'private' ? (labels.project_kind_private || 'Private') : (labels.project_kind_business || 'Business'); },
-    // Business/private scope filter for the project tree ('all' | 'business' | 'private').
-    projScope: 'all',
-    setProjScope(s) { this.projScope = s; this.projPage = 1; },
-    get scopedProjectRows() { const s = this.projScope; return this.projectRows.filter((r) => s === 'all' || (r.project.kind || 'business') === s); },
+    // A project's effective kind = its ROOT ancestor's kind: a sub-project ALWAYS shares
+    // its parent's business/private type (a child can never differ from its parent).
+    effectiveKind(id) {
+        const byId = new Map((this.projects || []).map((p) => [p.id, p]));
+        let cur = byId.get(id), guard = 0;
+        while (cur && cur.parentId && byId.get(cur.parentId) && guard++ < 100) cur = byId.get(cur.parentId);
+        return cur && cur.kind === 'private' ? 'private' : 'business';
+    },
+    // Force every sub-project to its root's kind (repairs edits + legacy data).
+    _normalizeKinds() { for (const p of (this.projects || [])) p.kind = this.effectiveKind(p.id); },
+    // The scoped project tree uses the GLOBAL finance scope.
+    get scopedProjectRows() { return this.projectRows.filter((r) => this._scopeMatch(this.effectiveKind(r.project.id) === 'private')); },
     // Paging — project tree.
     projPage: 1, projPerPage: 15,
     get projPageCount() { return this._pageCount(this.scopedProjectRows.length, this.projPerPage); },
@@ -1073,6 +1101,8 @@ export default (config = {}, labels = {}) => ({
     // ---- Derived ----
     get activeInvoices() { return (this.invoices || []).filter((i) => ! i.trashed); },
     get filtered() {
+        // Invoices are business documents — hidden in the private scope.
+        if (this.financeScope === 'private') return [];
         const q = this.query.trim().toLowerCase();
         let list = this.activeInvoices;
         if (this.filterStatus) list = list.filter((i) => i.status === this.filterStatus);

@@ -111,6 +111,18 @@
           </div>
         </div>
 
+        {{-- Global business/private scope — filters every data tab consistently --}}
+        <div x-show="section !== 'settings'" class="mt-4 flex items-center gap-2">
+          <span class="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.scope_label') }}</span>
+          <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/5 p-0.5">
+            @php $scopes = ['all' => 'project_scope_all', 'business' => 'project_kind_business', 'private' => 'project_kind_private']; @endphp
+            @foreach ($scopes as $sk => $slbl)
+              <button type="button" @click="setFinanceScope('{{ $sk }}')" class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
+                :class="financeScope === '{{ $sk }}' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'">{{ __('invoices.'.$slbl) }}</button>
+            @endforeach
+          </div>
+        </div>
+
         {{-- ===================== DASHBOARD ===================== --}}
         <div x-show="section === 'dashboard'" class="mt-6">
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.dash_intro') }}</p>
@@ -524,16 +536,6 @@
             </div>
           </template>
 
-          {{-- Business / private scope filter --}}
-          <template x-if="projects.length">
-            <div class="mt-4 inline-flex rounded-xl bg-black/[0.04] dark:bg-white/5 p-0.5">
-              @php $scopes = ['all' => 'project_scope_all', 'business' => 'project_kind_business', 'private' => 'project_kind_private']; @endphp
-              @foreach ($scopes as $sk => $slbl)
-                <button type="button" @click="setProjScope('{{ $sk }}')" class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
-                  :class="projScope === '{{ $sk }}' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'">{{ __('invoices.'.$slbl) }}</button>
-              @endforeach
-            </div>
-          </template>
 
           <template x-if="! projects.length">
             <x-empty-state icon="folder" class="mt-6">{{ __('invoices.project_empty') }}</x-empty-state>
@@ -551,7 +553,7 @@
                       :style="{ paddingLeft: (12 + row.depth * 18) + 'px' }">
                       <x-icon name="folder" class="h-4 w-4 shrink-0 text-gray-400" />
                       <span class="min-w-0 flex-1 truncate text-sm text-gray-900 dark:text-gray-100" x-text="row.project.name"></span>
-                      <template x-if="row.project.kind === 'private'"><x-badge variant="gray">{{ __('invoices.project_kind_private') }}</x-badge></template>
+                      <template x-if="effectiveKind(row.project.id) === 'private'"><x-badge variant="gray">{{ __('invoices.project_kind_private') }}</x-badge></template>
                       <span class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="fmtMoney(projectTotal(row.project.id))"></span>
                     </button>
                   </template>
@@ -575,8 +577,8 @@
                       <div class="min-w-0">
                         <div class="flex items-center gap-2">
                           <h2 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="openProject?.name"></h2>
-                          <template x-if="openProject?.kind === 'private'"><x-badge variant="gray">{{ __('invoices.project_kind_private') }}</x-badge></template>
-                          <template x-if="openProject && openProject.kind !== 'private'"><x-badge variant="accent">{{ __('invoices.project_kind_business') }}</x-badge></template>
+                          <template x-if="effectiveKind(openProject?.id) === 'private'"><x-badge variant="gray">{{ __('invoices.project_kind_private') }}</x-badge></template>
+                          <template x-if="openProject && effectiveKind(openProject.id) !== 'private'"><x-badge variant="accent">{{ __('invoices.project_kind_business') }}</x-badge></template>
                         </div>
                         <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="openProject?.note"></p>
                       </div>
@@ -601,7 +603,7 @@
                           <button type="button" @click="openProjectDetail(sp.id)" class="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-accent/5">
                             <x-icon name="folder" class="h-4 w-4 text-gray-400" />
                             <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="sp.name"></span>
-                            <template x-if="sp.kind === 'private'"><x-badge variant="gray">{{ __('invoices.project_kind_private') }}</x-badge></template>
+                            <template x-if="effectiveKind(sp.id) === 'private'"><x-badge variant="gray">{{ __('invoices.project_kind_private') }}</x-badge></template>
                             <span class="text-xs tabular-nums text-gray-500" x-text="fmtMoney(projectTotal(sp.id))"></span>
                           </button>
                         </template>
@@ -686,10 +688,19 @@
                   </div>
                   <div>
                     <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_kind') }}</label>
-                    <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/5 p-0.5">
-                      <button type="button" @click="projectEditing.kind = 'business'" class="rounded-lg px-3 py-1.5 text-sm font-medium transition" :class="projectEditing?.kind !== 'private' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'">{{ __('invoices.project_kind_business') }}</button>
-                      <button type="button" @click="projectEditing.kind = 'private'" class="rounded-lg px-3 py-1.5 text-sm font-medium transition" :class="projectEditing?.kind === 'private' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'">{{ __('invoices.project_kind_private') }}</button>
-                    </div>
+                    {{-- A root project sets its type; a sub-project always inherits the parent's. --}}
+                    <template x-if="! projectEditing?.parentId">
+                      <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/5 p-0.5">
+                        <button type="button" @click="projectEditing.kind = 'business'" class="rounded-lg px-3 py-1.5 text-sm font-medium transition" :class="projectEditing?.kind !== 'private' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'">{{ __('invoices.project_kind_business') }}</button>
+                        <button type="button" @click="projectEditing.kind = 'private'" class="rounded-lg px-3 py-1.5 text-sm font-medium transition" :class="projectEditing?.kind === 'private' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'">{{ __('invoices.project_kind_private') }}</button>
+                      </div>
+                    </template>
+                    <template x-if="projectEditing?.parentId">
+                      <p class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        <x-icon name="lock-closed" class="h-3.5 w-3.5" />
+                        <span x-text="'{{ __('invoices.project_kind_inherited') }}'.replace(':kind', projectKindLabel(effectiveKind(projectEditing.parentId)))"></span>
+                      </p>
+                    </template>
                   </div>
                   <div>
                     <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_parent') }}</label>
@@ -1024,15 +1035,15 @@
           </div>
 
           {{-- Empty state --}}
-          <template x-if="! sortedPayments.length">
+          <template x-if="! scopedPayments.length">
             <x-empty-state icon="wallet">{{ __('invoices.pay_empty') }}</x-empty-state>
           </template>
 
           {{-- List (iOS grouped). Bank accounts open a statement/transaction view. --}}
-          <template x-if="sortedPayments.length">
+          <template x-if="scopedPayments.length">
             <div class="ll-card !p-0 mt-4 overflow-hidden">
               <div class="divide-y divide-black/[0.06] dark:divide-white/10">
-                <template x-for="pm in sortedPayments" :key="pm.id">
+                <template x-for="pm in scopedPayments" :key="pm.id">
                   <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5"
                        :class="pm.type === 'bank' && 'cursor-pointer'"
                        @click="pm.type === 'bank' && openAccount(pm)">
