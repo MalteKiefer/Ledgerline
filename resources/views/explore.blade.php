@@ -68,7 +68,7 @@
 
             {{-- Settings --}}
             <x-icon-button name="clock" size="sm" @click="settingsOpen = true"
-              ::title="@js(__('explore.settings'))" aria-label="{{ __('explore.settings') }}" />
+              title="{{ __('explore.settings') }}" aria-label="{{ __('explore.settings') }}" />
           </div>
         </template>
       </x-slot:actions>
@@ -174,9 +174,9 @@
                     </div>
                     <div class="flex shrink-0 items-center gap-1">
                       <x-icon-button name="route" size="sm" @click="openAssign(m.id)"
-                        ::title="@js(__('explore.assign_to_track'))" aria-label="{{ __('explore.assign_to_track') }}" />
+                        title="{{ __('explore.assign_to_track') }}" aria-label="{{ __('explore.assign_to_track') }}" />
                       <x-icon-button name="x-mark" tone="red" size="sm" x-show="couplings[m.id]" @click="clearCoupling(m.id)"
-                        ::title="@js(__('explore.clear_coupling'))" aria-label="{{ __('explore.clear_coupling') }}" />
+                        title="{{ __('explore.clear_coupling') }}" aria-label="{{ __('explore.clear_coupling') }}" />
                     </div>
                   </div>
                 </template>
@@ -317,10 +317,10 @@
                       <div class="flex shrink-0 items-center gap-0.5" x-show="renamingId !== t.id">
                         <x-icon-button name="pencil" size="sm" @click.stop="startRename(t)"
                           class="md:opacity-0 md:group-hover:opacity-100"
-                          ::title="@js(__('explore.rename_track'))" aria-label="{{ __('explore.rename_track') }}" />
+                          title="{{ __('explore.rename_track') }}" aria-label="{{ __('explore.rename_track') }}" />
                         <x-icon-button name="trash" tone="red" size="sm" @click.stop="deleteTrack(t)"
                           class="md:opacity-0 md:group-hover:opacity-100"
-                          ::title="@js(__('explore.delete_track'))" aria-label="{{ __('explore.delete_track') }}" />
+                          title="{{ __('explore.delete_track') }}" aria-label="{{ __('explore.delete_track') }}" />
                         <x-icon name="chevron-right" class="h-4 w-4 text-gray-300 dark:text-gray-600" />
                       </div>
                     </div>
@@ -336,7 +336,7 @@
                   {{-- Header: back + name (editable) + actions --}}
                   <div class="flex items-start gap-2">
                     <x-icon-button name="chevron-left" @click="backToList()" class="mt-0.5"
-                      ::title="@js(__('explore.back'))" aria-label="{{ __('explore.back') }}" />
+                      title="{{ __('explore.back') }}" aria-label="{{ __('explore.back') }}" />
                     <div class="min-w-0 flex-1">
                       <template x-if="renamingId === selectedTrack.id">
                         <div class="flex items-center gap-1.5">
@@ -354,7 +354,7 @@
                     {{-- Actions: rename / GPX download / delete, in a 3-dot menu --}}
                     <div class="relative mt-0.5 shrink-0" x-data="{ open: false }" @keydown.escape.window="open = false">
                       <x-icon-button name="ellipsis" @click="open = ! open"
-                        ::title="@js(__('explore.track_actions'))" aria-label="{{ __('explore.track_actions') }}" ::aria-expanded="open" />
+                        title="{{ __('explore.track_actions') }}" aria-label="{{ __('explore.track_actions') }}" ::aria-expanded="open" />
                       <div x-show="open" x-cloak @click.outside="open = false"
                         class="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-lg">
                         <button type="button" @click="open = false; startRename(selectedTrack)"

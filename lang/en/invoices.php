@@ -254,6 +254,8 @@ return [
     'receipt_rename' => 'Rename',
     'receipt_locked_hint' => 'This receipt comes from a linked invoice and cannot be deleted.',
     'receipt_open_tab' => 'Open in new tab',
+    'receipt_actions' => 'Actions',
+    'receipt_no_preview' => 'No preview available',
     'receipt_no_preview' => 'No preview available for this file type.',
     'receipts_title' => 'Receipts',
     'receipts_none' => 'No receipts yet. Attach one or more.',

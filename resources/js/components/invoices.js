@@ -408,10 +408,29 @@ export default (config = {}, labels = {}) => ({
     async openReceiptDoc(doc) {
         this.receiptDoc = doc;
         this.tagsValue = (doc.r.tags || []).join(", ");
+        this._loadDocPreview();
         try { if (await bootStore(this.$store, 'contacts')) this._receiptContacts = (window.LLModuleStore.contacts.data.contacts || []).filter((c) => ! c.trashed); }
         catch (e) { /* leave empty */ }
     },
-    closeReceiptDoc() { this.receiptDoc = null; },
+    closeReceiptDoc() { this.closeDocPreview(); this.receiptDoc = null; },
+    // Inline preview of the open receipt (decrypt client-side, ZK) shown beside its info.
+    docPreview: null, // { url, mime, name }
+    async _loadDocPreview() {
+        this.closeDocPreview();
+        const r = this.receiptDoc?.r; if (! r || ! r.blob) return; // invoice-linked receipts have no stored blob
+        try {
+            const buf = await fetchBlobBuffer(`${config.rawBase}/${r.blob}`);
+            const plain = window.Vault.decryptFile(buf, r.key);
+            const url = URL.createObjectURL(new Blob([plain], { type: r.mime || 'application/octet-stream' }));
+            this.docPreview = { url, mime: r.mime || '', name: r.name || '' };
+        } catch (e) { /* preview is best-effort */ }
+    },
+    closeDocPreview() {
+        if (this.docPreview?.url) { try { URL.revokeObjectURL(this.docPreview.url); } catch (e) { /* */ } }
+        this.docPreview = null;
+    },
+    get docPreviewIsImage() { return /^image\//.test(this.docPreview?.mime || '') || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(this.docPreview?.name || ''); },
+    get docPreviewIsPdf() { return this.docPreview?.mime === 'application/pdf' || /\.pdf$/i.test(this.docPreview?.name || ''); },
     receiptContacts() {
         const q = (this.receiptDoc?.r.contactQuery || '').trim().toLowerCase();
         let list = this._receiptContacts;

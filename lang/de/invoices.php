@@ -254,6 +254,8 @@ return [
     'receipt_rename' => 'Umbenennen',
     'receipt_locked_hint' => 'Dieser Beleg stammt aus einer verknüpften Rechnung und kann nicht gelöscht werden.',
     'receipt_open_tab' => 'In neuem Tab öffnen',
+    'receipt_actions' => 'Aktionen',
+    'receipt_no_preview' => 'Keine Vorschau verfügbar',
     'receipt_no_preview' => 'Für diesen Dateityp ist keine Vorschau verfügbar.',
     'receipts_title' => 'Belege',
     'receipts_none' => 'Noch keine Belege. Hänge einen oder mehrere an.',

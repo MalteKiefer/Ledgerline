@@ -323,16 +323,56 @@
           {{-- Receipt document detail (metadata, link, notes, tags, category, contact) --}}
           <div x-show="receiptDoc" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeReceiptDoc()">
             <div class="absolute inset-0 bg-gray-900/50" @click="closeReceiptDoc()"></div>
-            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <template x-if="receiptDoc">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="flex items-center gap-2.5 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
                     <span class="ll-chip h-8 w-8 rounded-xl shrink-0" :style="{ background: receiptDoc.r.kind === 'invoice' ? '#7066f5' : '#3fae9f' }"><x-icon name="document" class="h-4.5 w-4.5 text-white" /></span>
                     <p class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100" x-text="receiptDoc.r.name || '{{ __('invoices.receipt') }}'"></p>
-                    <x-icon-button name="arrow-up-right" tone="gray" size="sm" @click="openReceipt(receiptDoc.r)" :aria-label="__('invoices.receipt_open_tab')" />
+                    {{-- Actions in a 3-dot menu next to the title --}}
+                    <div class="relative shrink-0" x-data="{ menu: false }" @keydown.escape.window="menu = false">
+                      <x-icon-button name="ellipsis" tone="gray" size="sm" @click="menu = ! menu" title="{{ __('invoices.receipt_actions') }}" aria-label="{{ __('invoices.receipt_actions') }}" ::aria-expanded="menu" />
+                      <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-30 mt-1 w-52 overflow-hidden rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-xl">
+                        <button type="button" @click="menu = false; openReceipt(receiptDoc.r)" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5 hover:text-accent">
+                          <x-icon name="arrow-up-right" class="h-4 w-4" />{{ __('invoices.receipt_open_tab') }}
+                        </button>
+                        <button type="button" @click="menu = false; renameReceiptDoc()" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5 hover:text-accent">
+                          <x-icon name="pencil" class="h-4 w-4" />{{ __('invoices.receipt_rename') }}
+                        </button>
+                        <template x-if="receiptDoc.r.kind !== 'invoice'">
+                          <button type="button" @click="menu = false; reanalyzeReceipt(receiptDoc)" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5 hover:text-accent">
+                            <x-icon name="arrow-path" class="h-4 w-4" />{{ __('invoices.receipt_reanalyze') }}
+                          </button>
+                        </template>
+                        <template x-if="receiptDoc.r.blob && $store.paperless.configured">
+                          <button type="button" @click="menu = false; sendReceiptToPaperless(receiptDoc)" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5 hover:text-accent">
+                            <x-icon name="share" class="h-4 w-4" />{{ __('paperless.send_to_paperless') }}
+                          </button>
+                        </template>
+                        <template x-if="! receiptDoc.r.locked">
+                          <button type="button" @click="menu = false; deleteReceiptDoc()" class="flex w-full items-center gap-2.5 border-t border-black/[0.06] dark:border-white/10 px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-500/10">
+                            <x-icon name="trash" class="h-4 w-4" />{{ __('common.delete') }}
+                          </button>
+                        </template>
+                      </div>
+                    </div>
                     <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeReceiptDoc()" :aria-label="__('common.close')" />
                   </div>
-                  <div class="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4">
+                  {{-- Two-pane: document preview | info sidebar --}}
+                  <div class="flex min-h-0 flex-1 flex-col md:flex-row">
+                    <div class="min-h-0 shrink-0 border-b border-black/[0.06] dark:border-white/10 md:w-1/2 md:border-b-0 md:border-r">
+                      <div class="h-64 w-full bg-gray-50 dark:bg-[#111] md:h-full">
+                        <template x-if="docPreview && docPreviewIsPdf"><iframe :src="docPreview.url" class="h-full w-full" title="preview"></iframe></template>
+                        <template x-if="docPreview && docPreviewIsImage"><div class="flex h-full w-full items-center justify-center p-2"><img :src="docPreview.url" class="max-h-full max-w-full object-contain" alt="preview"></div></template>
+                        <template x-if="! docPreview">
+                          <div class="flex h-full w-full items-center justify-center p-4 text-center text-xs text-gray-400">
+                            <span x-show="receiptDoc.r.blob">{{ __('invoices.assign_preview_loading') }}</span>
+                            <span x-show="! receiptDoc.r.blob" x-cloak>{{ __('invoices.receipt_no_preview') }}</span>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                    <div class="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4 md:w-1/2">
                     {{-- Linkage --}}
                     <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2.5">
                       <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_linked') }}</p>
@@ -409,20 +449,7 @@
                     <template x-if="receiptDoc.r.locked">
                       <x-alert variant="info">{{ __('invoices.receipt_locked_hint') }}</x-alert>
                     </template>
-                  </div>
-                  <div class="flex flex-wrap items-center justify-between gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <x-button variant="secondary" size="sm" icon="pencil" @click="renameReceiptDoc()">{{ __('invoices.receipt_rename') }}</x-button>
-                      <template x-if="receiptDoc.r.kind !== 'invoice'">
-                        <x-button variant="secondary" size="sm" icon="arrow-path" @click="reanalyzeReceipt(receiptDoc)">{{ __('invoices.receipt_reanalyze') }}</x-button>
-                      </template>
-                      <template x-if="receiptDoc.r.blob && $store.paperless.configured">
-                        <x-button variant="secondary" size="sm" icon="share" @click="sendReceiptToPaperless(receiptDoc)">{{ __('paperless.send_to_paperless') }}</x-button>
-                      </template>
                     </div>
-                    <template x-if="! receiptDoc.r.locked">
-                      <x-button variant="danger" size="sm" icon="trash" @click="deleteReceiptDoc()">{{ __('common.delete') }}</x-button>
-                    </template>
                   </div>
                 </div>
               </template>
