@@ -193,13 +193,27 @@ export default (config = {}, labels = {}) => ({
     payView: 'list',        // 'list' | 'account'
     payAccount: null,       // the payment method whose statement is open
     stmt: null,             // import wizard state
-    openAccount(pm) { this.payAccount = pm; this.payView = 'account'; try { window.scrollTo({ top: 0 }); } catch (e) { /* */ } },
+    openAccount(pm) {
+        this.payAccount = pm; this.payView = 'account'; this.txPage = 1;
+        this.rematchAll(true); // auto-link payments to invoices on open (silent)
+        try { window.scrollTo({ top: 0 }); } catch (e) { /* */ }
+    },
     backToPayments() { this.payView = 'list'; this.payAccount = null; },
     // Transactions of the open account, newest first.
     get accountTx() {
         const id = this.payAccount?.id;
         return (this.transactions || []).filter((t) => t.account === id).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     },
+    // ---- Pagination for the account's transaction list (10 / 25 per page) ----
+    txPage: 1,
+    txPerPage: 25,
+    get txPageCount() { return Math.max(1, Math.ceil(this.accountTx.length / this.txPerPage)); },
+    get pagedAccountTx() {
+        const start = (this.txPage - 1) * this.txPerPage;
+        return this.accountTx.slice(start, start + this.txPerPage);
+    },
+    setTxPerPage(n) { this.txPerPage = n; this.txPage = 1; },
+    txGoto(p) { this.txPage = Math.min(this.txPageCount, Math.max(1, p)); },
     accountTxCount(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).length; },
     // Balance = sum of an account's transactions (imported statements are signed).
     accountBalance(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).reduce((s, t) => s + (t.amount || 0), 0); },
@@ -309,10 +323,18 @@ export default (config = {}, labels = {}) => ({
     // and attach the invoice to the booking as a LOCKED receipt (can't be removed, only
     // added to). For an imported invoice the stored PDF is used; an app invoice opens the
     // invoice view. Returns true if newly linked.
+    // The invoice's VAT category (highest rate present, if a plain 19/16/7/0), for the
+    // matched income booking — the invoice knows the tax rate.
+    _invoiceVatCat(inv) {
+        const rates = Object.keys(this.computeTotals(inv).vatByRate).map((r) => String(parseInt(r, 10)));
+        const cand = ['19', '16', '7', '0'].find((c) => rates.includes(c));
+        return cand || '';
+    },
     _linkInvoice(tx, inv, save = true) {
         if (! tx || ! inv || tx.invoiceId === inv.id) return false;
         tx.invoiceId = inv.id;
         tx.invoiceNumber = inv.number; // also drives the ZIP export filename
+        const vc = this._invoiceVatCat(inv); if (vc) tx.vatCat = vc; // adopt the invoice's tax rate
         inv.status = 'paid';
         inv.paidAt = tx.date || this._today();
         inv.paymentAccount = tx.account;
@@ -328,7 +350,8 @@ export default (config = {}, labels = {}) => ({
     },
     linkInvoice(tx, inv) { if (this._linkInvoice(tx, inv)) window.llToast?.((labels.match_linked || 'Linked invoice :n.').replace(':n', inv.number)); this.invoicePicker = null; },
     // Auto-match every not-yet-linked income booking of the open account to an invoice.
-    rematchAll() {
+    // silent = run without a toast (used when opening an account).
+    rematchAll(silent = false) {
         let n = 0;
         for (const tx of this.accountTx) {
             if (tx.amount > 0 && ! tx.invoiceId) {
@@ -337,7 +360,8 @@ export default (config = {}, labels = {}) => ({
             }
         }
         if (n) { this._save(); this.reconcileBlobs(); }
-        window.llToast?.((labels.match_done || ':n invoices matched.').replace(':n', n));
+        if (! silent) window.llToast?.((labels.match_done || ':n invoices matched.').replace(':n', n));
+        return n;
     },
     // Manual link picker: open issued invoices to choose from (for an income booking).
     invoicePicker: null,

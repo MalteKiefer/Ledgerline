@@ -187,6 +187,8 @@ return [
     'tx_counterparty' => 'Контрагент',
     'tx_purpose' => 'Назначение',
     'tx_type' => 'Тип',
+    'per_page' => 'На странице',
+    'page_of' => 'Страница :p из :n',
     'tx_vat' => 'НДС',
     'vatcat_none' => 'Выбрать…',
     'vatcat_19' => '19 %',
