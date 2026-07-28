@@ -393,7 +393,10 @@
                         <p class="text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="paySubtitle(payAccount)"></p>
                       </div>
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center justify-end gap-2">
+                      <template x-if="unlinkedIncomeCount">
+                        <x-button variant="secondary" size="sm" icon="link" @click="rematchAll()">{{ __('invoices.match_run') }}</x-button>
+                      </template>
                       <template x-if="accountReceiptTotal(payAccount)">
                         <x-button variant="secondary" size="sm" icon="arrow-down-tray" ::disabled="exportBusy" @click="downloadAllReceipts(payAccount)">
                           <span x-show="! exportBusy">{{ __('invoices.export_all') }}</span>
@@ -469,7 +472,10 @@
                             </td>
                             <td class="max-w-[16rem] px-4 py-2.5">
                               <p class="truncate text-gray-800 dark:text-gray-200" x-text="tx.counterparty || '—'" :title="tx.counterparty"></p>
-                              <p x-show="tx.iban" class="truncate text-xs text-gray-400 dark:text-gray-500 tabular-nums" x-text="tx.iban"></p>
+                              <p x-show="tx.iban && ! tx.invoiceId" class="truncate text-xs text-gray-400 dark:text-gray-500 tabular-nums" x-text="tx.iban"></p>
+                              <button type="button" x-show="tx.invoiceId" @click="openInvoiceById(tx.invoiceId)" class="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline">
+                                <x-icon name="link" class="h-3 w-3" /><span x-text="'{{ __('invoices.match_invoice') }}'.replace(':n', tx.invoiceNumber || '')"></span>
+                              </button>
                             </td>
                             <td class="max-w-[22rem] truncate px-4 py-2.5 text-gray-500 dark:text-gray-400" x-text="tx.purpose" :title="tx.purpose"></td>
                             <td class="whitespace-nowrap px-4 py-2.5 text-right font-medium tabular-nums" :class="tx.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(tx.amount, tx.currency)"></td>
@@ -642,13 +648,40 @@
                   <div class="flex items-center justify-between gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
                     <span x-show="receiptBusy" class="inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('invoices.receipts_uploading') }}</span>
                     <span x-show="! receiptBusy"></span>
-                    <div>
+                    <div class="flex items-center gap-2">
+                      {{-- Link an issued invoice to an incoming payment --}}
+                      <template x-if="receiptTx.amount > 0 && ! receiptTx.invoiceId">
+                        <x-button variant="secondary" size="sm" icon="link" @click="openInvoicePicker(receiptTx)">{{ __('invoices.match_link') }}</x-button>
+                      </template>
                       <input type="file" x-ref="receiptFile" accept="application/pdf,image/*" multiple class="hidden" @change="uploadReceipts($event.target.files); $event.target.value = ''">
                       <x-button variant="primary" size="sm" icon="arrow-up-tray" ::disabled="receiptBusy" @click="$refs.receiptFile.click()">{{ __('invoices.receipts_add') }}</x-button>
                     </div>
                   </div>
                 </div>
               </template>
+            </div>
+          </div>
+
+          {{-- ---- INVOICE PICKER (link an issued invoice to an income booking) ---- --}}
+          <div x-show="invoicePicker" x-cloak class="fixed inset-0 z-[1110] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="invoicePicker = null">
+            <div class="absolute inset-0 bg-gray-900/50" @click="invoicePicker = null"></div>
+            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.match_pick_title') }}</h3>
+                <x-icon-button name="x-mark" tone="gray" size="sm" @click="invoicePicker = null" :aria-label="__('common.close')" />
+              </div>
+              <div class="min-h-0 flex-1 overflow-auto px-2 py-2">
+                <template x-if="! pickerInvoices.length"><p class="px-3 py-8 text-center text-sm text-gray-400 dark:text-gray-500">{{ __('invoices.match_none') }}</p></template>
+                <template x-for="pi in pickerInvoices" :key="pi.id">
+                  <button type="button" @click="linkInvoice(invoicePicker, pi)" class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-accent/5">
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100"><span x-text="pi.number"></span> · <span x-text="pi.customer?.name || '—'"></span></p>
+                      <p class="text-xs text-gray-400 dark:text-gray-500 tabular-nums" x-text="pi.issueDate + ' · ' + fmtMoney(computeTotals(pi).gross, pi.currency)"></p>
+                    </div>
+                    <span class="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium" :class="pi.status === 'paid' ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400' : 'bg-black/[0.04] text-gray-500 dark:bg-white/10 dark:text-gray-300'" x-text="pi.status === 'paid' ? '{{ __('invoices.status_paid') }}' : '{{ __('invoices.status_sent') }}'"></span>
+                  </button>
+                </template>
+              </div>
             </div>
           </div>
 
