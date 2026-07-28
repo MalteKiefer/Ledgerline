@@ -47,6 +47,18 @@
         pay_type_paypal: @js(__('invoices.pay_type_paypal')),
         pay_type_cash: @js(__('invoices.pay_type_cash')),
         pay_type_other: @js(__('invoices.pay_type_other')),
+        stmt_read_failed: @js(__('invoices.stmt_read_failed')),
+        stmt_unknown: @js(__('invoices.stmt_unknown')),
+        stmt_imported: @js(__('invoices.stmt_imported')),
+        txf_date: @js(__('invoices.txf_date')),
+        txf_valueDate: @js(__('invoices.txf_valueDate')),
+        txf_amount: @js(__('invoices.txf_amount')),
+        txf_purpose: @js(__('invoices.txf_purpose')),
+        txf_counterparty: @js(__('invoices.txf_counterparty')),
+        txf_iban: @js(__('invoices.txf_iban')),
+        txf_bic: @js(__('invoices.txf_bic')),
+        txf_bookingText: @js(__('invoices.txf_bookingText')),
+        txf_eref: @js(__('invoices.txf_eref')),
      })">
 
     {{-- Zero-knowledge gate: invoices decrypt with the vault key. --}}
@@ -288,6 +300,9 @@
 
         {{-- ===================== PAYMENT METHODS ===================== --}}
         <div x-show="section === 'payments'" class="mt-6">
+
+          {{-- ---- LIST VIEW ---- --}}
+          <div x-show="payView === 'list'">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.pay_intro') }}</p>
             <div class="relative" x-data="{ open: false }" @click.outside="open = false">
@@ -308,26 +323,184 @@
             <x-empty-state icon="wallet">{{ __('invoices.pay_empty') }}</x-empty-state>
           </template>
 
-          {{-- List (iOS grouped) --}}
+          {{-- List (iOS grouped). Bank accounts open a statement/transaction view. --}}
           <template x-if="sortedPayments.length">
-            <div class="ll-card !p-0 overflow-hidden">
+            <div class="ll-card !p-0 mt-4 overflow-hidden">
               <div class="divide-y divide-black/[0.06] dark:divide-white/10">
                 <template x-for="pm in sortedPayments" :key="pm.id">
-                  <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5">
+                  <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5"
+                       :class="pm.type === 'bank' && 'cursor-pointer'"
+                       @click="pm.type === 'bank' && openAccount(pm)">
                     <span class="ll-chip h-9 w-9 rounded-xl shrink-0" :style="{ background: payTint(pm.type) }">@include('invoices._payment_icon', ['expr' => 'pm.type', 'cls' => 'h-4.5 w-4.5 text-white'])</span>
                     <div class="min-w-0 flex-1">
-                      <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="pm.label"></p>
+                      <p class="flex items-center gap-2 truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                        <span class="truncate" x-text="pm.label"></span>
+                        <template x-if="pm.business"><x-badge variant="accent">{{ __('invoices.pay_business') }}</x-badge></template>
+                      </p>
                       <p class="truncate text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="paySubtitle(pm) || payTypeLabel(pm.type)"></p>
                     </div>
-                    <div class="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100">
+                    <template x-if="pm.type === 'bank' && accountTxCount(pm)">
+                      <span class="shrink-0 text-right text-sm font-medium tabular-nums" :class="accountBalance(pm) < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-200'" x-text="fmtMoney(accountBalance(pm))"></span>
+                    </template>
+                    <div class="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100" @click.stop>
                       <x-icon-button name="pencil" tone="gray" size="sm" @click="editPayment(pm)" :aria-label="__('common.edit')" />
                       <x-icon-button name="trash" tone="red" size="sm" @click="removePayment(pm)" :aria-label="__('common.delete')" />
                     </div>
+                    <template x-if="pm.type === 'bank'"><x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" /></template>
                   </div>
                 </template>
               </div>
             </div>
           </template>
+          </div>
+
+          {{-- ---- ACCOUNT DETAIL VIEW (statement + transactions) ---- --}}
+          <div x-show="payView === 'account'" x-cloak>
+            <template x-if="payAccount">
+              <div>
+                <button type="button" @click="backToPayments()" class="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-accent dark:text-gray-400">
+                  <x-icon name="chevron-left" class="h-4 w-4" />{{ __('invoices.pay_title') }}
+                </button>
+
+                {{-- Account header --}}
+                <div class="ll-card">
+                  <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                      <span class="ll-chip h-11 w-11 rounded-2xl" :style="{ background: payTint(payAccount.type) }">@include('invoices._payment_icon', ['expr' => 'payAccount.type', 'cls' => 'h-5 w-5 text-white'])</span>
+                      <div>
+                        <p class="text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="payAccount.label"></p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="paySubtitle(payAccount)"></p>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <input type="file" x-ref="stmtFile" accept=".csv,.txt,.sta,.mt940,text/csv,text/plain" class="hidden" @change="importStatement($event.target.files); $event.target.value = ''">
+                      <x-button variant="secondary" size="sm" icon="arrow-up-tray" @click="$refs.stmtFile.click()">{{ __('invoices.stmt_import') }}</x-button>
+                    </div>
+                  </div>
+                  {{-- Balance + income/expense + business toggle --}}
+                  <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <div>
+                      <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.acct_balance') }}</p>
+                      <p class="mt-0.5 text-xl font-semibold tabular-nums" :class="accountBalance(payAccount) < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'" x-text="fmtMoney(accountBalance(payAccount))"></p>
+                    </div>
+                    <div>
+                      <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.acct_income') }}</p>
+                      <p class="mt-0.5 text-xl font-semibold tabular-nums text-green-600 dark:text-green-400" x-text="fmtMoney(accountIncome)"></p>
+                    </div>
+                    <div>
+                      <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.acct_expense') }}</p>
+                      <p class="mt-0.5 text-xl font-semibold tabular-nums text-red-600 dark:text-red-400" x-text="fmtMoney(accountExpense)"></p>
+                    </div>
+                  </div>
+                  <label class="mt-4 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" :checked="payAccount.business" @change="toggleBusiness(payAccount)" class="rounded">
+                    {{ __('invoices.pay_business_set') }}
+                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.pay_business_hint') }}</span>
+                  </label>
+                </div>
+
+                {{-- Transactions --}}
+                <template x-if="! accountTx.length">
+                  <x-empty-state icon="banknotes" class="mt-6 py-14">{{ __('invoices.acct_no_tx') }}</x-empty-state>
+                </template>
+                <template x-if="accountTx.length">
+                  <div class="ll-card !p-0 mt-6 overflow-hidden overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                      <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                        <tr>
+                          <th class="px-4 py-3">{{ __('invoices.col_date') }}</th>
+                          <th class="px-4 py-3">{{ __('invoices.tx_counterparty') }}</th>
+                          <th class="px-4 py-3">{{ __('invoices.tx_purpose') }}</th>
+                          <th class="px-4 py-3 text-right">{{ __('invoices.col_total') }}</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
+                        <template x-for="tx in accountTx" :key="tx.id">
+                          <tr class="hover:bg-accent/5">
+                            <td class="whitespace-nowrap px-4 py-2.5 tabular-nums text-gray-500 dark:text-gray-400" x-text="tx.date"></td>
+                            <td class="max-w-[14rem] truncate px-4 py-2.5 text-gray-800 dark:text-gray-200" x-text="tx.counterparty || '—'" :title="tx.counterparty"></td>
+                            <td class="max-w-[22rem] truncate px-4 py-2.5 text-gray-500 dark:text-gray-400" x-text="tx.purpose" :title="tx.purpose"></td>
+                            <td class="whitespace-nowrap px-4 py-2.5 text-right font-medium tabular-nums" :class="tx.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(tx.amount, tx.currency)"></td>
+                          </tr>
+                        </template>
+                      </tbody>
+                    </table>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+
+          {{-- ---- STATEMENT IMPORT WIZARD ---- --}}
+          <div x-show="stmt" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelStatement()">
+            <div class="absolute inset-0 bg-gray-900/50" @click="cancelStatement()"></div>
+            <div class="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <template x-if="stmt">
+                <div class="flex min-h-0 flex-1 flex-col">
+                  <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.stmt_title') }}</h3>
+                    <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelStatement()" :aria-label="__('common.close')" />
+                  </div>
+
+                  {{-- Column mapping (unknown CSV) --}}
+                  <template x-if="stmt.stage === 'map'">
+                    <div class="min-h-0 flex-1 overflow-auto px-5 py-4">
+                      <p class="text-sm text-gray-600 dark:text-gray-300">{{ __('invoices.stmt_map_hint') }}</p>
+                      <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <template x-for="f in txFields" :key="f">
+                          <label class="text-sm text-gray-700 dark:text-gray-300">
+                            <span x-text="txFieldLabel(f)"></span><span x-show="f === 'date' || f === 'amount'" class="text-red-500">*</span>
+                            <select x-model="stmt.mapping[f]" class="mt-1 block w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                              <option value="">—</option>
+                              <template x-for="h in stmt.header" :key="h"><option :value="h" x-text="h"></option></template>
+                            </select>
+                          </label>
+                        </template>
+                      </div>
+                      <div class="mt-5 flex items-center justify-end gap-3">
+                        <x-button variant="secondary" @click="cancelStatement()">{{ __('common.cancel') }}</x-button>
+                        <x-button variant="primary" ::disabled="! stmtMapReady()" @click="applyStmtMapping()">{{ __('invoices.stmt_map_apply') }}</x-button>
+                      </div>
+                    </div>
+                  </template>
+
+                  {{-- Preview + confirm --}}
+                  <template x-if="stmt.stage === 'preview'">
+                    <div class="flex min-h-0 flex-1 flex-col">
+                      <div class="border-b border-black/[0.06] dark:border-white/10 px-5 py-2.5 text-xs text-gray-500 dark:text-gray-400">
+                        <span x-text="stmt.format + ' · '"></span>
+                        <span x-text="'{{ __('invoices.stmt_summary') }}'.replace(':new', stmt.fresh.length).replace(':dupes', stmt.dupes)"></span>
+                      </div>
+                      <div class="min-h-0 flex-1 overflow-auto px-5 py-3">
+                        <template x-if="! stmt.fresh.length"><p class="py-8 text-center text-sm text-gray-400 dark:text-gray-500">{{ __('invoices.stmt_nothing_new') }}</p></template>
+                        <table x-show="stmt.fresh.length" class="w-full text-sm">
+                          <thead class="text-left text-xs text-gray-400 dark:text-gray-500">
+                            <tr><th class="pb-2 pr-3">{{ __('invoices.col_date') }}</th><th class="pb-2 pr-3">{{ __('invoices.tx_counterparty') }}</th><th class="pb-2 pr-3">{{ __('invoices.tx_purpose') }}</th><th class="pb-2 text-right">{{ __('invoices.col_total') }}</th></tr>
+                          </thead>
+                          <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
+                            <template x-for="(tx, i) in stmt.fresh" :key="i">
+                              <tr>
+                                <td class="whitespace-nowrap py-2 pr-3 tabular-nums text-gray-500 dark:text-gray-400" x-text="tx.date"></td>
+                                <td class="max-w-[12rem] truncate py-2 pr-3 text-gray-800 dark:text-gray-200" x-text="tx.counterparty || '—'"></td>
+                                <td class="max-w-[18rem] truncate py-2 pr-3 text-gray-500 dark:text-gray-400" x-text="tx.purpose"></td>
+                                <td class="whitespace-nowrap py-2 text-right tabular-nums" :class="tx.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(tx.amount, tx.currency)"></td>
+                              </tr>
+                            </template>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div class="flex items-center justify-end gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+                        <x-button variant="secondary" @click="cancelStatement()">{{ __('common.cancel') }}</x-button>
+                        <x-button variant="primary" ::disabled="! stmt.fresh.length" @click="confirmStatementImport()">
+                          <span x-text="'{{ __('invoices.stmt_confirm') }}'.replace(':n', stmt.fresh.length)"></span>
+                        </x-button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </div>
 
           {{-- Editor modal --}}
           <div x-show="payEditing" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelPayment()">

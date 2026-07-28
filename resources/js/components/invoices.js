@@ -11,6 +11,7 @@ import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears } from '../shared/finance-stats';
 import { PAYMENT_TYPES, paymentTint, paymentSubtitle, isValidPaymentMethod, sortedPaymentMethods, blankPaymentMethod, cardNetworkOf } from '../shared/payment-methods';
+import { detectFormat, parseMt940, parseCsv, detectCsvMapping, applyCsvMapping, dedupeTransactions, TX_FIELDS, TX_REQUIRED } from '../shared/bank-statement';
 
 // One-time dual-read migration from the old single-blob module store (/store/invoices)
 // to the sharded store (LLInvoicesStore, spec §3b). Runs only while the sharded store is
@@ -48,7 +49,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices', paymentMethods: 'paymentMethods' }, onLock: (self) => { self.view = 'list'; self.current = null; self.payEditing = null; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions' }, onLock: (self) => { self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -138,9 +139,103 @@ export default (config = {}, labels = {}) => ({
         if (! await this.$store.confirm.ask(labels.pay_delete_confirm || 'Delete this payment method?')) return;
         const i = this.paymentMethods.indexOf(pm);
         if (i >= 0) this.paymentMethods.splice(i, 1);
+        // Also drop that account's imported transactions.
+        for (let j = this.transactions.length - 1; j >= 0; j--) if (this.transactions[j].account === pm.id) this.transactions.splice(j, 1);
         this._save();
         if (this.payEditing && this.payEditing.id === pm.id) this.payEditing = null;
+        if (this.payAccount && this.payAccount.id === pm.id) this.backToPayments();
     },
+    // Mark one account as the business account (Geschäftskonto) — where invoice payments
+    // and receipts are reconciled. Exactly one at a time.
+    toggleBusiness(pm) {
+        const on = ! pm.business;
+        for (const p of this.paymentMethods) p.business = false;
+        pm.business = on;
+        this._save();
+    },
+    get businessAccount() { return (this.paymentMethods || []).find((p) => p.business) || null; },
+
+    // ---- Account detail + bank-statement import (sealed transactions) ----
+    transactions: [],
+    payView: 'list',        // 'list' | 'account'
+    payAccount: null,       // the payment method whose statement is open
+    stmt: null,             // import wizard state
+    openAccount(pm) { this.payAccount = pm; this.payView = 'account'; try { window.scrollTo({ top: 0 }); } catch (e) { /* */ } },
+    backToPayments() { this.payView = 'list'; this.payAccount = null; },
+    // Transactions of the open account, newest first.
+    get accountTx() {
+        const id = this.payAccount?.id;
+        return (this.transactions || []).filter((t) => t.account === id).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    },
+    accountTxCount(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).length; },
+    // Balance = sum of an account's transactions (imported statements are signed).
+    accountBalance(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).reduce((s, t) => s + (t.amount || 0), 0); },
+    get accountIncome() { return this.accountTx.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0); },
+    get accountExpense() { return this.accountTx.filter((t) => t.amount < 0).reduce((s, t) => s + t.amount, 0); },
+
+    // Read a statement file as text, tolerating Windows-1252 (common for Sparkasse CSVs).
+    async _readStatement(file) {
+        const buf = await file.arrayBuffer();
+        const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(buf);
+        if (utf8.includes('�')) { try { return new TextDecoder('windows-1252').decode(buf); } catch (e) { /* keep utf8 */ } }
+        return utf8;
+    },
+    txFields: TX_FIELDS,
+    txFieldLabel(f) { return labels['txf_' + f] || f; },
+    async importStatement(fileList) {
+        const file = (fileList || [])[0];
+        if (! file || ! this.payAccount) return;
+        let text;
+        try { text = await this._readStatement(file); } catch (e) { window.llToast?.(labels.stmt_read_failed || 'Could not read the file.'); return; }
+        const fmt = detectFormat(text, file.name);
+        if (fmt === 'mt940') {
+            const r = parseMt940(text);
+            this._previewStatement(r.transactions, { name: file.name, format: 'MT940' });
+        } else if (fmt === 'csv') {
+            const c = parseCsv(text);
+            const known = detectCsvMapping(c.header);
+            if (known) {
+                const { transactions } = applyCsvMapping(c.header, c.rows, known.map);
+                this._previewStatement(transactions, { name: file.name, format: 'CSV · ' + known.name });
+            } else {
+                // Unknown CSV → let the user map columns to fields.
+                this.stmt = { stage: 'map', name: file.name, header: c.header, rows: c.rows, mapping: this._guessMapping(c.header), transactions: [], fresh: [], dupes: 0 };
+            }
+        } else {
+            window.llToast?.(labels.stmt_unknown || 'Unsupported statement format.');
+        }
+    },
+    // A best-effort initial mapping for the manual step (matches obvious header names).
+    _guessMapping(header) {
+        const m = {};
+        const rules = { date: /datum|date|buchung/i, amount: /betrag|amount|umsatz|wert/i, purpose: /zweck|verwendung|purpose|description|referen/i, counterparty: /empf|beguenst|name|payee|gegen/i, iban: /iban/i, bic: /bic|swift/i };
+        for (const [field, re] of Object.entries(rules)) { const col = (header || []).find((h) => re.test(h)); if (col) m[field] = col; }
+        return m;
+    },
+    stmtMapReady() { return TX_REQUIRED.every((f) => this.stmt?.mapping?.[f]); },
+    applyStmtMapping() {
+        if (! this.stmt || ! this.stmtMapReady()) return;
+        const { transactions } = applyCsvMapping(this.stmt.header, this.stmt.rows, this.stmt.mapping);
+        this._previewStatement(transactions, { name: this.stmt.name, format: 'CSV' });
+    },
+    _previewStatement(transactions, meta) {
+        const existing = (this.transactions || []).filter((t) => t.account === this.payAccount.id);
+        const fresh = dedupeTransactions(existing, transactions);
+        this.stmt = { stage: 'preview', name: meta.name, format: meta.format, transactions, fresh, dupes: transactions.length - fresh.length };
+    },
+    confirmStatementImport() {
+        if (! this.stmt || ! this.payAccount) return;
+        const acct = this.payAccount.id;
+        for (const tx of this.stmt.fresh) {
+            tx.id = window.LLInvoicesStore.newId();
+            tx.account = acct;
+            this.transactions.push(tx);
+        }
+        this._save();
+        window.llToast?.((labels.stmt_imported || ':n transactions imported.').replace(':n', this.stmt.fresh.length));
+        this.stmt = null;
+    },
+    cancelStatement() { this.stmt = null; },
 
     // ---- Derived ----
     get activeInvoices() { return (this.invoices || []).filter((i) => ! i.trashed); },
