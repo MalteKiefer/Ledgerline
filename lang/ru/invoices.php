@@ -209,6 +209,7 @@ return [
     'tab_settings' => 'Настройки',
     'receipt_reanalyze' => 'Распознать заново',
     'receipts_reanalyze_all' => 'Распознать :n',
+    'receipts_rescan_all' => 'Пересканировать все',
     'reanalyze_done' => 'Распознано чеков: :n.',
     'receipt_partner' => 'Деловой партнёр',
     'receipt_partner_ph' => 'Поиск контакта или партнёра…',

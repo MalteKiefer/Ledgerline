@@ -217,9 +217,10 @@
             <input type="search" x-model.debounce.200ms="receiptQuery" @input="recPage = 1" placeholder="{{ __('invoices.receipts_search') }}" class="w-full max-w-xs rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
             <div class="flex items-center gap-3">
               <p class="text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.receipts_count') }}'.replace(':n', allReceipts.length)"></p>
-              <template x-if="unrecognisedReceipts">
-                <x-button variant="secondary" size="sm" icon="arrow-path" ::disabled="reanalyzeBusy" @click="reanalyzeAllReceipts()">
-                  <span x-text="'{{ __('invoices.receipts_reanalyze_all') }}'.replace(':n', unrecognisedReceipts)"></span>
+              <template x-if="allReceipts.length">
+                <x-button variant="secondary" size="sm" icon="arrow-path" ::disabled="reanalyzeBusy" @click="reanalyzeAllReceipts(true)">
+                  <span x-show="! reanalyzeBusy">{{ __('invoices.receipts_rescan_all') }}</span>
+                  <span x-show="reanalyzeBusy" x-text="reanalyzeProgress + ' / ' + reanalyzeTotal"></span>
                 </x-button>
               </template>
               <template x-if="(transactions || []).length">
