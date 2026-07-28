@@ -587,12 +587,12 @@
 
     {{-- ===================== PDF IMPORT REVIEW ===================== --}}
     <template x-teleport="body">
-      <div x-show="importReview" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="! importReview?.running && cancelImport()">
-        <div class="absolute inset-0 bg-gray-900/50" @click="! importReview?.running && cancelImport()"></div>
+      <div x-show="importReview" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="! importReview?.running && ! importReview?.saving && cancelImport()">
+        <div class="absolute inset-0 bg-gray-900/50" @click="! importReview?.running && ! importReview?.saving && cancelImport()"></div>
         <div class="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
           <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-5 py-3">
             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.import_title') }}</h3>
-            <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelImport()" x-show="! importReview?.running" aria-label="{{ __('common.close') }}" />
+            <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelImport()" x-show="! importReview?.running && ! importReview?.saving" aria-label="{{ __('common.close') }}" />
           </div>
 
           {{-- Parsing progress --}}
@@ -603,8 +603,21 @@
             </div>
           </template>
 
+          {{-- Saving / upload progress --}}
+          <template x-if="importReview?.saving">
+            <div class="flex flex-col items-center justify-center gap-4 px-5 py-16">
+              <div class="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+                <x-icon name="arrow-path" class="h-5 w-5 animate-spin" />
+                <span x-text="'{{ __('invoices.import_saving') }}'.replace(':done', importReview.saved).replace(':total', importReview.saveTotal)"></span>
+              </div>
+              <div class="h-2 w-64 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                <div class="h-full ll-accent transition-all" :style="{ width: (importReview.saveTotal ? Math.round(importReview.saved / importReview.saveTotal * 100) : 0) + '%' }"></div>
+              </div>
+            </div>
+          </template>
+
           {{-- Review list --}}
-          <template x-if="importReview && ! importReview.running">
+          <template x-if="importReview && ! importReview.running && ! importReview.saving">
             <div class="flex min-h-0 flex-1 flex-col">
               <div class="border-b border-gray-100 dark:border-gray-800 px-5 py-2.5 text-xs text-gray-500 dark:text-gray-400">
                 <span x-text="'{{ __('invoices.import_summary') }}'.replace(':n', importReview.items.length)"></span>

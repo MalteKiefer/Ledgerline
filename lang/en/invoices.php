@@ -99,6 +99,7 @@ return [
     'import_pdf' => 'Import PDFs',
     'import_title' => 'Import invoice PDFs',
     'import_parsing' => 'Reading PDFs… (:done/:total)',
+    'import_saving' => 'Saving invoices… (:done/:total)',
     'import_summary' => ':n invoices recognised',
     'import_failed_n' => ':n could not be read',
     'import_hint' => 'Rows with missing fields are highlighted — review, then import.',

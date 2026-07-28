@@ -1,0 +1,61 @@
+import { describe, it, expect } from 'vitest';
+import { invoiceTotals, realizedInvoices, vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears } from '../shared/finance-stats.js';
+
+const inv = (o) => ({ status: 'paid', trashed: false, lines: [], ...o });
+const line = (qty, price, rate = 19) => ({ qty, unitPrice: price, vatRate: rate });
+
+const data = [
+    inv({ number: '2026-001', issueDate: '2026-02-02', customer: { name: 'IntellyTec GmbH' }, lines: [line(2.5, 45), line(1, 45)] }), // net 157.5
+    inv({ number: '2026-002', issueDate: '2026-05-31', customer: { name: 'IntellyTec GmbH' }, lines: [line(20, 45)], status: 'sent' }), // net 900 (Q2)
+    inv({ number: '2026-003', issueDate: '2026-08-10', customer: { name: 'Acme AG' }, lines: [line(10, 50, 7)] }), // net 500 @7% (Q3)
+    inv({ number: '2025-009', issueDate: '2025-11-01', customer: { name: 'Acme AG' }, lines: [line(10, 40)] }), // net 400, prior year
+    inv({ number: 'x', issueDate: '2026-03-03', customer: { name: 'Trashed' }, lines: [line(1, 999)], trashed: true }), // ignored
+    inv({ number: 'd', issueDate: '2026-03-03', customer: { name: 'Draft' }, lines: [line(1, 999)], status: 'draft' }), // ignored
+];
+
+describe('finance stats', () => {
+    it('computes single-invoice totals with VAT by rate', () => {
+        expect(invoiceTotals(data[0])).toMatchObject({ net: 157.5, vat: 29.93, gross: 187.43 });
+        expect(invoiceTotals(data[2])).toMatchObject({ net: 500, vat: 35, gross: 535 });
+    });
+    it('realized = issued and not trashed', () => {
+        expect(realizedInvoices(data).map((i) => i.number)).toEqual(['2026-001', '2026-002', '2026-003', '2025-009']);
+    });
+    it('VAT advance return: net/VAT by rate and by quarter', () => {
+        const r = vatReturn(data, 2026);
+        expect(r.net).toBe(1557.5);   // 157.5 + 900 + 500
+        expect(r.vat).toBe(235.93);   // 29.93 + 171 + 35
+        expect(r.count).toBe(3);
+        const q1 = r.quarters.find((q) => q.q === 1);
+        const q2 = r.quarters.find((q) => q.q === 2);
+        const q3 = r.quarters.find((q) => q.q === 3);
+        expect(q1.net).toBe(157.5);
+        expect(q2.net).toBe(900);
+        expect(q3.net).toBe(500);
+        expect(r.byRate.map((b) => b.rate)).toEqual([7, 19]);
+        expect(r.byRate.find((b) => b.rate === 7).vat).toBe(35);
+    });
+    it('revenue by customer, highest first', () => {
+        const c = revenueByCustomer(data, 2026);
+        expect(c[0]).toMatchObject({ name: 'IntellyTec GmbH', net: 1057.5, count: 2 });
+        expect(c[1]).toMatchObject({ name: 'Acme AG', net: 500, count: 1 });
+    });
+    it('monthly revenue', () => {
+        const m = monthlyRevenue(data, 2026);
+        expect(m[1].net).toBe(157.5);  // Feb
+        expect(m[4].net).toBe(900);    // May
+        expect(m[7].net).toBe(500);    // Aug
+        expect(m[0].net).toBe(0);      // Jan
+    });
+    it('KPIs with year-over-year growth', () => {
+        const k = yearKpis(data, 2026);
+        expect(k.net).toBe(1557.5);
+        expect(k.count).toBe(3);
+        expect(k.customers).toBe(2);
+        expect(k.prevNet).toBe(400);
+        expect(k.growthPct).toBe(289.38); // (1557.5-400)/400*100
+    });
+    it('lists active years, newest first', () => {
+        expect(activeYears(data)).toEqual([2026, 2025]);
+    });
+});
