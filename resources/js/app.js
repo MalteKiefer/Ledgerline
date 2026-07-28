@@ -110,9 +110,14 @@ window.LLInvoicesStore = makeShardedStore({
     // Payment methods (bank accounts, cards, …) and imported bank transactions live
     // sealed in the finance store as collection blobs — sensitive (IBAN/statements), so
     // zero-knowledge like invoices. Transactions are re-sealed only when they change.
+    // NOTE (cross-client invariant): every client MUST declare EVERY collection here, or
+    // its save() drops the undeclared collection's root refs → data loss. iOS/Go/Android
+    // must mirror this list (passthrough is fine — load + preserve, no UI needed).
     collections: [
         { key: 'paymentMethods', rootRef: 'payRef', rootKey: 'payKey', rootHash: 'payHash' },
         { key: 'transactions', rootRef: 'txRef', rootKey: 'txKey', rootHash: 'txHash' },
+        { key: 'partners', rootRef: 'partRef', rootKey: 'partKey', rootHash: 'partHash' },
+        { key: 'financeCategories', rootRef: 'catRef', rootKey: 'catKey', rootHash: 'catHash' },
     ],
 });
 

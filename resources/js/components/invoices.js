@@ -52,7 +52,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions' }, onLock: (self) => { self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories' }, onLock: (self) => { self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -66,7 +66,7 @@ export default (config = {}, labels = {}) => ({
 
     async init() {
         const h = (location.hash || '').replace('#', '');
-        if (['dashboard', 'receipts', 'invoices', 'payments', 'stats'].includes(h)) this.section = h;
+        if (['dashboard', 'receipts', 'invoices', 'payments', 'stats', 'settings'].includes(h)) this.section = h;
         await this._initZk();
         if (this.state === 'ready') { this._ensureReceiptIds(); this.reconcileBlobs(); }
     },
@@ -256,6 +256,61 @@ export default (config = {}, labels = {}) => ({
         return list.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 25);
     },
     pickBookingForReceipt(tx) { this.receiptAddPick = false; this.openReceipts(tx); },
+    // Upload receipts and auto-attach each to a booking whose amount matches (from OCR).
+    // Unmatched/ambiguous ones go to a small assignment step.
+    receiptAssign: [],   // pending receipts needing manual assignment: [{ up, total, cands }]
+    autoUploadBusy: false,
+    async uploadReceiptsAuto(fileList) {
+        const files = [...(fileList || [])];
+        if (! files.length) return;
+        this.autoUploadBusy = true;
+        let attached = 0;
+        for (const file of files) {
+            try {
+                const bytes = new Uint8Array(await file.arrayBuffer());
+                const up = await this._uploadFile(bytes, file.name, file.type || 'application/octet-stream');
+                if (! up) continue;
+                up.id = window.LLInvoicesStore.newId();
+                // Recognise (text + total + category/tags) up front.
+                const text = await extractDocText(bytes.slice(0), up.mime, up.name);
+                let total = null;
+                if (text && text.replace(/\s+/g, '').length >= 8) {
+                    up.ocr = text.slice(0, 200000);
+                    const a = analyzeReceiptText(text);
+                    if (a.category) up.category = a.category;
+                    if (a.tags.length) up.tags = a.tags;
+                    if (a.merchant) up.merchant = a.merchant;
+                    total = a.total;
+                }
+                // Find bookings whose absolute amount matches the receipt total (to the cent).
+                const cands = total != null ? (this.transactions || []).filter((t) => Math.abs(Math.abs(t.amount || 0) - total) < 0.005) : [];
+                if (cands.length === 1) { cands[0].receipts = cands[0].receipts || []; cands[0].receipts.push(up); attached++; }
+                else { this.receiptAssign.push({ up, total, cands: cands.slice(0, 12) }); }
+            } catch (e) { /* skip */ }
+        }
+        this.autoUploadBusy = false;
+        this._save(); this.reconcileBlobs();
+        if (attached) window.llToast?.((labels.receipt_auto_attached || ':n receipts matched by amount.').replace(':n', attached));
+    },
+    // Assign a pending (unmatched) receipt to a chosen booking.
+    assignPending(idx, tx) {
+        const p = this.receiptAssign[idx]; if (! p || ! tx) return;
+        tx.receipts = tx.receipts || []; tx.receipts.push(p.up);
+        this.receiptAssign.splice(idx, 1);
+        this._save(); this.reconcileBlobs();
+    },
+    dropPending(idx) {
+        const p = this.receiptAssign[idx]; if (! p) return;
+        this.receiptAssign.splice(idx, 1);
+        this.reconcileBlobs(); // the uploaded-but-unassigned blob is grace-swept
+    },
+    assignQuery: '',
+    assignCandidates() {
+        const q = this.assignQuery.trim().toLowerCase();
+        let list = (this.transactions || []);
+        if (q) list = list.filter((t) => (t.counterparty || '').toLowerCase().includes(q) || (t.purpose || '').toLowerCase().includes(q) || (t.date || '').includes(q));
+        return list.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 20);
+    },
     receiptDoc: null,     // the { r, tx } currently edited in the detail modal
     receiptTagInput: '',
     _receiptContacts: [],
@@ -332,6 +387,95 @@ export default (config = {}, labels = {}) => ({
         const arr = doc.tx.receipts || []; const i = arr.indexOf(doc.r);
         if (i >= 0) arr.splice(i, 1);
         this.receiptDoc = null; this._save(); this.reconcileBlobs();
+    },
+
+    // ---- Re-run OCR/recognition on already-uploaded receipts ----
+    reanalyzeBusy: false,
+    async reanalyzeReceipt(doc, save = true) {
+        const r = doc?.r; if (! r || r.kind === 'invoice' || ! r.blob) return false;
+        try {
+            const buf = await fetchBlobBuffer(`${config.rawBase}/${r.blob}`);
+            const plain = window.Vault.decryptFile(buf, r.key);
+            const bytes = plain instanceof Uint8Array ? plain : new Uint8Array(plain);
+            const text = await extractDocText(bytes, r.mime, r.name);
+            if (text && text.replace(/\s+/g, '').length >= 8) {
+                r.ocr = text.slice(0, 200000);
+                const a = analyzeReceiptText(text);
+                if (! r.category && a.category) r.category = a.category;
+                if ((! r.tags || ! r.tags.length) && a.tags.length) r.tags = a.tags;
+                if (a.merchant && ! r.merchant) r.merchant = a.merchant;
+            }
+            if (save) { this._save(); if (this.receiptDoc === doc) this.receiptTagInput = (r.tags || []).join(', '); }
+            return true;
+        } catch (e) { return false; }
+    },
+    // Bulk: (re-)recognise every non-invoice receipt that has no OCR text yet.
+    async reanalyzeAllReceipts() {
+        if (this.reanalyzeBusy) return;
+        this.reanalyzeBusy = true;
+        let n = 0;
+        for (const doc of this.allReceipts) {
+            if (doc.r.kind === 'invoice' || doc.r.ocr) continue;
+            if (await this.reanalyzeReceipt(doc, false)) n++;
+        }
+        this.reanalyzeBusy = false;
+        if (n) this._save();
+        window.llToast?.((labels.reanalyze_done || ':n receipts recognised.').replace(':n', n));
+    },
+    get unrecognisedReceipts() { return this.allReceipts.filter((d) => d.r.kind !== 'invoice' && ! d.r.ocr).length; },
+
+    // ---- Business partners (Geschäftspartner) — standalone, or an existing contact ----
+    partners: [],
+    financeCategories: [],
+    partnerEditing: null,
+    newPartner() { this.partnerEditing = { name: '', category: '', note: '' }; },
+    editPartner(p) { this.partnerEditing = JSON.parse(JSON.stringify(p)); this.partnerEditing.id = p.id; },
+    cancelPartner() { this.partnerEditing = null; },
+    savePartner() {
+        const p = this.partnerEditing; if (! p || ! String(p.name || '').trim()) return;
+        if (p.id) { const i = this.partners.findIndex((x) => x.id === p.id); if (i >= 0) Object.assign(this.partners[i], p); }
+        else { p.id = window.LLInvoicesStore.newId(); this.partners.push(p); }
+        this._save(); this.partnerEditing = null;
+    },
+    async removePartner(p) {
+        if (! await this.$store.confirm.ask(labels.partner_delete_confirm || 'Delete this business partner?')) return;
+        const i = this.partners.indexOf(p); if (i >= 0) this.partners.splice(i, 1);
+        this._save();
+    },
+    get sortedPartners() { return [...(this.partners || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))); },
+
+    // Managed categories (merged with the built-in suggestions for the datalist).
+    get allCategories() { return [...new Set([...(this.financeCategories || []).map((c) => c.name), ...this.receiptCatSuggestions])]; },
+    addFinanceCategory(name) {
+        const n = String(name || '').trim(); if (! n) return;
+        if (! (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase())) { this.financeCategories.push({ name: n }); this._save(); }
+        this.newCategoryName = '';
+    },
+    async removeFinanceCategory(c) { const i = this.financeCategories.indexOf(c); if (i >= 0) this.financeCategories.splice(i, 1); this._save(); },
+    newCategoryName: '',
+
+    // Unified partner picker for a receipt: existing contacts + standalone partners.
+    partnerOptions() {
+        const q = (this.receiptDoc?.r.partnerQuery || '').trim().toLowerCase();
+        const contacts = (this._receiptContacts || []).map((c) => ({ kind: 'contact', id: c.id, name: contactDisplayName(c) || '' }));
+        const partners = (this.partners || []).map((p) => ({ kind: 'partner', id: p.id, name: p.name || '' }));
+        let list = [...partners, ...contacts].filter((o) => o.name);
+        if (q) list = list.filter((o) => o.name.toLowerCase().includes(q));
+        return list.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 10);
+    },
+    setReceiptPartner(opt) {
+        const r = this.receiptDoc?.r; if (! r) return;
+        if (! opt) { r.contactId = null; r.partnerId = null; r.partnerName = ''; }
+        else if (opt.kind === 'contact') { r.contactId = opt.id; r.partnerId = null; r.partnerName = opt.name; }
+        else { r.partnerId = opt.id; r.contactId = null; r.partnerName = opt.name; }
+        r.partnerQuery = '';
+        this._save();
+    },
+    receiptPartnerName(r) {
+        if (r.partnerName) return r.partnerName;
+        if (r.contactId) return this.contactName(r.contactId) || '';
+        if (r.partnerId) { const p = (this.partners || []).find((x) => x.id === r.partnerId); return p ? p.name : ''; }
+        return '';
     },
     openReceipts(tx) { this.receiptTx = tx; },
     closeReceipts() { this.receiptTx = null; },
