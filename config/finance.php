@@ -7,7 +7,7 @@ return [
     // fetched once a day (nightly) by `finance:fetch-fx` and cached; the request carries no
     // user data (it only GETs public rates) and passes the SSRF guard. Host from config,
     // never user input. Default = frankfurter.app (ECB data, no API key).
-    'fx_url' => env('FINANCE_FX_URL', 'https://api.frankfurter.app/latest'),
+    'fx_url' => env('FINANCE_FX_URL', 'https://api.frankfurter.dev/v1/latest'),
 
     // Currencies to fetch (base is always EUR; stored inverted as X→EUR).
     'fx_symbols' => ['USD', 'GBP', 'CHF', 'JPY', 'CAD', 'AUD', 'SEK', 'NOK', 'DKK', 'PLN'],
