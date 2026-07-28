@@ -215,7 +215,7 @@ return [
     'partner_contact' => 'Kontakt',
     'partner_partner' => 'Partner',
     'partners_title' => 'Geschäftspartner',
-    'partners_intro' => 'Partner zum Verknüpfen mit Belegen (neben deinen Kontakten).',
+    'partners_intro' => 'Partner zum Verknüpfen mit Belegen (neben deinen Kontakten). Die Kategorie eines Partners wird künftig automatisch auf Belege desselben Händlers angewendet.',
     'partner_add' => 'Partner anlegen',
     'partners_empty' => 'Noch keine Geschäftspartner.',
     'partner_name' => 'Name',
