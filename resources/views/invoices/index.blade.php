@@ -450,6 +450,32 @@
                   </label>
                 </div>
 
+                {{-- VAT summary from the categorised bookings (for the USt calculation) --}}
+                <template x-if="accountVat.income.length || accountVat.expense.length || accountVat.undecided">
+                  <div class="ll-card mt-6">
+                    <div class="flex items-center gap-2">
+                      <span class="ll-chip h-7 w-7 rounded-lg" style="background:#e2915a"><x-icon name="receipt-percent" class="h-4 w-4 text-white" /></span>
+                      <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.vat_summary_title') }}</h3>
+                    </div>
+                    <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                        <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_output') }}</p>
+                        <p class="mt-0.5 text-lg font-semibold tabular-nums text-green-600 dark:text-green-400" x-text="fmtMoney(accountVat.outputVat)"></p>
+                      </div>
+                      <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                        <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_input') }}</p>
+                        <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-700 dark:text-gray-200" x-text="fmtMoney(accountVat.inputVat)"></p>
+                      </div>
+                      <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                        <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_payable') }}</p>
+                        <p class="mt-0.5 text-lg font-semibold tabular-nums text-accent" x-text="fmtMoney(accountVat.payable)"></p>
+                      </div>
+                    </div>
+                    <p x-show="accountVat.undecided" class="mt-3 text-xs text-amber-600 dark:text-amber-400" x-text="'{{ __('invoices.vat_undecided') }}'.replace(':n', accountVat.undecided)"></p>
+                    <p x-show="accountVat.privateSum" class="mt-1 text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.vat_private') }}'.replace(':sum', fmtMoney(accountVat.privateSum))"></p>
+                  </div>
+                </template>
+
                 {{-- Transactions --}}
                 <template x-if="! accountTx.length">
                   <x-empty-state icon="banknotes" class="mt-6 py-14">{{ __('invoices.acct_no_tx') }}</x-empty-state>
@@ -527,31 +553,6 @@
                   </div>
                 </template>
 
-                {{-- VAT summary from the categorised bookings (for the USt calculation) --}}
-                <template x-if="accountVat.income.length || accountVat.expense.length || accountVat.undecided">
-                  <div class="ll-card mt-6">
-                    <div class="flex items-center gap-2">
-                      <span class="ll-chip h-7 w-7 rounded-lg" style="background:#e2915a"><x-icon name="receipt-percent" class="h-4 w-4 text-white" /></span>
-                      <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.vat_summary_title') }}</h3>
-                    </div>
-                    <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
-                        <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_output') }}</p>
-                        <p class="mt-0.5 text-lg font-semibold tabular-nums text-green-600 dark:text-green-400" x-text="fmtMoney(accountVat.outputVat)"></p>
-                      </div>
-                      <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
-                        <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_input') }}</p>
-                        <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-700 dark:text-gray-200" x-text="fmtMoney(accountVat.inputVat)"></p>
-                      </div>
-                      <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
-                        <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_payable') }}</p>
-                        <p class="mt-0.5 text-lg font-semibold tabular-nums text-accent" x-text="fmtMoney(accountVat.payable)"></p>
-                      </div>
-                    </div>
-                    <p x-show="accountVat.undecided" class="mt-3 text-xs text-amber-600 dark:text-amber-400" x-text="'{{ __('invoices.vat_undecided') }}'.replace(':n', accountVat.undecided)"></p>
-                    <p x-show="accountVat.privateSum" class="mt-1 text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.vat_private') }}'.replace(':sum', fmtMoney(accountVat.privateSum))"></p>
-                  </div>
-                </template>
               </div>
             </template>
           </div>
