@@ -516,8 +516,9 @@
                   <div class="min-h-0 flex-1 space-y-3 overflow-auto px-5 py-4">
                     {{-- Common: label + holder --}}
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_label') }}</label>
-                      <input type="text" x-model="payEditing.label" placeholder="{{ __('invoices.pay_label_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_label') }} <span class="text-red-500">*</span></label>
+                      <input type="text" x-model="payEditing.label" placeholder="{{ __('invoices.pay_label_ph') }}" :class="payErr('label') && 'ring-2 ring-red-400 border-red-400'" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <p x-show="payErr('label')" class="mt-1 text-xs text-red-500">{{ __('invoices.pay_required') }}</p>
                     </div>
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_holder') }}</label>
@@ -528,8 +529,9 @@
                     <template x-if="payEditing.type === 'bank'">
                       <div class="space-y-3">
                         <div>
-                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_iban') }}</label>
-                          <input type="text" x-model="payEditing.iban" placeholder="DE00 0000 0000 0000 0000 00" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm font-mono tabular-nums">
+                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_iban') }} <span class="text-red-500">*</span></label>
+                          <input type="text" x-model="payEditing.iban" placeholder="DE00 0000 0000 0000 0000 00" :class="payErr('iban') && 'ring-2 ring-red-400 border-red-400'" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm font-mono tabular-nums">
+                          <p x-show="payErr('iban')" class="mt-1 text-xs text-red-500">{{ __('invoices.pay_iban_or_acct') }}</p>
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                           <div>
@@ -552,8 +554,9 @@
                     <template x-if="payEditing.type === 'card'">
                       <div class="space-y-3">
                         <div>
-                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_card_number') }}</label>
-                          <input type="text" inputmode="numeric" x-model="payEditing.cardNumber" @input="payCardInput()" placeholder="•••• •••• •••• ••••" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm font-mono tabular-nums">
+                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_card_number') }} <span class="text-red-500">*</span></label>
+                          <input type="text" inputmode="numeric" x-model="payEditing.cardNumber" @input="payCardInput()" placeholder="•••• •••• •••• ••••" :class="payErr('cardNumber') && 'ring-2 ring-red-400 border-red-400'" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm font-mono tabular-nums">
+                          <p x-show="payErr('cardNumber')" class="mt-1 text-xs text-red-500">{{ __('invoices.pay_required') }}</p>
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                           <div>
@@ -576,8 +579,9 @@
                     {{-- PayPal fields --}}
                     <template x-if="payEditing.type === 'paypal'">
                       <div>
-                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_email') }}</label>
-                        <input type="email" x-model="payEditing.email" placeholder="name@example.com" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_email') }} <span class="text-red-500">*</span></label>
+                        <input type="email" x-model="payEditing.email" placeholder="name@example.com" :class="payErr('email') && 'ring-2 ring-red-400 border-red-400'" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <p x-show="payErr('email')" class="mt-1 text-xs text-red-500">{{ __('invoices.pay_required') }}</p>
                       </div>
                     </template>
 

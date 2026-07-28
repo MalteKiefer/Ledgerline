@@ -164,6 +164,8 @@ return [
     'pay_email' => 'E-Mail',
     'pay_note' => 'Notiz',
     'pay_invalid' => 'Bitte die Pflichtfelder ausfüllen.',
+    'pay_required' => 'Dieses Feld ist erforderlich.',
+    'pay_iban_or_acct' => 'IBAN oder Kontonummer erforderlich.',
     'pay_delete_confirm' => 'Dieses Zahlungsmittel löschen?',
     'cycle_title' => 'Nummernkreis',
     'cycle_next' => 'Nächste Nummer',

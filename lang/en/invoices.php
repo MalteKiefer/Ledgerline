@@ -164,6 +164,8 @@ return [
     'pay_email' => 'Email',
     'pay_note' => 'Note',
     'pay_invalid' => 'Please fill in the required fields.',
+    'pay_required' => 'This field is required.',
+    'pay_iban_or_acct' => 'An IBAN or account number is required.',
     'pay_delete_confirm' => 'Delete this payment method?',
     'cycle_title' => 'Numbering cycle',
     'cycle_next' => 'Next number',
