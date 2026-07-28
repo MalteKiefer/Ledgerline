@@ -215,7 +215,7 @@ return [
     'partner_contact' => 'Contact',
     'partner_partner' => 'Partner',
     'partners_title' => 'Business partners',
-    'partners_intro' => 'Partners you can link to receipts (besides your contacts).',
+    'partners_intro' => 'Partners you can link to receipts (besides your contacts). A partner\'s category is applied automatically to future receipts from the same merchant.',
     'partner_add' => 'Add partner',
     'partners_empty' => 'No business partners yet.',
     'partner_name' => 'Name',

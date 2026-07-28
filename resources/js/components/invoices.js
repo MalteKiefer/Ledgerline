@@ -13,6 +13,7 @@ import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, ac
 import { matchInvoice } from '../shared/invoice-match';
 import { extractDocText } from '../shared/doc-text';
 import { analyzeReceiptText } from '../shared/receipt-ocr';
+import { normMerchant, matchPartner, learnedCategoryFor } from '../shared/merchant-learn';
 import { PAYMENT_TYPES, paymentTint, paymentSubtitle, isValidPaymentMethod, sortedPaymentMethods, blankPaymentMethod, cardNetworkOf } from '../shared/payment-methods';
 import { detectFormat, parseMt940, parseCsv, detectCsvMapping, applyCsvMapping, enrichExisting, classifyTxType, guessVatCat, VAT_CATS, txSignature as txSig, TX_FIELDS, TX_REQUIRED } from '../shared/bank-statement';
 
@@ -367,6 +368,7 @@ export default (config = {}, labels = {}) => ({
     saveReceiptDoc() {
         if (! this.receiptDoc) return;
         this.receiptDoc.r.tags = (this.tagsValue || '').split(',').map((t) => t.trim()).filter(Boolean);
+        this._learnFromReceipt(this.receiptDoc.r, this.receiptDoc.tx);
         this._save();
     },
     // Move a receipt to another booking (re-link).
@@ -482,6 +484,8 @@ export default (config = {}, labels = {}) => ({
         else if (opt.kind === 'contact') { r.contactId = opt.id; r.partnerId = null; r.partnerName = opt.name; }
         else { r.partnerId = opt.id; r.contactId = null; r.partnerName = opt.name; }
         r.partnerQuery = '';
+        // Pre-fill the category this partner is known for (learned rule), if none yet.
+        if (! r.category && opt && opt.name) { const learned = this._learnedCategory(opt.name); if (learned) r.category = learned; }
         this._save();
     },
     receiptPartnerName(r) {
@@ -495,18 +499,37 @@ export default (config = {}, labels = {}) => ({
         try { if (await bootStore(this.$store, 'contacts')) this._receiptContacts = (window.LLModuleStore.contacts.data.contacts || []).filter((c) => ! c.trashed); }
         catch (e) { /* leave empty */ }
     },
+    _normName(s) { return normMerchant(s); },
+    _partnerByName(name) { return matchPartner(this.partners, name); },
+    _findOrCreatePartner(name) {
+        let p = this._partnerByName(name);
+        if (! p) { p = { id: window.LLInvoicesStore.newId(), name: String(name).trim() }; this.partners.push(p); }
+        return p;
+    },
+    // The learned category for a merchant (a partner the user has categorised). This is
+    // the user-specific "training": once you categorise a receipt, the same merchant is
+    // categorised automatically next time.
+    _learnedCategory(name) { return learnedCategoryFor(this.partners, name); },
+    // Remember a receipt's category on its merchant's partner (rule holder).
+    _learnFromReceipt(r, tx) {
+        const name = String((tx && tx.counterparty) || r.merchant || '').trim();
+        if (name.length < 2 || ! r.category) return;
+        const p = this._findOrCreatePartner(name);
+        if (p.category !== r.category) p.category = r.category;
+    },
     // Auto-link a receipt to a business partner from the booking's counterparty (reliable)
     // or the recognised merchant: match an existing contact/partner, else create a partner.
+    // Also applies a learned category (user-confirmed → wins over the regex guess).
     _autoPartner(r, tx) {
-        if (r.contactId || r.partnerId) return;
         const name = String((tx && tx.counterparty) || r.merchant || '').trim();
         if (name.length < 2) return;
-        const key = (s) => String(s || '').toLowerCase().replace(/\b(gmbh|ag|kg|ohg|ug|mbh|e\.?k\.?|co\.?|deutschland)\b/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
-        const nk = key(name);
-        const contact = (this._receiptContacts || []).find((c) => key(contactDisplayName(c)) === nk);
+        const learned = this._learnedCategory(name);
+        if (learned) r.category = learned;
+        if (r.contactId || r.partnerId) return;
+        const nk = this._normName(name);
+        const contact = (this._receiptContacts || []).find((c) => this._normName(contactDisplayName(c)) === nk);
         if (contact) { r.contactId = contact.id; r.partnerName = contactDisplayName(contact); return; }
-        let partner = (this.partners || []).find((p) => key(p.name) === nk);
-        if (! partner) { partner = { id: window.LLInvoicesStore.newId(), name }; this.partners.push(partner); }
+        const partner = this._findOrCreatePartner(name);
         r.partnerId = partner.id; r.partnerName = partner.name;
     },
     openReceipts(tx) { this.receiptTx = tx; },
