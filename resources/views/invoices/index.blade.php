@@ -41,6 +41,7 @@
         importDone: @js(__('invoices.import_done')),
         importFailed: @js(__('invoices.import_load_failed')),
         trashConfirm: @js(__('invoices.trash_confirm')),
+        paperlessWarn: @js(__('files.paperless_decrypt_warn')),
         pay_invalid: @js(__('invoices.pay_invalid')),
         pay_delete_confirm: @js(__('invoices.pay_delete_confirm')),
         pay_type_bank: @js(__('invoices.pay_type_bank')),
@@ -64,6 +65,9 @@
 
     {{-- Zero-knowledge gate: invoices decrypt with the vault key. --}}
     @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
+
+    {{-- Shared Paperless transfer modal (send a receipt to Paperless) --}}
+    @include('_paperless_modal')
 
     <template x-if="state === 'locked'">
       <div class="mx-auto mt-16 max-w-md ll-card !p-8 text-center">
@@ -370,10 +374,13 @@
                     </template>
                   </div>
                   <div class="flex flex-wrap items-center justify-between gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-2">
                       <x-button variant="secondary" size="sm" icon="pencil" @click="renameReceiptDoc()">{{ __('invoices.receipt_rename') }}</x-button>
                       <template x-if="receiptDoc.r.kind !== 'invoice'">
                         <x-button variant="secondary" size="sm" icon="arrow-path" @click="reanalyzeReceipt(receiptDoc)">{{ __('invoices.receipt_reanalyze') }}</x-button>
+                      </template>
+                      <template x-if="receiptDoc.r.blob && $store.paperless.configured">
+                        <x-button variant="secondary" size="sm" icon="share" @click="sendReceiptToPaperless(receiptDoc)">{{ __('paperless.send_to_paperless') }}</x-button>
                       </template>
                     </div>
                     <template x-if="! receiptDoc.r.locked">
