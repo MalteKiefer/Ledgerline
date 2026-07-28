@@ -409,6 +409,7 @@
                       <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
                         <tr>
                           <th class="px-4 py-3">{{ __('invoices.col_date') }}</th>
+                          <th class="px-4 py-3">{{ __('invoices.tx_type') }}</th>
                           <th class="px-4 py-3">{{ __('invoices.tx_counterparty') }}</th>
                           <th class="px-4 py-3">{{ __('invoices.tx_purpose') }}</th>
                           <th class="px-4 py-3 text-right">{{ __('invoices.col_total') }}</th>
@@ -418,7 +419,13 @@
                         <template x-for="tx in accountTx" :key="tx.id">
                           <tr class="hover:bg-accent/5">
                             <td class="whitespace-nowrap px-4 py-2.5 tabular-nums text-gray-500 dark:text-gray-400" x-text="tx.date"></td>
-                            <td class="max-w-[14rem] truncate px-4 py-2.5 text-gray-800 dark:text-gray-200" x-text="tx.counterparty || '—'" :title="tx.counterparty"></td>
+                            <td class="whitespace-nowrap px-4 py-2.5">
+                              <span class="inline-flex rounded-md bg-black/[0.04] dark:bg-white/10 px-2 py-0.5 text-xs font-medium text-gray-600 dark:text-gray-300" x-text="txTypeLabel(tx)"></span>
+                            </td>
+                            <td class="max-w-[16rem] px-4 py-2.5">
+                              <p class="truncate text-gray-800 dark:text-gray-200" x-text="tx.counterparty || '—'" :title="tx.counterparty"></p>
+                              <p x-show="tx.iban" class="truncate text-xs text-gray-400 dark:text-gray-500 tabular-nums" x-text="tx.iban"></p>
+                            </td>
                             <td class="max-w-[22rem] truncate px-4 py-2.5 text-gray-500 dark:text-gray-400" x-text="tx.purpose" :title="tx.purpose"></td>
                             <td class="whitespace-nowrap px-4 py-2.5 text-right font-medium tabular-nums" :class="tx.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(tx.amount, tx.currency)"></td>
                           </tr>
@@ -470,9 +477,10 @@
                       <div class="border-b border-black/[0.06] dark:border-white/10 px-5 py-2.5 text-xs text-gray-500 dark:text-gray-400">
                         <span x-text="stmt.format + ' · '"></span>
                         <span x-text="'{{ __('invoices.stmt_summary') }}'.replace(':new', stmt.fresh.length).replace(':dupes', stmt.dupes)"></span>
+                        <span x-show="stmt.updates && stmt.updates.length" x-text="' · ' + '{{ __('invoices.stmt_updated') }}'.replace(':n', stmt.updates ? stmt.updates.length : 0)"></span>
                       </div>
                       <div class="min-h-0 flex-1 overflow-auto px-5 py-3">
-                        <template x-if="! stmt.fresh.length"><p class="py-8 text-center text-sm text-gray-400 dark:text-gray-500">{{ __('invoices.stmt_nothing_new') }}</p></template>
+                        <template x-if="! stmt.fresh.length"><p class="py-8 text-center text-sm text-gray-400 dark:text-gray-500" x-text="(stmt.updates && stmt.updates.length) ? '{{ __('invoices.stmt_only_updates') }}'.replace(':n', stmt.updates.length) : '{{ __('invoices.stmt_nothing_new') }}'"></p></template>
                         <table x-show="stmt.fresh.length" class="w-full text-sm">
                           <thead class="text-left text-xs text-gray-400 dark:text-gray-500">
                             <tr><th class="pb-2 pr-3">{{ __('invoices.col_date') }}</th><th class="pb-2 pr-3">{{ __('invoices.tx_counterparty') }}</th><th class="pb-2 pr-3">{{ __('invoices.tx_purpose') }}</th><th class="pb-2 text-right">{{ __('invoices.col_total') }}</th></tr>
@@ -491,7 +499,7 @@
                       </div>
                       <div class="flex items-center justify-end gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
                         <x-button variant="secondary" @click="cancelStatement()">{{ __('common.cancel') }}</x-button>
-                        <x-button variant="primary" ::disabled="! stmt.fresh.length" @click="confirmStatementImport()">
+                        <x-button variant="primary" ::disabled="! stmt.fresh.length && ! (stmt.updates && stmt.updates.length)" @click="confirmStatementImport()">
                           <span x-text="'{{ __('invoices.stmt_confirm') }}'.replace(':n', stmt.fresh.length)"></span>
                         </x-button>
                       </div>
