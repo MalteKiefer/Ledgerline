@@ -1,4 +1,8 @@
-@php $s = \App\Models\UserSetting::for(auth()->id()); @endphp
+@php
+    $s = \App\Models\UserSetting::for(auth()->id());
+    // Daily-refreshed EUR FX rates (X→EUR) for fuzzy amount suggestions; config default until the first fetch.
+    $fxRates = \Illuminate\Support\Facades\Cache::get(\App\Console\Commands\FetchExchangeRates::CACHE_KEY)['rates'] ?? config('finance.fx_default');
+@endphp
 <x-layouts.app :title="__('messages.nav.finance')">
   <div x-data="invoices({
         token: '{{ csrf_token() }}',
@@ -30,6 +34,7 @@
         rawBase: '{{ url('/invoices/raw') }}',
         reconcileUrl: '{{ url('/invoices/blobs/reconcile') }}',
         iconUrl: '{{ url('/passwords/icon') }}',
+        fxRates: @js($fxRates),
      }, {
         deleteConfirm: @js(__('invoices.delete_confirm')),
         statusDraft: @js(__('invoices.status_draft')),

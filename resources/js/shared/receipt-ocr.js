@@ -179,9 +179,23 @@ export function extractVatRate(text) {
     return rates.has('19') ? '19' : rates.has('16') ? '16' : rates.has('7') ? '7' : '';
 }
 
+// The document currency → 'USD' | 'GBP' | 'CHF' | 'EUR' | '' (default '' is treated as EUR
+// downstream). Prefers an explicit ISO code, then a symbol; a bare '$' only wins when no €
+// is present (many EU invoices show both a logo $ and a € total).
+export function extractCurrency(text) {
+    const s = String(text || '');
+    const hasEur = /\bEUR\b|€/.test(s);
+    if (/\bUSD\b|US\$/.test(s)) return 'USD';
+    if (/\bGBP\b|£\s?\d/.test(s)) return 'GBP';
+    if (/\bCHF\b/.test(s)) return 'CHF';
+    if (hasEur) return 'EUR';
+    if (/\$\s?\d/.test(s)) return 'USD';
+    return '';
+}
+
 /**
- * Analyse a receipt's OCR text: { merchant, category, total, date, number, vat, tags[] }.
- * tags are a de-duplicated suggestion (merchant + category) the user can accept or edit.
+ * Analyse a receipt's OCR text: { merchant, category, total, date, number, vat, currency,
+ * tags[] }. tags are a de-duplicated suggestion (merchant + category) the user can edit.
  */
 export function analyzeReceiptText(text) {
     const low = String(text || '').toLowerCase();
@@ -192,6 +206,7 @@ export function analyzeReceiptText(text) {
     const date = extractDate(text);
     const number = extractNumber(text);
     const vat = extractVatRate(text);
+    const currency = extractCurrency(text);
     const tags = [...new Set([merchant, category].filter(Boolean))];
-    return { merchant, category, total, date, number, vat, tags };
+    return { merchant, category, total, date, number, vat, currency, tags };
 }
