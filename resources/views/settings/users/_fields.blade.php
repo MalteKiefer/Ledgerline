@@ -60,3 +60,5 @@
         ])
     </div>
 @endif
+
+@include('settings._module_toggles', ['modulesValue' => $user?->modules])

@@ -13,19 +13,19 @@ return [
     // The four most-used destinations: direct links on desktop, the four slots
     // of the mobile navigation drawer primary section.
     'primary' => [
-        ['label' => 'messages.nav.dashboard', 'route' => 'dashboard', 'pattern' => 'dashboard', 'icon' => 'home'],
-        ['label' => 'messages.nav.files', 'route' => 'files.index', 'pattern' => 'files.*', 'icon' => 'files'],
-        ['label' => 'messages.nav.gallery', 'route' => 'gallery.index', 'pattern' => 'gallery.*', 'icon' => 'photo'],
-        ['label' => 'messages.nav.passwords', 'route' => 'passwords.index', 'pattern' => 'passwords.*', 'icon' => 'key'],
+        ['label' => 'messages.nav.dashboard', 'route' => 'dashboard', 'pattern' => 'dashboard', 'icon' => 'home', 'module' => 'dashboard'],
+        ['label' => 'messages.nav.files', 'route' => 'files.index', 'pattern' => 'files.*', 'icon' => 'files', 'module' => 'files'],
+        ['label' => 'messages.nav.gallery', 'route' => 'gallery.index', 'pattern' => 'gallery.*', 'icon' => 'photo', 'module' => 'gallery'],
+        ['label' => 'messages.nav.passwords', 'route' => 'passwords.index', 'pattern' => 'passwords.*', 'icon' => 'key', 'module' => 'passwords'],
     ],
     // The rest: a "More" dropdown on desktop, the "More" sheet on mobile.
     'more' => [
-        ['label' => 'messages.nav.notes', 'route' => 'notes.index', 'pattern' => 'notes.*', 'icon' => 'pencil'],
-        ['label' => 'messages.nav.todos', 'route' => 'todos.index', 'pattern' => 'todos.*', 'icon' => 'todos'],
-        ['label' => 'messages.nav.bookmarks', 'route' => 'bookmarks.index', 'pattern' => 'bookmarks.*', 'icon' => 'bookmark'],
-        ['label' => 'messages.nav.contacts', 'route' => 'contacts.index', 'pattern' => 'contacts.*', 'icon' => 'users'],
-        ['label' => 'messages.nav.finance', 'route' => 'finance.index', 'pattern' => 'finance.*', 'icon' => 'banknotes'],
-        ['label' => 'messages.nav.health', 'route' => 'health.index', 'pattern' => 'health.*', 'icon' => 'heart'],
-        ['label' => 'messages.nav.explore', 'route' => 'explore', 'pattern' => 'explore', 'icon' => 'map'],
+        ['label' => 'messages.nav.notes', 'route' => 'notes.index', 'pattern' => 'notes.*', 'icon' => 'pencil', 'module' => 'notes'],
+        ['label' => 'messages.nav.todos', 'route' => 'todos.index', 'pattern' => 'todos.*', 'icon' => 'todos', 'module' => 'todos'],
+        ['label' => 'messages.nav.bookmarks', 'route' => 'bookmarks.index', 'pattern' => 'bookmarks.*', 'icon' => 'bookmark', 'module' => 'bookmarks'],
+        ['label' => 'messages.nav.contacts', 'route' => 'contacts.index', 'pattern' => 'contacts.*', 'icon' => 'users', 'module' => 'contacts'],
+        ['label' => 'messages.nav.finance', 'route' => 'finance.index', 'pattern' => 'finance.*', 'icon' => 'banknotes', 'module' => 'finance'],
+        ['label' => 'messages.nav.health', 'route' => 'health.index', 'pattern' => 'health.*', 'icon' => 'heart', 'module' => 'health'],
+        ['label' => 'messages.nav.explore', 'route' => 'explore', 'pattern' => 'explore', 'icon' => 'map', 'module' => 'explore'],
     ],
 ];

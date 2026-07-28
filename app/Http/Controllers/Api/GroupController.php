@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Group;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Admin group management over the API (Sanctum device token + manage-global-settings).
@@ -58,6 +59,7 @@ class GroupController extends Controller
             'gallery_quota_mb' => $group->gallery_quota_mb,
             'max_connected_devices' => $group->max_connected_devices,
             'shareable' => $group->shareable,
+            'modules' => $group->modules, // null = all modules; else the allow-list
             'members' => $group->members->map(fn ($u): array => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email])->all(),
         ];
     }
@@ -73,11 +75,17 @@ class GroupController extends Controller
             'gallery_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'max_connected_devices' => ['nullable', 'integer', 'min:1', 'max:50'],
             'shareable' => ['nullable', 'boolean'],
+            'modules' => ['nullable', 'array'],
+            'modules.*' => ['string', Rule::in(array_keys((array) config('modules.list', [])))],
             'members' => ['nullable', 'array'],
             'members.*' => ['integer', 'exists:users,id'],
         ]);
 
         $limit = static fn (string $key): ?int => $request->integer($key) > 0 ? $request->integer($key) : null;
+        $modIn = $request->input('modules');
+        $modules = is_array($modIn)
+            ? array_values(array_intersect(array_keys((array) config('modules.list', [])), array_filter($modIn, 'is_string')))
+            : null;
 
         return [
             'name' => $request->string('name')->value(),
@@ -85,6 +93,7 @@ class GroupController extends Controller
             'gallery_quota_mb' => $limit('gallery_quota_mb'),
             'max_connected_devices' => $limit('max_connected_devices'),
             'shareable' => $request->boolean('shareable'),
+            'modules' => $modules,
         ];
     }
 

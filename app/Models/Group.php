@@ -20,8 +20,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * @property ?int $gallery_quota_mb
  * @property ?int $max_connected_devices
  * @property bool $shareable
+ * @property ?array<int, string> $modules
  */
-#[Fillable(['name', 'files_quota_mb', 'gallery_quota_mb', 'max_connected_devices', 'shareable'])]
+#[Fillable(['name', 'files_quota_mb', 'gallery_quota_mb', 'max_connected_devices', 'shareable', 'modules'])]
 class Group extends Model
 {
     /** @use HasFactory<GroupFactory> */
@@ -34,6 +35,7 @@ class Group extends Model
             'gallery_quota_mb' => 'integer',
             'max_connected_devices' => 'integer',
             'shareable' => 'boolean',
+            'modules' => 'array',
         ];
     }
 

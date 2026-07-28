@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Admin group management (workspace-wide, gated by manage-global-settings): create,
@@ -68,6 +69,8 @@ class GroupsController extends Controller
             'gallery_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'max_connected_devices' => ['nullable', 'integer', 'min:1', 'max:50'],
             'shareable' => ['nullable', 'boolean'],
+            'modules' => ['nullable', 'array'],
+            'modules.*' => ['string', Rule::in(array_keys((array) config('modules.list', [])))],
             'members' => ['nullable', 'array'],
             'members.*' => ['integer', 'exists:users,id'],
         ]);
@@ -80,7 +83,27 @@ class GroupsController extends Controller
             'gallery_quota_mb' => $limit('gallery_quota_mb'),
             'max_connected_devices' => $limit('max_connected_devices'),
             'shareable' => $request->boolean('shareable'),
+            'modules' => self::modulesFromRequest($request),
         ];
+    }
+
+    /**
+     * The submitted module allow-list, or null for "no restriction" (all modules).
+     * All-checked collapses to null so newly-added modules stay enabled by default.
+     *
+     * @return list<string>|null
+     */
+    public static function modulesFromRequest(Request $request): ?array
+    {
+        $known = array_keys((array) config('modules.list', []));
+        if (! $request->has('modules_marker')) {
+            return null;
+        }
+        $input = $request->input('modules', []);
+        $list = is_array($input) ? array_filter($input, 'is_string') : [];
+        $checked = array_values(array_intersect($known, $list));
+
+        return count($checked) === count($known) ? null : $checked;
     }
 
     /**

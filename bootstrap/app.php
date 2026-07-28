@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureModule;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Services\Ops\ErrorRecorder;
@@ -28,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'abilities' => CheckAbilities::class,
             'ability' => CheckForAnyAbility::class,
+            'module' => EnsureModule::class,
         ]);
 
         // Behind a TLS-terminating reverse proxy, honour X-Forwarded-* so

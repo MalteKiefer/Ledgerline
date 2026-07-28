@@ -27,6 +27,7 @@
     </label>
     <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{{ __('settings.groups_shareable_hint') }}</p>
 </div>
+@include('settings._module_toggles', ['modulesValue' => $g?->modules])
 @php
     $memberIds = $g ? $g->members->pluck('id')->all() : [];
     $userOptions = ($users ?? collect())->map(fn ($u) => ['id' => $u->id, 'label' => $u->name, 'sub' => $u->email])->all();

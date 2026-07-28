@@ -3,12 +3,14 @@
      same config/navigation.php as the desktop x-nav. --}}
 @auth
     @php
-        $resolve = fn ($items) => collect($items)->map(fn ($i) => [
-            'label' => __($i['label']),
-            'url' => route($i['route']),
-            'active' => request()->routeIs($i['pattern']),
-            'icon' => $i['icon'],
-        ]);
+        $resolve = fn ($items) => collect($items)
+            ->filter(fn ($i) => ! isset($i['module']) || (auth()->user()?->canModule($i['module']) ?? true))
+            ->map(fn ($i) => [
+                'label' => __($i['label']),
+                'url' => route($i['route']),
+                'active' => request()->routeIs($i['pattern']),
+                'icon' => $i['icon'],
+            ]);
         $links = $resolve(config('navigation.primary'))->concat($resolve(config('navigation.more')));
     @endphp
     <x-sheet side="left" store="navOpen" title="Ledgerline">

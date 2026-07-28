@@ -176,6 +176,8 @@ class UsersController extends Controller
             'max_connected_devices' => ['nullable', 'integer', 'min:1', 'max:50'],
             'groups' => ['nullable', 'array'],
             'groups.*' => ['integer', 'exists:groups,id'],
+            'modules' => ['nullable', 'array'],
+            'modules.*' => ['string', Rule::in(array_keys((array) config('modules.list', [])))],
         ]);
     }
 
@@ -214,6 +216,7 @@ class UsersController extends Controller
             'files_quota_mb' => $limit('files_quota_mb'),
             'gallery_quota_mb' => $limit('gallery_quota_mb'),
             'max_connected_devices' => $limit('max_connected_devices'),
+            'modules' => GroupsController::modulesFromRequest($request),
         ];
     }
 
