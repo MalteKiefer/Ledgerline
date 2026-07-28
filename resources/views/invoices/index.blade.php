@@ -510,6 +510,31 @@
             <x-button variant="primary" size="sm" icon="plus" @click="newProject()">{{ __('invoices.project_add') }}</x-button>
           </div>
 
+          {{-- Business vs private split (feeds the statistics view differently) --}}
+          <template x-if="projects.length">
+            <div class="mt-4 grid grid-cols-2 gap-3">
+              <div class="ll-card">
+                <p class="text-[11px] uppercase tracking-wide text-gray-400">{{ __('invoices.project_business_total') }}</p>
+                <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectKindSummary.business)"></p>
+              </div>
+              <div class="ll-card">
+                <p class="text-[11px] uppercase tracking-wide text-gray-400">{{ __('invoices.project_private_total') }}</p>
+                <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectKindSummary.private)"></p>
+              </div>
+            </div>
+          </template>
+
+          {{-- Business / private scope filter --}}
+          <template x-if="projects.length">
+            <div class="mt-4 inline-flex rounded-xl bg-black/[0.04] dark:bg-white/5 p-0.5">
+              @php $scopes = ['all' => 'project_scope_all', 'business' => 'project_kind_business', 'private' => 'project_kind_private']; @endphp
+              @foreach ($scopes as $sk => $slbl)
+                <button type="button" @click="setProjScope('{{ $sk }}')" class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
+                  :class="projScope === '{{ $sk }}' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'">{{ __('invoices.'.$slbl) }}</button>
+              @endforeach
+            </div>
+          </template>
+
           <template x-if="! projects.length">
             <x-empty-state icon="folder" class="mt-6">{{ __('invoices.project_empty') }}</x-empty-state>
           </template>
@@ -519,17 +544,24 @@
               {{-- Tree --}}
               <div class="ll-card !p-0 overflow-hidden md:w-1/3">
                 <div class="divide-y divide-black/[0.06] dark:divide-white/10">
-                  <template x-for="row in projectRows" :key="row.project.id">
-                    <button type="button" @click="openProjectId = row.project.id"
+                  <template x-for="row in pagedProjectRows" :key="row.project.id">
+                    <button type="button" @click="openProjectDetail(row.project.id)"
                       class="group flex w-full items-center gap-2 py-2.5 pr-3 text-left hover:bg-accent/5"
                       :class="openProjectId === row.project.id ? 'bg-accent/10' : ''"
                       :style="{ paddingLeft: (12 + row.depth * 18) + 'px' }">
                       <x-icon name="folder" class="h-4 w-4 shrink-0 text-gray-400" />
                       <span class="min-w-0 flex-1 truncate text-sm text-gray-900 dark:text-gray-100" x-text="row.project.name"></span>
+                      <template x-if="row.project.kind === 'private'"><x-badge variant="gray">{{ __('invoices.project_kind_private') }}</x-badge></template>
                       <span class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="fmtMoney(projectTotal(row.project.id))"></span>
                     </button>
                   </template>
                 </div>
+                <template x-if="scopedProjectRows.length > projPerPage">
+                  @include('invoices._pagination', ['page' => 'projPage', 'perPage' => 'projPerPage', 'pageCount' => 'projPageCount', 'setPerPage' => 'setProjPerPage', 'goto' => 'projGoto'])
+                </template>
+                <template x-if="! scopedProjectRows.length">
+                  <p class="px-4 py-6 text-center text-xs text-gray-400">{{ __('invoices.project_scope_empty') }}</p>
+                </template>
               </div>
 
               {{-- Detail --}}
@@ -541,7 +573,11 @@
                   <div class="space-y-4">
                     <div class="ll-card flex items-center justify-between gap-3">
                       <div class="min-w-0">
-                        <h2 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="openProject?.name"></h2>
+                        <div class="flex items-center gap-2">
+                          <h2 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="openProject?.name"></h2>
+                          <template x-if="openProject?.kind === 'private'"><x-badge variant="gray">{{ __('invoices.project_kind_private') }}</x-badge></template>
+                          <template x-if="openProject && openProject.kind !== 'private'"><x-badge variant="accent">{{ __('invoices.project_kind_business') }}</x-badge></template>
+                        </div>
                         <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="openProject?.note"></p>
                       </div>
                       <div class="flex shrink-0 items-center gap-3">
@@ -561,15 +597,19 @@
                         <x-button variant="secondary" size="sm" icon="plus" @click="newProject(openProject.id)">{{ __('invoices.project_sub_add') }}</x-button>
                       </div>
                       <div class="divide-y divide-black/[0.06] dark:divide-white/10">
-                        <template x-for="sp in projectSubs(openProject?.id)" :key="sp.id">
-                          <button type="button" @click="openProjectId = sp.id" class="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-accent/5">
+                        <template x-for="sp in pagedSubs" :key="sp.id">
+                          <button type="button" @click="openProjectDetail(sp.id)" class="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-accent/5">
                             <x-icon name="folder" class="h-4 w-4 text-gray-400" />
                             <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="sp.name"></span>
+                            <template x-if="sp.kind === 'private'"><x-badge variant="gray">{{ __('invoices.project_kind_private') }}</x-badge></template>
                             <span class="text-xs tabular-nums text-gray-500" x-text="fmtMoney(projectTotal(sp.id))"></span>
                           </button>
                         </template>
                         <template x-if="! projectSubs(openProject?.id).length">
                           <p class="px-4 py-3 text-xs text-gray-400">{{ __('invoices.project_no_subs') }}</p>
+                        </template>
+                        <template x-if="projectSubs(openProject?.id).length > subPerPage">
+                          @include('invoices._pagination', ['page' => 'subPage', 'perPage' => 'subPerPage', 'pageCount' => 'subPageCount', 'setPerPage' => 'setSubPerPage', 'goto' => 'subGoto'])
                         </template>
                       </div>
                     </div>
@@ -581,12 +621,13 @@
                         <x-button variant="secondary" size="sm" icon="plus" @click="newExpense(openProject.id)">{{ __('invoices.project_expense_add') }}</x-button>
                       </div>
                       <div class="divide-y divide-black/[0.06] dark:divide-white/10">
-                        <template x-for="ex in (openProject?.expenses || [])" :key="ex.id">
+                        <template x-for="ex in pagedExpenses" :key="ex.id">
                           <div class="group flex items-center gap-3 px-4 py-2.5">
                             <div class="min-w-0 flex-1">
-                              <p class="truncate text-sm text-gray-800 dark:text-gray-200" x-text="ex.note || ex.category || '{{ __('invoices.project_expense') }}'"></p>
-                              <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="[ex.date, ex.category, expenseAccountName(ex.account)].filter(Boolean).join(' · ') || '—'"></p>
+                              <p class="truncate text-sm text-gray-800 dark:text-gray-200" x-text="ex.note || '{{ __('invoices.project_expense') }}'"></p>
+                              <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="[ex.date, expenseAccountName(ex.account)].filter(Boolean).join(' · ') || '—'"></p>
                             </div>
+                            <template x-if="ex.category"><x-badge variant="gray"><span x-text="ex.category"></span></x-badge></template>
                             <span class="shrink-0 text-sm tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(ex.amount)"></span>
                             <div class="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100">
                               <x-icon-button name="pencil" tone="gray" size="sm" @click="editExpense(openProject, ex)" :aria-label="__('common.edit')" />
@@ -597,22 +638,32 @@
                         <template x-if="! (openProject?.expenses || []).length">
                           <p class="px-4 py-3 text-xs text-gray-400">{{ __('invoices.project_no_expenses') }}</p>
                         </template>
+                        <template x-if="(openProject?.expenses || []).length > expPerPage">
+                          @include('invoices._pagination', ['page' => 'expPage', 'perPage' => 'expPerPage', 'pageCount' => 'expPageCount', 'setPerPage' => 'setExpPerPage', 'goto' => 'expGoto'])
+                        </template>
                       </div>
                     </div>
 
                     {{-- Bundled receipts --}}
                     <div class="ll-card !p-0 overflow-hidden">
-                      <h3 class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('invoices.project_receipts') }}</h3>
+                      <div class="flex items-center justify-between px-4 py-2.5">
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('invoices.project_receipts') }}</h3>
+                        <x-button variant="secondary" size="sm" icon="plus" @click="openReceiptPicker()">{{ __('invoices.project_receipt_add') }}</x-button>
+                      </div>
                       <div class="divide-y divide-black/[0.06] dark:divide-white/10">
-                        <template x-for="d in projectReceiptList(openProject?.id)" :key="d.r.id">
+                        <template x-for="d in pagedProjectReceipts" :key="d.r.id">
                           <button type="button" @click="openReceiptDoc(d)" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-accent/5">
                             <x-icon name="document" class="h-4 w-4 text-gray-400" />
                             <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="d.r.name || '{{ __('invoices.receipt') }}'"></span>
+                            <template x-if="d.r.category"><x-badge variant="gray"><span x-text="d.r.category"></span></x-badge></template>
                             <span class="text-xs tabular-nums text-gray-500" x-text="fmtMoney(d.r.total != null ? d.r.total : Math.abs(d.tx.amount || 0))"></span>
                           </button>
                         </template>
                         <template x-if="! projectReceiptList(openProject?.id).length">
                           <p class="px-4 py-3 text-xs text-gray-400">{{ __('invoices.project_no_receipts') }}</p>
+                        </template>
+                        <template x-if="projectReceiptList(openProject?.id).length > prcPerPage">
+                          @include('invoices._pagination', ['page' => 'prcPage', 'perPage' => 'prcPerPage', 'pageCount' => 'prcPageCount', 'setPerPage' => 'setPrcPerPage', 'goto' => 'prcGoto'])
                         </template>
                       </div>
                     </div>
@@ -632,6 +683,13 @@
                   <div>
                     <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_name') }} <span class="text-red-500">*</span></label>
                     <input type="text" x-model="projectEditing.name" @keydown.enter="saveProject()" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_kind') }}</label>
+                    <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/5 p-0.5">
+                      <button type="button" @click="projectEditing.kind = 'business'" class="rounded-lg px-3 py-1.5 text-sm font-medium transition" :class="projectEditing?.kind !== 'private' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'">{{ __('invoices.project_kind_business') }}</button>
+                      <button type="button" @click="projectEditing.kind = 'private'" class="rounded-lg px-3 py-1.5 text-sm font-medium transition" :class="projectEditing?.kind === 'private' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'">{{ __('invoices.project_kind_private') }}</button>
+                    </div>
                   </div>
                   <div>
                     <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_parent') }}</label>
@@ -700,6 +758,43 @@
               </template>
             </div>
           </div>
+
+          {{-- Receipt picker: bundle existing receipts into the open project --}}
+          <div x-show="receiptPicker" x-cloak class="fixed inset-0 z-[1140] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeReceiptPicker()">
+            <div class="absolute inset-0 bg-gray-900/50" @click="closeReceiptPicker()"></div>
+            <div class="relative flex h-[75vh] max-h-[75vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <div class="flex items-center gap-2.5 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+                <p class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.project_pick_title') }}</p>
+                <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeReceiptPicker()" :aria-label="__('common.close')" />
+              </div>
+              <div class="border-b border-black/[0.06] dark:border-white/10 p-2">
+                <input type="search" x-model.debounce.200ms="receiptPickerQuery" placeholder="{{ __('invoices.project_pick_search') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+              </div>
+              <div class="min-h-0 flex-1 overflow-auto px-2 py-2">
+                <template x-for="d in pickerReceipts()" :key="d.r.id">
+                  <button type="button" @click="toggleReceiptToProject(d)" class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-accent/5">
+                    <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border" :class="d.r.projectId === openProjectId ? 'border-accent bg-accent text-white' : 'border-gray-300 dark:border-gray-600'">
+                      <template x-if="d.r.projectId === openProjectId"><x-icon name="check" class="h-3.5 w-3.5" /></template>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-sm text-gray-800 dark:text-gray-200" x-text="d.r.name || '{{ __('invoices.receipt') }}'"></p>
+                      <p class="truncate text-xs text-gray-500 dark:text-gray-400"><span x-text="d.tx.date"></span> · <span x-text="d.tx.counterparty || d.tx.purpose || '—'"></span></p>
+                    </div>
+                    <template x-if="d.r.projectId && d.r.projectId !== openProjectId">
+                      <x-badge variant="warning"><span x-text="projectName(d.r.projectId)"></span></x-badge>
+                    </template>
+                    <span class="shrink-0 text-xs tabular-nums text-gray-500" x-text="fmtMoney(d.r.total != null ? d.r.total : Math.abs(d.tx.amount || 0))"></span>
+                  </button>
+                </template>
+                <template x-if="! pickerReceipts().length">
+                  <p class="px-3 py-6 text-center text-xs text-gray-400">{{ __('invoices.project_pick_none') }}</p>
+                </template>
+              </div>
+              <div class="flex justify-end border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+                <x-button variant="primary" size="sm" @click="closeReceiptPicker()">{{ __('invoices.project_pick_done') }}</x-button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {{-- ===================== STATISTICS ===================== --}}
@@ -742,6 +837,20 @@
                   <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="statsKpis.customers"></p>
                 </div>
               </div>
+
+              {{-- Project costs, clearly split business vs private (all projects) --}}
+              <template x-if="projects.length">
+                <div class="mt-4 grid grid-cols-2 gap-4">
+                  <div class="ll-card">
+                    <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_project_business') }}</p>
+                    <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectKindSummary.business)"></p>
+                  </div>
+                  <div class="ll-card">
+                    <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_project_private') }}</p>
+                    <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectKindSummary.private)"></p>
+                  </div>
+                </div>
+              </template>
 
               <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {{-- Monthly revenue bars --}}
@@ -831,12 +940,15 @@
           <p class="mb-2 px-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.cats_intro') }}</p>
           <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
             {{-- Built-in default categories (not removable) --}}
-            <template x-for="c in sortedCatSuggestions" :key="'def-'+c">
+            <template x-for="c in pagedCatSuggestions" :key="'def-'+c">
               <div class="flex items-center gap-3 px-4 py-2.5">
                 <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #e2915a"><x-icon name="hashtag" class="h-4 w-4" /></span>
                 <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="c"></span>
                 <x-badge variant="gray">{{ __('invoices.cats_default') }}</x-badge>
               </div>
+            </template>
+            <template x-if="sortedCatSuggestions.length > catDefPerPage">
+              @include('invoices._pagination', ['page' => 'catDefPage', 'perPage' => 'catDefPerPage', 'pageCount' => 'catDefPageCount', 'setPerPage' => 'setCatDefPerPage', 'goto' => 'catDefGoto'])
             </template>
             {{-- Custom categories (removable) --}}
             <template x-for="c in pagedCategories" :key="c.name">
