@@ -206,16 +206,29 @@ export default (config = {}, labels = {}) => ({
         const id = this.payAccount?.id;
         return (this.transactions || []).filter((t) => t.account === id).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     },
-    // ---- Pagination for the account's transaction list (10 / 25 per page) ----
+    // ---- Pagination (shared page-size options across all finance tables) ----
+    perPageOptions: [5, 10, 15, 20, 25, 50, 100],
+    // Account transactions
     txPage: 1,
     txPerPage: 25,
     get txPageCount() { return Math.max(1, Math.ceil(this.accountTx.length / this.txPerPage)); },
-    get pagedAccountTx() {
-        const start = (this.txPage - 1) * this.txPerPage;
-        return this.accountTx.slice(start, start + this.txPerPage);
-    },
+    get pagedAccountTx() { const s = (this.txPage - 1) * this.txPerPage; return this.accountTx.slice(s, s + this.txPerPage); },
     setTxPerPage(n) { this.txPerPage = n; this.txPage = 1; },
     txGoto(p) { this.txPage = Math.min(this.txPageCount, Math.max(1, p)); },
+    // Invoices list
+    invPage: 1,
+    invPerPage: 25,
+    get invPageCount() { return Math.max(1, Math.ceil(this.filtered.length / this.invPerPage)); },
+    get pagedInvoices() { const s = (this.invPage - 1) * this.invPerPage; return this.filtered.slice(s, s + this.invPerPage); },
+    setInvPerPage(n) { this.invPerPage = n; this.invPage = 1; },
+    invGoto(p) { this.invPage = Math.min(this.invPageCount, Math.max(1, p)); },
+    // Receipts list
+    recPage: 1,
+    recPerPage: 25,
+    get recPageCount() { return Math.max(1, Math.ceil(this.filteredReceipts.length / this.recPerPage)); },
+    get pagedReceipts() { const s = (this.recPage - 1) * this.recPerPage; return this.filteredReceipts.slice(s, s + this.recPerPage); },
+    setRecPerPage(n) { this.recPerPage = n; this.recPage = 1; },
+    recGoto(p) { this.recPage = Math.min(this.recPageCount, Math.max(1, p)); },
     accountTxCount(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).length; },
     // Balance = sum of an account's transactions (imported statements are signed).
     accountBalance(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).reduce((s, t) => s + (t.amount || 0), 0); },

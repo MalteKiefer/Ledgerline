@@ -29,6 +29,21 @@ describe('receipt OCR analysis', () => {
     it('classifies Google One as Software', () => {
         expect(analyzeReceiptText('Google Commerce Limited\nGoogle One\nGesamtsumme 9,99').category).toBe('Software');
     });
+    it('reads integer amounts next to a currency (Njalla "Total: 45 €")', () => {
+        expect(extractTotal('Item Qty Price\nNjalla services in 2026 3 45 €\nTotal: 45 €')).toBe(45);
+    });
+    it('ignores a zero "amount due" and takes the paid gross (Mullvad)', () => {
+        expect(extractTotal('Total 60,00 EUR\nPaid: 60,00 EUR\nAmount due: 0,00 EUR')).toBe(60);
+    });
+    it('rejects impossible numeric dates', () => {
+        expect(extractDate('Ref 155-32-45')).toBe('');
+        expect(extractDate('am 05.02.2026 gezahlt')).toBe('2026-02-05');
+    });
+    it('prefers the company-legal-form line as the merchant, trimming the address', () => {
+        expect(extractMerchant('netcup GmbH\nEmmy-Noether-Straße 10\nKiefer Networks\nMalte Kiefer')).toBe('netcup GmbH');
+        expect(extractMerchant('IP-Projects GmbH & Co. KG | Am Vogelherd 14 | 97258\nMalte Kiefer')).toBe('IP-Projects GmbH & Co. KG');
+        expect(extractMerchant('Rechnungsdatum 05.02.2026\nMalte Kiefer')).not.toBe('Rechnungsdatum');
+    });
     it('extracts the merchant from the first meaningful line', () => {
         expect(extractMerchant(RESTAURANT)).toBe('Ristorante Da Mario');
         expect(extractMerchant('12,90\nShell Station\nDiesel')).toBe('Shell Station');

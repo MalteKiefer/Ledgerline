@@ -204,7 +204,7 @@
         {{-- ===================== RECEIPTS (document manager) ===================== --}}
         <div x-show="section === 'receipts'" class="mt-6">
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <input type="search" x-model.debounce.200ms="receiptQuery" placeholder="{{ __('invoices.receipts_search') }}" class="w-full max-w-xs rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+            <input type="search" x-model.debounce.200ms="receiptQuery" @input="recPage = 1" placeholder="{{ __('invoices.receipts_search') }}" class="w-full max-w-xs rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
             <div class="flex items-center gap-3">
               <p class="text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.receipts_count') }}'.replace(':n', allReceipts.length)"></p>
               <template x-if="unrecognisedReceipts">
@@ -271,7 +271,7 @@
           <template x-if="filteredReceipts.length">
             <div class="ll-card !p-0 mt-4 overflow-hidden">
               <div class="divide-y divide-black/[0.06] dark:divide-white/10">
-                <template x-for="doc in filteredReceipts" :key="doc.r.id">
+                <template x-for="doc in pagedReceipts" :key="doc.r.id">
                   <button type="button" @click="openReceiptDoc(doc)" class="group flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-accent/5">
                     <span class="ll-chip h-9 w-9 rounded-xl shrink-0" :style="{ background: doc.r.kind === 'invoice' ? '#7066f5' : '#3fae9f' }"><x-icon name="document" class="h-4.5 w-4.5 text-white" /></span>
                     <div class="min-w-0 flex-1">
@@ -286,6 +286,7 @@
                   </button>
                 </template>
               </div>
+              @include('invoices._pagination', ['page' => 'recPage', 'perPage' => 'recPerPage', 'pageCount' => 'recPageCount', 'setPerPage' => 'setRecPerPage', 'goto' => 'recGoto'])
             </div>
           </template>
 
@@ -790,20 +791,7 @@
                         </template>
                       </tbody>
                     </table>
-                    {{-- Pagination --}}
-                    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-black/[0.06] dark:border-white/10 px-4 py-2.5 text-sm">
-                      <div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-                        <span>{{ __('invoices.per_page') }}</span>
-                        <template x-for="n in [10, 25]" :key="n">
-                          <button type="button" @click="setTxPerPage(n)" class="rounded-md px-2 py-1 font-medium transition-colors" :class="txPerPage === n ? 'bg-accent/10 text-accent' : 'text-gray-500 hover:text-accent dark:text-gray-400'" x-text="n"></button>
-                        </template>
-                      </div>
-                      <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                        <span x-text="'{{ __('invoices.page_of') }}'.replace(':p', txPage).replace(':n', txPageCount)"></span>
-                        <x-icon-button name="chevron-left" tone="gray" size="sm" ::disabled="txPage <= 1" @click="txGoto(txPage - 1)" aria-label="prev" />
-                        <x-icon-button name="chevron-right" tone="gray" size="sm" ::disabled="txPage >= txPageCount" @click="txGoto(txPage + 1)" aria-label="next" />
-                      </div>
-                    </div>
+                    @include('invoices._pagination', ['page' => 'txPage', 'perPage' => 'txPerPage', 'pageCount' => 'txPageCount', 'setPerPage' => 'setTxPerPage', 'goto' => 'txGoto'])
                   </div>
                 </template>
 
@@ -1141,8 +1129,8 @@
           </div>
 
           <div class="mt-6 flex flex-wrap items-center gap-3">
-            <input type="search" x-model.debounce.250ms="query" placeholder="{{ __('invoices.search') }}" class="w-full max-w-xs rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-            <select x-model="filterStatus" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+            <input type="search" x-model.debounce.250ms="query" @input="invPage = 1" placeholder="{{ __('invoices.search') }}" class="w-full max-w-xs rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+            <select x-model="filterStatus" @change="invPage = 1" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
               <option value="">{{ __('invoices.filter_all') }}</option>
               <option value="draft">{{ __('invoices.status_draft') }}</option>
               <option value="sent">{{ __('invoices.status_sent') }}</option>
@@ -1170,7 +1158,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
-                <template x-for="inv in filtered" :key="inv.id">
+                <template x-for="inv in pagedInvoices" :key="inv.id">
                   <tr class="group cursor-pointer transition-colors hover:bg-accent/5" @click="open(inv)">
                     <td class="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100 tabular-nums" x-text="inv.number || @js(__('invoices.draft_label'))"></td>
                     <td class="px-4 py-2.5 text-gray-700 dark:text-gray-300" x-text="inv.customer?.name || '—'"></td>
@@ -1192,6 +1180,7 @@
                 </template>
               </tbody>
             </table>
+            @include('invoices._pagination', ['page' => 'invPage', 'perPage' => 'invPerPage', 'pageCount' => 'invPageCount', 'setPerPage' => 'setInvPerPage', 'goto' => 'invGoto'])
           </div>
         </div>
 
