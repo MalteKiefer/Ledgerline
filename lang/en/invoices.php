@@ -254,6 +254,8 @@ return [
     'project_pick_search' => 'Search receipts…',
     'project_pick_none' => 'No receipts found.',
     'project_pick_done' => 'Done',
+    'stat_project_costs' => 'Project costs',
+    'stat_revenue_section' => 'Revenue (business)',
     'stat_project_business' => 'Project costs (business)',
     'stat_project_private' => 'Project costs (private)',
     'receipt_reanalyze' => 'Re-scan',

@@ -810,11 +810,31 @@
 
         {{-- ===================== STATISTICS ===================== --}}
         <div x-show="section === 'stats'" class="mt-6">
-          <template x-if="! statsKpis.count && statsYear === {{ (int) date('Y') }}">
+          <template x-if="! statsKpis.count && statsYear === {{ (int) date('Y') }} && ! projects.length">
             <x-empty-state icon="chart-bar">{{ __('invoices.stats_empty') }}</x-empty-state>
           </template>
-          <template x-if="statsKpis.count || statsYear !== {{ (int) date('Y') }}">
+          <template x-if="statsKpis.count || statsYear !== {{ (int) date('Y') }} || projects.length">
             <div>
+              {{-- Project costs, clearly split business vs private (scope-aware) --}}
+              <template x-if="projects.length">
+                <div>
+                  <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_project_costs') }}</h2>
+                  <div class="grid grid-cols-2 gap-4">
+                    <div class="ll-card" x-show="financeScope !== 'private'">
+                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_project_business') }}</p>
+                      <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectKindSummary.business)"></p>
+                    </div>
+                    <div class="ll-card" x-show="financeScope !== 'business'">
+                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_project_private') }}</p>
+                      <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectKindSummary.private)"></p>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+              {{-- Business revenue (invoices) — hidden in the private scope --}}
+              <div x-show="financeScope !== 'private'" :class="projects.length ? 'mt-6' : ''">
+              <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_revenue_section') }}</h2>
               {{-- Year selector --}}
               <div class="mb-4 flex items-center gap-2">
                 <label class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stats_year') }}</label>
@@ -848,20 +868,6 @@
                   <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="statsKpis.customers"></p>
                 </div>
               </div>
-
-              {{-- Project costs, clearly split business vs private (all projects) --}}
-              <template x-if="projects.length">
-                <div class="mt-4 grid grid-cols-2 gap-4">
-                  <div class="ll-card">
-                    <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_project_business') }}</p>
-                    <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectKindSummary.business)"></p>
-                  </div>
-                  <div class="ll-card">
-                    <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_project_private') }}</p>
-                    <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectKindSummary.private)"></p>
-                  </div>
-                </div>
-              </template>
 
               <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {{-- Monthly revenue bars --}}
@@ -913,6 +919,7 @@
                   </template>
                 </div>
               </div>
+              </div>{{-- /business revenue --}}
             </div>
           </template>
         </div>
