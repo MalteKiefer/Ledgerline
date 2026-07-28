@@ -516,7 +516,7 @@
           <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.partners_title') }}</h2>
           <p class="mb-2 px-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partners_intro') }}</p>
           <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
-            <template x-for="p in sortedPartners" :key="p.id">
+            <template x-for="p in pagedPartners" :key="p.id">
               <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5">
                 <span class="ll-chip h-9 w-9 shrink-0" style="--chip: #6b7280"><x-icon name="user" class="h-5 w-5" /></span>
                 <div class="min-w-0 flex-1">
@@ -534,6 +534,9 @@
               <span class="ll-chip h-9 w-9 shrink-0" style="--chip: #7066f5"><x-icon name="plus" class="h-5 w-5" /></span>
               <span class="text-sm font-medium text-accent">{{ __('invoices.partner_add') }}</span>
             </button>
+            <template x-if="sortedPartners.length > parPerPage">
+              @include('invoices._pagination', ['page' => 'parPage', 'perPage' => 'parPerPage', 'pageCount' => 'parPageCount', 'setPerPage' => 'setParPerPage', 'goto' => 'parGoto'])
+            </template>
           </div>
 
           {{-- Categories --}}
@@ -549,7 +552,7 @@
               </div>
             </template>
             {{-- Custom categories (removable) --}}
-            <template x-for="c in (financeCategories || [])" :key="c.name">
+            <template x-for="c in pagedCategories" :key="c.name">
               <div class="group flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5">
                 <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #59ad6b"><x-icon name="hashtag" class="h-4 w-4" /></span>
                 <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="c.name"></span>
@@ -562,6 +565,9 @@
               <input type="text" x-model="newCategoryName" placeholder="{{ __('invoices.cats_add_ph') }}" class="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm focus:ring-0">
               <x-button variant="secondary" size="sm" type="submit" ::disabled="! newCategoryName.trim()">{{ __('invoices.cats_add') }}</x-button>
             </form>
+            <template x-if="(financeCategories || []).length > catPerPage">
+              @include('invoices._pagination', ['page' => 'catPage', 'perPage' => 'catPerPage', 'pageCount' => 'catPageCount', 'setPerPage' => 'setCatPerPage', 'goto' => 'catGoto'])
+            </template>
           </div>
 
           {{-- Partner editor modal --}}
