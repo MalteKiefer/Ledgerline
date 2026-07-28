@@ -222,6 +222,54 @@ export default (config = {}, labels = {}) => ({
         else window.llToast?.(labels.receipt_failed || 'Upload failed.');
     },
     openReceipt(r) { return this._openBlob(r); },
+    // ---- Bulk receipt export (ZIP) for the tax advisor ----
+    exportBusy: false,
+    exportDone: 0,
+    exportTotal: 0,
+    accountReceiptTotal(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).reduce((n, t) => n + (t.receipts || []).length, 0); },
+    _csvCell(v) { const s = String(v ?? ''); return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; },
+    // Download every receipt of an account as one ZIP (each decrypted client-side) plus a
+    // CSV index mapping receipts to bookings. Failures are reported, never silently dropped.
+    async downloadAllReceipts(pm) {
+        const txs = (this.transactions || []).filter((t) => t.account === pm.id && (t.receipts || []).length);
+        const total = txs.reduce((n, t) => n + t.receipts.length, 0);
+        if (! total) { window.llToast?.(labels.export_none || 'No receipts to export.'); return; }
+        this.exportBusy = true; this.exportDone = 0; this.exportTotal = total;
+        const files = {}; const used = new Set(); const errors = [];
+        const rows = [['Datum', 'Gegenkonto', 'Betrag', 'Waehrung', 'USt', 'Zweck', 'Datei', 'Status'].map((c) => this._csvCell(c)).join(';')];
+        // Filename scheme (tax advisor): "YYYYMMDD; Issuer/Recipient; Invoice number".
+        const clean = (s) => String(s ?? '').replace(/[/\\:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
+        for (const tx of txs) {
+            for (const r of tx.receipts) {
+                const ymd = (tx.date || '').replace(/-/g, '') || 'ohne-datum';
+                const party = clean(tx.counterparty || tx.purpose || 'Buchung').slice(0, 60) || 'Buchung';
+                const invNo = clean(tx.invoiceNumber || tx.eref || ''); // best-effort (linked invoice / EREF)
+                const ext = ((r.name || '').match(/\.[^.]+$/) || [(r.mime === 'application/pdf' ? '.pdf' : '')])[0] || '';
+                let name = [ymd, party, invNo].filter(Boolean).join('; ') + ext;
+                let n = name, i = 2;
+                while (used.has(n)) { n = name.replace(/(\.[^.]+)?$/, ` (${i++})$1`); }
+                used.add(n); name = n;
+                let status = 'ok';
+                try {
+                    const buf = await fetchBlobBuffer(`${config.rawBase}/${r.blob}`);
+                    const plain = window.Vault.decryptFile(buf, r.key);
+                    files[name] = plain instanceof Uint8Array ? plain : new Uint8Array(plain);
+                } catch (e) { status = 'FEHLER'; errors.push(name); }
+                rows.push([tx.date, tx.counterparty, (tx.amount || 0).toFixed(2), tx.currency || 'EUR', tx.vatCat || '', tx.purpose, name, status].map((c) => this._csvCell(c)).join(';'));
+                this.exportDone++;
+            }
+        }
+        files['belege-index.csv'] = new TextEncoder().encode('﻿' + rows.join('\r\n'));
+        try {
+            const { zip } = await import('fflate');
+            const zipped = await new Promise((resolve, reject) => zip(files, { level: 6 }, (err, data) => err ? reject(err) : resolve(data)));
+            const stamp = new Date().toISOString().slice(0, 10);
+            saveBlobAs(zipped, `belege-${String(pm.label || 'konto').replace(/[^\w.\-]+/g, '_')}-${stamp}.zip`, 'application/zip');
+            if (errors.length) window.llToast?.((labels.export_partial || ':n receipts could not be exported.').replace(':n', errors.length));
+            else window.llToast?.((labels.export_done || ':n receipts exported.').replace(':n', total));
+        } catch (e) { window.llToast?.(labels.export_failed || 'Export failed.'); }
+        this.exportBusy = false;
+    },
     async removeReceipt(tx, r) {
         if (! await this.$store.confirm.ask(labels.receipt_delete_confirm || 'Remove this receipt?')) return;
         const i = (tx.receipts || []).indexOf(r);
