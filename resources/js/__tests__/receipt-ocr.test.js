@@ -19,6 +19,10 @@ describe('receipt OCR analysis', () => {
         expect(extractTotal('Artikel 3,00\nArtikel 12,40')).toBe(12.4); // no label → max
         expect(extractTotal('no amounts here')).toBe(null);
     });
+    it('ignores the net subtotal and tax lines, taking the gross (Apple 9,99 not 8,40)', () => {
+        expect(extractTotal('iCloud 9,99\nZwischensumme 8,40\nMehrwertsteuer (19%) 1,59')).toBe(9.99);
+        expect(extractTotal('Nettobetrag 100,00\nUSt 19,00\nGesamt 119,00')).toBe(119);
+    });
     it('extracts a date as ISO', () => {
         expect(extractDate(RESTAURANT)).toBe('2026-07-17');
         expect(extractDate('Kauf am 3.9.24')).toBe('2024-09-03');

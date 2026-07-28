@@ -237,6 +237,7 @@ return [
     'assign_remaining' => ':n remaining',
     'assign_search_ph' => 'Search booking or amount (e.g. -9,88)…',
     'assign_no_match' => 'No booking matches.',
+    'assign_search_hint' => 'No amount match — search above.',
     'assign_preview_loading' => 'Loading preview…',
     'receipts_search' => 'Search receipts…',
     'receipts_count' => ':n receipts',

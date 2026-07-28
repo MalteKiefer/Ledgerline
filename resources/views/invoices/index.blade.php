@@ -238,14 +238,14 @@
           {{-- Assignment: receipts that could not be auto-matched by amount --}}
           <div x-show="receiptAssign.length" x-cloak class="fixed inset-0 z-[1130] flex items-center justify-center p-4" role="dialog" aria-modal="true">
             <div class="absolute inset-0 bg-gray-900/50"></div>
-            <div class="relative flex max-h-[88vh] w-full max-w-4xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex h-[80vh] max-h-[80vh] w-full max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <template x-if="receiptAssign.length">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="(receiptAssign[0].up.name || '{{ __('invoices.receipt') }}')"></h3>
+                    <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="(receiptAssign[0]?.up?.name || '{{ __('invoices.receipt') }}')"></h3>
                     <p class="text-xs text-gray-500 dark:text-gray-400">
                       <span x-text="'{{ __('invoices.assign_intro') }}'.replace(':n', receiptAssign.length)"></span>
-                      <template x-if="receiptAssign[0].total != null"><span> · <span x-text="fmtMoney(receiptAssign[0].total)"></span></span></template>
+                      <template x-if="receiptAssign[0]?.total != null"><span> · <span x-text="fmtMoney(receiptAssign[0]?.total)"></span></span></template>
                     </p>
                   </div>
                   <div class="flex min-h-0 flex-1 flex-col md:flex-row">
@@ -263,27 +263,44 @@
                         </template>
                       </div>
                     </div>
-                    {{-- Candidate bookings: amount matches first, then searchable --}}
-                    <div class="min-h-0 flex-1 overflow-auto px-2 py-2 md:w-1/2">
-                      <template x-if="receiptAssign[0].cands.length">
-                        <div class="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">{{ __('invoices.assign_by_amount') }}</div>
-                      </template>
-                      <template x-for="cand in receiptAssign[0].cands" :key="'m'+cand.id">
-                        <button type="button" @click="assignPending(0, cand)" class="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left hover:bg-accent/5">
-                          <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
-                          <span class="shrink-0 text-sm tabular-nums" :class="cand.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(cand.amount, cand.currency)"></span>
-                        </button>
-                      </template>
-                      <div class="px-3 pb-1 pt-2"><input type="search" x-model.debounce.200ms="assignQuery" placeholder="{{ __('invoices.assign_search_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></div>
-                      <template x-for="cand in assignCandidates()" :key="'a'+cand.id">
-                        <button type="button" @click="assignPending(0, cand)" class="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left hover:bg-accent/5">
-                          <span class="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
-                          <span class="shrink-0 text-xs tabular-nums text-gray-400" x-text="fmtMoney(cand.amount, cand.currency)"></span>
-                        </button>
-                      </template>
-                      <template x-if="assignQuery.trim() && ! assignCandidates().length">
-                        <div class="px-3 py-4 text-center text-xs text-gray-400">{{ __('invoices.assign_no_match') }}</div>
-                      </template>
+                    {{-- Candidate bookings: sticky search on top, then amount-matches OR search results --}}
+                    <div class="flex min-h-0 flex-1 flex-col md:w-1/2">
+                      <div class="border-b border-black/[0.06] dark:border-white/10 p-2">
+                        <input type="search" x-model.debounce.200ms="assignQuery" placeholder="{{ __('invoices.assign_search_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      </div>
+                      <div class="min-h-0 flex-1 overflow-auto px-2 py-2">
+                        {{-- No query → amount matches (auto-suggested by the receipt total) --}}
+                        <template x-if="! assignQuery.trim()">
+                          <div>
+                            <template x-if="receiptAssign[0]?.cands?.length">
+                              <div class="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">{{ __('invoices.assign_by_amount') }}</div>
+                            </template>
+                            <template x-for="cand in (receiptAssign[0]?.cands || [])" :key="'m'+cand.id">
+                              <button type="button" @click="assignPending(0, cand)" class="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left hover:bg-accent/5">
+                                <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
+                                <span class="shrink-0 text-sm tabular-nums" :class="cand.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(cand.amount, cand.currency)"></span>
+                              </button>
+                            </template>
+                            <template x-if="! receiptAssign[0]?.cands?.length">
+                              <div class="px-3 py-6 text-center text-xs text-gray-400">{{ __('invoices.assign_search_hint') }}</div>
+                            </template>
+                          </div>
+                        </template>
+                        {{-- Query → search results --}}
+                        <template x-if="assignQuery.trim()">
+                          <div>
+                            <template x-for="cand in assignCandidates()" :key="'a'+cand.id">
+                              <button type="button" @click="assignPending(0, cand)" class="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left hover:bg-accent/5">
+                                <span class="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
+                                <span class="shrink-0 text-xs tabular-nums text-gray-400" x-text="fmtMoney(cand.amount, cand.currency)"></span>
+                              </button>
+                            </template>
+                            <template x-if="! assignCandidates().length">
+                              <div class="px-3 py-4 text-center text-xs text-gray-400">{{ __('invoices.assign_no_match') }}</div>
+                            </template>
+                          </div>
+                        </template>
+                      </div>
                     </div>
                   </div>
                   <div class="flex items-center justify-between gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">

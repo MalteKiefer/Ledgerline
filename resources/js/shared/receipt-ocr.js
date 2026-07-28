@@ -53,7 +53,10 @@ export function extractTotal(text) {
         const vals = amountsIn(ln);
         if (! vals.length) continue;
         for (const v of vals) if (max == null || v > max) max = v;
-        if (/summe|gesamt|rechnungsbetrag|endbetrag|grand total|\btotal\b|amount paid|\bpaid\b|bezahlt|gezahlt/i.test(ln)) {
+        // Net subtotal / tax lines are NOT the payable gross — "Zwischensumme" matches the
+        // "summe" keyword but is the net amount (Apple/iCloud 8,40 net vs 9,99 gross).
+        if (/zwischensumme|zwischensal|nettosumme|nettobetrag|nettogesamt|netto-?summe|subtotal|\bmwst\b|umsatzsteuer|\bust\b|mehrwertsteuer|\bvat\b|sales tax/i.test(ln)) continue;
+        if (/summe|gesamt|rechnungsbetrag|endbetrag|grand total|\btotal\b|amount paid|\bpaid\b|bezahlt|gezahlt|zu zahlen/i.test(ln)) {
             const v = vals[vals.length - 1];
             if (v != null && v !== 0 && (labelled == null || v > labelled)) labelled = v;
         }
