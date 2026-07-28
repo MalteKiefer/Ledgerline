@@ -90,7 +90,7 @@
               <button type="button" @click="setSection('{{ $key }}')"
                 class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 transition-colors"
                 :class="section === '{{ $key }}' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-accent'">
-                {{ __('invoices.'.$lbl) }}@if ($key === 'receipts')<span class="text-[10px] font-normal text-gray-400 dark:text-gray-500">({{ __('invoices.coming_soon') }})</span>@endif
+                {{ __('invoices.'.$lbl) }}
               </button>
             @endforeach
           </div>
@@ -194,13 +194,34 @@
           </div>
         </div>
 
-        {{-- ===================== RECEIPTS (coming soon) ===================== --}}
+        {{-- ===================== RECEIPTS (overview per account) ===================== --}}
         <div x-show="section === 'receipts'" class="mt-6">
-          <div class="ll-card flex flex-col items-center py-16 text-center">
-            <span class="ll-chip h-11 w-11" style="background:#3fae9f"><x-icon name="inbox-stack" class="h-5 w-5 text-white" /></span>
-            <p class="mt-4 text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.tab_receipts') }}</p>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.receipts_soon') }}</p>
-          </div>
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.receipts_intro') }}</p>
+          <template x-if="! receiptOverview.length">
+            <x-empty-state icon="inbox-stack" class="mt-4">{{ __('invoices.receipts_no_accounts') }}</x-empty-state>
+          </template>
+          <template x-if="receiptOverview.length">
+            <div class="ll-card !p-0 mt-4 overflow-hidden">
+              <div class="divide-y divide-black/[0.06] dark:divide-white/10">
+                <template x-for="row in receiptOverview" :key="row.pm.id">
+                  <button type="button" @click="setSection('payments'); openAccount(row.pm)" class="group flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-accent/5">
+                    <span class="ll-chip h-9 w-9 rounded-xl shrink-0" :style="{ background: payTint('bank') }">@include('invoices._payment_icon', ['expr' => "'bank'", 'cls' => 'h-4.5 w-4.5 text-white'])</span>
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="row.pm.label"></p>
+                      <p class="text-xs text-gray-500 dark:text-gray-400" x-text="'{{ __('invoices.receipts_of_expenses') }}'.replace(':total', row.outgoing)"></p>
+                    </div>
+                    <template x-if="row.missing">
+                      <x-badge variant="warning"><span x-text="'{{ __('invoices.receipts_missing_n') }}'.replace(':n', row.missing)"></span></x-badge>
+                    </template>
+                    <template x-if="! row.missing && row.outgoing">
+                      <x-badge variant="success">{{ __('invoices.receipts_ok') }}</x-badge>
+                    </template>
+                    <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
+                  </button>
+                </template>
+              </div>
+            </div>
+          </template>
         </div>
 
         {{-- ===================== STATISTICS ===================== --}}
@@ -392,6 +413,22 @@
                       <p class="mt-0.5 text-xl font-semibold tabular-nums text-red-600 dark:text-red-400" x-text="fmtMoney(accountExpense)"></p>
                     </div>
                   </div>
+                  {{-- Missing-receipts hint (outgoing bookings without an attached receipt) --}}
+                  <template x-if="outgoingTx.length">
+                    <div class="mt-4">
+                      <template x-if="missingReceipts">
+                        <div class="inline-flex items-center gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+                          <x-icon name="paper-clip" class="h-4 w-4" />
+                          <span x-text="'{{ __('invoices.receipts_missing') }}'.replace(':n', missingReceipts).replace(':total', outgoingTx.length)"></span>
+                        </div>
+                      </template>
+                      <template x-if="! missingReceipts">
+                        <div class="inline-flex items-center gap-2 rounded-xl bg-green-50 dark:bg-green-950/40 px-3 py-1.5 text-xs font-medium text-green-700 dark:text-green-400">
+                          <x-icon name="check-circle" class="h-4 w-4" />{{ __('invoices.receipts_complete') }}
+                        </div>
+                      </template>
+                    </div>
+                  </template>
                   <label class="mt-4 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                     <input type="checkbox" :checked="payAccount.business" @change="toggleBusiness(payAccount)" class="rounded">
                     {{ __('invoices.pay_business_set') }}
@@ -413,6 +450,7 @@
                           <th class="px-4 py-3">{{ __('invoices.tx_counterparty') }}</th>
                           <th class="px-4 py-3">{{ __('invoices.tx_purpose') }}</th>
                           <th class="px-4 py-3 text-right">{{ __('invoices.col_total') }}</th>
+                          <th class="px-4 py-3 text-center">{{ __('invoices.tx_receipt') }}</th>
                         </tr>
                       </thead>
                       <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
@@ -428,6 +466,18 @@
                             </td>
                             <td class="max-w-[22rem] truncate px-4 py-2.5 text-gray-500 dark:text-gray-400" x-text="tx.purpose" :title="tx.purpose"></td>
                             <td class="whitespace-nowrap px-4 py-2.5 text-right font-medium tabular-nums" :class="tx.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(tx.amount, tx.currency)"></td>
+                            {{-- Receipts: only outgoing bookings. Paperclip + count; opens the receipts panel. --}}
+                            <td class="whitespace-nowrap px-4 py-2.5 text-center">
+                              <template x-if="tx.amount < 0">
+                                <button type="button" @click="openReceipts(tx)"
+                                  class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors"
+                                  :class="receiptCount(tx) ? 'text-accent hover:bg-accent/10' : 'text-gray-400 hover:bg-black/[0.04] dark:hover:bg-white/10'"
+                                  :title="receiptCount(tx) ? '{{ __('invoices.tx_receipt_count') }}'.replace(':n', receiptCount(tx)) : '{{ __('invoices.tx_receipt_add') }}'">
+                                  <x-icon name="paper-clip" class="h-4 w-4" />
+                                  <span x-show="receiptCount(tx)" x-text="receiptCount(tx)"></span>
+                                </button>
+                              </template>
+                            </td>
                           </tr>
                         </template>
                       </tbody>
@@ -505,6 +555,50 @@
                       </div>
                     </div>
                   </template>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          {{-- ---- RECEIPTS PANEL (Belege for a transaction) ---- --}}
+          <div x-show="receiptTx" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeReceipts()">
+            <div class="absolute inset-0 bg-gray-900/50" @click="closeReceipts()"></div>
+            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <template x-if="receiptTx">
+                <div class="flex min-h-0 flex-1 flex-col">
+                  <div class="flex items-start justify-between gap-3 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <div class="min-w-0">
+                      <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.receipts_title') }}</h3>
+                      <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="(receiptTx.counterparty || receiptTx.purpose || '') + ' · ' + fmtMoney(receiptTx.amount, receiptTx.currency) + ' · ' + receiptTx.date"></p>
+                    </div>
+                    <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeReceipts()" :aria-label="__('common.close')" />
+                  </div>
+                  <div class="min-h-0 flex-1 overflow-auto px-5 py-4">
+                    {{-- Existing receipts --}}
+                    <template x-if="receiptCount(receiptTx)">
+                      <div class="space-y-2">
+                        <template x-for="(r, ri) in receiptTx.receipts" :key="ri">
+                          <div class="flex items-center gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                            <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="background:#3fae9f"><x-icon name="document" class="h-4 w-4 text-white" /></span>
+                            <button type="button" @click="openReceipt(r)" class="min-w-0 flex-1 truncate text-left text-sm text-gray-800 dark:text-gray-200 hover:text-accent" x-text="r.name || '{{ __('invoices.receipt') }}'" :title="r.name"></button>
+                            <x-icon-button name="arrow-down-tray" tone="gray" size="sm" @click="openReceipt(r)" :aria-label="__('invoices.receipt')" />
+                            <x-icon-button name="trash" tone="red" size="sm" @click="removeReceipt(receiptTx, r)" :aria-label="__('common.delete')" />
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                    <template x-if="! receiptCount(receiptTx)">
+                      <x-empty-state icon="paper-clip" class="py-8">{{ __('invoices.receipts_none') }}</x-empty-state>
+                    </template>
+                  </div>
+                  <div class="flex items-center justify-between gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <span x-show="receiptBusy" class="inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('invoices.receipts_uploading') }}</span>
+                    <span x-show="! receiptBusy"></span>
+                    <div>
+                      <input type="file" x-ref="receiptFile" accept="application/pdf,image/*" multiple class="hidden" @change="uploadReceipts($event.target.files); $event.target.value = ''">
+                      <x-button variant="primary" size="sm" icon="arrow-up-tray" ::disabled="receiptBusy" @click="$refs.receiptFile.click()">{{ __('invoices.receipts_add') }}</x-button>
+                    </div>
+                  </div>
                 </div>
               </template>
             </div>

@@ -186,6 +186,50 @@ export default (config = {}, labels = {}) => ({
     get accountIncome() { return this.accountTx.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0); },
     get accountExpense() { return this.accountTx.filter((t) => t.amount < 0).reduce((s, t) => s + t.amount, 0); },
 
+    // ---- Receipts (Belege) — sealed files attached to outgoing transactions ----
+    receiptTx: null,        // the transaction whose receipts panel is open
+    receiptBusy: false,
+    get outgoingTx() { return this.accountTx.filter((t) => t.amount < 0); },
+    // How many of the account's outgoing bookings still have no receipt attached.
+    get missingReceipts() { return this.outgoingTx.filter((t) => ! (t.receipts && t.receipts.length)).length; },
+    receiptCount(tx) { return (tx.receipts || []).length; },
+    // Per bank account: outgoing bookings + how many still lack a receipt (Belege tab).
+    get receiptOverview() {
+        return sortedPaymentMethods(this.paymentMethods).filter((p) => p.type === 'bank').map((pm) => {
+            const out = (this.transactions || []).filter((t) => t.account === pm.id && t.amount < 0);
+            return { pm, outgoing: out.length, missing: out.filter((t) => ! (t.receipts && t.receipts.length)).length };
+        });
+    },
+    openReceipts(tx) { this.receiptTx = tx; },
+    closeReceipts() { this.receiptTx = null; },
+    async uploadReceipts(fileList) {
+        const tx = this.receiptTx;
+        if (! tx) return;
+        const files = [...(fileList || [])];
+        if (! files.length) return;
+        this.receiptBusy = true;
+        tx.receipts = tx.receipts || [];
+        let ok = 0;
+        for (const file of files) {
+            try {
+                const bytes = new Uint8Array(await file.arrayBuffer());
+                const up = await this._uploadFile(bytes, file.name, file.type || 'application/octet-stream');
+                if (up) { tx.receipts.push(up); ok++; }
+            } catch (e) { /* skip this file */ }
+        }
+        this.receiptBusy = false;
+        if (ok) { this._save(); this.reconcileBlobs(); }
+        else window.llToast?.(labels.receipt_failed || 'Upload failed.');
+    },
+    openReceipt(r) { return this._openBlob(r); },
+    async removeReceipt(tx, r) {
+        if (! await this.$store.confirm.ask(labels.receipt_delete_confirm || 'Remove this receipt?')) return;
+        const i = (tx.receipts || []).indexOf(r);
+        if (i >= 0) tx.receipts.splice(i, 1);
+        this._save();
+        this.reconcileBlobs();
+    },
+
     // Read a statement file as text, tolerating Windows-1252 (common for Sparkasse CSVs).
     async _readStatement(file) {
         const buf = await file.arrayBuffer();
@@ -653,35 +697,38 @@ export default (config = {}, labels = {}) => ({
         if (! config.reconcileUrl) return;
         const blobs = [];
         for (const inv of (this.invoices || [])) if (inv.pdf?.blob) blobs.push(inv.pdf.blob);
+        for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) if (r.blob) blobs.push(r.blob);
         for (const ref of window.LLInvoicesStore.shardRefs()) blobs.push(ref);
         postForm(config.reconcileUrl, { blobs: [...new Set(blobs)] }).catch(() => {});
     },
 
-    // Encrypt + upload the original imported PDF as a sealed blob (ZK). Returns
-    // { blob, key, name } or null on failure.
-    async _uploadPdf(bytes, name) {
+    // Encrypt + upload a file as a sealed blob (ZK). Returns { blob, key, name, mime }
+    // or null on failure.
+    async _uploadFile(bytes, name, mime) {
         try {
-            const enc = window.Vault.encryptContent(bytes, { name, mime: 'application/pdf' });
+            const enc = window.Vault.encryptContent(bytes, { name, mime });
             const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
             const fd = new FormData();
             fd.append('file', cipher);
             const res = await fetch(config.uploadUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
             if (! res.ok) return null;
-            return { blob: (await res.json()).id, key: enc.encFileKey, name };
+            return { blob: (await res.json()).id, key: enc.encFileKey, name, mime };
         } catch (e) { return null; }
     },
+    _uploadPdf(bytes, name) { return this._uploadFile(bytes, name, 'application/pdf'); },
 
-    // Open the stored original PDF of an imported invoice (decrypt client-side).
-    async openOriginalPdf(inv) {
-        if (! inv?.pdf?.blob) return;
+    // Open a stored sealed file (invoice original / receipt) — decrypt client-side.
+    async _openBlob(ref) {
+        if (! ref?.blob) return;
         try {
-            const buf = await fetchBlobBuffer(`${config.rawBase}/${inv.pdf.blob}`);
-            const plain = window.Vault.decryptFile(buf, inv.pdf.key);
-            const url = URL.createObjectURL(new Blob([plain], { type: 'application/pdf' }));
+            const buf = await fetchBlobBuffer(`${config.rawBase}/${ref.blob}`);
+            const plain = window.Vault.decryptFile(buf, ref.key);
+            const url = URL.createObjectURL(new Blob([plain], { type: ref.mime || 'application/octet-stream' }));
             window.open(url, '_blank');
             setTimeout(() => URL.revokeObjectURL(url), 60000);
-        } catch (e) { window.llToast?.(labels.downloadFailed || 'Could not open PDF.'); }
+        } catch (e) { window.llToast?.(labels.downloadFailed || 'Could not open file.'); }
     },
+    openOriginalPdf(inv) { return this._openBlob(inv?.pdf ? { ...inv.pdf, mime: 'application/pdf' } : null); },
     async finalize(inv) {
         let i = inv || this.current;
         if (! i) return;
