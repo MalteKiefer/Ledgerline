@@ -394,6 +394,12 @@
                       </div>
                     </div>
                     <div class="flex items-center gap-2">
+                      <template x-if="accountReceiptTotal(payAccount)">
+                        <x-button variant="secondary" size="sm" icon="arrow-down-tray" ::disabled="exportBusy" @click="downloadAllReceipts(payAccount)">
+                          <span x-show="! exportBusy">{{ __('invoices.export_all') }}</span>
+                          <span x-show="exportBusy" x-text="'{{ __('invoices.export_progress') }}'.replace(':done', exportDone).replace(':total', exportTotal)"></span>
+                        </x-button>
+                      </template>
                       <input type="file" x-ref="stmtFile" accept=".csv,.txt,.sta,.mt940,text/csv,text/plain" class="hidden" @change="importStatement($event.target.files); $event.target.value = ''">
                       <x-button variant="secondary" size="sm" icon="arrow-up-tray" @click="$refs.stmtFile.click()">{{ __('invoices.stmt_import') }}</x-button>
                     </div>
