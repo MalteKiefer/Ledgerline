@@ -9,7 +9,7 @@ import { padBlob, padmeSize } from '../shared/padme';
 import { saveBlobAs, formatDate } from '../shared/dom';
 import { fileCategory, CATEGORY_ICON, categoryTint, fileTypeLabel, FOLDER_TINT, formatBytes } from '../shared/file-categories';
 import { normVec as _normVec, dotVec as _dotVec } from '../shared/vector-math';
-import { ocrImage } from '../shared/ocr';
+import { extractDocText } from '../shared/doc-text';
 import { loadCodeMirror, cmModule } from '../shared/lazy-loaders';
 
 // Heroicon path for the folder chip glyph (24-outline folder).
@@ -1621,67 +1621,10 @@ export default (config = {}, labels = {}) => ({
         return /^text\//.test(f.mime || '') || f.mime === 'application/pdf' || /^image\//.test(f.mime || '')
             || ['txt', 'md', 'markdown', 'csv', 'tsv', 'log', 'json', 'xml', 'yaml', 'yml', 'ini', 'conf', 'html', 'htm', 'js', 'ts', 'jsx', 'tsx', 'css', 'scss', 'py', 'sh', 'bash', 'c', 'h', 'cpp', 'hpp', 'cs', 'java', 'go', 'rs', 'php', 'rb', 'sql', 'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff'].includes(ext);
     },
-    async _extractText(bytes, mime, name) {
-        const ext = ((name || '').split('.').pop() || '').toLowerCase();
-        if (mime === 'application/pdf' || ext === 'pdf') {
-            const t = await this._extractPdfText(bytes);
-            // A real text layer → done; otherwise it's a scan → OCR the pages.
-            if (t && t.replace(/\s+/g, '').length > 8) return t;
-            return await this._ocrPdf(bytes);
-        }
-        // Images (scans, photos of documents) → OCR. Only keep a result that
-        // has enough real characters, so an ordinary photo (which OCRs to noise)
-        // doesn't pollute the index.
-        if (/^image\//.test(mime || '') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff'].includes(ext)) {
-            const t = await ocrImage(new Blob([bytes], { type: mime || 'image/png' }));
-            return (t && t.replace(/\s+/g, '').length >= 12) ? t : '';
-        }
-        try {
-            let t = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-            if (ext === 'html' || ext === 'htm' || /html/.test(mime || '')) t = t.replace(/<[^>]+>/g, ' ');
-            return t;
-        } catch (e) { return null; }
-    },
-    // OCR a scanned PDF: render each page to a canvas (pdf.js) and recognise it.
-    // Capped + slow, so it only runs when there is no embedded text layer.
-    async _ocrPdf(bytes) {
-        try {
-            const pdfjs = await import('pdfjs-dist');
-            pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
-            const doc = await pdfjs.getDocument({ data: bytes.slice(0), isEvalSupported: false }).promise;
-            let out = '';
-            const pages = Math.min(doc.numPages, 30);
-            for (let i = 1; i <= pages && out.length < 2_000_000; i++) {
-                const page = await doc.getPage(i);
-                const vp = page.getViewport({ scale: 2 });
-                const canvas = document.createElement('canvas');
-                canvas.width = vp.width; canvas.height = vp.height;
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-                out += await ocrImage(canvas) + '\n';
-                canvas.width = canvas.height = 0; // free
-            }
-            try { await doc.destroy(); } catch (e) { /* ignore */ }
-            return out;
-        } catch (e) { return ''; }
-    },
-    // PDF text via pdf.js (lazy-loaded + code-split so it never bloats the main
-    // bundle; runs entirely in the browser, so the ZK boundary is untouched).
-    async _extractPdfText(bytes) {
-        try {
-            const pdfjs = await import('pdfjs-dist');
-            pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
-            const doc = await pdfjs.getDocument({ data: bytes.slice(0), isEvalSupported: false }).promise;
-            let out = '';
-            const pages = Math.min(doc.numPages, 300);
-            for (let i = 1; i <= pages && out.length < 2_000_000; i++) {
-                const page = await doc.getPage(i);
-                const content = await page.getTextContent();
-                out += content.items.map((it) => it.str || '').join(' ') + '\n';
-            }
-            try { await doc.destroy(); } catch (e) { /* ignore */ }
-            return out;
-        } catch (e) { return null; }
-    },
+    // Document text extraction (PDF text layer → OCR fallback; image → OCR; else decode)
+    // lives in shared/doc-text.js and is shared with the finance receipts. ZK-safe (all
+    // in the browser; pdf.js/tesseract lazy-loaded).
+    _extractText(bytes, mime, name) { return extractDocText(bytes, mime, name); },
     // Store extracted text as its own sealed blob (keeps the manifest small).
     async _storeText(text) {
         const bytes = new TextEncoder().encode(text.slice(0, 2_000_000));

@@ -11,6 +11,8 @@ import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary } from '../shared/finance-stats';
 import { matchInvoice } from '../shared/invoice-match';
+import { extractDocText } from '../shared/doc-text';
+import { analyzeReceiptText } from '../shared/receipt-ocr';
 import { PAYMENT_TYPES, paymentTint, paymentSubtitle, isValidPaymentMethod, sortedPaymentMethods, blankPaymentMethod, cardNetworkOf } from '../shared/payment-methods';
 import { detectFormat, parseMt940, parseCsv, detectCsvMapping, applyCsvMapping, enrichExisting, classifyTxType, guessVatCat, VAT_CATS, txSignature as txSig, TX_FIELDS, TX_REQUIRED } from '../shared/bank-statement';
 
@@ -277,6 +279,7 @@ export default (config = {}, labels = {}) => ({
         return this.allReceipts.filter(({ r, tx }) =>
             (r.name || '').toLowerCase().includes(q) || (r.note || '').toLowerCase().includes(q) ||
             (r.category || '').toLowerCase().includes(q) || (r.tags || []).join(' ').toLowerCase().includes(q) ||
+            (r.merchant || '').toLowerCase().includes(q) || (r.ocr || '').toLowerCase().includes(q) ||
             (tx.counterparty || '').toLowerCase().includes(q) || (tx.purpose || '').toLowerCase().includes(q));
     },
     async openReceiptDoc(doc) {
@@ -344,12 +347,26 @@ export default (config = {}, labels = {}) => ({
             try {
                 const bytes = new Uint8Array(await file.arrayBuffer());
                 const up = await this._uploadFile(bytes, file.name, file.type || 'application/octet-stream');
-                if (up) { tx.receipts.push(up); ok++; }
+                if (up) { up.id = window.LLInvoicesStore.newId(); tx.receipts.push(up); ok++; this._ocrReceipt(bytes.slice(0), up); }
             } catch (e) { /* skip this file */ }
         }
         this.receiptBusy = false;
         if (ok) { this._save(); this.reconcileBlobs(); }
         else window.llToast?.(labels.receipt_failed || 'Upload failed.');
+    },
+    // Background OCR of a freshly-uploaded receipt: extract text (searchable) and suggest
+    // a category + tags (only fill empty fields). Runs client-side (ZK); best effort.
+    async _ocrReceipt(bytes, r) {
+        try {
+            const text = await extractDocText(bytes, r.mime, r.name);
+            if (! text || text.replace(/\s+/g, '').length < 8) return;
+            r.ocr = text.slice(0, 200000);
+            const a = analyzeReceiptText(text);
+            if (! r.category && a.category) r.category = a.category;
+            if ((! r.tags || ! r.tags.length) && a.tags.length) r.tags = a.tags;
+            if (a.merchant && ! r.merchant) r.merchant = a.merchant;
+            this._save();
+        } catch (e) { /* best effort */ }
     },
     // Quick-look a receipt/invoice in a modal (decrypt client-side). App invoices with no
     // stored PDF open the invoice view instead.
