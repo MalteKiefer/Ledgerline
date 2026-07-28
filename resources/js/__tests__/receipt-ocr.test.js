@@ -35,6 +35,13 @@ describe('receipt OCR analysis', () => {
         expect(analyzeReceiptText('Adobe Creative Cloud\nLizenz 59,49').category).toBe('Software');
         expect(analyzeReceiptText('random note').category).toBe('');
     });
+    it('does not misfire on substrings (kündbar ≠ bar) and prefers the specific category', () => {
+        // A telecom invoice containing "unkündbar" must NOT become Geschäftsessen.
+        const tel = 'Telekom Deutschland GmbH\nMobilfunk-Rechnung\nVertrag monatlich kündbar\nRechnungsbetrag 39,85';
+        expect(analyzeReceiptText(tel).category).toBe('Telekommunikation');
+        // "total"/"super" are too generic and must not classify as Kfz.
+        expect(analyzeReceiptText('Supermarkt\nTotal 12,00').category).toBe('');
+    });
     it('suggests tags (merchant + category), de-duplicated', () => {
         const a = analyzeReceiptText(RESTAURANT);
         expect(a.tags).toEqual(['Ristorante Da Mario', 'Geschäftsessen']);
