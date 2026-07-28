@@ -224,16 +224,20 @@ export default (config = {}, labels = {}) => ({
     receiptTx: null,        // the transaction whose receipts panel is open
     receiptBusy: false,
     get outgoingTx() { return this.accountTx.filter((t) => t.amount < 0); },
+    // Bookings that need a document: everything except private deposits/withdrawals.
+    // Income is documented by its matched invoice (a locked receipt), expenses by a
+    // receipt — both stored in tx.receipts, so the check is uniform.
+    get documentableTx() { return this.accountTx.filter((t) => t.vatCat !== 'private'); },
     // Income bookings not yet linked to an invoice (drives the "match invoices" action).
     get unlinkedIncomeCount() { return this.accountTx.filter((t) => t.amount > 0 && ! t.invoiceId).length; },
-    // How many of the account's outgoing bookings still have no receipt attached.
-    get missingReceipts() { return this.outgoingTx.filter((t) => ! (t.receipts && t.receipts.length)).length; },
+    // How many documentable bookings (non-private) still have no document attached.
+    get missingReceipts() { return this.documentableTx.filter((t) => ! (t.receipts && t.receipts.length)).length; },
     receiptCount(tx) { return (tx.receipts || []).length; },
     // Per bank account: outgoing bookings + how many still lack a receipt (Belege tab).
     get receiptOverview() {
         return sortedPaymentMethods(this.paymentMethods).filter((p) => p.type === 'bank').map((pm) => {
-            const out = (this.transactions || []).filter((t) => t.account === pm.id && t.amount < 0);
-            return { pm, outgoing: out.length, missing: out.filter((t) => ! (t.receipts && t.receipts.length)).length };
+            const docs = (this.transactions || []).filter((t) => t.account === pm.id && t.vatCat !== 'private');
+            return { pm, outgoing: docs.length, missing: docs.filter((t) => ! (t.receipts && t.receipts.length)).length };
         });
     },
     openReceipts(tx) { this.receiptTx = tx; },
@@ -257,10 +261,26 @@ export default (config = {}, labels = {}) => ({
         if (ok) { this._save(); this.reconcileBlobs(); }
         else window.llToast?.(labels.receipt_failed || 'Upload failed.');
     },
-    openReceipt(r) {
-        if (r.kind === 'invoice' && ! r.blob) return this.openInvoiceById(r.invoiceId); // app invoice → open its view
-        return this._openBlob(r);
+    // Quick-look a receipt/invoice in a modal (decrypt client-side). App invoices with no
+    // stored PDF open the invoice view instead.
+    receiptPreview: null, // { url, mime, name }
+    async openReceipt(r) {
+        if (r.kind === 'invoice' && ! r.blob) return this.openInvoiceById(r.invoiceId);
+        try {
+            const buf = await fetchBlobBuffer(`${config.rawBase}/${r.blob}`);
+            const plain = window.Vault.decryptFile(buf, r.key);
+            const url = URL.createObjectURL(new Blob([plain], { type: r.mime || 'application/octet-stream' }));
+            this.closeReceiptPreview();
+            this.receiptPreview = { url, mime: r.mime || '', name: r.name || '' };
+        } catch (e) { window.llToast?.(labels.downloadFailed || 'Could not open file.'); }
     },
+    closeReceiptPreview() {
+        if (this.receiptPreview?.url) { try { URL.revokeObjectURL(this.receiptPreview.url); } catch (e) { /* */ } }
+        this.receiptPreview = null;
+    },
+    get previewIsImage() { return /^image\//.test(this.receiptPreview?.mime || '') || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(this.receiptPreview?.name || ''); },
+    get previewIsPdf() { return this.receiptPreview?.mime === 'application/pdf' || /\.pdf$/i.test(this.receiptPreview?.name || ''); },
+    openReceiptInTab() { if (this.receiptPreview?.url) window.open(this.receiptPreview.url, '_blank'); },
     // ---- Bulk receipt export (ZIP) for the tax advisor ----
     exportBusy: false,
     exportDone: 0,
