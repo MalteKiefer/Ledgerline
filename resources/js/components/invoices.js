@@ -11,7 +11,7 @@ import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears } from '../shared/finance-stats';
 import { PAYMENT_TYPES, paymentTint, paymentSubtitle, isValidPaymentMethod, sortedPaymentMethods, blankPaymentMethod, cardNetworkOf } from '../shared/payment-methods';
-import { detectFormat, parseMt940, parseCsv, detectCsvMapping, applyCsvMapping, dedupeTransactions, TX_FIELDS, TX_REQUIRED } from '../shared/bank-statement';
+import { detectFormat, parseMt940, parseCsv, detectCsvMapping, applyCsvMapping, enrichExisting, classifyTxType, txSignature as txSig, TX_FIELDS, TX_REQUIRED } from '../shared/bank-statement';
 
 // One-time dual-read migration from the old single-blob module store (/store/invoices)
 // to the sharded store (LLInvoicesStore, spec §3b). Runs only while the sharded store is
@@ -233,8 +233,10 @@ export default (config = {}, labels = {}) => ({
     },
     _previewStatement(transactions, meta) {
         const existing = (this.transactions || []).filter((t) => t.account === this.payAccount.id);
-        const fresh = dedupeTransactions(existing, transactions);
-        this.stmt = { stage: 'preview', name: meta.name, format: meta.format, transactions, fresh, dupes: transactions.length - fresh.length };
+        // Split into genuinely-new rows and known rows that carry new info to merge in.
+        const { fresh, updates } = enrichExisting(existing, transactions);
+        const dupes = transactions.length - fresh.length - updates.length;
+        this.stmt = { stage: 'preview', name: meta.name, format: meta.format, transactions, fresh, updates, dupes };
     },
     confirmStatementImport() {
         if (! this.stmt || ! this.payAccount) return;
@@ -244,10 +246,19 @@ export default (config = {}, labels = {}) => ({
             tx.account = acct;
             this.transactions.push(tx);
         }
+        // Enrich existing records with the newly-available fields.
+        for (const u of (this.stmt.updates || [])) {
+            const target = this.transactions.find((t) => t.account === acct && txSig(t) === u.sig);
+            if (target) Object.assign(target, u.patch);
+        }
         this._save();
-        window.llToast?.((labels.stmt_imported || ':n transactions imported.').replace(':n', this.stmt.fresh.length));
+        const n = this.stmt.fresh.length, m = (this.stmt.updates || []).length;
+        window.llToast?.((labels.stmt_imported || ':n transactions imported.').replace(':n', n) + (m ? ' · ' + (labels.stmt_enriched || ':n updated').replace(':n', m) : ''));
         this.stmt = null;
     },
+    // Localised payment-type label + tint for a transaction.
+    txType(tx) { return classifyTxType(tx); },
+    txTypeLabel(tx) { return labels['txtype_' + classifyTxType(tx)] || ''; },
     cancelStatement() { this.stmt = null; },
 
     // ---- Derived ----

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
     parseAmount, parseDate, detectFormat, parseMt940, parseMt940Field86,
     parseCsv, detectCsvMapping, applyCsvMapping, txSignature, dedupeTransactions, TX_FIELDS,
+    enrichExisting, classifyTxType,
 } from '../shared/bank-statement.js';
 
 describe('bank statement parsing', () => {
@@ -111,5 +112,37 @@ describe('bank statement parsing', () => {
         expect(txSignature(b)).toContain('E1');
         expect(dedupeTransactions([a], [a, b])).toEqual([b]); // a already present
         expect(dedupeTransactions([], [a, a])).toHaveLength(1); // within-batch dupes collapse
+    });
+
+    it('enriches an existing transaction with new info on re-import', () => {
+        const existing = [{ date: '2024-01-02', amount: -6, counterparty: 'Y', purpose: 'q', eref: 'E1', iban: '', bic: '' }];
+        const incoming = [
+            { date: '2024-01-02', amount: -6, counterparty: 'Y', purpose: 'q', eref: 'E1', iban: 'DE99', bic: 'ABCDEF' }, // same tx, now has IBAN/BIC
+            { date: '2024-01-03', amount: -7, counterparty: 'Z', purpose: 'r' }, // genuinely new
+        ];
+        const { fresh, updates } = enrichExisting(existing, incoming);
+        expect(fresh).toHaveLength(1);
+        expect(fresh[0].amount).toBe(-7);
+        expect(updates).toHaveLength(1);
+        expect(updates[0].patch).toEqual({ iban: 'DE99', bic: 'ABCDEF' }); // only the previously-empty fields
+    });
+
+    it('does not overwrite fields that already have a value', () => {
+        const existing = [{ date: '2024-01-02', amount: -6, eref: 'E1', iban: 'DE-OLD' }];
+        const incoming = [{ date: '2024-01-02', amount: -6, eref: 'E1', iban: 'DE-NEW', bic: 'X' }];
+        const { updates } = enrichExisting(existing, incoming);
+        expect(updates[0].patch).toEqual({ bic: 'X' }); // iban kept, only the missing bic added
+    });
+
+    it('classifies the payment type from booking text', () => {
+        expect(classifyTxType({ bookingText: 'SEPA-ELV-LASTSCHRIFT', amount: -30 })).toBe('card');
+        expect(classifyTxType({ bookingText: 'Kartenzahlung', amount: -10 })).toBe('card');
+        expect(classifyTxType({ bookingText: 'FOLGELASTSCHRIFT', amount: -149 })).toBe('debit');
+        expect(classifyTxType({ bookingText: 'EINZUG RATE/ANNUITAET', amount: -213 })).toBe('debit');
+        expect(classifyTxType({ bookingText: 'GUTSCHR. UEBERW. DAUERAUFTR', amount: 2200 })).toBe('credit');
+        expect(classifyTxType({ bookingText: 'DAUERAUFTRAG', amount: -410 })).toBe('standingorder');
+        expect(classifyTxType({ bookingText: 'Echtzeitüberweisung', amount: 150 })).toBe('transfer');
+        expect(classifyTxType({ bookingText: '', amount: 50 })).toBe('credit');
+        expect(classifyTxType({ bookingText: '', amount: -50 })).toBe('other');
     });
 });

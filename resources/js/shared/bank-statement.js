@@ -242,3 +242,50 @@ export function dedupeTransactions(existing, incoming) {
     }
     return fresh;
 }
+
+// ---- Enrich-on-reimport ----
+// Fields a later import may fill in on an already-known transaction.
+const ENRICH_FIELDS = ['iban', 'bic', 'counterparty', 'purpose', 'bookingText', 'eref', 'valueDate'];
+
+/**
+ * Split incoming transactions against `existing`: brand-new ones (`fresh`), and ones
+ * that already exist but carry info the stored record was missing (`updates` — each a
+ * { sig, patch } to apply). A re-import thus enriches (adds IBAN/BIC/purpose/…) instead
+ * of silently dropping the row. Signatures must match (same source or shared EREF).
+ */
+export function enrichExisting(existing, incoming) {
+    const bySig = new Map((existing || []).map((t) => [txSignature(t), t]));
+    const usedSig = new Set();
+    const fresh = [], updates = [];
+    for (const tx of incoming || []) {
+        const sig = txSignature(tx);
+        const match = bySig.get(sig);
+        if (! match) {
+            if (! usedSig.has(sig)) { usedSig.add(sig); fresh.push(tx); }
+            continue;
+        }
+        const patch = {};
+        for (const f of ENRICH_FIELDS) {
+            if (! String(match[f] || '').trim() && String(tx[f] || '').trim()) patch[f] = tx[f];
+        }
+        if (Object.keys(patch).length) updates.push({ sig, patch });
+    }
+    return { fresh, updates };
+}
+
+// ---- Payment-type classification ----
+const TYPE_RULES = [
+    ['card', /karten|sepa-elv|(?:^|[^a-z])elv|point of sale|\bpos\b|debitk|girocard|visa|mastercard/i],
+    ['debit', /lastschrift|einzug|abbuchung|abschlag|direct ?debit/i],
+    ['credit', /gutschr|gehalt|lohn|rente|zahlungseingang/i],
+    ['standingorder', /dauerauftr|standing ?order/i],
+    ['fee', /entgelt|gebühr|geb\.|kontoführ/i],
+    ['transfer', /überweis|ueberweis|echtzeit|transfer|zahlung an/i],
+];
+
+/** Classify a transaction's payment type from its booking text/purpose. */
+export function classifyTxType(tx) {
+    const s = `${tx.bookingText || ''} ${tx.purpose || ''}`;
+    for (const [type, re] of TYPE_RULES) if (re.test(s)) return type;
+    return (tx.amount || 0) >= 0 ? 'credit' : 'other';
+}
