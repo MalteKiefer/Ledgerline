@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeReceiptText, extractTotal, extractDate, extractMerchant } from '../shared/receipt-ocr.js';
+import { analyzeReceiptText, extractTotal, extractDate, extractMerchant, extractNumber } from '../shared/receipt-ocr.js';
 
 const RESTAURANT = `Ristorante Da Mario
 Hauptstraße 5, 95326 Kulmbach
@@ -61,6 +61,30 @@ describe('receipt OCR analysis', () => {
         expect(analyzeReceiptText(tel).category).toBe('Telekommunikation');
         // "total"/"super" are too generic and must not classify as Kfz.
         expect(analyzeReceiptText('Supermarkt\nTotal 12,00').category).toBe('');
+    });
+    it('parses month-abbreviation dates with dashes (Adobe "27-MAR-2025")', () => {
+        expect(extractDate('Invoice date 27-MAR-2025')).toBe('2025-03-27');
+        expect(extractDate('13-MAR-2025')).toBe('2025-03-13');
+    });
+    it('does not read a date as the invoice number', () => {
+        expect(extractNumber('Invoice No: 27-MAR-2025')).toBe('');
+        expect(extractNumber('Rechnungsnr. 12.03.2025')).toBe('');
+        expect(extractNumber('Rechnung Nr 25')).toBe(''); // too short/ambiguous
+        expect(extractNumber('Rechnungsnummer 2026-004')).toBe('2026-004');
+        expect(extractNumber('Invoice Number F44705CE')).toBe('F44705CE');
+    });
+    it('falls back to a known brand when there is no legal-form letterhead', () => {
+        // Adobe invoices head with the recipient/person, not "Adobe Inc." — brand wins.
+        expect(extractMerchant('Andy Lippert\nRechnung\nAdobe Creative Cloud\nGesamt 59,49')).toBe('Adobe');
+        expect(extractMerchant('Du hast 12 Punkte\nKaufland Filiale 4711\nSumme 34,24')).toBe('Kaufland');
+        // A real legal-form letterhead still beats the brand keyword.
+        expect(extractMerchant('netcup GmbH\nEmmy-Noether-Straße 10\nGoogle Ads Rechnung')).toBe('netcup GmbH');
+    });
+    it('collapses letter-spaced company names', () => {
+        expect(extractMerchant('I n t e l l y T e c GmbH\nGrünenborn 1')).toBe('IntellyTec GmbH');
+    });
+    it('trims trailing document labels from the letterhead', () => {
+        expect(extractMerchant('Alpha Layer GTS GmbH Place/Date of invoice Komenda\nInvoice')).toBe('Alpha Layer GTS GmbH');
     });
     it('suggests tags (merchant + category), de-duplicated', () => {
         const a = analyzeReceiptText(RESTAURANT);

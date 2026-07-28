@@ -18,7 +18,19 @@ export async function extractPdfText(bytes, maxPages = 300) {
         for (let i = 1; i <= pages && out.length < 2_000_000; i++) {
             const page = await doc.getPage(i);
             const content = await page.getTextContent();
-            out += content.items.map((it) => it.str || '').join(' ') + '\n';
+            // Preserve line structure via each item's y-position (transform[5]): a jump
+            // starts a new line, same row joins with a space. Without this the whole page
+            // collapses to one "line" and the line-based recognisers (total/merchant) break
+            // — e.g. the total is read as the last number on the page, not the labelled one.
+            let lastY = null;
+            for (const it of content.items) {
+                const y = it.transform ? it.transform[5] : null;
+                if (lastY !== null && y !== null && Math.abs(y - lastY) > 3) out += '\n';
+                else if (out && ! out.endsWith('\n')) out += ' ';
+                out += it.str || '';
+                lastY = y;
+            }
+            out += '\n';
         }
         try { await doc.destroy(); } catch (e) { /* ignore */ }
         return out;
