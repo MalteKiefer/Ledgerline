@@ -87,7 +87,7 @@
           <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('messages.nav.finance') }}</h1>
           <div class="-mx-1 max-w-full overflow-x-auto px-1 pb-1">
             <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/10 p-0.5 text-sm font-medium">
-              @php $tabs = ['dashboard' => 'tab_dashboard', 'invoices' => 'tab_invoices', 'payments' => 'tab_payments', 'receipts' => 'tab_receipts', 'stats' => 'tab_stats']; @endphp
+              @php $tabs = ['dashboard' => 'tab_dashboard', 'invoices' => 'tab_invoices', 'payments' => 'tab_payments', 'receipts' => 'tab_receipts', 'stats' => 'tab_stats', 'settings' => 'tab_settings']; @endphp
               @foreach ($tabs as $key => $lbl)
                 <button type="button" @click="setSection('{{ $key }}')"
                   class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 transition-colors"
@@ -203,30 +203,61 @@
             <input type="search" x-model.debounce.200ms="receiptQuery" placeholder="{{ __('invoices.receipts_search') }}" class="w-full max-w-xs rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
             <div class="flex items-center gap-3">
               <p class="text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.receipts_count') }}'.replace(':n', allReceipts.length)"></p>
+              <template x-if="unrecognisedReceipts">
+                <x-button variant="secondary" size="sm" icon="arrow-path" ::disabled="reanalyzeBusy" @click="reanalyzeAllReceipts()">
+                  <span x-text="'{{ __('invoices.receipts_reanalyze_all') }}'.replace(':n', unrecognisedReceipts)"></span>
+                </x-button>
+              </template>
               <template x-if="(transactions || []).length">
-                <x-button variant="primary" size="sm" icon="plus" @click="addBookingQuery=''; receiptAddPick = true">{{ __('invoices.receipts_add') }}</x-button>
+                <span>
+                  <input type="file" x-ref="autoReceipt" accept="application/pdf,image/*" multiple class="hidden" @change="uploadReceiptsAuto($event.target.files); $event.target.value = ''">
+                  <x-button variant="primary" size="sm" icon="arrow-up-tray" ::disabled="autoUploadBusy" @click="$refs.autoReceipt.click()">
+                    <span x-show="! autoUploadBusy">{{ __('invoices.receipts_add') }}</span>
+                    <span x-show="autoUploadBusy">{{ __('invoices.receipts_uploading') }}</span>
+                  </x-button>
+                </span>
               </template>
             </div>
           </div>
 
-          {{-- Upload: pick a booking, then its receipts panel opens for drag & drop --}}
-          <div x-show="receiptAddPick" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="receiptAddPick = false">
-            <div class="absolute inset-0 bg-gray-900/50" @click="receiptAddPick = false"></div>
-            <div class="relative flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
-              <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.receipts_pick_booking') }}</h3>
-                <x-icon-button name="x-mark" tone="gray" size="sm" @click="receiptAddPick = false" :aria-label="__('common.close')" />
-              </div>
-              <div class="px-5 py-3"><input type="search" x-model.debounce.200ms="addBookingQuery" placeholder="{{ __('invoices.receipt_relink_search') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></div>
-              <div class="min-h-0 flex-1 overflow-auto px-2 pb-2">
-                <template x-if="! addBookingCandidates.length"><p class="px-3 py-6 text-center text-sm text-gray-400 dark:text-gray-500">—</p></template>
-                <template x-for="cand in addBookingCandidates" :key="cand.id">
-                  <button type="button" @click="pickBookingForReceipt(cand)" class="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left hover:bg-accent/5">
-                    <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
-                    <span class="shrink-0 text-sm tabular-nums" :class="cand.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(cand.amount, cand.currency)"></span>
-                  </button>
-                </template>
-              </div>
+          {{-- Assignment: receipts that could not be auto-matched by amount --}}
+          <div x-show="receiptAssign.length" x-cloak class="fixed inset-0 z-[1130] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+            <div class="absolute inset-0 bg-gray-900/50"></div>
+            <div class="relative flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <template x-if="receiptAssign.length">
+                <div class="flex min-h-0 flex-1 flex-col">
+                  <div class="border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="(receiptAssign[0].up.name || '{{ __('invoices.receipt') }}')"></h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      <span x-text="'{{ __('invoices.assign_intro') }}'.replace(':n', receiptAssign.length)"></span>
+                      <template x-if="receiptAssign[0].total != null"><span> · <span x-text="fmtMoney(receiptAssign[0].total)"></span></span></template>
+                    </p>
+                  </div>
+                  <div class="min-h-0 flex-1 overflow-auto px-2 py-2">
+                    {{-- amount matches first (if any), else searchable --}}
+                    <template x-if="receiptAssign[0].cands.length">
+                      <div class="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">{{ __('invoices.assign_by_amount') }}</div>
+                    </template>
+                    <template x-for="cand in receiptAssign[0].cands" :key="'m'+cand.id">
+                      <button type="button" @click="assignPending(0, cand)" class="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left hover:bg-accent/5">
+                        <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
+                        <span class="shrink-0 text-sm tabular-nums" :class="cand.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(cand.amount, cand.currency)"></span>
+                      </button>
+                    </template>
+                    <div class="px-3 pb-1 pt-2"><input type="search" x-model.debounce.200ms="assignQuery" placeholder="{{ __('invoices.receipt_relink_search') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></div>
+                    <template x-for="cand in assignCandidates()" :key="'a'+cand.id">
+                      <button type="button" @click="assignPending(0, cand)" class="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left hover:bg-accent/5">
+                        <span class="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
+                        <span class="shrink-0 text-xs tabular-nums text-gray-400" x-text="fmtMoney(cand.amount, cand.currency)"></span>
+                      </button>
+                    </template>
+                  </div>
+                  <div class="flex items-center justify-between gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <x-button variant="secondary" size="sm" @click="dropPending(0)">{{ __('invoices.assign_skip') }}</x-button>
+                    <span class="text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.assign_remaining') }}'.replace(':n', receiptAssign.length)"></span>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
 
@@ -246,7 +277,7 @@
                       </p>
                     </div>
                     <template x-if="doc.r.category"><x-badge variant="gray"><span x-text="doc.r.category"></span></x-badge></template>
-                    <template x-if="doc.r.contactId"><x-icon name="user" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" /></template>
+                    <template x-if="doc.r.contactId || doc.r.partnerId"><x-icon name="user" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" /></template>
                     <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
                   </button>
                 </template>
@@ -295,7 +326,7 @@
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_category') }}</label>
                       <input type="text" x-model="receiptDoc.r.category" @change="saveReceiptDoc()" list="receiptCats" placeholder="{{ __('invoices.receipt_category_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                      <datalist id="receiptCats"><template x-for="c in receiptCatSuggestions" :key="c"><option :value="c"></option></template></datalist>
+                      <datalist id="receiptCats"><template x-for="c in allCategories" :key="c"><option :value="c"></option></template></datalist>
                     </div>
 
                     {{-- Tags --}}
@@ -304,22 +335,25 @@
                       <input type="text" x-model="receiptTagInput" @change="saveReceiptDoc()" placeholder="{{ __('invoices.receipt_tags_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
                     </div>
 
-                    {{-- Contact link --}}
+                    {{-- Business partner (a contact, or a standalone partner) --}}
                     <div x-data="{ open: false }">
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_contact') }}</label>
-                      <template x-if="receiptDoc.r.contactId">
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_partner') }}</label>
+                      <template x-if="receiptDoc.r.contactId || receiptDoc.r.partnerId">
                         <div class="flex items-center gap-2 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
                           <x-icon name="user" class="h-4 w-4 text-gray-400" />
-                          <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="receiptDoc.r.contactName || contactName(receiptDoc.r.contactId) || '—'"></span>
-                          <x-icon-button name="x-mark" tone="gray" size="sm" @click="setReceiptContact(null)" :aria-label="__('common.delete')" />
+                          <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="receiptPartnerName(receiptDoc.r) || '—'"></span>
+                          <x-icon-button name="x-mark" tone="gray" size="sm" @click="setReceiptPartner(null)" :aria-label="__('common.delete')" />
                         </div>
                       </template>
-                      <template x-if="! receiptDoc.r.contactId">
+                      <template x-if="! (receiptDoc.r.contactId || receiptDoc.r.partnerId)">
                         <div class="relative">
-                          <input type="search" x-model="receiptDoc.r.contactQuery" @focus="open = true" placeholder="{{ __('invoices.receipt_contact_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                          <div x-show="open && receiptContacts().length" @click.outside="open = false" class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-lg">
-                            <template x-for="c in receiptContacts()" :key="c.id">
-                              <button type="button" @click="setReceiptContact(c); open = false" class="block w-full truncate px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-accent/5" x-text="contactName(c.id) || '—'"></button>
+                          <input type="search" x-model="receiptDoc.r.partnerQuery" @focus="open = true" placeholder="{{ __('invoices.receipt_partner_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                          <div x-show="open && partnerOptions().length" @click.outside="open = false" class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-lg">
+                            <template x-for="o in partnerOptions()" :key="o.kind + o.id">
+                              <button type="button" @click="setReceiptPartner(o); open = false" class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-accent/5">
+                                <span class="min-w-0 truncate" x-text="o.name"></span>
+                                <span class="shrink-0 text-[10px] uppercase tracking-wide text-gray-400" x-text="o.kind === 'contact' ? '{{ __('invoices.partner_contact') }}' : '{{ __('invoices.partner_partner') }}'"></span>
+                              </button>
                             </template>
                           </div>
                         </div>
@@ -335,8 +369,13 @@
                       <x-alert variant="info">{{ __('invoices.receipt_locked_hint') }}</x-alert>
                     </template>
                   </div>
-                  <div class="flex items-center justify-between gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <x-button variant="secondary" size="sm" icon="pencil" @click="renameReceiptDoc()">{{ __('invoices.receipt_rename') }}</x-button>
+                  <div class="flex flex-wrap items-center justify-between gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <div class="flex items-center gap-2">
+                      <x-button variant="secondary" size="sm" icon="pencil" @click="renameReceiptDoc()">{{ __('invoices.receipt_rename') }}</x-button>
+                      <template x-if="receiptDoc.r.kind !== 'invoice'">
+                        <x-button variant="secondary" size="sm" icon="arrow-path" @click="reanalyzeReceipt(receiptDoc)">{{ __('invoices.receipt_reanalyze') }}</x-button>
+                      </template>
+                    </div>
                     <template x-if="! receiptDoc.r.locked">
                       <x-button variant="danger" size="sm" icon="trash" @click="deleteReceiptDoc()">{{ __('common.delete') }}</x-button>
                     </template>
@@ -440,6 +479,96 @@
               </div>
             </div>
           </template>
+        </div>
+
+        {{-- ===================== SETTINGS (partners + categories) ===================== --}}
+        <div x-show="section === 'settings'" class="mt-6 space-y-6">
+          {{-- Business partners --}}
+          <div>
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.partners_title') }}</h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ __('invoices.partners_intro') }}</p>
+              </div>
+              <x-button variant="primary" size="sm" icon="plus" @click="newPartner()">{{ __('invoices.partner_add') }}</x-button>
+            </div>
+            <template x-if="! sortedPartners.length">
+              <x-empty-state icon="user" class="mt-4">{{ __('invoices.partners_empty') }}</x-empty-state>
+            </template>
+            <template x-if="sortedPartners.length">
+              <div class="ll-card !p-0 mt-4 overflow-hidden">
+                <div class="divide-y divide-black/[0.06] dark:divide-white/10">
+                  <template x-for="p in sortedPartners" :key="p.id">
+                    <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5">
+                      <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="background:#6b7280"><x-icon name="user" class="h-4 w-4 text-white" /></span>
+                      <div class="min-w-0 flex-1">
+                        <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="p.name"></p>
+                        <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="[p.category, p.note].filter(Boolean).join(' · ')"></p>
+                      </div>
+                      <div class="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100">
+                        <x-icon-button name="pencil" tone="gray" size="sm" @click="editPartner(p)" :aria-label="__('common.edit')" />
+                        <x-icon-button name="trash" tone="red" size="sm" @click="removePartner(p)" :aria-label="__('common.delete')" />
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          {{-- Categories --}}
+          <div>
+            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.cats_title') }}</h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400">{{ __('invoices.cats_intro') }}</p>
+            <div class="ll-card mt-4">
+              <div class="flex flex-wrap gap-2">
+                <template x-for="c in (financeCategories || [])" :key="c.name">
+                  <span class="inline-flex items-center gap-1.5 rounded-lg bg-black/[0.04] dark:bg-white/10 px-2.5 py-1 text-sm text-gray-700 dark:text-gray-200">
+                    <span x-text="c.name"></span>
+                    <button type="button" @click="removeFinanceCategory(c)" class="text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-3.5 w-3.5" /></button>
+                  </span>
+                </template>
+                <template x-if="! (financeCategories || []).length"><span class="text-sm text-gray-400 dark:text-gray-500">{{ __('invoices.cats_empty') }}</span></template>
+              </div>
+              <form @submit.prevent="addFinanceCategory(newCategoryName)" class="mt-3 flex items-center gap-2">
+                <input type="text" x-model="newCategoryName" placeholder="{{ __('invoices.cats_add_ph') }}" class="w-full max-w-xs rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                <x-button variant="secondary" size="sm" icon="plus" type="submit">{{ __('invoices.cats_add') }}</x-button>
+              </form>
+            </div>
+          </div>
+
+          {{-- Partner editor modal --}}
+          <div x-show="partnerEditing" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelPartner()">
+            <div class="absolute inset-0 bg-gray-900/50" @click="cancelPartner()"></div>
+            <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <template x-if="partnerEditing">
+                <div>
+                  <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.partner_add') }}</h3>
+                    <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelPartner()" :aria-label="__('common.close')" />
+                  </div>
+                  <div class="space-y-3 px-5 py-4">
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_name') }} <span class="text-red-500">*</span></label>
+                      <input type="text" x-model="partnerEditing.name" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_category') }}</label>
+                      <input type="text" x-model="partnerEditing.category" list="receiptCats" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_note') }}</label>
+                      <textarea x-model="partnerEditing.note" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-end gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <x-button variant="secondary" @click="cancelPartner()">{{ __('common.cancel') }}</x-button>
+                    <x-button variant="primary" @click="savePartner()">{{ __('common.save') }}</x-button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
         </div>
 
         {{-- ===================== PAYMENT METHODS ===================== --}}
