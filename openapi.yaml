@@ -4501,13 +4501,21 @@ paths:
         is derived client-side from the actual invoices (each stores its seq) plus the
         company floor — unique and gapless (GoBD), not a store scalar.
         This one sealed store holds the WHOLE Finance data model: the invoice records
-        (sharded), plus two collection blobs — `paymentMethods` (bank accounts / cards /
-        PayPal / cash, incl. IBAN, sealed) and `transactions` (imported bank-statement
-        rows bound to an account via tx.account, sealed). There are NO per-record or
-        per-transaction REST endpoints (that would break zero-knowledge); mutate the
-        decrypted object client-side and write it back. Bank statements (MT940 / CSV)
-        are parsed entirely client-side. The user's own business identity is NOT here —
-        it is non-secret and lives at GET/PUT /company (tag Company).
+        (sharded), plus collection blobs — `paymentMethods` (bank accounts / cards /
+        PayPal / cash, incl. IBAN, sealed); `transactions` (imported bank-statement rows
+        bound to an account via tx.account, each carrying `receipts[]`, an optional
+        `projectId`, and a `vatCat` ∈ {19,16,7,0,private}); `partners` (business partners,
+        which double as learned merchant→category rules); `financeCategories` (custom
+        expense categories); and `projects` (nestable cost projects — `{id, name,
+        parentId, kind: business|private, note, expenses:[{id, amount, date, account,
+        category, note}]}` — that bundle receipts via `receipts[].projectId` and record
+        manual "hand" expenses; totals roll up the tree and are split business vs private
+        for statistics). Every client MUST preserve every collection (passthrough) or a
+        write drops it. There are NO per-record or per-transaction REST endpoints (that
+        would break zero-knowledge); mutate the decrypted object client-side and write it
+        back. Bank statements (MT940 / CSV) are parsed entirely client-side. The user's
+        own business identity is NOT here — it is non-secret and lives at GET/PUT /company
+        (tag Company).
       responses:
         "200":
           description: Sealed root + version.

@@ -25,6 +25,7 @@ or trackers.
 - [Stack](#stack)
 - [Requirements](#requirements)
 - [Installation](#installation-docker-compose)
+- [Reverse proxy configuration](#reverse-proxy-configuration)
 - [Configuration reference](#configuration-reference-environment-variables)
 - [**Security — the full breakdown**](#security--the-full-breakdown)
   - [Threat model: what the server can and cannot see](#threat-model-what-the-server-can-and-cannot-see)
@@ -247,11 +248,11 @@ become healthy — watch with `docker compose logs -f <service>`.
 
 ### 8. Put a reverse proxy in front (TLS)
 
-The app binds to `127.0.0.1:${APP_PORT}` (default `8300`). Configure Caddy (or
-your proxy of choice) on the host to terminate TLS and `reverse_proxy` to that
-address; keep `SESSION_SECURE_COOKIE=true` so Secure cookies + HSTS are emitted.
-Align the proxy's request-body limit with the app's upload limits
-(`NGINX_CLIENT_MAX_BODY_SIZE` / `PHP_POST_MAX_SIZE` are `560M`/`550M` in the image).
+The app binds to `127.0.0.1:${APP_PORT}` (default `8300`). Put a TLS-terminating
+reverse proxy on the host in front of it; keep `SESSION_SECURE_COOKIE=true` so
+Secure cookies + HSTS are emitted. Copy-ready, hardened configs for **Caddy,
+nginx, Apache, Traefik and lighttpd** are in
+[Reverse proxy configuration](#reverse-proxy-configuration) below.
 
 ### 9. Verify
 
@@ -275,6 +276,237 @@ php artisan user:set-password you@example.com --admin   # first user
 npm run dev            # or: npm run build   (+ npm run build:ext for the extension)
 php artisan serve
 ```
+
+---
+
+## Reverse proxy configuration
+
+Ledgerline listens on `127.0.0.1:8300` (`APP_PORT`) with **plain HTTP** — a
+TLS-terminating reverse proxy on the host is mandatory in production. All examples
+below assume the app at `127.0.0.1:8300` and the domain `cloud.example.com`; adjust
+both. They cover the proxy's only three jobs — **terminate TLS, forward the client
+headers, allow the upload size** — and deliberately leave the security headers to
+the app.
+
+**Shared rules (all proxies):**
+
+- **Forwarded headers.** Pass `Host`, `X-Forwarded-For` and `X-Forwarded-Proto` so
+  the app builds correct URLs and logs the real client IP.
+- **`TRUSTED_PROXIES`.** Set it in `.env` to the address the proxy connects *from*.
+  On a Docker install the app sees the request arriving from the Docker bridge
+  gateway, so use that private subnet (e.g. `172.16.0.0/12`), **never `*`** — a
+  wildcard lets a remote client forge `X-Forwarded-For` and spoof its source IP.
+- **Upload size.** The image allows a **560 MiB** body (`NGINX_CLIENT_MAX_BODY_SIZE=560M`,
+  `PHP_POST_MAX_SIZE=550M`). Set the proxy's limit to match; raise all three together
+  for larger uploads.
+- **Don't re-add security headers.** The app emits CSP, HSTS, `X-Frame-Options`,
+  `Referrer-Policy`, COOP and `Permissions-Policy` itself
+  (`app/Http/Middleware/SecurityHeaders.php`). Duplicating them at the proxy can
+  conflict — keep the proxy to TLS + forwarding + body size.
+- **Verify** after a reload: `curl -fsS https://cloud.example.com/up` → `200`.
+
+### Caddy (recommended — automatic TLS, minimal surface)
+
+`/etc/caddy/Caddyfile`:
+
+```caddy
+cloud.example.com {
+	# Match the app's 560 MiB upload limit; Caddy streams the body.
+	request_body {
+		max_size 560MB
+	}
+
+	reverse_proxy 127.0.0.1:8300 {
+		# Caddy forwards Host + X-Forwarded-For automatically; make the scheme explicit.
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	# TLS 1.3 only. Caddy provisions the Let's Encrypt cert and staples OCSP itself.
+	tls {
+		protocols tls1.3
+	}
+
+	# The app sets CSP/HSTS/etc.; just drop the Server banner.
+	header -Server
+
+	encode zstd gzip
+}
+```
+
+Caddy auto-redirects HTTP→HTTPS and renews certificates. Reload: `caddy reload --config /etc/caddy/Caddyfile`.
+
+### nginx
+
+`/etc/nginx/conf.d/ledgerline.conf` (certs e.g. from certbot):
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name cloud.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name cloud.example.com;
+
+    ssl_certificate         /etc/letsencrypt/live/cloud.example.com/fullchain.pem;
+    ssl_certificate_key     /etc/letsencrypt/live/cloud.example.com/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/cloud.example.com/chain.pem;
+
+    # TLS hardening
+    ssl_protocols             TLSv1.3 TLSv1.2;
+    ssl_prefer_server_ciphers off;
+    ssl_ciphers               ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_session_cache         shared:MozSSL:10m;
+    ssl_session_timeout       1d;
+    ssl_session_tickets       off;
+    ssl_stapling              on;
+    ssl_stapling_verify       on;
+
+    # Match the app's upload limit; stream large uploads instead of buffering to disk.
+    client_max_body_size   560M;
+    proxy_request_buffering off;
+    proxy_read_timeout     300s;
+
+    location / {
+        proxy_pass         http://127.0.0.1:8300;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   X-Forwarded-Host  $host;
+    }
+}
+```
+
+Test + reload: `nginx -t && systemctl reload nginx`.
+
+### Apache (httpd)
+
+Enable the modules once: `a2enmod proxy proxy_http ssl headers socache_shmcb` (Debian/Ubuntu). Add `SSLStaplingCache "shmcb:logs/ssl_stapling(32768)"` to the global SSL config for OCSP stapling.
+
+`/etc/apache2/sites-available/ledgerline.conf`:
+
+```apache
+<VirtualHost *:80>
+    ServerName cloud.example.com
+    Redirect permanent / https://cloud.example.com/
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName cloud.example.com
+
+    SSLEngine on
+    SSLCertificateFile    /etc/letsencrypt/live/cloud.example.com/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/cloud.example.com/privkey.pem
+
+    # TLS hardening
+    SSLProtocol         -all +TLSv1.3 +TLSv1.2
+    SSLHonorCipherOrder off
+    SSLUseStapling      on
+    SSLSessionTickets   off
+
+    # 560 MiB upload limit (bytes).
+    LimitRequestBody    587202560
+
+    ProxyPreserveHost   On
+    ProxyPass           / http://127.0.0.1:8300/ timeout=300
+    ProxyPassReverse    / http://127.0.0.1:8300/
+    RequestHeader set   X-Forwarded-Proto "https"
+    RequestHeader set   X-Forwarded-Port  "443"
+</VirtualHost>
+```
+
+`mod_proxy` sets `X-Forwarded-For`/`X-Forwarded-Host` automatically. Enable + reload: `a2ensite ledgerline && apache2ctl configtest && systemctl reload apache2`.
+
+### Traefik (v3)
+
+Static config `/etc/traefik/traefik.yml`:
+
+```yaml
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint: { to: websecure, scheme: https }
+  websecure:
+    address: ":443"
+    transport:
+      respondingTimeouts: { readTimeout: 300s }
+
+certificatesResolvers:
+  le:
+    acme:
+      email: you@example.com
+      storage: /etc/traefik/acme.json
+      tlsChallenge: {}
+
+providers:
+  file:
+    filename: /etc/traefik/dynamic/ledgerline.yml
+
+tls:
+  options:
+    modern:
+      minVersion: VersionTLS13
+```
+
+Dynamic config `/etc/traefik/dynamic/ledgerline.yml`:
+
+```yaml
+http:
+  routers:
+    ledgerline:
+      rule: "Host(`cloud.example.com`)"
+      entryPoints: [websecure]
+      service: ledgerline
+      tls:
+        certResolver: le
+        options: modern
+  services:
+    ledgerline:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "http://127.0.0.1:8300"
+```
+
+Traefik forwards the `X-Forwarded-*` headers and streams request bodies (no size cap) by default. If Traefik runs **in Docker**, it cannot reach the host's `127.0.0.1:8300` — either run it on the host network, target `host.docker.internal:8300`, or drop the app's `127.0.0.1` port bind and route Traefik to the `app` service on the compose network with a `docker` provider + labels.
+
+### lighttpd
+
+Enable the modules (`lighttpd-enable-mod proxy` + TLS), then `/etc/lighttpd/conf-available/50-ledgerline.conf`:
+
+```lighttpd
+server.modules += ( "mod_proxy", "mod_openssl", "mod_setenv" )
+
+# 560 MiB upload limit — this value is in KiB.
+server.max-request-size = 573440
+
+$SERVER["socket"] == ":443" {
+    ssl.engine  = "enable"
+    ssl.pemfile = "/etc/letsencrypt/live/cloud.example.com/fullchain.pem"
+    ssl.privkey = "/etc/letsencrypt/live/cloud.example.com/privkey.pem"
+    ssl.openssl.ssl-conf-cmd = ( "MinProtocol" => "TLSv1.3" )
+
+    proxy.server = ( "" => ( ( "host" => "127.0.0.1", "port" => 8300 ) ) )
+    proxy.header = ( "https-remap" => "enable" )
+    setenv.add-request-header = ( "X-Forwarded-Proto" => "https" )
+}
+
+# HTTP → HTTPS
+$HTTP["scheme"] == "http" {
+    url.redirect = ( "" => "https://${url.authority}${url.path}${qsa}" )
+}
+```
+
+lighttpd 1.4.46+ `mod_proxy` forwards `X-Forwarded-For` automatically; `server.max-request-size` is in **KiB**. Reload: `systemctl reload lighttpd`.
 
 ---
 

@@ -58,7 +58,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -249,6 +249,16 @@ export default (config = {}, labels = {}) => ({
     get pagedCategories() { const s = (this.catPage - 1) * this.catPerPage; return this.sortedFinanceCategories.slice(s, s + this.catPerPage); },
     setCatPerPage(n) { this.catPerPage = n; this.catPage = 1; },
     catGoto(p) { this.catPage = Math.min(this.catPageCount, Math.max(1, p)); },
+    // Generic paging helpers (used by the settings + project tables).
+    _pageSlice(arr, page, per) { const s = (Math.max(1, page) - 1) * per; return (arr || []).slice(s, s + per); },
+    _pageCount(len, per) { return Math.max(1, Math.ceil((len || 0) / per)); },
+    // Built-in default categories paging.
+    catDefPage: 1,
+    catDefPerPage: 10,
+    get catDefPageCount() { return this._pageCount(this.sortedCatSuggestions.length, this.catDefPerPage); },
+    get pagedCatSuggestions() { return this._pageSlice(this.sortedCatSuggestions, this.catDefPage, this.catDefPerPage); },
+    setCatDefPerPage(n) { this.catDefPerPage = n; this.catDefPage = 1; },
+    catDefGoto(p) { this.catDefPage = Math.min(this.catDefPageCount, Math.max(1, p)); },
     accountTxCount(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).length; },
     // Balance = sum of an account's transactions (imported statements are signed).
     accountBalance(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).reduce((s, t) => s + (t.amount || 0), 0); },
@@ -581,13 +591,14 @@ export default (config = {}, labels = {}) => ({
         if (excludeId) { const walk = (pid) => { for (const c of this.projectSubs(pid)) { banned.add(c.id); walk(c.id); } }; walk(excludeId); }
         return buildProjectTree(this.projects).filter((x) => ! banned.has(x.project.id));
     },
-    newProject(parentId = null) { this.projectEditing = { name: '', parentId: parentId || '', note: '' }; },
-    editProject(p) { this.projectEditing = { id: p.id, name: p.name || '', parentId: p.parentId || '', note: p.note || '' }; },
+    newProject(parentId = null) { const par = parentId ? (this.projects || []).find((x) => x.id === parentId) : null; this.projectEditing = { name: '', parentId: parentId || '', note: '', kind: par ? (par.kind || 'business') : 'business' }; },
+    editProject(p) { this.projectEditing = { id: p.id, name: p.name || '', parentId: p.parentId || '', note: p.note || '', kind: p.kind || 'business' }; },
     cancelProject() { this.projectEditing = null; },
     saveProject() {
         const e = this.projectEditing; if (! e || ! String(e.name || '').trim()) return;
-        if (e.id) { const p = this.projects.find((x) => x.id === e.id); if (p) { p.name = e.name.trim(); p.parentId = e.parentId || null; p.note = e.note || ''; } }
-        else { this.projects.push({ id: window.LLInvoicesStore.newId(), name: e.name.trim(), parentId: e.parentId || null, note: e.note || '', expenses: [], created: new Date().toISOString() }); }
+        const kind = e.kind === 'private' ? 'private' : 'business';
+        if (e.id) { const p = this.projects.find((x) => x.id === e.id); if (p) { p.name = e.name.trim(); p.parentId = e.parentId || null; p.note = e.note || ''; p.kind = kind; } }
+        else { this.projects.push({ id: window.LLInvoicesStore.newId(), name: e.name.trim(), parentId: e.parentId || null, note: e.note || '', kind, expenses: [], created: new Date().toISOString() }); }
         this.projectEditing = null; this._save();
     },
     async removeProject(p) {
@@ -625,6 +636,59 @@ export default (config = {}, labels = {}) => ({
     },
     // Assign / unassign a receipt to a project (from the receipt detail modal).
     setReceiptProject(id) { const r = this.receiptDoc?.r; if (! r) return; r.projectId = id || null; this._save(); },
+    // Open a project's detail and reset the per-list pages.
+    openProjectDetail(id) { this.openProjectId = id; this.subPage = 1; this.expPage = 1; this.prcPage = 1; },
+    // Private vs business split (each project's OWN total, so the tree isn't double-counted).
+    get projectKindSummary() {
+        let business = 0, priv = 0;
+        for (const p of (this.projects || [])) { const t = this.projectOwnTotal(p.id); if (p.kind === 'private') priv += t; else business += t; }
+        return { business: Math.round(business * 100) / 100, private: Math.round(priv * 100) / 100 };
+    },
+    projectKindLabel(kind) { return kind === 'private' ? (labels.project_kind_private || 'Private') : (labels.project_kind_business || 'Business'); },
+    // Business/private scope filter for the project tree ('all' | 'business' | 'private').
+    projScope: 'all',
+    setProjScope(s) { this.projScope = s; this.projPage = 1; },
+    get scopedProjectRows() { const s = this.projScope; return this.projectRows.filter((r) => s === 'all' || (r.project.kind || 'business') === s); },
+    // Paging — project tree.
+    projPage: 1, projPerPage: 15,
+    get projPageCount() { return this._pageCount(this.scopedProjectRows.length, this.projPerPage); },
+    get pagedProjectRows() { return this._pageSlice(this.scopedProjectRows, this.projPage, this.projPerPage); },
+    setProjPerPage(n) { this.projPerPage = n; this.projPage = 1; },
+    projGoto(p) { this.projPage = Math.min(this.projPageCount, Math.max(1, p)); },
+    // Paging — sub-projects of the open project.
+    subPage: 1, subPerPage: 10,
+    get subPageCount() { return this._pageCount(this.projectSubs(this.openProjectId).length, this.subPerPage); },
+    get pagedSubs() { return this._pageSlice(this.projectSubs(this.openProjectId), this.subPage, this.subPerPage); },
+    setSubPerPage(n) { this.subPerPage = n; this.subPage = 1; },
+    subGoto(p) { this.subPage = Math.min(this.subPageCount, Math.max(1, p)); },
+    // Paging — manual expenses of the open project.
+    expPage: 1, expPerPage: 10,
+    get expPageCount() { return this._pageCount((this.openProject?.expenses || []).length, this.expPerPage); },
+    get pagedExpenses() { return this._pageSlice(this.openProject?.expenses || [], this.expPage, this.expPerPage); },
+    setExpPerPage(n) { this.expPerPage = n; this.expPage = 1; },
+    expGoto(p) { this.expPage = Math.min(this.expPageCount, Math.max(1, p)); },
+    // Paging — bundled receipts of the open project.
+    prcPage: 1, prcPerPage: 10,
+    get prcPageCount() { return this._pageCount(this.projectReceiptList(this.openProjectId).length, this.prcPerPage); },
+    get pagedProjectReceipts() { return this._pageSlice(this.projectReceiptList(this.openProjectId), this.prcPage, this.prcPerPage); },
+    setPrcPerPage(n) { this.prcPerPage = n; this.prcPage = 1; },
+    prcGoto(p) { this.prcPage = Math.min(this.prcPageCount, Math.max(1, p)); },
+    // Receipt picker: bundle existing receipts into the open project.
+    receiptPicker: false,
+    receiptPickerQuery: '',
+    openReceiptPicker() { this.receiptPickerQuery = ''; this.receiptPicker = true; },
+    closeReceiptPicker() { this.receiptPicker = false; },
+    pickerReceipts() {
+        const q = (this.receiptPickerQuery || '').trim().toLowerCase();
+        let list = this.allReceipts.filter((d) => d.r.kind !== 'invoice');
+        if (q) list = list.filter(({ r, tx }) => (r.name || '').toLowerCase().includes(q) || (r.merchant || '').toLowerCase().includes(q) || (tx.counterparty || '').toLowerCase().includes(q) || (tx.purpose || '').toLowerCase().includes(q));
+        return list.slice(0, 100);
+    },
+    toggleReceiptToProject(d) {
+        if (! d?.r || ! this.openProjectId) return;
+        d.r.projectId = d.r.projectId === this.openProjectId ? null : this.openProjectId;
+        this._save();
+    },
 
     // Unified partner picker for a receipt: existing contacts + standalone partners.
     partnerOptions() {
