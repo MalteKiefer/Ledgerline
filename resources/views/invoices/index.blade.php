@@ -99,7 +99,7 @@
           <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('messages.nav.finance') }}</h1>
           <div class="-mx-1 max-w-full overflow-x-auto px-1 pb-1">
             <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/10 p-0.5 text-sm font-medium">
-              @php $tabs = ['dashboard' => 'tab_dashboard', 'invoices' => 'tab_invoices', 'payments' => 'tab_payments', 'receipts' => 'tab_receipts', 'stats' => 'tab_stats', 'settings' => 'tab_settings']; @endphp
+              @php $tabs = ['dashboard' => 'tab_dashboard', 'invoices' => 'tab_invoices', 'payments' => 'tab_payments', 'receipts' => 'tab_receipts', 'projects' => 'tab_projects', 'stats' => 'tab_stats', 'settings' => 'tab_settings']; @endphp
               @foreach ($tabs as $key => $lbl)
                 <button type="button" @click="setSection('{{ $key }}')"
                   class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 transition-colors"
@@ -476,6 +476,17 @@
                       </template>
                     </div>
 
+                    {{-- Project (bundle this receipt under a cost project) --}}
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_project') }}</label>
+                      <select @change="setReceiptProject($event.target.value)" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <option value="" :selected="! receiptDoc.r.projectId">{{ __('invoices.project_none') }}</option>
+                        <template x-for="o in projectRows" :key="o.project.id">
+                          <option :value="o.project.id" :selected="receiptDoc.r.projectId === o.project.id" x-text="('— '.repeat(o.depth)) + o.project.name"></option>
+                        </template>
+                      </select>
+                    </div>
+
                     {{-- Notes --}}
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_note') }}</label>
@@ -485,6 +496,187 @@
                       <x-alert variant="info">{{ __('invoices.receipt_locked_hint') }}</x-alert>
                     </template>
                     </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        {{-- ===================== PROJECTS (nestable cost bundles) ===================== --}}
+        <div x-show="section === 'projects'" class="mt-6">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.projects_intro') }}</p>
+            <x-button variant="primary" size="sm" icon="plus" @click="newProject()">{{ __('invoices.project_add') }}</x-button>
+          </div>
+
+          <template x-if="! projects.length">
+            <x-empty-state icon="folder" class="mt-6">{{ __('invoices.project_empty') }}</x-empty-state>
+          </template>
+
+          <template x-if="projects.length">
+            <div class="mt-4 flex flex-col gap-4 md:flex-row md:items-start">
+              {{-- Tree --}}
+              <div class="ll-card !p-0 overflow-hidden md:w-1/3">
+                <div class="divide-y divide-black/[0.06] dark:divide-white/10">
+                  <template x-for="row in projectRows" :key="row.project.id">
+                    <button type="button" @click="openProjectId = row.project.id"
+                      class="group flex w-full items-center gap-2 py-2.5 pr-3 text-left hover:bg-accent/5"
+                      :class="openProjectId === row.project.id ? 'bg-accent/10' : ''"
+                      :style="{ paddingLeft: (12 + row.depth * 18) + 'px' }">
+                      <x-icon name="folder" class="h-4 w-4 shrink-0 text-gray-400" />
+                      <span class="min-w-0 flex-1 truncate text-sm text-gray-900 dark:text-gray-100" x-text="row.project.name"></span>
+                      <span class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="fmtMoney(projectTotal(row.project.id))"></span>
+                    </button>
+                  </template>
+                </div>
+              </div>
+
+              {{-- Detail --}}
+              <div class="md:flex-1">
+                <template x-if="! openProject">
+                  <x-empty-state class="py-10">{{ __('invoices.project_pick') }}</x-empty-state>
+                </template>
+                <template x-if="openProject">
+                  <div class="space-y-4">
+                    <div class="ll-card flex items-center justify-between gap-3">
+                      <div class="min-w-0">
+                        <h2 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="openProject.name"></h2>
+                        <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="openProject.note"></p>
+                      </div>
+                      <div class="flex shrink-0 items-center gap-3">
+                        <div class="text-right">
+                          <p class="text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectTotal(openProject.id))"></p>
+                          <p class="text-[11px] uppercase tracking-wide text-gray-400">{{ __('invoices.project_total') }}</p>
+                        </div>
+                        <x-icon-button name="pencil" tone="gray" size="sm" @click="editProject(openProject)" :aria-label="__('common.edit')" />
+                        <x-icon-button name="trash" tone="red" size="sm" @click="removeProject(openProject)" :aria-label="__('common.delete')" />
+                      </div>
+                    </div>
+
+                    {{-- Sub-projects --}}
+                    <div class="ll-card !p-0 overflow-hidden">
+                      <div class="flex items-center justify-between px-4 py-2.5">
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('invoices.project_subprojects') }}</h3>
+                        <x-button variant="secondary" size="sm" icon="plus" @click="newProject(openProject.id)">{{ __('invoices.project_sub_add') }}</x-button>
+                      </div>
+                      <div class="divide-y divide-black/[0.06] dark:divide-white/10">
+                        <template x-for="sp in projectSubs(openProject.id)" :key="sp.id">
+                          <button type="button" @click="openProjectId = sp.id" class="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-accent/5">
+                            <x-icon name="folder" class="h-4 w-4 text-gray-400" />
+                            <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="sp.name"></span>
+                            <span class="text-xs tabular-nums text-gray-500" x-text="fmtMoney(projectTotal(sp.id))"></span>
+                          </button>
+                        </template>
+                        <template x-if="! projectSubs(openProject.id).length">
+                          <p class="px-4 py-3 text-xs text-gray-400">{{ __('invoices.project_no_subs') }}</p>
+                        </template>
+                      </div>
+                    </div>
+
+                    {{-- Manual "hand" expenses --}}
+                    <div class="ll-card !p-0 overflow-hidden">
+                      <div class="flex items-center justify-between px-4 py-2.5">
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('invoices.project_expenses') }}</h3>
+                        <x-button variant="secondary" size="sm" icon="plus" @click="newExpense(openProject.id)">{{ __('invoices.project_expense_add') }}</x-button>
+                      </div>
+                      <div class="divide-y divide-black/[0.06] dark:divide-white/10">
+                        <template x-for="ex in (openProject.expenses || [])" :key="ex.id">
+                          <div class="group flex items-center gap-3 px-4 py-2.5">
+                            <div class="min-w-0 flex-1">
+                              <p class="truncate text-sm text-gray-800 dark:text-gray-200" x-text="ex.note || '{{ __('invoices.project_expense') }}'"></p>
+                              <p class="text-xs text-gray-500 dark:text-gray-400" x-text="ex.date"></p>
+                            </div>
+                            <span class="shrink-0 text-sm tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(ex.amount)"></span>
+                            <div class="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100">
+                              <x-icon-button name="pencil" tone="gray" size="sm" @click="editExpense(openProject, ex)" :aria-label="__('common.edit')" />
+                              <x-icon-button name="trash" tone="red" size="sm" @click="removeExpense(openProject, ex)" :aria-label="__('common.delete')" />
+                            </div>
+                          </div>
+                        </template>
+                        <template x-if="! (openProject.expenses || []).length">
+                          <p class="px-4 py-3 text-xs text-gray-400">{{ __('invoices.project_no_expenses') }}</p>
+                        </template>
+                      </div>
+                    </div>
+
+                    {{-- Bundled receipts --}}
+                    <div class="ll-card !p-0 overflow-hidden">
+                      <h3 class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('invoices.project_receipts') }}</h3>
+                      <div class="divide-y divide-black/[0.06] dark:divide-white/10">
+                        <template x-for="d in projectReceiptList(openProject.id)" :key="d.r.id">
+                          <button type="button" @click="openReceiptDoc(d)" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-accent/5">
+                            <x-icon name="document" class="h-4 w-4 text-gray-400" />
+                            <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="d.r.name || '{{ __('invoices.receipt') }}'"></span>
+                            <span class="text-xs tabular-nums text-gray-500" x-text="fmtMoney(d.r.total != null ? d.r.total : Math.abs(d.tx.amount || 0))"></span>
+                          </button>
+                        </template>
+                        <template x-if="! projectReceiptList(openProject.id).length">
+                          <p class="px-4 py-3 text-xs text-gray-400">{{ __('invoices.project_no_receipts') }}</p>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          {{-- Project create/edit modal --}}
+          <div x-show="projectEditing" x-cloak class="fixed inset-0 z-[1140] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelProject()">
+            <div class="absolute inset-0 bg-gray-900/50" @click="cancelProject()"></div>
+            <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+              <template x-if="projectEditing">
+                <div class="space-y-3">
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="projectEditing.id ? '{{ __('invoices.project_edit') }}' : '{{ __('invoices.project_add') }}'"></h3>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_name') }} <span class="text-red-500">*</span></label>
+                    <input type="text" x-model="projectEditing.name" @keydown.enter="saveProject()" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_parent') }}</label>
+                    <select x-model="projectEditing.parentId" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <option value="">{{ __('invoices.project_parent_none') }}</option>
+                      <template x-for="o in projectOptions(projectEditing.id)" :key="o.project.id">
+                        <option :value="o.project.id" x-text="('— '.repeat(o.depth)) + o.project.name"></option>
+                      </template>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_note') }}</label>
+                    <textarea x-model="projectEditing.note" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                  </div>
+                  <div class="flex justify-end gap-2 pt-1">
+                    <x-button variant="secondary" size="sm" @click="cancelProject()">{{ __('common.cancel') }}</x-button>
+                    <x-button variant="primary" size="sm" ::disabled="! projectEditing.name.trim()" @click="saveProject()">{{ __('common.save') }}</x-button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          {{-- Manual expense modal --}}
+          <div x-show="expenseEditing" x-cloak class="fixed inset-0 z-[1140] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelExpense()">
+            <div class="absolute inset-0 bg-gray-900/50" @click="cancelExpense()"></div>
+            <div class="relative w-full max-w-sm rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+              <template x-if="expenseEditing">
+                <div class="space-y-3">
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="expenseEditing.id ? '{{ __('invoices.project_expense_edit') }}' : '{{ __('invoices.project_expense_add') }}'"></h3>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_expense_amount') }} <span class="text-red-500">*</span></label>
+                    <input type="number" step="0.01" min="0" x-model.number="expenseEditing.amount" @keydown.enter="saveExpense()" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_expense_date') }}</label>
+                    <input type="date" x-model="expenseEditing.date" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_expense_note') }}</label>
+                    <input type="text" x-model="expenseEditing.note" @keydown.enter="saveExpense()" placeholder="{{ __('invoices.project_expense_note_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                  </div>
+                  <div class="flex justify-end gap-2 pt-1">
+                    <x-button variant="secondary" size="sm" @click="cancelExpense()">{{ __('common.cancel') }}</x-button>
+                    <x-button variant="primary" size="sm" @click="saveExpense()">{{ __('common.save') }}</x-button>
                   </div>
                 </div>
               </template>
