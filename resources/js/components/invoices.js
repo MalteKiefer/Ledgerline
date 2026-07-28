@@ -138,17 +138,36 @@ export default (config = {}, labels = {}) => ({
         const pm = this.payEditing;
         if (! isValidPaymentMethod(pm)) { this.paySaveAttempted = true; window.llToast?.(labels.pay_invalid || 'Please fill in the required fields.'); return; }
         pm.updated = new Date().toISOString();
+        let target = pm;
         if (this.payIsNew) {
             pm.id = window.LLInvoicesStore.newId();
             pm.created = pm.updated;
             this.paymentMethods.push(pm);
         } else {
             const i = this.paymentMethods.findIndex((p) => p.id === pm.id);
-            if (i >= 0) Object.assign(this.paymentMethods[i], pm);
+            if (i >= 0) { Object.assign(this.paymentMethods[i], pm); target = this.paymentMethods[i]; }
         }
         this._save();
+        // Try to fetch the bank's favicon/logo (server-proxied, SSRF-guarded) — best effort.
+        if (target.type === 'bank' && target.url) this._fetchBankIcon(target);
         this.payEditing = null;
     },
+    // Reuse the SSRF-guarded favicon endpoint; store the returned data URI on the account.
+    _bankHost(url) {
+        try { return new URL(/^https?:\/\//i.test(url) ? url : 'https://' + url).hostname; } catch (e) { return ''; }
+    },
+    async _fetchBankIcon(pm) {
+        const host = this._bankHost(pm.url);
+        if (! host || ! config.iconUrl) return;
+        try {
+            const res = await fetch(`${config.iconUrl}?domain=${encodeURIComponent(host)}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) return;
+            const { icon } = await res.json();
+            if (icon && pm.icon !== icon) { pm.icon = icon; this._save(); }
+        } catch (e) { /* best effort */ }
+    },
+    // A usable <img> src for a stored bank logo (only data:/http(s) URIs).
+    payIconSrc(pm) { const v = pm && pm.icon; return (typeof v === 'string' && /^(data:|https?:)/.test(v)) ? v : ''; },
     async removePayment(pm) {
         if (! await this.$store.confirm.ask(labels.pay_delete_confirm || 'Delete this payment method?')) return;
         const i = this.paymentMethods.indexOf(pm);

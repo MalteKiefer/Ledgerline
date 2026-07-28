@@ -23,7 +23,7 @@ export function blankPaymentMethod(type = 'bank') {
     return {
         type: isPaymentType(type) ? type : 'other',
         label: '', holder: '',
-        iban: '', bic: '', bankName: '', accountNumber: '',
+        iban: '', bic: '', bankName: '', accountNumber: '', url: '',
         cardNetwork: 'visa', cardNumber: '', cardExpiry: '',
         email: '', note: '', trashed: false,
     };
