@@ -7,13 +7,25 @@
 // vary too much to reconstruct reliably, so the draft carries ONE net-total summary
 // line (the totals then reconcile) that the user can refine before saving.
 
-/** Parse a German amount like "1.234,56" / "227,88 €" → 1234.56 (or null). */
+/**
+ * Parse a money amount in either notation — German "1.234,56" / "227,88 €" OR English
+ * "1,234.56" / "€157.50" → 1234.56 / 157.5. The LAST separator is the decimal point.
+ */
 export function parseAmount(raw) {
     if (raw == null) return null;
-    const m = String(raw).replace(/[^\d.,-]/g, '').match(/-?[\d.]*,?\d*/);
-    if (! m || m[0] === '') return null;
-    const n = parseFloat(m[0].replace(/\./g, '').replace(',', '.'));
+    const s = String(raw).replace(/[^\d.,-]/g, '');
+    if (! /\d/.test(s)) return null;
+    const lastComma = s.lastIndexOf(','), lastDot = s.lastIndexOf('.');
+    let n;
+    if (lastComma > lastDot) n = parseFloat(s.replace(/\./g, '').replace(',', '.')); // comma decimal (DE)
+    else if (lastDot > lastComma) n = parseFloat(s.replace(/,/g, '')); // dot decimal (EN)
+    else n = parseFloat(s);
     return Number.isFinite(n) ? n : null;
+}
+
+/** All money amounts in the text, in order (both DE and EN notations). */
+function collectAmounts(text) {
+    return [...String(text).matchAll(/\d[\d.,]*[.,]\d{2}\b/g)].map((m) => parseAmount(m[0])).filter((n) => n != null);
 }
 
 /** "05.02.2022" → "2022-02-05" (ISO); null if not a dd.mm.yyyy date. */
@@ -52,13 +64,18 @@ export function parseInvoiceFilename(name) {
  */
 export function parseInvoiceNumber(text) {
     const t = String(text || '');
-    let m = t.match(/\bR-\d{4}-\d{2,}\b/); // dated R-YYYY-NNNNN (before the short form)
-    if (m) return m[0];
-    m = t.match(/\bR-\d{2,}\b/); // R-NNNNN
-    if (m) return m[0];
-    // Plain integer under a number label — the value may sit on the next line.
-    m = t.match(/Rechnungs(?:nr\.?|nummer)\s*:?\s*[\r\n]*\s*(\d{1,6})\b/i);
-    return m ? m[1] : null;
+    const NUM = 'R-\\d{4}-\\d+|R-\\d+|\\d{4}-\\d+|\\d{1,6}';
+    // Labeled forms first (most reliable): "Rechnung #:", "Rechnung Nr.:",
+    // "Rechnungsnr.", "Rechnungsnummer" — the value may sit on the next line.
+    let m = t.match(new RegExp(`Rechnung\\s*(?:#|Nr\\.?)\\s*:?\\s*[\\r\\n]*\\s*(${NUM})`, 'i'));
+    if (m) return m[1];
+    m = t.match(new RegExp(`Rechnungs(?:nr\\.?|nummer)\\s*:?\\s*[\\r\\n]*\\s*(${NUM})`, 'i'));
+    if (m) return m[1];
+    // Bare forms, in order of specificity.
+    m = t.match(/\bR-\d{4}-\d{2,}\b/); if (m) return m[0]; // R-YYYY-NNNNN
+    m = t.match(/\bR-\d{2,}\b/); if (m) return m[0]; // R-NNNNN
+    m = t.match(/\b(?:19|20)\d{2}-\d{2,}\b/); if (m) return m[0]; // YYYY-NNN (2026-001)
+    return null;
 }
 
 /**
@@ -70,32 +87,48 @@ export function parseInvoiceNumber(text) {
  * @param {RegExp} senderRe  matches the seller's own one-liner (to skip past it)
  */
 export function parseCustomer(text, sender = 'kiefernetworks') {
-    // The recipient is always in the top address block; restrict to it so the footer
-    // (which repeats the sender) can never win.
-    const all = String(text || '').split(/[\r\n]+/).map((s) => s.replace(/\s+/g, ' ').trim());
-    const lines = all.slice(0, 20);
-    const stop = /^(rechnung|rechnungs(nr|nummer|datum)|kundennummer|datum\b|leistungs|pos\b|beschreibung|ust|steuer|invoice|bill to|item\b|quantity|betreff|betrifft)/i;
-    // Match the seller even when the PDF letter-spaced it ("Kief er Net works"): compare
-    // with all whitespace removed. The sender ONE-LINER also carries an address
-    // separator or a 5-digit postcode — that's the line right before the recipient.
+    // Only the top address block (the footer repeats the sender).
+    const lines = String(text || '').split(/[\r\n]+/).map((s) => s.replace(/\s+/g, ' ').trim()).slice(0, 22);
     const despaced = (s) => s.replace(/\s+/g, '').toLowerCase();
     const isSender = (s) => despaced(s).includes(sender);
+    const stop = /^(rechnungsdetails|rechnungs[üu]bersicht|beschreibung|von\b|zahlungs|notizen|steuer|pos\b|item\b|quantity|menge\b|rechnung\b|rechnungs(nr|nummer|datum)|kundennummer|datum\b|leistungs|ust)/i;
+
     let start = -1;
+    // 1) explicit recipient marker ("RECHNUNG AN" / "BILL TO"), even mid-line (2-column).
     for (let i = 0; i < lines.length; i++) {
-        if (isSender(lines[i]) && /[|\-–—]|\d{5}/.test(lines[i])) { start = i + 1; break; }
+        if (/rechnung\s*an|bill\s*to|rechnungsempf/i.test(lines[i])) { start = i + 1; break; }
     }
+    // 2) else the sender one-liner (with an address separator / postcode).
+    if (start < 0) for (let i = 0; i < lines.length; i++) if (isSender(lines[i]) && /[|\-–—]|\d{5}/.test(lines[i])) { start = i + 1; break; }
     if (start < 0) for (let i = 0; i < lines.length; i++) if (isSender(lines[i])) { start = i + 1; break; }
     if (start < 0) return null;
+
     const block = [];
     for (let i = start; i < lines.length && block.length < 5; i++) {
-        const ln = lines[i];
+        let ln = lines[i];
         if (! ln) { if (block.length) break; else continue; }
         if (stop.test(ln)) break;
-        if (isSender(ln)) continue; // skip a repeated sender line
+        // Two-column sheets merge "Kiefer Networks  <Customer>" on one line — strip the
+        // seller's own name so the recipient survives.
+        if (/kiefer\s*networks/i.test(ln)) {
+            ln = ln.replace(/kiefer\s*networks/ig, '').replace(/^[\s,·|–-]+/, '').trim();
+            if (! ln) continue;
+        }
         block.push(ln);
     }
     if (! block.length) return null;
     return { name: block[0], address: block.slice(1).join('\n') };
+}
+
+/**
+ * The running sequence number for the CURRENT year's series (YYYY-NNN), so importing
+ * this year's invoices advances the app's counter. Historical years / other formats
+ * return null (they are archival and must not move the current counter).
+ */
+export function importedSeq(number, currentYear) {
+    const m = String(number || '').match(/^(\d{4})-0*(\d+)$/);
+    if (m && Number(m[1]) === Number(currentYear)) return parseInt(m[2], 10);
+    return null;
 }
 
 /** Money + dates + VAT + number + customer from the extracted PDF text. */
@@ -110,8 +143,8 @@ export function parseInvoiceText(text) {
     const date = t.match(/(?:Rechnungsdatum|Datum)\s*:?\s*(\d{2}\.\d{2}\.\d{4})/i);
     if (date) { out.dateLabeled = parseGermanDate(date[1]); out.date = out.dateLabeled; }
 
-    // Due date: explicit label or the "bis zum dd.mm.yyyy" sentence.
-    const due = t.match(/F[äa]lligkeitsdatum\s*:?\s*(\d{2}\.\d{2}\.\d{4})/i) || t.match(/bis zum\s+(\d{2}\.\d{2}\.\d{4})/i);
+    // Due date: "Fälligkeitsdatum"/"Fällig am" label or the "bis zum dd.mm.yyyy" sentence.
+    const due = t.match(/F[äa]llig(?:keitsdatum|\s*am)\s*:?\s*(\d{2}\.\d{2}\.\d{4})/i) || t.match(/bis zum\s+(\d{2}\.\d{2}\.\d{4})/i);
     if (due) out.dueDate = parseGermanDate(due[1]);
 
     // Date fallback (column-separated layouts where the label isn't adjacent): the
@@ -125,21 +158,22 @@ export function parseInvoiceText(text) {
     // Small-business (Kleinunternehmer, §19 UStG) → no VAT.
     if (/§\s*19|Kleinunternehmer|keine Umsatzsteuer/i.test(t)) out.smallBusiness = true;
 
-    // VAT rate from "19% MwSt" / "USt. 19%" / "Umsatzsteuer 19%".
-    const rate = t.match(/(\d{1,2})\s*%\s*(?:MwSt|USt|Umsatzsteuer)/i) || t.match(/(?:USt|Umsatzsteuer)\.?\s+(\d{1,2})\s*%/i);
+    // VAT rate from "19% MwSt" / "USt. 19%" / "Umsatzsteuer 19%" / "Steuer (19%)".
+    const rate = t.match(/(\d{1,2})\s*%\s*(?:MwSt|USt|Umsatzsteuer|Steuer)/i)
+        || t.match(/(?:USt|Umsatzsteuer|Steuer)\.?\s*\(?\s*(\d{1,2})\s*%/i);
     out.vatRate = out.smallBusiness ? 0 : (rate ? parseInt(rate[1], 10) : null);
 
     // Totals — first try label-adjacent amounts (works when the amount follows its
     // label in reading order): Nettobetrag/Nettogesamt/Zwischensumme … / MwSt/USt/
     // Umsatzsteuer … / Gesamtbetrag/Rechnungsbetrag/Gesamt EUR/Zu zahlen EUR.
-    let m = t.match(/(?:Nettobetrag|Nettogesamt|Zwischensumme(?: ohne USt\.?)?):?\s*€?\s*([\d.,]+)/i);
+    let m = t.match(/(?:Nettobetrag|Nettogesamt|Zwischensumme(?: ohne USt\.?)?):?\s*€?\s*([\d.,]+)\s*€?/i);
     if (m) out.net = parseAmount(m[1]);
-    m = t.match(/(?:zzgl\.?\s*\d{1,2}%\s*MwSt\.?|MwSt\.?|Umsatzsteuer(?:\s*\d{1,2}%)?|USt\.?\s*\d{1,2}%\s*von\s*[\d.,]+):?\s*€?\s*([\d.,]+)/i);
+    m = t.match(/(?:zzgl\.?\s*\d{1,2}%\s*MwSt\.?|MwSt\.?|Umsatzsteuer(?:\s*\d{1,2}%)?|USt\.?\s*\d{1,2}%\s*von\s*[\d.,]+|Steuer\s*\(?\s*\d{1,2}\s*%\s*\)?):?\s*€?\s*([\d.,]+)\s*€?/i);
     if (m) out.vat = parseAmount(m[1]);
-    m = t.match(/(?:Gesamtbetrag|Rechnungsbetrag|Gesamt\s+EUR|Zu zahlen EUR):?\s*€?\s*([\d.,]+)/i);
+    m = t.match(/(?:Gesamtbetrag|Rechnungsbetrag|Gesamt\s+EUR|Zu zahlen EUR|\bGesamt|\bGESAMT):?\s*€?\s*([\d.,]+)\s*€?/i);
     if (m) out.gross = parseAmount(m[1]);
 
-    const amts = [...t.matchAll(/(\d{1,3}(?:\.\d{3})*,\d{2})/g)].map((x) => parseAmount(x[1])).filter((n) => n != null);
+    const amts = collectAmounts(t);
 
     if (out.smallBusiness) {
         // No VAT: the gross is the last money amount (Gesamt/Zu zahlen) and net = gross.
@@ -213,6 +247,8 @@ export function buildImportedInvoice(f, p, opts = {}) {
     const custAddress = (p.customer && p.customer.address) || '';
     const net = p.net;
     const vatRate = p.vatRate == null ? 0 : p.vatRate;
+    // Current-year invoices carry a seq so the app's number counter advances past them.
+    const seq = opts.currentYear ? importedSeq(number, opts.currentYear) : null;
 
     if (! number) warnings.push('number');
     if (! issueDate) warnings.push('date');
@@ -226,7 +262,7 @@ export function buildImportedInvoice(f, p, opts = {}) {
         vatRate,
     };
 
-    return {
+    const rec = {
         id: opts.id,
         number,
         status: 'paid',
@@ -243,4 +279,6 @@ export function buildImportedInvoice(f, p, opts = {}) {
         _warnings: warnings,
         _parsedGross: p.gross,
     };
+    if (seq != null) rec.seq = seq; // advances the current-year number counter
+    return rec;
 }

@@ -196,7 +196,7 @@ export default (config = {}, labels = {}) => ({
                 const draft = buildImportedInvoice(
                     parseInvoiceFilename(file.name),
                     parseInvoiceText(text),
-                    { id: window.LLInvoicesStore.newId(), currency: this.company.currency || 'EUR', summaryLabel },
+                    { id: window.LLInvoicesStore.newId(), currency: this.company.currency || 'EUR', summaryLabel, currentYear: new Date().getFullYear() },
                 );
                 draft.selected = true;
                 draft._file = file.name;
@@ -236,6 +236,8 @@ export default (config = {}, labels = {}) => ({
                 lines: draft.lines, note: draft.note || '', footer: draft.footer || '',
                 trashed: false, imported: true, updated: new Date().toISOString(),
             };
+            // Carry the current-year sequence so the app's number counter advances.
+            if (draft.seq != null) inv.seq = draft.seq;
             inv.totals = this.computeTotals(inv);
             this.invoices.unshift(inv);
         }
