@@ -123,4 +123,5 @@ return [
     'invoice_count' => 'Rechnungen',
     'expenses_soon' => 'Ausgaben folgen mit den Belegen.',
     'dash_intro' => 'Deine Einnahmen auf einen Blick. Ausgaben folgen mit den Belegen.',
+    'trash_confirm' => 'Diese Rechnung in den Papierkorb verschieben?',
 ];

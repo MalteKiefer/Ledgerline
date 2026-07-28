@@ -1,7 +1,8 @@
 // invoices component. Extracted from app.js.
 import { zkModule, bootStore } from '../shared/zk-module';
 import { nextSeq, duplicateNumbers as dupNumbers } from '../shared/invoice-numbering';
-import { parseInvoiceFilename, parseInvoiceText, buildImportedInvoice } from '../shared/invoice-pdf-import';
+import { parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, buildInvoiceFromXml } from '../shared/invoice-pdf-import';
+import { parseEInvoiceXml, looksLikeEInvoiceXml } from '../shared/einvoice-xml';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
 import { jsonHeaders } from '../shared/api';
 import { saveBlobAs } from '../shared/dom';
@@ -196,28 +197,42 @@ export default (config = {}, labels = {}) => ({
             try {
                 const bytes = new Uint8Array(await file.arrayBuffer());
                 const doc = await pdfjs.getDocument({ data: bytes.slice(0), isEvalSupported: false }).promise;
-                let text = '';
-                for (let i = 1; i <= doc.numPages; i++) {
-                    const page = await doc.getPage(i);
-                    const content = await page.getTextContent();
-                    // Preserve line structure: pdf.js items carry their y-position
-                    // (transform[5]); a big jump means a new visual line. The parser
-                    // needs this for the recipient block and column-separated fields.
-                    let lastY = null;
-                    for (const it of content.items) {
-                        const y = it.transform ? it.transform[5] : null;
-                        if (lastY !== null && y !== null && Math.abs(y - lastY) > 3) text += '\n';
-                        else if (text && ! text.endsWith('\n')) text += ' ';
-                        text += it.str;
-                        lastY = y;
+                const opts = { id: window.LLInvoicesStore.newId(), currency: this.company.currency || 'EUR', summaryLabel, currentYear: new Date().getFullYear() };
+
+                // PREFERRED path: modern invoices embed a structured e-invoice XML
+                // (ZUGFeRD/Factur-X CII or XRechnung UBL). Reading it is 100% reliable —
+                // real line items, buyer, taxes, totals — no text scraping.
+                let draft = null;
+                try {
+                    const att = await doc.getAttachments();
+                    for (const key of Object.keys(att || {})) {
+                        const xml = new TextDecoder().decode(att[key].content);
+                        if (! looksLikeEInvoiceXml(xml)) continue;
+                        const parsed = parseEInvoiceXml(xml);
+                        if (parsed) { draft = buildInvoiceFromXml(parsed, opts); draft._source = 'xml'; break; }
                     }
-                    text += '\n';
+                } catch (e) { /* no attachments — fall through to text parsing */ }
+
+                // FALLBACK: scrape the rendered PDF text (line-structure preserved via the
+                // items' y-position) for PDFs without an embedded XML.
+                if (! draft) {
+                    let text = '';
+                    for (let i = 1; i <= doc.numPages; i++) {
+                        const page = await doc.getPage(i);
+                        const content = await page.getTextContent();
+                        let lastY = null;
+                        for (const it of content.items) {
+                            const y = it.transform ? it.transform[5] : null;
+                            if (lastY !== null && y !== null && Math.abs(y - lastY) > 3) text += '\n';
+                            else if (text && ! text.endsWith('\n')) text += ' ';
+                            text += it.str;
+                            lastY = y;
+                        }
+                        text += '\n';
+                    }
+                    draft = buildImportedInvoice(parseInvoiceFilename(file.name), parseInvoiceText(text), opts);
+                    draft._source = 'text';
                 }
-                const draft = buildImportedInvoice(
-                    parseInvoiceFilename(file.name),
-                    parseInvoiceText(text),
-                    { id: window.LLInvoicesStore.newId(), currency: this.company.currency || 'EUR', summaryLabel, currentYear: new Date().getFullYear() },
-                );
                 draft.selected = true;
                 draft._file = file.name;
                 this.importReview.items.push(draft);
@@ -266,7 +281,10 @@ export default (config = {}, labels = {}) => ({
         this.importReview = null;
     },
 
-    trash(inv) { inv.trashed = new Date().toISOString(); this._save(); if (this.current === inv) this.backToList(); },
+    async trash(inv) {
+        if (! await this.$store.confirm.ask(labels.trashConfirm || 'Move this invoice to the trash?')) return;
+        inv.trashed = new Date().toISOString(); this._save(); if (this.current === inv) this.backToList();
+    },
     restore(inv) { inv.trashed = false; this._save(); },
     async remove(inv) {
         if (! await this.$store.confirm.ask(labels.deleteConfirm || 'Delete this invoice permanently?')) return;

@@ -88,15 +88,17 @@ export function parseInvoiceNumber(text) {
  */
 export function parseCustomer(text, sender = 'kiefernetworks') {
     // Only the top address block (the footer repeats the sender).
-    const lines = String(text || '').split(/[\r\n]+/).map((s) => s.replace(/\s+/g, ' ').trim()).slice(0, 22);
-    const despaced = (s) => s.replace(/\s+/g, '').toLowerCase();
-    const isSender = (s) => despaced(s).includes(sender);
-    const stop = /^(rechnungsdetails|rechnungs[üu]bersicht|beschreibung|von\b|zahlungs|notizen|steuer|pos\b|item\b|quantity|menge\b|rechnung\b|rechnungs(nr|nummer|datum)|kundennummer|datum\b|leistungs|ust)/i;
+    const lines = String(text || '').split(/[\r\n]+/).map((s) => s.replace(/\s+/g, ' ').trim()).slice(0, 24);
+    // Some PDFs letter-space the section headers ("R E C H N U N G   A N"); compare with
+    // ALL whitespace removed so those markers/stop-words are still recognised.
+    const flat = (s) => s.replace(/\s+/g, '').toLowerCase();
+    const isSender = (s) => flat(s).includes(sender);
+    const isStop = (s) => /^(rechnungsdetails|rechnungs[üu]bersicht|beschreibung|von|zahlungs|notizen|steuer|pos|item|quantity|menge|rechnung(nr|snr|snummer|sdatum)?|kundennummer|datum|leistungs|status|f[äa]llig|ust)/.test(flat(s));
 
     let start = -1;
-    // 1) explicit recipient marker ("RECHNUNG AN" / "BILL TO"), even mid-line (2-column).
+    // 1) explicit recipient marker ("RECHNUNG AN" / "BILL TO"), incl. letter-spaced.
     for (let i = 0; i < lines.length; i++) {
-        if (/rechnung\s*an|bill\s*to|rechnungsempf/i.test(lines[i])) { start = i + 1; break; }
+        if (/rechnungan|billto|rechnungsempf/.test(flat(lines[i]))) { start = i + 1; break; }
     }
     // 2) else the sender one-liner (with an address separator / postcode).
     if (start < 0) for (let i = 0; i < lines.length; i++) if (isSender(lines[i]) && /[|\-–—]|\d{5}/.test(lines[i])) { start = i + 1; break; }
@@ -107,10 +109,10 @@ export function parseCustomer(text, sender = 'kiefernetworks') {
     for (let i = start; i < lines.length && block.length < 5; i++) {
         let ln = lines[i];
         if (! ln) { if (block.length) break; else continue; }
-        if (stop.test(ln)) break;
-        // Two-column sheets merge "Kiefer Networks  <Customer>" on one line — strip the
-        // seller's own name so the recipient survives.
-        if (/kiefer\s*networks/i.test(ln)) {
+        if (isStop(ln)) break;
+        // Two-column sheets can merge "Kiefer Networks  <Customer>" on one line — strip
+        // the seller's own name so the recipient survives.
+        if (isSender(ln)) {
             ln = ln.replace(/kiefer\s*networks/ig, '').replace(/^[\s,·|–-]+/, '').trim();
             if (! ln) continue;
         }
@@ -118,6 +120,25 @@ export function parseCustomer(text, sender = 'kiefernetworks') {
     }
     if (! block.length) return null;
     return { name: block[0], address: block.slice(1).join('\n') };
+}
+
+/**
+ * The first line-item description — the line right after the "BESCHREIBUNG … BETRAG"
+ * table header (handling letter-spaced headers), with any trailing quantity/price/amount
+ * columns stripped. Returns null so the caller can use a generic summary label.
+ */
+export function parseFirstDesc(text) {
+    const lines = String(text || '').split(/[\r\n]+/).map((s) => s.replace(/\s+/g, ' ').trim());
+    const flat = (s) => s.replace(/\s+/g, '').toLowerCase();
+    const h = lines.findIndex((l) => /beschreibung|^description/.test(flat(l)) && /(menge|betrag|einzelpreis|anzahl|quantity|amount|preis)/.test(flat(l)));
+    if (h < 0) return null;
+    for (let i = h + 1; i < lines.length && i < h + 4; i++) {
+        let ln = lines[i];
+        if (! ln) continue;
+        ln = ln.replace(/(\s+[\d.,]+(?:\s*€|\s*%)?){1,4}\s*$/, '').trim(); // strip trailing qty/price/amount cols
+        if (ln.length >= 3 && /[a-zäöüß]/i.test(ln)) return ln.slice(0, 120);
+    }
+    return null;
 }
 
 /**
@@ -213,9 +234,8 @@ export function parseInvoiceText(text) {
     if (out.vat == null && out.net != null && out.gross != null) out.vat = round2(out.gross - out.net);
     if (out.vatRate == null && out.net) out.vatRate = out.vat ? Math.round((out.vat / out.net) * 100) : 0;
 
-    // First line-item description (for a nicer summary line), best-effort.
-    const desc = t.match(/^\s*(?:1|Pos)\s+(.{3,80}?)\s{2,}/m) || t.match(/^Beschreibung.*\n\s*(.{3,80}?)\s{2,}/im);
-    if (desc) out.firstDesc = desc[1].trim();
+    // First line-item description (for a nicer summary line than a generic label).
+    out.firstDesc = parseFirstDesc(text);
 
     // Recipient block from the text (more reliable than a mojibake/renamed filename).
     out.customer = parseCustomer(text);
@@ -280,5 +300,39 @@ export function buildImportedInvoice(f, p, opts = {}) {
         _parsedGross: p.gross,
     };
     if (seq != null) rec.seq = seq; // advances the current-year number counter
+    return rec;
+}
+
+/**
+ * Build a draft from a parsed embedded e-invoice XML (see shared/einvoice-xml). This is
+ * the RELIABLE path — the XML carries every real line item, so no text scraping is
+ * needed. Same record shape + seq/warnings contract as buildImportedInvoice.
+ * @param {object} p  parseEInvoiceXml result
+ * @param {object} opts  { id, currency, currentYear, summaryLabel }
+ */
+export function buildInvoiceFromXml(p, opts = {}) {
+    const warnings = [];
+    if (! p.number) warnings.push('number');
+    if (! p.issueDate) warnings.push('date');
+    if (p.gross == null && p.net == null) warnings.push('amount');
+    const seq = opts.currentYear ? importedSeq(p.number, opts.currentYear) : null;
+    const lines = (p.lines && p.lines.length)
+        ? p.lines.map((l) => ({ desc: l.desc || '', qty: l.qty ?? 1, unit: l.unit || '', unitPrice: l.unitPrice ?? 0, vatRate: l.vatRate ?? 0 }))
+        : [{ desc: opts.summaryLabel || 'Rechnung', qty: 1, unit: '', unitPrice: p.net ?? 0, vatRate: p.vatRate || 0 }];
+    const rec = {
+        id: opts.id,
+        number: p.number,
+        status: 'paid',
+        issueDate: p.issueDate,
+        dueDate: p.dueDate || p.issueDate,
+        currency: p.currency || opts.currency || 'EUR',
+        lang: 'de',
+        customer: { name: p.customer?.name || '', attn: '', address: p.customer?.address || '', email: p.customer?.email || '', vatId: p.customer?.vatId || '', contactId: null },
+        lines,
+        note: '', footer: '', trashed: false, imported: true,
+        _warnings: warnings,
+        _parsedGross: p.gross,
+    };
+    if (seq != null) rec.seq = seq;
     return rec;
 }

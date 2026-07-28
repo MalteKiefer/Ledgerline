@@ -36,6 +36,7 @@
         importSummaryLabel: @js(__('invoices.import_summary_label')),
         importDone: @js(__('invoices.import_done')),
         importFailed: @js(__('invoices.import_load_failed')),
+        trashConfirm: @js(__('invoices.trash_confirm')),
      })">
 
     {{-- Zero-knowledge gate: invoices decrypt with the vault key. --}}
@@ -168,40 +169,41 @@
           </div>
 
           <template x-if="! filtered.length">
-            <div class="mx-auto mt-10 flex max-w-md flex-col items-center rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 p-12 text-center">
-              <x-icon name="document-text" class="h-8 w-8 text-gray-300 dark:text-gray-600" />
-              <p class="mt-3 text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.empty_title') }}</p>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.empty_hint') }}</p>
-            </div>
+            <x-empty-state icon="banknotes" class="mt-10 py-16">
+              <span class="block text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.empty_title') }}</span>
+              <span class="mt-1 block text-sm">{{ __('invoices.empty_hint') }}</span>
+            </x-empty-state>
           </template>
 
-          <div x-show="filtered.length" class="mt-4 overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
-              <thead class="bg-gray-50 dark:bg-gray-900/50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          <div x-show="filtered.length" class="ll-card !p-0 mt-4 overflow-hidden overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
                 <tr>
-                  <th class="px-4 py-2">{{ __('invoices.col_number') }}</th>
-                  <th class="px-4 py-2">{{ __('invoices.col_customer') }}</th>
-                  <th class="px-4 py-2">{{ __('invoices.col_date') }}</th>
-                  <th class="px-4 py-2 text-right">{{ __('invoices.col_total') }}</th>
-                  <th class="px-4 py-2">{{ __('invoices.col_status') }}</th>
-                  <th class="px-4 py-2 text-right">{{ __('invoices.col_actions') }}</th>
+                  <th class="px-4 py-3">{{ __('invoices.col_number') }}</th>
+                  <th class="px-4 py-3">{{ __('invoices.col_customer') }}</th>
+                  <th class="px-4 py-3">{{ __('invoices.col_date') }}</th>
+                  <th class="px-4 py-3 text-right">{{ __('invoices.col_total') }}</th>
+                  <th class="px-4 py-3">{{ __('invoices.col_status') }}</th>
+                  <th class="px-4 py-3 text-right">{{ __('invoices.col_actions') }}</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
                 <template x-for="inv in filtered" :key="inv.id">
-                  <tr class="hover:bg-gray-50 dark:hover:bg-gray-900/40">
-                    <td class="px-4 py-2 font-medium text-gray-900 dark:text-gray-100 tabular-nums" x-text="inv.number || @js(__('invoices.draft_label'))"></td>
-                    <td class="px-4 py-2 text-gray-700 dark:text-gray-300" x-text="inv.customer?.name || '—'"></td>
-                    <td class="px-4 py-2 text-gray-500 dark:text-gray-400 tabular-nums" x-text="inv.issueDate"></td>
-                    <td class="px-4 py-2 text-right tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(computeTotals(inv).gross, inv.currency)"></td>
-                    <td class="px-4 py-2">
-                      <span class="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-300" x-text="statusLabel(inv.status)"></span>
+                  <tr class="group cursor-pointer transition-colors hover:bg-accent/5" @click="open(inv)">
+                    <td class="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100 tabular-nums" x-text="inv.number || @js(__('invoices.draft_label'))"></td>
+                    <td class="px-4 py-2.5 text-gray-700 dark:text-gray-300" x-text="inv.customer?.name || '—'"></td>
+                    <td class="px-4 py-2.5 text-gray-500 dark:text-gray-400 tabular-nums" x-text="inv.issueDate"></td>
+                    <td class="px-4 py-2.5 text-right tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(computeTotals(inv).gross, inv.currency)"></td>
+                    <td class="px-4 py-2.5">
+                      <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                        :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
+                        x-text="statusLabel(inv.status)"></span>
                     </td>
-                    <td class="px-4 py-2">
+                    <td class="px-4 py-2.5" @click.stop>
                       <div class="flex items-center justify-end gap-1">
                         <x-icon-button name="pencil" size="sm" @click="open(inv)" title="{{ __('common.edit') }}" aria-label="{{ __('common.edit') }}" />
                         <x-icon-button name="printer" size="sm" @click="printInvoice(inv)" title="{{ __('invoices.print') }}" aria-label="{{ __('invoices.print') }}" />
-                        <x-icon-button name="trash" size="sm" @click="trash(inv)" title="{{ __('invoices.trash') }}" aria-label="{{ __('invoices.trash') }}" />
+                        <x-icon-button name="trash" tone="red" size="sm" @click="trash(inv)" title="{{ __('invoices.trash') }}" aria-label="{{ __('invoices.trash') }}" />
                       </div>
                     </td>
                   </tr>
@@ -218,7 +220,9 @@
             <div class="flex items-center gap-3">
               <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
               <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
-              <span class="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-300" x-text="statusLabel(current?.status)"></span>
+              <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
+                x-text="statusLabel(current?.status)"></span>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <x-button variant="secondary" @click="printInvoice(current)"><x-icon name="printer" class="mr-1.5 h-4 w-4" />{{ __('invoices.print') }}</x-button>

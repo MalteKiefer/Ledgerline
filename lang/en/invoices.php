@@ -123,4 +123,5 @@ return [
     'invoice_count' => 'Invoices',
     'expenses_soon' => 'Expense tracking follows with receipts.',
     'dash_intro' => 'Your income at a glance. Expenses follow with receipts.',
+    'trash_confirm' => 'Move this invoice to the trash?',
 ];
