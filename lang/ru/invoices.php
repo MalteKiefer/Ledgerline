@@ -99,6 +99,7 @@ return [
     'import_pdf' => 'Импорт PDF',
     'import_title' => 'Импорт PDF-счетов',
     'import_parsing' => 'Чтение PDF… (:done/:total)',
+    'import_saving' => 'Сохранение счетов… (:done/:total)',
     'import_summary' => 'Распознано счетов: :n',
     'import_failed_n' => 'не прочитано: :n',
     'import_hint' => 'Строки с недостающими полями выделены — проверьте и импортируйте.',

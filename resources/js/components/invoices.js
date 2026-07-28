@@ -4,7 +4,7 @@ import { nextSeq, duplicateNumbers as dupNumbers } from '../shared/invoice-numbe
 import { parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, buildInvoiceFromXml } from '../shared/invoice-pdf-import';
 import { parseEInvoiceXml, looksLikeEInvoiceXml } from '../shared/einvoice-xml';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
-import { jsonHeaders } from '../shared/api';
+import { jsonHeaders, postForm } from '../shared/api';
 import { saveBlobAs } from '../shared/dom';
 import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
 import { padBlob } from '../shared/padme';
@@ -265,30 +265,41 @@ export default (config = {}, labels = {}) => ({
     async confirmImport() {
         const picked = (this.importReview?.items || []).filter((i) => i.selected);
         if (! picked.length) { this.importReview = null; return; }
+        // Persist each invoice as it lands (upload PDF → add record → flush), so a reload
+        // mid-import keeps every finished one and never orphans an uploaded blob. Progress
+        // is shown in the modal; the awaits never block the UI thread.
+        this.importReview.saving = true;
+        this.importReview.saved = 0;
+        this.importReview.saveTotal = picked.length;
+        let ok = 0;
         for (const draft of picked) {
-            const inv = {
-                id: draft.id, number: draft.number, status: 'paid',
-                issueDate: draft.issueDate || this._today(),
-                dueDate: draft.dueDate || draft.issueDate || this._today(),
-                currency: draft.currency, lang: draft.lang || 'de',
-                customer: draft.customer,
-                lines: draft.lines, note: draft.note || '', footer: draft.footer || '',
-                trashed: false, imported: true, updated: new Date().toISOString(),
-            };
-            // Carry the current-year sequence so the app's number counter advances.
-            if (draft.seq != null) inv.seq = draft.seq;
-            // Store the ORIGINAL PDF as a sealed blob (GoBD: the imported document is the
-            // authoritative record — the app must show it, not a regenerated one).
-            if (draft._pdfBytes) {
-                const pdf = await this._uploadPdf(draft._pdfBytes, draft._file || (draft.number + '.pdf'));
-                if (pdf) inv.pdf = pdf;
-            }
-            inv.totals = this.computeTotals(inv);
-            this.invoices.unshift(inv);
+            try {
+                const inv = {
+                    id: draft.id, number: draft.number, status: 'paid',
+                    issueDate: draft.issueDate || this._today(),
+                    dueDate: draft.dueDate || draft.issueDate || this._today(),
+                    currency: draft.currency, lang: draft.lang || 'de',
+                    customer: draft.customer,
+                    lines: draft.lines, note: draft.note || '', footer: draft.footer || '',
+                    trashed: false, imported: true, updated: new Date().toISOString(),
+                };
+                // Carry the current-year sequence so the app's number counter advances.
+                if (draft.seq != null) inv.seq = draft.seq;
+                // Store the ORIGINAL PDF as a sealed blob (GoBD: the imported document is the
+                // authoritative record — the app must show it, not a regenerated one).
+                if (draft._pdfBytes) {
+                    const pdf = await this._uploadPdf(draft._pdfBytes, draft._file || (draft.number + '.pdf'));
+                    if (pdf) inv.pdf = pdf;
+                }
+                inv.totals = this.computeTotals(inv);
+                this.invoices.unshift(inv);
+                await window.LLInvoicesStore.flush(); // persist this one before the next
+                this.reconcileBlobs(); // keep the just-uploaded pdf blob alive
+                ok++;
+            } catch (e) { /* skip this one, keep going */ }
+            this.importReview.saved++;
         }
-        this._save();
-        this.reconcileBlobs(); // register the new pdf blobs in the live-set
-        window.llToast?.((labels.importDone || ':n invoices imported.').replace(':n', picked.length));
+        window.llToast?.((labels.importDone || ':n invoices imported.').replace(':n', ok));
         this.importReview = null;
     },
 

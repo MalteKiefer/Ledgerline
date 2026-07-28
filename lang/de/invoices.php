@@ -99,6 +99,7 @@ return [
     'import_pdf' => 'PDFs importieren',
     'import_title' => 'Rechnungs-PDFs importieren',
     'import_parsing' => 'PDFs werden gelesen… (:done/:total)',
+    'import_saving' => 'Rechnungen werden gespeichert… (:done/:total)',
     'import_summary' => ':n Rechnungen erkannt',
     'import_failed_n' => ':n nicht lesbar',
     'import_hint' => 'Zeilen mit fehlenden Feldern sind hervorgehoben — prüfen, dann importieren.',
