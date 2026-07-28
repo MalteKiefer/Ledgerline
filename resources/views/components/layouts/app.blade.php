@@ -84,7 +84,7 @@
     <x-mobile-nav />
 
     {{-- App-wide confirm/prompt modal (replaces window.confirm & window.prompt) --}}
-    <div x-data x-show="$store.confirm.open" x-cloak class="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto p-4"
+    <div x-data x-show="$store.confirm.open" x-cloak class="fixed inset-0 z-[1600] flex items-center justify-center overflow-y-auto p-4"
         role="dialog" aria-modal="true" @keydown.escape.window="$store.confirm.no()">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="$store.confirm.no()"></div>
         <div class="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl ring-1 ring-black/[0.06] dark:bg-[#1c1c1e] dark:ring-white/10"
