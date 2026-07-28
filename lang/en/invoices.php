@@ -224,6 +224,7 @@ return [
     'cats_intro' => 'Your own receipt categories (added to the built-in suggestions).',
     'cats_empty' => 'No custom categories yet.',
     'cats_add' => 'Add',
+    'cats_default' => 'Default',
     'cats_add_ph' => 'New category',
     'receipt_auto_attached' => ':n receipts matched by amount.',
     'assign_intro' => 'Assign this receipt (:n left)',
