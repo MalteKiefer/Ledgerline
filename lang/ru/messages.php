@@ -10,6 +10,7 @@ return [
         'passwords' => 'Пароли',
         'contacts' => 'Контакты',
         'invoices' => 'Счета',
+        'finance' => 'Финансы',
         'files' => 'Файлы',
         'gallery' => 'Галерея',
         'todos' => 'Задачи',

@@ -52,9 +52,29 @@ export default (config = {}, labels = {}) => ({
     current: null,       // the invoice being edited
     filterStatus: '',    // '' | draft | sent | paid
     _printing: null,     // invoice rendered into the hidden print sheet
+    // Finance section: the page is a "Finanzen" hub with tabs. Invoices are one tab.
+    section: 'dashboard', // 'dashboard' | 'receipts' | 'invoices' | 'stats'
 
     async init() {
+        const h = (location.hash || '').replace('#', '');
+        if (['dashboard', 'receipts', 'invoices', 'stats'].includes(h)) this.section = h;
         await this._initZk();
+    },
+
+    setSection(s) { this.section = s; try { history.replaceState(null, '', '#' + s); } catch (e) { /* ignore */ } },
+
+    // ---- Finance dashboard: income at a glance (expenses follow with receipts) ----
+    get financeStats() {
+        const year = new Date().getFullYear();
+        let paidYear = 0, outstandingYear = 0, countYear = 0, paidAll = 0;
+        for (const inv of (this.invoices || [])) {
+            if (inv.trashed) continue;
+            const g = this.computeTotals(inv).gross || 0;
+            const y = parseInt((inv.issueDate || '').slice(0, 4), 10);
+            if (inv.status === 'paid') { paidAll += g; if (y === year) paidYear += g; }
+            if (y === year) { countYear++; if (inv.status === 'sent') outstandingYear += g; }
+        }
+        return { year, paidYear, outstandingYear, countYear, paidAll };
     },
 
     // ---- Derived ----

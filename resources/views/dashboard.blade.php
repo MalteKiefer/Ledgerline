@@ -161,7 +161,7 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('invoices.index') }}"
+                            <a href="{{ route('finance.index') }}"
                                 class="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5 transition-colors">
                                 <span class="ll-chip h-8 w-8 rounded-lg" style="--chip:#e2915a">
                                     <x-icon name="document-text" class="h-4 w-4" />

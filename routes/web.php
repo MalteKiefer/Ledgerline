@@ -328,7 +328,8 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/health', 'health.index')->name('health.index');
     // Invoices: zero-knowledge, records in the opaque /store manifest. The per-user
     // company profile (printed on invoices) is plaintext in the user's settings.
-    Route::view('/invoices', 'invoices.index')->name('invoices.index');
+    Route::view('/finance', 'invoices.index')->name('finance.index');
+    Route::redirect('/invoices', '/finance'); // old bookmarks
     Route::get('/settings/company', [SettingsCompanyController::class, 'edit'])->name('settings.company.edit');
     Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
     Route::get('/settings/company/logo', [SettingsCompanyController::class, 'logo'])->name('settings.company.logo');

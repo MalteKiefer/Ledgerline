@@ -1,5 +1,5 @@
 @php $s = \App\Models\UserSetting::for(auth()->id()); @endphp
-<x-layouts.app :title="__('invoices.title')">
+<x-layouts.app :title="__('messages.nav.finance')">
   <div x-data="invoices({
         token: '{{ csrf_token() }}',
         company: @js([
@@ -58,6 +58,80 @@
 
     <template x-if="state === 'ready'">
       <div>
+        {{-- ===================== FINANCE HUB (tabs) ===================== --}}
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('messages.nav.finance') }}</h1>
+          <div class="inline-flex flex-wrap rounded-xl bg-black/[0.04] dark:bg-white/10 p-0.5 text-sm font-medium">
+            @php $tabs = ['dashboard' => 'tab_dashboard', 'receipts' => 'tab_receipts', 'invoices' => 'tab_invoices', 'stats' => 'tab_stats']; @endphp
+            @foreach ($tabs as $key => $lbl)
+              <button type="button" @click="setSection('{{ $key }}')"
+                class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-colors"
+                :class="section === '{{ $key }}' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-accent'">
+                {{ __('invoices.'.$lbl) }}@if ($key === 'receipts' || $key === 'stats')<span class="text-[10px] font-normal text-gray-400 dark:text-gray-500">({{ __('invoices.coming_soon') }})</span>@endif
+              </button>
+            @endforeach
+          </div>
+        </div>
+
+        {{-- ===================== DASHBOARD ===================== --}}
+        <div x-show="section === 'dashboard'" class="mt-6">
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.dash_intro') }}</p>
+          <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {{-- Income: received this year --}}
+            <div class="ll-card">
+              <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                <span class="ll-chip h-6 w-6 rounded-lg" style="background:#59ad6b"><x-icon name="arrow-trending-up" class="h-3.5 w-3.5 text-white" /></span>{{ __('invoices.paid_total') }}
+              </div>
+              <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(financeStats.paidYear)"></p>
+              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.income_this_year') }} · ' + financeStats.year"></p>
+            </div>
+            {{-- Outstanding this year --}}
+            <div class="ll-card">
+              <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                <span class="ll-chip h-6 w-6 rounded-lg" style="background:#d9a441"><x-icon name="clock" class="h-3.5 w-3.5 text-white" /></span>{{ __('invoices.outstanding_total') }}
+              </div>
+              <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(financeStats.outstandingYear)"></p>
+              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500" x-text="financeStats.countYear + ' {{ __('invoices.invoice_count') }}'"></p>
+            </div>
+            {{-- Income all-time --}}
+            <div class="ll-card">
+              <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                <span class="ll-chip h-6 w-6 rounded-lg" style="background:#7066f5"><x-icon name="banknotes" class="h-3.5 w-3.5 text-white" /></span>{{ __('invoices.income') }}
+              </div>
+              <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(financeStats.paidAll)"></p>
+              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.paid_total') }}</p>
+            </div>
+            {{-- Expenses (coming soon) --}}
+            <div class="ll-card opacity-70">
+              <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                <span class="ll-chip h-6 w-6 rounded-lg" style="background:#6b7280"><x-icon name="arrow-trending-down" class="h-3.5 w-3.5 text-white" /></span>{{ __('invoices.expenses') }}
+              </div>
+              <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-300 dark:text-gray-600">—</p>
+              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.expenses_soon') }}</p>
+            </div>
+          </div>
+        </div>
+
+        {{-- ===================== RECEIPTS (coming soon) ===================== --}}
+        <div x-show="section === 'receipts'" class="mt-6">
+          <div class="ll-card flex flex-col items-center py-16 text-center">
+            <span class="ll-chip h-11 w-11" style="background:#3fae9f"><x-icon name="inbox-stack" class="h-5 w-5 text-white" /></span>
+            <p class="mt-4 text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.tab_receipts') }}</p>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.receipts_soon') }}</p>
+          </div>
+        </div>
+
+        {{-- ===================== STATISTICS (coming soon) ===================== --}}
+        <div x-show="section === 'stats'" class="mt-6">
+          <div class="ll-card flex flex-col items-center py-16 text-center">
+            <span class="ll-chip h-11 w-11" style="background:#3b9fd6"><x-icon name="chart-bar" class="h-5 w-5 text-white" /></span>
+            <p class="mt-4 text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.tab_stats') }}</p>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.stats_soon') }}</p>
+          </div>
+        </div>
+
+        {{-- ===================== INVOICES TAB (list + editor) ===================== --}}
+        <div x-show="section === 'invoices'" class="mt-6">
         {{-- ===================== LIST ===================== --}}
         <div x-show="view === 'list'">
           <x-page-heading :title="__('invoices.title')">
@@ -264,6 +338,7 @@
           </div>
         </div>
         </template>
+        </div>{{-- /section invoices --}}
 
         {{-- ===================== CUSTOMER PICKER ===================== --}}
         <div x-show="customerPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeCustomerPicker()">

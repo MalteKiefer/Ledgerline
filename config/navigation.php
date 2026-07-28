@@ -24,7 +24,7 @@ return [
         ['label' => 'messages.nav.todos', 'route' => 'todos.index', 'pattern' => 'todos.*', 'icon' => 'todos'],
         ['label' => 'messages.nav.bookmarks', 'route' => 'bookmarks.index', 'pattern' => 'bookmarks.*', 'icon' => 'bookmark'],
         ['label' => 'messages.nav.contacts', 'route' => 'contacts.index', 'pattern' => 'contacts.*', 'icon' => 'users'],
-        ['label' => 'messages.nav.invoices', 'route' => 'invoices.index', 'pattern' => 'invoices.*', 'icon' => 'document-text'],
+        ['label' => 'messages.nav.finance', 'route' => 'finance.index', 'pattern' => 'finance.*', 'icon' => 'banknotes'],
         ['label' => 'messages.nav.health', 'route' => 'health.index', 'pattern' => 'health.*', 'icon' => 'heart'],
         ['label' => 'messages.nav.explore', 'route' => 'explore', 'pattern' => 'explore', 'icon' => 'map'],
     ],

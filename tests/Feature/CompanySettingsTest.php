@@ -121,6 +121,6 @@ class CompanySettingsTest extends TestCase
     public function test_invoices_page_renders_for_authenticated_user(): void
     {
         $this->signIn();
-        $this->get(route('invoices.index'))->assertOk();
+        $this->get(route('finance.index'))->assertOk();
     }
 }

@@ -10,6 +10,7 @@ return [
         'passwords' => 'Passwords',
         'contacts' => 'Contacts',
         'invoices' => 'Invoices',
+        'finance' => 'Finance',
         'files' => 'Files',
         'gallery' => 'Gallery',
         'todos' => 'To-dos',
