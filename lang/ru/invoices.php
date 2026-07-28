@@ -255,6 +255,7 @@ return [
     'receipts_title' => 'Чеки',
     'receipts_none' => 'Пока нет чеков. Прикрепите один или несколько.',
     'receipts_add' => 'Прикрепить чеки',
+    'receipts_drop_hint' => 'Перетащите чеки для загрузки',
     'receipts_pick_booking' => 'Выберите проводку для прикрепления',
     'receipts_uploading' => 'Загрузка…',
     'receipts_missing' => 'по :n из :total проводок ещё нужен документ',

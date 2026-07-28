@@ -204,7 +204,14 @@
         </div>
 
         {{-- ===================== RECEIPTS (document manager) ===================== --}}
-        <div x-show="section === 'receipts'" class="mt-6">
+        <div x-show="section === 'receipts'" class="mt-6 relative" x-data="{ drag: false }"
+             @dragover.prevent="drag = true" @dragenter.prevent="drag = true"
+             @dragleave.prevent="if ($event.target === $el) drag = false"
+             @drop.prevent="drag = false; if ($event.dataTransfer?.files?.length && (transactions || []).length) uploadReceiptsAuto($event.dataTransfer.files)">
+          {{-- Drop receipts anywhere on the tab to upload + auto-match them by amount --}}
+          <div x-show="drag" x-cloak class="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-accent bg-accent/10">
+            <span class="rounded-xl bg-white/90 px-4 py-2 text-sm font-medium text-accent shadow dark:bg-[#1c1c1e]/90">{{ __('invoices.receipts_drop_hint') }}</span>
+          </div>
           <div class="flex flex-wrap items-center justify-between gap-3">
             <input type="search" x-model.debounce.200ms="receiptQuery" @input="recPage = 1" placeholder="{{ __('invoices.receipts_search') }}" class="w-full max-w-xs rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
             <div class="flex items-center gap-3">
