@@ -180,7 +180,18 @@ export default (config = {}, labels = {}) => ({
                 for (let i = 1; i <= doc.numPages; i++) {
                     const page = await doc.getPage(i);
                     const content = await page.getTextContent();
-                    text += content.items.map((it) => it.str).join(' ') + '\n';
+                    // Preserve line structure: pdf.js items carry their y-position
+                    // (transform[5]); a big jump means a new visual line. The parser
+                    // needs this for the recipient block and column-separated fields.
+                    let lastY = null;
+                    for (const it of content.items) {
+                        const y = it.transform ? it.transform[5] : null;
+                        if (lastY !== null && y !== null && Math.abs(y - lastY) > 3) text += '\n';
+                        else if (text && ! text.endsWith('\n')) text += ' ';
+                        text += it.str;
+                        lastY = y;
+                    }
+                    text += '\n';
                 }
                 const draft = buildImportedInvoice(
                     parseInvoiceFilename(file.name),

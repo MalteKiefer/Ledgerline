@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-    parseAmount, parseGermanDate, parseInvoiceFilename, parseInvoiceText, buildImportedInvoice,
+    parseAmount, parseGermanDate, parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, parseInvoiceNumber, parseCustomer,
 } from '../shared/invoice-pdf-import.js';
 
 describe('invoice PDF import — primitives', () => {
@@ -127,5 +127,32 @@ describe('invoice PDF import — column-separated layouts (2019-2021)', () => {
     it('handles the Nettogesamt/Rechnungsbetrag label variant', () => {
         const p = parseInvoiceText('Nettogesamt 260,00 € Umsatzsteuer 19% 49,40 € Rechnungsbetrag 309,40 €');
         expect(p.net).toBe(260); expect(p.vat).toBe(49.4); expect(p.gross).toBe(309.4);
+    });
+});
+
+describe('invoice PDF import — text is authoritative over the filename', () => {
+    it('prefers the text number when the filename disagrees (45 vs R-00045)', () => {
+        const f = parseInvoiceFilename('Rechnungsnr. 45 - Lorenz IT Dienstleistungen 2.pdf');
+        const p = parseInvoiceText('Rechnung\nKiefer Networks | Talmatten 10 | 79639 Grenzach-Wyhlen\nLORENZ IT-Dienstleistungen Ltd. & Co. KG\nHerr Rüdiger Lorenz\nFriedrich-Jung-Str. 5\n79618 Rheinfelden\nRechnungsnummer\nR-00045\nKundennummer\nK-00003\nNettobetrag: 100,00 €\nzzgl. 19% MwSt.: 19,00 €\nGesamtbetrag: 119,00 €');
+        const inv = buildImportedInvoice(f, p, { id: 'z' });
+        expect(inv.number).toBe('R-00045'); // NOT the filename's "45", and NOT the K- number
+        expect(inv.customer.name).toBe('LORENZ IT-Dienstleistungen Ltd. & Co. KG');
+    });
+    it('recognises every number-format generation from the text', () => {
+        expect(parseInvoiceNumber('Rechnung R-2024-00001 Datum: …')).toBe('R-2024-00001');
+        expect(parseInvoiceNumber('… R-00124 Datum …')).toBe('R-00124');
+        expect(parseInvoiceNumber('Rechnung\nRechnungsnr.\n1\nRechnungsdatum 10.04.2014')).toBe('1');
+        expect(parseInvoiceNumber('Rechnungsnummer\nR-00045\nKundennummer\nK-00003')).toBe('R-00045');
+        expect(parseInvoiceNumber('no number here')).toBeNull();
+    });
+    it('extracts the recipient block from the text (family A)', () => {
+        const c = parseCustomer('Kiefer Networks Beethovenstraße 10 - 79183 Waldkirch\nSTN Nürnberg\nMauermattenstraße 20\nD-79183 Waldkirch\nUSt.-IdNr. DE265814432\nRechnung');
+        expect(c.name).toBe('STN Nürnberg');
+        expect(c.address).toContain('Mauermattenstraße 20');
+    });
+    it('extracts the recipient block from the text (family B)', () => {
+        const c = parseCustomer('Kiefer Networks - Adalbert-Stifter-Str. 6 - 95512 Neudrossenfeld\nIntellyTec GmbH\nIngo Radermacher\nGrünenborn 1\n53797 Lohmar\nRechnung\nR-2024-00001');
+        expect(c.name).toBe('IntellyTec GmbH');
+        expect(c.address).toContain('53797 Lohmar');
     });
 });

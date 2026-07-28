@@ -43,21 +43,75 @@ export function parseInvoiceFilename(name) {
     return out;
 }
 
-/** Money + dates + VAT from the extracted PDF text. */
+/**
+ * The invoice number as printed in the PDF — the AUTHORITATIVE source (filenames are
+ * often wrong or renamed, and the format changed over the years). Handles every
+ * generation: R-YYYY-NNNNN (dated), R-NNNNN, and the older plain integer under a
+ * "Rechnungsnr."/"Rechnungsnummer" label (which may be column-separated onto the next
+ * line). Never returns the customer number (K-…).
+ */
+export function parseInvoiceNumber(text) {
+    const t = String(text || '');
+    let m = t.match(/\bR-\d{4}-\d{2,}\b/); // dated R-YYYY-NNNNN (before the short form)
+    if (m) return m[0];
+    m = t.match(/\bR-\d{2,}\b/); // R-NNNNN
+    if (m) return m[0];
+    // Plain integer under a number label — the value may sit on the next line.
+    m = t.match(/Rechnungs(?:nr\.?|nummer)\s*:?\s*[\r\n]*\s*(\d{1,6})\b/i);
+    return m ? m[1] : null;
+}
+
+/**
+ * The recipient (customer) block from the PDF text — more reliable than the filename,
+ * which is frequently mojibake (e.g. "N++rnberg", "#U00f6nning") or renamed. The block
+ * is the address that follows the "Kiefer Networks …" sender one-liner and precedes the
+ * "Rechnung"/number/USt markers. Returns { name, address } or null.
+ * @param {string} text  newline-preserving PDF text (see the importer's extractor)
+ * @param {RegExp} senderRe  matches the seller's own one-liner (to skip past it)
+ */
+export function parseCustomer(text, sender = 'kiefernetworks') {
+    // The recipient is always in the top address block; restrict to it so the footer
+    // (which repeats the sender) can never win.
+    const all = String(text || '').split(/[\r\n]+/).map((s) => s.replace(/\s+/g, ' ').trim());
+    const lines = all.slice(0, 20);
+    const stop = /^(rechnung|rechnungs(nr|nummer|datum)|kundennummer|datum\b|leistungs|pos\b|beschreibung|ust|steuer|invoice|bill to|item\b|quantity|betreff|betrifft)/i;
+    // Match the seller even when the PDF letter-spaced it ("Kief er Net works"): compare
+    // with all whitespace removed. The sender ONE-LINER also carries an address
+    // separator or a 5-digit postcode — that's the line right before the recipient.
+    const despaced = (s) => s.replace(/\s+/g, '').toLowerCase();
+    const isSender = (s) => despaced(s).includes(sender);
+    let start = -1;
+    for (let i = 0; i < lines.length; i++) {
+        if (isSender(lines[i]) && /[|\-–—]|\d{5}/.test(lines[i])) { start = i + 1; break; }
+    }
+    if (start < 0) for (let i = 0; i < lines.length; i++) if (isSender(lines[i])) { start = i + 1; break; }
+    if (start < 0) return null;
+    const block = [];
+    for (let i = start; i < lines.length && block.length < 5; i++) {
+        const ln = lines[i];
+        if (! ln) { if (block.length) break; else continue; }
+        if (stop.test(ln)) break;
+        if (isSender(ln)) continue; // skip a repeated sender line
+        block.push(ln);
+    }
+    if (! block.length) return null;
+    return { name: block[0], address: block.slice(1).join('\n') };
+}
+
+/** Money + dates + VAT + number + customer from the extracted PDF text. */
 export function parseInvoiceText(text) {
     const t = String(text || '').replace(/ /g, ' ');
-    const out = { date: null, dueDate: null, number: null, net: null, vat: null, gross: null, vatRate: null, smallBusiness: false, firstDesc: null };
+    const out = { date: null, dateLabeled: null, dueDate: null, number: null, net: null, vat: null, gross: null, vatRate: null, smallBusiness: false, firstDesc: null };
 
-    // Number (fallback when the filename lacks it).
-    const num = t.match(/(R-\d{4}-\d+|R-\d{4,})/) || t.match(/Rechnungsnr\.?\s+(\d+)/i);
-    if (num) out.number = num[1];
+    // The printed invoice number is AUTHORITATIVE (filenames are often wrong/renamed).
+    out.number = parseInvoiceNumber(t);
 
-    // Issue date: "Datum: dd.mm.yyyy" (family B) or "Rechnungsdatum dd.mm.yyyy" (A).
-    const date = t.match(/(?:Rechnungsdatum|Datum:?)\s+(\d{2}\.\d{2}\.\d{4})/i);
-    if (date) out.date = parseGermanDate(date[1]);
+    // Issue date: labeled "Datum:"/"Rechnungsdatum" (may sit on the next line).
+    const date = t.match(/(?:Rechnungsdatum|Datum)\s*:?\s*(\d{2}\.\d{2}\.\d{4})/i);
+    if (date) { out.dateLabeled = parseGermanDate(date[1]); out.date = out.dateLabeled; }
 
     // Due date: explicit label or the "bis zum dd.mm.yyyy" sentence.
-    const due = t.match(/F[äa]lligkeitsdatum\s+(\d{2}\.\d{2}\.\d{4})/i) || t.match(/bis zum\s+(\d{2}\.\d{2}\.\d{4})/i);
+    const due = t.match(/F[äa]lligkeitsdatum\s*:?\s*(\d{2}\.\d{2}\.\d{4})/i) || t.match(/bis zum\s+(\d{2}\.\d{2}\.\d{4})/i);
     if (due) out.dueDate = parseGermanDate(due[1]);
 
     // Date fallback (column-separated layouts where the label isn't adjacent): the
@@ -129,14 +183,18 @@ export function parseInvoiceText(text) {
     const desc = t.match(/^\s*(?:1|Pos)\s+(.{3,80}?)\s{2,}/m) || t.match(/^Beschreibung.*\n\s*(.{3,80}?)\s{2,}/im);
     if (desc) out.firstDesc = desc[1].trim();
 
+    // Recipient block from the text (more reliable than a mojibake/renamed filename).
+    out.customer = parseCustomer(text);
+
     return out;
 }
 
 function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
 
 /**
- * Build an invoice draft from the filename + text parses. Filename wins for
- * number/customer/date; text supplies money. Returns a record shaped like the invoices
+ * Build an invoice draft from the filename + text parses. The PDF TEXT is the primary
+ * source (filenames are often wrong, renamed or mojibake); the filename is only a
+ * fallback for what the text lacks. Returns a record shaped like the invoices
  * component's own drafts, plus `_warnings` for the review UI.
  * @param {object} f  parseInvoiceFilename result
  * @param {object} p  parseInvoiceText result
@@ -144,8 +202,15 @@ function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
  */
 export function buildImportedInvoice(f, p, opts = {}) {
     const warnings = [];
-    const number = f.number || p.number || null;
-    const issueDate = f.date || p.date || null;
+    // Text wins for the number (authoritative printed value across all format
+    // generations); the filename is only used when the text yields nothing.
+    const number = p.number || f.number || null;
+    // Prefer a LABELED text date, then the filename's YYYYMMDD, then the text's
+    // first-date fallback.
+    const issueDate = p.dateLabeled || f.date || p.date || null;
+    // Prefer the text-extracted recipient (clean UTF-8) over the mojibake-prone filename.
+    const custName = (p.customer && p.customer.name) || f.customer || '';
+    const custAddress = (p.customer && p.customer.address) || '';
     const net = p.net;
     const vatRate = p.vatRate == null ? 0 : p.vatRate;
 
@@ -169,7 +234,7 @@ export function buildImportedInvoice(f, p, opts = {}) {
         dueDate: p.dueDate || issueDate,
         currency: opts.currency || 'EUR',
         lang: 'de',
-        customer: { name: f.customer || '', attn: '', address: '', email: '', vatId: '', contactId: null },
+        customer: { name: custName, attn: '', address: custAddress, email: '', vatId: '', contactId: null },
         lines: [line],
         note: '',
         footer: '',
