@@ -137,9 +137,18 @@ export function extractMerchant(text) {
     return candidate;
 }
 
+// An invoice/receipt number when the document labels one ("Rechnungsnr.", "Invoice No",
+// "Beleg-Nr", …). Conservative — only after an explicit label, so a random order/customer
+// number is not picked up. → the token, or ''.
+const NUMBER_RE = /(?:rechnungs?\s*-?\s*(?:nr|nummer)|invoice\s*(?:no|number|#)|beleg\s*-?\s*nr|rg\s*-?\s*nr|receipt\s*(?:no|number))\.?\s*[:#]?\s*([A-Za-z]?[0-9][A-Za-z0-9./-]{1,24})/i;
+export function extractNumber(text) {
+    const m = String(text || '').match(NUMBER_RE);
+    return m ? m[1].replace(/[.,;:]+$/, '') : '';
+}
+
 /**
- * Analyse a receipt's OCR text: { merchant, category, total, date, tags[] }. tags are a
- * de-duplicated suggestion (merchant + category) the user can accept or edit on upload.
+ * Analyse a receipt's OCR text: { merchant, category, total, date, number, tags[] }. tags
+ * are a de-duplicated suggestion (merchant + category) the user can accept or edit.
  */
 export function analyzeReceiptText(text) {
     const low = String(text || '').toLowerCase();
@@ -148,6 +157,7 @@ export function analyzeReceiptText(text) {
     const merchant = extractMerchant(text);
     const total = extractTotal(text);
     const date = extractDate(text);
+    const number = extractNumber(text);
     const tags = [...new Set([merchant, category].filter(Boolean))];
-    return { merchant, category, total, date, tags };
+    return { merchant, category, total, date, number, tags };
 }

@@ -14,6 +14,8 @@ import { matchInvoice } from '../shared/invoice-match';
 import { extractDocText } from '../shared/doc-text';
 import { analyzeReceiptText } from '../shared/receipt-ocr';
 import { normMerchant, matchPartner, learnedCategoryFor } from '../shared/merchant-learn';
+import { buildReceiptName } from '../shared/receipt-name';
+import { amountMatches } from '../shared/amount-search';
 import { PAYMENT_TYPES, paymentTint, paymentSubtitle, isValidPaymentMethod, sortedPaymentMethods, blankPaymentMethod, cardNetworkOf } from '../shared/payment-methods';
 import { detectFormat, parseMt940, parseCsv, detectCsvMapping, applyCsvMapping, enrichExisting, classifyTxType, guessVatCat, VAT_CATS, txSignature as txSig, TX_FIELDS, TX_REQUIRED } from '../shared/bank-statement';
 
@@ -297,32 +299,58 @@ export default (config = {}, labels = {}) => ({
                 }
                 // Find bookings whose absolute amount matches the receipt total (to the cent).
                 const cands = total != null ? (this.transactions || []).filter((t) => Math.abs(Math.abs(t.amount || 0) - total) < 0.005) : [];
-                if (cands.length === 1) { cands[0].receipts = cands[0].receipts || []; cands[0].receipts.push(up); this._autoPartner(up, cands[0]); attached++; }
-                else { this.receiptAssign.push({ up, total, cands: cands.slice(0, 12) }); }
+                if (cands.length === 1) { cands[0].receipts = cands[0].receipts || []; cands[0].receipts.push(up); this._autoPartner(up, cands[0]); this._renameReceipt(up, cands[0]); attached++; }
+                else { this._renameReceipt(up, null); this.receiptAssign.push({ up, total, cands: cands.slice(0, 12) }); }
             } catch (e) { /* skip */ }
         }
         this.autoUploadBusy = false;
         this._save(); this.reconcileBlobs();
+        if (this.receiptAssign.length) this._loadAssignPreview();
         if (attached) window.llToast?.((labels.receipt_auto_attached || ':n receipts matched by amount.').replace(':n', attached));
     },
     // Assign a pending (unmatched) receipt to a chosen booking.
     assignPending(idx, tx) {
         const p = this.receiptAssign[idx]; if (! p || ! tx) return;
         tx.receipts = tx.receipts || []; tx.receipts.push(p.up);
-        this._autoPartner(p.up, tx);
+        this._autoPartner(p.up, tx); this._renameReceipt(p.up, tx);
         this.receiptAssign.splice(idx, 1);
+        this.assignQuery = '';
         this._save(); this.reconcileBlobs();
+        if (this.receiptAssign.length) this._loadAssignPreview(); else this.closeAssignPreview();
     },
     dropPending(idx) {
         const p = this.receiptAssign[idx]; if (! p) return;
         this.receiptAssign.splice(idx, 1);
+        this.assignQuery = '';
         this.reconcileBlobs(); // the uploaded-but-unassigned blob is grace-swept
+        if (this.receiptAssign.length) this._loadAssignPreview(); else this.closeAssignPreview();
     },
+    // Inline preview of the receipt currently being assigned (decrypt client-side, ZK).
+    assignPreview: null, // { url, mime, name }
+    async _loadAssignPreview() {
+        this.closeAssignPreview();
+        const up = this.receiptAssign[0]?.up; if (! up || ! up.blob) return;
+        try {
+            const buf = await fetchBlobBuffer(`${config.rawBase}/${up.blob}`);
+            const plain = window.Vault.decryptFile(buf, up.key);
+            const url = URL.createObjectURL(new Blob([plain], { type: up.mime || 'application/octet-stream' }));
+            this.assignPreview = { url, mime: up.mime || '', name: up.name || '' };
+        } catch (e) { /* preview is best-effort */ }
+    },
+    closeAssignPreview() {
+        if (this.assignPreview?.url) { try { URL.revokeObjectURL(this.assignPreview.url); } catch (e) { /* */ } }
+        this.assignPreview = null;
+    },
+    get assignPreviewIsImage() { return /^image\//.test(this.assignPreview?.mime || '') || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(this.assignPreview?.name || ''); },
+    get assignPreviewIsPdf() { return this.assignPreview?.mime === 'application/pdf' || /\.pdf$/i.test(this.assignPreview?.name || ''); },
     assignQuery: '',
     assignCandidates() {
-        const q = this.assignQuery.trim().toLowerCase();
+        const raw = this.assignQuery.trim();
+        const q = raw.toLowerCase();
         let list = (this.transactions || []);
-        if (q) list = list.filter((t) => (t.counterparty || '').toLowerCase().includes(q) || (t.purpose || '').toLowerCase().includes(q) || (t.date || '').includes(q));
+        if (q) list = list.filter((t) =>
+            (t.counterparty || '').toLowerCase().includes(q) || (t.purpose || '').toLowerCase().includes(q) ||
+            (t.date || '').includes(q) || amountMatches(t.amount, raw));
         return list.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 20);
     },
     receiptDoc: null,     // the { r, tx } currently edited in the detail modal
@@ -384,7 +412,7 @@ export default (config = {}, labels = {}) => ({
     get relinkCandidates() {
         const q = (this.relinkQuery || '').trim().toLowerCase();
         let list = (this.transactions || []).filter((t) => t.account === this.receiptDoc?.tx.account);
-        if (q) list = list.filter((t) => (t.counterparty || '').toLowerCase().includes(q) || (t.purpose || '').toLowerCase().includes(q) || (t.date || '').includes(q));
+        if (q) list = list.filter((t) => (t.counterparty || '').toLowerCase().includes(q) || (t.purpose || '').toLowerCase().includes(q) || (t.date || '').includes(q) || amountMatches(t.amount, (this.relinkQuery || '').trim()));
         return list.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 12);
     },
     relinkQuery: '',
@@ -418,6 +446,7 @@ export default (config = {}, labels = {}) => ({
             }
             await this._ensureContactsLoaded();
             this._autoPartner(r, doc.tx);
+            this._renameReceipt(r, doc.tx);
             if (save) { this._save(); if (this.receiptDoc === doc) this.tagsValue = (r.tags || []).join(', '); }
             return true;
         } catch (e) { return false; }
@@ -546,7 +575,7 @@ export default (config = {}, labels = {}) => ({
             try {
                 const bytes = new Uint8Array(await file.arrayBuffer());
                 const up = await this._uploadFile(bytes, file.name, file.type || 'application/octet-stream');
-                if (up) { up.id = window.LLInvoicesStore.newId(); tx.receipts.push(up); ok++; this._ocrReceipt(bytes.slice(0), up); }
+                if (up) { up.id = window.LLInvoicesStore.newId(); tx.receipts.push(up); ok++; this._ocrReceipt(bytes.slice(0), up, tx); }
             } catch (e) { /* skip this file */ }
         }
         this.receiptBusy = false;
@@ -555,12 +584,15 @@ export default (config = {}, labels = {}) => ({
     },
     // Background OCR of a freshly-uploaded receipt: extract text (searchable) and suggest
     // a category + tags (only fill empty fields). Runs client-side (ZK); best effort.
-    async _ocrReceipt(bytes, r) {
+    async _ocrReceipt(bytes, r, tx) {
         try {
             const text = await extractDocText(bytes, r.mime, r.name);
             if (! text || text.replace(/\s+/g, '').length < 8) return;
             r.ocr = text.slice(0, 200000);
             this._applyAnalysis(r, analyzeReceiptText(text));
+            await this._ensureContactsLoaded();
+            this._autoPartner(r, tx);
+            this._renameReceipt(r, tx);
             this._save();
         } catch (e) { /* best effort */ }
     },
@@ -571,6 +603,25 @@ export default (config = {}, labels = {}) => ({
         if (a.merchant && ! r.merchant) r.merchant = a.merchant;
         if (a.date && ! r.date) r.date = a.date;
         if (a.total != null && r.total == null) r.total = a.total;
+        if (a.number && ! r.number) r.number = a.number;
+    },
+    // Rename a receipt to "YYYYMMDD; Partner; Beleg / Rechnung <number>.<ext>" from the
+    // recognised fields (date/partner/number), keeping the extension. Runs on upload and on
+    // rescan ("Neu erkennen") — the fallback path when the original filename is unhelpful.
+    _renameReceipt(r, tx) {
+        if (! r) return false;
+        const ext = ((r.name || '').match(/\.[^.]+$/) || [])[0] || (r.mime === 'application/pdf' ? '.pdf' : '');
+        const partner = this.receiptPartnerName(r) || r.merchant || (tx && tx.counterparty) || '';
+        const name = buildReceiptName({
+            date: r.date || (tx && tx.date) || '',
+            partner,
+            number: r.number || r.invoiceNumber || '',
+            belegWord: labels.receipt || 'Beleg',
+            invoiceWord: labels.invoice_word || 'Rechnung',
+            ext,
+        });
+        if (name && name !== r.name) { r.name = name; return true; }
+        return false;
     },
     // Quick-look a receipt/invoice in a modal (decrypt client-side). App invoices with no
     // stored PDF open the invoice view instead.
