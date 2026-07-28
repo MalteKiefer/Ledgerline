@@ -232,6 +232,20 @@ export default (config = {}, labels = {}) => ({
     get pagedReceipts() { const s = (this.recPage - 1) * this.recPerPage; return this.filteredReceipts.slice(s, s + this.recPerPage); },
     setRecPerPage(n) { this.recPerPage = n; this.recPage = 1; },
     recGoto(p) { this.recPage = Math.min(this.recPageCount, Math.max(1, p)); },
+    // Settings tab: business partners.
+    parPage: 1,
+    parPerPage: 10,
+    get parPageCount() { return Math.max(1, Math.ceil(this.sortedPartners.length / this.parPerPage)); },
+    get pagedPartners() { const s = (this.parPage - 1) * this.parPerPage; return this.sortedPartners.slice(s, s + this.parPerPage); },
+    setParPerPage(n) { this.parPerPage = n; this.parPage = 1; },
+    parGoto(p) { this.parPage = Math.min(this.parPageCount, Math.max(1, p)); },
+    // Settings tab: custom categories (defaults are a small fixed list, not paginated).
+    catPage: 1,
+    catPerPage: 10,
+    get catPageCount() { return Math.max(1, Math.ceil((this.financeCategories || []).length / this.catPerPage)); },
+    get pagedCategories() { const s = (this.catPage - 1) * this.catPerPage; return (this.financeCategories || []).slice(s, s + this.catPerPage); },
+    setCatPerPage(n) { this.catPerPage = n; this.catPage = 1; },
+    catGoto(p) { this.catPage = Math.min(this.catPageCount, Math.max(1, p)); },
     accountTxCount(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).length; },
     // Balance = sum of an account's transactions (imported statements are signed).
     accountBalance(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).reduce((s, t) => s + (t.amount || 0), 0); },
