@@ -9,9 +9,9 @@ import { saveBlobAs } from '../shared/dom';
 import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
 import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
-import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears } from '../shared/finance-stats';
+import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary } from '../shared/finance-stats';
 import { PAYMENT_TYPES, paymentTint, paymentSubtitle, isValidPaymentMethod, sortedPaymentMethods, blankPaymentMethod, cardNetworkOf } from '../shared/payment-methods';
-import { detectFormat, parseMt940, parseCsv, detectCsvMapping, applyCsvMapping, enrichExisting, classifyTxType, txSignature as txSig, TX_FIELDS, TX_REQUIRED } from '../shared/bank-statement';
+import { detectFormat, parseMt940, parseCsv, detectCsvMapping, applyCsvMapping, enrichExisting, classifyTxType, guessVatCat, VAT_CATS, txSignature as txSig, TX_FIELDS, TX_REQUIRED } from '../shared/bank-statement';
 
 // One-time dual-read migration from the old single-blob module store (/store/invoices)
 // to the sharded store (LLInvoicesStore, spec §3b). Runs only while the sharded store is
@@ -288,6 +288,7 @@ export default (config = {}, labels = {}) => ({
         for (const tx of this.stmt.fresh) {
             tx.id = window.LLInvoicesStore.newId();
             tx.account = acct;
+            if (tx.vatCat == null) tx.vatCat = guessVatCat(tx); // auto where obvious, else '' (user picks)
             this.transactions.push(tx);
         }
         // Enrich existing records with the newly-available fields.
@@ -303,6 +304,13 @@ export default (config = {}, labels = {}) => ({
     // Localised payment-type label + tint for a transaction.
     txType(tx) { return classifyTxType(tx); },
     txTypeLabel(tx) { return labels['txtype_' + classifyTxType(tx)] || ''; },
+
+    // ---- VAT category per booking (for the USt calculation) ----
+    vatCats: VAT_CATS,
+    vatCatLabel(cat) { return cat ? (labels['vatcat_' + cat] || cat) : (labels.vatcat_none || '—'); },
+    setVatCat(tx, cat) { tx.vatCat = cat; this._save(); },
+    // Bookings still needing a VAT category (excludes private/decided ones).
+    get accountVat() { return accountVatSummary(this.accountTx); },
     cancelStatement() { this.stmt = null; },
 
     // ---- Derived ----

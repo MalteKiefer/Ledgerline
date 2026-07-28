@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
     parseAmount, parseDate, detectFormat, parseMt940, parseMt940Field86,
     parseCsv, detectCsvMapping, applyCsvMapping, txSignature, dedupeTransactions, TX_FIELDS,
-    enrichExisting, classifyTxType,
+    enrichExisting, classifyTxType, guessVatCat, VAT_CATS,
 } from '../shared/bank-statement.js';
 
 describe('bank statement parsing', () => {
@@ -132,6 +132,16 @@ describe('bank statement parsing', () => {
         const incoming = [{ date: '2024-01-02', amount: -6, eref: 'E1', iban: 'DE-NEW', bic: 'X' }];
         const { updates } = enrichExisting(existing, incoming);
         expect(updates[0].patch).toEqual({ bic: 'X' }); // iban kept, only the missing bic added
+    });
+
+    it('guesses the VAT category, else leaves it open', () => {
+        expect(VAT_CATS).toEqual(['19', '16', '7', '0', 'private']);
+        expect(guessVatCat({ category: 'Privateinlage' })).toBe('private');
+        expect(guessVatCat({ purpose: 'Privatentnahme' })).toBe('private');
+        expect(guessVatCat({ category: 'Umsatzsteuer 19%' })).toBe('19');
+        expect(guessVatCat({ category: 'USt 7 %' })).toBe('7');
+        expect(guessVatCat({ purpose: 'steuerfrei' })).toBe('0');
+        expect(guessVatCat({ purpose: 'Bürobedarf' })).toBe(''); // unknown → user decides
     });
 
     it('classifies the payment type from booking text', () => {

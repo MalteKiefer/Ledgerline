@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { invoiceTotals, realizedInvoices, vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears } from '../shared/finance-stats.js';
+import { invoiceTotals, realizedInvoices, vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, grossToNetVat, accountVatSummary } from '../shared/finance-stats.js';
 
 const inv = (o) => ({ status: 'paid', trashed: false, lines: [], ...o });
 const line = (qty, price, rate = 19) => ({ qty, unitPrice: price, vatRate: rate });
@@ -57,5 +57,29 @@ describe('finance stats', () => {
     });
     it('lists active years, newest first', () => {
         expect(activeYears(data)).toEqual([2026, 2025]);
+    });
+
+    it('splits a gross amount into net + VAT', () => {
+        expect(grossToNetVat(119, 19)).toEqual({ net: 100, vat: 19 });
+        expect(grossToNetVat(107, 7)).toEqual({ net: 100, vat: 7 });
+        expect(grossToNetVat(100, 0)).toEqual({ net: 100, vat: 0 });
+    });
+
+    it('summarises account VAT by category, excluding private/undecided', () => {
+        const txns = [
+            { amount: 1190, vatCat: '19' },   // income, net 1000 / vat 190
+            { amount: -119, vatCat: '19' },   // expense, net 100 / vat 19 (input)
+            { amount: -107, vatCat: '7' },    // expense, net 100 / vat 7 (input)
+            { amount: 500, vatCat: 'private' }, // deposit — excluded
+            { amount: -50, vatCat: '' },       // undecided — excluded, counted
+        ];
+        const s = accountVatSummary(txns);
+        expect(s.outputVat).toBe(190);
+        expect(s.inputVat).toBe(26);       // 19 + 7
+        expect(s.payable).toBe(164);       // 190 - 26
+        expect(s.privateSum).toBe(500);
+        expect(s.undecided).toBe(1);
+        expect(s.income).toEqual([{ rate: '19', net: 1000, vat: 190 }]);
+        expect(s.expense.map((r) => r.rate)).toEqual(['19', '7']);
     });
 });

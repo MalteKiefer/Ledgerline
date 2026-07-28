@@ -95,6 +95,47 @@ export function yearKpis(invoices, year) {
     };
 }
 
+/** Split a gross amount into net + VAT for a given VAT rate (percent). */
+export function grossToNetVat(gross, ratePercent) {
+    const g = Number(gross) || 0;
+    const r = Number(ratePercent) || 0;
+    const net = r > 0 ? g / (1 + r / 100) : g;
+    return { net: round2(net), vat: round2(g - net) };
+}
+
+/**
+ * VAT summary of an account's transactions by category, for the USt calculation.
+ * Income (amount > 0) and expenses (amount < 0) are grouped by VAT rate; 'private'
+ * bookings (deposits/withdrawals) and undecided ('') rows are reported separately and
+ * excluded from the VAT totals. `outputVat` = VAT on income, `inputVat` = VAT on
+ * expenses (Vorsteuer); `payable` = output − input.
+ */
+export function accountVatSummary(transactions) {
+    const income = {}, expense = {}; // rate -> { net, vat }
+    let privateSum = 0, undecided = 0, outputVat = 0, inputVat = 0;
+    for (const tx of transactions || []) {
+        const cat = tx.vatCat || '';
+        const gross = Math.abs(Number(tx.amount) || 0);
+        if (cat === 'private') { privateSum += gross; continue; }
+        if (! cat) { undecided++; continue; }
+        const { net, vat } = grossToNetVat(gross, cat);
+        const bucket = (tx.amount || 0) >= 0 ? income : expense;
+        bucket[cat] = bucket[cat] || { net: 0, vat: 0 };
+        bucket[cat].net += net; bucket[cat].vat += vat;
+        if ((tx.amount || 0) >= 0) outputVat += vat; else inputVat += vat;
+    }
+    const rows = (map) => Object.entries(map).map(([rate, v]) => ({ rate, net: round2(v.net), vat: round2(v.vat) })).sort((a, b) => Number(b.rate) - Number(a.rate));
+    return {
+        income: rows(income),
+        expense: rows(expense),
+        outputVat: round2(outputVat),
+        inputVat: round2(inputVat),
+        payable: round2(outputVat - inputVat),
+        privateSum: round2(privateSum),
+        undecided,
+    };
+}
+
 /** The distinct years with realized invoices, most recent first. */
 export function activeYears(invoices) {
     const years = new Set(realizedInvoices(invoices).map(yearOf).filter(Boolean));
