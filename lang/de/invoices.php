@@ -209,6 +209,7 @@ return [
     'tab_settings' => 'Einstellungen',
     'receipt_reanalyze' => 'Neu erkennen',
     'receipts_reanalyze_all' => ':n erkennen',
+    'receipts_rescan_all' => 'Alle neu scannen',
     'reanalyze_done' => ':n Belege erkannt.',
     'receipt_partner' => 'Geschäftspartner',
     'receipt_partner_ph' => 'Kontakt oder Partner suchen…',

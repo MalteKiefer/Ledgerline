@@ -480,13 +480,20 @@ export default (config = {}, labels = {}) => ({
         } catch (e) { return false; }
     },
     // Bulk: (re-)recognise every non-invoice receipt that has no OCR text yet.
-    async reanalyzeAllReceipts() {
+    reanalyzeTotal: 0,
+    reanalyzeProgress: 0,
+    // Re-run recognition. force=false → only receipts without OCR yet (backfill);
+    // force=true → EVERY non-invoice receipt (the "re-scan all" button).
+    async reanalyzeAllReceipts(force = false) {
         if (this.reanalyzeBusy) return;
+        const docs = this.allReceipts.filter((d) => d.r.kind !== 'invoice' && (force || ! d.r.ocr));
+        if (! docs.length) return;
         this.reanalyzeBusy = true;
+        this.reanalyzeTotal = docs.length; this.reanalyzeProgress = 0;
         let n = 0;
-        for (const doc of this.allReceipts) {
-            if (doc.r.kind === 'invoice' || doc.r.ocr) continue;
+        for (const doc of docs) {
             if (await this.reanalyzeReceipt(doc, false)) n++;
+            this.reanalyzeProgress++;
         }
         this.reanalyzeBusy = false;
         if (n) this._save();

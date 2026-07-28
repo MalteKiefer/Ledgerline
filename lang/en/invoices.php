@@ -209,6 +209,7 @@ return [
     'tab_settings' => 'Settings',
     'receipt_reanalyze' => 'Re-scan',
     'receipts_reanalyze_all' => 'Scan :n',
+    'receipts_rescan_all' => 'Re-scan all',
     'reanalyze_done' => ':n receipts scanned.',
     'receipt_partner' => 'Business partner',
     'receipt_partner_ph' => 'Search a contact or partner…',
