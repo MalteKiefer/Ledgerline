@@ -292,10 +292,10 @@
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.pay_intro') }}</p>
             <div class="relative" x-data="{ open: false }" @click.outside="open = false">
               <x-button variant="primary" icon="plus" @click="open = ! open">{{ __('invoices.pay_add') }}</x-button>
-              <div x-show="open" x-cloak x-transition class="absolute right-0 z-20 mt-2 w-52 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <div x-show="open" x-cloak x-transition class="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
                 <template x-for="t in payTypeOptions" :key="t.type">
                   <button type="button" @click="newPayment(t.type); open = false" class="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-accent/5">
-                    <span class="ll-chip h-7 w-7 rounded-lg" :style="{ background: payTint(t.type) }"><x-icon ::name="payIcon(t.type)" class="h-4 w-4 text-white" /></span>
+                    <span class="ll-chip h-7 w-7 rounded-lg" :style="{ background: payTint(t.type) }">@include('invoices._payment_icon', ['expr' => 't.type', 'cls' => 'h-4 w-4 text-white'])</span>
                     <span x-text="payTypeLabel(t.type)"></span>
                   </button>
                 </template>
@@ -314,7 +314,7 @@
               <div class="divide-y divide-black/[0.06] dark:divide-white/10">
                 <template x-for="pm in sortedPayments" :key="pm.id">
                   <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5">
-                    <span class="ll-chip h-9 w-9 rounded-xl shrink-0" :style="{ background: payTint(pm.type) }"><x-icon ::name="payIcon(pm.type)" class="h-4.5 w-4.5 text-white" /></span>
+                    <span class="ll-chip h-9 w-9 rounded-xl shrink-0" :style="{ background: payTint(pm.type) }">@include('invoices._payment_icon', ['expr' => 'pm.type', 'cls' => 'h-4.5 w-4.5 text-white'])</span>
                     <div class="min-w-0 flex-1">
                       <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="pm.label"></p>
                       <p class="truncate text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="paySubtitle(pm) || payTypeLabel(pm.type)"></p>
@@ -336,7 +336,7 @@
               <template x-if="payEditing">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="flex items-center gap-2.5 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <span class="ll-chip h-8 w-8 rounded-xl" :style="{ background: payTint(payEditing.type) }"><x-icon ::name="payIcon(payEditing.type)" class="h-4.5 w-4.5 text-white" /></span>
+                    <span class="ll-chip h-8 w-8 rounded-xl" :style="{ background: payTint(payEditing.type) }">@include('invoices._payment_icon', ['expr' => 'payEditing.type', 'cls' => 'h-4.5 w-4.5 text-white'])</span>
                     <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="payIsNew ? payTypeLabel(payEditing.type) : payEditing.label"></h3>
                     <x-icon-button name="x-mark" tone="gray" size="sm" class="ml-auto" @click="cancelPayment()" :aria-label="__('common.close')" />
                   </div>
