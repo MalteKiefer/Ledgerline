@@ -98,6 +98,8 @@ return [
     'groups_no_limit' => 'No limit',
     'groups_shareable' => 'shareable',
     'groups_shareable_label' => 'Members can share content with this group',
+    'modules_label' => 'Enabled modules',
+    'modules_hint' => 'Uncheck a module to hide and block it for this user/group. All checked = no restriction.',
     'groups_shareable_hint' => 'A shareable group appears as a target in the share dialog; sharing invites every member.',
     'groups_delete' => 'Delete group',
     'groups_delete_confirm' => 'Delete this group? Members keep their accounts; the group\'s limits no longer apply.',

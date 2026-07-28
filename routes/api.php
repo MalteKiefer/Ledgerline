@@ -72,14 +72,14 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/vault', [VaultController::class, 'show'])->name('api.vault.show');
 
         // Per-module sealed stores (Store v3 split): one opaque row per module.
-        Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->name('api.module-store.show');
-        Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware('throttle:240,1')->name('api.module-store.save');
+        Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->middleware('module')->name('api.module-store.show');
+        Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware(['throttle:240,1', 'module'])->name('api.module-store.save');
 
         // Files: opaque content blobs + quota ledger.
         Route::get('/files/usage', [FileController::class, 'usage'])->name('api.files.usage');
         // Store v3 (§4.2/A10b): sealed files index (own sharded store, out of the monolith).
-        Route::get('/files/store', [FilesStoreController::class, 'show'])->name('api.files.store.show');
-        Route::put('/files/store', [FilesStoreController::class, 'save'])->middleware('throttle:120,1')->name('api.files.store.save');
+        Route::get('/files/store', [FilesStoreController::class, 'show'])->middleware('module:files')->name('api.files.store.show');
+        Route::put('/files/store', [FilesStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:files'])->name('api.files.store.save');
         Route::post('/files/blobs/reconcile', [FileController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.files.reconcile');
         Route::post('/files/upload', [FileController::class, 'upload'])->middleware('throttle:1200,1')->name('api.files.upload');
         Route::post('/files/upload/init', [FileController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.files.upload.init');
@@ -90,15 +90,15 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/files/raw-batch', [FileController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.files.raw-batch');
 
         // Notes sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
-        Route::get('/notes/store', [NotesStoreController::class, 'show'])->name('api.notes.store.show');
-        Route::put('/notes/store', [NotesStoreController::class, 'save'])->middleware('throttle:120,1')->name('api.notes.store.save');
+        Route::get('/notes/store', [NotesStoreController::class, 'show'])->middleware('module:notes')->name('api.notes.store.show');
+        Route::put('/notes/store', [NotesStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:notes'])->name('api.notes.store.save');
         Route::post('/notes/upload', [NoteBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('api.notes.upload');
         Route::get('/notes/raw/{blob}', [NoteBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.notes.raw');
         Route::post('/notes/raw-batch', [NoteBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.notes.raw-batch');
         Route::post('/notes/blobs/reconcile', [NoteBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.notes.reconcile');
 
-        Route::get('/invoices/store', [InvoicesStoreController::class, 'show'])->name('api.invoices.store.show');
-        Route::put('/invoices/store', [InvoicesStoreController::class, 'save'])->middleware('throttle:120,1')->name('api.invoices.store.save');
+        Route::get('/invoices/store', [InvoicesStoreController::class, 'show'])->middleware('module:finance')->name('api.invoices.store.show');
+        Route::put('/invoices/store', [InvoicesStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:finance'])->name('api.invoices.store.save');
         Route::post('/invoices/upload', [InvoiceBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('api.invoices.upload');
         Route::get('/invoices/raw/{blob}', [InvoiceBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.invoices.raw');
         Route::post('/invoices/raw-batch', [InvoiceBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.invoices.raw-batch');
@@ -110,8 +110,8 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/company/logo', [ApiCompanyController::class, 'logo'])->middleware('throttle:120,1')->name('api.company.logo');
 
         // Passwords sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
-        Route::get('/passwords/store', [PasswordsStoreController::class, 'show'])->name('api.passwords.store.show');
-        Route::put('/passwords/store', [PasswordsStoreController::class, 'save'])->middleware('throttle:120,1')->name('api.passwords.store.save');
+        Route::get('/passwords/store', [PasswordsStoreController::class, 'show'])->middleware('module:passwords')->name('api.passwords.store.show');
+        Route::put('/passwords/store', [PasswordsStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:passwords'])->name('api.passwords.store.save');
         Route::post('/passwords/upload', [PasswordBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('api.passwords.upload');
         Route::get('/passwords/raw/{blob}', [PasswordBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.passwords.raw');
         Route::post('/passwords/raw-batch', [PasswordBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.passwords.raw-batch');
@@ -125,8 +125,8 @@ Route::prefix('v1')->group(function (): void {
         Route::delete('/files/shares/{token}', [FileShareController::class, 'destroy'])->middleware('throttle:60,1')->name('api.files.shares.destroy');
 
         // Gallery: sealed index + opaque photo blobs + the stateless transform.
-        Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->name('api.gallery.store.show');
-        Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware('throttle:120,1')->name('api.gallery.store.save');
+        Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->middleware('module:gallery')->name('api.gallery.store.show');
+        Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:gallery'])->name('api.gallery.store.save');
         Route::get('/gallery/usage', [GalleryBlobController::class, 'usage'])->name('api.gallery.usage');
         Route::post('/gallery/blobs/reconcile', [GalleryBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.gallery.reconcile');
         Route::post('/gallery/upload', [GalleryBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('api.gallery.upload');

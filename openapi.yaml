@@ -168,6 +168,15 @@ components:
         gallery_quota_mb: { type: integer, nullable: true, description: "Gallery quota in MB (null = no group cap)." }
         max_connected_devices: { type: integer, nullable: true, description: "Device cap (null = no group cap)." }
         shareable: { type: boolean, description: "Members may offer this group as a share target." }
+        modules:
+          type: array
+          nullable: true
+          description: >
+            Allow-list of enabled module keys for members of this group (null = all
+            modules). A member's effective modules are the union across their groups
+            (a group with null grants all); a per-user allow-list overrides. Enforced
+            server-side and surfaced at /me as user.modules.
+          items: { type: string, enum: [dashboard, files, gallery, passwords, notes, todos, bookmarks, contacts, finance, health, explore] }
         members:
           type: array
           items:
@@ -669,12 +678,20 @@ paths:
                   user:
                     type: object
                     description: >
-                      User fields: id, name, email, locale, groups, has_avatar (bool),
-                      preferences (DisplayPreferences — units + clock format).
+                      User fields: id, name, email, locale, groups, modules, has_avatar
+                      (bool), preferences (DisplayPreferences — units + clock format).
                       `groups` is derived from the first-party role (`["admin"]` for
                       admins, `[]` otherwise) — the historical claim shape is kept so
-                      existing mobile clients need no change.
+                      existing mobile clients need no change. `modules` is the list of
+                      application modules this account may use (per-user/per-group
+                      toggles); a native client should hide tabs for modules not listed,
+                      and the API enforces it (a disabled module's store endpoints return
+                      403).
                     properties:
+                      modules:
+                        type: array
+                        description: Enabled application module keys for this account.
+                        items: { type: string, enum: [dashboard, files, gallery, passwords, notes, todos, bookmarks, contacts, finance, health, explore] }
                       preferences:
                         $ref: "#/components/schemas/DisplayPreferences"
                   usage:
@@ -4283,6 +4300,7 @@ paths:
                 gallery_quota_mb: { type: integer, nullable: true, minimum: 0 }
                 max_connected_devices: { type: integer, nullable: true, minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
+                modules: { type: array, nullable: true, items: { type: string }, description: "Enabled module keys (null = all)." }
                 members:
                   type: array
                   items: { type: integer }
@@ -4325,6 +4343,7 @@ paths:
                 gallery_quota_mb: { type: integer, nullable: true, minimum: 0 }
                 max_connected_devices: { type: integer, nullable: true, minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
+                modules: { type: array, nullable: true, items: { type: string }, description: "Enabled module keys (null = all)." }
                 members:
                   type: array
                   items: { type: integer }

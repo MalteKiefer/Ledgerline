@@ -157,6 +157,10 @@ class AuthController extends Controller
             // Derived from the first-party role (admin → ['admin'], else []); keeps
             // the historical mobile contract stable without a separate 'role' field.
             'groups' => $user->effectiveGroups(),
+            // The application modules this account may use (per-user/per-group toggles).
+            // A native client should hide the tabs for modules NOT listed here; the API
+            // also enforces it (disabled module store endpoints return 403).
+            'modules' => $user->allowedModules(),
             // Non-secret avatar. True → fetch GET /api/v1/avatar (Bearer).
             'has_avatar' => is_string($user->avatar) && $user->avatar !== '',
             // Non-secret display preferences (units + 12/24h clock). Mobile applies

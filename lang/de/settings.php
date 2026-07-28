@@ -98,6 +98,8 @@ return [
     'groups_no_limit' => 'Kein Limit',
     'groups_shareable' => 'teilbar',
     'groups_shareable_label' => 'Mitglieder können Inhalte mit dieser Gruppe teilen',
+    'modules_label' => 'Freigeschaltete Module',
+    'modules_hint' => 'Ein Modul abwählen, um es für diesen Nutzer/diese Gruppe auszublenden und zu sperren. Alle aktiv = keine Einschränkung.',
     'groups_shareable_hint' => 'Eine teilbare Gruppe erscheint als Ziel im Teilen-Dialog; Teilen lädt jedes Mitglied ein.',
     'groups_delete' => 'Gruppe löschen',
     'groups_delete_confirm' => 'Diese Gruppe löschen? Mitglieder behalten ihre Konten; die Limits der Gruppe gelten nicht mehr.',

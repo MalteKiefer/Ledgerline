@@ -48,7 +48,46 @@ class User extends Authenticatable implements MustVerifyEmail
             'files_quota_mb' => 'integer',
             'gallery_quota_mb' => 'integer',
             'max_connected_devices' => 'integer',
+            'modules' => 'array',
         ];
+    }
+
+    /**
+     * The application modules this user may access. Admins get everything. Otherwise a
+     * per-user allow-list wins; else the UNION of the user's groups' allow-lists (a group
+     * without a list grants all — most-generous, matching the group-limits policy); else,
+     * nothing configured anywhere, all modules. Unknown keys are dropped.
+     *
+     * @return list<string>
+     */
+    public function allowedModules(): array
+    {
+        $all = array_keys((array) config('modules.list', []));
+        if ($this->isAdmin()) {
+            return $all;
+        }
+        if (is_array($this->modules)) {
+            return array_values(array_intersect($all, $this->modules));
+        }
+        $groups = $this->memberGroups;
+        if ($groups->isEmpty()) {
+            return $all;
+        }
+        $allowed = [];
+        foreach ($groups as $group) {
+            if (! is_array($group->modules)) {
+                return $all; // a group without a restriction grants everything
+            }
+            $allowed = array_merge($allowed, $group->modules);
+        }
+
+        return array_values(array_intersect($all, array_unique($allowed)));
+    }
+
+    /** Whether the user may access a given module key. */
+    public function canModule(string $key): bool
+    {
+        return in_array($key, $this->allowedModules(), true);
     }
 
     /**

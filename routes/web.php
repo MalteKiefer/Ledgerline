@@ -90,7 +90,7 @@ Route::post('/invite/{invite}/{token}', [InviteLinkController::class, 'store'])-
 
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {
-    Route::get('/dashboard', DashboardController::class)->name('dashboard');
+    Route::get('/dashboard', DashboardController::class)->middleware('module:dashboard')->name('dashboard');
     Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
     Route::post('/theme', [ThemeController::class, 'update'])->name('theme.update');
     Route::post('/preferences', [PreferencesController::class, 'update'])->name('preferences.update');
@@ -204,7 +204,7 @@ Route::middleware('auth')->group(function (): void {
     // Zero-knowledge gallery: the client holds all keys and renders entirely
     // from the sealed index + decrypted blobs. The server ships only the shell
     // here; upload/process/blob/store live in the dedicated routes below.
-    Route::get('/gallery', [GalleryController::class, 'index'])->name('gallery.index');
+    Route::get('/gallery', [GalleryController::class, 'index'])->middleware('module:gallery')->name('gallery.index');
 
     // Zero-knowledge encryption vault (Files): the server only stores ciphertext
     // and KDF params — never the passphrase, recovery code or vault key.
@@ -215,11 +215,11 @@ Route::middleware('auth')->group(function (): void {
     // Files: the whole directory tree (names, folders, tags, notes, trash flags,
     // version history) lives in the sealed opaque store; the server only handles
     // the opaque content blobs below (store/stream ciphertext + a quota ledger).
-    Route::get('/files', [FileController::class, 'index'])->name('files.index');
+    Route::get('/files', [FileController::class, 'index'])->middleware('module:files')->name('files.index');
     Route::get('/files/usage', [FileController::class, 'usage'])->name('files.usage');
     // Store v3 (§4.2/A10b): sealed files index (own sharded store, out of the monolith).
-    Route::get('/files/store', [FilesStoreController::class, 'show'])->name('files.store.show');
-    Route::put('/files/store', [FilesStoreController::class, 'save'])->middleware('throttle:600,1')->name('files.store.save');
+    Route::get('/files/store', [FilesStoreController::class, 'show'])->middleware('module:files')->name('files.store.show');
+    Route::put('/files/store', [FilesStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:files'])->name('files.store.save');
     // Reclaim blobs the (sealed) manifest no longer references — the client sends
     // its live blob set; owner-scoped, grace-gated pruning of the quota ledger.
     Route::post('/files/blobs/reconcile', [FileController::class, 'reconcile'])->middleware('throttle:120,1')->name('files.blobs.reconcile');
@@ -237,23 +237,23 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/files/raw-batch', [FileController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('files.raw-batch');
 
     // Notes sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
-    Route::get('/notes/store', [NotesStoreController::class, 'show'])->name('notes.store.show');
-    Route::put('/notes/store', [NotesStoreController::class, 'save'])->middleware('throttle:600,1')->name('notes.store.save');
+    Route::get('/notes/store', [NotesStoreController::class, 'show'])->middleware('module:notes')->name('notes.store.show');
+    Route::put('/notes/store', [NotesStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:notes'])->name('notes.store.save');
     Route::post('/notes/upload', [NoteBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('notes.upload');
     Route::get('/notes/raw/{blob}', [NoteBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('notes.raw');
     Route::post('/notes/raw-batch', [NoteBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('notes.raw-batch');
     Route::post('/notes/blobs/reconcile', [NoteBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('notes.blobs.reconcile');
 
-    Route::get('/invoices/store', [InvoicesStoreController::class, 'show'])->name('invoices.store.show');
-    Route::put('/invoices/store', [InvoicesStoreController::class, 'save'])->middleware('throttle:600,1')->name('invoices.store.save');
+    Route::get('/invoices/store', [InvoicesStoreController::class, 'show'])->middleware('module:finance')->name('invoices.store.show');
+    Route::put('/invoices/store', [InvoicesStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:finance'])->name('invoices.store.save');
     Route::post('/invoices/upload', [InvoiceBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('invoices.upload');
     Route::get('/invoices/raw/{blob}', [InvoiceBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('invoices.raw');
     Route::post('/invoices/raw-batch', [InvoiceBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('invoices.raw-batch');
     Route::post('/invoices/blobs/reconcile', [InvoiceBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('invoices.blobs.reconcile');
 
     // Passwords sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
-    Route::get('/passwords/store', [PasswordsStoreController::class, 'show'])->name('passwords.store.show');
-    Route::put('/passwords/store', [PasswordsStoreController::class, 'save'])->middleware('throttle:600,1')->name('passwords.store.save');
+    Route::get('/passwords/store', [PasswordsStoreController::class, 'show'])->middleware('module:passwords')->name('passwords.store.show');
+    Route::put('/passwords/store', [PasswordsStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:passwords'])->name('passwords.store.save');
     Route::post('/passwords/upload', [PasswordBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('passwords.upload');
     Route::get('/passwords/raw/{blob}', [PasswordBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('passwords.raw');
     Route::post('/passwords/raw-batch', [PasswordBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('passwords.raw-batch');
@@ -271,12 +271,12 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/files/shares/{token}', [FileShareController::class, 'destroy'])->middleware('throttle:60,1')->name('files.shares.destroy');
 
     // Per-module sealed stores (Store v3 split): one opaque row per module.
-    Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->name('module-store.show');
-    Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware('throttle:1200,1')->name('module-store.save');
+    Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->middleware('module')->name('module-store.show');
+    Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware('throttle:1200,1')->middleware('module')->name('module-store.save');
 
     // Opaque zero-knowledge gallery index (photo/album/people structure sealed).
-    Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->name('gallery.store.show');
-    Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware('throttle:600,1')->name('gallery.store.save');
+    Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->middleware('module:gallery')->name('gallery.store.show');
+    Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:gallery'])->name('gallery.store.save');
     // Public share links for an album: the client seals the share manifest (photo
     // list + per-blob keys re-wrapped under the link's fragment key) before it
     // arrives, so these only ever carry ciphertext + coarse access controls.
@@ -307,14 +307,14 @@ Route::middleware('auth')->group(function (): void {
 
     // Notes live entirely in the zero-knowledge store now; only the page shell
     // remains here (all data flows through GET/PUT /store).
-    Route::view('/notes', 'notes.index')->name('notes.index');
+    Route::view('/notes', 'notes.index')->middleware('module:notes')->name('notes.index');
     // To-dos: zero-knowledge, living entirely in the opaque store manifest.
-    Route::view('/todos', 'todos.index')->name('todos.index');
+    Route::view('/todos', 'todos.index')->middleware('module:todos')->name('todos.index');
     // Bookmarks: zero-knowledge, driven client-side from the opaque manifest.
-    Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
+    Route::view('/bookmarks', 'bookmarks.index')->middleware('module:bookmarks')->name('bookmarks.index');
     // Passwords: zero-knowledge password manager, records in the opaque /store
     // manifest (six item types, per-item version history, client-side TOTP/QR).
-    Route::view('/passwords', 'passwords.index')->name('passwords.index');
+    Route::view('/passwords', 'passwords.index')->middleware('module:passwords')->name('passwords.index');
     // Login site-icon (BIMI/favicon) proxy: domain sent transiently, never
     // stored; SSRF-guarded; result cached client-side in the sealed item.
     Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:1200,1')->name('passwords.icon');
@@ -325,17 +325,17 @@ Route::middleware('auth')->group(function (): void {
     // domains that support app 2FA, so the client can hint where to add a code.
     Route::get('/passwords/tfa-directory', [TwoFactorDirectoryController::class, 'index'])->middleware('throttle:120,1')->name('passwords.tfa');
     // Health: zero-knowledge, records (measurements + profile) in the opaque /store manifest.
-    Route::view('/health', 'health.index')->name('health.index');
+    Route::view('/health', 'health.index')->middleware('module:health')->name('health.index');
     // Invoices: zero-knowledge, records in the opaque /store manifest. The per-user
     // company profile (printed on invoices) is plaintext in the user's settings.
-    Route::view('/finance', 'invoices.index')->name('finance.index');
+    Route::view('/finance', 'invoices.index')->middleware('module:finance')->name('finance.index');
     Route::redirect('/invoices', '/finance'); // old bookmarks
     Route::get('/settings/company', [SettingsCompanyController::class, 'edit'])->name('settings.company.edit');
     Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
     Route::get('/settings/company/logo', [SettingsCompanyController::class, 'logo'])->name('settings.company.logo');
     // Contacts: zero-knowledge, records in the opaque /store manifest; only the
     // optional avatar images are opaque content blobs (contacts/{blob}).
-    Route::view('/contacts', 'contacts.index')->name('contacts.index');
+    Route::view('/contacts', 'contacts.index')->middleware('module:contacts')->name('contacts.index');
     Route::get('/contacts/usage', [ContactBlobController::class, 'usage'])->name('contacts.usage');
     Route::post('/contacts/blobs/reconcile', [ContactBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('contacts.blobs.reconcile');
     Route::post('/contacts/upload', [ContactBlobController::class, 'upload'])->middleware('throttle:600,1')->name('contacts.upload');
@@ -348,7 +348,7 @@ Route::middleware('auth')->group(function (): void {
     // opaque `explore` module store (GET/PUT /store/explore); only the optional
     // raw track files are opaque content blobs (explore/{blob}). Same
     // controller-reuse, owner-scoped, zero-knowledge as the contacts blobs.
-    Route::get('/explore', ExploreController::class)->name('explore');
+    Route::get('/explore', ExploreController::class)->middleware('module:explore')->name('explore');
     Route::get('/explore/usage', [ExploreBlobController::class, 'usage'])->name('explore.usage');
     Route::post('/explore/blobs/reconcile', [ExploreBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('explore.blobs.reconcile');
     Route::post('/explore/upload', [ExploreBlobController::class, 'upload'])->middleware('throttle:600,1')->name('explore.upload');

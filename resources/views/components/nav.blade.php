@@ -1,12 +1,14 @@
 {{-- Desktop persistent top bar (hidden on phones; the bottom tab bar takes over
      < sm). Consumes config/navigation.php so it never drifts from x-mobile-nav. --}}
 @php
-    $resolve = fn ($items) => collect($items)->map(fn ($i) => [
-        'label' => __($i['label']),
-        'url' => route($i['route']),
-        'active' => request()->routeIs($i['pattern']),
-        'icon' => $i['icon'],
-    ]);
+    $resolve = fn ($items) => collect($items)
+        ->filter(fn ($i) => ! isset($i['module']) || (auth()->user()?->canModule($i['module']) ?? true))
+        ->map(fn ($i) => [
+            'label' => __($i['label']),
+            'url' => route($i['route']),
+            'active' => request()->routeIs($i['pattern']),
+            'icon' => $i['icon'],
+        ]);
     $primary = $resolve(config('navigation.primary'));
     $more = $resolve(config('navigation.more'));
     $moreActive = $more->contains('active', true);
