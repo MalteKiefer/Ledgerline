@@ -53,17 +53,32 @@
         <div class="ll-card">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_invoice_heading') }}</h2>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.company_invoice_hint') }}</p>
-            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {{-- Numbering format + start are LOCKED once the current year has invoices
+                 (GoBD: the running sequence must not change mid-year). The check reads the
+                 zero-knowledge invoice store client-side after the vault unlocks. --}}
+            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2"
+                 x-data="{ locked: false, async check() {
+                     try {
+                         if (! this.$store.vault?.unlocked || ! window.LLInvoicesStore) { this.locked = false; return; }
+                         if (! window.LLInvoicesStore.loaded) await window.LLInvoicesStore.load();
+                         const y = String(new Date().getFullYear());
+                         this.locked = (window.LLInvoicesStore.data.invoices || []).some((i) => ! i.trashed && String(i.issueDate || '').slice(0, 4) === y);
+                     } catch (e) { this.locked = false; }
+                 } }"
+                 x-init="check(); $watch('$store.vault.unlocked', () => check())">
                 <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_number_format') }}
-                    <input type="text" name="invoice_number_format" value="{{ old('invoice_number_format', $s->invoice_number_format ?: 'YYYY-NNNN') }}" placeholder="YYYY-NNNN" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                    <input type="text" name="invoice_number_format" value="{{ old('invoice_number_format', $s->invoice_number_format ?: 'YYYY-NNNN') }}" placeholder="YYYY-NNNN" :readonly="locked" :class="locked && 'opacity-60 cursor-not-allowed'" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     <span class="mt-1 block text-xs text-gray-400 dark:text-gray-500">{{ __('settings.invoice_number_format_hint') }}</span>
                     @error('invoice_number_format')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
                 </label>
                 <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_next_number') }}
-                    <input type="number" name="invoice_next_number" value="{{ old('invoice_next_number', $s->invoice_next_number) }}" min="1" placeholder="1" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                    <input type="number" name="invoice_next_number" value="{{ old('invoice_next_number', $s->invoice_next_number) }}" min="1" placeholder="1" :readonly="locked" :class="locked && 'opacity-60 cursor-not-allowed'" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     <span class="mt-1 block text-xs text-gray-400 dark:text-gray-500">{{ __('settings.invoice_next_number_hint') }}</span>
                     @error('invoice_next_number')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
                 </label>
+                <template x-if="locked">
+                  <x-alert variant="info" class="sm:col-span-2">{{ __('settings.invoice_numbering_locked') }}</x-alert>
+                </template>
                 <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_default_vat_rate') }}
                     <input type="number" step="0.01" name="invoice_default_vat_rate" value="{{ old('invoice_default_vat_rate', $s->invoice_default_vat_rate ?: '19.00') }}" min="0" max="100" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     @error('invoice_default_vat_rate')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror

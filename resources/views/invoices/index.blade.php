@@ -452,6 +452,25 @@
             </p>
           @endunless
 
+          {{-- Numbering cycle (per year): next number + a locked/reset control. --}}
+          <div class="ll-card mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <span class="ll-chip h-8 w-8 rounded-xl" style="background:#6b7280"><x-icon name="hashtag" class="h-4.5 w-4.5 text-white" /></span>
+              <div>
+                <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  {{ __('invoices.cycle_title') }} · <span x-text="currentYear"></span>
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  <span x-text="'{{ __('invoices.cycle_next') }}: '"></span><span class="tabular-nums font-medium text-gray-700 dark:text-gray-300" x-text="nextNumberPreview"></span>
+                  <span x-show="numberingLocked" class="ml-1 text-gray-400 dark:text-gray-500" x-text="'· ' + '{{ __('invoices.cycle_locked') }}'.replace(':n', currentYearInvoices.length)"></span>
+                </p>
+              </div>
+            </div>
+            <x-button variant="danger" size="sm" icon="arrow-path" ::disabled="! numberingLocked" @click="resetYearCycle()">
+              <span x-text="'{{ __('invoices.cycle_reset') }}'.replace(':year', currentYear)"></span>
+            </x-button>
+          </div>
+
           <div class="mt-6 flex flex-wrap items-center gap-3">
             <input type="search" x-model.debounce.250ms="query" placeholder="{{ __('invoices.search') }}" class="w-full max-w-xs rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
             <select x-model="filterStatus" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
