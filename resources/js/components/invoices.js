@@ -11,6 +11,7 @@ import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
 import { fileSig } from '../shared/file-sig';
 import { autoPick, suggestBookings } from '../shared/receipt-match';
+import { projectTree as buildProjectTree, rolledTotal as projectRolled, ownTotal as projectOwn, projectReceipts as receiptsForProject } from '../shared/finance-projects';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary } from '../shared/finance-stats';
 import { matchInvoice } from '../shared/invoice-match';
 import { extractDocText } from '../shared/doc-text';
@@ -57,7 +58,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories' }, onLock: (self) => { self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -71,7 +72,7 @@ export default (config = {}, labels = {}) => ({
 
     async init() {
         const h = (location.hash || '').replace('#', '');
-        if (['dashboard', 'receipts', 'invoices', 'payments', 'stats', 'settings'].includes(h)) this.section = h;
+        if (['dashboard', 'receipts', 'invoices', 'payments', 'projects', 'stats', 'settings'].includes(h)) this.section = h;
         await this._initZk();
         if (this.state === 'ready') { this._ensureReceiptIds(); this.reconcileBlobs(); }
     },
@@ -561,6 +562,66 @@ export default (config = {}, labels = {}) => ({
     },
     async removeFinanceCategory(c) { const i = this.financeCategories.indexOf(c); if (i >= 0) this.financeCategories.splice(i, 1); this._save(); },
     newCategoryName: '',
+
+    // ---- Cost projects (nestable): bundle receipts + manual "hand" expenses ----
+    projects: [],
+    projectEditing: null,   // { id?, name, parentId, note } in the create/edit modal
+    openProjectId: null,    // the project whose detail is shown
+    expenseEditing: null,   // { projectId, id?, amount, date, note } in the expense modal
+    get projectRows() { return buildProjectTree(this.projects); },
+    get openProject() { return (this.projects || []).find((p) => p.id === this.openProjectId) || null; },
+    projectTotal(id) { return projectRolled(this.projects, id, this.allReceipts); },
+    projectOwnTotal(id) { const p = (this.projects || []).find((x) => x.id === id); return p ? Math.round(projectOwn(p, this.allReceipts) * 100) / 100 : 0; },
+    projectSubs(id) { return (this.projects || []).filter((p) => (p.parentId || null) === (id || null)); },
+    projectReceiptList(id) { return receiptsForProject(this.allReceipts, id); },
+    projectName(id) { const p = (this.projects || []).find((x) => x.id === id); return p ? p.name : ''; },
+    // Options for a parent/target picker, excluding a subtree (can't nest under itself).
+    projectOptions(excludeId) {
+        const banned = new Set([excludeId]);
+        if (excludeId) { const walk = (pid) => { for (const c of this.projectSubs(pid)) { banned.add(c.id); walk(c.id); } }; walk(excludeId); }
+        return buildProjectTree(this.projects).filter((x) => ! banned.has(x.project.id));
+    },
+    newProject(parentId = null) { this.projectEditing = { name: '', parentId: parentId || '', note: '' }; },
+    editProject(p) { this.projectEditing = { id: p.id, name: p.name || '', parentId: p.parentId || '', note: p.note || '' }; },
+    cancelProject() { this.projectEditing = null; },
+    saveProject() {
+        const e = this.projectEditing; if (! e || ! String(e.name || '').trim()) return;
+        if (e.id) { const p = this.projects.find((x) => x.id === e.id); if (p) { p.name = e.name.trim(); p.parentId = e.parentId || null; p.note = e.note || ''; } }
+        else { this.projects.push({ id: window.LLInvoicesStore.newId(), name: e.name.trim(), parentId: e.parentId || null, note: e.note || '', expenses: [], created: new Date().toISOString() }); }
+        this.projectEditing = null; this._save();
+    },
+    async removeProject(p) {
+        if (! p) return;
+        if (! await this.$store.confirm.ask(labels.project_delete_confirm || 'Delete this project and its sub-projects? Bundled receipts are kept but un-assigned.')) return;
+        const ids = new Set([p.id]);
+        const walk = (pid) => { for (const c of this.projectSubs(pid)) { ids.add(c.id); walk(c.id); } };
+        walk(p.id);
+        // Un-assign every receipt bundled to a removed project (the receipts themselves stay).
+        for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) if (ids.has(r.projectId)) r.projectId = null;
+        this.projects = this.projects.filter((x) => ! ids.has(x.id));
+        if (ids.has(this.openProjectId)) this.openProjectId = null;
+        this._save();
+    },
+    // Manual expenses (cash / "hand" costs not tied to a bank booking).
+    newExpense(projectId) { this.expenseEditing = { projectId, amount: null, date: new Date().toISOString().slice(0, 10), note: '' }; },
+    editExpense(project, exp) { this.expenseEditing = { projectId: project.id, id: exp.id, amount: exp.amount, date: exp.date || '', note: exp.note || '' }; },
+    cancelExpense() { this.expenseEditing = null; },
+    saveExpense() {
+        const e = this.expenseEditing; if (! e) return;
+        const amt = Number(e.amount); if (! Number.isFinite(amt) || amt <= 0) { window.llToast?.(labels.project_expense_invalid || 'Enter an amount.'); return; }
+        const p = this.projects.find((x) => x.id === e.projectId); if (! p) return;
+        p.expenses = p.expenses || [];
+        if (e.id) { const ex = p.expenses.find((x) => x.id === e.id); if (ex) { ex.amount = amt; ex.date = e.date || ''; ex.note = e.note || ''; } }
+        else { p.expenses.push({ id: window.LLInvoicesStore.newId(), amount: amt, date: e.date || '', note: e.note || '' }); }
+        this.expenseEditing = null; this._save();
+    },
+    async removeExpense(project, exp) {
+        if (! project || ! exp) return;
+        const p = this.projects.find((x) => x.id === project.id); if (! p) return;
+        const i = (p.expenses || []).indexOf(exp); if (i >= 0) { p.expenses.splice(i, 1); this._save(); }
+    },
+    // Assign / unassign a receipt to a project (from the receipt detail modal).
+    setReceiptProject(id) { const r = this.receiptDoc?.r; if (! r) return; r.projectId = id || null; this._save(); },
 
     // Unified partner picker for a receipt: existing contacts + standalone partners.
     partnerOptions() {

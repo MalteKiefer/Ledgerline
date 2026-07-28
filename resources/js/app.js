@@ -118,6 +118,9 @@ window.LLInvoicesStore = makeShardedStore({
         { key: 'transactions', rootRef: 'txRef', rootKey: 'txKey', rootHash: 'txHash' },
         { key: 'partners', rootRef: 'partRef', rootKey: 'partKey', rootHash: 'partHash' },
         { key: 'financeCategories', rootRef: 'catRef', rootKey: 'catKey', rootHash: 'catHash' },
+        // Cost projects (nestable) bundling receipts + manual "hand" expenses. Each project:
+        // { id, name, parentId|null, note, expenses:[{id, amount, date, note}], created }.
+        { key: 'projects', rootRef: 'projRef', rootKey: 'projKey', rootHash: 'projHash' },
     ],
 });
 
