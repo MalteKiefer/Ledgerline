@@ -484,17 +484,15 @@
                                 </template>
                               </select>
                             </td>
-                            {{-- Receipts: only outgoing bookings. Paperclip + count; opens the receipts panel. --}}
+                            {{-- Receipts: on every booking (income too). Paperclip + count; opens the panel. --}}
                             <td class="whitespace-nowrap px-4 py-2.5 text-center">
-                              <template x-if="tx.amount < 0">
-                                <button type="button" @click="openReceipts(tx)"
-                                  class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors"
-                                  :class="receiptCount(tx) ? 'text-accent hover:bg-accent/10' : 'text-gray-400 hover:bg-black/[0.04] dark:hover:bg-white/10'"
-                                  :title="receiptCount(tx) ? '{{ __('invoices.tx_receipt_count') }}'.replace(':n', receiptCount(tx)) : '{{ __('invoices.tx_receipt_add') }}'">
-                                  <x-icon name="paper-clip" class="h-4 w-4" />
-                                  <span x-show="receiptCount(tx)" x-text="receiptCount(tx)"></span>
-                                </button>
-                              </template>
+                              <button type="button" @click="openReceipts(tx)"
+                                class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors"
+                                :class="receiptCount(tx) ? 'text-accent hover:bg-accent/10' : 'text-gray-400 hover:bg-black/[0.04] dark:hover:bg-white/10'"
+                                :title="receiptCount(tx) ? '{{ __('invoices.tx_receipt_count') }}'.replace(':n', receiptCount(tx)) : '{{ __('invoices.tx_receipt_add') }}'">
+                                <x-icon name="paper-clip" class="h-4 w-4" />
+                                <span x-show="receiptCount(tx)" x-text="receiptCount(tx)"></span>
+                              </button>
                             </td>
                           </tr>
                         </template>
@@ -617,23 +615,29 @@
                     </div>
                     <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeReceipts()" :aria-label="__('common.close')" />
                   </div>
-                  <div class="min-h-0 flex-1 overflow-auto px-5 py-4">
+                  <div class="min-h-0 flex-1 overflow-auto px-5 py-4" x-data="{ drag: false }"
+                       @dragover.prevent="drag = true" @dragenter.prevent="drag = true" @dragleave.prevent="drag = false"
+                       @drop.prevent="drag = false; uploadReceipts($event.dataTransfer.files)">
                     {{-- Existing receipts --}}
                     <template x-if="receiptCount(receiptTx)">
                       <div class="space-y-2">
                         <template x-for="(r, ri) in receiptTx.receipts" :key="ri">
                           <div class="flex items-center gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
-                            <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="background:#3fae9f"><x-icon name="document" class="h-4 w-4 text-white" /></span>
+                            <span class="ll-chip h-8 w-8 rounded-lg shrink-0" :style="{ background: r.locked ? '#7066f5' : '#3fae9f' }"><x-icon name="document" class="h-4 w-4 text-white" /></span>
                             <button type="button" @click="openReceipt(r)" class="min-w-0 flex-1 truncate text-left text-sm text-gray-800 dark:text-gray-200 hover:text-accent" x-text="r.name || '{{ __('invoices.receipt') }}'" :title="r.name"></button>
+                            <template x-if="r.locked"><x-badge variant="accent">{{ __('invoices.receipt_from_invoice') }}</x-badge></template>
                             <x-icon-button name="arrow-down-tray" tone="gray" size="sm" @click="openReceipt(r)" :aria-label="__('invoices.receipt')" />
-                            <x-icon-button name="trash" tone="red" size="sm" @click="removeReceipt(receiptTx, r)" :aria-label="__('common.delete')" />
+                            <template x-if="! r.locked"><x-icon-button name="trash" tone="red" size="sm" @click="removeReceipt(receiptTx, r)" :aria-label="__('common.delete')" /></template>
                           </div>
                         </template>
                       </div>
                     </template>
-                    <template x-if="! receiptCount(receiptTx)">
-                      <x-empty-state icon="paper-clip" class="py-8">{{ __('invoices.receipts_none') }}</x-empty-state>
-                    </template>
+                    {{-- Drop zone / empty state --}}
+                    <div class="mt-3 rounded-2xl border-2 border-dashed px-4 py-8 text-center text-sm transition-colors"
+                         :class="drag ? 'border-accent bg-accent/5 text-accent' : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'">
+                      <x-icon name="arrow-up-tray" class="mx-auto h-6 w-6" />
+                      <p class="mt-2" x-text="drag ? '{{ __('invoices.receipts_drop') }}' : '{{ __('invoices.receipts_dnd') }}'"></p>
+                    </div>
                   </div>
                   <div class="flex items-center justify-between gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
                     <span x-show="receiptBusy" class="inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('invoices.receipts_uploading') }}</span>
