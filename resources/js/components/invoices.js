@@ -277,9 +277,7 @@ export default (config = {}, labels = {}) => ({
                 if (text && text.replace(/\s+/g, '').length >= 8) {
                     up.ocr = text.slice(0, 200000);
                     const a = analyzeReceiptText(text);
-                    if (a.category) up.category = a.category;
-                    if (a.tags.length) up.tags = a.tags;
-                    if (a.merchant) up.merchant = a.merchant;
+                    this._applyAnalysis(up, a);
                     total = a.total;
                 }
                 // Find bookings whose absolute amount matches the receipt total (to the cent).
@@ -400,10 +398,7 @@ export default (config = {}, labels = {}) => ({
             const text = await extractDocText(bytes, r.mime, r.name);
             if (text && text.replace(/\s+/g, '').length >= 8) {
                 r.ocr = text.slice(0, 200000);
-                const a = analyzeReceiptText(text);
-                if (! r.category && a.category) r.category = a.category;
-                if ((! r.tags || ! r.tags.length) && a.tags.length) r.tags = a.tags;
-                if (a.merchant && ! r.merchant) r.merchant = a.merchant;
+                this._applyAnalysis(r, analyzeReceiptText(text));
             }
             if (save) { this._save(); if (this.receiptDoc === doc) this.receiptTagInput = (r.tags || []).join(', '); }
             return true;
@@ -505,12 +500,17 @@ export default (config = {}, labels = {}) => ({
             const text = await extractDocText(bytes, r.mime, r.name);
             if (! text || text.replace(/\s+/g, '').length < 8) return;
             r.ocr = text.slice(0, 200000);
-            const a = analyzeReceiptText(text);
-            if (! r.category && a.category) r.category = a.category;
-            if ((! r.tags || ! r.tags.length) && a.tags.length) r.tags = a.tags;
-            if (a.merchant && ! r.merchant) r.merchant = a.merchant;
+            this._applyAnalysis(r, analyzeReceiptText(text));
             this._save();
         } catch (e) { /* best effort */ }
+    },
+    // Apply recognised fields without overwriting anything the user set.
+    _applyAnalysis(r, a) {
+        if (! r.category && a.category) r.category = a.category;
+        if ((! r.tags || ! r.tags.length) && a.tags.length) r.tags = a.tags;
+        if (a.merchant && ! r.merchant) r.merchant = a.merchant;
+        if (a.date && ! r.date) r.date = a.date;
+        if (a.total != null && r.total == null) r.total = a.total;
     },
     // Quick-look a receipt/invoice in a modal (decrypt client-side). App invoices with no
     // stored PDF open the invoice view instead.
@@ -532,6 +532,26 @@ export default (config = {}, labels = {}) => ({
     get previewIsImage() { return /^image\//.test(this.receiptPreview?.mime || '') || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(this.receiptPreview?.name || ''); },
     get previewIsPdf() { return this.receiptPreview?.mime === 'application/pdf' || /\.pdf$/i.test(this.receiptPreview?.name || ''); },
     openReceiptInTab() { if (this.receiptPreview?.url) window.open(this.receiptPreview.url, '_blank'); },
+
+    // Send a receipt to Paperless — decrypt client-side, pre-fill the transfer modal with
+    // the recognised fields (title = merchant, date, correspondent = partner, tag =
+    // category) so Paperless gets good metadata. Takes the file OUT of the ZK store.
+    async sendReceiptToPaperless(doc) {
+        const r = doc?.r; if (! r || ! r.blob) return;
+        const store = this.$store.paperless;
+        if (! store || ! store.configured) return;
+        if (! await this.$store.confirm.ask(labels.paperlessWarn || labels.paperless_warn || '')) return;
+        const created = r.date || (r.ocr ? analyzeReceiptText(r.ocr).date : '') || (doc.tx.date || '');
+        const title = r.merchant || (r.name || '').replace(/\.[^.]+$/, '') || 'Beleg';
+        store.begin(r.name || 'beleg.pdf', { title, created: created || undefined }, { context: { source: 'receipt' } });
+        const partner = this.receiptPartnerName(r); if (partner) store.corrQuery = partner;
+        if (r.category) store.tagQuery = r.category;
+        try {
+            const buf = await fetchBlobBuffer(`${config.rawBase}/${r.blob}`);
+            const plain = window.Vault.decryptFile(buf, r.key);
+            store.setFile(new Blob([plain], { type: r.mime || 'application/pdf' }));
+        } catch (e) { store.fail(labels.downloadFailed || 'Could not open file.'); }
+    },
     // ---- Bulk receipt export (ZIP) for the tax advisor ----
     exportBusy: false,
     exportDone: 0,
