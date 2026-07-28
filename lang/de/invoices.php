@@ -255,6 +255,7 @@ return [
     'receipts_title' => 'Belege',
     'receipts_none' => 'Noch keine Belege. Hänge einen oder mehrere an.',
     'receipts_add' => 'Belege anhängen',
+    'receipts_drop_hint' => 'Belege zum Hochladen ablegen',
     'receipts_pick_booking' => 'Buchung zum Anhängen wählen',
     'receipts_uploading' => 'Wird hochgeladen…',
     'receipts_missing' => 'Bei :n von :total Buchungen fehlt noch ein Beleg',
