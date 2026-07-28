@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
@@ -102,6 +103,11 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/invoices/raw/{blob}', [InvoiceBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.invoices.raw');
         Route::post('/invoices/raw-batch', [InvoiceBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.invoices.raw-batch');
         Route::post('/invoices/blobs/reconcile', [InvoiceBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.invoices.reconcile');
+
+        // Per-user company profile + invoice defaults (non-secret business identity).
+        Route::get('/company', [ApiCompanyController::class, 'show'])->name('api.company.show');
+        Route::put('/company', [ApiCompanyController::class, 'update'])->middleware('throttle:60,1')->name('api.company.update');
+        Route::get('/company/logo', [ApiCompanyController::class, 'logo'])->middleware('throttle:120,1')->name('api.company.logo');
 
         // Passwords sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
         Route::get('/passwords/store', [PasswordsStoreController::class, 'show'])->name('api.passwords.store.show');
