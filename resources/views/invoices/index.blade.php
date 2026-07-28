@@ -26,6 +26,9 @@
             'currency' => 'EUR',
         ]),
         labelsByLang: @js(['de' => __('invoices', [], 'de'), 'en' => __('invoices', [], 'en')]),
+        uploadUrl: '{{ url('/invoices/upload') }}',
+        rawBase: '{{ url('/invoices/raw') }}',
+        reconcileUrl: '{{ url('/invoices/blobs/reconcile') }}',
      }, {
         deleteConfirm: @js(__('invoices.delete_confirm')),
         statusDraft: @js(__('invoices.status_draft')),
@@ -225,12 +228,23 @@
                 x-text="statusLabel(current?.status)"></span>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <x-button variant="secondary" @click="printInvoice(current)"><x-icon name="printer" class="mr-1.5 h-4 w-4" />{{ __('invoices.print') }}</x-button>
+              <x-button variant="secondary" x-show="current?.imported && current?.pdf" @click="openOriginalPdf(current)"><x-icon name="document-text" class="mr-1.5 h-4 w-4" />{{ __('invoices.open_original') }}</x-button>
+              <x-button variant="secondary" x-show="! current?.imported || ! current?.pdf" @click="printInvoice(current)"><x-icon name="printer" class="mr-1.5 h-4 w-4" />{{ __('invoices.print') }}</x-button>
               <x-button variant="secondary" @click="downloadZugferd(current)" icon="arrow-down-tray" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-button>
-              <x-button variant="secondary" x-show="current?.status === 'draft'" @click="finalize(current)">{{ __('invoices.finalize') }}</x-button>
-              <x-button variant="secondary" x-show="current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-button>
+              <x-button variant="secondary" x-show="! current?.imported && current?.status === 'draft'" @click="finalize(current)">{{ __('invoices.finalize') }}</x-button>
+              <x-button variant="secondary" x-show="! current?.imported && current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-button>
             </div>
           </div>
+
+          {{-- Imported invoices are an immutable record (GoBD): read-only + original PDF. --}}
+          <template x-if="current?.imported">
+            <x-alert variant="info" class="mt-4 flex items-start gap-2">
+              <x-icon name="lock-closed" class="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{{ __('invoices.imported_readonly') }}</span>
+            </x-alert>
+          </template>
+
+          <fieldset :disabled="current?.imported" class="contents">
 
           <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
             {{-- Customer --}}
@@ -336,6 +350,7 @@
               <textarea x-model="current.footer" rows="3" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
             </label>
           </div>
+          </fieldset>{{-- /read-only fieldset --}}
 
           <div class="mt-6 flex justify-end">
             <x-button variant="danger" size="sm" icon="trash" @click="remove(current)">{{ __('invoices.delete') }}</x-button>

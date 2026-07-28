@@ -124,4 +124,6 @@ return [
     'expenses_soon' => 'Expense tracking follows with receipts.',
     'dash_intro' => 'Your income at a glance. Expenses follow with receipts.',
     'trash_confirm' => 'Move this invoice to the trash?',
+    'open_original' => 'Open original PDF',
+    'imported_readonly' => 'Imported invoice — read-only (kept unchanged for tax compliance). Its original PDF is stored.',
 ];

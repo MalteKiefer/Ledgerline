@@ -124,4 +124,6 @@ return [
     'expenses_soon' => 'Ausgaben folgen mit den Belegen.',
     'dash_intro' => 'Deine Einnahmen auf einen Blick. Ausgaben folgen mit den Belegen.',
     'trash_confirm' => 'Diese Rechnung in den Papierkorb verschieben?',
+    'open_original' => 'Original-PDF öffnen',
+    'imported_readonly' => 'Importierte Rechnung — schreibgeschützt (unverändert für die Steuer). Das Original-PDF ist hinterlegt.',
 ];
