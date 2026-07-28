@@ -323,7 +323,7 @@
           {{-- Receipt document detail (metadata, link, notes, tags, category, contact) --}}
           <div x-show="receiptDoc" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeReceiptDoc()">
             <div class="absolute inset-0 bg-gray-900/50" @click="closeReceiptDoc()"></div>
-            <div class="relative flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex h-[75vh] max-h-[75vh] w-full max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <template x-if="receiptDoc">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="flex items-center gap-2.5 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
@@ -366,8 +366,8 @@
                         <template x-if="docPreview && docPreviewIsImage"><div class="flex h-full w-full items-center justify-center p-2"><img :src="docPreview.url" class="max-h-full max-w-full object-contain" alt="preview"></div></template>
                         <template x-if="! docPreview">
                           <div class="flex h-full w-full items-center justify-center p-4 text-center text-xs text-gray-400">
-                            <span x-show="receiptDoc.r.blob">{{ __('invoices.assign_preview_loading') }}</span>
-                            <span x-show="! receiptDoc.r.blob" x-cloak>{{ __('invoices.receipt_no_preview') }}</span>
+                            <span x-show="receiptDoc?.r?.blob">{{ __('invoices.assign_preview_loading') }}</span>
+                            <span x-show="! receiptDoc?.r?.blob" x-cloak>{{ __('invoices.receipt_no_preview') }}</span>
                           </div>
                         </template>
                       </div>
@@ -402,6 +402,19 @@
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_category') }}</label>
                       <input type="text" x-model="receiptDoc.r.category" @change="saveReceiptDoc()" list="receiptCats" placeholder="{{ __('invoices.receipt_category_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
                       <datalist id="receiptCats"><template x-for="c in allCategories" :key="c"><option :value="c"></option></template></datalist>
+                    </div>
+
+                    {{-- Tax rate (VAT) — stored on the linked booking; the receipt's detected rate is shown as a hint --}}
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_vat_label') }}</label>
+                      <select x-model="receiptDoc.tx.vatCat" @change="_save()" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <option value="">{{ __('invoices.vatcat_none') }}</option>
+                        <option value="19">{{ __('invoices.vatcat_19') }}</option>
+                        <option value="16">{{ __('invoices.vatcat_16') }}</option>
+                        <option value="7">{{ __('invoices.vatcat_7') }}</option>
+                        <option value="0">{{ __('invoices.vatcat_0') }}</option>
+                        <option value="private">{{ __('invoices.vatcat_private') }}</option>
+                      </select>
                       <template x-if="receiptDoc.r.vat">
                         <p class="mt-1.5 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                           <span>{{ __('invoices.receipt_vat_detected') }}</span>
@@ -586,7 +599,7 @@
           <p class="mb-2 px-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.cats_intro') }}</p>
           <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
             {{-- Built-in default categories (not removable) --}}
-            <template x-for="c in receiptCatSuggestions" :key="'def-'+c">
+            <template x-for="c in sortedCatSuggestions" :key="'def-'+c">
               <div class="flex items-center gap-3 px-4 py-2.5">
                 <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #e2915a"><x-icon name="hashtag" class="h-4 w-4" /></span>
                 <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="c"></span>

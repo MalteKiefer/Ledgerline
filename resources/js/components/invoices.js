@@ -244,7 +244,7 @@ export default (config = {}, labels = {}) => ({
     catPage: 1,
     catPerPage: 10,
     get catPageCount() { return Math.max(1, Math.ceil((this.financeCategories || []).length / this.catPerPage)); },
-    get pagedCategories() { const s = (this.catPage - 1) * this.catPerPage; return (this.financeCategories || []).slice(s, s + this.catPerPage); },
+    get pagedCategories() { const s = (this.catPage - 1) * this.catPerPage; return this.sortedFinanceCategories.slice(s, s + this.catPerPage); },
     setCatPerPage(n) { this.catPerPage = n; this.catPage = 1; },
     catGoto(p) { this.catPage = Math.min(this.catPageCount, Math.max(1, p)); },
     accountTxCount(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).length; },
@@ -540,8 +540,15 @@ export default (config = {}, labels = {}) => ({
     },
     get sortedPartners() { return [...(this.partners || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))); },
 
-    // Managed categories (merged with the built-in suggestions for the datalist).
-    get allCategories() { return [...new Set([...(this.financeCategories || []).map((c) => c.name), ...this.receiptCatSuggestions])]; },
+    // Locale for alphabetical sorting (follows the app language).
+    _catLocale() { return document.documentElement.lang || undefined; },
+    // Managed categories (merged with the built-in suggestions), sorted A→Z per language.
+    get allCategories() {
+        const loc = this._catLocale();
+        return [...new Set([...(this.financeCategories || []).map((c) => c.name), ...this.receiptCatSuggestions])].sort((a, b) => a.localeCompare(b, loc));
+    },
+    get sortedCatSuggestions() { const loc = this._catLocale(); return [...this.receiptCatSuggestions].sort((a, b) => a.localeCompare(b, loc)); },
+    get sortedFinanceCategories() { const loc = this._catLocale(); return [...(this.financeCategories || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), loc)); },
     addFinanceCategory(name) {
         const n = String(name || '').trim(); if (! n) return;
         const exists = (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase())
