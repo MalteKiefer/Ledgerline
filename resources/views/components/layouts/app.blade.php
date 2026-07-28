@@ -109,7 +109,7 @@
     </div>
 
     @auth
-        <div x-data="toastHub({})" class="fixed bottom-4 right-4 z-50 space-y-2" x-cloak>
+        <div x-data="toastHub({})" class="fixed bottom-4 right-4 z-[2000] space-y-2" x-cloak>
             <template x-for="t in items" :key="t.id">
                 <div class="flex items-center gap-3 rounded-2xl bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
                     <span x-text="t.message"></span>

@@ -115,14 +115,27 @@ export default (config = {}, labels = {}) => ({
     payTint(type) { return paymentTint(type); },
     paySubtitle(pm) { return paymentSubtitle(pm); },
     payTypeLabel(type) { return labels['pay_type_' + type] || type; },
-    newPayment(type = 'bank') { this.payEditing = blankPaymentMethod(type); this.payIsNew = true; },
-    editPayment(pm) { this.payEditing = JSON.parse(JSON.stringify(pm)); this.payEditing.id = pm.id; this.payIsNew = false; },
+    paySaveAttempted: false,
+    newPayment(type = 'bank') { this.payEditing = blankPaymentMethod(type); this.payIsNew = true; this.paySaveAttempted = false; },
+    editPayment(pm) { this.payEditing = JSON.parse(JSON.stringify(pm)); this.payEditing.id = pm.id; this.payIsNew = false; this.paySaveAttempted = false; },
     cancelPayment() { this.payEditing = null; },
+    // The required fields still missing (for inline highlighting). Bank needs an IBAN or
+    // account number; card a number; PayPal an email; every type a label.
+    get payMissing() {
+        const pm = this.payEditing, miss = [];
+        if (! pm) return miss;
+        if (! String(pm.label || '').trim()) miss.push('label');
+        if (pm.type === 'bank' && ! String(pm.iban || '').trim() && ! String(pm.accountNumber || '').trim()) { miss.push('iban'); miss.push('accountNumber'); }
+        if (pm.type === 'card' && ! String(pm.cardNumber || '').trim()) miss.push('cardNumber');
+        if (pm.type === 'paypal' && ! String(pm.email || '').trim()) miss.push('email');
+        return miss;
+    },
+    payErr(field) { return this.paySaveAttempted && this.payMissing.includes(field); },
     // Autofill the card network from the typed number (user can still override).
     payCardInput() { if (this.payEditing?.type === 'card') this.payEditing.cardNetwork = cardNetworkOf(this.payEditing.cardNumber); },
     savePayment() {
         const pm = this.payEditing;
-        if (! isValidPaymentMethod(pm)) { window.llToast?.(labels.pay_invalid || 'Please fill in the required fields.'); return; }
+        if (! isValidPaymentMethod(pm)) { this.paySaveAttempted = true; window.llToast?.(labels.pay_invalid || 'Please fill in the required fields.'); return; }
         pm.updated = new Date().toISOString();
         if (this.payIsNew) {
             pm.id = window.LLInvoicesStore.newId();
