@@ -288,21 +288,20 @@
 
         {{-- ===================== PAYMENT METHODS ===================== --}}
         <div x-show="section === 'payments'" class="mt-6">
-          <x-page-heading :title="__('invoices.pay_title')" :subtitle="__('invoices.pay_intro')">
-            <x-slot:actions>
-              <div class="relative" x-data="{ open: false }" @click.outside="open = false">
-                <x-button variant="primary" icon="plus" @click="open = ! open">{{ __('invoices.pay_add') }}</x-button>
-                <div x-show="open" x-cloak x-transition class="absolute right-0 z-20 mt-2 w-52 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
-                  <template x-for="t in payTypeOptions" :key="t.type">
-                    <button type="button" @click="newPayment(t.type); open = false" class="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-accent/5">
-                      <span class="ll-chip h-7 w-7 rounded-lg" :style="{ background: payTint(t.type) }"><x-icon ::name="payIcon(t.type)" class="h-4 w-4 text-white" /></span>
-                      <span x-text="payTypeLabel(t.type)"></span>
-                    </button>
-                  </template>
-                </div>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.pay_intro') }}</p>
+            <div class="relative" x-data="{ open: false }" @click.outside="open = false">
+              <x-button variant="primary" icon="plus" @click="open = ! open">{{ __('invoices.pay_add') }}</x-button>
+              <div x-show="open" x-cloak x-transition class="absolute right-0 z-20 mt-2 w-52 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+                <template x-for="t in payTypeOptions" :key="t.type">
+                  <button type="button" @click="newPayment(t.type); open = false" class="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-accent/5">
+                    <span class="ll-chip h-7 w-7 rounded-lg" :style="{ background: payTint(t.type) }"><x-icon ::name="payIcon(t.type)" class="h-4 w-4 text-white" /></span>
+                    <span x-text="payTypeLabel(t.type)"></span>
+                  </button>
+                </template>
               </div>
-            </x-slot:actions>
-          </x-page-heading>
+            </div>
+          </div>
 
           {{-- Empty state --}}
           <template x-if="! sortedPayments.length">
@@ -429,13 +428,11 @@
         <div x-show="section === 'invoices'" class="mt-6">
         {{-- ===================== LIST ===================== --}}
         <div x-show="view === 'list'">
-          <x-page-heading :title="__('invoices.title')">
-            <x-slot:actions>
-              <input type="file" x-ref="pdfImport" accept="application/pdf,.pdf" multiple class="hidden" @change="importPdfs($event.target.files); $event.target.value = ''">
-              <x-button variant="secondary" @click="$refs.pdfImport.click()" icon="arrow-up-tray">{{ __('invoices.import_pdf') }}</x-button>
-              <x-button variant="primary" @click="newInvoice()"><x-icon name="plus" class="mr-1.5 h-4 w-4" />{{ __('invoices.new') }}</x-button>
-            </x-slot:actions>
-          </x-page-heading>
+          <div class="flex flex-wrap items-center justify-end gap-3">
+            <input type="file" x-ref="pdfImport" accept="application/pdf,.pdf" multiple class="hidden" @change="importPdfs($event.target.files); $event.target.value = ''">
+            <x-button variant="secondary" @click="$refs.pdfImport.click()" icon="arrow-up-tray">{{ __('invoices.import_pdf') }}</x-button>
+            <x-button variant="primary" @click="newInvoice()"><x-icon name="plus" class="mr-1.5 h-4 w-4" />{{ __('invoices.new') }}</x-button>
+          </div>
 
           {{-- GoBD: unique, gapless numbers. If a concurrent finalize on two devices ever
                produced a duplicate number, alert the owner prominently to correct it. --}}
