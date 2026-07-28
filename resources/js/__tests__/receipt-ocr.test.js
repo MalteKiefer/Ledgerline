@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeReceiptText, extractTotal, extractDate, extractMerchant, extractNumber, extractVatRate } from '../shared/receipt-ocr.js';
+import { analyzeReceiptText, extractTotal, extractDate, extractMerchant, extractNumber, extractVatRate, extractCurrency } from '../shared/receipt-ocr.js';
 
 const RESTAURANT = `Ristorante Da Mario
 Hauptstraße 5, 95326 Kulmbach
@@ -99,6 +99,12 @@ describe('receipt OCR analysis', () => {
     });
     it('exposes vat from analyzeReceiptText', () => {
         expect(analyzeReceiptText('Adobe\nUSt 19% 9,49\nGesamt 59,49').vat).toBe('19');
+    });
+    it('detects the currency (ISO code or symbol, € beats a bare $)', () => {
+        expect(extractCurrency('Total 9,99 €')).toBe('EUR');
+        expect(extractCurrency('Amount: USD 50.00')).toBe('USD');
+        expect(extractCurrency('Total $ 50.00')).toBe('USD');
+        expect(extractCurrency('Rechnung 9,99')).toBe('');
     });
     it('suggests tags (merchant + category), de-duplicated', () => {
         const a = analyzeReceiptText(RESTAURANT);

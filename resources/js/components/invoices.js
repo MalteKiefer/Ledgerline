@@ -10,6 +10,7 @@ import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
 import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
 import { fileSig } from '../shared/file-sig';
+import { autoPick, suggestBookings } from '../shared/receipt-match';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary } from '../shared/finance-stats';
 import { matchInvoice } from '../shared/invoice-match';
 import { extractDocText } from '../shared/doc-text';
@@ -317,10 +318,12 @@ export default (config = {}, labels = {}) => ({
                     this._applyAnalysis(up, a);
                     total = a.total;
                 }
-                // Find bookings whose absolute amount matches the receipt total (to the cent).
-                const cands = total != null ? (this.transactions || []).filter((t) => Math.abs(Math.abs(t.amount || 0) - total) < 0.005) : [];
-                if (cands.length === 1) { cands[0].receipts = cands[0].receipts || []; cands[0].receipts.push(up); this._autoPartner(up, cands[0]); this._renameReceipt(up, cands[0]); this._applyReceiptVat(up, cands[0]); attached++; }
-                else { this._renameReceipt(up, null); this.receiptAssign.push({ up, total, cands: cands.slice(0, 12) }); }
+                // Auto-attach only an unambiguous exact match; otherwise offer fuzzy
+                // suggestions (±3 days, rough EUR/USD conversion) in the assignment dialog.
+                const rcpt = { total, date: up.date, currency: up.currency };
+                const pick = autoPick(rcpt, this.transactions, 3);
+                if (pick) { pick.receipts = pick.receipts || []; pick.receipts.push(up); this._autoPartner(up, pick); this._renameReceipt(up, pick); this._applyReceiptVat(up, pick); attached++; }
+                else { this._renameReceipt(up, null); this.receiptAssign.push({ up, total, cands: suggestBookings(rcpt, this.transactions, { rates: config.fxRates, limit: 12 }).map((s) => s.t) }); }
             } catch (e) { /* skip */ }
         }
         this.autoUploadBusy = false;
@@ -671,6 +674,7 @@ export default (config = {}, labels = {}) => ({
         if (a.total != null && r.total == null) r.total = a.total;
         if (a.number && ! r.number) r.number = a.number;
         if (a.vat && ! r.vat) r.vat = a.vat;
+        if (a.currency && ! r.currency) r.currency = a.currency;
     },
     // Adopt the receipt's detected VAT rate onto its booking when the booking's rate is
     // still undecided (never overrides a value the import guessed or the user set).

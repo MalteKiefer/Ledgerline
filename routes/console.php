@@ -29,6 +29,9 @@ Schedule::command('contacts:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('explore:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('shared-folders:sweep-orphans')->daily()->withoutOverlapping();
 
+// Refresh EUR exchange rates once a day for the finance amount suggestions (no user data).
+Schedule::command('finance:fetch-fx')->dailyAt('03:15')->withoutOverlapping();
+
 // Drop expired/consumed QR device-pairing rows (short-lived, single-use).
 Schedule::command('device-pairings:prune')->hourly()->withoutOverlapping();
 
