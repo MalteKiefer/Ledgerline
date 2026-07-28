@@ -84,20 +84,18 @@
                                 </div>
                             </div>
                             <div class="flex shrink-0 items-center gap-1">
-                                <x-icon-button name="clock" tone="gray" size="sm" @click="toggleReadLater(b)" x-bind:title="b.readLater ? '{{ __('bookmarks.read_later_remove') }}' : '{{ __('bookmarks.read_later_add') }}'" ::class="b.readLater && ! b.read ? 'text-gray-900 dark:text-gray-100' : 'text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400'" />
-                                <x-icon-button name="heart" tone="gray" size="sm" @click="toggleFavorite(b)" x-bind:title="b.favorite ? '{{ __('bookmarks.unfavorite') }}' : '{{ __('bookmarks.favorite') }}'" ::class="b.favorite ? 'text-red-500' : 'text-gray-300 hover:text-gray-500'" />
-                                <template x-if="view !== 'trash'">
-                                    <span class="flex items-center gap-1">
-                                        <x-icon-button name="pencil" tone="gray" size="sm" @click="editBookmark(b)" title="{{ __('bookmarks.edit') }}" />
-                                        <x-icon-button name="trash" tone="gray" size="sm" @click="trash(b)" title="{{ __('bookmarks.to_trash') }}" class="hover:!text-red-600" />
-                                    </span>
-                                </template>
-                                <template x-if="view === 'trash'">
-                                    <span class="flex items-center gap-1">
-                                        <x-icon-button name="arrow-uturn-left" tone="gray" size="sm" @click="restore(b)" title="{{ __('bookmarks.restore') }}" />
-                                        <x-icon-button name="x-mark" tone="gray" size="sm" @click="remove(b)" title="{{ __('bookmarks.delete_forever') }}" class="hover:!text-red-600" />
-                                    </span>
-                                </template>
+                                <x-action-menu :aria-label="__('common.actions')">
+                                    <x-action-menu-item icon="clock" @click="toggleReadLater(b)" x-bind:title="b.readLater ? '{{ __('bookmarks.read_later_remove') }}' : '{{ __('bookmarks.read_later_add') }}'">
+                                        <span x-text="b.readLater ? '{{ __('bookmarks.read_later_remove') }}' : '{{ __('bookmarks.read_later_add') }}'"></span>
+                                    </x-action-menu-item>
+                                    <x-action-menu-item icon="heart" @click="toggleFavorite(b)" x-bind:title="b.favorite ? '{{ __('bookmarks.unfavorite') }}' : '{{ __('bookmarks.favorite') }}'">
+                                        <span x-text="b.favorite ? '{{ __('bookmarks.unfavorite') }}' : '{{ __('bookmarks.favorite') }}'"></span>
+                                    </x-action-menu-item>
+                                    <x-action-menu-item icon="pencil" x-show="view !== 'trash'" @click="editBookmark(b)">{{ __('bookmarks.edit') }}</x-action-menu-item>
+                                    <x-action-menu-item icon="trash" danger x-show="view !== 'trash'" @click="trash(b)">{{ __('bookmarks.to_trash') }}</x-action-menu-item>
+                                    <x-action-menu-item icon="arrow-uturn-left" x-show="view === 'trash'" @click="restore(b)">{{ __('bookmarks.restore') }}</x-action-menu-item>
+                                    <x-action-menu-item icon="x-mark" danger x-show="view === 'trash'" @click="remove(b)">{{ __('bookmarks.delete_forever') }}</x-action-menu-item>
+                                </x-action-menu>
                             </div>
                         </li>
                     </template>

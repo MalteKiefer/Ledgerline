@@ -355,15 +355,17 @@
                         <p class="text-xs text-gray-400 dark:text-gray-500" x-text="unitLabel(selectedMetric)"></p>
                     </div>
                     <div class="flex items-center gap-2 flex-wrap">
-                        <x-button variant="secondary" size="sm" icon="arrow-down-tray" class="no-print" @click="exportCsv(selectedMetric)" x-show="entriesFor(selectedMetric).length > 0">
-                            {{ __('health.export_csv') }}
-                        </x-button>
-                        <x-button variant="secondary" size="sm" icon="document-text" class="no-print" @click="enterReport()">
-                            {{ __('health.report') }}
-                        </x-button>
                         <x-button variant="primary" size="sm" icon="plus" @click="openAdd()">
                             {{ __('health.add_measurement') }}
                         </x-button>
+                        <x-action-menu :aria-label="__('common.actions')">
+                            <x-action-menu-item icon="arrow-down-tray" class="no-print" @click="exportCsv(selectedMetric)" x-show="entriesFor(selectedMetric).length > 0">
+                                {{ __('health.export_csv') }}
+                            </x-action-menu-item>
+                            <x-action-menu-item icon="document-text" class="no-print" @click="enterReport()">
+                                {{ __('health.report') }}
+                            </x-action-menu-item>
+                        </x-action-menu>
                     </div>
                 </div>
 

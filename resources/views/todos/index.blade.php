@@ -71,12 +71,14 @@
                                     <template x-for="g in (t.tags ?? [])" :key="g"><span class="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-600 dark:text-gray-400" x-text="g"></span></template>
                                 </div>
                             </div>
-                            <div class="flex shrink-0 items-center gap-1">
-                                <a x-show="t.url" :href="t.url" target="_blank" rel="noopener" @click.stop title="{{ __('todos.open_link') }}" class="inline-flex min-h-8 min-w-8 items-center justify-center rounded-lg p-1.5 text-gray-500 transition hover:bg-accent/5 hover:text-accent dark:text-gray-400"><x-icon name="arrow-uturn-right" class="h-4 w-4" /></a>
-                                <x-icon-button name="heart" tone="gray" size="sm" @click.stop="toggleMark(t)" title="{{ __('todos.marked_label') }}" ::class="t.marked ? 'text-red-500' : 'text-gray-300 hover:text-gray-500'" />
-                                <x-icon-button name="trash" tone="gray" size="sm" x-show="view !== 'trash'" @click.stop="trashTask(t)" title="{{ __('todos.delete') }}" class="hover:!text-red-600" />
-                                <x-icon-button name="arrow-uturn-left" tone="gray" size="sm" x-show="view === 'trash'" @click.stop="restoreTask(t)" title="{{ __('todos.restore') }}" />
-                                <x-icon-button name="x-mark" tone="gray" size="sm" x-show="view === 'trash'" @click.stop="deleteForever(t)" title="{{ __('todos.delete') }}" class="hover:!text-red-600" />
+                            <div class="flex shrink-0 items-center gap-1" @click.stop>
+                                <x-action-menu :aria-label="__('common.actions')">
+                                    <x-action-menu-item icon="arrow-uturn-right" x-show="t.url" ::href="t.url" target="_blank" rel="noopener">{{ __('todos.open_link') }}</x-action-menu-item>
+                                    <x-action-menu-item icon="heart" @click="toggleMark(t)">{{ __('todos.marked_label') }}</x-action-menu-item>
+                                    <x-action-menu-item icon="trash" danger x-show="view !== 'trash'" @click="trashTask(t)">{{ __('todos.delete') }}</x-action-menu-item>
+                                    <x-action-menu-item icon="arrow-uturn-left" x-show="view === 'trash'" @click="restoreTask(t)">{{ __('todos.restore') }}</x-action-menu-item>
+                                    <x-action-menu-item icon="x-mark" danger x-show="view === 'trash'" @click="deleteForever(t)">{{ __('todos.delete') }}</x-action-menu-item>
+                                </x-action-menu>
                             </div>
                         </li>
                     </template>

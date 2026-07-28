@@ -103,11 +103,13 @@
                             <span x-show="! queued">{{ __('settings.backup_run_now') }}</span>
                             <span x-show="queued" x-cloak>{{ __('settings.backup_queued_short') }}</span>
                         </x-button>
-                        <x-icon-button name="pencil" tone="gray" size="lg" @click="editing = (editing === {{ $job->id }} ? null : {{ $job->id }})" :aria-label="__('common.edit')" />
-                        <form method="POST" action="{{ route('settings.backup.jobs.destroy', $job) }}" data-confirm="{{ __('settings.backup_delete_confirm') }}">
-                            @csrf @method('DELETE')
-                            <x-icon-button name="trash" tone="red" size="lg" type="submit" :aria-label="__('common.delete')" />
-                        </form>
+                        <x-action-menu :aria-label="__('common.actions')">
+                            <x-action-menu-item icon="pencil" @click="editing = (editing === {{ $job->id }} ? null : {{ $job->id }})">{{ __('common.edit') }}</x-action-menu-item>
+                            <form method="POST" action="{{ route('settings.backup.jobs.destroy', $job) }}" data-confirm="{{ __('settings.backup_delete_confirm') }}">
+                                @csrf @method('DELETE')
+                                <x-action-menu-item icon="trash" danger type="submit">{{ __('common.delete') }}</x-action-menu-item>
+                            </form>
+                        </x-action-menu>
                     </div>
                 </div>
 

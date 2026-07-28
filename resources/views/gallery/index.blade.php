@@ -434,10 +434,12 @@
                 <button type="button" @click="view = 'albums'" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"><x-icon name="arrow-uturn-left" class="h-4 w-4" />{{ __('gallery.back') }}</button>
                 <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="currentAlbum?.name"></h2>
                 <span class="text-xs tabular-nums text-gray-400" x-text="albumCount(currentAlbum)"></span>
-                <div class="ml-auto flex items-center gap-1.5">
-                  <button type="button" @click="openShare(currentAlbum)" title="{{ __('gallery.share') }}" class="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-800" :class="currentAlbum?.share ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500'"><x-icon name="share" class="h-4 w-4" /></button>
-                  <button type="button" @click="renameAlbum(currentAlbum)" title="{{ __('gallery.rename') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
-                  <button type="button" @click="deleteAlbum(currentAlbum)" title="{{ __('gallery.delete_album') }}" class="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"><x-icon name="trash" class="h-4 w-4" /></button>
+                <div class="ml-auto">
+                  <x-action-menu :aria-label="__('common.actions')">
+                    <x-action-menu-item icon="share" @click="openShare(currentAlbum)">{{ __('gallery.share') }}</x-action-menu-item>
+                    <x-action-menu-item icon="pencil" @click="renameAlbum(currentAlbum)">{{ __('gallery.rename') }}</x-action-menu-item>
+                    <x-action-menu-item icon="trash" danger @click="deleteAlbum(currentAlbum)">{{ __('gallery.delete_album') }}</x-action-menu-item>
+                  </x-action-menu>
                 </div>
               </div>
               <template x-if="! albumCount(currentAlbum)"><x-empty-state class="mt-10">{{ __('gallery.album_empty') }}</x-empty-state></template>
@@ -563,11 +565,13 @@
                 <button type="button" @click="view = 'people'" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"><x-icon name="arrow-uturn-left" class="h-4 w-4" />{{ __('gallery.back') }}</button>
                 <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="personLabel(currentPerson) || (@js(__('gallery.person_unnamed')))"></h2>
                 <span class="text-xs tabular-nums text-gray-400" x-text="personCount(currentPerson)"></span>
-                <div class="ml-auto flex items-center gap-1.5">
-                  <button type="button" @click="renamePerson(currentPerson)" title="{{ __('gallery.rename') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
-                  <button type="button" @click="openMergePicker()" title="{{ __('gallery.merge') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrows-pointing-in" class="h-4 w-4" /></button>
-                  <button type="button" @click="openLinkPicker()" :title="'{{ __('gallery.link_contact') }}'" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" :class="currentPerson?.contactId ? 'text-gray-900 dark:text-gray-100' : ''"><x-icon name="users" class="h-4 w-4" /></button>
-                  <button type="button" @click="hidePerson(currentPerson)" title="{{ __('gallery.hide') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                <div class="ml-auto">
+                  <x-action-menu :aria-label="__('common.actions')">
+                    <x-action-menu-item icon="pencil" @click="renamePerson(currentPerson)">{{ __('gallery.rename') }}</x-action-menu-item>
+                    <x-action-menu-item icon="arrows-pointing-in" @click="openMergePicker()">{{ __('gallery.merge') }}</x-action-menu-item>
+                    <x-action-menu-item icon="users" @click="openLinkPicker()">{{ __('gallery.link_contact') }}</x-action-menu-item>
+                    <x-action-menu-item icon="x-mark" @click="hidePerson(currentPerson)">{{ __('gallery.hide') }}</x-action-menu-item>
+                  </x-action-menu>
                 </div>
               </div>
               {{-- Linked contact chip --}}

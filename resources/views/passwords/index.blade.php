@@ -453,9 +453,11 @@
                   </div>
                   <div class="flex shrink-0 items-center gap-1">
                     <button type="button" x-show="canEditCurrent()" @click="toggleFavorite(current)" :class="current.favorite ? 'text-amber-500' : 'text-gray-400'" class="rounded-lg p-2 hover:bg-accent/5"><x-icon x-show="current.favorite" name="star-solid" class="h-4 w-4" /><x-icon x-show="!current.favorite" name="star" class="h-4 w-4" /></button>
-                    <button type="button" x-show="canEditCurrent()" @click="editCurrent()" title="{{ __('passwords.edit') }}" class="rounded-lg p-2 text-gray-500 hover:bg-accent/5"><x-icon name="pencil" class="h-4 w-4" /></button>
-                    <button type="button" x-show="canEditCurrent() && view !== 'trash'" @click="trash(current)" title="{{ __('passwords.delete') }}" class="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"><x-icon name="trash" class="h-4 w-4" /></button>
-                    <button type="button" x-show="canEditCurrent() && view === 'trash'" @click="restore(current)" title="{{ __('passwords.restore') }}" class="rounded-lg p-2 text-gray-500 hover:bg-accent/5"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
+                    <x-action-menu :aria-label="__('common.actions')" x-show="canEditCurrent()">
+                      <x-action-menu-item icon="pencil" x-show="canEditCurrent()" @click="editCurrent()">{{ __('passwords.edit') }}</x-action-menu-item>
+                      <x-action-menu-item icon="arrow-uturn-left" x-show="canEditCurrent() && view === 'trash'" @click="restore(current)">{{ __('passwords.restore') }}</x-action-menu-item>
+                      <x-action-menu-item icon="trash" danger x-show="canEditCurrent() && view !== 'trash'" @click="trash(current)">{{ __('passwords.delete') }}</x-action-menu-item>
+                    </x-action-menu>
                   </div>
                 </div>
 
