@@ -63,6 +63,7 @@
         txf_eref: @js(__('invoices.txf_eref')),
         receipt: @js(__('invoices.receipt')),
         invoice_word: @js(__('invoices.invoice_word')),
+        receipt_dupes_skipped: @js(__('invoices.receipt_dupes_skipped')),
      })">
 
     {{-- Zero-knowledge gate: invoices decrypt with the vault key. --}}
@@ -360,6 +361,12 @@
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_category') }}</label>
                       <input type="text" x-model="receiptDoc.r.category" @change="saveReceiptDoc()" list="receiptCats" placeholder="{{ __('invoices.receipt_category_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
                       <datalist id="receiptCats"><template x-for="c in allCategories" :key="c"><option :value="c"></option></template></datalist>
+                      <template x-if="receiptDoc.r.vat">
+                        <p class="mt-1.5 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          <span>{{ __('invoices.receipt_vat_detected') }}</span>
+                          <x-badge variant="accent"><span x-text="receiptDoc.r.vat + ' %'"></span></x-badge>
+                        </p>
+                      </template>
                     </div>
 
                     {{-- Tags (badge chips, like the other modules) --}}
