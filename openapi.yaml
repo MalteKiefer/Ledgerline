@@ -5783,6 +5783,12 @@ paths:
                   type: string
                   pattern: "^[a-z]{3}(\\+[a-z]{3})*$"
                   description: "Tesseract language string; default deu+eng."
+                force_ocr:
+                  type: boolean
+                  description: >
+                    Force rasterise+OCR of a PDF, skipping the embedded text layer.
+                    Use when that layer is justified-mangled (spaces baked mid-word,
+                    e.g. "Softw are"). Ignored for images. Default false.
       responses:
         "200":
           description: Extracted text.

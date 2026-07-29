@@ -58,18 +58,25 @@ class ReceiptOcr
      *
      * @return OcrResult
      */
-    public function extract(string $path, string $mime, string $lang): array
+    public function extract(string $path, string $mime, string $lang, bool $forceOcr = false): array
     {
         if ($mime === self::PDF_MIME) {
-            return $this->extractPdf($path, $lang);
+            return $this->extractPdf($path, $lang, $forceOcr);
         }
 
         return ['text' => $this->ocrImage($path, $lang), 'source' => 'ocr', 'pages' => 1];
     }
 
     /** @return OcrResult */
-    private function extractPdf(string $path, string $lang): array
+    private function extractPdf(string $path, string $lang, bool $forceOcr = false): array
     {
+        // A PDF whose embedded text layer is JUSTIFIED-mangled (e.g. debitoor bakes
+        // spaces mid-word: "Softw are") is unusable — the caller can force rasterise+OCR
+        // to read the glyphs directly and get clean words instead.
+        if ($forceOcr) {
+            return $this->ocrPdf($path, $lang);
+        }
+
         // 1) Embedded text layer first — fast, no OCR, most modern invoices have it.
         //    -layout preserves the visual line/column structure the client parser needs.
         $text = BinaryProcess::run(['pdftotext', '-layout', '-enc', 'UTF-8', $path, '-'], self::TIMEOUT);
