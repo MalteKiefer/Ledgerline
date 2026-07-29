@@ -83,6 +83,13 @@ export default (labels = {}) => ({
         this.$watch('selectedMetric', () => this.renderChart());
         this.$watch('chartRange', () => this.renderChart());
         this.$watch('_mut', () => this.renderChart());
+        // Drive the live seconds clock off the reactive activeFast getter, not a
+        // one-shot check in _initFasting: on reload the sealed store loads async, so
+        // activeFast is false at init time and the clock would never start (the
+        // banner still renders when _mut bumps, but stays frozen until reload). The
+        // watcher starts the 1s clock the moment a running fast appears, stops it
+        // when none. `void this._mut` makes it re-fire on store loads/mutations.
+        this.$watch('activeFast', (f) => { if (f) this._startFastClock(); else this._stopFastClock(); });
     },
 
     // Localized metric label (passed from Blade via @js since the factory's

@@ -33,8 +33,13 @@ export default (config = {}, labels = {}) => ({
             if (! on) { this.state = 'locked'; this._revokeThumbCache(); this._stopFastClock(); }
         });
         this.$watch('_mut', () => this.renderSpark());
-        // Tick a minute-resolution clock only while a fast is running.
-        this.$watch('state', () => { if (this.activeFast) this._startFastClock(); else this._stopFastClock(); });
+        // Start/stop the 1s clock off the reactive activeFast getter (not a one-shot
+        // state check): the sealed store loads async, so activeFast is false at
+        // state-ready and a state-gated start would never fire on reload. The
+        // watcher starts it the moment a running fast appears.
+        this.$watch('activeFast', (f) => { if (f) this._startFastClock(); else this._stopFastClock(); });
+        // Cover the already-active-at-boot case (watchers don't fire for the initial value).
+        if (this.activeFast) this._startFastClock();
     },
 
     destroy() {
