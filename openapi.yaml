@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.506.89
+  version: 1.506.90
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -133,6 +133,41 @@ tags:
       live sealed in the sharded invoices store (GET/PUT /invoices/store, tag Store).
   - name: Status
     description: Application availability / health check (the site-root /up up-check).
+  - name: TwoFactor
+    description: >
+      Self-service TOTP two-factor + app-password management for a paired device
+      (Sanctum bearer). Mirrors the web Fortify flow, which is browser-only.
+  - name: DevicePairings
+    description: >
+      Owner-side device pairing: an already-paired device generates a code, polls
+      it, and approves/rejects the new device's claim. Owner-scoped.
+  - name: Users
+    description: >
+      Admin user management (requires the admin role on top of the device token —
+      `can:manage-global-settings`). No credentials (password hashes, 2FA secrets)
+      are ever returned. Non-admins get 403.
+  - name: Backup
+    description: >
+      Admin backup management (admin role + device token). Credential hygiene is
+      enforced: destination `config` (cloud credentials) and job `passphrase` are
+      NEVER present in any response. A database job with encrypt=false is refused
+      (422) — a DB dump carries wrapped vault keys and must never leave unencrypted.
+  - name: SecurityLog
+    description: >
+      Admin, read-only, metadata-only audit trail (admin role + device token). Rows
+      never contain tokens/keys/ciphertext.
+  - name: Paperless
+    description: >
+      Per-user Paperless-ngx integration: cached term quick-picks, live term
+      creation, cache sync, and document forwarding. `POST /paperless/documents` is
+      a transient-cleartext boundary (like /gallery/process + /invoices/ocr): the
+      client posts decrypted bytes, the server forwards them to the user's own
+      Paperless and stores/logs nothing.
+  - name: PublicShare
+    description: >
+      Public consumption of a `/s/{token}` share link (unauthenticated — the share
+      key lives only in the URL fragment, never sent to the server). Password-gated
+      shares issue a short-lived stateless HMAC grant on /unlock.
 
 components:
   securitySchemes:
@@ -256,6 +291,10 @@ components:
           allOf:
             - $ref: "#/components/schemas/DisplayPreferences"
           description: "Non-secret display preferences (units + 12/24h clock); set via POST /api/v1/preferences."
+        theme:
+          type: string
+          enum: [light, dark, system]
+          description: "Current UI theme (set via POST /api/v1/theme)."
 
     HealthFast:
       type: object
@@ -1282,6 +1321,162 @@ components:
           description: "Folder vaults only."
           items: { type: object, properties: { ref: { type: string, format: uuid }, key: { type: string }, name: { type: string }, mime: { type: string }, path: { type: string } } }
 
+    # ── Request/response schemas for the batch 1–5 API surface ──
+    VaultWrite:
+      type: object
+      description: "Vault provisioning/rotation body — only wrapped key material + KDF params (never the plaintext vault key)."
+      required: [salt, kdf_ops, kdf_mem, wrapped_vault_key, wrap_nonce]
+      properties:
+        salt: { type: string, maxLength: 255, description: "Argon2id salt (base64)." }
+        kdf_ops: { type: integer, minimum: 3, description: "Argon2id ops (client uses 4 = SENSITIVE)." }
+        kdf_mem: { type: integer, minimum: 67108864, description: "Argon2id memory bytes (client uses 268435456)." }
+        wrapped_vault_key: { type: string, maxLength: 1024, description: "VK wrapped under the passphrase-KEK (base64). Opaque." }
+        wrap_nonce: { type: string, maxLength: 255 }
+        wrapped_vault_key_recovery: { type: string, maxLength: 1024, nullable: true, description: "Recovery wrap of the same VK (required on provision)." }
+        recovery_nonce: { type: string, maxLength: 255, nullable: true }
+
+    UserSettings:
+      type: object
+      description: "Per-user non-display settings (contact notify channels + file version cap)."
+      properties:
+        contact_birthday_channels: { type: array, items: { type: string, enum: [desktop, ntfy, mail, webhook] } }
+        contact_anniversary_channels: { type: array, items: { type: string, enum: [desktop, ntfy, mail, webhook] } }
+        file_max_versions: { type: integer, minimum: 1, maximum: 200 }
+
+    AdminUser:
+      type: object
+      description: "Admin view of a user. Never includes password hashes or 2FA secrets."
+      required: [id, name, email, role, verified, two_factor, usage]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [admin, user] }
+        files_quota_mb: { type: integer, nullable: true }
+        gallery_quota_mb: { type: integer, nullable: true }
+        max_connected_devices: { type: integer, nullable: true }
+        modules: { type: array, nullable: true, items: { type: string } }
+        groups: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+        verified: { type: boolean }
+        two_factor: { type: boolean }
+        last_login_at: { type: string, format: date-time, nullable: true }
+        usage: { type: object, required: [used], properties: { used: { type: integer }, quota: { type: integer, nullable: true } } }
+
+    AdminUserWrite:
+      type: object
+      description: "User create/update body. role/quotas/modules are privilege fields (never mass-assigned server-side)."
+      properties:
+        name: { type: string, maxLength: 255 }
+        email: { type: string, format: email, maxLength: 255 }
+        role: { type: string, enum: [admin, user] }
+        password: { type: string, minLength: 12, description: "Create only (prohibited on update); omit to trigger a reset mail." }
+        files_quota_mb: { type: integer, minimum: 0, maximum: 100000000, nullable: true }
+        gallery_quota_mb: { type: integer, minimum: 0, maximum: 100000000, nullable: true }
+        max_connected_devices: { type: integer, minimum: 1, maximum: 50, nullable: true }
+        modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, passwords, notes, todos, bookmarks, contacts, finance, health, explore] } }
+        modules_marker: { type: string, enum: ['set'], description: "Send with an (empty) modules[] to set an explicit list rather than 'no change'." }
+        groups: { type: array, nullable: true, items: { type: integer } }
+
+    PaperlessTerm:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer, description: "Paperless numeric id." }
+        name: { type: string }
+        color: { type: string, nullable: true }
+
+    SecurityLogEntry:
+      type: object
+      description: "One append-only audit entry. Metadata only — never tokens/keys/ciphertext."
+      properties:
+        at: { type: string, format: date-time, nullable: true }
+        user_id: { type: integer, nullable: true }
+        actor: { type: string, nullable: true, description: "Display name at query time." }
+        action: { type: string, example: device.evicted, description: "Dot-namespaced event id." }
+        ip: { type: string, nullable: true }
+        user_agent: { type: string, nullable: true }
+        meta: { type: object, nullable: true, additionalProperties: true }
+
+    BackupDestinationSummary:
+      type: object
+      description: "Safe public shape — credentials (`config`) intentionally omitted."
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        driver: { type: string, enum: [s3, b2, sftp, webdav] }
+
+    BackupDestinationWrite:
+      type: object
+      required: [name, driver]
+      description: "Blank secret fields (secret/password/private_key) keep the stored value on update."
+      properties:
+        name: { type: string }
+        driver: { type: string, enum: [s3, b2, sftp, webdav] }
+        bucket: { type: string }
+        region: { type: string }
+        key: { type: string }
+        secret: { type: string }
+        endpoint: { type: string }
+        host: { type: string }
+        port: { type: integer }
+        username: { type: string }
+        password: { type: string }
+        private_key: { type: string }
+        path: { type: string }
+        url: { type: string }
+
+    BackupJobSummary:
+      type: object
+      description: "Safe public shape — `passphrase` intentionally omitted."
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        source: { type: string, enum: [database, files, gallery] }
+        mode: { type: string }
+        destination_id: { type: integer }
+        cron: { type: string }
+        retention: { type: integer }
+        encrypt: { type: boolean }
+        notify_channels: { type: array, items: { type: string } }
+        enabled: { type: boolean }
+        last_run_at: { type: string, format: date-time, nullable: true }
+        last_status: { type: string, nullable: true }
+        statistics: { type: object, additionalProperties: true }
+
+    BackupJobWrite:
+      type: object
+      required: [name, source, backup_destination_id, cron, retention]
+      description: "source=database requires encrypt=true (422 otherwise). Blank passphrase keeps the stored value on update."
+      properties:
+        name: { type: string }
+        source: { type: string, enum: [database, files, gallery] }
+        mode: { type: string }
+        backup_destination_id: { type: integer }
+        cron: { type: string }
+        retention: { type: integer, minimum: 1 }
+        encrypt: { type: boolean }
+        passphrase: { type: string }
+        notify_channels: { type: array, items: { type: string } }
+        enabled: { type: boolean }
+
+    BackupRunSummary:
+      type: object
+      properties:
+        id: { type: integer }
+        job: { type: string }
+        status: { type: string }
+        startedIso: { type: string, format: date-time, nullable: true }
+        finishedIso: { type: string, format: date-time, nullable: true }
+        durationSeconds: { type: number, nullable: true }
+        size: { type: string, nullable: true }
+        filename: { type: string, nullable: true }
+        downloadable: { type: boolean }
+        encrypted: { type: boolean }
+        cancellable: { type: boolean }
+        verifiable: { type: boolean }
+        cancelRequested: { type: boolean }
+        error: { type: string, nullable: true }
+
 paths:
 
   # --------------------------------------------------------------------------
@@ -1582,6 +1777,53 @@ paths:
                 $ref: "#/components/schemas/VaultResponse"
         "401":
           description: Unauthenticated.
+    post:
+      tags: [Vaults]
+      operationId: vaultStore
+      summary: Provision the vault (first-time setup)
+      description: >
+        First-time zero-knowledge vault setup for a native client that never used
+        the web app. Carries only the passphrase-wrapped vault key + KDF params +
+        the recovery wrap — NEVER the plaintext vault key. Refuses to overwrite an
+        existing vault (409 — that is a passphrase change → PUT /vault). Throttle 10/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VaultWrite" }
+      responses:
+        "201": { description: "Vault provisioned.", content: { application/json: { schema: { type: object, properties: { configured: { type: boolean, enum: [true] } } } } } }
+        "401": { description: Unauthenticated. }
+        "409": { description: A vault already exists (use PUT /vault to rotate). }
+        "422": { description: Validation error. }
+        "429": { description: Rate limit exceeded. }
+    put:
+      tags: [Vaults]
+      operationId: vaultRotate
+      summary: Rotate the vault passphrase
+      description: >
+        Re-wraps the SAME vault key under a new passphrase-derived key (fresh salt +
+        nonce) and mints a new recovery wrap. The vault key is unchanged, so no blob
+        re-encryption is needed. Optimistic concurrency: send `expected_version`
+        (from GET /vault) to reject a stale rotate (409) instead of clobbering a
+        concurrent change on another device. Throttle 10/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/VaultWrite"
+                - type: object
+                  properties:
+                    expected_version: { type: integer, minimum: 0, description: "Optimistic-concurrency guard (from GET /vault)." }
+      responses:
+        "200": { description: "Rotated.", content: { application/json: { schema: { type: object, required: [configured, version], properties: { configured: { type: boolean }, version: { type: integer } } } } } }
+        "401": { description: Unauthenticated. }
+        "404": { description: Vault not yet configured (POST /vault first). }
+        "409": { description: "Version conflict.", content: { application/json: { schema: { $ref: "#/components/schemas/ShareVersionConflict" } } } }
+        "422": { description: Validation error. }
+        "429": { description: Rate limit exceeded. }
 
   # --------------------------------------------------------------------------
   # Store (personal workspace manifest)
@@ -5848,3 +6090,565 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/UsageResponse" }
+
+  # ── Vault lifecycle (native provisioning + passphrase rotation) ──
+  # ── Per-user non-display settings (contact notify channels + file version cap) ──
+  /settings:
+    get:
+      tags: [Preferences]
+      operationId: settingsShow
+      summary: Read the caller's per-user settings
+      description: >
+        Non-secret per-user settings a mobile client needs beyond display prefs:
+        the birthday/anniversary notification channels (on the ZK critical path —
+        the client detects a due date and relays via POST /contacts/notify, which
+        the server intersects with these channels) and the personal file version cap.
+      responses:
+        "200": { description: "Settings.", content: { application/json: { schema: { $ref: "#/components/schemas/UserSettings" } } } }
+        "401": { description: Unauthenticated. }
+    put:
+      tags: [Preferences]
+      operationId: settingsUpdate
+      summary: Update per-user settings (partial)
+      description: "Updates any subset; unspecified keys are left unchanged. Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserSettings" }
+      responses:
+        "200": { description: "Updated settings.", content: { application/json: { schema: { $ref: "#/components/schemas/UserSettings" } } } }
+        "401": { description: Unauthenticated. }
+        "422": { description: Validation error. }
+        "429": { description: Rate limit exceeded. }
+
+  # ── Owner-side device pairing ──
+  /device-pairings:
+    post:
+      tags: [DevicePairings]
+      operationId: devicePairingStore
+      summary: Generate a pairing code + QR (owner)
+      description: "The owner (already paired) starts pairing a NEW device: returns a pairing id + QR data-URI carrying a short-lived one-time code (never a token). Throttle 20/min."
+      responses:
+        "200": { description: "Pairing started.", content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: string }, qr: { type: string, description: "SVG data-URI." }, expires_at: { type: string, format: date-time, nullable: true } } } } } }
+        "401": { description: Unauthenticated. }
+        "429": { description: Rate limit exceeded. }
+  /device-pairings/cli:
+    post:
+      tags: [DevicePairings]
+      operationId: devicePairingStoreCli
+      summary: Generate a CLI pairing code (owner)
+      description: "Like /device-pairings but returns a copyable text code (60s TTL) for a CLI client. Throttle 20/min."
+      responses:
+        "200": { description: "Pairing started.", content: { application/json: { schema: { type: object, required: [id, code], properties: { id: { type: string }, code: { type: string }, expires_at: { type: string, format: date-time, nullable: true } } } } } }
+        "401": { description: Unauthenticated. }
+  /device-pairings/{devicePairing}:
+    get:
+      tags: [DevicePairings]
+      operationId: devicePairingShow
+      summary: Poll a pairing's state (owner)
+      description: "Owner-scoped (foreign pairing → 404). Returns the current status + the claiming device name."
+      parameters: [{ name: devicePairing, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "State.", content: { application/json: { schema: { type: object, properties: { status: { type: string, enum: [pending, pending_approval, approved, rejected, consumed, expired] }, device_name: { type: string, nullable: true } } } } } }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found / not owned by caller. }
+  /device-pairings/{devicePairing}/approve:
+    post:
+      tags: [DevicePairings]
+      operationId: devicePairingApprove
+      summary: Approve the claimed device (owner)
+      description: "Owner-scoped. After approval the new device's POST /auth/pair/collect returns its token. Throttle 20/min."
+      parameters: [{ name: devicePairing, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "Approved.", content: { application/json: { schema: { type: object, properties: { status: { type: string } } } } } }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found / not owned by caller. }
+        "429": { description: Rate limit exceeded. }
+  /device-pairings/{devicePairing}/reject:
+    post:
+      tags: [DevicePairings]
+      operationId: devicePairingReject
+      summary: Reject the claimed device (owner)
+      description: "Owner-scoped. Throttle 20/min."
+      parameters: [{ name: devicePairing, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "Rejected.", content: { application/json: { schema: { type: object, properties: { status: { type: string } } } } } }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found / not owned by caller. }
+
+  # ── 2FA + app password (self-service) ──
+  /user/two-factor/enable:
+    post:
+      tags: [TwoFactor]
+      operationId: twoFactorEnable
+      summary: Enable TOTP (generate secret + recovery codes)
+      description: "Generates a new TOTP secret + recovery codes (stored encrypted). NOT yet active — call /confirm with a live code. Idempotent. Throttle 10/min."
+      responses:
+        "200": { description: "Secret generated.", content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean, enum: [true] } } } } } }
+        "401": { description: Unauthenticated. }
+        "429": { description: Rate limit exceeded. }
+  /user/two-factor/qr:
+    get:
+      tags: [TwoFactor]
+      operationId: twoFactorQr
+      summary: Get the TOTP QR + secret + otpauth URI
+      description: "For the window between enable and confirm. 404 if 2FA not enabled. Throttle 30/min."
+      responses:
+        "200": { description: "QR data.", content: { application/json: { schema: { type: object, required: [svg, secret, uri], properties: { svg: { type: string }, secret: { type: string }, uri: { type: string } } } } } }
+        "401": { description: Unauthenticated. }
+        "404": { description: 2FA not enabled. }
+  /user/two-factor/confirm:
+    post:
+      tags: [TwoFactor]
+      operationId: twoFactorConfirm
+      summary: Confirm 2FA with a live TOTP code
+      description: "Validates the code and activates 2FA (sets two_factor_confirmed_at). 422 on wrong/expired code. Throttle 10/min."
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [code], properties: { code: { type: string } } } } } }
+      responses:
+        "200": { description: "Confirmed.", content: { application/json: { schema: { type: object, properties: { confirmed: { type: boolean, enum: [true] } } } } } }
+        "401": { description: Unauthenticated. }
+        "422": { description: Invalid/expired code. }
+        "429": { description: Rate limit exceeded. }
+  /user/two-factor/recovery-codes:
+    get:
+      tags: [TwoFactor]
+      operationId: twoFactorRecoveryCodes
+      summary: List recovery codes
+      description: "Only after 2FA is confirmed (else 404). Throttle 30/min."
+      responses:
+        "200": { description: "Codes.", content: { application/json: { schema: { type: object, required: [recovery_codes], properties: { recovery_codes: { type: array, items: { type: string } } } } } } }
+        "401": { description: Unauthenticated. }
+        "404": { description: 2FA not active. }
+  /user/two-factor/recovery-codes/regenerate:
+    post:
+      tags: [TwoFactor]
+      operationId: twoFactorRegenerateRecoveryCodes
+      summary: Regenerate recovery codes
+      description: "Invalidates the old set and returns a fresh one. Throttle 10/min."
+      responses:
+        "200": { description: "New codes.", content: { application/json: { schema: { type: object, required: [recovery_codes], properties: { recovery_codes: { type: array, items: { type: string } } } } } } }
+        "401": { description: Unauthenticated. }
+        "429": { description: Rate limit exceeded. }
+  /user/two-factor:
+    delete:
+      tags: [TwoFactor]
+      operationId: twoFactorDisable
+      summary: Disable 2FA
+      description: "Clears the TOTP secret, recovery codes, and confirmed flag. Idempotent. Throttle 10/min."
+      responses:
+        "200": { description: "Disabled.", content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean, enum: [false] } } } } } }
+        "401": { description: Unauthenticated. }
+  /user/password:
+    put:
+      tags: [TwoFactor]
+      operationId: userPasswordUpdate
+      summary: Change the app login password
+      description: >
+        Validates `current_password` (guard-agnostic Hash::check — Fortify's
+        current_password:web rule would fail for a bearer token) and sets a new
+        password (min 12, confirmed). Orthogonal to the ZK vault passphrase.
+        Throttle 10/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [current_password, password, password_confirmation], properties: { current_password: { type: string }, password: { type: string, minLength: 12 }, password_confirmation: { type: string } } }
+      responses:
+        "200": { description: "Changed.", content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { description: Unauthenticated. }
+        "422": { description: Wrong current password or invalid new password. }
+        "429": { description: Rate limit exceeded. }
+  /user/email/verify/resend:
+    post:
+      tags: [TwoFactor]
+      operationId: emailVerifyResend
+      summary: Re-send the e-mail verification link
+      description: "No-op (ok:true) when already verified. Needs SMTP configured. Throttle 6/min."
+      responses:
+        "200": { description: "Queued (or already verified).", content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { description: Unauthenticated. }
+        "429": { description: Rate limit exceeded. }
+
+  # ── Admin: users ──
+  /users:
+    get:
+      tags: [Users]
+      operationId: usersIndex
+      summary: List users (admin)
+      description: "All users with effective limits, groups, 2FA/verified state, last login, and storage usage. No credentials. Admin-gated (403 otherwise)."
+      responses:
+        "200": { description: "Users.", content: { application/json: { schema: { type: object, required: [users], properties: { users: { type: array, items: { $ref: "#/components/schemas/AdminUser" } } } } } } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Not an admin. }
+    post:
+      tags: [Users]
+      operationId: usersStore
+      summary: Create a user (admin)
+      description: "role/quotas/modules are privilege fields (set server-side, never mass-assigned). Omit password to send a reset mail (if SMTP on). Throttle 30/min."
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AdminUserWrite" } } } }
+      responses:
+        "201": { description: "Created.", content: { application/json: { schema: { type: object, properties: { user: { $ref: "#/components/schemas/AdminUser" } } } } } }
+        "403": { description: Not an admin. }
+        "422": { description: Validation error. }
+        "429": { description: Rate limit exceeded. }
+  /users/{user}:
+    parameters: [{ name: user, in: path, required: true, schema: { type: integer } }]
+    put:
+      tags: [Users]
+      operationId: usersUpdate
+      summary: Update a user (admin)
+      description: "Password prohibited (use reset-password). Guards: cannot demote the last admin. Throttle 60/min."
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AdminUserWrite" } } } }
+      responses:
+        "200": { description: "Updated.", content: { application/json: { schema: { type: object, properties: { user: { $ref: "#/components/schemas/AdminUser" } } } } } }
+        "403": { description: Not an admin. }
+        "422": { description: Validation / last-admin guard. }
+    delete:
+      tags: [Users]
+      operationId: usersDestroy
+      summary: Delete a user (admin, GDPR crypto-shred)
+      description: "Purges the user + all owned data. Cannot delete self or the last admin. Throttle 10/min."
+      responses:
+        "204": { description: Deleted. }
+        "403": { description: Not an admin. }
+        "422": { description: Self-delete / last-admin guard. }
+  /users/{user}/reset-password:
+    parameters: [{ name: user, in: path, required: true, schema: { type: integer } }]
+    post:
+      tags: [Users]
+      operationId: usersResetPassword
+      summary: Send a password-reset mail (admin)
+      description: "422 when SMTP is not configured (use invite-link instead). Throttle 10/min."
+      responses:
+        "200": { description: "Sent.", content: { application/json: { schema: { type: object, properties: { message: { type: string } } } } } }
+        "403": { description: Not an admin. }
+        "422": { description: SMTP not configured. }
+  /users/{user}/reset-2fa:
+    parameters: [{ name: user, in: path, required: true, schema: { type: integer } }]
+    post:
+      tags: [Users]
+      operationId: usersResetTwoFactor
+      summary: Clear a user's 2FA (admin recovery)
+      description: "Nulls the TOTP secret/codes/confirmed flag. Throttle 10/min."
+      responses:
+        "200": { description: "Cleared.", content: { application/json: { schema: { type: object, properties: { message: { type: string } } } } } }
+        "403": { description: Not an admin. }
+  /users/{user}/avatar:
+    parameters: [{ name: user, in: path, required: true, schema: { type: integer } }]
+    get:
+      tags: [Users]
+      operationId: usersAvatar
+      summary: Stream a user's avatar (admin)
+      description: "Non-secret. 404 if none stored."
+      responses:
+        "200": { description: "Image.", content: { image/*: { schema: { type: string, format: binary } } } }
+        "403": { description: Not an admin. }
+        "404": { description: No avatar. }
+  /users/{user}/invite-link:
+    parameters: [{ name: user, in: path, required: true, schema: { type: integer } }]
+    post:
+      tags: [Users]
+      operationId: usersInviteLink
+      summary: Generate a one-time login/password-set link (admin)
+      description: "Single-use, time-limited link; the plaintext token appears only in `url` (never stored/logged — only its SHA-256). Optionally emails it. Throttle 20/min."
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ttl_hours], properties: { ttl_hours: { type: integer, enum: [1, 24, 168, 720] }, send: { type: boolean, default: false } } } } } }
+      responses:
+        "200": { description: "Link.", content: { application/json: { schema: { type: object, required: [url, sent], properties: { url: { type: string, format: uri }, expires_at: { type: string, format: date-time, nullable: true }, sent: { type: boolean } } } } } }
+        "403": { description: Not an admin. }
+        "422": { description: Validation error. }
+        "429": { description: Rate limit exceeded. }
+
+  # ── Admin: security log ──
+  /security-log:
+    get:
+      tags: [SecurityLog]
+      operationId: securityLogIndex
+      summary: List audit-log entries (admin, read-only)
+      description: "Paginated, filterable audit trail. Metadata-only. Admin-gated. Throttle 60/min."
+      parameters:
+        - { name: action, in: query, schema: { type: string }, description: "Exact action, or a `prefix.*` group match." }
+        - { name: user, in: query, schema: { type: integer } }
+        - { name: since, in: query, schema: { type: string }, description: "ISO-8601 or -24h/-7d." }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, default: 50, maximum: 100 } }
+      responses:
+        "200": { description: "Entries.", content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/SecurityLogEntry" } }, meta: { type: object, properties: { total: { type: integer }, per_page: { type: integer }, current_page: { type: integer }, last_page: { type: integer } } } } } } } }
+        "403": { description: Not an admin. }
+  /security-log/export:
+    get:
+      tags: [SecurityLog]
+      operationId: securityLogExport
+      summary: Export the audit log (admin, CSV/NDJSON)
+      description: "Streamed, capped 10000, same filters as index. CSV cells are formula-injection-neutralised. Throttle 10/min."
+      parameters:
+        - { name: format, in: query, schema: { type: string, enum: [csv, json], default: csv } }
+        - { name: limit, in: query, schema: { type: integer, default: 10000, maximum: 10000 } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: user, in: query, schema: { type: integer } }
+        - { name: since, in: query, schema: { type: string } }
+      responses:
+        "200": { description: "Stream.", content: { text/csv: { schema: { type: string, format: binary } }, application/x-ndjson: { schema: { type: string, format: binary } } } }
+        "403": { description: Not an admin. }
+
+  # ── Per-user Paperless ──
+  /paperless/terms:
+    get:
+      tags: [Paperless]
+      operationId: paperlessTerms
+      summary: Cached Paperless term quick-picks
+      description: "{configured, tags, document_types, correspondents} from the local cache (no live call). Throttle 60/min."
+      responses:
+        "200": { description: "Terms.", content: { application/json: { schema: { type: object, required: [configured, tags, document_types, correspondents], properties: { configured: { type: boolean }, tags: { type: array, items: { $ref: "#/components/schemas/PaperlessTerm" } }, document_types: { type: array, items: { $ref: "#/components/schemas/PaperlessTerm" } }, correspondents: { type: array, items: { $ref: "#/components/schemas/PaperlessTerm" } } } } } } }
+        "401": { description: Unauthenticated. }
+    post:
+      tags: [Paperless]
+      operationId: paperlessCreateTerm
+      summary: Create a Paperless tag / document type / correspondent
+      description: "Creates it in the live Paperless + caches. 422 if not configured or the call fails. Throttle 30/min."
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [kind, name], properties: { kind: { type: string, enum: [tag, document_type, correspondent] }, name: { type: string, maxLength: 255 } } } } } }
+      responses:
+        "200": { description: "Created/found.", content: { application/json: { schema: { type: object, required: [ok, id, name], properties: { ok: { type: boolean }, id: { type: integer }, name: { type: string } } } } } }
+        "401": { description: Unauthenticated. }
+        "422": { description: Not configured / validation / Paperless error. }
+  /paperless/documents:
+    post:
+      tags: [Paperless]
+      operationId: paperlessSubmit
+      summary: Forward a decrypted document to Paperless (transient cleartext)
+      description: >
+        **Transient-cleartext boundary** (like /gallery/process + /invoices/ocr):
+        the client posts the already-decrypted bytes; the server forwards them to
+        the user's own Paperless and stores/logs nothing (`Cache-Control: no-store`).
+        Returns the Paperless async task id. Throttle 20/min.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { type: object, required: [file], properties: { file: { type: string, format: binary, description: "Decrypted PDF/image, max 50 MB." }, title: { type: string, maxLength: 255 }, created: { type: string, format: date }, correspondent: { type: integer }, document_type: { type: integer }, tags: { type: array, items: { type: integer } } } }
+      responses:
+        "200": { description: "Accepted.", content: { application/json: { schema: { type: object, required: [ok, task], properties: { ok: { type: boolean }, task: { type: string } } } } } }
+        "401": { description: Unauthenticated. }
+        "413": { description: File exceeds 50 MB. }
+        "422": { description: Not configured / validation / Paperless error. }
+  /paperless/sync:
+    post:
+      tags: [Paperless]
+      operationId: paperlessSync
+      summary: Refresh the cached Paperless terms from the live instance
+      description: "Pulls all tags/document types/correspondents into the cache. {ok, counts}. Empty counts when unconfigured (no error). Throttle 20/min."
+      responses:
+        "200": { description: "Synced.", content: { application/json: { schema: { type: object, required: [ok, counts], properties: { ok: { type: boolean }, counts: { type: object, properties: { tag: { type: integer }, document_type: { type: integer }, correspondent: { type: integer } } } } } } } }
+        "401": { description: Unauthenticated. }
+        "422": { description: Paperless error. }
+
+  # ── Admin: backup ──
+  /backup/destinations:
+    get:
+      tags: [Backup]
+      operationId: backupDestinationsIndex
+      summary: List backup destinations (admin)
+      description: "Credentials (`config`) are NEVER returned — only {id, name, driver}."
+      responses:
+        "200": { description: "Destinations.", content: { application/json: { schema: { type: object, properties: { destinations: { type: array, items: { $ref: "#/components/schemas/BackupDestinationSummary" } } } } } } }
+        "403": { description: Not an admin. }
+    post:
+      tags: [Backup]
+      operationId: backupDestinationsStore
+      summary: Create a backup destination (admin)
+      description: "Runs a reachability gate before saving. Credentials never echoed back. Throttle 20/min."
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BackupDestinationWrite" } } } }
+      responses:
+        "201": { description: "Created.", content: { application/json: { schema: { type: object, properties: { destination: { $ref: "#/components/schemas/BackupDestinationSummary" } } } } } }
+        "403": { description: Not an admin. }
+        "422": { description: Validation / unreachable. }
+  /backup/destinations/{destination}:
+    parameters: [{ name: destination, in: path, required: true, schema: { type: integer } }]
+    put:
+      tags: [Backup]
+      operationId: backupDestinationsUpdate
+      summary: Update a backup destination (admin)
+      description: "Blank secret fields keep the stored value. Throttle 20/min."
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BackupDestinationWrite" } } } }
+      responses:
+        "200": { description: "Updated.", content: { application/json: { schema: { type: object, properties: { destination: { $ref: "#/components/schemas/BackupDestinationSummary" } } } } } }
+        "403": { description: Not an admin. }
+        "404": { description: Not found. }
+        "422": { description: Validation error. }
+    delete:
+      tags: [Backup]
+      operationId: backupDestinationsDestroy
+      summary: Delete a backup destination (admin)
+      responses:
+        "204": { description: Deleted. }
+        "403": { description: Not an admin. }
+        "404": { description: Not found. }
+  /backup/destinations/test:
+    post:
+      tags: [Backup]
+      operationId: backupDestinationsTest
+      summary: Test destination reachability (admin)
+      description: "Throttle 20/min."
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BackupDestinationWrite" } } } }
+      responses:
+        "200": { description: "Result.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, detail: { type: string, nullable: true } } } } } }
+        "403": { description: Not an admin. }
+  /backup/jobs:
+    get:
+      tags: [Backup]
+      operationId: backupJobsIndex
+      summary: List backup jobs + statistics (admin)
+      description: "`passphrase` is NEVER returned."
+      responses:
+        "200": { description: "Jobs.", content: { application/json: { schema: { type: object, properties: { jobs: { type: array, items: { $ref: "#/components/schemas/BackupJobSummary" } } } } } } }
+        "403": { description: Not an admin. }
+    post:
+      tags: [Backup]
+      operationId: backupJobsStore
+      summary: Create a backup job (admin)
+      description: "Invariant: source=database + encrypt=false → 422 (a DB dump carries wrapped vault keys). Throttle 20/min."
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BackupJobWrite" } } } }
+      responses:
+        "201": { description: "Created.", content: { application/json: { schema: { type: object, properties: { job: { $ref: "#/components/schemas/BackupJobSummary" } } } } } }
+        "403": { description: Not an admin. }
+        "422": { description: Validation / db-must-encrypt. }
+  /backup/jobs/{job}:
+    parameters: [{ name: job, in: path, required: true, schema: { type: integer } }]
+    put:
+      tags: [Backup]
+      operationId: backupJobsUpdate
+      summary: Update a backup job (admin)
+      description: "Blank passphrase keeps the stored value. Throttle 20/min."
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BackupJobWrite" } } } }
+      responses:
+        "200": { description: "Updated.", content: { application/json: { schema: { type: object, properties: { job: { $ref: "#/components/schemas/BackupJobSummary" } } } } } }
+        "403": { description: Not an admin. }
+        "404": { description: Not found. }
+        "422": { description: Validation error. }
+    delete:
+      tags: [Backup]
+      operationId: backupJobsDestroy
+      summary: Delete a backup job (admin)
+      responses:
+        "204": { description: Deleted. }
+        "403": { description: Not an admin. }
+        "404": { description: Not found. }
+  /backup/jobs/{job}/run:
+    parameters: [{ name: job, in: path, required: true, schema: { type: integer } }]
+    post:
+      tags: [Backup]
+      operationId: backupJobsRun
+      summary: Trigger a backup run now (admin)
+      description: "Throttle 10/min."
+      responses:
+        "200": { description: "Dispatched.", content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "403": { description: Not an admin. }
+        "404": { description: Not found. }
+  /backup/runs:
+    get:
+      tags: [Backup]
+      operationId: backupRunsIndex
+      summary: List recent backup runs (admin)
+      responses:
+        "200": { description: "Runs.", content: { application/json: { schema: { type: object, properties: { runs: { type: array, items: { $ref: "#/components/schemas/BackupRunSummary" } } } } } } }
+        "403": { description: Not an admin. }
+  /backup/runs/{run}/download:
+    parameters: [{ name: run, in: path, required: true, schema: { type: integer } }]
+    get:
+      tags: [Backup]
+      operationId: backupRunsDownload
+      summary: Download a finished archive (admin)
+      description: "Streams the raw archive bytes (may be encrypted)."
+      responses:
+        "200": { description: "Archive bytes.", content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        "403": { description: Not an admin. }
+        "404": { description: Not found / not downloadable. }
+  /backup/runs/{run}/verify:
+    parameters: [{ name: run, in: path, required: true, schema: { type: integer } }]
+    post:
+      tags: [Backup]
+      operationId: backupRunsVerify
+      summary: Verify archive integrity (admin)
+      description: "Throttle 10/min."
+      requestBody: { content: { application/json: { schema: { type: object, properties: { passphrase: { type: string, description: "Required for encrypted archives." } } } } } }
+      responses:
+        "200": { description: "Result.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, message: { type: string }, verifiedHuman: { type: string } } } } } }
+        "403": { description: Not an admin. }
+  /backup/runs/{run}/cancel:
+    parameters: [{ name: run, in: path, required: true, schema: { type: integer } }]
+    post:
+      tags: [Backup]
+      operationId: backupRunsCancel
+      summary: Cancel a running backup (admin)
+      description: "First call requests cancel; a second force-finalises. Throttle 20/min."
+      responses:
+        "200": { description: "Result.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, forced: { type: boolean } } } } } }
+        "403": { description: Not an admin. }
+  /backup/runs/{run}/decrypt:
+    parameters: [{ name: run, in: path, required: true, schema: { type: integer } }]
+    post:
+      tags: [Backup]
+      operationId: backupRunsDecrypt
+      summary: Stream a decrypted archive (admin/CLI)
+      description: "Streams the plaintext archive (for a headless/desktop admin). Throttle 10/min."
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [passphrase], properties: { passphrase: { type: string } } } } } }
+      responses:
+        "200": { description: "Decrypted bytes.", content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        "403": { description: Not an admin. }
+        "422": { description: Wrong passphrase / not encrypted. }
+
+  # ── Public share consumption (unauthenticated) ──
+  /s/{token}/meta:
+    get:
+      tags: [PublicShare]
+      operationId: publicShareMeta
+      summary: Public share metadata (no auth)
+      description: "Non-secret: whether a password is needed + validity. The share key lives in the URL fragment (never sent to the server)."
+      security: []
+      parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: "Meta.", content: { application/json: { schema: { type: object, required: [found, expired, kind, needs_password, allow_download], properties: { found: { type: boolean }, expired: { type: boolean }, kind: { type: string }, needs_password: { type: boolean }, allow_download: { type: boolean }, name: { type: string, nullable: true } } } } } }
+        "404": { description: Not found. }
+        "410": { description: Expired. }
+  /s/{token}/unlock:
+    post:
+      tags: [PublicShare]
+      operationId: publicShareUnlock
+      summary: Unlock a password-protected share (stateless HMAC grant)
+      description: "On success returns a short-lived (1h) HMAC grant token to pass on /manifest + /blob via `?grant=` or the `X-Share-Grant` header. Hard-throttled 10/min."
+      security: []
+      parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string, maxLength: 200 } } } } } }
+      responses:
+        "200": { description: "Grant.", content: { application/json: { schema: { type: object, required: [ok, grant], properties: { ok: { type: boolean }, grant: { type: string } } } } } }
+        "404": { description: Not found / expired. }
+        "422": { description: Wrong password. }
+  /s/{token}/manifest:
+    get:
+      tags: [PublicShare]
+      operationId: publicShareManifest
+      summary: Sealed share manifest (no auth)
+      description: "Returns the opaque sealed manifest (client decrypts with the fragment key). Password shares require the grant."
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: grant, in: query, required: false, schema: { type: string }, description: "HMAC grant from /unlock (or X-Share-Grant header)." }
+      responses:
+        "200": { description: "Sealed manifest.", content: { application/json: { schema: { type: object, required: [sealed, allow_download], properties: { sealed: { type: string }, allow_download: { type: boolean } } } } } }
+        "403": { description: Grant missing/invalid. }
+        "404": { description: Not found / expired. }
+  /s/{token}/blob/{ref}:
+    get:
+      tags: [PublicShare]
+      operationId: publicShareBlob
+      summary: Stream a sealed share blob (no auth)
+      description: "Raw ciphertext (client decrypts with the per-blob key from the manifest). Requires allow_download + (for password shares) the grant."
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: ref, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: grant, in: query, required: false, schema: { type: string } }
+      responses:
+        "200": { description: "Sealed bytes.", content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        "403": { description: Download disabled / grant invalid. }
+        "404": { description: Not found / expired / ref not in share. }

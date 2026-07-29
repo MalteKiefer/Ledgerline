@@ -166,6 +166,9 @@ class AuthController extends Controller
             // Non-secret display preferences (units + 12/24h clock). Mobile applies
             // these to its own rendering; set via POST /api/v1/preferences.
             'preferences' => UserSetting::for((int) $user->id)->displayPrefs(),
+            // Current UI theme (settable via POST /api/v1/theme) so a client can
+            // read back what it set. light|dark|system.
+            'theme' => (string) (UserSetting::for((int) $user->id)->theme ?? 'system'),
         ];
     }
 }
