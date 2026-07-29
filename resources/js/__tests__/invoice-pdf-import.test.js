@@ -286,6 +286,39 @@ Gemäß § 19 (1) UStG erheben wir keine Umsatzsteuer.`;
     });
 });
 
+describe('invoice PDF import — discount (Rabatt) + multiline item description (real Rechnung 10)', () => {
+    const text = `Rabatt 10% -19,19
+Gesamt EUR 172,69
+Beschreibung Menge Einheit Preis Betrag
+CloudGermania.de ~ Business Cloud
+~ 50 GB Speicher
+~ 150 GB Traffic
+~ Vollverschlüsselung
+~ Kalender und Kontakte Sync
+12 Monat(e) 15,99 191,88
+Der angegebene Preis ist ein Endpreis. Gemäß § 19 (1) UStG erheben wir keine Umsatzsteuer.`;
+    const p = parseInvoiceText(text);
+    it('parses net, the discount and the single item', () => {
+        expect(p.net).toBe(172.69);
+        expect(p.discount).toBe(19.19);
+        expect(p.items).toHaveLength(1);
+        expect(p.items[0]).toEqual(expect.objectContaining({ qty: 12, unit: 'Monat(e)', unitPrice: 15.99, amount: 191.88 }));
+    });
+    it('keeps the full multiline description on the item', () => {
+        expect(p.items[0].desc).toContain('CloudGermania.de ~ Business Cloud');
+        expect(p.items[0].desc).toContain('~ 50 GB Speicher');
+        expect(p.items[0].desc).toContain('~ Kalender und Kontakte Sync');
+    });
+    it('reconciles item sum − discount = net and emits a discount line', () => {
+        const inv = buildImportedInvoice({ number: '10' }, p, { id: 'r10' });
+        expect(inv.lines).toHaveLength(2);
+        expect(inv.lines[0]).toEqual(expect.objectContaining({ qty: 12, unit: 'Monat(e)', unitPrice: 15.99 }));
+        expect(inv.lines[1]).toEqual(expect.objectContaining({ desc: 'Rabatt', unitPrice: -19.19 }));
+        const total = inv.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
+        expect(Math.round(total * 100) / 100).toBe(172.69);
+    });
+});
+
 describe('invoice PDF import — English / USD family (Vonderland)', () => {
     const text = `INVOICE
 # 16
