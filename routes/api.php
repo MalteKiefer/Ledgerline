@@ -4,9 +4,17 @@ declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BackupController as ApiBackupController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
 use App\Http\Controllers\Api\InvoiceOcrController;
+use App\Http\Controllers\Api\PaperlessController as ApiPaperlessController;
+use App\Http\Controllers\Api\PasswordController as ApiPasswordController;
+use App\Http\Controllers\Api\PublicShareController as ApiPublicShareController;
+use App\Http\Controllers\Api\SecurityLogController as ApiSecurityLogController;
+use App\Http\Controllers\Api\SettingsController as ApiSettingsController;
+use App\Http\Controllers\Api\TwoFactorController as ApiTwoFactorController;
+use App\Http\Controllers\Api\UsersController as ApiUsersController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\ContactNotifyController;
@@ -51,6 +59,16 @@ use Illuminate\Support\Facades\Route;
  * for the browser. Per-route throttles mirror the web routes.
  */
 Route::prefix('v1')->group(function (): void {
+    // ─── Public share consumption: no auth, stateless, password → HMAC grant ───
+    // The share KEY lives in the URL fragment and never reaches the server.
+    // Password-protected shares issue a short-lived HMAC grant on /unlock.
+    Route::prefix('s/{token}')->name('api.s.')->group(function (): void {
+        Route::get('/meta', [ApiPublicShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
+        Route::post('/unlock', [ApiPublicShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
+        Route::get('/manifest', [ApiPublicShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
+        Route::get('/blob/{ref}', [ApiPublicShareController::class, 'blob'])->middleware('throttle:3000,1')->name('blob');
+    });
+
     // Public pairing exchange — the one-time code is the credential; hard-throttled.
     Route::middleware('throttle:auth-pair')->group(function (): void {
         Route::post('/auth/pair', [AuthController::class, 'pair'])->name('api.auth.pair');
@@ -71,6 +89,11 @@ Route::prefix('v1')->group(function (): void {
 
         // Zero-knowledge vault: KDF params + wrapped keys (unlock).
         Route::get('/vault', [VaultController::class, 'show'])->name('api.vault.show');
+        // Vault lifecycle for native clients (no browser): first-time provisioning +
+        // passphrase rotation. Carries only wrapped key material + KDF params — never
+        // the plaintext vault key (ZK). Same controller as web, throttled like it.
+        Route::post('/vault', [VaultController::class, 'store'])->middleware('throttle:10,1')->name('api.vault.store');
+        Route::put('/vault', [VaultController::class, 'rotate'])->middleware('throttle:10,1')->name('api.vault.rotate');
 
         // Per-module sealed stores (Store v3 split): one opaque row per module.
         Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->middleware('module')->name('api.module-store.show');
@@ -108,6 +131,16 @@ Route::prefix('v1')->group(function (): void {
         // text only (recognition is client-side). Nothing is persisted/logged — same
         // transient-cleartext window as /gallery/process. Best-effort for the client.
         Route::post('/invoices/ocr', [InvoiceOcrController::class, 'ocr'])->middleware(['throttle:120,1', 'module:finance'])->name('api.invoices.ocr');
+
+        // Per-user Paperless-ngx integration: cached term quick-picks, live term
+        // creation, document forwarding, and cache sync. The /documents endpoint is
+        // a transient-cleartext boundary (client posts decrypted bytes; server
+        // forwards to the user's own Paperless and stores/logs nothing — same ZK
+        // window as /gallery/process and /invoices/ocr).
+        Route::get('/paperless/terms', [ApiPaperlessController::class, 'terms'])->middleware('throttle:60,1')->name('api.paperless.terms');
+        Route::post('/paperless/terms', [ApiPaperlessController::class, 'createTerm'])->middleware('throttle:30,1')->name('api.paperless.terms.create');
+        Route::post('/paperless/documents', [ApiPaperlessController::class, 'submit'])->middleware('throttle:20,1')->name('api.paperless.documents');
+        Route::post('/paperless/sync', [ApiPaperlessController::class, 'sync'])->middleware('throttle:20,1')->name('api.paperless.sync');
 
         // Per-user company profile + invoice defaults (non-secret business identity).
         Route::get('/company', [ApiCompanyController::class, 'show'])->name('api.company.show');
@@ -198,6 +231,13 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/devices', [DevicePairingController::class, 'devices'])->name('api.devices.index');
         Route::delete('/devices/{token}', [DevicePairingController::class, 'revokeDevice'])->middleware('throttle:20,1')->name('api.devices.revoke');
         Route::post('/devices/{token}/wipe', [DevicePairingController::class, 'wipeDevice'])->middleware('throttle:20,1')->name('api.devices.wipe');
+        // Owner-side device pairing (mobile-first user pairs a NEW device): generate a
+        // code, poll its state, approve/reject the claim. Owner-scoped (authorizeOwner).
+        Route::post('/device-pairings', [DevicePairingController::class, 'store'])->middleware('throttle:20,1')->name('api.device-pairings.store');
+        Route::post('/device-pairings/cli', [DevicePairingController::class, 'storeCli'])->middleware('throttle:20,1')->name('api.device-pairings.cli');
+        Route::get('/device-pairings/{devicePairing}', [DevicePairingController::class, 'show'])->name('api.device-pairings.show');
+        Route::post('/device-pairings/{devicePairing}/approve', [DevicePairingController::class, 'approve'])->middleware('throttle:20,1')->name('api.device-pairings.approve');
+        Route::post('/device-pairings/{devicePairing}/reject', [DevicePairingController::class, 'reject'])->middleware('throttle:20,1')->name('api.device-pairings.reject');
 
         // Notification centre: list (ETag/304), mark one read, mark all read.
         Route::get('/notifications', [NotificationController::class, 'index'])->name('api.notifications.index');
@@ -214,6 +254,9 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/locale', [LocaleController::class, 'update'])->name('api.locale.update');
         Route::post('/theme', [ThemeController::class, 'update'])->name('api.theme.update');
         Route::post('/preferences', [PreferencesController::class, 'update'])->name('api.preferences.update');
+        // Per-user non-display settings (contact notify channels + file version cap).
+        Route::get('/settings', [ApiSettingsController::class, 'show'])->name('api.settings.show');
+        Route::put('/settings', [ApiSettingsController::class, 'update'])->middleware('throttle:60,1')->name('api.settings.update');
 
         // Shared vault-sharing: identity keys, vault containers, sealed manifest
         // stores, and membership management. Same controllers as the web routes —
@@ -250,6 +293,24 @@ Route::prefix('v1')->group(function (): void {
             });
         });
 
+        // 2FA management: enable, QR/secret, confirm, recovery codes, regenerate, disable.
+        // Mirrors Fortify's web routes (/user/two-factor-*) for Sanctum bearer clients.
+        // Note: Fortify's `confirm => true` applies only to the web guard; no additional
+        // password-confirmation step is required here — only the TOTP code (POST confirm).
+        Route::prefix('user')->name('api.user.')->group(function (): void {
+            Route::prefix('two-factor')->name('2fa.')->group(function (): void {
+                Route::post('/enable', [ApiTwoFactorController::class, 'enable'])->middleware('throttle:10,1')->name('enable');
+                Route::get('/qr', [ApiTwoFactorController::class, 'qr'])->middleware('throttle:30,1')->name('qr');
+                Route::post('/confirm', [ApiTwoFactorController::class, 'confirm'])->middleware('throttle:10,1')->name('confirm');
+                Route::get('/recovery-codes', [ApiTwoFactorController::class, 'recoveryCodes'])->middleware('throttle:30,1')->name('recovery-codes');
+                Route::post('/recovery-codes/regenerate', [ApiTwoFactorController::class, 'regenerateRecoveryCodes'])->middleware('throttle:10,1')->name('recovery-codes.regenerate');
+                Route::delete('/', [ApiTwoFactorController::class, 'disable'])->middleware('throttle:10,1')->name('disable');
+            });
+
+            Route::put('/password', [ApiPasswordController::class, 'update'])->middleware('throttle:10,1')->name('password');
+            Route::post('/email/verify/resend', [ApiTwoFactorController::class, 'resendVerification'])->middleware('throttle:6,1')->name('email.verify.resend');
+        });
+
         // Admin group management (workspace-wide limit templates + shareable flag).
         // Gated by the admin role on top of the device token; JSON mirror of the web
         // Settings/GroupsController. Non-secret metadata — zero-knowledge unaffected.
@@ -258,6 +319,52 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/', [ApiGroupController::class, 'store'])->middleware('throttle:60,1')->name('store');
             Route::put('/{group}', [ApiGroupController::class, 'update'])->middleware('throttle:60,1')->name('update');
             Route::delete('/{group}', [ApiGroupController::class, 'destroy'])->middleware('throttle:60,1')->name('destroy');
+        });
+
+        // Admin user management API (admin-gated, mirrors web Settings/UsersController).
+        Route::middleware('can:manage-global-settings')->prefix('users')->name('api.users.')->group(function (): void {
+            Route::get('/', [ApiUsersController::class, 'index'])->name('index');
+            Route::post('/', [ApiUsersController::class, 'store'])->middleware('throttle:30,1')->name('store');
+            Route::put('/{user}', [ApiUsersController::class, 'update'])->middleware('throttle:60,1')->name('update');
+            Route::delete('/{user}', [ApiUsersController::class, 'destroy'])->middleware('throttle:10,1')->name('destroy');
+            Route::post('/{user}/reset-password', [ApiUsersController::class, 'resetPassword'])->middleware('throttle:10,1')->name('reset-password');
+            Route::post('/{user}/reset-2fa', [ApiUsersController::class, 'resetTwoFactor'])->middleware('throttle:10,1')->name('reset-2fa');
+            Route::get('/{user}/avatar', [ApiUsersController::class, 'avatar'])->name('avatar');
+            Route::post('/{user}/invite-link', [ApiUsersController::class, 'inviteLink'])->middleware('throttle:20,1')->name('invite-link');
+        });
+
+        // Admin security-log API — read-only, metadata-only audit trail.
+        // Gated by manage-global-settings (same as web Settings/SecurityLogController).
+        Route::middleware('can:manage-global-settings')->prefix('security-log')->name('api.security-log.')->group(function (): void {
+            Route::get('/', [ApiSecurityLogController::class, 'index'])->middleware('throttle:60,1')->name('index');
+            Route::get('/export', [ApiSecurityLogController::class, 'export'])->middleware('throttle:10,1')->name('export');
+        });
+
+        // Admin backup management — JSON mirror of web Settings/BackupController.
+        // Gated by the admin role on top of the device token.
+        // SECURITY: config (remote credentials) and passphrase (vault-key protection)
+        // are encrypted:array / encrypted casts and are NEVER serialised in responses.
+        Route::middleware('can:manage-global-settings')->prefix('backup')->name('api.backup.')->group(function (): void {
+            // Destinations
+            Route::get('/destinations', [ApiBackupController::class, 'destinations'])->name('destinations.index');
+            Route::post('/destinations', [ApiBackupController::class, 'storeDestination'])->middleware('throttle:20,1')->name('destinations.store');
+            Route::put('/destinations/{destination}', [ApiBackupController::class, 'updateDestination'])->middleware('throttle:20,1')->name('destinations.update');
+            Route::delete('/destinations/{destination}', [ApiBackupController::class, 'destroyDestination'])->middleware('throttle:20,1')->name('destinations.destroy');
+            Route::post('/destinations/test', [ApiBackupController::class, 'testDestination'])->middleware('throttle:20,1')->name('destinations.test');
+
+            // Jobs
+            Route::get('/jobs', [ApiBackupController::class, 'jobs'])->name('jobs.index');
+            Route::post('/jobs', [ApiBackupController::class, 'storeJob'])->middleware('throttle:20,1')->name('jobs.store');
+            Route::put('/jobs/{job}', [ApiBackupController::class, 'updateJob'])->middleware('throttle:20,1')->name('jobs.update');
+            Route::delete('/jobs/{job}', [ApiBackupController::class, 'destroyJob'])->middleware('throttle:20,1')->name('jobs.destroy');
+            Route::post('/jobs/{job}/run', [ApiBackupController::class, 'runNow'])->middleware('throttle:10,1')->name('jobs.run');
+
+            // Runs
+            Route::get('/runs', [ApiBackupController::class, 'runs'])->name('runs.index');
+            Route::get('/runs/{run}/download', [ApiBackupController::class, 'downloadRun'])->name('runs.download');
+            Route::post('/runs/{run}/verify', [ApiBackupController::class, 'verifyRun'])->middleware('throttle:10,1')->name('runs.verify');
+            Route::post('/runs/{run}/cancel', [ApiBackupController::class, 'cancelRun'])->middleware('throttle:20,1')->name('runs.cancel');
+            Route::post('/runs/{run}/decrypt', [ApiBackupController::class, 'decryptRun'])->middleware('throttle:10,1')->name('runs.decrypt');
         });
     });
 });
