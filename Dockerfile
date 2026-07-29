@@ -40,10 +40,14 @@ RUN apk add --no-cache \
       exiftool \
       # database backups shell out to pg_dump + gzip; it must match the PG17
       # server (an older pg_dump refuses a newer server). Alpine ships pg17.
-      # NOTE: no OCR/PDF toolchain (ghostscript/tesseract/ocrmypdf/qpdf/poppler)
-      # — the app never shells out to it (OCR is external Paperless) — so that
-      # large untrusted-decode CVE/RCE surface is omitted entirely.
       postgresql17-client \
+      # Server-side receipt OCR (POST /api/v1/invoices/ocr): tesseract (eng+deu)
+      # OCRs raster receipts; poppler-utils' pdftotext extracts a PDF text layer
+      # (fast path) and pdftoppm rasterises scanned PDFs. Deliberate scope: ONLY
+      # these two — NOT ghostscript/ocrmypdf/qpdf — to keep the untrusted-decode
+      # surface minimal. The app only ever shells out to them via array-argv
+      # (BinaryProcess, no shell) on a transient temp file that is shredded after.
+      tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-deu poppler-utils \
  && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip
 
 # Hardened ImageMagick coder/delegate policy (untrusted image decoding).

@@ -6,6 +6,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
+use App\Http\Controllers\Api\InvoiceOcrController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\ContactNotifyController;
@@ -103,6 +104,10 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/invoices/raw/{blob}', [InvoiceBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.invoices.raw');
         Route::post('/invoices/raw-batch', [InvoiceBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.invoices.raw-batch');
         Route::post('/invoices/blobs/reconcile', [InvoiceBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.invoices.reconcile');
+        // Transient server-side OCR of a raw (decrypted) receipt: returns line-structured
+        // text only (recognition is client-side). Nothing is persisted/logged — same
+        // transient-cleartext window as /gallery/process. Best-effort for the client.
+        Route::post('/invoices/ocr', [InvoiceOcrController::class, 'ocr'])->middleware(['throttle:120,1', 'module:finance'])->name('api.invoices.ocr');
 
         // Per-user company profile + invoice defaults (non-secret business identity).
         Route::get('/company', [ApiCompanyController::class, 'show'])->name('api.company.show');

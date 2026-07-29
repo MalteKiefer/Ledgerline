@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.506.87
+  version: 1.506.88
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -4923,6 +4923,84 @@ paths:
               schema:
                 type: object
                 properties: { id: { type: string, format: uuid } }
+
+  /invoices/ocr:
+    post:
+      tags: [Store]
+      operationId: invoicesOcr
+      summary: OCR a receipt to line-structured text (transient plaintext)
+      description: >
+        **Accepted transient zero-knowledge window** (identical to /gallery/process):
+        the client POSTs the RAW (decrypted) document ONLY for OCR. The server
+        extracts text in a shredded temp file and returns it — it stores NOTHING and
+        logs no content. The document itself lives only as the client-encrypted blob
+        (uploaded separately via /invoices/upload); the returned `text` is analysed
+        and stored CLIENT-side. The server returns ONLY text — it does NOT parse
+        total/merchant/date/VAT (that recognition is client-side and identical across
+        web/iOS/Android). PDFs use the embedded text layer when present (fast path,
+        `source: pdf-text`), otherwise rasterise+OCR (`source: ocr`, ≤30 pages);
+        images are OCR'd directly. `text` preserves visual line breaks (`\n`).
+        Best-effort for the client: a 501/timeout leaves manual entry intact.
+        Requires the `finance` module. Throttle: 120 req/min.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: >
+                    The RAW cleartext document bytes (NOT the encrypted blob).
+                    Allowed: image/jpeg,png,gif,webp,bmp,tiff,avif or application/pdf.
+                    Max 25 MiB.
+                lang:
+                  type: string
+                  pattern: "^[a-z]{3}(\\+[a-z]{3})*$"
+                  description: "Tesseract language string; default deu+eng."
+      responses:
+        "200":
+          description: Extracted text.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [text, source, pages]
+                properties:
+                  text:
+                    type: string
+                    description: Line-structured plain text (one visual line per newline).
+                  source:
+                    type: string
+                    enum: [pdf-text, ocr]
+                    description: "pdf-text = PDF embedded text layer; ocr = rasterised/scanned."
+                  pages:
+                    type: integer
+                    description: Informational page count.
+        "401":
+          description: Unauthenticated.
+        "403":
+          description: Module disabled for this account.
+        "413":
+          description: File exceeds the 25 MiB OCR size limit.
+        "415":
+          description: Unsupported document type.
+        "422":
+          description: Processed OK but produced no usable text.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string, enum: [no_text] }
+        "429":
+          description: Rate limit exceeded (Retry-After header).
+        "501":
+          description: OCR toolchain not available on this server (client falls back to manual entry).
 
   /invoices/raw/{blob}:
     get:
