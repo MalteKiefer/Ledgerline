@@ -55,6 +55,7 @@ return [
     'vat' => 'VAT',
     'vat_at' => 'VAT :rate%',
     'gross' => 'Total',
+    'payable' => 'Amount due',
 
     'note' => 'Note',
     'footer' => 'Footer',

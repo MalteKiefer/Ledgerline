@@ -95,6 +95,18 @@ export function parseInvoiceNumber(text) {
 }
 
 /**
+ * Re-glue a single letter that justified-text rendering (e.g. debitoor) stranded with a
+ * space before a lowercase run: "W artung" → "Wartung", "D-79183 W aldkirch" → "…Waldkirch".
+ * SAFE by design — only a LONE letter is merged, so real word boundaries ("Pflege der",
+ * "Installation sowie") are untouched. Multi-letter mid-word splits baked into the PDF text
+ * ("Softw are", "Sw itch") are NOT repaired here (that would need a dictionary and risk
+ * wrong merges); the import review's multiline field lets the user fix those.
+ */
+export function deSpaceWord(s) {
+    return String(s || '').replace(/\b([A-Za-zÄÖÜäöüß])\s+(?=[a-zäöüß]{2,})/g, '$1');
+}
+
+/**
  * The recipient (customer) block from the PDF text — more reliable than the filename,
  * which is frequently mojibake (e.g. "N++rnberg", "#U00f6nning") or renamed. The block
  * is the address that follows the "Kiefer Networks …" sender one-liner and precedes the
@@ -121,9 +133,7 @@ export function parseCustomer(text, sender = 'kiefernetworks') {
     if (start < 0) for (let i = 0; i < lines.length; i++) if (isSender(lines[i])) { start = i + 1; break; }
     if (start < 0) return null;
 
-    // pdf.js letter-spaces justified text, stranding a single letter ("D-79183 W aldkirch",
-    // "STN N ürnberg"): re-glue a lone letter to the lowercase run that follows it.
-    const deSpace = (s) => s.replace(/\b([A-Za-zÄÖÜäöüß])\s+(?=[a-zäöüß]{2,})/g, '$1');
+    const deSpace = deSpaceWord;
     // The recipient's VAT id ("USt.-IdNr. DE265814432") — the FIRST one in the top block is
     // the customer's (the seller's own sits in the footer, below this window).
     const vatOf = (s) => { const m = s.match(/USt\.?-?\s?IdNr\.?\s*:?\s*([A-Z]{2}\s?\d[\d\s]{5,})/i); return m ? m[1].replace(/\s+/g, '') : null; };
@@ -224,7 +234,8 @@ export function parseLineItems(text) {
         if (it) {
             // Column-only row (no inline description) → take the buffered text above it.
             // Keep newlines so a multi-line description (title + sub-bullets) survives intact.
-            if (! it.desc) it.desc = buf.map((s) => s.trim()).join('\n').trim().slice(0, 400);
+            if (! it.desc) it.desc = buf.map((s) => deSpaceWord(s.trim())).join('\n').trim().slice(0, 400);
+            else it.desc = deSpaceWord(it.desc);
             items.push(it);
             buf = [];
         } else {

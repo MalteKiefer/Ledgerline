@@ -1258,13 +1258,22 @@ export default (config = {}, labels = {}) => ({
                     for (let i = 1; i <= doc.numPages; i++) {
                         const page = await doc.getPage(i);
                         const content = await page.getTextContent();
-                        let lastY = null;
+                        let lastY = null, prev = null;
                         for (const it of content.items) {
                             const y = it.transform ? it.transform[5] : null;
-                            if (lastY !== null && y !== null && Math.abs(y - lastY) > 3) text += '\n';
-                            else if (text && ! text.endsWith('\n')) text += ' ';
+                            if (prev && lastY !== null && y !== null && Math.abs(y - lastY) > 3) {
+                                text += '\n'; // new line (paragraph / table row)
+                            } else if (prev && text && ! text.endsWith('\n')) {
+                                // Same line: only insert a space on a REAL horizontal gap — pdf.js
+                                // splits a single word into several fragments ("W"+"artung"), so
+                                // gluing every pair with a space mangles words ("W artung").
+                                const fs = it.height || Math.abs(it.transform[3]) || 10;
+                                const gap = it.transform[4] - (prev.transform[4] + prev.width);
+                                if (gap > fs * 0.28 || /\s$/.test(prev.str) || /^\s/.test(it.str)) text += ' ';
+                            }
                             text += it.str;
                             lastY = y;
+                            prev = it;
                         }
                         text += '\n';
                     }

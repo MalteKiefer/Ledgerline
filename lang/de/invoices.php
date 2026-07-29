@@ -55,6 +55,7 @@ return [
     'vat' => 'USt',
     'vat_at' => 'USt :rate%',
     'gross' => 'Gesamt',
+    'payable' => 'Zu zahlen',
 
     'note' => 'Notiz',
     'footer' => 'Fußzeile',
