@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.506.88
+  version: 1.506.89
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -39,6 +39,22 @@ tags:
       (GET/PUT /files/store, tag Files). Only binary blobs (contact avatars,
       file/gallery bytes) have their own endpoints; the records that reference them
       live in these stores.
+
+
+      DECRYPTED shapes (schemas) per module — a native client builds these from the
+      decrypted object; the server never sees them. Preserve unknown keys on write.
+        • notes → {v:3, notes:[NoteRecord]} (sharded /notes/store)
+        • todos → {v:3, todos:[TodoRecord], todoLists:[TodoList]}
+        • bookmarks → {bookmarks:[BookmarkRecord], folders:[BookmarkFolder]}
+        • contacts → {contacts:[ContactRecord]} (+ avatar blobs)
+        • passwords → PasswordsStoreModel {secrets:[SecretItem], secretFolders:[PersonalVault], pwVaultMigrated} (sharded /passwords/store)
+        • invoices → {invoices:[InvoiceRecord], transactions:[InvoiceTransaction], paymentMethods:[PaymentMethod], projects:[FinanceProject], partners:[FinancePartner], financeCategories:[FinanceCategory]} (sharded /invoices/store)
+        • health → {healthProfile:HealthProfile, healthEntries:[HealthEntry], healthFasts:[HealthFast]}
+        • explore → ExploreStoreModel {tracks:[ExploreTrack], couplings:[ExploreCoupling], settings:ExploreSettings}
+        • sharing → SharingStoreModel {knownFingerprints:{userId→hex}} (TOFU, shared by passwords+files)
+        • files → {v:3, files:[FileRecord], fileFolders:[FileFolder]} (sharded /files/store)
+        • gallery → {v:3, photos:[GalleryPhoto], people:[GalleryPerson], albums:[GalleryAlbum]} (sharded /gallery/store)
+        • shared vaults → SharedVaultManifest (GET/PUT /vaults/{vault}/store)
   - name: Files
     description: Personal encrypted file blobs and multipart upload pipeline
   - name: SharedFolders
@@ -115,6 +131,8 @@ tags:
       avatar (never customer data, which stays zero-knowledge in the invoices store).
       The invoice records, payment methods and imported bank transactions themselves
       live sealed in the sharded invoices store (GET/PUT /invoices/store, tag Store).
+  - name: Status
+    description: Application availability / health check (the site-root /up up-check).
 
 components:
   securitySchemes:
@@ -349,13 +367,41 @@ components:
                 type: integer
                 nullable: true
                 description: Epoch-ms timestamp (null for planned routes).
+        importedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: ISO-8601 set client-side when a track file was imported.
+        surfaces:
+          type: array
+          nullable: true
+          description: >
+            OSM surface breakdown persisted from GraphHopper routing (planned
+            tracks); null for imported/recorded. Same shape as /maps/route surfaces.
+          items:
+            type: object
+            properties:
+              surface: { type: string }
+              distM: { type: number }
         stats:
           type: object
-          description: >
-            Client-computed metrics (see shared/track-parse.js computeStats):
-            distanceM, durationTotalS, durationMovingS, ascentM, descentM,
-            minEleM, maxEleM, avgSpeedMps, maxSpeedMps, pointCount, and
-            elevationProfile [{distM, eleM}].
+          nullable: true
+          description: "Client-computed metrics from shared/track-parse.js computeStats."
+          properties:
+            distanceM: { type: number }
+            durationTotalS: { type: number }
+            durationMovingS: { type: number }
+            ascentM: { type: number, nullable: true }
+            descentM: { type: number, nullable: true }
+            minEleM: { type: number, nullable: true }
+            maxEleM: { type: number, nullable: true }
+            avgSpeedMps: { type: number, nullable: true }
+            maxSpeedMps: { type: number, nullable: true }
+            pointCount: { type: integer }
+            elevationProfile:
+              type: array
+              nullable: true
+              items: { type: object, properties: { distM: { type: number }, eleM: { type: number } } }
         bbox:
           type: object
           nullable: true
@@ -716,6 +762,526 @@ components:
           nullable: true
           description: Nonce used for the recovery-key wrap (base64).
 
+    # ======================================================================
+    # DECRYPTED store data models (ZERO-KNOWLEDGE)
+    # ----------------------------------------------------------------------
+    # The server NEVER sees these — it stores only the opaque sealed ciphertext
+    # of each store. They are documented so native clients (iOS/Android/Go) can
+    # build the modules against a precise contract (like HealthFast/ExploreTrack).
+    # RULE: a client writing a store back MUST preserve every unknown key it did
+    # not author (passthrough) — a dropped key is silent data loss for other
+    # clients. `trashed` is a shared convention: false = active, ISO-8601 string
+    # = trashed-at timestamp.
+    # ======================================================================
+
+    NoteRecord:
+      type: object
+      description: >
+        One note inside the sharded notes store (root {v:3, notes:[NoteRecord]},
+        GET/PUT /notes/store + record shards via /notes/raw). No content-attachment
+        blobs — `content` is inline markdown in the shard ciphertext.
+      required: [id, title, content, tags, pinned, trashed, updated]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        content: { type: string, description: "Markdown body (rendered client-side)." }
+        tags: { type: array, items: { type: string } }
+        pinned: { type: boolean }
+        trashed: { type: [boolean, string], description: "false, or ISO-8601 trashed-at timestamp." }
+        updated: { type: string, format: date-time, description: "Set on every mutation; sort is pinned-first then updated desc." }
+
+    TodoRecord:
+      type: object
+      description: >
+        One task in the todos module store (GET/PUT /store/todos; sealed shape
+        {v:3, todos:[TodoRecord], todoLists:[TodoList]}). Client sort: done asc →
+        marked desc → priority(high,normal,low) → due asc.
+      required: [id, title, done]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        url: { type: string, description: "http(s) only (sanitized client-side); empty when absent." }
+        tags: { type: array, items: { type: string } }
+        priority: { type: string, enum: [high, normal, low] }
+        marked: { type: boolean, description: "Starred/flagged." }
+        due: { type: string, description: "ISO-8601 datetime or empty string." }
+        done: { type: boolean }
+        listId: { type: [string, "null"], format: uuid, description: "TodoList.id, or null = inbox." }
+        trashed: { type: [boolean, string] }
+
+    TodoList:
+      type: object
+      description: "A named list in the todos store (key todoLists). Deleting a list sets member tasks' listId=null (tasks are not deleted)."
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+
+    BookmarkRecord:
+      type: object
+      description: "One bookmark in the bookmarks module store (GET/PUT /store/bookmarks; keys bookmarks[] + folders[])."
+      required: [id, title, url]
+      properties:
+        id: { type: string, format: uuid }
+        folderId: { type: [string, "null"], format: uuid, description: "Parent BookmarkFolder.id, or null = root." }
+        title: { type: string }
+        url: { type: string, format: uri }
+        description: { type: string, nullable: true }
+        tags: { type: array, items: { type: string } }
+        favorite: { type: boolean, default: false }
+        readLater: { type: boolean, default: false }
+        read: { type: boolean, default: false }
+        trashed: { type: [boolean, string] }
+
+    BookmarkFolder:
+      type: object
+      description: "Nestable bookmark folder (key folders). `icon` is an opaque icon-name string (web maps it to an SVG; native may ignore)."
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        parentId: { type: [string, "null"], format: uuid }
+        color: { type: string, nullable: true }
+        icon: { type: string, nullable: true }
+
+    ContactRecord:
+      type: object
+      description: >
+        One contact in the contacts module store (GET/PUT /store/contacts, key
+        contacts[]). Avatar: `avatarRef` is a contact-blob UUID (GET /contacts/raw/{avatarRef});
+        decrypt the bytes with `avatarKey` (a sealed content key, unwrapped under the vault
+        key like a file blob). `personId` links to a Gallery person (written into BOTH stores).
+        `_x` round-trips unknown vCard X-properties. `bdayNotified`/`annivNotified` are
+        client dedup guards (last year notified) — persist them to avoid double-firing.
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        uid: { type: string, description: "vCard UID." }
+        fn: { type: string, description: "Formatted full name." }
+        first: { type: string, nullable: true }
+        last: { type: string, nullable: true }
+        middle: { type: string, nullable: true }
+        prefix: { type: string, nullable: true }
+        suffix: { type: string, nullable: true }
+        nickname: { type: string, nullable: true }
+        org: { type: string, nullable: true }
+        department: { type: string, nullable: true }
+        title: { type: string, nullable: true }
+        role: { type: string, nullable: true }
+        vatId: { type: string, nullable: true }
+        emails: { type: array, items: { type: object, properties: { value: { type: string }, type: { type: string, enum: [home, work, other] } } } }
+        phones: { type: array, items: { type: object, properties: { value: { type: string }, type: { type: string, enum: [cell, work, home, other] } } } }
+        impp: { type: array, description: "Instant messaging (vCard IMPP).", items: { type: object, properties: { value: { type: string }, type: { type: string } } } }
+        addresses: { type: array, items: { type: object, properties: { street: { type: string }, city: { type: string }, region: { type: string }, zip: { type: string }, country: { type: string }, type: { type: string, enum: [home, work, other] } } } }
+        urls: { type: array, items: { type: object, properties: { value: { type: string }, type: { type: string } } } }
+        bday: { type: string, nullable: true, description: "yyyy-mm-dd." }
+        anniversary: { type: string, nullable: true, description: "yyyy-mm-dd." }
+        note: { type: string, nullable: true }
+        categories: { type: array, items: { type: string }, description: "Tags / vCard CATEGORIES." }
+        favorite: { type: boolean, default: false }
+        avatarRef: { type: [string, "null"], format: uuid, description: "Contact-blob UUID for the encrypted avatar." }
+        avatarKey: { type: [string, "null"], description: "Sealed content key for the avatar blob (null = no avatar)." }
+        personId: { type: [string, "null"], format: uuid, description: "Linked Gallery person id (cross-manifest)." }
+        personName: { type: [string, "null"] }
+        _x: { type: array, items: { type: string }, description: "Passthrough unknown vCard X-properties — round-trip unchanged." }
+        trashed: { type: [boolean, string] }
+        updated: { type: string, format: date-time }
+        bdayNotified: { type: [integer, "null"], description: "Last year a birthday notification was sent." }
+        annivNotified: { type: [integer, "null"] }
+
+    CustomField:
+      type: object
+      description: "User-defined field on a SecretItem."
+      required: [label, value, kind]
+      properties:
+        label: { type: string }
+        value: { type: string }
+        kind: { type: string, enum: [text, secret, multiline, url] }
+
+    PasskeyCredential:
+      type: object
+      description: "A WebAuthn passkey — standalone (type=passkey) or embedded in a login/password item's fields.passkeys[]."
+      required: [credentialId, privateKey, rpId]
+      properties:
+        credentialId: { type: string, description: "base64url." }
+        privateKey: { type: string, description: "P-256 private JWK (JSON). SECRET — masked in history, never rendered." }
+        publicKey: { type: string, description: "P-256 public JWK (JSON)." }
+        rpId: { type: string }
+        rpName: { type: string }
+        userHandle: { type: string }
+        userName: { type: string }
+        userDisplayName: { type: string }
+        alg: { type: integer, description: "COSE alg, -7 (ES256)." }
+        signCount: { type: integer, default: 0 }
+        createdAt: { type: string, format: date-time }
+
+    VersionEntry:
+      type: object
+      description: "One prior revision in a SecretItem's versions[] (cap 100). Secret fields are masked as '(changed)' in history."
+      required: [at]
+      properties:
+        at: { type: string, format: date-time }
+        title: { type: string }
+        fields: { type: object, description: "Snapshot of fields (secret keys masked)." }
+        custom: { type: array, items: { $ref: "#/components/schemas/CustomField" } }
+
+    SecretItem:
+      type: object
+      description: >
+        One vault item in the passwords store. `fields` is keyed by `type`:
+        login {username,password*,urls[],totp*,note, passkeys?[]};
+        password {password*,note, passkeys?[]};
+        card {cardholder,number,expiry "MM/YY",cvv*,pin*,note};
+        wifi {ssid,password*,security(enum nopass|WEP|WPA|WPA2|WPA3|WPA2-Enterprise|WPA3-Enterprise),hidden,note};
+        license {product,licensekey*,owner,email,note};
+        server {host,port,username,password*,note};
+        passkey {see PasskeyCredential fields};
+        identity {firstName,lastName,email,phone,company,street,city,state,zip,country,note};
+        secure_note {note}.
+        SECRET fields (*): password,totp,cvv,pin,licensekey,privateKey (+passkeys,publicKey masked in history).
+        `fields.totp` may be an otpauth:// URI OR a raw base64 HMAC-SHA1 secret.
+        `fields.urls` is a string[] (multi-URL logins). `icon` is a data: URI (from
+        /passwords/icon) stored sealed — never re-upload it raw.
+      required: [id, type, title]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [login, password, card, wifi, license, server, passkey, identity, secure_note] }
+        title: { type: string }
+        favorite: { type: boolean }
+        folder: { type: [string, "null"], format: uuid, description: "PersonalVault.id (personal items). Shared-vault items omit this / set null." }
+        tags: { type: array, items: { type: string } }
+        custom: { type: array, items: { $ref: "#/components/schemas/CustomField" } }
+        icon: { type: [string, "null"], description: "data: URI favicon (stored sealed)." }
+        fields: { type: object, description: "Per-type field dictionary (see description); may contain passkeys[] on login/password." }
+        versions: { type: array, items: { $ref: "#/components/schemas/VersionEntry" }, description: "Cap 100." }
+        created: { type: string, format: date-time }
+        updated: { type: string, format: date-time }
+        trashed: { type: [string, "null"], format: date-time, description: "null = active; ISO string = trashed-at." }
+
+    PersonalVault:
+      type: object
+      description: "A personal password vault (secretFolders[] in the passwords manifest). role is always 'manage' for the owner."
+      required: [id, name, role]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        role: { type: string, enum: [read, edit, manage] }
+
+    PasswordsStoreModel:
+      type: object
+      description: "Decrypted root of the sharded passwords store. Preserve pwVaultMigrated (and any unknown keys) on write."
+      properties:
+        secrets: { type: array, items: { $ref: "#/components/schemas/SecretItem" } }
+        secretFolders: { type: array, items: { $ref: "#/components/schemas/PersonalVault" } }
+        pwVaultMigrated: { type: boolean, description: "Durable one-time migration flag — MUST be preserved on PUT." }
+
+    SharingStoreModel:
+      type: object
+      description: >
+        Decrypted `sharing` module store (GET/PUT /store/sharing), shared by Passwords
+        + Files. `knownFingerprints` is the TOFU map read before every invite to detect
+        a recipient key-swap.
+      properties:
+        knownFingerprints:
+          type: object
+          description: "Map userId(string) → public-key fingerprint (hex)."
+          additionalProperties: { type: string }
+
+    HealthProfile:
+      type: object
+      description: "Personal health profile (health store key healthProfile). Canonical storage; units drive display only."
+      properties:
+        birthdate: { type: string, nullable: true, description: "YYYY-MM-DD; empty = unset." }
+        heightCm: { type: number, nullable: true }
+        sex: { type: string, nullable: true, description: "'m' | 'f' | ''." }
+        weightGoalKg: { type: number, nullable: true }
+        units:
+          type: object
+          properties:
+            weight: { type: string, enum: [kg, lb] }
+            glucose: { type: string, enum: [mgdl, mmoll] }
+            temp: { type: string, enum: [c, f] }
+
+    HealthEntry:
+      type: object
+      description: "One measurement (health store key healthEntries[]). Values are canonical (kg/mmHg/bpm/%/°C/mg-dL); display conversion is client-only."
+      required: [id, metric, v, ts]
+      properties:
+        id: { type: string, format: uuid }
+        metric: { type: string, enum: [weight, bp, pulse, spo2, temp, glucose] }
+        v: { type: number, description: "Primary value (canonical unit)." }
+        v2: { type: number, nullable: true, description: "Diastolic mmHg for metric=bp; null otherwise." }
+        ts: { type: string, format: date-time }
+        note: { type: string, nullable: true }
+
+    InvoiceRecord:
+      type: object
+      description: "One invoice in the sharded invoices store. Numbering (number/seq) is GoBD per-year, derived client-side. `pdf` present for imported invoices (original sealed PDF)."
+      required: [id, status]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: [string, "null"], description: "GoBD number, e.g. 2026-0007." }
+        seq: { type: integer, description: "Per-year sequence." }
+        status: { type: string, enum: [draft, sent, paid] }
+        issueDate: { type: string, description: "YYYY-MM-DD." }
+        dueDate: { type: string }
+        currency: { type: string }
+        lang: { type: string }
+        customer: { type: object, properties: { name: { type: string }, attn: { type: string }, address: { type: string }, email: { type: string }, vatId: { type: string }, contactId: { type: string, format: uuid } } }
+        lines: { type: array, items: { type: object, properties: { desc: { type: string }, qty: { type: number }, unit: { type: string }, unitPrice: { type: number }, vatRate: { type: number } } } }
+        note: { type: string }
+        footer: { type: string }
+        totals: { type: object, description: "Frozen on finalize.", properties: { net: { type: number }, vat: { type: number }, gross: { type: number }, vatByRate: { type: object } } }
+        paidAt: { type: string, nullable: true }
+        paymentAccount: { type: [string, "null"], format: uuid, description: "PaymentMethod.id." }
+        paymentTxId: { type: [string, "null"], format: uuid, description: "InvoiceTransaction.id." }
+        imported: { type: boolean }
+        pdf: { type: object, nullable: true, description: "Sealed original PDF blob ref (imported invoices).", properties: { blob: { type: string, format: uuid }, key: { type: string }, name: { type: string }, mime: { type: string } } }
+        trashed: { type: [boolean, string] }
+        updated: { type: string, format: date-time }
+
+    InvoiceTransaction:
+      type: object
+      description: "A bank booking (transactions[] collection) bound to a PaymentMethod via `account`. amount is signed (negative = out)."
+      required: [id, account, date, amount]
+      properties:
+        id: { type: string, format: uuid }
+        account: { type: string, format: uuid, description: "PaymentMethod.id." }
+        date: { type: string, description: "YYYY-MM-DD." }
+        valueDate: { type: string }
+        amount: { type: number, description: "Signed." }
+        currency: { type: string }
+        purpose: { type: string }
+        counterparty: { type: string }
+        iban: { type: string }
+        bic: { type: string }
+        bookingText: { type: string }
+        eref: { type: string, description: "SEPA end-to-end reference." }
+        sig: { type: string, description: "Dedup signature (date+amount+counterparty+purpose / EREF)." }
+        type: { type: string, enum: [card, debit, credit, standingorder, fee, transfer, other] }
+        vatCat: { type: string, enum: ["19", "16", "7", "0", "private", ""], description: "VAT category; 'private' = drawing/deposit, excluded from VAT." }
+        category: { type: string, description: "From CSV import." }
+        projectId: { type: [string, "null"], format: uuid }
+        invoiceId: { type: [string, "null"], format: uuid }
+        invoiceNumber: { type: [string, "null"] }
+        receipts: { type: array, items: { $ref: "#/components/schemas/InvoiceReceipt" } }
+
+    InvoiceReceipt:
+      type: object
+      description: "A document attached to a booking (receipts[] on InvoiceTransaction). Bytes are a sealed blob (/invoices/raw/{blob}, decrypt with key). OCR/recognition fields are filled client-side."
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        blob: { type: string, format: uuid }
+        key: { type: string, description: "Sealed content key for the blob." }
+        name: { type: string }
+        mime: { type: string }
+        sig: { type: string, description: "{size}:{sha256(head‖tail)} dedup signature." }
+        ocr: { type: string, description: "Extracted text (client-side; up to 200k chars)." }
+        category: { type: string }
+        tags: { type: array, items: { type: string } }
+        merchant: { type: string }
+        date: { type: string }
+        total: { type: number }
+        number: { type: string }
+        vat: { type: string, enum: ["19", "16", "7", "0"] }
+        currency: { type: string }
+        contactId: { type: [string, "null"], format: uuid }
+        contactName: { type: string }
+        partnerId: { type: [string, "null"], format: uuid }
+        partnerName: { type: string }
+        note: { type: string }
+        locked: { type: boolean, description: "Auto-attached from a matched invoice — not user-deletable." }
+        kind: { type: string, enum: [invoice], description: "Present only for auto-attached invoice receipts." }
+        projectId: { type: [string, "null"], format: uuid }
+
+    PaymentMethod:
+      type: object
+      description: "A payment means (paymentMethods[] collection). Sensitive (IBAN/card) — sealed. Exactly one may be the business account."
+      required: [id, type, label]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [bank, card, paypal, cash, other] }
+        label: { type: string }
+        holder: { type: string }
+        iban: { type: string }
+        bic: { type: string }
+        bankName: { type: string }
+        accountNumber: { type: string }
+        url: { type: string, description: "Bank website (used to fetch icon)." }
+        icon: { type: string, description: "data: URI logo/favicon (sealed)." }
+        cardNetwork: { type: string, enum: [visa, mastercard, amex, other] }
+        cardNumber: { type: string }
+        cardExpiry: { type: string, description: "MM/YY." }
+        email: { type: string, description: "PayPal address." }
+        business: { type: boolean, description: "The single business account (reconciled with invoices)." }
+        note: { type: string }
+        trashed: { type: boolean }
+        created: { type: string, format: date-time }
+        updated: { type: string, format: date-time }
+
+    FinanceProject:
+      type: object
+      description: "A nestable cost project (projects[] collection). Totals roll up the tree; `kind` splits statistics business vs private (a sub-project inherits its root's kind)."
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        parentId: { type: [string, "null"], format: uuid }
+        kind: { type: string, enum: [business, private] }
+        note: { type: string }
+        expenses:
+          type: array
+          description: "Manual (hand) expenses not tied to a bank booking."
+          items: { type: object, properties: { id: { type: string, format: uuid }, amount: { type: number }, date: { type: string }, account: { type: string, format: uuid }, category: { type: string }, note: { type: string } } }
+
+    FinancePartner:
+      type: object
+      description: "A business partner (partners[] collection); doubles as a learned merchant→category rule via `category`."
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        category: { type: string, description: "Learned default category for this merchant." }
+        note: { type: string }
+
+    FinanceCategory:
+      type: object
+      description: "A custom expense category (financeCategories[] collection)."
+      required: [name]
+      properties:
+        name: { type: string }
+
+    GalleryPhoto:
+      type: object
+      description: >
+        One photo/video hot-record in the sharded gallery manifest. Blob refs point at
+        sealed blobs (/gallery/raw/{ref}); decrypt each with its key. Heavy EXIF/GPS live
+        in the sealed meta blob; the hot-record carries the fields needed for the grid.
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        blobs: { type: object, description: "Rendition refs.", properties: { thumb: { type: object }, medium: { type: object }, orig: { type: object }, meta: { type: object } } }
+        taken_at: { type: [string, "null"], description: "EXIF capture time (falls back to created)." }
+        created: { type: string, description: "Upload time." }
+        lat: { type: [string, "null"], description: "dec6 decimal string." }
+        lng: { type: [string, "null"] }
+        camera: { type: [string, "null"] }
+        caption: { type: string, description: "Free-text caption." }
+        media_type: { type: string }
+        width: { type: [integer, "null"] }
+        height: { type: [integer, "null"] }
+        phash: { type: [integer, "null"] }
+        album: { type: [string, "null"], format: uuid }
+        favorite: { type: boolean }
+        trashed: { type: [boolean, string] }
+
+    GalleryPerson:
+      type: object
+      description: "A face cluster (People). Bidirectionally linked to a ContactRecord (personId there, contact fields cached here). Preserve cached fields on passthrough."
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        count: { type: integer, description: "Cluster size (running-mean centroid)." }
+        contactId: { type: [string, "null"], format: uuid }
+        contactName: { type: string }
+        contactAvatarRef: { type: [string, "null"] }
+        contactAvatarKey: { type: [string, "null"] }
+        faces: { type: array, items: { type: object, properties: { photoId: { type: string, format: uuid }, idx: { type: integer }, cropRef: { type: string }, cropKey: { type: string }, manual: { type: boolean } } } }
+
+    GalleryAlbum:
+      type: object
+      description: "A user album in the gallery manifest."
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        cover: { type: [string, "null"], format: uuid, description: "GalleryPhoto.id used as cover." }
+        created: { type: string, format: date-time }
+
+    FileRecord:
+      type: object
+      description: >
+        One file in the sharded files store. Content is a sealed blob (/files/raw/{blob},
+        decrypt with encFileKey). Shared-folder files instead live in the SharedVault
+        folder manifest and use /vaults/{vault}/blobs/*.
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        parent: { type: [string, "null"], format: uuid, description: "FileFolder.id, or null = root." }
+        blob: { type: string, format: uuid }
+        encFileKey: { type: string, description: "Sealed per-file content key." }
+        size: { type: integer }
+        mime: { type: string }
+        versions: { type: array, items: { $ref: "#/components/schemas/FileVersion" } }
+        created: { type: string, format: date-time }
+        trashed: { type: [boolean, string] }
+
+    FileVersion:
+      type: object
+      description: "A prior file version (versions[]). Capped by the user's file_max_versions setting."
+      required: [id, blob]
+      properties:
+        id: { type: string, format: uuid }
+        blob: { type: string, format: uuid }
+        encFileKey: { type: string }
+        size: { type: integer }
+        mime: { type: string }
+        name: { type: string }
+        created: { type: string, format: date-time }
+
+    FileFolder:
+      type: object
+      description: "A folder in the files store (fileFolders collection)."
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        parent: { type: [string, "null"], format: uuid }
+        created: { type: string, format: date-time }
+
+    HybridEnvelope:
+      type: object
+      description: "Store v3 §6.3 PQ-hybrid wrap (X25519+ML-KEM-768). Used for wrapped_vault_key and shared-vault key material. Opaque to the server."
+      required: [suite, epk, kem_ct, c, n]
+      properties:
+        suite: { type: integer, enum: [1] }
+        epk: { type: string, description: "Ephemeral X25519 public key (base64)." }
+        kem_ct: { type: string, description: "ML-KEM-768 ciphertext (base64)." }
+        c: { type: string, description: "XChaCha20-Poly1305 ciphertext (base64)." }
+        n: { type: string, description: "Nonce (base64)." }
+
+    ShareCryptoEnvelope:
+      type: object
+      description: >
+        Symmetric per-blob key wrap for PUBLIC share links (separate from the PQ-hybrid
+        vault format). The share key lives ONLY in the URL fragment (#, never sent to the
+        server). Each per-file key is wrapped as this {c,n} XChaCha20-Poly1305 envelope.
+      required: [c, n]
+      properties:
+        c: { type: string, description: "Ciphertext (base64)." }
+        n: { type: string, description: "Nonce (base64)." }
+
+    SharedVaultManifest:
+      type: object
+      description: >
+        Decrypted content of a shared vault (GET/PUT /vaults/{vault}/store), sealed under
+        VK_vault. Shape depends on the vault's kind: kind=password → {name, items:[SecretItem]};
+        kind=folder → {name, folders:[FileFolder], files:[{ref, key, name, mime, path?}]}
+        where each file `key` is the per-file content key wrapped under VK_folder.
+      required: [name]
+      properties:
+        name: { type: string }
+        items: { type: array, items: { $ref: "#/components/schemas/SecretItem" }, description: "Password vaults only." }
+        folders: { type: array, items: { $ref: "#/components/schemas/FileFolder" }, description: "Folder vaults only." }
+        files:
+          type: array
+          description: "Folder vaults only."
+          items: { type: object, properties: { ref: { type: string, format: uuid }, key: { type: string }, name: { type: string }, mime: { type: string }, path: { type: string } } }
+
 paths:
 
   # --------------------------------------------------------------------------
@@ -727,7 +1293,7 @@ paths:
       - url: /
         description: Site root (this endpoint lives above the /api/v1 base path).
     get:
-      tags: [Health]
+      tags: [Status]
       operationId: healthUp
       summary: Application health check (up-check)
       description: >
@@ -3582,9 +4148,10 @@ paths:
       operationId: vaultsMembersStore
       summary: Invite a user to the vault
       description: >
-        Creates a pending membership. The `wrapped_vault_key` is VK_vault sealed
-        with `crypto_box_seal` to the recipient's X25519 public key — opaque to
-        the server. Manager-gated. Throttle: 30 requests/minute.
+        Creates a pending membership. The `wrapped_vault_key` is VK_vault
+        PQ-hybrid-wrapped (X25519+ML-KEM-768 suite envelope `{suite,epk,kem_ct,c,n}`,
+        Store v3 §6.3) to the recipient's identity keys (from GET /vaults/keys /
+        resolve-recipient) — opaque to the server. Manager-gated. Throttle: 30 req/min.
       parameters:
         - name: vault
           in: path
@@ -3610,8 +4177,9 @@ paths:
                 wrapped_vault_key:
                   type: string
                   description: >
-                    VK_vault sealed with crypto_box_seal to the recipient's X25519
-                    public key. Opaque ciphertext; the server never reads VK_vault.
+                    VK_vault PQ-hybrid-wrapped (X25519+ML-KEM-768 suite envelope
+                    `{suite,epk,kem_ct,c,n}`, Store v3 §6.3) to the recipient's
+                    identity keys. Opaque ciphertext; the server never reads VK_vault.
                 recipient_fingerprint:
                   type: string
                   nullable: true
@@ -5138,8 +5706,9 @@ paths:
       summary: Read the sealed sharded passwords root
       description: >
         Sharded passwords store (merge-safety spec §3b): the sealed root pointer table
-        (shard descriptors), mirroring /files/store. ETag/304 supported. The note
-        records live in the passwords shard blobs (see /passwords/raw).
+        (shard descriptors), mirroring /files/store. ETag/304 supported. The password
+        records (`secrets`) + the `secretFolders` collection live in the passwords
+        shard blobs (see /passwords/raw). Decrypted shape: PasswordsStoreModel.
       responses:
         "200":
           description: Sealed root + version.
