@@ -1534,7 +1534,14 @@
         {{-- ===================== INVOICES TAB (list + editor) ===================== --}}
         <div x-show="section === 'invoices'" class="mt-6">
         {{-- ===================== LIST ===================== --}}
-        <div x-show="view === 'list'">
+        <div x-show="view === 'list'" class="relative" x-data="{ drag: false }"
+             @dragover.prevent="drag = true" @dragenter.prevent="drag = true"
+             @dragleave.prevent="if ($event.target === $el) drag = false"
+             @drop.prevent="drag = false; if ($event.dataTransfer?.files?.length) importPdfs($event.dataTransfer.files)">
+          {{-- Drop invoice PDFs anywhere on the list to import them (same as the button) --}}
+          <div x-show="drag" x-cloak class="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-accent bg-accent/10">
+            <span class="rounded-xl bg-white/90 px-4 py-2 text-sm font-medium text-accent shadow dark:bg-[#1c1c1e]/90">{{ __('invoices.import_drop_hint') }}</span>
+          </div>
           <div class="flex flex-wrap items-center justify-end gap-3">
             <input type="file" x-ref="pdfImport" accept="application/pdf,.pdf" multiple class="hidden" @change="importPdfs($event.target.files); $event.target.value = ''">
             <x-button variant="secondary" @click="$refs.pdfImport.click()" icon="arrow-up-tray">{{ __('invoices.import_pdf') }}</x-button>

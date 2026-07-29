@@ -97,6 +97,7 @@ return [
     'bank_details' => 'Bank details',
     'vat_id_label' => 'VAT ID',
     'import_pdf' => 'Import PDFs',
+    'import_drop_hint' => 'Drop PDFs to import',
     'import_title' => 'Import invoice PDFs',
     'import_parsing' => 'Reading PDFs… (:done/:total)',
     'import_saving' => 'Saving invoices… (:done/:total)',

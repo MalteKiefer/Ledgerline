@@ -97,6 +97,7 @@ return [
     'bank_details' => 'ÐÐ°Ð½ÐºÐ¾Ð²ÑÐºÐ¸Ðµ ÑÐµÐºÐ²Ð¸Ð·Ð¸ÑÑ',
     'vat_id_label' => 'VAT ID',
     'import_pdf' => 'Импорт PDF',
+    'import_drop_hint' => 'Перетащите PDF для импорта',
     'import_title' => 'Импорт PDF-счетов',
     'import_parsing' => 'Чтение PDF… (:done/:total)',
     'import_saving' => 'Сохранение счетов… (:done/:total)',
