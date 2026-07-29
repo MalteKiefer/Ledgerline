@@ -212,12 +212,13 @@ export function parseLineItems(text) {
         const it = parseItemRow(ln);
         if (it) {
             // Column-only row (no inline description) → take the buffered text above it.
-            if (! it.desc) it.desc = buf.join(' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+            // Keep newlines so a multi-line description (title + sub-bullets) survives intact.
+            if (! it.desc) it.desc = buf.map((s) => s.trim()).join('\n').trim().slice(0, 400);
             items.push(it);
             buf = [];
         } else {
             buf.push(ln); // description / sub-bullet / category line — attach to the next row
-            if (buf.length > 4) buf.shift();
+            if (buf.length > 12) buf.shift();
         }
     }
     return items;
@@ -244,7 +245,7 @@ export function parseInvoiceText(text) {
     let t = String(text || '').replace(/ /g, ' ');
     t = t.replace(/(\d)\s+([.,])(\d{2})(?!\d)/g, '$1$2$3'); // glue a whitespace-split decimal: "160 .00" -> "160.00"
     t = t.replace(/\b(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})\b/g, '$1.$2.$3'); // glue a spaced date: "28 . 08 . 2020" -> "28.08.2020"
-    const out = { date: null, dateLabeled: null, dueDate: null, number: null, net: null, vat: null, gross: null, vatRate: null, smallBusiness: false, firstDesc: null, currency: null };
+    const out = { date: null, dateLabeled: null, dueDate: null, number: null, net: null, vat: null, gross: null, vatRate: null, smallBusiness: false, firstDesc: null, currency: null, discount: null };
 
     // Currency: $ → USD, £ → GBP, CHF, else EUR (the German sheets are EUR; the older
     // Vonderland invoices are USD).
@@ -286,6 +287,12 @@ export function parseInvoiceText(text) {
         if (! out.date && enDates.length) { out.date = enDates[0]; out.dateLabeled = enDates[0]; }
         if (! out.dueDate && out.date) { const later = enDates.find((d) => d > out.date); if (later) out.dueDate = later; }
     }
+
+    // Discount (Rabatt/Nachlass/Discount) printed as a negative line ("Rabatt 10% -19,19"):
+    // its amount is subtracted from the item sum to reach the net, so a discounted invoice
+    // still reconciles (item sum - discount ≈ net) and imports every real position.
+    const disc = t.match(/(?:Rabatt|Nachlass|Discount)[^\n]*?-\s*([\d.,]+)/i);
+    if (disc) { const d = parseAmount(disc[1]); if (d) out.discount = d; }
 
     // Small-business (Kleinunternehmer, §19 UStG) → no VAT.
     if (/§\s*19|Kleinunternehmer|keine Umsatzsteuer/i.test(t)) out.smallBusiness = true;
@@ -415,10 +422,14 @@ export function buildImportedInvoice(f, p, opts = {}) {
     // under-counts; the user refines line items in the review UI.
     const items = Array.isArray(p.items) ? p.items : [];
     const itemsSum = round2(items.reduce((s, it) => s + (it.amount ?? it.qty * it.unitPrice), 0));
-    const itemsWhole = items.length > 0 && net != null && Math.abs(itemsSum - net) <= 0.02;
+    // A discount (Rabatt) is subtracted from the item sum, so reconcile against net minus it.
+    const discount = p.discount || 0;
+    const itemsWhole = items.length > 0 && net != null && Math.abs(itemsSum - discount - net) <= 0.02;
     const lines = itemsWhole
         ? items.map((it) => ({ desc: it.desc || opts.summaryLabel || 'Rechnung', qty: it.qty, unit: it.unit || '', unitPrice: it.unitPrice, vatRate }))
         : [{ desc: p.firstDesc || opts.summaryLabel || 'Rechnung', qty: 1, unit: '', unitPrice: net == null ? 0 : net, vatRate }];
+    // Discount as its own negative line so the invoice total matches the printed net.
+    if (itemsWhole && discount > 0) lines.push({ desc: 'Rabatt', qty: 1, unit: '', unitPrice: -round2(discount), vatRate });
 
     const rec = {
         id: opts.id,
