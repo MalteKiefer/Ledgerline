@@ -40,7 +40,7 @@
                           <span class="text-gray-400">·</span>
                           <span x-text="fastWindowLabel(activeFast?.targetHours)"></span>
                           <span class="text-gray-400">·</span>
-                          <span x-text="fastElapsedLabel(activeFast) + ' / ' + fastTargetLabel(activeFast)"></span>
+                          <span class="tabular-nums" x-text="fastElapsedHMS(activeFast) + ' / ' + fastTargetLabel(activeFast)"></span>
                           <template x-if="activeFastProgress && activeFastProgress.reached">
                               <span class="rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">{{ __('health.fasting_reached') }}</span>
                           </template>
