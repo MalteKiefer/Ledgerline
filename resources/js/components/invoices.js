@@ -67,6 +67,9 @@ export default (config = {}, labels = {}) => ({
     current: null,       // the invoice being edited
     filterStatus: '',    // '' | draft | sent | paid
     _printing: null,     // invoice rendered into the hidden print sheet
+    dirty: false,        // a LOCKED invoice has unsaved edits (drafts autosave; locked don't)
+    pdfBusy: false,      // a version PDF is being rendered
+    _lockBaseline: null, // JSON of a locked invoice as opened, to revert unsaved edits on leave
     // Finance section: the page is a "Finanzen" hub with tabs. Invoices are one tab.
     section: 'dashboard', // 'dashboard' | 'receipts' | 'invoices' | 'payments' | 'projects' | 'stats' | 'settings'
 
@@ -1160,10 +1163,103 @@ export default (config = {}, labels = {}) => ({
         inv.customer ??= { name: '', attn: '', address: '', email: '', vatId: '', contactId: null };
         inv.customer.attn ??= '';
         this.current = inv;
+        this.dirty = false;
+        // A locked invoice (imported / finalized) is editable but every save is a versioned
+        // correction (GoBD). Snapshot its state so unsaved edits can be reverted on leave.
+        this._lockBaseline = this.isLocked(inv) ? JSON.stringify(this._editable(inv)) : null;
         this.view = 'edit';
     },
-    backToList() { this.view = 'list'; this.current = null; },
+    backToList() {
+        // Revert un-committed edits to a locked invoice (they were never persisted).
+        if (this.current && this.dirty && this._lockBaseline) {
+            Object.assign(this.current, JSON.parse(this._lockBaseline));
+        }
+        this.view = 'list'; this.current = null; this.dirty = false; this._lockBaseline = null;
+    },
     saveSoon() { if (this.current) this.current.updated = new Date().toISOString(); this._save(); },
+
+    // A finalized (sent/paid) or imported invoice is an immutable record: edits become
+    // versioned corrections with a mandatory reason. Drafts stay free-form autosave.
+    isLocked(inv) { const i = inv || this.current; return !! i && (i.imported || i.status === 'sent' || i.status === 'paid'); },
+    // Field input: drafts autosave live; a locked invoice only marks dirty (persist happens
+    // via saveVersionedEdit, which records a reason + a new version).
+    onFieldInput() { if (this.isLocked(this.current)) this.dirty = true; else this.saveSoon(); },
+    _editable(inv) {
+        return {
+            number: inv.number, status: inv.status, issueDate: inv.issueDate, dueDate: inv.dueDate,
+            currency: inv.currency, lang: inv.lang, customer: inv.customer, lines: inv.lines,
+            note: inv.note, footer: inv.footer,
+        };
+    },
+
+    // Persist an edit to a locked invoice as a NEW version (label RECHNUNGSNR-NNN, counting
+    // up). The reason is mandatory and stored. Imported → the version holds field data only
+    // (the original PDF stays authoritative); online → a PDF of the current sheet is rendered
+    // and sealed with the version.
+    async saveVersionedEdit() {
+        const inv = this.current;
+        if (! inv || ! this.dirty) return;
+        const reason = await this.$store.confirm.prompt(
+            labels.version_reason_title || 'Reason for change',
+            { placeholder: labels.version_reason_ph || 'Why is this invoice being changed?' },
+        );
+        if (reason === null) return; // cancelled
+        if (! String(reason).trim()) { window.llToast?.(labels.version_reason_required || 'A reason is required.'); return; }
+        this.pdfBusy = true;
+        try {
+            await this._commitVersion(inv, String(reason).trim());
+            this._save();
+            this.reconcileBlobs();
+            this.dirty = false;
+            this._lockBaseline = JSON.stringify(this._editable(inv));
+            window.llToast?.((labels.version_saved || 'Version :label saved.').replace(':label', inv.versions[inv.versions.length - 1].label));
+        } catch (e) { window.llToast?.(labels.version_failed || 'Could not save the version.'); }
+        finally { this.pdfBusy = false; }
+    },
+    async _commitVersion(inv, reason) {
+        const seq = (inv.versionSeq || 0) + 1;
+        inv.versionSeq = seq;
+        const label = `${inv.number || (labels.status_draft || 'ENTWURF')}-${String(seq).padStart(3, '0')}`;
+        const snapshot = JSON.parse(JSON.stringify(this._editable(inv)));
+        snapshot.totals = this.computeTotals(inv);
+        const version = { seq, label, reason, at: new Date().toISOString(), snapshot };
+        // Online-created invoices freeze a generated PDF per version; imported keep fields only.
+        if (! inv.imported) {
+            const pdf = await this._renderInvoicePdf(inv, label);
+            if (pdf) version.pdf = pdf;
+        }
+        inv.versions = inv.versions || [];
+        inv.versions.push(version);
+    },
+    // Render the current invoice's print sheet to a (raster) PDF client-side and seal it.
+    // ZK: nothing leaves the browser — html2canvas rasterises the in-page node, jsPDF wraps
+    // it, and _uploadFile encrypts before upload. Lazy-loaded so the deps stay out of the
+    // main bundle.
+    async _renderInvoicePdf(inv, label) {
+        try {
+            const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
+            this._printing = inv;
+            await this.$nextTick();
+            await new Promise((r) => setTimeout(r, 80)); // let the logo/image paint
+            const node = document.getElementById('invoice-print');
+            if (! node) { this._printing = null; return null; }
+            const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+            this._printing = null;
+            const img = canvas.toDataURL('image/jpeg', 0.92);
+            const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+            const pw = pdf.internal.pageSize.getWidth();
+            const ph = (canvas.height * pw) / canvas.width;
+            const pageH = pdf.internal.pageSize.getHeight();
+            let y = 0;
+            pdf.addImage(img, 'JPEG', 0, 0, pw, ph); // first page
+            let remaining = ph - pageH;
+            while (remaining > 0) { pdf.addPage(); y -= pageH; pdf.addImage(img, 'JPEG', 0, y, pw, ph); remaining -= pageH; }
+            const blob = pdf.output('blob');
+            const bytes = new Uint8Array(await blob.arrayBuffer());
+            return await this._uploadFile(bytes, `${label}.pdf`, 'application/pdf');
+        } catch (e) { this._printing = null; return null; }
+    },
+    openVersionPdf(v) { return this._openBlob(v?.pdf ? { ...v.pdf, mime: 'application/pdf' } : null); },
 
     addLine() { this.current.lines.push({ desc: '', qty: 1, unit: '', unitPrice: 0, vatRate: this._defaultVat() }); this.saveSoon(); },
     removeLine(i) { this.current.lines.splice(i, 1); if (! this.current.lines.length) this.addLine(); else this.saveSoon(); },
@@ -1537,7 +1633,10 @@ export default (config = {}, labels = {}) => ({
     reconcileBlobs() {
         if (! config.reconcileUrl) return;
         const blobs = [];
-        for (const inv of (this.invoices || [])) if (inv.pdf?.blob) blobs.push(inv.pdf.blob);
+        for (const inv of (this.invoices || [])) {
+            if (inv.pdf?.blob) blobs.push(inv.pdf.blob);
+            for (const v of (inv.versions || [])) if (v.pdf?.blob) blobs.push(v.pdf.blob); // version PDFs
+        }
         for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) if (r.blob) blobs.push(r.blob);
         for (const ref of window.LLInvoicesStore.shardRefs()) blobs.push(ref);
         postForm(config.reconcileUrl, { blobs: [...new Set(blobs)] }).catch(() => {});
@@ -1582,9 +1681,9 @@ export default (config = {}, labels = {}) => ({
         }
         if (i.status === 'draft') i.status = 'sent';
         i.totals = this.computeTotals(i); // freeze
-        this.saveSoon();
+        await this._lockCommit(i, labels.version_finalized || 'Finalized');
     },
-    markPaid(inv) { inv.status = 'paid'; this.saveSoon(); },
+    async markPaid(inv) { inv.status = 'paid'; await this._lockCommit(inv, labels.version_paid || 'Marked paid'); },
     async markSent(inv) {
         let i = inv;
         if (! i.number) {
@@ -1595,7 +1694,17 @@ export default (config = {}, labels = {}) => ({
             this._assignNumber(i);
         }
         i.status = 'sent';
-        this.saveSoon();
+        await this._lockCommit(i, labels.version_sent || 'Sent');
+    },
+    // A lock-point transition (finalize/sent/paid) freezes the state as a version (online →
+    // with a generated PDF) and persists. Reason is automatic (no prompt) for these.
+    async _lockCommit(inv, reason) {
+        this.pdfBusy = true;
+        try { await this._commitVersion(inv, reason); } catch (e) { /* keep going even if PDF fails */ }
+        this.pdfBusy = false;
+        if (this.current && this.current.id === inv.id) { this.dirty = false; this._lockBaseline = JSON.stringify(this._editable(inv)); }
+        this._save();
+        this.reconcileBlobs();
     },
     statusLabel(s) { return ({ draft: labels.statusDraft, sent: labels.statusSent, paid: labels.statusPaid })[s] || s; },
 

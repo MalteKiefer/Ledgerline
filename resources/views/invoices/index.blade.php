@@ -45,6 +45,15 @@
         importSummaryLabel: @js(__('invoices.import_summary_label')),
         importDone: @js(__('invoices.import_done')),
         importFailed: @js(__('invoices.import_load_failed')),
+        status_draft: @js(__('invoices.status_draft')),
+        version_reason_title: @js(__('invoices.version_reason_title')),
+        version_reason_ph: @js(__('invoices.version_reason_ph')),
+        version_reason_required: @js(__('invoices.version_reason_required')),
+        version_saved: @js(__('invoices.version_saved')),
+        version_failed: @js(__('invoices.version_failed')),
+        version_finalized: @js(__('invoices.version_finalized')),
+        version_paid: @js(__('invoices.version_paid')),
+        version_sent: @js(__('invoices.version_sent')),
         trashConfirm: @js(__('invoices.trash_confirm')),
         paperlessWarn: @js(__('files.paperless_decrypt_warn')),
         pay_invalid: @js(__('invoices.pay_invalid')),
@@ -1642,7 +1651,7 @@
 
         {{-- ===================== EDITOR ===================== --}}
         <template x-if="view === 'edit' && current">
-        <div x-cloak @input="saveSoon()">
+        <div x-cloak @input="onFieldInput()">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
               <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
@@ -1652,6 +1661,11 @@
                 x-text="statusLabel(current?.status)"></span>
             </div>
             <div class="flex flex-wrap items-center gap-2">
+              {{-- Locked invoice with pending edits → explicit versioned save (reason required). --}}
+              <x-button variant="primary" size="sm" icon="check" x-show="isLocked(current) && dirty" ::disabled="pdfBusy" @click="saveVersionedEdit()">
+                <span x-show="! pdfBusy">{{ __('invoices.save_changes') }}</span>
+                <span x-show="pdfBusy">{{ __('invoices.saving') }}</span>
+              </x-button>
               <x-action-menu :aria-label="__('invoices.col_actions')">
                 <x-action-menu-item icon="document-text" x-show="current?.imported && current?.pdf" @click="openOriginalPdf(current)">{{ __('invoices.open_original') }}</x-action-menu-item>
                 <x-action-menu-item icon="printer" x-show="! current?.imported || ! current?.pdf" @click="printInvoice(current)">{{ __('invoices.print') }}</x-action-menu-item>
@@ -1662,15 +1676,16 @@
             </div>
           </div>
 
-          {{-- Imported invoices are an immutable record (GoBD): read-only + original PDF. --}}
-          <template x-if="current?.imported">
+          {{-- Locked invoices (imported / finalized) stay editable, but every save is a
+               versioned correction with a mandatory reason (GoBD). --}}
+          <template x-if="isLocked(current)">
             <x-alert variant="info" class="mt-4 flex items-start gap-2">
               <x-icon name="lock-closed" class="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{{ __('invoices.imported_readonly') }}</span>
+              <span>{{ __('invoices.edit_versioned_note') }}</span>
             </x-alert>
           </template>
 
-          <fieldset :disabled="current?.imported" class="contents">
+          <fieldset class="contents">
 
           <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
             {{-- Customer --}}
@@ -1776,7 +1791,29 @@
               <textarea x-model="current.footer" rows="3" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
             </label>
           </div>
-          </fieldset>{{-- /read-only fieldset --}}
+          </fieldset>{{-- /editable fieldset --}}
+
+          {{-- Version history (GoBD correction trail): each entry keeps the reason + date;
+               online invoices carry a generated PDF per version, imported keep fields only. --}}
+          <template x-if="current?.versions?.length">
+            <div class="ll-card mt-6">
+              <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.versions_heading') }}</h2>
+              <div class="mt-3 divide-y divide-black/[0.06] dark:divide-white/10">
+                <template x-for="v in [...current.versions].reverse()" :key="v.seq">
+                  <div class="flex items-start justify-between gap-3 py-2">
+                    <div class="min-w-0">
+                      <div class="text-sm font-medium text-gray-900 dark:text-gray-100 tabular-nums" x-text="v.label"></div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400" x-text="fmtDate(v.at)"></div>
+                      <div class="mt-0.5 text-sm text-gray-700 dark:text-gray-300 break-words" x-text="v.reason"></div>
+                    </div>
+                    <div class="shrink-0">
+                      <x-button variant="secondary" size="sm" icon="document-text" x-show="v.pdf" @click="openVersionPdf(v)">{{ __('invoices.version_open_pdf') }}</x-button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
 
           <div class="mt-6 flex justify-end">
             <x-button variant="danger" size="sm" icon="trash" @click="remove(current)">{{ __('invoices.delete') }}</x-button>
