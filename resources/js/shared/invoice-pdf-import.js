@@ -142,41 +142,61 @@ export function parseFirstDesc(text) {
 }
 
 /**
- * Parse the first line-item ROW into its columns: { desc, qty, unit, unitPrice } — so a
- * single-item invoice keeps its real quantity, unit ("Stunde(n)", "Stk.", …) and unit
- * price instead of collapsing to a qty-1 summary line. The row is the line after the
- * "BESCHREIBUNG … BETRAG" header; its trailing columns are "qty [unit] unitPrice amount",
- * validated by qty × unitPrice ≈ amount so a mis-parse is rejected (→ caller summary
- * fallback). The unit column is optional (some sheets omit it). Returns null if the row
- * can't be read as columns.
+ * Parse ONE table row into its columns { desc, qty, unit, unitPrice, amount }, or null if
+ * the line isn't a "<desc> <qty> [unit] <unitPrice> <amount>" row (e.g. a sub-description
+ * bullet with no trailing number columns). Validated by qty × unitPrice ≈ amount so a
+ * stray numeric line can't masquerade as an item. The unit column is optional.
  */
-export function parseFirstLineItem(text) {
+function parseItemRow(ln) {
+    if (! ln || ! /[a-zäöüß]/i.test(ln)) return null;
+    // WITH a unit word: "<desc> <qty> <unit> <unitPrice> <amount>".
+    let m = ln.match(/^(.*?[a-zäöüß].*?)\s+(\d+(?:[.,]\d+)?)\s+([A-Za-zäöüÄÖÜß][A-Za-zäöüÄÖÜß().]*(?:\s[A-Za-zäöüÄÖÜß().]+)?)\s+([\d.,]+)\s*€?\s+([\d.,]+)\s*€?$/);
+    if (m) {
+        const qty = parseAmount(m[2]), unitPrice = parseAmount(m[4]), amount = parseAmount(m[5]);
+        if (qty && unitPrice != null && amount != null && Math.abs(qty * unitPrice - amount) <= 0.02) {
+            return { desc: m[1].trim().slice(0, 120), qty, unit: m[3].trim().slice(0, 24), unitPrice, amount };
+        }
+    }
+    // WITHOUT a unit column: "<desc> <qty> <unitPrice> <amount>".
+    m = ln.match(/^(.*?[a-zäöüß].*?)\s+(\d+(?:[.,]\d+)?)\s+([\d.,]+)\s*€?\s+([\d.,]+)\s*€?$/);
+    if (m) {
+        const qty = parseAmount(m[2]), unitPrice = parseAmount(m[3]), amount = parseAmount(m[4]);
+        if (qty && unitPrice != null && amount != null && Math.abs(qty * unitPrice - amount) <= 0.02) {
+            return { desc: m[1].trim().slice(0, 120), qty, unit: '', unitPrice, amount };
+        }
+    }
+    return null;
+}
+
+/**
+ * Parse ALL line-item rows between the "BESCHREIBUNG … BETRAG" table header and the totals
+ * block (Gesamt/Zwischensumme/Zu zahlen/… or the §19 footer). Each returned item is
+ * { desc, qty, unit, unitPrice, amount }. Sub-description lines (bullets/prose with no
+ * trailing number columns) are skipped. Returns [] when there is no recognisable table.
+ * The caller keeps these real items only when their amounts sum to the invoice net (so a
+ * partial/mis-parse never under-counts the total — see buildImportedInvoice).
+ */
+export function parseLineItems(text) {
     const lines = String(text || '').split(/[\r\n]+/).map((s) => s.replace(/\s+/g, ' ').trim());
     const flat = (s) => s.replace(/\s+/g, '').toLowerCase();
     const h = lines.findIndex((l) => /beschreibung|^description/.test(flat(l)) && /(menge|betrag|einzelpreis|anzahl|quantity|amount|preis)/.test(flat(l)));
-    if (h < 0) return null;
-    for (let i = h + 1; i < lines.length && i < h + 4; i++) {
+    if (h < 0) return [];
+    const STOP = /^(gesamt|zwischensumme|nettobetrag|nettogesamt|zuzahlen|zahlbetrag|mwst|umsatzsteuer|ust\b|zzgl|rechnungsbetrag|gesamtbetrag|summe|gem[äa]ß|kiefernetworks)/;
+    const items = [];
+    for (let i = h + 1; i < lines.length; i++) {
         const ln = lines[i];
-        if (! ln || ! /[a-zäöüß]/i.test(ln)) continue;
-        // Trailing columns WITH a unit word: "<desc> <qty> <unit> <unitPrice> <amount>".
-        let m = ln.match(/^(.*?[a-zäöüß].*?)\s+(\d+(?:[.,]\d+)?)\s+([A-Za-zäöüÄÖÜß][A-Za-zäöüÄÖÜß().]*(?:\s[A-Za-zäöüÄÖÜß().]+)?)\s+([\d.,]+)\s*€?\s+([\d.,]+)\s*€?$/);
-        if (m) {
-            const qty = parseAmount(m[2]), unitPrice = parseAmount(m[4]), amount = parseAmount(m[5]);
-            if (qty && unitPrice != null && amount != null && Math.abs(qty * unitPrice - amount) <= 0.02) {
-                return { desc: m[1].trim().slice(0, 120), qty, unit: m[3].trim().slice(0, 24), unitPrice, amount };
-            }
-        }
-        // WITHOUT a unit column: "<desc> <qty> <unitPrice> <amount>".
-        m = ln.match(/^(.*?[a-zäöüß].*?)\s+(\d+(?:[.,]\d+)?)\s+([\d.,]+)\s*€?\s+([\d.,]+)\s*€?$/);
-        if (m) {
-            const qty = parseAmount(m[2]), unitPrice = parseAmount(m[3]), amount = parseAmount(m[4]);
-            if (qty && unitPrice != null && amount != null && Math.abs(qty * unitPrice - amount) <= 0.02) {
-                return { desc: m[1].trim().slice(0, 120), qty, unit: '', unitPrice, amount };
-            }
-        }
-        return null; // first real desc row didn't parse as columns → give up (summary line)
+        if (! ln) continue;
+        if (STOP.test(flat(ln))) break; // reached the totals / footer
+        const it = parseItemRow(ln);
+        if (it) items.push(it);
+        // else: sub-description line for the current item — skipped.
     }
-    return null;
+    return items;
+}
+
+/** The first line item (kept for callers/tests that want just one). */
+export function parseFirstLineItem(text) {
+    return parseLineItems(text)[0] || null;
 }
 
 /**
@@ -281,10 +301,12 @@ export function parseInvoiceText(text) {
     if (out.vat == null && out.net != null && out.gross != null) out.vat = round2(out.gross - out.net);
     if (out.vatRate == null && out.net) out.vatRate = out.vat ? Math.round((out.vat / out.net) * 100) : 0;
 
-    // First line-item description (for a nicer summary line than a generic label) and,
-    // when the row parses into columns, its qty/unit/unitPrice (single-item invoices).
+    // First line-item description (for a nicer summary line than a generic label) and the
+    // full parsed line-item table (qty/unit/unitPrice per row) — used when the items sum
+    // to the net (so multi-item invoices import every real position with its unit).
     out.firstDesc = parseFirstDesc(text);
-    out.firstItem = parseFirstLineItem(text);
+    out.items = parseLineItems(text);
+    out.firstItem = out.items[0] || null;
 
     // Recipient block from the text (more reliable than a mojibake/renamed filename).
     out.customer = parseCustomer(text);
@@ -323,15 +345,17 @@ export function buildImportedInvoice(f, p, opts = {}) {
     if (! issueDate) warnings.push('date');
     if (net == null) warnings.push('amount');
 
-    // Prefer the real first line item (keeps qty + unit + unit price) when it accounts
-    // for the whole invoice net — i.e. a single-item invoice, the common case here.
-    // Multi-item invoices (item amount ≠ net) stay on the qty-1 net summary line so the
-    // total never under-counts; the user refines line items in the review UI.
-    const item = p.firstItem;
-    const itemIsWhole = item && net != null && Math.abs((item.amount ?? item.qty * item.unitPrice) - net) <= 0.02;
-    const line = itemIsWhole
-        ? { desc: item.desc || p.firstDesc || opts.summaryLabel || 'Rechnung', qty: item.qty, unit: item.unit || '', unitPrice: item.unitPrice, vatRate }
-        : { desc: p.firstDesc || opts.summaryLabel || 'Rechnung', qty: 1, unit: '', unitPrice: net == null ? 0 : net, vatRate };
+    // Use the REAL parsed line items (each with its qty + unit + unit price) when their
+    // amounts sum to the invoice net — i.e. the table was read completely. This covers
+    // both single- and multi-item invoices. If the items don't reconcile to the net
+    // (partial/failed parse), fall back to ONE qty-1 net summary line so the total never
+    // under-counts; the user refines line items in the review UI.
+    const items = Array.isArray(p.items) ? p.items : [];
+    const itemsSum = round2(items.reduce((s, it) => s + (it.amount ?? it.qty * it.unitPrice), 0));
+    const itemsWhole = items.length > 0 && net != null && Math.abs(itemsSum - net) <= 0.02;
+    const lines = itemsWhole
+        ? items.map((it) => ({ desc: it.desc || opts.summaryLabel || 'Rechnung', qty: it.qty, unit: it.unit || '', unitPrice: it.unitPrice, vatRate }))
+        : [{ desc: p.firstDesc || opts.summaryLabel || 'Rechnung', qty: 1, unit: '', unitPrice: net == null ? 0 : net, vatRate }];
 
     const rec = {
         id: opts.id,
@@ -342,7 +366,7 @@ export function buildImportedInvoice(f, p, opts = {}) {
         currency: opts.currency || 'EUR',
         lang: 'de',
         customer: { name: custName, attn: '', address: custAddress, email: '', vatId: '', contactId: null },
-        lines: [line],
+        lines,
         note: '',
         footer: '',
         trashed: false,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-    parseAmount, parseGermanDate, parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, parseInvoiceNumber, parseCustomer, importedSeq, parseFirstLineItem,
+    parseAmount, parseGermanDate, parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, parseInvoiceNumber, parseCustomer, importedSeq, parseFirstLineItem, parseLineItems,
 } from '../shared/invoice-pdf-import.js';
 
 describe('invoice PDF import — primitives', () => {
@@ -239,12 +239,49 @@ describe('invoice PDF import — parseFirstLineItem', () => {
     it('rejects a row where qty × price != amount (mis-parse guard)', () => {
         expect(parseFirstLineItem('Beschreibung Menge Einheit Preis Betrag\nZeug 2 Stk 5,00 99,00')).toBeNull();
     });
-    it('multi-item invoice keeps the safe qty-1 net summary line', () => {
-        // Two items → first item amount (36) != net (60), so the summary line is used.
-        const p = parseInvoiceText('Beschreibung Menge Einheit Preis Betrag\nA 3 Stunde(n) 12,00 36,00\nB 2 Stk 12,00 24,00\nGesamt EUR 60,00\nGemäß § 19 UStG keine Umsatzsteuer.');
+    it('imports every line item when they sum to the net', () => {
+        // Two items summing to the net (36 + 24 = 60) → both real lines, not a summary.
+        const p = parseInvoiceText('Beschreibung Menge Einheit Preis Betrag\nBeratung 3 Stunde(n) 12,00 36,00\nHosting 2 Stk 12,00 24,00\nGesamt EUR 60,00\nGemäß § 19 UStG keine Umsatzsteuer.');
+        const inv = buildImportedInvoice({ date: null, number: null, customer: null }, p, { id: 'y', summaryLabel: 'Rechnungsbetrag' });
+        expect(inv.lines).toHaveLength(2);
+        expect(inv.lines[0]).toEqual(expect.objectContaining({ desc: 'Beratung', qty: 3, unit: 'Stunde(n)', unitPrice: 12 }));
+        expect(inv.lines[1]).toEqual(expect.objectContaining({ desc: 'Hosting', qty: 2, unit: 'Stk', unitPrice: 12 }));
+    });
+    it('falls back to a single net summary line when items do not reconcile', () => {
+        // Only one item row parses (24) but net is 60 → items don't sum → safe summary.
+        const p = parseInvoiceText('Beschreibung Menge Einheit Preis Betrag\nHosting 2 Stk 12,00 24,00\nGesamt EUR 60,00\nGemäß § 19 UStG keine Umsatzsteuer.');
         const inv = buildImportedInvoice({ date: null, number: null, customer: null }, p, { id: 'y', summaryLabel: 'Rechnungsbetrag' });
         expect(inv.lines).toHaveLength(1);
         expect(inv.lines[0].qty).toBe(1);
         expect(inv.lines[0].unitPrice).toBe(60);
+    });
+    it('parses a full multi-item table with sub-description lines (real Rechnung 2)', () => {
+        const text = `Rechnungsnr.
+Rechnungsdatum
+Fälligkeitsdatum
+Zu zahlen EUR
+2
+25.04.2014
+25.05.2014
+225,99
+Beschreibung Menge Einheit Preis Betrag
+IT Beratung 1 Stunde(n) 12,00 12,00
+Beratung zu vorhanden Hard- und Software
+Beratung bei Neubeschaffung
+IT Office Wartung & Pflege 1 Stunde(n) 12,00 12,00
+- Reparatur Scanner
+IT Office Wartung & Pflege 16 Stunde(n) 12,00 192,00
+- Vorbereitung Server
+Material 1 Stück 9,99 9,99
+- Kühler Wärmeleitpaste
+Gesamt EUR 225,99
+Gemäß § 19 (1) UStG erheben wir keine Umsatzsteuer.`;
+        const items = parseLineItems(text);
+        expect(items).toHaveLength(4);
+        expect(items.map((i) => i.amount)).toEqual([12, 12, 192, 9.99]);
+        expect(items[2]).toEqual(expect.objectContaining({ desc: 'IT Office Wartung & Pflege', qty: 16, unit: 'Stunde(n)', unitPrice: 12 }));
+        const inv = buildImportedInvoice(parseInvoiceFilename('20140425_ Rechnung 2 - STN.pdf'), parseInvoiceText(text), { id: 'z', currentYear: 2014 });
+        expect(inv.lines).toHaveLength(4);
+        expect(inv.lines[3]).toEqual(expect.objectContaining({ desc: 'Material', qty: 1, unit: 'Stück', unitPrice: 9.99, vatRate: 0 }));
     });
 });
