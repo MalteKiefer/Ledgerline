@@ -1,7 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import {
-    parseAmount, parseGermanDate, parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, parseInvoiceNumber, parseCustomer, importedSeq, parseFirstLineItem, parseLineItems,
+    parseAmount, parseGermanDate, parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, parseInvoiceNumber, parseCustomer, importedSeq, parseFirstLineItem, parseLineItems, mangleScore, looksMangled, deSpaceWord,
 } from '../shared/invoice-pdf-import.js';
+
+describe('invoice PDF import — mangled text-layer detection (OCR fallback trigger)', () => {
+    it('scores a justified-mangled line high and a clean line ~zero', () => {
+        expect(mangleScore('W artung, Installation sow ie die Pflege der Softw are und Hardw are')).toBeGreaterThanOrEqual(1);
+        // 8+ single-letter tokens = mangled (mirrors the real debitoor sheet's ~22).
+        expect(looksMangled('W e r k s t r a t t e Softw are Sw itch')).toBe(true);
+        expect(looksMangled('Wartung, Installation sowie die Pflege der Software und Hardware')).toBe(false);
+    });
+    it('deSpaceWord re-glues a single stranded letter only', () => {
+        expect(deSpaceWord('W artung')).toBe('Wartung');
+        expect(deSpaceWord('Pflege der Software')).toBe('Pflege der Software'); // real spaces kept
+    });
+});
 
 describe('invoice PDF import — primitives', () => {
     it('parses German amounts', () => {
@@ -137,6 +150,11 @@ describe('invoice PDF import — text is authoritative over the filename', () =>
         const inv = buildImportedInvoice(f, p, { id: 'z' });
         expect(inv.number).toBe('R-00045'); // NOT the filename's "45", and NOT the K- number
         expect(inv.customer.name).toBe('LORENZ IT-Dienstleistungen Ltd. & Co. KG');
+    });
+    it('recovers the number from a values-BEFORE-labels column layout (real Rechnung 1)', () => {
+        // debitoor prints the values block above the label block.
+        const t = 'Gesamt EUR 146,58\n…\n1\n10.04.2014\n30.04.2014\n146,58\nRechnung\nRechnungsnr.\nRechnungsdatum\nFälligkeitsdatum\nZu zahlen EUR';
+        expect(parseInvoiceNumber(t)).toBe('1');
     });
     it('recognises every number-format generation from the text', () => {
         expect(parseInvoiceNumber('Rechnung R-2024-00001 Datum: …')).toBe('R-2024-00001');

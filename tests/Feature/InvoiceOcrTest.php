@@ -46,6 +46,24 @@ class InvoiceOcrTest extends TestCase
         $this->postJson('/api/v1/invoices/ocr')->assertUnauthorized();
     }
 
+    public function test_force_ocr_flag_is_passed_through_to_the_service(): void
+    {
+        $mock = Mockery::mock(ReceiptOcr::class);
+        $mock->shouldReceive('available')->andReturn(true);
+        // The 4th arg (forceOcr) must be TRUE when the request sends force_ocr=1.
+        $mock->shouldReceive('extract')
+            ->once()
+            ->with(Mockery::type('string'), Mockery::type('string'), Mockery::type('string'), true)
+            ->andReturn(['text' => 'Software Switch', 'source' => 'ocr', 'pages' => 1]);
+        $this->app->instance(ReceiptOcr::class, $mock);
+
+        $user = User::factory()->create();
+        $this->post('/api/v1/invoices/ocr', [
+            'file' => UploadedFile::fake()->create('inv.pdf', 10, 'application/pdf'),
+            'force_ocr' => '1',
+        ], $this->bearer($user))->assertOk();
+    }
+
     public function test_returns_line_structured_text(): void
     {
         $this->fakeOcr(true, ['text' => "Kaufland\nGesamt 45,90 EUR", 'source' => 'ocr', 'pages' => 1]);

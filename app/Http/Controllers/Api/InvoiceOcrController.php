@@ -34,6 +34,9 @@ class InvoiceOcrController extends Controller
             'file' => ['required', 'file'],
             // Well-formed Tesseract language string (e.g. deu, eng, deu+eng).
             'lang' => ['nullable', 'string', 'regex:/^[a-z]{3}(\+[a-z]{3})*$/'],
+            // Force rasterise+OCR of a PDF (skip the embedded text layer) — used when the
+            // client detects a justified-mangled text layer ("Softw are").
+            'force_ocr' => ['nullable', 'boolean'],
         ]);
 
         /** @var UploadedFile $upload */
@@ -54,7 +57,7 @@ class InvoiceOcrController extends Controller
         $upload->move(dirname($tmp->path()), basename($tmp->path()));
 
         $lang = $request->filled('lang') ? $request->string('lang')->value() : 'deu+eng';
-        $result = $ocr->extract($tmp->path(), $mime, $lang);
+        $result = $ocr->extract($tmp->path(), $mime, $lang, $request->boolean('force_ocr'));
 
         if (trim($result['text']) === '') {
             return $this->noStore(response()->json(['error' => 'no_text'], 422));

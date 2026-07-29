@@ -1,7 +1,7 @@
 // invoices component. Extracted from app.js.
 import { zkModule, bootStore } from '../shared/zk-module';
 import { nextSeqForYear, duplicateNumbers as dupNumbers, invoicesInYear, invoiceYear } from '../shared/invoice-numbering';
-import { parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, buildInvoiceFromXml } from '../shared/invoice-pdf-import';
+import { parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, buildInvoiceFromXml, looksMangled, mangleScore } from '../shared/invoice-pdf-import';
 import { parseEInvoiceXml, looksLikeEInvoiceXml } from '../shared/einvoice-xml';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
 import { jsonHeaders, postForm } from '../shared/api';
@@ -14,7 +14,7 @@ import { autoPick, suggestBookings } from '../shared/receipt-match';
 import { projectTree as buildProjectTree, rolledTotal as projectRolled, ownTotal as projectOwn, projectReceipts as receiptsForProject } from '../shared/finance-projects';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary } from '../shared/finance-stats';
 import { matchInvoice } from '../shared/invoice-match';
-import { extractDocText } from '../shared/doc-text';
+import { extractDocText, ocrPdf } from '../shared/doc-text';
 import { analyzeReceiptText } from '../shared/receipt-ocr';
 import { normMerchant, matchPartner, learnedCategoryFor } from '../shared/merchant-learn';
 import { buildReceiptName } from '../shared/receipt-name';
@@ -1277,8 +1277,29 @@ export default (config = {}, labels = {}) => ({
                         }
                         text += '\n';
                     }
-                    draft = buildImportedInvoice(parseInvoiceFilename(file.name), parseInvoiceText(text), opts);
+                    const parsedText = parseInvoiceText(text);
+                    draft = buildImportedInvoice(parseInvoiceFilename(file.name), parsedText, opts);
                     draft._source = 'text';
+
+                    // Some PDFs (e.g. debitoor) bake justification spaces INTO the text layer
+                    // ("Softw are", "Sw itch") — unfixable from that text. If it looks mangled,
+                    // rasterise the pages and OCR them client-side (ZK, self-hosted tesseract).
+                    // Accept the OCR draft ONLY when it is genuinely cleaner AND its net matches
+                    // the text-layer net (so the reliable text-layer amounts are never traded
+                    // for an OCR mis-read of the digits).
+                    if (looksMangled(text)) {
+                        try {
+                            const ocrText = await ocrPdf(bytes.slice(0), 3);
+                            if (ocrText && mangleScore(ocrText) < mangleScore(text)) {
+                                const op = parseInvoiceText(ocrText);
+                                const netOk = op.net != null && parsedText.net != null && Math.abs(op.net - parsedText.net) <= 0.02;
+                                if (netOk) {
+                                    draft = buildImportedInvoice(parseInvoiceFilename(file.name), op, opts);
+                                    draft._source = 'ocr';
+                                }
+                            }
+                        } catch (e) { /* OCR unavailable/failed → keep the text-layer draft */ }
+                    }
                 }
                 draft.selected = true;
                 draft._file = file.name;

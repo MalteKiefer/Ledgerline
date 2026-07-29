@@ -91,6 +91,32 @@ export function parseInvoiceNumber(text) {
     m = t.match(/\bR-\d{4}-\d{2,}\b/); if (m) return m[0]; // R-YYYY-NNNNN
     m = t.match(/\bR-\d{2,}\b/); if (m) return m[0]; // R-NNNNN
     m = t.match(/\b(?:19|20)\d{2}-\d{2,}\b/); if (m) return m[0]; // YYYY-NNN (2026-001)
+
+    // Values-BEFORE-labels column layout (older debitoor sheet): the values print as a
+    // block ("1 / 10.04.2014 / 30.04.2014 / 146,58") ABOVE the label block ("Rechnung /
+    // Rechnungsnr. / Rechnungsdatum / Fälligkeitsdatum / Zu zahlen EUR"). Align the value
+    // that sits at "Rechnungsnr."'s offset within the labels — a bare integer that is
+    // neither a date nor a money amount.
+    const lines = t.split(/[\r\n]+/).map((s) => s.trim());
+    const flat = (s) => s.replace(/\s+/g, '').toLowerCase();
+    const isLabel = (s) => /^(rechnungs?-?nr\.?|rechnungsnummer|rechnungsdatum|datum|f[äa]lligkeitsdatum|f[äa]lligam|zuzahlen(eur)?|kundennummer|leistungsdatum|lieferdatum)$/.test(flat(s));
+    const nrIdx = lines.findIndex((l) => /^(rechnungs?-?nr\.?|rechnungsnummer)$/.test(flat(l)));
+    if (nrIdx > 0) {
+        // "Rechnung" title starts the label block (search up to 3 lines back).
+        let titleIdx = -1;
+        for (let i = nrIdx - 1; i >= 0 && i >= nrIdx - 3; i--) { if (flat(lines[i]) === 'rechnung') { titleIdx = i; break; } }
+        if (titleIdx > 0) {
+            // Count the contiguous data-label run after the title (Rechnungsnr., …).
+            let n = 0;
+            for (let i = titleIdx + 1; i < lines.length && isLabel(lines[i]); i++) n++;
+            const offset = nrIdx - titleIdx - 1; // Rechnungsnr.'s position within that run
+            // The values are the N lines DIRECTLY above the title, same order as the labels.
+            if (n > 0 && titleIdx - n >= 0) {
+                const cand = lines[titleIdx - n + offset];
+                if (cand && /^(R-\d{4}-\d+|R-\d+|\d{4}-\d+|\d{1,6})$/.test(cand) && ! /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(cand)) return cand;
+            }
+        }
+    }
     return null;
 }
 
@@ -104,6 +130,22 @@ export function parseInvoiceNumber(text) {
  */
 export function deSpaceWord(s) {
     return String(s || '').replace(/\b([A-Za-zÄÖÜäöüß])\s+(?=[a-zäöüß]{2,})/g, '$1');
+}
+
+/**
+ * How badly a PDF's embedded text layer is justified-mangled — the count of whitespace-
+ * separated tokens that are a SINGLE letter ("W", "e"), the signature of debitoor-style
+ * spaces baked mid-word ("W artung", "Softw are", "Sw itch"). A clean invoice sits near 0–3;
+ * a mangled one runs 8–27. Used to decide whether to fall back to rasterise+OCR.
+ */
+export function mangleScore(text) {
+    const toks = String(text || '').split(/\s+/).filter((x) => /[A-Za-zÄÖÜäöüß]/.test(x));
+    return toks.filter((x) => x.replace(/[^A-Za-zÄÖÜäöüß]/g, '').length === 1).length;
+}
+
+/** True when the text layer is justified-mangled enough to prefer OCR (see mangleScore). */
+export function looksMangled(text) {
+    return mangleScore(text) >= 8;
 }
 
 /**
