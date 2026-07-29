@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.504.34
+  version: 1.506.87
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -144,7 +144,7 @@ components:
         company_bic: { type: string, nullable: true, maxLength: 20 }
         company_bank_name: { type: string, nullable: true, maxLength: 200 }
         invoice_number_format: { type: string, nullable: true, maxLength: 40, description: "e.g. YYYY-NNNN. Locked client-side once the current year has invoices (GoBD)." }
-        invoice_next_number: { type: integer, nullable: true, minimum: 1, description: "Numbering floor; the actual next number is derived per year from the invoices." }
+        invoice_next_number: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "Numbering floor; the actual next number is derived per year from the invoices." }
         invoice_default_vat_rate: { type: number, nullable: true, minimum: 0, maximum: 100 }
         invoice_payment_terms_days: { type: integer, nullable: true, minimum: 0, maximum: 365 }
         invoice_footer_text: { type: string, nullable: true, maxLength: 2000 }
@@ -436,9 +436,157 @@ components:
           example: 104857600
         quota:
           type: integer
-          description: Maximum bytes allowed (null = unlimited).
-          nullable: true
+          description: >
+            Maximum bytes allowed. `0` means unlimited (the server returns the
+            integer 0, never null, for an uncapped module). Note this differs from
+            GET /me `usage.quota`, which uses null for unlimited.
+          minimum: 0
           example: 10737418240
+
+    StoreVersionConflict:
+      type: object
+      description: >
+        409 Conflict from a sealed manifest store (files/gallery/notes/passwords/
+        invoices and the generic /store/{module}). The client must re-read the
+        store, rebase its delta, and retry — it must NEVER blindly re-PUT stale data.
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [version_conflict]
+
+    MissingShardResponse:
+      type: object
+      description: >
+        422 from a sharded store save (files/gallery/notes/passwords/invoices) when a
+        referenced shard blob has no ledger row — the server refuses to persist a root
+        pointing at a shard that was never durably uploaded.
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [missing_shard]
+
+    ShareVersionConflict:
+      type: object
+      description: >
+        409 Conflict on a public-share update — the share record was modified
+        concurrently. Carries the current version so the caller can retry with a
+        fresh expected_version.
+      required: [error, version]
+      properties:
+        error:
+          type: string
+          enum: [version_conflict]
+        version:
+          type: integer
+          description: Current server-side share version.
+
+    ChunkInitRequest:
+      type: object
+      description: Begin a chunked (S3 multipart) upload.
+      required: [size]
+      properties:
+        size:
+          type: integer
+          minimum: 1
+          maximum: 83886080000
+          description: Total ciphertext size in bytes; checked against the quota before the upload starts.
+
+    ChunkInitResponse:
+      type: object
+      required: [token, id, partSize]
+      properties:
+        token:
+          type: string
+          description: Opaque upload-session token; pass it to every part/complete/abort call.
+        id:
+          type: string
+          format: uuid
+          description: The blob id the completed upload will be stored under.
+        partSize:
+          type: integer
+          description: Byte size each part (except the last) MUST be. Split the file on this boundary.
+          example: 8388608
+
+    ChunkPartResponse:
+      type: object
+      required: [part, etag]
+      properties:
+        part:
+          type: integer
+          description: Echoed 1-based part number.
+        etag:
+          type: string
+          description: S3 ETag for this part; collect all of them and pass them back in the complete call.
+
+    ChunkCompleteRequest:
+      type: object
+      description: Finalise a chunked upload from the collected per-part ETags.
+      required: [token, parts]
+      properties:
+        token:
+          type: string
+        parts:
+          type: array
+          minItems: 1
+          maxItems: 10000
+          items:
+            type: object
+            required: [part, etag]
+            properties:
+              part:
+                type: integer
+                minimum: 1
+              etag:
+                type: string
+
+    ClipEmbedding:
+      type: array
+      nullable: true
+      description: >
+        Raw CLIP embedding as a JSON array of floats (NOT base64). Null when ML was
+        skipped or unavailable. The client re-encrypts it before storing.
+      items:
+        type: number
+
+    FaceItem:
+      type: object
+      description: One detected face.
+      required: [score, box]
+      properties:
+        score:
+          type: number
+          description: Detection confidence.
+        box:
+          type: array
+          minItems: 4
+          maxItems: 4
+          description: Bounding box [x, y, w, h].
+          items:
+            type: number
+        embedding:
+          allOf:
+            - $ref: "#/components/schemas/ClipEmbedding"
+          description: Raw face embedding (JSON float array, not base64).
+        crop:
+          type: string
+          nullable: true
+          description: Base64-encoded face crop image.
+
+    PlaceInfo:
+      type: object
+      description: >
+        Reverse-geocoded place. Always an object (possibly empty `{}` when geocoding
+        did not run); never a bare string.
+      properties:
+        display:
+          type: string
+          nullable: true
+          description: Human-readable place label.
+        address:
+          type: object
+          description: Structured address components (key→value strings).
 
     StoreResponse:
       type: object
@@ -505,7 +653,7 @@ components:
     TokenResponse:
       type: object
       description: Public share link token.
-      required: [token]
+      required: [token, version]
       properties:
         token:
           type: string
@@ -563,8 +711,42 @@ components:
           nullable: true
           description: >
             Optional recovery-wrap of the vault key. Opaque ciphertext.
+        recovery_nonce:
+          type: string
+          nullable: true
+          description: Nonce used for the recovery-key wrap (base64).
 
 paths:
+
+  # --------------------------------------------------------------------------
+  # Health check (app up-check) — NOT under /api/v1; served at the site root.
+  # --------------------------------------------------------------------------
+
+  /up:
+    servers:
+      - url: /
+        description: Site root (this endpoint lives above the /api/v1 base path).
+    get:
+      tags: [Health]
+      operationId: healthUp
+      summary: Application health check (up-check)
+      description: >
+        Laravel's framework health endpoint at the site ROOT (`/up`, not
+        `/api/v1/up`). Unauthenticated, unthrottled. Returns HTTP 200 while the
+        application booted cleanly (runs the framework health checks) and a 500
+        otherwise. Apps poll it to confirm the server is reachable and healthy
+        before/independently of API calls. The body is a small HTML page — clients
+        should treat the STATUS CODE as the signal, not the body.
+      security: []
+      responses:
+        "200":
+          description: Application is up and healthy.
+          content:
+            text/html:
+              schema:
+                type: string
+        "500":
+          description: Application is unhealthy (a health check threw).
 
   # --------------------------------------------------------------------------
   # Auth
@@ -606,8 +788,10 @@ paths:
                   status:
                     type: string
                     enum: [pending]
+        "410":
+          description: Code not found, expired, or in the wrong state (Gone).
         "422":
-          description: Validation error or code not found / already consumed.
+          description: Validation error (missing/invalid fields).
         "429":
           description: Rate limit exceeded.
 
@@ -669,6 +853,8 @@ paths:
                         description: Sanctum bearer token for subsequent API calls.
                       user:
                         $ref: "#/components/schemas/MeUser"
+        "410":
+          description: Code not found, expired, rejected, or already consumed (Gone).
         "429":
           description: Rate limit exceeded.
 
@@ -746,9 +932,8 @@ paths:
       operationId: avatarShow
       summary: Stream the authenticated user's avatar
       description: >
-        Streams the IdP-provided avatar image for the authenticated user. Not
-        zero-knowledge (IdP profile image, non-secret). Returns 404 if no avatar
-        is stored. Throttle: 120 req/min.
+        Streams the user's stored avatar image. Not zero-knowledge (a non-secret
+        profile image). Returns 404 if no avatar is stored. Throttle: 120 req/min.
       responses:
         "200":
           description: Avatar image bytes.
@@ -757,6 +942,8 @@ paths:
               schema:
                 type: string
                 format: binary
+        "401":
+          description: Unauthenticated.
         "404":
           description: No avatar stored.
         "429":
@@ -868,6 +1055,8 @@ paths:
           description: Not modified (ETag matched If-None-Match).
         "401":
           description: Unauthenticated.
+        "403":
+          description: Module disabled for this account.
         "404":
           description: Unknown module key.
     put:
@@ -900,6 +1089,14 @@ paths:
                   type: integer
                   minimum: 0
                   description: Version the client last read (optimistic concurrency token).
+                shards:
+                  type: array
+                  maxItems: 200000
+                  items: { type: string, format: uuid }
+                  description: >
+                    Accepted but unused for the plain module store (no shard ledger);
+                    validated as UUIDs. Sharded stores (files/gallery/notes/passwords/
+                    invoices) enforce it referentially.
       responses:
         "200":
           description: Write successful; new version counter.
@@ -907,6 +1104,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VersionResponse"
+        "403":
+          description: Module disabled for this account.
         "409":
           description: Concurrent write conflict; re-read and retry.
           content:
@@ -950,6 +1149,8 @@ paths:
           description: Not modified (ETag matched If-None-Match).
         "401":
           description: Unauthenticated.
+        "403":
+          description: Module disabled for this account.
     put:
       tags: [Files]
       operationId: filesStoreSave
@@ -974,6 +1175,7 @@ paths:
                   description: Version the client last read (optimistic concurrency token).
                 shards:
                   type: array
+                  maxItems: 200000
                   items:
                     type: string
                     format: uuid
@@ -991,6 +1193,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VersionResponse"
+        "403":
+          description: Module disabled for this account.
         "409":
           description: Concurrent write conflict; re-read and retry.
           content:
@@ -1078,22 +1282,21 @@ paths:
       summary: Initiate S3 multipart upload
       description: >
         Begins an S3 multipart upload session for a large file blob. Returns an
-        opaque session token and the blob UUID to use in subsequent part/complete
-        calls. Throttle: 600 req/min.
+        opaque session token, the blob UUID, and the part size to split on.
+        Throttle: 600 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChunkInitRequest"
       responses:
         "200":
           description: Session initialised.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  token:
-                    type: string
-                    description: Opaque session token for subsequent part/complete/abort calls.
-                  id:
-                    type: string
-                    description: UUID that will be registered as the blob id on completion.
+                $ref: "#/components/schemas/ChunkInitResponse"
         "413":
           description: Quota would be exceeded.
         "429":
@@ -1113,26 +1316,27 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [token, chunk]
+              required: [token, part, chunk]
               properties:
                 token:
                   type: string
                   description: Session token from the init call.
+                part:
+                  type: integer
+                  minimum: 1
+                  maximum: 10000
+                  description: 1-based part number (upload order).
                 chunk:
                   type: string
                   format: binary
-                  description: Part bytes (minimum 5 MiB per part except the last).
+                  description: Part bytes (partSize from init per part except the last).
       responses:
         "200":
           description: Part accepted.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  part:
-                    type: integer
-                    description: Part number that was recorded.
+                $ref: "#/components/schemas/ChunkPartResponse"
         "429":
           description: Rate limit exceeded.
 
@@ -1149,12 +1353,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [token]
-              properties:
-                token:
-                  type: string
-                  description: Session token from the init call.
+              $ref: "#/components/schemas/ChunkCompleteRequest"
       responses:
         "201":
           description: Blob registered.
@@ -1453,6 +1652,10 @@ paths:
           description: Share not found or not owned by caller.
         "409":
           description: Version conflict — the share was updated elsewhere; re-read and retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareVersionConflict"
         "422":
           description: Validation error.
         "429":
@@ -1573,18 +1776,21 @@ paths:
           schema:
             type: string
             format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChunkInitRequest"
       responses:
         "200":
           description: Session initialised.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  token:
-                    type: string
-                  id:
-                    type: string
+                $ref: "#/components/schemas/ChunkInitResponse"
+        "413":
+          description: Owner quota would be exceeded.
         "404":
           description: Vault not found or insufficient role.
         "429":
@@ -1610,16 +1816,25 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [token, chunk]
+              required: [token, part, chunk]
               properties:
                 token:
                   type: string
+                part:
+                  type: integer
+                  minimum: 1
+                  maximum: 10000
+                  description: 1-based part number (upload order).
                 chunk:
                   type: string
                   format: binary
       responses:
         "200":
           description: Part accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChunkPartResponse"
         "429":
           description: Rate limit exceeded.
 
@@ -1642,11 +1857,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [token]
-              properties:
-                token:
-                  type: string
+              $ref: "#/components/schemas/ChunkCompleteRequest"
       responses:
         "201":
           description: Blob registered.
@@ -1768,8 +1979,9 @@ paths:
       operationId: vaultBlobsReconcile
       summary: Reclaim unreferenced blobs from a shared folder vault
       description: >
-        Same orphan-reclaim protocol as the personal files reconcile. Any member
-        may call this; serialised per vault owner. Throttle: 120 req/min.
+        Same orphan-reclaim protocol as the personal files reconcile. Requires
+        editor or manager role (it deletes blobs); serialised per vault owner.
+        Throttle: 120 req/min.
       parameters:
         - name: vault
           in: path
@@ -1841,6 +2053,8 @@ paths:
                 $ref: "#/components/schemas/StoreResponse"
         "304":
           description: Sealed root unchanged since the supplied ETag (no body).
+        "403":
+          description: Module disabled for this account.
     put:
       tags: [Gallery]
       operationId: galleryStoreSave
@@ -1864,6 +2078,7 @@ paths:
                   minimum: 0
                 shards:
                   type: array
+                  maxItems: 200000
                   items:
                     type: string
                     format: uuid
@@ -1880,6 +2095,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VersionResponse"
+        "403":
+          description: Module disabled for this account.
         "409":
           description: Version conflict.
           content:
@@ -1957,18 +2174,21 @@ paths:
       operationId: galleryUploadInit
       summary: Initiate S3 multipart upload for gallery
       description: "Throttle: 600 req/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChunkInitRequest"
       responses:
         "200":
           description: Session initialised.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  token:
-                    type: string
-                  id:
-                    type: string
+                $ref: "#/components/schemas/ChunkInitResponse"
+        "413":
+          description: Quota would be exceeded.
         "429":
           description: Rate limit exceeded.
 
@@ -1984,16 +2204,25 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [token, chunk]
+              required: [token, part, chunk]
               properties:
                 token:
                   type: string
+                part:
+                  type: integer
+                  minimum: 1
+                  maximum: 10000
+                  description: 1-based part number (upload order).
                 chunk:
                   type: string
                   format: binary
       responses:
         "200":
           description: Part accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChunkPartResponse"
         "429":
           description: Rate limit exceeded.
 
@@ -2008,11 +2237,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [token]
-              properties:
-                token:
-                  type: string
+              $ref: "#/components/schemas/ChunkCompleteRequest"
       responses:
         "201":
           description: Blob registered.
@@ -2213,8 +2438,12 @@ paths:
                     type: string
                   width:
                     type: integer
+                    nullable: true
+                    description: Null when the source could not be decoded.
                   height:
                     type: integer
+                    nullable: true
+                    description: Null when the source could not be decoded.
                   duration:
                     type: number
                     nullable: true
@@ -2223,14 +2452,19 @@ paths:
                     nullable: true
                   exif:
                     type: object
-                    nullable: true
+                    description: >
+                      Always present. Sub-keys: taken_at (string|null), lat
+                      (number|null), lon (number|null — note `lon`, not `lng`),
+                      camera (string|null).
+                    properties:
+                      taken_at: { type: string, nullable: true }
+                      lat: { type: number, nullable: true }
+                      lon: { type: number, nullable: true }
+                      camera: { type: string, nullable: true }
                   place:
-                    type: string
-                    nullable: true
+                    $ref: "#/components/schemas/PlaceInfo"
                   embedding:
-                    type: string
-                    nullable: true
-                    description: Base64-encoded CLIP embedding.
+                    $ref: "#/components/schemas/ClipEmbedding"
                   model:
                     type: string
                     nullable: true
@@ -2240,20 +2474,21 @@ paths:
                       with this so semantic search only compares embeddings from
                       one model (spec §8.5). Native clients read it here.
                   phash:
-                    type: string
+                    type: integer
                     nullable: true
+                    description: Perceptual hash as an integer (not a string).
                   faces:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/FaceItem"
                   thumb:
                     type: string
                     nullable: true
-                    description: Base64-encoded JPEG thumbnail.
+                    description: Base64-encoded WebP thumbnail.
                   medium:
                     type: string
                     nullable: true
-                    description: Base64-encoded medium rendition.
+                    description: Base64-encoded WebP medium rendition.
                   motion:
                     type: string
                     nullable: true
@@ -2292,8 +2527,7 @@ paths:
                 type: object
                 properties:
                   embedding:
-                    type: string
-                    nullable: true
+                    $ref: "#/components/schemas/ClipEmbedding"
                   model:
                     type: string
                     nullable: true
@@ -2304,7 +2538,9 @@ paths:
                   faces:
                     type: array
                     items:
-                      type: object
+                      $ref: "#/components/schemas/FaceItem"
+        "422":
+          description: Image too large, invalid, or pixel budget exceeded.
         "429":
           description: Rate limit exceeded.
 
@@ -2339,8 +2575,9 @@ paths:
                 type: object
                 properties:
                   embedding:
-                    type: string
-                    description: Base64-encoded float32 vector.
+                    $ref: "#/components/schemas/ClipEmbedding"
+        "422":
+          description: Missing or invalid query parameter.
         "429":
           description: Rate limit exceeded.
 
@@ -2673,16 +2910,16 @@ paths:
         request input. Coordinates are never logged or persisted. When the
         upstream is unset/unreachable or no route exists, a clean 200 with
         geometry:null (and all other fields null) is returned so the client falls
-        back to straight lines. Throttle: 60 req/min.
+        back to straight lines. Throttle: 180 req/min.
       parameters:
         - name: points
           in: query
           required: true
           schema:
             type: string
-            maxLength: 1024
+            maxLength: 4096
           description: >
-            Ordered waypoints as "lat,lng;lat,lng;…" (2..25 points, each within
+            Ordered waypoints as "lat,lng;lat,lng;…" (2..100 points, each within
             coordinate range).
       responses:
         "200":
@@ -2912,7 +3149,7 @@ paths:
         Returns the caller's published X25519 public key, the wrapped secret key
         (sealed under VK), and the fingerprint. Allows the client to recover the
         secret key on a second device. Returns null fields if no key has been
-        published. Throttle: 60 req/min.
+        published. Throttle: 240 req/min.
       responses:
         "200":
           description: Identity key material.
@@ -2989,7 +3226,10 @@ paths:
                     Required from v3 clients; published with the X25519 key.
                 wrapped_mlkem_secret_key:
                   type: string
-                  description: ML-KEM-768 decapsulation key sealed under the caller's VK. Opaque.
+                  description: >
+                    ML-KEM-768 identity secret sealed under the caller's VK — the
+                    64-byte FIPS-203 SEED (not the expanded decapsulation key), the
+                    portable canonical secret. Opaque to the server.
       responses:
         "200":
           description: Published (or idempotent re-publish).
@@ -2999,6 +3239,15 @@ paths:
                 $ref: "#/components/schemas/OkResponse"
         "409":
           description: Different public key already stored (key conflict).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    enum: [key_conflict]
 
   /vaults:
     get:
@@ -3040,11 +3289,14 @@ paths:
                 type: array
                 items:
                   type: object
+                  required: [id, vault_id, role, status, kind, owner, wrapped_vault_key]
                   properties:
                     id:
-                      type: string
+                      type: integer
+                      description: Membership row id (integer PK).
                     vault_id:
                       type: string
+                      format: uuid
                     role:
                       type: string
                       enum: [viewer, editor, manager]
@@ -3064,11 +3316,8 @@ paths:
                     wrapped_vault_key:
                       type: string
                       description: >
-                        VK_vault wrapped under the member's X25519 public key.
-                        Opaque ciphertext; the server never reads VK_vault.
-                    vault:
-                      type: object
-                      description: Vault metadata (id, kind, owner_id).
+                        VK_vault hybrid-wrapped (X25519+ML-KEM-768 suite envelope) to
+                        the member. Opaque ciphertext; the server never reads VK_vault.
 
     post:
       tags: [Vaults]
@@ -3291,9 +3540,11 @@ paths:
                 type: array
                 items:
                   type: object
+                  required: [id, user_id, role, status]
                   properties:
                     id:
-                      type: string
+                      type: integer
+                      description: Membership row id (integer PK).
                     user_id:
                       type: integer
                     name:
@@ -3314,6 +3565,13 @@ paths:
                     public_key:
                       type: string
                       nullable: true
+                      description: The member's X25519 public key (base64).
+                    mlkem_public_key:
+                      type: string
+                      nullable: true
+                      description: >
+                        The member's ML-KEM-768 encapsulation key (base64); needed to
+                        re-wrap VK_vault to this member on rotate.
         "404":
           description: Vault not found or caller is not a manager.
         "429":
@@ -3398,6 +3656,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OkResponse"
+        "403":
+          description: Caller is not the invited user.
         "404":
           description: Membership not found or does not belong to the caller.
         "422":
@@ -3520,8 +3780,8 @@ paths:
                   type: array
                   description: >
                     Updated wrapped_vault_key for each REMAINING active member
-                    (the removed member must NOT appear here), each sealed with
-                    crypto_box_seal to their X25519 public key.
+                    (the removed member must NOT appear here), each hybrid-wrapped
+                    (X25519+ML-KEM-768 suite envelope) to their identity keys.
                   items:
                     type: object
                     required: [user_id, wrapped_vault_key]
@@ -3547,6 +3807,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ConflictResponse"
+        "422":
+          description: >
+            Business-rule error — remove_member_id is not a member of this vault,
+            the manager tried to remove themselves, the removed member appears in the
+            members list, or members contains an unknown/inactive user.
         "404":
           description: Vault not found or caller is not a manager.
         "429":
@@ -3728,6 +3993,7 @@ paths:
                     type: array
                     items:
                       type: object
+                      required: [id, level, category, title, read, at]
                       properties:
                         id:
                           type: integer
@@ -3736,7 +4002,7 @@ paths:
                           description: Severity level (e.g. info, warning, error).
                         category:
                           type: string
-                          nullable: true
+                          description: Category (non-null; defaults to "general").
                         title:
                           type: string
                         body:
@@ -3970,6 +4236,10 @@ paths:
           description: Share not found or not owned by caller.
         "409":
           description: Version conflict — the share was updated elsewhere; re-read and retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareVersionConflict"
         "422":
           description: Validation error.
         "429":
@@ -4319,11 +4589,11 @@ paths:
               required: [name]
               properties:
                 name: { type: string, maxLength: 100 }
-                files_quota_mb: { type: integer, nullable: true, minimum: 0 }
-                gallery_quota_mb: { type: integer, nullable: true, minimum: 0 }
+                files_quota_mb: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
+                gallery_quota_mb: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
                 max_connected_devices: { type: integer, nullable: true, minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
-                modules: { type: array, nullable: true, items: { type: string }, description: "Enabled module keys (null = all)." }
+                modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, passwords, notes, todos, bookmarks, contacts, finance, health, explore] }, description: "Enabled module keys (null = all)." }
                 members:
                   type: array
                   items: { type: integer }
@@ -4362,11 +4632,11 @@ paths:
               required: [name]
               properties:
                 name: { type: string, maxLength: 100 }
-                files_quota_mb: { type: integer, nullable: true, minimum: 0 }
-                gallery_quota_mb: { type: integer, nullable: true, minimum: 0 }
+                files_quota_mb: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
+                gallery_quota_mb: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
                 max_connected_devices: { type: integer, nullable: true, minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
-                modules: { type: array, nullable: true, items: { type: string }, description: "Enabled module keys (null = all)." }
+                modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, passwords, notes, todos, bookmarks, contacts, finance, health, explore] }, description: "Enabled module keys (null = all)." }
                 members:
                   type: array
                   items: { type: integer }
@@ -4419,6 +4689,7 @@ paths:
                   ciphertext: { type: string, nullable: true }
                   version: { type: integer }
         "304": { description: Not modified (ETag match). }
+        "403": { description: Module disabled for this account. }
     put:
       tags: [Store]
       operationId: notesStoreSave
@@ -4439,6 +4710,7 @@ paths:
                 version: { type: integer, minimum: 0 }
                 shards:
                   type: array
+                  maxItems: 200000
                   items: { type: string, format: uuid }
                   description: The blob refs the new root points at (record shards).
       responses:
@@ -4449,8 +4721,17 @@ paths:
               schema:
                 type: object
                 properties: { version: { type: integer } }
-        "409": { description: Version conflict — re-read, rebase, retry. }
-        "422": { description: A referenced shard blob has no ledger row (missing_shard). }
+        "403": { description: Module disabled for this account. }
+        "409":
+          description: Version conflict — re-read, rebase, retry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoreVersionConflict" }
+        "422":
+          description: A referenced shard blob has no ledger row (missing_shard).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MissingShardResponse" }
 
   /notes/upload:
     post:
@@ -4505,6 +4786,7 @@ paths:
               properties:
                 blobs:
                   type: array
+                  maxItems: 512
                   items: { type: string, format: uuid }
       responses:
         "200": { description: Framed concatenated ciphertext blobs. }
@@ -4527,9 +4809,14 @@ paths:
               properties:
                 blobs:
                   type: array
+                  maxItems: 100000
                   items: { type: string, format: uuid }
       responses:
-        "200": { description: Reconciled; returns updated usage. }
+        "200":
+          description: Reconciled; returns updated usage.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageResponse" }
 
   /invoices/store:
     get:
@@ -4569,6 +4856,7 @@ paths:
                   ciphertext: { type: string, nullable: true }
                   version: { type: integer }
         "304": { description: Not modified (ETag match). }
+        "403": { description: Module disabled for this account. }
     put:
       tags: [Store]
       operationId: invoicesStoreSave
@@ -4589,6 +4877,7 @@ paths:
                 version: { type: integer, minimum: 0 }
                 shards:
                   type: array
+                  maxItems: 200000
                   items: { type: string, format: uuid }
                   description: The blob refs the new root points at (record shards).
       responses:
@@ -4599,8 +4888,17 @@ paths:
               schema:
                 type: object
                 properties: { version: { type: integer } }
-        "409": { description: Version conflict — re-read, rebase, retry. }
-        "422": { description: A referenced shard blob has no ledger row (missing_shard). }
+        "403": { description: Module disabled for this account. }
+        "409":
+          description: Version conflict — re-read, rebase, retry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoreVersionConflict" }
+        "422":
+          description: A referenced shard blob has no ledger row (missing_shard).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MissingShardResponse" }
 
   /invoices/upload:
     post:
@@ -4655,6 +4953,7 @@ paths:
               properties:
                 blobs:
                   type: array
+                  maxItems: 512
                   items: { type: string, format: uuid }
       responses:
         "200": { description: Framed concatenated ciphertext blobs. }
@@ -4677,9 +4976,14 @@ paths:
               properties:
                 blobs:
                   type: array
+                  maxItems: 100000
                   items: { type: string, format: uuid }
       responses:
-        "200": { description: Reconciled; returns updated usage. }
+        "200":
+          description: Reconciled; returns updated usage.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageResponse" }
 
   /company:
     get:
@@ -4731,6 +5035,7 @@ paths:
                 properties:
                   company: { $ref: "#/components/schemas/CompanyProfile" }
         "422": { description: Validation error. }
+        "429": { description: Rate limit exceeded. }
 
   /company/logo:
     get:
@@ -4768,6 +5073,7 @@ paths:
                   ciphertext: { type: string, nullable: true }
                   version: { type: integer }
         "304": { description: Not modified (ETag match). }
+        "403": { description: Module disabled for this account. }
     put:
       tags: [Store]
       operationId: passwordsStoreSave
@@ -4788,6 +5094,7 @@ paths:
                 version: { type: integer, minimum: 0 }
                 shards:
                   type: array
+                  maxItems: 200000
                   items: { type: string, format: uuid }
                   description: The blob refs the new root points at (record shards).
       responses:
@@ -4798,8 +5105,17 @@ paths:
               schema:
                 type: object
                 properties: { version: { type: integer } }
-        "409": { description: Version conflict — re-read, rebase, retry. }
-        "422": { description: A referenced shard blob has no ledger row (missing_shard). }
+        "403": { description: Module disabled for this account. }
+        "409":
+          description: Version conflict — re-read, rebase, retry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoreVersionConflict" }
+        "422":
+          description: A referenced shard blob has no ledger row (missing_shard).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MissingShardResponse" }
 
   /passwords/upload:
     post:
@@ -4854,6 +5170,7 @@ paths:
               properties:
                 blobs:
                   type: array
+                  maxItems: 512
                   items: { type: string, format: uuid }
       responses:
         "200": { description: Framed concatenated ciphertext blobs. }
@@ -4876,6 +5193,11 @@ paths:
               properties:
                 blobs:
                   type: array
+                  maxItems: 100000
                   items: { type: string, format: uuid }
       responses:
-        "200": { description: Reconciled; returns updated usage. }
+        "200":
+          description: Reconciled; returns updated usage.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageResponse" }
