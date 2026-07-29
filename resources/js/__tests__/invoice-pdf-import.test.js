@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-    parseAmount, parseGermanDate, parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, parseInvoiceNumber, parseCustomer, importedSeq,
+    parseAmount, parseGermanDate, parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, parseInvoiceNumber, parseCustomer, importedSeq, parseFirstLineItem,
 } from '../shared/invoice-pdf-import.js';
 
 describe('invoice PDF import — primitives', () => {
@@ -191,5 +191,60 @@ describe('invoice PDF import — the current-year 2026 format', () => {
         expect(importedSeq('2025-010', 2026)).toBeNull(); // different year
         expect(importedSeq('R-00124', 2026)).toBeNull();  // different format
         expect(importedSeq('20', 2026)).toBeNull();
+    });
+});
+
+describe('invoice PDF import — column-separated dates (pdf.js groups labels then values)', () => {
+    // The older Kiefer sheet renders labels in one text group and the values in another,
+    // so the label-adjacent regex can't bind them; issue = earliest date, due = the first
+    // date after it.
+    const text = `Rechnung
+Rechnungsnr.
+Rechnungsdatum
+Fälligkeitsdatum
+Zu zahlen EUR
+4
+17.06.2014
+17.07.2014
+36,00
+Beschreibung Menge Einheit Preis Betrag
+IT Wartung & Pflege 3 Stunde(n) 12,00 36,00
+Gesamt EUR 36,00
+Gemäß § 19 (1) UStG erheben wir keine Umsatzsteuer.`;
+    const p = parseInvoiceText(text);
+    it('recovers issue and due dates positionally', () => {
+        expect(p.date).toBe('2014-06-17');
+        expect(p.dueDate).toBe('2014-07-17'); // not the issue date
+    });
+    it('parses the first line item with its unit', () => {
+        expect(p.firstItem).toEqual(expect.objectContaining({ desc: 'IT Wartung & Pflege', qty: 3, unit: 'Stunde(n)', unitPrice: 12 }));
+    });
+    it('builds a single-item line that keeps qty + unit + unit price', () => {
+        const inv = buildImportedInvoice(parseInvoiceFilename('20140617_ Rechnung 4 - STN Nürnberg.pdf'), p, { id: 'x', currentYear: 2014 });
+        expect(inv.lines).toHaveLength(1);
+        expect(inv.lines[0]).toEqual(expect.objectContaining({ desc: 'IT Wartung & Pflege', qty: 3, unit: 'Stunde(n)', unitPrice: 12, vatRate: 0 }));
+        expect(inv.dueDate).toBe('2014-07-17');
+    });
+});
+
+describe('invoice PDF import — parseFirstLineItem', () => {
+    it('parses a unit-bearing row (qty × price = amount)', () => {
+        const it = parseFirstLineItem('Beschreibung Menge Einheit Preis Betrag\nBeratung 2 Std. 90,00 180,00');
+        expect(it).toEqual(expect.objectContaining({ qty: 2, unit: 'Std.', unitPrice: 90, amount: 180 }));
+    });
+    it('parses a row without a unit column', () => {
+        const it = parseFirstLineItem('Beschreibung Menge Preis Betrag\nLizenz 3 10,00 30,00');
+        expect(it).toEqual(expect.objectContaining({ qty: 3, unit: '', unitPrice: 10, amount: 30 }));
+    });
+    it('rejects a row where qty × price != amount (mis-parse guard)', () => {
+        expect(parseFirstLineItem('Beschreibung Menge Einheit Preis Betrag\nZeug 2 Stk 5,00 99,00')).toBeNull();
+    });
+    it('multi-item invoice keeps the safe qty-1 net summary line', () => {
+        // Two items → first item amount (36) != net (60), so the summary line is used.
+        const p = parseInvoiceText('Beschreibung Menge Einheit Preis Betrag\nA 3 Stunde(n) 12,00 36,00\nB 2 Stk 12,00 24,00\nGesamt EUR 60,00\nGemäß § 19 UStG keine Umsatzsteuer.');
+        const inv = buildImportedInvoice({ date: null, number: null, customer: null }, p, { id: 'y', summaryLabel: 'Rechnungsbetrag' });
+        expect(inv.lines).toHaveLength(1);
+        expect(inv.lines[0].qty).toBe(1);
+        expect(inv.lines[0].unitPrice).toBe(60);
     });
 });
