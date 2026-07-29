@@ -285,3 +285,35 @@ Gemäß § 19 (1) UStG erheben wir keine Umsatzsteuer.`;
         expect(inv.lines[3]).toEqual(expect.objectContaining({ desc: 'Material', qty: 1, unit: 'Stück', unitPrice: 9.99, vatRate: 0 }));
     });
 });
+
+describe('invoice PDF import — English / USD family (Vonderland)', () => {
+    const text = `INVOICE
+# 16
+Bill To:
+VONDERLAND STUDIOS, INC.
+359 E. Magnolia Blvd. Suite G
+Burbank, CA 91502
+USA
+Date: Feb 29, 2016
+Balance Due: $ 272
+Item Quantity Rate Amount
+Programming 8 $ 34 $ 272
+Subtotal: $ 272
+Total: $ 272`;
+    const p = parseInvoiceText(text);
+    it('parses the English date, USD currency and total', () => {
+        expect(p.date).toBe('2016-02-29');
+        expect(p.currency).toBe('USD');
+        expect(p.gross).toBe(272);
+    });
+    it('parses the English line item (Item/Quantity/Rate/Amount)', () => {
+        expect(p.items).toHaveLength(1);
+        expect(p.items[0]).toEqual(expect.objectContaining({ desc: 'Programming', qty: 8, unitPrice: 34, amount: 272 }));
+    });
+    it('builds a USD draft with the real line', () => {
+        const inv = buildImportedInvoice(parseInvoiceFilename('20160229_ Rechnung 16 - Vonderland.pdf'), p, { id: 'v', currency: 'EUR', summaryLabel: 'Rechnungsbetrag' });
+        expect(inv.currency).toBe('USD');
+        expect(inv.lines).toHaveLength(1);
+        expect(inv.lines[0]).toEqual(expect.objectContaining({ desc: 'Programming', qty: 8, unitPrice: 34 }));
+    });
+});

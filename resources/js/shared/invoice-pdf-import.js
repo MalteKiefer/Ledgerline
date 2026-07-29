@@ -34,6 +34,22 @@ export function parseGermanDate(raw) {
     return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
 }
 
+const EN_MONTHS = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
+
+/**
+ * Parse an English-style date — "Feb 29, 2016" / "February 29 2016" / "29 Feb 2016" —
+ * to ISO (yyyy-mm-dd), or null. Used for the USD/English invoice family; the German
+ * dd.mm.yyyy path is unaffected.
+ */
+export function parseEnglishDate(raw) {
+    const s = String(raw || '');
+    let m = s.match(/\b([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/); // Mon DD, YYYY
+    if (m) { const mo = EN_MONTHS[m[1].toLowerCase()]; if (mo) return `${m[3]}-${mo}-${String(m[2]).padStart(2, '0')}`; }
+    m = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3})[a-z]*\.?\s+(\d{4})\b/); // DD Mon YYYY
+    if (m) { const mo = EN_MONTHS[m[2].toLowerCase()]; if (mo) return `${m[3]}-${mo}-${String(m[1]).padStart(2, '0')}`; }
+    return null;
+}
+
 /** Reliable fields from the filename: {date, number, customer}. */
 export function parseInvoiceFilename(name) {
     const base = String(name || '').replace(/\.pdf$/i, '').trim();
@@ -130,7 +146,7 @@ export function parseCustomer(text, sender = 'kiefernetworks') {
 export function parseFirstDesc(text) {
     const lines = String(text || '').split(/[\r\n]+/).map((s) => s.replace(/\s+/g, ' ').trim());
     const flat = (s) => s.replace(/\s+/g, '').toLowerCase();
-    const h = lines.findIndex((l) => /beschreibung|^description/.test(flat(l)) && /(menge|betrag|einzelpreis|anzahl|quantity|amount|preis)/.test(flat(l)));
+    const h = lines.findIndex((l) => /beschreibung|description|item/.test(flat(l)) && /(menge|betrag|einzelpreis|anzahl|quantity|amount|preis|rate)/.test(flat(l)));
     if (h < 0) return null;
     for (let i = h + 1; i < lines.length && i < h + 4; i++) {
         let ln = lines[i];
@@ -149,6 +165,7 @@ export function parseFirstDesc(text) {
  */
 function parseItemRow(ln) {
     if (! ln || ! /[a-zäöüß]/i.test(ln)) return null;
+    ln = ln.replace(/[$€£]/g, ' ').replace(/\s+/g, ' ').trim(); // drop currency symbols (EN "$ 34" / DE "12,00 €")
     // WITH a unit word: "<desc> <qty> <unit> <unitPrice> <amount>".
     let m = ln.match(/^(.*?[a-zäöüß].*?)\s+(\d+(?:[.,]\d+)?)\s+([A-Za-zäöüÄÖÜß][A-Za-zäöüÄÖÜß().]*(?:\s[A-Za-zäöüÄÖÜß().]+)?)\s+([\d.,]+)\s*€?\s+([\d.,]+)\s*€?$/);
     if (m) {
@@ -179,9 +196,9 @@ function parseItemRow(ln) {
 export function parseLineItems(text) {
     const lines = String(text || '').split(/[\r\n]+/).map((s) => s.replace(/\s+/g, ' ').trim());
     const flat = (s) => s.replace(/\s+/g, '').toLowerCase();
-    const h = lines.findIndex((l) => /beschreibung|^description/.test(flat(l)) && /(menge|betrag|einzelpreis|anzahl|quantity|amount|preis)/.test(flat(l)));
+    const h = lines.findIndex((l) => /beschreibung|description|item/.test(flat(l)) && /(menge|betrag|einzelpreis|anzahl|quantity|amount|preis|rate)/.test(flat(l)));
     if (h < 0) return [];
-    const STOP = /^(gesamt|zwischensumme|nettobetrag|nettogesamt|zuzahlen|zahlbetrag|mwst|umsatzsteuer|ust\b|zzgl|rechnungsbetrag|gesamtbetrag|summe|gem[äa]ß|kiefernetworks)/;
+    const STOP = /^(gesamt|zwischensumme|nettobetrag|nettogesamt|zuzahlen|zahlbetrag|mwst|umsatzsteuer|ust\b|zzgl|rechnungsbetrag|gesamtbetrag|summe|gem[äa]ß|kiefernetworks|subtotal|total|balance|amountdue|notes|terms|paypal|bankdetails)/;
     const items = [];
     for (let i = h + 1; i < lines.length; i++) {
         const ln = lines[i];
@@ -212,8 +229,17 @@ export function importedSeq(number, currentYear) {
 
 /** Money + dates + VAT + number + customer from the extracted PDF text. */
 export function parseInvoiceText(text) {
-    const t = String(text || '').replace(/ /g, ' ');
-    const out = { date: null, dateLabeled: null, dueDate: null, number: null, net: null, vat: null, gross: null, vatRate: null, smallBusiness: false, firstDesc: null };
+    let t = String(text || '').replace(/ /g, ' ');
+    t = t.replace(/(\d)\s+([.,])(\d{2})(?!\d)/g, '$1$2$3'); // glue a whitespace-split decimal: "160 .00" -> "160.00"
+    t = t.replace(/\b(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})\b/g, '$1.$2.$3'); // glue a spaced date: "28 . 08 . 2020" -> "28.08.2020"
+    const out = { date: null, dateLabeled: null, dueDate: null, number: null, net: null, vat: null, gross: null, vatRate: null, smallBusiness: false, firstDesc: null, currency: null };
+
+    // Currency: $ → USD, £ → GBP, CHF, else EUR (the German sheets are EUR; the older
+    // Vonderland invoices are USD).
+    if (/\bUSD\b|\$/.test(t)) out.currency = 'USD';
+    else if (/\bGBP\b|£/.test(t)) out.currency = 'GBP';
+    else if (/\bCHF\b/.test(t)) out.currency = 'CHF';
+    else out.currency = 'EUR';
 
     // The printed invoice number is AUTHORITATIVE (filenames are often wrong/renamed).
     out.number = parseInvoiceNumber(t);
@@ -238,6 +264,16 @@ export function parseInvoiceText(text) {
         const later = allDates.find((d) => d > out.date);
         if (later) out.dueDate = later;
     }
+    // English/USD family ("Feb 29, 2016") — no dd.mm.yyyy. Collect all English dates in
+    // order; the labels may sit BEFORE or AFTER their values (some templates group the
+    // values first), so bind positionally: issue = earliest, due = first date after it.
+    if (! out.date || ! out.dueDate) {
+        const enDates = [...t.matchAll(/\b([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/g)]
+            .map((mm) => { const mo = EN_MONTHS[mm[1].toLowerCase()]; return mo ? `${mm[3]}-${mo}-${String(mm[2]).padStart(2, '0')}` : null; })
+            .filter(Boolean);
+        if (! out.date && enDates.length) { out.date = enDates[0]; out.dateLabeled = enDates[0]; }
+        if (! out.dueDate && out.date) { const later = enDates.find((d) => d > out.date); if (later) out.dueDate = later; }
+    }
 
     // Small-business (Kleinunternehmer, §19 UStG) → no VAT.
     if (/§\s*19|Kleinunternehmer|keine Umsatzsteuer/i.test(t)) out.smallBusiness = true;
@@ -260,6 +296,21 @@ export function parseInvoiceText(text) {
     if (m) out.vat = parseAmount(m[1]);
     m = t.match(new RegExp(`(?:Gesamtbetrag|Rechnungsbetrag|Gesamt${H}EUR|Zu zahlen EUR|\\bGesamt|\\bGESAMT):?${H}€?${H}([\\d.,]+)${H}€?`, 'i'));
     if (m) out.gross = parseAmount(m[1]);
+
+    // English/USD gross: the LAST "Total / Balance Due / Amount Due / Grand Total"
+    // (never "Subtotal"), currency symbol optional, integer amounts allowed ("$ 272").
+    if (out.gross == null) {
+        const en = [...t.matchAll(new RegExp(`(?<!Sub)(?:Balance${H}Due|Amount${H}Due|Grand${H}Total|Total)${H}:?${H}[$€£]?${H}([\\d][\\d.,]*)`, 'gi'))];
+        if (en.length) out.gross = parseAmount(en[en.length - 1][1]);
+        // Values-first English templates print "Total:"/"Balance Due:" AFTER their amount,
+        // so the label-adjacent match above finds nothing → use the last money amount.
+        if (out.gross == null && out.currency !== 'EUR') {
+            const a = collectAmounts(t);
+            if (a.length) out.gross = a[a.length - 1];
+        }
+        // English invoices are typically no-VAT sonstige-Leistung → net = gross.
+        if (out.gross != null && out.net == null && out.currency !== 'EUR') { out.net = out.gross; out.vat = out.vat ?? 0; out.smallBusiness = true; }
+    }
 
     const amts = collectAmounts(t);
 
@@ -363,7 +414,7 @@ export function buildImportedInvoice(f, p, opts = {}) {
         status: 'paid',
         issueDate,
         dueDate: p.dueDate || issueDate,
-        currency: opts.currency || 'EUR',
+        currency: p.currency || opts.currency || 'EUR',
         lang: 'de',
         customer: { name: custName, attn: '', address: custAddress, email: '', vatId: '', contactId: null },
         lines,
