@@ -12,7 +12,7 @@ import {
 import { loadUplot } from '../shared/uplot-loader';
 import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
 import { formatBytes } from '../shared/file-categories';
-import { activeFast, fastProgress, formatDuration, templateLabel } from '../shared/health-fasting';
+import { activeFast, fastProgress, formatDuration, formatDurationHMS, templateLabel } from '../shared/health-fasting';
 
 export default (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | ready
@@ -45,7 +45,8 @@ export default (config = {}, labels = {}) => ({
     _startFastClock() {
         if (this._fastClock) return;
         this._fastNow = Date.now();
-        this._fastClock = setInterval(() => { this._fastNow = Date.now(); }, 30000);
+        // 1s so the running-fast banner shows live seconds (only ticks while a fast runs).
+        this._fastClock = setInterval(() => { this._fastNow = Date.now(); }, 1000);
     },
     _stopFastClock() { if (this._fastClock) { clearInterval(this._fastClock); this._fastClock = null; } },
 
@@ -58,6 +59,8 @@ export default (config = {}, labels = {}) => ({
     },
     fastWindowLabel(hours) { return templateLabel(hours); },
     fastElapsedLabel(fast) { return formatDuration(fastProgress(fast, this._fastNow).elapsed); },
+    // Live elapsed with seconds (HH:MM:SS) for the running-fast banner.
+    fastElapsedHMS(fast) { return formatDurationHMS(fastProgress(fast, this._fastNow).elapsed); },
     fastTargetLabel(fast) { return formatDuration((Number(fast?.targetHours) || 0) * 3600); },
     fastPct(fast) { return Math.min(100, Math.round(fastProgress(fast, this._fastNow).fraction * 100)); },
 

@@ -120,7 +120,7 @@
                         <span class="block truncate text-sm font-medium"
                               :class="selectedMetric === '_fasting' ? 'text-accent' : 'text-gray-900 dark:text-gray-100'">{{ __('health.fasting') }}</span>
                         <span class="block truncate text-xs text-gray-500 dark:text-gray-400"
-                              x-text="activeFast ? (fastWindowLabel(activeFast?.targetHours) + ' · ' + fastElapsedLabel(activeFast)) : @js(__('health.fasting_none'))"></span>
+                              x-text="activeFast ? (fastWindowLabel(activeFast?.targetHours) + ' · ' + fastElapsedHMS(activeFast)) : @js(__('health.fasting_none'))"></span>
                     </span>
                     <template x-if="activeFast">
                         <span class="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -156,7 +156,7 @@
                       <span class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
                           <span x-text="fastWindowLabel(activeFast?.targetHours)"></span>
                           <span class="text-gray-400">·</span>
-                          <span x-text="fastElapsedLabel(activeFast) + ' / ' + fastTargetLabel(activeFast)"></span>
+                          <span class="tabular-nums" x-text="fastElapsedHMS(activeFast) + ' / ' + fastTargetLabel(activeFast)"></span>
                           <template x-if="activeFastProgress && activeFastProgress.reached">
                               <span class="rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">{{ __('health.fasting_reached') }}</span>
                           </template>
