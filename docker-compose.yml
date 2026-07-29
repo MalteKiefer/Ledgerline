@@ -136,12 +136,17 @@ services:
       start_period: 20s
 
   db:
-    # pgvector image (Postgres 17 + the `vector` extension) for image-similarity
-    # duplicate detection. Drop-in for postgres:17-alpine — same PG17 data dir.
-    image: pgvector/pgvector:pg17@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0
+    # pgvector image (Postgres 18 + the `vector` extension) for image-similarity
+    # duplicate detection. PGDATA is pinned to the legacy /var/lib/postgresql/data
+    # path: postgres:18 changed its default to a version-namespaced subdir under
+    # /var/lib/postgresql, but we keep the old layout so the pgdata volume mount
+    # (target /var/lib/postgresql/data) stays identical across the pg17→pg18 jump.
+    image: pgvector/pgvector:pg18@sha256:12a379b47ad65289572ea0756efc11b7c241a6662833e8af7038cd3b73d647e0
     environment:
       POSTGRES_DB: ${DB_DATABASE:-ledgerline}
       POSTGRES_USER: ${DB_USERNAME:-ledgerline}
+      # Keep PG18 on the pre-18 data-dir layout (matches the volume mount below).
+      PGDATA: /var/lib/postgresql/data
       # Password read from a Docker secret file, not a process-visible env var.
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
     secrets:
