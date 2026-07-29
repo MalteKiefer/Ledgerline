@@ -142,6 +142,44 @@ export function parseFirstDesc(text) {
 }
 
 /**
+ * Parse the first line-item ROW into its columns: { desc, qty, unit, unitPrice } — so a
+ * single-item invoice keeps its real quantity, unit ("Stunde(n)", "Stk.", …) and unit
+ * price instead of collapsing to a qty-1 summary line. The row is the line after the
+ * "BESCHREIBUNG … BETRAG" header; its trailing columns are "qty [unit] unitPrice amount",
+ * validated by qty × unitPrice ≈ amount so a mis-parse is rejected (→ caller summary
+ * fallback). The unit column is optional (some sheets omit it). Returns null if the row
+ * can't be read as columns.
+ */
+export function parseFirstLineItem(text) {
+    const lines = String(text || '').split(/[\r\n]+/).map((s) => s.replace(/\s+/g, ' ').trim());
+    const flat = (s) => s.replace(/\s+/g, '').toLowerCase();
+    const h = lines.findIndex((l) => /beschreibung|^description/.test(flat(l)) && /(menge|betrag|einzelpreis|anzahl|quantity|amount|preis)/.test(flat(l)));
+    if (h < 0) return null;
+    for (let i = h + 1; i < lines.length && i < h + 4; i++) {
+        const ln = lines[i];
+        if (! ln || ! /[a-zäöüß]/i.test(ln)) continue;
+        // Trailing columns WITH a unit word: "<desc> <qty> <unit> <unitPrice> <amount>".
+        let m = ln.match(/^(.*?[a-zäöüß].*?)\s+(\d+(?:[.,]\d+)?)\s+([A-Za-zäöüÄÖÜß][A-Za-zäöüÄÖÜß().]*(?:\s[A-Za-zäöüÄÖÜß().]+)?)\s+([\d.,]+)\s*€?\s+([\d.,]+)\s*€?$/);
+        if (m) {
+            const qty = parseAmount(m[2]), unitPrice = parseAmount(m[4]), amount = parseAmount(m[5]);
+            if (qty && unitPrice != null && amount != null && Math.abs(qty * unitPrice - amount) <= 0.02) {
+                return { desc: m[1].trim().slice(0, 120), qty, unit: m[3].trim().slice(0, 24), unitPrice, amount };
+            }
+        }
+        // WITHOUT a unit column: "<desc> <qty> <unitPrice> <amount>".
+        m = ln.match(/^(.*?[a-zäöüß].*?)\s+(\d+(?:[.,]\d+)?)\s+([\d.,]+)\s*€?\s+([\d.,]+)\s*€?$/);
+        if (m) {
+            const qty = parseAmount(m[2]), unitPrice = parseAmount(m[3]), amount = parseAmount(m[4]);
+            if (qty && unitPrice != null && amount != null && Math.abs(qty * unitPrice - amount) <= 0.02) {
+                return { desc: m[1].trim().slice(0, 120), qty, unit: '', unitPrice, amount };
+            }
+        }
+        return null; // first real desc row didn't parse as columns → give up (summary line)
+    }
+    return null;
+}
+
+/**
  * The running sequence number for the CURRENT year's series (YYYY-NNN), so importing
  * this year's invoices advances the app's counter. Historical years / other formats
  * return null (they are archival and must not move the current counter).
@@ -168,12 +206,17 @@ export function parseInvoiceText(text) {
     const due = t.match(/F[äa]llig(?:keitsdatum|\s*am)\s*:?\s*(\d{2}\.\d{2}\.\d{4})/i) || t.match(/bis zum\s+(\d{2}\.\d{2}\.\d{4})/i);
     if (due) out.dueDate = parseGermanDate(due[1]);
 
-    // Date fallback (column-separated layouts where the label isn't adjacent): the
-    // first dd.mm.yyyy in the document — the invoice date sits near the top/number, so
-    // the earliest date is almost always it (period/due dates come later).
-    if (! out.date) {
-        const first = t.match(/(\d{2}\.\d{2}\.\d{4})/);
-        if (first) out.date = parseGermanDate(first[1]);
+    // Fallbacks for column-separated layouts where pdf.js groups all LABELS together
+    // and all VALUES together, so the label-adjacent regexes above can't bind (e.g. the
+    // older Kiefer sheet: "Rechnungsdatum / Fälligkeitsdatum / Zu zahlen" then a separate
+    // "17.06.2014 / 17.07.2014 / 36,00" group). Use the ordered date list positionally:
+    // the issue date is the earliest; the due date is the first date strictly after it.
+    const allDates = [...t.matchAll(/(\d{2})\.(\d{2})\.(\d{4})/g)]
+        .map((m) => `${m[3]}-${m[2]}-${m[1]}`).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+    if (! out.date && allDates.length) out.date = allDates[0];
+    if (! out.dueDate && out.date) {
+        const later = allDates.find((d) => d > out.date);
+        if (later) out.dueDate = later;
     }
 
     // Small-business (Kleinunternehmer, §19 UStG) → no VAT.
@@ -184,14 +227,18 @@ export function parseInvoiceText(text) {
         || t.match(/(?:USt|Umsatzsteuer|Steuer)\.?\s*\(?\s*(\d{1,2})\s*%/i);
     out.vatRate = out.smallBusiness ? 0 : (rate ? parseInt(rate[1], 10) : null);
 
-    // Totals — first try label-adjacent amounts (works when the amount follows its
-    // label in reading order): Nettobetrag/Nettogesamt/Zwischensumme … / MwSt/USt/
-    // Umsatzsteuer … / Gesamtbetrag/Rechnungsbetrag/Gesamt EUR/Zu zahlen EUR.
-    let m = t.match(/(?:Nettobetrag|Nettogesamt|Zwischensumme(?: ohne USt\.?)?):?\s*€?\s*([\d.,]+)\s*€?/i);
+    // Totals — first try label-adjacent amounts. The amount must be on the SAME line as
+    // its label (horizontal whitespace only, `[^\S\r\n]`): in column-separated layouts
+    // pdf.js groups all labels then all values, so a newline-crossing `\s*` would grab
+    // the FIRST value of the value group (often the invoice number) right after "Zu
+    // zahlen EUR". Same-line matching binds only a genuinely adjacent amount and lets the
+    // grouped case fall through to the §19 last-amount / triple-reconcile fallback below.
+    const H = '[^\\S\\r\\n]*'; // horizontal whitespace (no newline)
+    let m = t.match(new RegExp(`(?:Nettobetrag|Nettogesamt|Zwischensumme(?: ohne USt\\.?)?):?${H}€?${H}([\\d.,]+)${H}€?`, 'i'));
     if (m) out.net = parseAmount(m[1]);
-    m = t.match(/(?:zzgl\.?\s*\d{1,2}%\s*MwSt\.?|MwSt\.?|Umsatzsteuer(?:\s*\d{1,2}%)?|USt\.?\s*\d{1,2}%\s*von\s*[\d.,]+|Steuer\s*\(?\s*\d{1,2}\s*%\s*\)?):?\s*€?\s*([\d.,]+)\s*€?/i);
+    m = t.match(new RegExp(`(?:zzgl\\.?${H}\\d{1,2}%${H}MwSt\\.?|MwSt\\.?|Umsatzsteuer(?:${H}\\d{1,2}%)?|USt\\.?${H}\\d{1,2}%${H}von${H}[\\d.,]+|Steuer${H}\\(?${H}\\d{1,2}${H}%${H}\\)?):?${H}€?${H}([\\d.,]+)${H}€?`, 'i'));
     if (m) out.vat = parseAmount(m[1]);
-    m = t.match(/(?:Gesamtbetrag|Rechnungsbetrag|Gesamt\s+EUR|Zu zahlen EUR|\bGesamt|\bGESAMT):?\s*€?\s*([\d.,]+)\s*€?/i);
+    m = t.match(new RegExp(`(?:Gesamtbetrag|Rechnungsbetrag|Gesamt${H}EUR|Zu zahlen EUR|\\bGesamt|\\bGESAMT):?${H}€?${H}([\\d.,]+)${H}€?`, 'i'));
     if (m) out.gross = parseAmount(m[1]);
 
     const amts = collectAmounts(t);
@@ -234,8 +281,10 @@ export function parseInvoiceText(text) {
     if (out.vat == null && out.net != null && out.gross != null) out.vat = round2(out.gross - out.net);
     if (out.vatRate == null && out.net) out.vatRate = out.vat ? Math.round((out.vat / out.net) * 100) : 0;
 
-    // First line-item description (for a nicer summary line than a generic label).
+    // First line-item description (for a nicer summary line than a generic label) and,
+    // when the row parses into columns, its qty/unit/unitPrice (single-item invoices).
     out.firstDesc = parseFirstDesc(text);
+    out.firstItem = parseFirstLineItem(text);
 
     // Recipient block from the text (more reliable than a mojibake/renamed filename).
     out.customer = parseCustomer(text);
@@ -274,13 +323,15 @@ export function buildImportedInvoice(f, p, opts = {}) {
     if (! issueDate) warnings.push('date');
     if (net == null) warnings.push('amount');
 
-    const line = {
-        desc: p.firstDesc || opts.summaryLabel || 'Rechnung',
-        qty: 1,
-        unit: '',
-        unitPrice: net == null ? 0 : net,
-        vatRate,
-    };
+    // Prefer the real first line item (keeps qty + unit + unit price) when it accounts
+    // for the whole invoice net — i.e. a single-item invoice, the common case here.
+    // Multi-item invoices (item amount ≠ net) stay on the qty-1 net summary line so the
+    // total never under-counts; the user refines line items in the review UI.
+    const item = p.firstItem;
+    const itemIsWhole = item && net != null && Math.abs((item.amount ?? item.qty * item.unitPrice) - net) <= 0.02;
+    const line = itemIsWhole
+        ? { desc: item.desc || p.firstDesc || opts.summaryLabel || 'Rechnung', qty: item.qty, unit: item.unit || '', unitPrice: item.unitPrice, vatRate }
+        : { desc: p.firstDesc || opts.summaryLabel || 'Rechnung', qty: 1, unit: '', unitPrice: net == null ? 0 : net, vatRate };
 
     const rec = {
         id: opts.id,

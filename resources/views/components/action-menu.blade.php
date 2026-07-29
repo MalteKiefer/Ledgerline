@@ -2,6 +2,11 @@
      consistent, compact header across every module. Slot holds <x-action-menu-item> rows
      (or <a>/<button>); clicking any item closes the menu (the container catches the bubble).
 
+     The panel is TELEPORTED to <body> and positioned `fixed` at the trigger, so it is never
+     clipped by an ancestor with `overflow-hidden`/`overflow-x-auto` (e.g. a scrollable list
+     card — the last rows' menus used to get cut off at the table's bottom edge). Closes on
+     outside-click and on window scroll (the fixed panel doesn't follow the trigger).
+
      Usage:
        <x-action-menu :aria-label="__('common.actions')">
          <x-action-menu-item icon="pencil" @click="rename()">{{ __('...') }}</x-action-menu-item>
@@ -9,11 +14,21 @@
        </x-action-menu>
 --}}
 @props(['align' => 'right', 'icon' => 'ellipsis', 'width' => 'w-52'])
-<div class="relative shrink-0" x-data="{ open: false }" @keydown.escape.stop="open = false">
-    <x-icon-button :name="$icon" tone="gray" size="sm" @click="open = ! open" ::aria-expanded="open"
+<div class="shrink-0"
+     x-data="{ open: false, _x: 0, _y: 0,
+        _place() { const r = $refs.amTrigger.getBoundingClientRect(); this._y = r.bottom + 4; this._x = {{ $align === 'left' ? 'r.left' : 'r.right' }}; },
+        _toggle() { this.open = ! this.open; if (this.open) this.$nextTick(() => this._place()); } }"
+     @keydown.escape.stop="open = false">
+    <x-icon-button x-ref="amTrigger" :name="$icon" tone="gray" size="sm" @click="_toggle()" ::aria-expanded="open"
         {{ $attributes->only('aria-label') }} />
-    <div x-show="open" x-cloak @click.outside="open = false" @click="open = false"
-        class="absolute {{ $align === 'left' ? 'left-0' : 'right-0' }} z-30 mt-1 {{ $width }} overflow-hidden rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-xl">
-        {{ $slot }}
-    </div>
+    <template x-teleport="body">
+        <div x-show="open" x-cloak
+             @click.outside="if (! $refs.amTrigger?.contains($event.target)) open = false"
+             @click="open = false"
+             @scroll.window="open = false"
+             class="fixed z-[1600] {{ $width }} overflow-hidden rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-xl"
+             :style="`top: ${_y}px; left: ${_x}px;{{ $align === 'left' ? '' : ' transform: translateX(-100%);' }}`">
+            {{ $slot }}
+        </div>
+    </template>
 </div>
