@@ -345,6 +345,8 @@ return [
     'invoice_template_modern_hint' => 'Akzent-Banner, abgerundete Karten und Akzent-Summe.',
     'invoice_template_elegant' => 'Elegant',
     'invoice_template_elegant_hint' => 'Serif-Typografie, feine Linien, zurückhaltend.',
+    'invoice_template_klassisch' => 'Klassisch',
+    'invoice_template_klassisch_hint' => 'Klassisches Geschäftslayout: Wortmarke, Infobox, Tabelle mit Linien.',
     'invoice_template_schlicht' => 'Schlicht',
     'invoice_template_schlicht_hint' => 'Minimal, monochrom, kompakt.',
 ];

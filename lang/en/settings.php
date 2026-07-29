@@ -345,6 +345,8 @@ return [
     'invoice_template_modern_hint' => 'Accent header band, rounded cards and an accent total.',
     'invoice_template_elegant' => 'Elegant',
     'invoice_template_elegant_hint' => 'Serif typography, minimal hairlines, understated.',
+    'invoice_template_klassisch' => 'Classic',
+    'invoice_template_klassisch_hint' => 'Traditional German business layout: wordmark, info box, ruled table.',
     'invoice_template_schlicht' => 'Plain',
     'invoice_template_schlicht_hint' => 'Minimal, monochrome, compact.',
 ];

@@ -345,6 +345,8 @@ return [
     'invoice_template_modern_hint' => 'Акцентная шапка, закруглённые карточки и акцентная итоговая сумма.',
     'invoice_template_elegant' => 'Elegant',
     'invoice_template_elegant_hint' => 'Шрифт с засечками, минимальные разделители, сдержанный стиль.',
+    'invoice_template_klassisch' => 'Классический',
+    'invoice_template_klassisch_hint' => 'Традиционный деловой макет: логотип, инфоблок, таблица с линиями.',
     'invoice_template_schlicht' => 'Plain',
     'invoice_template_schlicht_hint' => 'Минималистичный, монохромный, компактный.',
 ];
