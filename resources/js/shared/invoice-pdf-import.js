@@ -164,24 +164,28 @@ export function parseFirstDesc(text) {
  * stray numeric line can't masquerade as an item. The unit column is optional.
  */
 function parseItemRow(ln) {
-    if (! ln || ! /[a-zäöüß]/i.test(ln)) return null;
+    if (! ln) return null;
     ln = ln.replace(/[$€£]/g, ' ').replace(/\s+/g, ' ').trim(); // drop currency symbols (EN "$ 34" / DE "12,00 €")
-    // WITH a unit word: "<desc> <qty> <unit> <unitPrice> <amount>".
-    let m = ln.match(/^(.*?[a-zäöüß].*?)\s+(\d+(?:[.,]\d+)?)\s+([A-Za-zäöüÄÖÜß][A-Za-zäöüÄÖÜß().]*(?:\s[A-Za-zäöüÄÖÜß().]+)?)\s+([\d.,]+)\s*€?\s+([\d.,]+)\s*€?$/);
-    if (m) {
-        const qty = parseAmount(m[2]), unitPrice = parseAmount(m[4]), amount = parseAmount(m[5]);
-        if (qty && unitPrice != null && amount != null && Math.abs(qty * unitPrice - amount) <= 0.02) {
-            return { desc: m[1].trim().slice(0, 120), qty, unit: m[3].trim().slice(0, 24), unitPrice, amount };
-        }
-    }
-    // WITHOUT a unit column: "<desc> <qty> <unitPrice> <amount>".
-    m = ln.match(/^(.*?[a-zäöüß].*?)\s+(\d+(?:[.,]\d+)?)\s+([\d.,]+)\s*€?\s+([\d.,]+)\s*€?$/);
-    if (m) {
-        const qty = parseAmount(m[2]), unitPrice = parseAmount(m[3]), amount = parseAmount(m[4]);
-        if (qty && unitPrice != null && amount != null && Math.abs(qty * unitPrice - amount) <= 0.02) {
-            return { desc: m[1].trim().slice(0, 120), qty, unit: '', unitPrice, amount };
-        }
-    }
+    // Build + validate a candidate (qty × unitPrice ≈ amount rejects a mis-parse).
+    const mk = (desc, q, u, p, a) => {
+        const qty = parseAmount(q), unitPrice = parseAmount(p), amount = parseAmount(a);
+        if (! qty || unitPrice == null || amount == null || Math.abs(qty * unitPrice - amount) > 0.02) return null;
+        return { desc: (desc || '').trim().slice(0, 120), qty, unit: (u || '').trim().slice(0, 24), unitPrice, amount };
+    };
+    let m, r;
+    // WITH a leading description + unit: "<desc> <qty> <unit> <unitPrice> <amount>".
+    m = ln.match(/^(.*?[a-zäöüß].*?)\s+(\d+(?:[.,]\d+)?)\s+([A-Za-zäöüÄÖÜß][A-Za-zäöüÄÖÜß().]*(?:\s[A-Za-zäöüÄÖÜß().]+)?)\s+([\d.,]+)\s+([\d.,]+)$/);
+    if (m && (r = mk(m[1], m[2], m[3], m[4], m[5]))) return r;
+    // WITH a leading description, no unit column.
+    m = ln.match(/^(.*?[a-zäöüß].*?)\s+(\d+(?:[.,]\d+)?)\s+([\d.,]+)\s+([\d.,]+)$/);
+    if (m && (r = mk(m[1], m[2], '', m[3], m[4]))) return r;
+    // COLUMN-ONLY + unit (the description sits on a preceding line — many sheets put
+    // "TP-LINK …\n1 Stück 69,89 69,89"): "<qty> <unit> <unitPrice> <amount>".
+    m = ln.match(/^(\d+(?:[.,]\d+)?)\s+([A-Za-zäöüÄÖÜß][A-Za-zäöüÄÖÜß().]*)\s+([\d.,]+)\s+([\d.,]+)$/);
+    if (m && (r = mk('', m[1], m[2], m[3], m[4]))) return r;
+    // COLUMN-ONLY, no unit: "<qty> <unitPrice> <amount>".
+    m = ln.match(/^(\d+(?:[.,]\d+)?)\s+([\d.,]+)\s+([\d.,]+)$/);
+    if (m && (r = mk('', m[1], '', m[2], m[3]))) return r;
     return null;
 }
 
@@ -200,13 +204,21 @@ export function parseLineItems(text) {
     if (h < 0) return [];
     const STOP = /^(gesamt|zwischensumme|nettobetrag|nettogesamt|zuzahlen|zahlbetrag|mwst|umsatzsteuer|ust\b|zzgl|rechnungsbetrag|gesamtbetrag|summe|gem[äa]ß|kiefernetworks|subtotal|total|balance|amountdue|notes|terms|paypal|bankdetails)/;
     const items = [];
+    let buf = []; // pending description lines (for column-only rows whose desc is above)
     for (let i = h + 1; i < lines.length; i++) {
         const ln = lines[i];
         if (! ln) continue;
         if (STOP.test(flat(ln))) break; // reached the totals / footer
         const it = parseItemRow(ln);
-        if (it) items.push(it);
-        // else: sub-description line for the current item — skipped.
+        if (it) {
+            // Column-only row (no inline description) → take the buffered text above it.
+            if (! it.desc) it.desc = buf.join(' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+            items.push(it);
+            buf = [];
+        } else {
+            buf.push(ln); // description / sub-bullet / category line — attach to the next row
+            if (buf.length > 4) buf.shift();
+        }
     }
     return items;
 }
