@@ -1056,7 +1056,13 @@ components:
 
     InvoiceRecord:
       type: object
-      description: "One invoice in the sharded invoices store. Numbering (number/seq) is GoBD per-year, derived client-side. `pdf` present for imported invoices (original sealed PDF)."
+      description: >
+        One invoice in the sharded invoices store. Numbering (number/seq) is GoBD per-year,
+        derived client-side. `pdf` present for imported invoices (original sealed PDF).
+        A finalized (sent/paid) or imported invoice is a fixed record: editing it appends a
+        versioned correction to `versions[]` (see InvoiceVersion) with `versionSeq` counting
+        up — clients MUST carry `versions[]`/`versionSeq` through unchanged (ZK passthrough)
+        or history is lost.
       required: [id, status]
       properties:
         id: { type: string, format: uuid }
@@ -1077,8 +1083,29 @@ components:
         paymentTxId: { type: [string, "null"], format: uuid, description: "InvoiceTransaction.id." }
         imported: { type: boolean }
         pdf: { type: object, nullable: true, description: "Sealed original PDF blob ref (imported invoices).", properties: { blob: { type: string, format: uuid }, key: { type: string }, name: { type: string }, mime: { type: string } } }
+        versionSeq: { type: integer, description: "Running version counter (last assigned). Increments per versioned correction." }
+        versions: { type: array, items: { $ref: "#/components/schemas/InvoiceVersion" }, description: "GoBD correction trail — one entry per save of a locked invoice." }
         trashed: { type: [boolean, string] }
         updated: { type: string, format: date-time }
+
+    InvoiceVersion:
+      type: object
+      description: >
+        One versioned correction of a locked invoice (versions[]). Created on each save of an
+        imported or finalized invoice, plus automatically at the finalize/sent/paid lock
+        points. `reason` is mandatory (stored). `snapshot` is the invoice's editable fields at
+        that version. Imported invoices keep field data only (the original `pdf` stays
+        authoritative); online-created invoices additionally seal a generated PDF of the sheet
+        (rastered client-side — never server-rendered). Label counts up as
+        `<invoice number>-NNN` (e.g. 2026-0007-001, -002).
+      required: [seq, label, reason, at, snapshot]
+      properties:
+        seq: { type: integer, description: "1-based version index (= InvoiceRecord.versionSeq at creation)." }
+        label: { type: string, description: "`<number>-NNN`, e.g. 2026-0007-001." }
+        reason: { type: string, description: "Mandatory change reason (auto for lock-point commits: Finalized/Sent/Marked paid)." }
+        at: { type: string, format: date-time }
+        snapshot: { type: object, description: "Frozen editable fields at this version (number/status/dates/currency/lang/customer/lines/note/footer + totals)." }
+        pdf: { type: object, nullable: true, description: "Sealed generated PDF of this version (online-created invoices only). Fetch via /invoices/raw/{blob}, decrypt with key.", properties: { blob: { type: string, format: uuid }, key: { type: string }, name: { type: string }, mime: { type: string } } }
 
     InvoiceTransaction:
       type: object
