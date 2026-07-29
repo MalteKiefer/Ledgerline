@@ -203,7 +203,11 @@ class GalleryProcessController extends Controller
 
         return response()->json([
             'place' => $result['display'],
-            'address' => $result['address'],
+            // Cast to an object so an EMPTY address serialises as {} (JSON object),
+            // not [] (JSON array) — PHP json_encode turns an empty PHP array into a
+            // JSON array, which breaks a strictly-typed client (iOS/Android). Now the
+            // shape is always an object (possibly empty).
+            'address' => (object) $result['address'],
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 }

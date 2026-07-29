@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.506.90
+  version: 1.506.91
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -1195,13 +1195,22 @@ components:
     GalleryPhoto:
       type: object
       description: >
-        One photo/video hot-record in the sharded gallery manifest. Blob refs point at
-        sealed blobs (/gallery/raw/{ref}); decrypt each with its key. Heavy EXIF/GPS live
-        in the sealed meta blob; the hot-record carries the fields needed for the grid.
+        One photo/video hot-record in the sharded gallery manifest. Rendition refs are
+        FLAT fields ({rendition}Ref = sealed blob id at /gallery/raw/{ref}; {rendition}Key
+        = its sealed content key). Heavy EXIF/GPS live in the sealed meta blob; the
+        hot-record carries the fields the grid needs.
       required: [id]
       properties:
         id: { type: string, format: uuid }
-        blobs: { type: object, description: "Rendition refs.", properties: { thumb: { type: object }, medium: { type: object }, orig: { type: object }, meta: { type: object } } }
+        originalRef: { type: string, format: uuid, description: "Original blob id." }
+        originalKey: { type: string, description: "Sealed content key for the original." }
+        thumbRef: { type: string, format: uuid }
+        thumbKey: { type: string }
+        mediumRef: { type: string, format: uuid }
+        mediumKey: { type: string }
+        motionRef: { type: [string, "null"], format: uuid, description: "Motion-photo / Live-Photo clip blob (null if none)." }
+        metaRef: { type: [string, "null"], format: uuid, description: "Sealed EXIF/GPS meta blob." }
+        metaKey: { type: [string, "null"] }
         taken_at: { type: [string, "null"], description: "EXIF capture time (falls back to created)." }
         created: { type: string, description: "Upload time." }
         lat: { type: [string, "null"], description: "dec6 decimal string." }
@@ -3428,7 +3437,10 @@ paths:
                     nullable: true
                   address:
                     type: object
-                    nullable: true
+                    description: >
+                      Structured address components (key→value strings). ALWAYS a JSON
+                      object — empty ({}) when nothing resolved, never a [] array.
+                    additionalProperties: { type: string }
         "422":
           description: Coordinates out of range.
         "429":
