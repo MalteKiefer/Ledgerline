@@ -202,6 +202,43 @@ components:
         glucose: { type: string, enum: [mgdl, mmoll] }
         time_format: { type: string, enum: [24h, 12h] }
 
+    MeUser:
+      type: object
+      description: >
+        The authenticated user's profile. Returned as the `user` object by GET /me
+        and by POST /auth/pair/collect (when `status: approved`). All fields are
+        non-secret metadata — zero-knowledge vault data is never included.
+      required: [id, name, email, locale, groups, modules, has_avatar, preferences]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        locale:
+          type: string
+          description: "The user's UI locale (one of the configured languages, e.g. en, de, ru)."
+        groups:
+          type: array
+          description: >
+            Derived from the first-party role: `["admin"]` for admins, `[]` otherwise.
+            The historical claim shape is kept so existing mobile clients need no
+            change — there is no separate `role` field.
+          items: { type: string }
+        modules:
+          type: array
+          description: >
+            The application module keys this account may use (per-user / per-group
+            toggles). A native client should hide the tabs for modules NOT listed
+            here; the API also enforces it — a disabled module's store endpoints
+            return 403.
+          items: { type: string, enum: [dashboard, files, gallery, passwords, notes, todos, bookmarks, contacts, finance, health, explore] }
+        has_avatar:
+          type: boolean
+          description: "Whether a non-secret avatar is stored. True → fetch it via GET /api/v1/avatar (Bearer)."
+        preferences:
+          allOf:
+            - $ref: "#/components/schemas/DisplayPreferences"
+          description: "Non-secret display preferences (units + 12/24h clock); set via POST /api/v1/preferences."
+
     HealthFast:
       type: object
       description: >
@@ -631,8 +668,7 @@ paths:
                         type: string
                         description: Sanctum bearer token for subsequent API calls.
                       user:
-                        type: object
-                        description: Basic user info payload.
+                        $ref: "#/components/schemas/MeUser"
         "429":
           description: Rate limit exceeded.
 
@@ -674,35 +710,20 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [user, usage, wipe]
                 properties:
                   user:
-                    type: object
-                    description: >
-                      User fields: id, name, email, locale, groups, modules, has_avatar
-                      (bool), preferences (DisplayPreferences — units + clock format).
-                      `groups` is derived from the first-party role (`["admin"]` for
-                      admins, `[]` otherwise) — the historical claim shape is kept so
-                      existing mobile clients need no change. `modules` is the list of
-                      application modules this account may use (per-user/per-group
-                      toggles); a native client should hide tabs for modules not listed,
-                      and the API enforces it (a disabled module's store endpoints return
-                      403).
-                    properties:
-                      modules:
-                        type: array
-                        description: Enabled application module keys for this account.
-                        items: { type: string, enum: [dashboard, files, gallery, passwords, notes, todos, bookmarks, contacts, finance, health, explore] }
-                      preferences:
-                        $ref: "#/components/schemas/DisplayPreferences"
+                    $ref: "#/components/schemas/MeUser"
                   usage:
                     type: object
+                    required: [files, gallery, quota]
                     properties:
                       files:
                         type: integer
-                        description: Total file blob bytes used.
+                        description: Total file blob bytes used by this account.
                       gallery:
                         type: integer
-                        description: Total gallery blob bytes used.
+                        description: Total gallery blob bytes used by this account.
                       quota:
                         type: integer
                         nullable: true
@@ -713,7 +734,9 @@ paths:
                           cap. Lets a client render a used/limit ring against files+gallery.
                   wipe:
                     type: boolean
-                    description: If true the client should erase local vault data and log out.
+                    description: >
+                      Kill switch. If true, the owner has requested a remote wipe of
+                      this token — the client should erase local vault data and log out.
         "401":
           description: Unauthenticated.
 
