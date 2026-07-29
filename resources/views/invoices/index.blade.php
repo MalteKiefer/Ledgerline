@@ -1753,13 +1753,13 @@
                 <tbody>
                   <template x-for="(l, i) in current.lines" :key="i">
                     <tr>
-                      <td class="py-1 pr-2"><input type="text" x-model="l.desc" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent"></td>
-                      <td class="py-1 px-2"><input type="number" step="0.01" x-model.number="l.qty" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
-                      <td class="py-1 px-2"><input type="text" x-model="l.unit" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent"></td>
-                      <td class="py-1 px-2"><input type="number" step="0.01" x-model.number="l.unitPrice" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
-                      <td class="py-1 px-2"><input type="number" step="0.01" x-model.number="l.vatRate" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
-                      <td class="py-1 px-2 text-right tabular-nums text-gray-700 dark:text-gray-300" x-text="fmtMoney(lineNet(l))"></td>
-                      <td class="py-1 pl-2 text-right"><x-icon-button name="x-mark" size="sm" @click="removeLine(i)" title="{{ __('invoices.remove') }}" aria-label="{{ __('invoices.remove') }}" /></td>
+                      <td class="py-1 pr-2 align-top"><textarea x-model="l.desc" rows="2" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent resize-y min-h-[2.5rem]"></textarea></td>
+                      <td class="py-1 px-2 align-top"><input type="number" step="0.01" x-model.number="l.qty" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
+                      <td class="py-1 px-2 align-top"><input type="text" x-model="l.unit" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent"></td>
+                      <td class="py-1 px-2 align-top"><input type="number" step="0.01" x-model.number="l.unitPrice" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
+                      <td class="py-1 px-2 align-top"><input type="number" step="0.01" x-model.number="l.vatRate" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
+                      <td class="py-1 px-2 text-right tabular-nums text-gray-700 dark:text-gray-300 align-top" x-text="fmtMoney(lineNet(l))"></td>
+                      <td class="py-1 pl-2 text-right align-top"><x-icon-button name="x-mark" size="sm" @click="removeLine(i)" title="{{ __('invoices.remove') }}" aria-label="{{ __('invoices.remove') }}" /></td>
                     </tr>
                   </template>
                 </tbody>
@@ -1848,7 +1848,7 @@
                     <tbody>
                       <template x-for="(l, i) in _printing.lines" :key="i">
                         <tr style="border-bottom:1px solid #eef0f4;">
-                          <td style="padding:9px 8px 9px 0; font-weight:500; vertical-align:top;" x-text="l.desc"></td>
+                          <td style="padding:9px 8px 9px 0; font-weight:500; vertical-align:top; white-space:pre-line;" x-text="l.desc"></td>
                           <td style="padding:9px 8px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums" x-text="fmtQty(l.qty, _printing.lang) + (l.unit ? ' ' + l.unit : '')"></td>
                           <td style="padding:9px 8px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums" x-text="fmtMoney(l.unitPrice, _printing.currency, _printing.lang)"></td>
                           <td style="padding:9px 0 9px 8px; text-align:right; white-space:nowrap; font-weight:600; vertical-align:top;" class="tabular-nums" x-text="fmtMoney(lineNet(l), _printing.currency, _printing.lang)"></td>
@@ -1912,7 +1912,7 @@
                   <tbody>
                     <template x-for="(l, i) in _printing.lines" :key="i">
                       <tr style="border-bottom:1px solid #ededed;">
-                        <td style="padding:9px 6px 9px 0; vertical-align:top;" x-text="l.desc"></td>
+                        <td style="padding:9px 6px 9px 0; vertical-align:top; white-space:pre-line;" x-text="l.desc"></td>
                         <td style="padding:9px 6px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums" x-text="fmtQty(l.qty, _printing.lang) + (l.unit ? ' ' + l.unit : '')"></td>
                         <td style="padding:9px 6px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums" x-text="fmtMoney(l.unitPrice, _printing.currency, _printing.lang)"></td>
                         <td style="padding:9px 0 9px 6px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums" x-text="fmtMoney(lineNet(l), _printing.currency, _printing.lang)"></td>
@@ -1974,7 +1974,7 @@
                       <tbody>
                         <template x-for="(l, i) in _printing.lines" :key="i">
                           <tr>
-                            <td><div class="ie-d-title" x-text="l.desc"></div></td>
+                            <td><div class="ie-d-title" style="white-space:pre-line;" x-text="l.desc"></div></td>
                             <td class="r num" x-text="fmtQty(l.qty, _printing.lang) + (l.unit ? ' ' + l.unit : '')"></td>
                             <td class="r num" x-text="fmtMoney(l.unitPrice, _printing.currency, _printing.lang)"></td>
                             <td class="r num ie-amt" x-text="fmtMoney(lineNet(l), _printing.currency, _printing.lang)"></td>

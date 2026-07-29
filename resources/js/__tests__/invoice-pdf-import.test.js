@@ -150,6 +150,12 @@ describe('invoice PDF import — text is authoritative over the filename', () =>
         expect(c.name).toBe('STN Nürnberg');
         expect(c.address).toContain('Mauermattenstraße 20');
     });
+    it('captures the recipient VAT id and de-spaces letter-spaced words (real Rechnung 1)', () => {
+        const c = parseCustomer('Kiefer Networks Beethovenstraße 10 - 79183 Waldkirch\nSTN Nürnberg\nMauermattenstraße 20\nD-79183 W aldkirch\nUSt.-IdNr. DE265814432\nRechnung');
+        expect(c.name).toBe('STN Nürnberg');
+        expect(c.address).toContain('D-79183 Waldkirch'); // "W aldkirch" re-glued
+        expect(c.vatId).toBe('DE265814432');
+    });
     it('extracts the recipient block from the text (family B)', () => {
         const c = parseCustomer('Kiefer Networks - Adalbert-Stifter-Str. 6 - 95512 Neudrossenfeld\nIntellyTec GmbH\nIngo Radermacher\nGrünenborn 1\n53797 Lohmar\nRechnung\nR-2024-00001');
         expect(c.name).toBe('IntellyTec GmbH');

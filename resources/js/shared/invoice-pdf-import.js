@@ -121,10 +121,21 @@ export function parseCustomer(text, sender = 'kiefernetworks') {
     if (start < 0) for (let i = 0; i < lines.length; i++) if (isSender(lines[i])) { start = i + 1; break; }
     if (start < 0) return null;
 
+    // pdf.js letter-spaces justified text, stranding a single letter ("D-79183 W aldkirch",
+    // "STN N ürnberg"): re-glue a lone letter to the lowercase run that follows it.
+    const deSpace = (s) => s.replace(/\b([A-Za-zÄÖÜäöüß])\s+(?=[a-zäöüß]{2,})/g, '$1');
+    // The recipient's VAT id ("USt.-IdNr. DE265814432") — the FIRST one in the top block is
+    // the customer's (the seller's own sits in the footer, below this window).
+    const vatOf = (s) => { const m = s.match(/USt\.?-?\s?IdNr\.?\s*:?\s*([A-Z]{2}\s?\d[\d\s]{5,})/i); return m ? m[1].replace(/\s+/g, '') : null; };
+
     const block = [];
+    let vatId = '';
     for (let i = start; i < lines.length && block.length < 5; i++) {
         let ln = lines[i];
         if (! ln) { if (block.length) break; else continue; }
+        // Capture the VAT id before the `ust` stop-word discards its line.
+        const v = vatOf(ln);
+        if (v) { vatId = v; break; } // the VAT id ends the recipient address block
         if (isStop(ln)) break;
         // Two-column sheets can merge "Kiefer Networks  <Customer>" on one line — strip
         // the seller's own name so the recipient survives.
@@ -132,10 +143,10 @@ export function parseCustomer(text, sender = 'kiefernetworks') {
             ln = ln.replace(/kiefer\s*networks/ig, '').replace(/^[\s,·|–-]+/, '').trim();
             if (! ln) continue;
         }
-        block.push(ln);
+        block.push(deSpace(ln));
     }
     if (! block.length) return null;
-    return { name: block[0], address: block.slice(1).join('\n') };
+    return { name: block[0], address: block.slice(1).join('\n'), vatId };
 }
 
 /**
@@ -406,6 +417,7 @@ export function buildImportedInvoice(f, p, opts = {}) {
     // Prefer the text-extracted recipient (clean UTF-8) over the mojibake-prone filename.
     const custName = (p.customer && p.customer.name) || f.customer || '';
     const custAddress = (p.customer && p.customer.address) || '';
+    const custVatId = (p.customer && p.customer.vatId) || '';
     const net = p.net;
     const vatRate = p.vatRate == null ? 0 : p.vatRate;
     // Current-year invoices carry a seq so the app's number counter advances past them.
@@ -439,7 +451,7 @@ export function buildImportedInvoice(f, p, opts = {}) {
         dueDate: p.dueDate || issueDate,
         currency: p.currency || opts.currency || 'EUR',
         lang: 'de',
-        customer: { name: custName, attn: '', address: custAddress, email: '', vatId: '', contactId: null },
+        customer: { name: custName, attn: '', address: custAddress, email: '', vatId: custVatId, contactId: null },
         lines,
         note: '',
         footer: '',
