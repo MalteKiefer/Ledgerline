@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-07-29T09:33:10.432Z",
+  "projectRoot": "/Users/malte.kiefer/Entwicklung/ledgerline",
+  "instincts": {
+    "instincts": [
+      {
+        "id": "coroutine-structured",
+        "type": "pattern",
+        "description": "Structured concurrency with viewModelScope",
+        "context": "coroutines-patterns",
+        "confidence": 1,
+        "createdAt": "2026-07-29T08:30:33.355Z",
+        "lastUsed": "2026-07-29T08:55:19.897Z",
+        "usageCount": 14
+      },
+      {
+        "id": "compose-lazy-key",
+        "type": "pattern",
+        "description": "LazyColumn/LazyRow with stable keys",
+        "context": "jetpack-compose",
+        "confidence": 0.5,
+        "createdAt": "2026-07-29T08:40:50.653Z",
+        "lastUsed": "2026-07-29T08:55:19.897Z",
+        "usageCount": 2
+      },
+      {
+        "id": "sealed-interface-state",
+        "type": "pattern",
+        "description": "Sealed interface for UI state",
+        "context": "mvi-architecture",
+        "confidence": 0.5,
+        "createdAt": "2026-07-29T08:40:50.654Z",
+        "lastUsed": "2026-07-29T08:55:19.898Z",
+        "usageCount": 2
+      }
+    ],
+    "version": "1.0",
+    "lastUpdated": "2026-07-29T08:55:19.898Z"
+  },
+  "gitBranch": "develop",
+  "lastFiles": [
+    ".claude/checkpoints/checkpoint-2026-07-29T09-06-59.json",
+    ".claude/checkpoints/checkpoint-2026-07-29T09-09-08.json",
+    "CLAUDE.md",
+    "config/app.php",
+    "extension/manifest.json",
+    "resources/js/__tests__/invoice-pdf-import.test.js",
+    "resources/js/shared/invoice-pdf-import.js",
+    "resources/views/components/action-menu.blade.php"
+  ]
+}
