@@ -47,11 +47,19 @@ export function invoicesInYear(invoices, year) {
     return (invoices || []).filter((iv) => ! iv.trashed && invoiceYear(iv) === y);
 }
 
-/** Invoice numbers assigned to more than one invoice (a GoBD violation to fix). */
+/**
+ * Invoice numbers assigned to more than one ACTIVE invoice within the same year — a real
+ * GoBD violation to fix. Trashed invoices are ignored (a deleted-then-re-imported number is
+ * not a duplicate), and the same bare number in two different years (each its own YYYY
+ * series) is legitimate, so numbers are keyed by year. Returns the offending numbers.
+ */
 export function duplicateNumbers(invoices) {
     const seen = new Map();
     for (const iv of invoices || []) {
-        if (iv.number) seen.set(iv.number, (seen.get(iv.number) || 0) + 1);
+        if (! iv || iv.trashed || ! iv.number) continue;
+        const key = invoiceYear(iv) + '|' + iv.number;
+        const e = seen.get(key) || { n: 0, num: iv.number };
+        e.n += 1; seen.set(key, e);
     }
-    return [...seen.entries()].filter(([, n]) => n > 1).map(([num]) => num);
+    return [...seen.values()].filter((e) => e.n > 1).map((e) => e.num);
 }
