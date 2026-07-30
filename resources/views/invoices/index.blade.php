@@ -2003,20 +2003,42 @@
             </x-button>
           </div>
 
-          <div class="mt-6 flex flex-wrap items-center gap-3">
-            <input type="search" x-model.debounce.250ms="query" @input="invPage = 1" placeholder="{{ __('invoices.search') }}" class="w-full max-w-xs rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-            <select x-model="filterStatus" @change="invPage = 1" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+          <div class="mt-6 flex flex-wrap items-center gap-2">
+            <div class="relative min-w-[12rem] flex-1 max-w-xs">
+              <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input type="search" x-model.debounce.250ms="query" @input="invPage = 1" placeholder="{{ __('invoices.search') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] pl-9 text-sm focus:border-accent focus:ring-accent">
+            </div>
+            <select x-model="filterStatus" @change="invPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
               <option value="">{{ __('invoices.filter_all') }}</option>
               <option value="draft">{{ __('invoices.status_draft') }}</option>
               <option value="sent">{{ __('invoices.status_sent') }}</option>
               <option value="paid">{{ __('invoices.status_paid') }}</option>
             </select>
+            <select x-model="invYear" @change="invPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+              <option value="">{{ __('invoices.inv_all_years') }}</option>
+              <template x-for="y in invoiceYears" :key="y"><option :value="y" x-text="y"></option></template>
+            </select>
+            <select x-model="invCustomer" @change="invPage = 1" class="max-w-[14rem] rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+              <option value="">{{ __('invoices.inv_all_customers') }}</option>
+              <template x-for="c in invoiceCustomers" :key="c"><option :value="c" x-text="c"></option></template>
+            </select>
+            <select x-model="invLinked" @change="invPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+              <option value="">{{ __('invoices.inv_link_all') }}</option>
+              <option value="linked">{{ __('invoices.inv_link_linked') }}</option>
+              <option value="open">{{ __('invoices.inv_link_open') }}</option>
+            </select>
+            <x-button x-show="invFiltersActive" variant="secondary" size="sm" icon="x-mark" @click="resetInvFilters()">{{ __('invoices.tx_filter_reset') }}</x-button>
           </div>
 
           <template x-if="! filtered.length">
             <x-empty-state icon="banknotes" class="mt-10 py-16">
-              <span class="block text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.empty_title') }}</span>
-              <span class="mt-1 block text-sm">{{ __('invoices.empty_hint') }}</span>
+              <template x-if="invFiltersActive"><span class="block text-sm">{{ __('invoices.inv_no_match') }}</span></template>
+              <template x-if="! invFiltersActive">
+                <span>
+                  <span class="block text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.empty_title') }}</span>
+                  <span class="mt-1 block text-sm">{{ __('invoices.empty_hint') }}</span>
+                </span>
+              </template>
             </x-empty-state>
           </template>
 
