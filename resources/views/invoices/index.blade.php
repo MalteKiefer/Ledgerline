@@ -78,6 +78,20 @@
         receipt: @js(__('invoices.receipt')),
         invoice_word: @js(__('invoices.invoice_word')),
         receipt_dupes_skipped: @js(__('invoices.receipt_dupes_skipped')),
+        vatcat_19: '19 %',
+        vatcat_16: '16 %',
+        vatcat_7: '7 %',
+        vatcat_0: '0 %',
+        vatcat_private: @js(__('invoices.vatcat_private')),
+        eg_grund_privatentnahme: @js(__('invoices.eg_grund_privatentnahme')),
+        eg_grund_privateinlage: @js(__('invoices.eg_grund_privateinlage')),
+        eg_grund_trinkgeld: @js(__('invoices.eg_grund_trinkgeld')),
+        eg_grund_betriebsausgabe: @js(__('invoices.eg_grund_betriebsausgabe')),
+        eg_grund_sachgeschenk: @js(__('invoices.eg_grund_sachgeschenk')),
+        eg_grund_sonstiges: @js(__('invoices.eg_grund_sonstiges')),
+        eg_missing: @js(__('invoices.eg_missing')),
+        eg_done: @js(__('invoices.eg_done')),
+        eg_failed: @js(__('invoices.eg_failed')),
      })">
 
     {{-- Zero-knowledge gate: invoices decrypt with the vault key. --}}
@@ -1396,8 +1410,8 @@
                             <td class="whitespace-nowrap px-4 py-2.5">
                               <div class="relative inline-flex items-center">
                                 <select @change="setVatCat(tx, $event.target.value)"
-                                  class="appearance-none rounded-lg border-0 py-1 pl-2.5 pr-6 text-xs font-medium focus:ring-2 focus:ring-accent"
-                                  :class="tx.vatCat ? 'bg-black/[0.04] dark:bg-white/10 text-gray-700 dark:text-gray-200' : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400'">
+                                  class="appearance-none rounded-lg border-0 py-1 pl-2.5 pr-7 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-accent"
+                                  :class="! tx.vatCat ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 ring-amber-300/60 dark:ring-amber-700/50' : (tx.vatCat === 'private' ? 'bg-violet-500/10 text-violet-700 dark:text-violet-300 ring-violet-400/40' : 'bg-black/[0.03] dark:bg-white/10 text-gray-700 dark:text-gray-200 ring-black/10 dark:ring-white/10')">
                                   <option value="" :selected="! tx.vatCat">{{ __('invoices.vatcat_none') }}</option>
                                   <template x-for="c in vatCats" :key="c">
                                     <option :value="c" :selected="tx.vatCat === c" x-text="vatCatLabel(c)"></option>
