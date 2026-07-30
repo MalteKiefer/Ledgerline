@@ -24,7 +24,6 @@ Schedule::command('files:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('passwords:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('invoices:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('gallery:sweep-orphans')->daily()->withoutOverlapping();
-Schedule::command('contacts:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('explore:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('shared-folders:sweep-orphans')->daily()->withoutOverlapping();
 

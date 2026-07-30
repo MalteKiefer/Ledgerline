@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.507.0
+  version: 1.508.0
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -45,7 +45,6 @@ tags:
       decrypted object; the server never sees them. Preserve unknown keys on write.
         • NOTE: notes/todos/bookmarks are no longer sealed stores — they use
           plaintext-relational REST endpoints (tags Notes/Todos/Bookmarks).
-        • contacts → {contacts:[ContactRecord]} (+ avatar blobs)
         • passwords → PasswordsStoreModel {secrets:[SecretItem], secretFolders:[PersonalVault], pwVaultMigrated} (sharded /passwords/store)
         • invoices → {invoices:[InvoiceRecord], transactions:[InvoiceTransaction], paymentMethods:[PaymentMethod], projects:[FinanceProject], partners:[FinancePartner], financeCategories:[FinanceCategory]} (sharded /invoices/store)
         • health → {healthProfile:HealthProfile, healthEntries:[HealthEntry], healthFasts:[HealthFast]}
@@ -75,12 +74,6 @@ tags:
     description: Member-scoped blob store for shared vault folders (blobs at shared-folders/{blob})
   - name: Gallery
     description: Gallery blobs, multipart upload, and ML processing pipeline
-  - name: Contacts
-    description: >
-      Optional encrypted contact avatar blobs. The contact RECORDS themselves
-      (names, vCard fields, etc.) live in the sealed contacts module store (see
-      Store, GET/PUT /store/contacts) — these endpoints only hold the optional
-      avatar image bytes a contact record references.
   - name: Explore
     description: >
       Optional encrypted Explore track blobs. The Explore RECORDS themselves
@@ -985,51 +978,6 @@ components:
         updated_at: { type: [string, "null"], format: date-time }
         deleted_at: { type: [string, "null"], format: date-time, description: "Non-null = trashed (soft-deleted)." }
 
-    ContactRecord:
-      type: object
-      description: >
-        One contact in the contacts module store (GET/PUT /store/contacts, key
-        contacts[]). Avatar: `avatarRef` is a contact-blob UUID (GET /contacts/raw/{avatarRef});
-        decrypt the bytes with `avatarKey` (a sealed content key, unwrapped under the vault
-        key like a file blob). `personId` links to a Gallery person (written into BOTH stores).
-        `_x` round-trips unknown vCard X-properties. `bdayNotified`/`annivNotified` are
-        client dedup guards (last year notified) — persist them to avoid double-firing.
-      required: [id]
-      properties:
-        id: { type: string, format: uuid }
-        uid: { type: string, description: "vCard UID." }
-        fn: { type: string, description: "Formatted full name." }
-        first: { type: string, nullable: true }
-        last: { type: string, nullable: true }
-        middle: { type: string, nullable: true }
-        prefix: { type: string, nullable: true }
-        suffix: { type: string, nullable: true }
-        nickname: { type: string, nullable: true }
-        org: { type: string, nullable: true }
-        department: { type: string, nullable: true }
-        title: { type: string, nullable: true }
-        role: { type: string, nullable: true }
-        vatId: { type: string, nullable: true }
-        emails: { type: array, items: { type: object, properties: { value: { type: string }, type: { type: string, enum: [home, work, other] } } } }
-        phones: { type: array, items: { type: object, properties: { value: { type: string }, type: { type: string, enum: [cell, work, home, other] } } } }
-        impp: { type: array, description: "Instant messaging (vCard IMPP).", items: { type: object, properties: { value: { type: string }, type: { type: string } } } }
-        addresses: { type: array, items: { type: object, properties: { street: { type: string }, city: { type: string }, region: { type: string }, zip: { type: string }, country: { type: string }, type: { type: string, enum: [home, work, other] } } } }
-        urls: { type: array, items: { type: object, properties: { value: { type: string }, type: { type: string } } } }
-        bday: { type: string, nullable: true, description: "yyyy-mm-dd." }
-        anniversary: { type: string, nullable: true, description: "yyyy-mm-dd." }
-        note: { type: string, nullable: true }
-        categories: { type: array, items: { type: string }, description: "Tags / vCard CATEGORIES." }
-        favorite: { type: boolean, default: false }
-        avatarRef: { type: [string, "null"], format: uuid, description: "Contact-blob UUID for the encrypted avatar." }
-        avatarKey: { type: [string, "null"], description: "Sealed content key for the avatar blob (null = no avatar)." }
-        personId: { type: [string, "null"], format: uuid, description: "Linked Gallery person id (cross-manifest)." }
-        personName: { type: [string, "null"] }
-        _x: { type: array, items: { type: string }, description: "Passthrough unknown vCard X-properties — round-trip unchanged." }
-        trashed: { type: [boolean, string] }
-        updated: { type: string, format: date-time }
-        bdayNotified: { type: [integer, "null"], description: "Last year a birthday notification was sent." }
-        annivNotified: { type: [integer, "null"] }
-
     CustomField:
       type: object
       description: "User-defined field on a SecretItem."
@@ -1393,7 +1341,7 @@ components:
 
     GalleryPerson:
       type: object
-      description: "A face cluster (People). Bidirectionally linked to a ContactRecord (personId there, contact fields cached here). Preserve cached fields on passthrough."
+      description: "A face cluster (People). Preserve cached fields on passthrough."
       required: [id]
       properties:
         id: { type: string, format: uuid }
@@ -1512,10 +1460,8 @@ components:
 
     UserSettings:
       type: object
-      description: "Per-user non-display settings (contact notify channels + file version cap)."
+      description: "Per-user non-display settings (file version cap)."
       properties:
-        contact_birthday_channels: { type: array, items: { type: string, enum: [desktop, ntfy, mail, webhook] } }
-        contact_anniversary_channels: { type: array, items: { type: string, enum: [desktop, ntfy, mail, webhook] } }
         file_max_versions: { type: integer, minimum: 1, maximum: 200 }
 
     AdminUser:
@@ -3613,137 +3559,6 @@ paths:
           description: Rate limit exceeded.
 
   # --------------------------------------------------------------------------
-  # Contacts
-  # --------------------------------------------------------------------------
-
-  /contacts/usage:
-    get:
-      tags: [Contacts]
-      operationId: contactsUsage
-      summary: Contact blob storage usage
-      description: Returns bytes used vs quota for contact blobs. No per-route throttle.
-      responses:
-        "200":
-          description: Usage.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UsageResponse"
-
-  /contacts/upload:
-    post:
-      tags: [Contacts]
-      operationId: contactsUpload
-      summary: Upload an encrypted contact blob
-      description: >
-        Stores one opaque encrypted contact blob. Throttle: 600 req/min.
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [file]
-              properties:
-                file:
-                  type: string
-                  format: binary
-                  description: Opaque ciphertext bytes.
-      responses:
-        "201":
-          description: Blob stored.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IdResponse"
-        "413":
-          description: Quota exceeded.
-        "429":
-          description: Rate limit exceeded.
-
-  /contacts/raw/{blob}:
-    get:
-      tags: [Contacts]
-      operationId: contactsRaw
-      summary: Stream a contact blob (ciphertext)
-      description: "Owner-scoped. Throttle: 600 req/min."
-      parameters:
-        - name: blob
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Blob ciphertext stream.
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
-        "404":
-          description: Not found or not owned by caller.
-        "429":
-          description: Rate limit exceeded.
-
-  /contacts/blob/{blob}:
-    delete:
-      tags: [Contacts]
-      operationId: contactsBlobDestroy
-      summary: Delete a contact blob
-      description: "Idempotent. Throttle: 3000 req/min."
-      parameters:
-        - name: blob
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Deleted.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  deleted:
-                    type: boolean
-        "429":
-          description: Rate limit exceeded.
-
-  /contacts/blobs/reconcile:
-    post:
-      tags: [Contacts]
-      operationId: contactsReconcile
-      summary: Reclaim unreferenced contact blobs
-      description: "Same orphan-reclaim protocol as files. Throttle: 120 req/min."
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [blobs]
-              properties:
-                blobs:
-                  type: array
-                  items:
-                    type: string
-                    format: uuid
-                  maxItems: 100000
-      responses:
-        "200":
-          description: Reconciled; updated usage.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UsageResponse"
-        "429":
-          description: Rate limit exceeded.
-
-  # --------------------------------------------------------------------------
   # Explore (optional encrypted track blobs)
   # --------------------------------------------------------------------------
 
@@ -5492,56 +5307,6 @@ paths:
         "401":
           description: Unauthenticated.
 
-  /contacts/notify:
-    post:
-      tags: [Contacts]
-      operationId: contactsNotify
-      summary: Relay a contact birthday or anniversary notification
-      description: >
-        The client (which holds the decrypted contacts data) detects a due
-        birthday or anniversary and posts a ready-made notification message here.
-        The server intersects the requested channels with the user's saved
-        preferences for that kind and forwards to the enabled channels (desktop,
-        ntfy, mail, webhook). The message is never stored. Throttle: 60 req/min.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [kind, title, body]
-              properties:
-                kind:
-                  type: string
-                  enum: [birthday, anniversary]
-                  description: Type of contact event.
-                title:
-                  type: string
-                  maxLength: 200
-                  description: Notification title.
-                body:
-                  type: string
-                  maxLength: 500
-                  description: Notification body text.
-      responses:
-        "200":
-          description: Notification relayed (or skipped if no channels enabled).
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [sent]
-                properties:
-                  sent:
-                    type: boolean
-                    description: >
-                      True if the message was dispatched to at least one channel.
-                      False if the user has no channels enabled for this kind.
-        "422":
-          description: Validation error.
-        "429":
-          description: Rate limit exceeded.
-
   /groups:
     get:
       tags: [Groups]
@@ -7120,9 +6885,7 @@ paths:
       summary: Read the caller's per-user settings
       description: >
         Non-secret per-user settings a mobile client needs beyond display prefs:
-        the birthday/anniversary notification channels (on the ZK critical path —
-        the client detects a due date and relays via POST /contacts/notify, which
-        the server intersects with these channels) and the personal file version cap.
+        the birthday/anniversary notification channels and the personal file version cap.
       responses:
         "200": { description: "Settings.", content: { application/json: { schema: { $ref: "#/components/schemas/UserSettings" } } } }
         "401": { description: Unauthenticated. }

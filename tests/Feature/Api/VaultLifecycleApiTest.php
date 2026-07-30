@@ -12,7 +12,7 @@ use Tests\TestCase;
 
 /**
  * Batch 1/3/4 native-client parity: vault provisioning + rotation, per-user
- * settings (contact notify channels + file version cap), theme in /me, and the
+ * settings (file version cap), theme in /me, and the
  * owner-side device-pairing flow — all previously web-only.
  */
 class VaultLifecycleApiTest extends TestCase
@@ -74,17 +74,14 @@ class VaultLifecycleApiTest extends TestCase
         $h = $this->bearer($user);
 
         $this->getJson('/api/v1/settings', $h)->assertOk()
-            ->assertJsonPath('file_max_versions', 10)
-            ->assertJsonPath('contact_birthday_channels', []);
+            ->assertJsonPath('file_max_versions', 10);
 
         $this->putJson('/api/v1/settings', [
-            'contact_birthday_channels' => ['ntfy', 'mail', 'ntfy'],
             'file_max_versions' => 25,
         ], $h)->assertOk()
-            ->assertJsonPath('file_max_versions', 25)
-            ->assertJsonCount(2, 'contact_birthday_channels');
+            ->assertJsonPath('file_max_versions', 25);
 
-        $this->putJson('/api/v1/settings', ['contact_birthday_channels' => ['bogus']], $h)
+        $this->putJson('/api/v1/settings', ['file_max_versions' => 0], $h)
             ->assertStatus(422);
 
         $this->assertSame(25, UserSetting::for($user->id)->file_max_versions);

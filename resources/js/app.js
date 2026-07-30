@@ -4,7 +4,6 @@ import { Vault, ShareCrypto } from './vault';
 import { csrfToken, getJson } from './shared/api';
 import { buildModuleStores } from './shared/module-store';
 import { makeShardedStore } from './shared/sharded-store';
-import contacts from './components/contacts';
 import health from './components/health';
 import passwords from './components/passwords';
 import vaultFiles from './components/files';
@@ -495,16 +494,6 @@ Alpine.data('todos', todos);
  */
 Alpine.data('notes', notes);
 
-
-/**
- * Contacts. Zero-knowledge: every record lives in the opaque /store manifest
- * (shared with notes/todos) — plaintext inside the sealed blob, so CRUD just
- * edits the in-memory array and schedules a debounced sealed save. The only
- * per-record blob is the optional avatar (kept OUT of the manifest so it stays
- * small): encrypted + uploaded to the contacts blob store, referenced by
- * avatarRef/avatarKey. vCard mapping + gallery-person linking build on this.
- */
-Alpine.data('contacts', contacts);
 
 Alpine.data('health', health);
 

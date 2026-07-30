@@ -17,8 +17,6 @@ use App\Http\Controllers\Api\TwoFactorController as ApiTwoFactorController;
 use App\Http\Controllers\Api\UsersController as ApiUsersController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\BookmarksController;
-use App\Http\Controllers\ContactBlobController;
-use App\Http\Controllers\ContactNotifyController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\ExploreBlobController;
 use App\Http\Controllers\FileController;
@@ -114,7 +112,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:600,1')->name('api.files.raw');
         Route::post('/files/raw-batch', [FileController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.files.raw-batch');
 
-        // Plaintext-relational Notes (pivot Phase 1) — same controller as web, JSON per-record.
+        // Plaintext-relational Notes (pivot Etappe 1) — same controller as web, JSON per-record.
         Route::get('/notes', [NotesController::class, 'index'])->middleware('module:notes')->name('api.notes.index');
         Route::post('/notes', [NotesController::class, 'store'])->middleware(['throttle:600,1', 'module:notes'])->name('api.notes.store');
         Route::put('/notes/{note}', [NotesController::class, 'update'])->whereNumber('note')->middleware(['throttle:600,1', 'module:notes'])->name('api.notes.update');
@@ -123,7 +121,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/notes/{id}/restore', [NotesController::class, 'restore'])->whereNumber('id')->middleware(['throttle:600,1', 'module:notes'])->name('api.notes.restore');
         Route::delete('/notes/{id}/force', [NotesController::class, 'forceDelete'])->whereNumber('id')->middleware(['throttle:600,1', 'module:notes'])->name('api.notes.force');
 
-        // Plaintext-relational Todos (pivot Phase 1).
+        // Plaintext-relational Todos (pivot Etappe 1).
         Route::middleware('module:todos')->group(function (): void {
             Route::get('/todos', [TodosController::class, 'index'])->name('api.todos.index');
             Route::get('/todos/trash', [TodosController::class, 'trashed'])->name('api.todos.trash');
@@ -139,7 +137,7 @@ Route::prefix('v1')->group(function (): void {
             Route::delete('/todo-lists/{list}', [TodosController::class, 'destroyList'])->whereNumber('list')->middleware('throttle:600,1')->name('api.todos.lists.destroy');
         });
 
-        // Plaintext-relational Bookmarks (pivot Phase 1).
+        // Plaintext-relational Bookmarks (pivot Etappe 1).
         Route::middleware('module:bookmarks')->group(function (): void {
             Route::get('/bookmarks', [BookmarksController::class, 'index'])->name('api.bookmarks.index');
             Route::get('/bookmarks/trash', [BookmarksController::class, 'trashed'])->name('api.bookmarks.trash');
@@ -226,18 +224,6 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/gallery/shares', [GalleryShareController::class, 'store'])->middleware('throttle:60,1')->name('api.gallery.shares.store');
         Route::put('/gallery/shares/{token}', [GalleryShareController::class, 'update'])->middleware('throttle:60,1')->name('api.gallery.shares.update');
         Route::delete('/gallery/shares/{token}', [GalleryShareController::class, 'destroy'])->middleware('throttle:60,1')->name('api.gallery.shares.destroy');
-
-        // Contacts: the records themselves live in the workspace manifest above
-        // (GET/PUT /store). These are only the optional avatar content blobs, so
-        // the native app can show/upload a contact photo. Same controller-reuse,
-        // guard-agnostic, zero-knowledge as the web routes.
-        Route::get('/contacts/usage', [ContactBlobController::class, 'usage'])->name('api.contacts.usage');
-        Route::post('/contacts/blobs/reconcile', [ContactBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.contacts.reconcile');
-        Route::post('/contacts/upload', [ContactBlobController::class, 'upload'])->middleware('throttle:600,1')->name('api.contacts.upload');
-        Route::get('/contacts/raw/{blob}', [ContactBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.contacts.raw');
-        Route::delete('/contacts/blob/{blob}', [ContactBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.contacts.blob.destroy');
-        // Relay a contact reminder (birthday/anniversary) to the user's own channels.
-        Route::post('/contacts/notify', [ContactNotifyController::class, 'send'])->middleware('throttle:60,1')->name('api.contacts.notify');
 
         // Explore (map/GPS): records live in the opaque `explore` module store
         // (GET/PUT /store/explore); these are only the optional raw track blobs.

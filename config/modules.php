@@ -20,7 +20,6 @@ return [
         'notes' => ['label' => 'messages.nav.notes', 'route' => 'notes.index'],
         'todos' => ['label' => 'messages.nav.todos', 'route' => 'todos.index'],
         'bookmarks' => ['label' => 'messages.nav.bookmarks', 'route' => 'bookmarks.index'],
-        'contacts' => ['label' => 'messages.nav.contacts', 'route' => 'contacts.index'],
         'finance' => ['label' => 'messages.nav.finance', 'route' => 'finance.index'],
         'health' => ['label' => 'messages.nav.health', 'route' => 'health.index'],
         'explore' => ['label' => 'messages.nav.explore', 'route' => 'explore'],

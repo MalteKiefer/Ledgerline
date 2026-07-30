@@ -8,7 +8,6 @@ return [
         'notes' => 'Заметки',
         'bookmarks' => 'Закладки',
         'passwords' => 'Пароли',
-        'contacts' => 'Контакты',
         'invoices' => 'Счета',
         'finance' => 'Финансы',
         'files' => 'Файлы',

@@ -24,13 +24,13 @@ class UserIsolationTest extends TestCase
 
         // Alice seals her notes module in her own per-module store.
         $this->actingAs($alice)
-            ->putJson(route('module-store.save', 'contacts'), ['ciphertext' => 'alice-sealed-blob', 'version' => 0])
+            ->putJson(route('module-store.save', 'health'), ['ciphertext' => 'alice-sealed-blob', 'version' => 0])
             ->assertOk();
-        $this->actingAs($alice)->getJson(route('module-store.show', 'contacts'))
+        $this->actingAs($alice)->getJson(route('module-store.show', 'health'))
             ->assertOk()->assertJson(['ciphertext' => 'alice-sealed-blob', 'version' => 1]);
 
         // Bob has his own empty manifest and never sees Alice's ciphertext.
-        $this->actingAs($bob)->getJson(route('module-store.show', 'contacts'))
+        $this->actingAs($bob)->getJson(route('module-store.show', 'health'))
             ->assertOk()->assertJson(['ciphertext' => null, 'version' => 0]);
         $this->assertSame($alice->id, ModuleStore::query()->where('ciphertext', 'alice-sealed-blob')->value('user_id'));
     }

@@ -23,11 +23,11 @@ class DesignSmokeRenderTest extends TestCase
         $u = User::factory()->create();
         $routes = [
             '/dashboard', '/health', '/finance', '/notes', '/todos', '/bookmarks',
-            '/contacts', '/explore', '/gallery', '/files', '/passwords',
+            '/explore', '/gallery', '/files', '/passwords',
             '/profile', '/profile/account', '/profile/devices', '/profile/sessions',
             '/profile/encryption', '/profile/security', '/profile/appearance',
             '/profile/export', '/profile/danger',
-            '/settings/files', '/settings/contacts', '/settings/paperless',
+            '/settings/files', '/settings/paperless',
         ];
         foreach ($routes as $r) {
             $this->actingAs($u)->get($r)->assertOk();

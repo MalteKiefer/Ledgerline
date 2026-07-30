@@ -12,7 +12,10 @@ export async function bootStore(store, moduleName) {
     while (! store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
     if (! store.vault.unlocked) return false;
     const ms = window.LLModuleStore[moduleName];
-    if (! ms) throw new Error('unknown module store: ' + moduleName);
+    // A removed/unknown module store (e.g. contacts after the pivot) degrades to
+    // "unavailable" so cross-module consumers (gallery people, invoice receipts)
+    // just show an empty picker instead of throwing.
+    if (! ms) return false;
     if (! ms.loaded) await ms.load();
     return true;
 }

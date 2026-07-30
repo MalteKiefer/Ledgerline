@@ -1,9 +1,8 @@
 // Dashboard component — reads the decrypted per-module stores and gallery store
-// to populate widgets (todos, counters, recent notes, birthdays, health).
+// to populate widgets (todos, counters, recent notes, health).
 // Gallery is best-effort: the widget degrades gracefully if unavailable.
 import { bootGalleryStore } from '../shared/zk-module';
-import { sortTodos, upcomingBirthdays, yearsAgoPhotos } from '../shared/dashboard-utils';
-import { contactDisplayName } from '../shared/contact-utils';
+import { sortTodos, yearsAgoPhotos } from '../shared/dashboard-utils';
 import { getJson, postForm } from '../shared/api';
 import {
     METRICS, metric,
@@ -77,13 +76,12 @@ export default (config = {}, labels = {}) => ({
         while (! vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
         if (! vault.unlocked) { this.state = 'locked'; return; }
 
-        await Promise.all(['contacts', 'health']
-            .map((m) => (window.LLModuleStore[m].loaded ? null : window.LLModuleStore[m].load())));
+        if (! window.LLModuleStore.health.loaded) await window.LLModuleStore.health.load();
         if (! window.LLFilesStore.loaded) await window.LLFilesStore.load();
         // Passwords + invoices still on sharded ZK stores (spec §3b).
         if (! window.LLPasswordsStore.loaded) await window.LLPasswordsStore.load();
         if (! window.LLInvoicesStore.loaded) await window.LLInvoicesStore.load();
-        // Notes/todos/bookmarks are plaintext-relational (pivot Phase 1) — plain REST reads.
+        // Notes/todos/bookmarks/contacts are plaintext-relational (pivot Etappe 1/2) — plain REST reads.
         await this._loadRelational();
 
         this.state = 'ready';
@@ -100,7 +98,7 @@ export default (config = {}, labels = {}) => ({
         this._thumbPending = {};
     },
 
-    // Plaintext-relational widgets (pivot Phase 1): notes/todos/bookmarks via REST.
+    // Plaintext-relational widgets (pivot Etappe 1): notes/todos/bookmarks via REST.
     _relNotes: [],
     _relTodos: [],
     _relBookmarksCount: 0,
@@ -120,7 +118,6 @@ export default (config = {}, labels = {}) => ({
     },
 
     // Per-module data getters (store v3 split — each module owns its sealed store).
-    get _contacts() { return window.LLModuleStore.contacts?.data ?? null; },
     get _passwords() { return window.LLPasswordsStore?.data ?? null; },
     get _health() { return window.LLModuleStore.health?.data ?? null; },
     get _invoices() { return window.LLInvoicesStore?.data ?? null; },
@@ -148,7 +145,6 @@ export default (config = {}, labels = {}) => ({
         return {
             notes: this._relNotes.length,
             passwords: (this._passwords?.secrets ?? []).length,
-            contacts: (this._contacts?.contacts ?? []).length,
             bookmarks: this._relBookmarksCount,
             invoices: (this._invoices?.invoices ?? []).length,
             files: (this._files?.files ?? []).filter((f) => ! f.trashed).length,
@@ -160,17 +156,6 @@ export default (config = {}, labels = {}) => ({
         void this._mut;
         return this._relNotes.slice()
             .sort((a, b) => (b.updated ?? '').localeCompare(a.updated ?? '')).slice(0, 5);
-    },
-
-    // --- Birthdays widget ---
-    get birthdays() {
-        void this._mut;
-        if (! this._contacts) return [];
-        const contacts = this._contacts.contacts ?? [];
-        const byId = new Map(contacts.map((c) => [c.id, c]));
-        return upcomingBirthdays(contacts, new Date().toISOString().slice(0, 10), 30)
-            // Resolve the real display name (form contacts have first/last, not displayName/fn).
-            .map((b) => ({ ...b, name: contactDisplayName(byId.get(b.id) ?? {}) || b.name }));
     },
 
     // --- Health widget ---

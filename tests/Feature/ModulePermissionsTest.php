@@ -56,10 +56,10 @@ final class ModulePermissionsTest extends TestCase
 
     public function test_generic_store_endpoint_is_blocked_for_a_disabled_module(): void
     {
-        $user = User::factory()->create(['role' => 'user', 'modules' => ['contacts']]);
-        // health disabled → 403; contacts allowed → not 403 (200/empty depending on state)
-        $this->actingAs($user)->get('/store/health')->assertForbidden();
-        $this->actingAs($user)->get('/store/contacts')->assertStatus(200);
+        $user = User::factory()->create(['role' => 'user', 'modules' => ['health']]);
+        // explore disabled → 403; health allowed → not 403 (200/empty depending on state)
+        $this->actingAs($user)->get('/store/explore')->assertForbidden();
+        $this->actingAs($user)->get('/store/health')->assertStatus(200);
     }
 
     public function test_me_exposes_allowed_modules(): void
