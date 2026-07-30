@@ -21,10 +21,8 @@ use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\ExploreController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FinanceController;
-use App\Http\Controllers\GalleryBlobController;
+use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryProcessController;
-use App\Http\Controllers\GalleryShareController;
-use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MapController;
@@ -245,33 +243,46 @@ Route::prefix('v1')->group(function (): void {
         Route::put('/company', [ApiCompanyController::class, 'update'])->middleware('throttle:60,1')->name('api.company.update');
         Route::get('/company/logo', [ApiCompanyController::class, 'logo'])->middleware('throttle:120,1')->name('api.company.logo');
 
-        // Gallery: sealed index + opaque photo blobs + the stateless transform.
-        Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->middleware('module:gallery')->name('api.gallery.store.show');
-        Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:gallery'])->name('api.gallery.store.save');
-        Route::get('/gallery/usage', [GalleryBlobController::class, 'usage'])->name('api.gallery.usage');
-        Route::post('/gallery/blobs/reconcile', [GalleryBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.gallery.reconcile');
-        Route::post('/gallery/upload', [GalleryBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('api.gallery.upload');
-        Route::post('/gallery/upload/init', [GalleryBlobController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.gallery.upload.init');
-        Route::post('/gallery/upload/part', [GalleryBlobController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.gallery.upload.part');
-        Route::post('/gallery/upload/complete', [GalleryBlobController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.gallery.upload.complete');
-        Route::post('/gallery/upload/abort', [GalleryBlobController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.gallery.upload.abort');
-        Route::get('/gallery/raw/{blob}', [GalleryBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.gallery.raw');
-        Route::post('/gallery/raw-batch', [GalleryBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.gallery.raw-batch');
-        Route::delete('/gallery/blob/{blob}', [GalleryBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.gallery.blob.destroy');
-        Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('throttle:600,1')->name('api.gallery.process');
-        // Deferred vision pass: client POSTs a photo's medium rendition (plaintext, discarded
-        // after) and gets back the CLIP embedding + faces to merge into the sealed metadata.
-        Route::post('/gallery/analyze', [GalleryProcessController::class, 'analyze'])->middleware('throttle:600,1')->name('api.gallery.analyze');
-        Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('throttle:300,1')->name('api.gallery.embed-text');
-        // Reverse-geocode a photo coordinate to a place name (viewer display). Self-hosted
-        // Photon first (ZK), snap-to-grid before egress, never cached server-side.
+        // Gallery geocoding (kept): reverse-geocode a photo coordinate to a place
+        // name (viewer display) — self-hosted Photon first (ZK), snap-to-grid before
+        // egress, never cached server-side — and forward-geocode a place search for
+        // location tagging. The ZK gallery index/blob/transform endpoints were
+        // removed with the plaintext-relational Gallery pivot.
         Route::get('/gallery/reverse', [GalleryProcessController::class, 'reverse'])->middleware('throttle:60,1')->name('api.gallery.reverse');
-        // Forward geocode: address/place search for photo location tagging (reverse is above).
         Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('throttle:60,1')->name('api.gallery.geocode');
-        // Album public share links (parity with files.shares): create, update metadata, revoke.
-        Route::post('/gallery/shares', [GalleryShareController::class, 'store'])->middleware('throttle:60,1')->name('api.gallery.shares.store');
-        Route::put('/gallery/shares/{token}', [GalleryShareController::class, 'update'])->middleware('throttle:60,1')->name('api.gallery.shares.update');
-        Route::delete('/gallery/shares/{token}', [GalleryShareController::class, 'destroy'])->middleware('throttle:60,1')->name('api.gallery.shares.destroy');
+
+        // Plaintext-relational Gallery core (pivot) — same controller as web, JSON.
+        // Distinct URIs (/gallery/photos*, /gallery/albums*, /gallery/data) so
+        // nothing collides with the ZK gallery routes above.
+        Route::middleware('module:gallery')->group(function (): void {
+            Route::get('/gallery/data', [GalleryController::class, 'data'])->name('api.gallery.rel.data');
+            Route::get('/gallery/trash', [GalleryController::class, 'trashed'])->name('api.gallery.rel.trash');
+            Route::post('/gallery/photos', [GalleryController::class, 'upload'])->middleware('throttle:1200,1')->name('api.gallery.rel.upload');
+            Route::post('/gallery/photos/trash/empty', [GalleryController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('api.gallery.rel.empty');
+            Route::put('/gallery/photos/{photo}', [GalleryController::class, 'update'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.rel.update');
+            Route::post('/gallery/photos/{photo}/toggle', [GalleryController::class, 'toggle'])->whereNumber('photo')->middleware('throttle:1200,1')->name('api.gallery.rel.toggle');
+            Route::delete('/gallery/photos/{photo}', [GalleryController::class, 'destroy'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.rel.destroy');
+            Route::get('/gallery/photos/{photo}/raw', [GalleryController::class, 'raw'])->whereNumber('photo')->middleware('throttle:3000,1')->name('api.gallery.rel.raw');
+            Route::get('/gallery/photos/{photo}/thumb', [GalleryController::class, 'thumb'])->whereNumber('photo')->middleware('throttle:6000,1')->name('api.gallery.rel.thumb');
+            Route::get('/gallery/photos/{photo}/medium', [GalleryController::class, 'medium'])->whereNumber('photo')->middleware('throttle:6000,1')->name('api.gallery.rel.medium');
+            Route::get('/gallery/photos/{photo}/motion', [GalleryController::class, 'motion'])->whereNumber('photo')->middleware('throttle:3000,1')->name('api.gallery.rel.motion');
+            Route::post('/gallery/photos/{id}/restore', [GalleryController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.gallery.rel.restore');
+            Route::delete('/gallery/photos/{id}/force', [GalleryController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.gallery.rel.force');
+            Route::post('/gallery/photos/chunk/init', [GalleryController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.gallery.rel.chunk.init');
+            Route::post('/gallery/photos/chunk/part', [GalleryController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.gallery.rel.chunk.part');
+            Route::post('/gallery/photos/chunk/complete', [GalleryController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.gallery.rel.chunk.complete');
+            Route::post('/gallery/photos/chunk/abort', [GalleryController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.gallery.rel.chunk.abort');
+            Route::get('/gallery/albums', [GalleryController::class, 'albums'])->name('api.gallery.rel.albums');
+            Route::post('/gallery/albums', [GalleryController::class, 'storeAlbum'])->middleware('throttle:600,1')->name('api.gallery.rel.albums.store');
+            Route::put('/gallery/albums/{album}', [GalleryController::class, 'updateAlbum'])->whereNumber('album')->middleware('throttle:600,1')->name('api.gallery.rel.albums.update');
+            Route::delete('/gallery/albums/{album}', [GalleryController::class, 'destroyAlbum'])->whereNumber('album')->middleware('throttle:600,1')->name('api.gallery.rel.albums.destroy');
+            Route::post('/gallery/albums/{album}/photos', [GalleryController::class, 'addPhotos'])->whereNumber('album')->middleware('throttle:600,1')->name('api.gallery.rel.albums.photos.add');
+            Route::delete('/gallery/albums/{album}/photos/{photo}', [GalleryController::class, 'removePhoto'])->whereNumber(['album', 'photo'])->middleware('throttle:600,1')->name('api.gallery.rel.albums.photos.remove');
+            Route::post('/gallery/albums/{album}/cover', [GalleryController::class, 'setCover'])->whereNumber('album')->middleware('throttle:600,1')->name('api.gallery.rel.albums.cover');
+            Route::post('/gallery/rel-shares', [GalleryController::class, 'storeShare'])->middleware('throttle:60,1')->name('api.gallery.rel.shares.store');
+            Route::put('/gallery/rel-shares/{share}', [GalleryController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.gallery.rel.shares.update');
+            Route::delete('/gallery/rel-shares/{share}', [GalleryController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.gallery.rel.shares.destroy');
+        });
 
         // Plaintext-relational Explore (pivot) — same controller as web, JSON.
         // Track point lists are location PII → `encrypted`-cast at rest.

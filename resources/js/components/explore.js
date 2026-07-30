@@ -17,12 +17,10 @@
 // KMZ unzip (fflate, dynamic import) are only pulled when the view needs them,
 // so none of them touch the startup bundle.
 
-import { bootGalleryStore } from '../shared/zk-module';
 import { parseTrack, parseTrackBinary, smoothedAscentDescent } from '../shared/track-parse';
 import { matchPhotoToTracks, interpolatePosition } from '../shared/photo-track-match';
 import { loadLeaflet } from '../shared/lazy-loaders';
 import { loadUplot } from '../shared/uplot-loader';
-import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
 import { buildPlannedTrack, hasElevation, downsampleProfile, normalizeRouteElevation, aggregateSurfaces } from '../shared/explore-detail';
 import { haversineM } from '../shared/track-parse';
 import { classifySearch } from '../shared/geo-search';
@@ -198,14 +196,14 @@ export default (config = {}, labels = {}, initial = {}) => ({
         } catch (_e) { /* keep the inlined snapshot */ }
     },
 
-    // Gallery photos are best-effort — Explore still works with none. They remain
-    // zero-knowledge (read from the decrypted gallery index, not from the server).
+    // Gallery photos are plaintext-relational now (pivot) — best-effort GET.
     async _loadGallery() {
         try {
-            if (await bootGalleryStore(this.$store)) {
-                this.photos = (window.LLGalleryStore.data.photos || []).filter((p) => ! p.trashed);
-                this._mut++;
-            }
+            const d = await getJson('/gallery/data');
+            this.photos = (d.photos || []).map((p) => ({
+                id: p.id, lat: p.lat, lng: p.lng, taken_at: p.taken_at, created: p.created_at,
+            }));
+            this._mut++;
         } catch (_e) { this.photos = []; }
     },
 
@@ -1502,23 +1500,11 @@ export default (config = {}, labels = {}, initial = {}) => ({
 
     /* --------------------------------------------------------- Thumbnails */
 
+    // Gallery photos are plaintext now (pivot) — the thumbnail is a direct URL.
     async _thumbFor(p) {
-        if (! p.thumbRef) return '';
-        if (this.thumbs[p.id]) return this.thumbs[p.id];
-        if (this._thumbPending[p.id]) return this._thumbPending[p.id];
-        const job = thumbLane(async () => {
-            // Photo thumbnails are GALLERY blobs (thumbRef), not explore raw files —
-            // fetch from the gallery raw base, not /explore/raw.
-            const bytes = await fetchDecryptWorker(config.galleryRawBase, p.thumbRef, p.thumbKey);
-            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
-            this.thumbs[p.id] = url;
-            return url;
-        }).catch(() => '').finally(() => { delete this._thumbPending[p.id]; });
-        this._thumbPending[p.id] = job;
-        return job;
+        return p?.id ? '/gallery/photos/' + p.id + '/thumb' : '';
     },
     _revokeThumbs() {
-        for (const k in this.thumbs) URL.revokeObjectURL(this.thumbs[k]);
         this.thumbs = {};
         this._thumbPending = {};
     },

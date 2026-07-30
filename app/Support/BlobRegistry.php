@@ -5,22 +5,24 @@ declare(strict_types=1);
 namespace App\Support;
 
 use App\Models\FileEntry;
-use App\Models\GalleryBlob;
+use App\Models\GalleryPhoto;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Registry mapping module keys to their ownership-ledger model and disk prefix.
- * gallery→GalleryBlob is the zero-knowledge blob ledger; files→FileEntry is the
- * plaintext-relational Files core (bytes at files/<uuid>). The `files` entry
- * only serves the legacy public file-share consumption path in
- * PublicShareController (creation removed in the pivot, viewer rebuilt later).
+ * Registry mapping module keys to their bytes-owning model and disk prefix.
+ * Both entries now point at the plaintext-relational cores (gallery→GalleryPhoto,
+ * files→FileEntry; bytes at gallery/<uuid> and files/<uuid>). They serve only the
+ * legacy public-share consumption path in PublicShareController, which is
+ * deferred to the final crypto-core removal release (share creation was removed
+ * in the pivot and the viewer will be rebuilt then) — the zero-knowledge blob
+ * ledgers (GalleryBlob / FileBlob) they used to reference are gone.
  */
 final class BlobRegistry
 {
     /** @var array<string, array{model: class-string<Model>, prefix: string}> */
     private const MAP = [
-        'gallery' => ['model' => GalleryBlob::class, 'prefix' => 'gallery'],
-        'files' => ['model' => FileEntry::class,   'prefix' => 'files'],
+        'gallery' => ['model' => GalleryPhoto::class, 'prefix' => 'gallery'],
+        'files' => ['model' => FileEntry::class,     'prefix' => 'files'],
     ];
 
     /** @return class-string<Model> */

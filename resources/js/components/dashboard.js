@@ -1,7 +1,6 @@
 // Dashboard component — reads the decrypted per-module stores and gallery store
 // to populate widgets (todos, counters, recent notes, health).
 // Gallery is best-effort: the widget degrades gracefully if unavailable.
-import { bootGalleryStore } from '../shared/zk-module';
 import { sortTodos, yearsAgoPhotos } from '../shared/dashboard-utils';
 import { getJson, postForm } from '../shared/api';
 import {
@@ -9,7 +8,6 @@ import {
     kgToLb, lbToKg, cToF, fToC, mgdlToMmoll, mmollToMgdl,
 } from '../shared/health-metrics';
 import { loadUplot } from '../shared/uplot-loader';
-import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
 import { formatBytes } from '../shared/file-categories';
 import { activeFast, fastProgress, formatDuration, formatDurationHMS, templateLabel } from '../shared/health-fasting';
 import { healthUnits } from '../shared/prefs';
@@ -45,10 +43,6 @@ export default (config = {}, labels = {}) => ({
 
     async init() {
         await this._boot();
-        this.$watch('$store.vault.unlocked', async (on) => {
-            if (on && this.state !== 'ready') await this._boot();
-            if (! on) { this.state = 'locked'; this._revokeThumbCache(); this._stopFastClock(); }
-        });
         this.$watch('_mut', () => this.renderSpark());
         // Start/stop the 1s clock off the reactive activeFast getter (not a one-shot
         // state check): the sealed store loads async, so activeFast is false at
@@ -87,18 +81,11 @@ export default (config = {}, labels = {}) => ({
     fastPct(fast) { return Math.min(100, Math.round(fastProgress(fast, this._fastNow).fraction * 100)); },
 
     async _boot() {
-        // Multi-module dashboard: wait for the vault, then load every per-module
-        // store the widgets read (each is its own sealed manifest). Gallery + files
-        // are best-effort (their widgets degrade gracefully if unavailable).
-        const vault = this.$store.vault;
-        while (! vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
-        if (! vault.unlocked) { this.state = 'locked'; return; }
-
-        // Notes/todos/bookmarks/health/files/finance are plaintext-relational (pivot) — plain REST reads.
+        // All modules are plaintext-relational now (pivot) — no vault gate; the
+        // session auth is enough. Load every widget's data over plain REST.
         await this._loadRelational();
 
         this.state = 'ready';
-        try { this.galleryReady = await bootGalleryStore(this.$store); } catch (_e) { this.galleryReady = false; }
         this._loadUsage();
         this.$nextTick(() => this.renderSpark());
     },
@@ -118,16 +105,20 @@ export default (config = {}, labels = {}) => ({
     _relFiles: [],
     _relHealth: null, // { healthEntries, healthFasts }
     _relInvoices: [],
+    _relPhotos: [],
     async _loadRelational() {
-        const [nt, td, bm, fe, hd, fin] = await Promise.all([
+        const [nt, td, bm, fe, hd, fin, gal] = await Promise.all([
             getJson('/notes/list').catch(() => ({ notes: [] })),
             getJson('/todos/list').catch(() => ({ todos: [] })),
             getJson('/bookmarks/list').catch(() => ({ bookmarks: [] })),
             getJson('/files/entries').catch(() => ({ files: [], usage: null })),
             getJson('/health/data').catch(() => ({ entries: [], fasts: [] })),
             getJson('/finance/data').catch(() => ({ invoices: [] })),
+            getJson('/gallery/data').catch(() => ({ photos: [], usage: null })),
         ]);
         this._relInvoices = fin.invoices ?? [];
+        this._relPhotos = (gal.photos ?? []).map((p) => ({ id: p.id, taken_at: p.taken_at, created: p.created_at }));
+        if (gal.usage) this.usage.gallery = gal.usage;
         this._relNotes = (nt.notes ?? []).map((n) => ({ id: n.id, title: n.title, updated: n.updated_at }));
         this._relTodos = (td.todos ?? []).map((t) => ({
             id: t.id, title: t.title, done: !! t.done, marked: !! t.marked,
@@ -154,7 +145,7 @@ export default (config = {}, labels = {}) => ({
     // plaintext-relational (pivot); gallery is still a sealed ZK store.
     get _health() { return this._relHealth; },
     get _invoices() { return { invoices: this._relInvoices }; },
-    get _g() { return this.galleryReady ? (window.LLGalleryStore?.data ?? null) : null; },
+    get _g() { return { photos: this._relPhotos }; },
 
     // --- Todos widget ---
     get todos() {
@@ -316,32 +307,17 @@ export default (config = {}, labels = {}) => ({
 
     async _loadUsage() {
         // Files usage now comes from the /files/entries payload in _loadRelational().
-        try { this.usage.gallery = await getJson('/gallery/usage'); } catch (_e) { /* widget shows — */ }
     },
 
     // --- On This Day widget ---
     // Groups past-year photos whose month+day match today, sorted nearest first.
     get onThisDay() {
-        return this._g ? yearsAgoPhotos(this._g.photos ?? [], new Date().toISOString().slice(0, 10)) : [];
+        return yearsAgoPhotos(this._relPhotos, new Date().toISOString().slice(0, 10));
     },
 
-    // Decrypt and cache a photo thumbnail. Reuses the same decrypt path as gallery.js
-    // (thumbLane + fetchDecryptWorker, photo.thumbRef + photo.thumbKey).
-    // Capped at 12 total decrypts; returns '' when photo has no thumb or cap is reached.
+    // Gallery photos are plaintext now (pivot) — the thumbnail is a direct URL.
     async thumbUrl(photo) {
-        if (! photo?.thumbRef) return '';
-        if (this._thumbCache[photo.id]) return this._thumbCache[photo.id];
-        if (this._thumbPending[photo.id]) return this._thumbPending[photo.id];
-        // Cap total: once 12 object URLs are cached, stop decrypting more.
-        if (Object.keys(this._thumbCache).length >= 12) return '';
-        const job = thumbLane(async () => {
-            const bytes = await fetchDecryptWorker(config.rawBase, photo.thumbRef, photo.thumbKey);
-            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
-            this._thumbCache[photo.id] = url;
-            return url;
-        }).catch(() => '').finally(() => { delete this._thumbPending[photo.id]; });
-        this._thumbPending[photo.id] = job;
-        return job;
+        return photo?.id ? '/gallery/photos/' + photo.id + '/thumb' : '';
     },
 
     // --- Storage widget ---

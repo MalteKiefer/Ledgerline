@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\FileEntry;
-use App\Models\GalleryBlob;
+use App\Models\GalleryPhoto;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -45,7 +45,9 @@ class MeUsageQuotaTest extends TestCase
         (new FileEntry)->forceFill([
             'user_id' => $user->id, 'name' => 'f.bin', 'size' => 4096, 'storage_path' => 'files/'.Str::uuid(),
         ])->save();
-        GalleryBlob::create(['blob' => (string) Str::uuid(), 'user_id' => $user->id, 'size' => 2048, 'created_at' => now()]);
+        (new GalleryPhoto)->forceFill([
+            'user_id' => $user->id, 'kind' => 'image', 'mime' => 'image/jpeg', 'size' => 2048, 'storage_path' => 'gallery/'.Str::uuid(),
+        ])->save();
 
         $this->getJson('/api/v1/me', ['Authorization' => 'Bearer '.$this->token($user)])
             ->assertOk()

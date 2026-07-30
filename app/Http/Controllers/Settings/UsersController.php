@@ -8,11 +8,11 @@ use App\Actions\PurgeUserAccount;
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
-use App\Models\GalleryBlob;
 use App\Models\Group;
 use App\Models\User;
 use App\Support\BlobStore;
 use App\Support\FilesUsage;
+use App\Support\GalleryUsage;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -39,7 +39,7 @@ class UsersController extends Controller
         // Per-user storage usage (files + gallery bytes), shown for every user
         // regardless of whether they have a quota set. One grouped query each.
         $filesBy = FilesUsage::byUser();
-        $galleryBy = GalleryBlob::query()->groupBy('user_id')->selectRaw('user_id, SUM(size) AS bytes')->pluck('bytes', 'user_id');
+        $galleryBy = GalleryUsage::byUser();
 
         $int = static fn (mixed $v): int => is_numeric($v) ? (int) $v : 0;
         $usage = $users->mapWithKeys(function (User $u) use ($filesBy, $galleryBy, $int): array {

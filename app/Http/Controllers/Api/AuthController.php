@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\GalleryBlob;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Auth\Pairing;
 use App\Support\DeviceAudit;
 use App\Support\FilesUsage;
+use App\Support\GalleryUsage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -73,7 +73,7 @@ class AuthController extends Controller
             'user' => $this->userPayload($user),
             'usage' => [
                 'files' => FilesUsage::forUser((int) $user->id),
-                'gallery' => (int) GalleryBlob::query()->where('user_id', $user->id)->sum('size'),
+                'gallery' => GalleryUsage::forUser((int) $user->id),
                 // Combined storage limit in bytes (files + gallery), or null when
                 // unlimited. Null if EITHER dimension is unlimited (0) — the pool has
                 // no finite cap then. Lets a client render a used/limit ring.

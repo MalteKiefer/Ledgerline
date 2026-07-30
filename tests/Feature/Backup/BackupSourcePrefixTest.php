@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Backup;
 
-use App\Http\Controllers\GalleryBlobController;
 use App\Services\Backup\Sources\FilesSource;
 use App\Services\Backup\Sources\GallerySource;
 use ReflectionMethod;
@@ -30,13 +29,9 @@ class BackupSourcePrefixTest extends TestCase
         // files/<uuid>, so the backup source must mirror the `files` prefix.
         $this->assertSame('files', $this->protectedString(new FilesSource, 'prefix'));
 
-        // Gallery (still zero-knowledge): GalleryBlobController writes under the
-        // prefix its module() returns; the source must mirror the same one.
-        $this->assertSame(
-            $this->protectedString(new GalleryBlobController, 'module'),
-            $this->protectedString(new GallerySource, 'prefix'),
-            'GallerySource must mirror the same disk prefix GalleryBlobController writes to.',
-        );
-        $this->assertSame('gallery', $this->protectedString(new GalleryBlobController, 'module'));
+        // Gallery (plaintext-relational core): GalleryController stores photo bytes
+        // + renditions under gallery/<uuid>, so the source must mirror `gallery`.
+        $this->assertSame('gallery', $this->protectedString(new GallerySource, 'prefix'));
+        $this->assertSame('gallery', $this->protectedString(new GallerySource, 'diskPrefix'));
     }
 }
