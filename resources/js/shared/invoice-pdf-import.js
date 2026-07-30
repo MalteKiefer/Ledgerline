@@ -165,20 +165,33 @@ export function parseCustomer(text, sender = 'kiefernetworks') {
     const isSender = (s) => flat(s).includes(sender);
     const isStop = (s) => /^(rechnungsdetails|rechnungs[üu]bersicht|beschreibung|von|zahlungs|notizen|steuer|pos|item|quantity|menge|rechnung(nr|snr|snummer|sdatum)?|kundennummer|datum|leistungs|status|f[äa]llig|ust)/.test(flat(s));
 
-    let start = -1;
+    let start = -1, viaMarker = false;
     // 1) explicit recipient marker ("RECHNUNG AN" / "BILL TO"), incl. letter-spaced.
     for (let i = 0; i < lines.length; i++) {
-        if (/rechnungan|billto|rechnungsempf/.test(flat(lines[i]))) { start = i + 1; break; }
+        if (/rechnungan|billto|rechnungsempf/.test(flat(lines[i]))) { start = i + 1; viaMarker = true; break; }
     }
     // 2) else the sender one-liner (with an address separator / postcode).
     if (start < 0) for (let i = 0; i < lines.length; i++) if (isSender(lines[i]) && /[|\-–—]|\d{5}/.test(lines[i])) { start = i + 1; break; }
     if (start < 0) for (let i = 0; i < lines.length; i++) if (isSender(lines[i])) { start = i + 1; break; }
     if (start < 0) return null;
 
+    // Header-style layouts print the SENDER as a block (wordmark → name → address →
+    // Bank/IBAN) before the recipient. When we entered via the sender (no explicit "Rechnung
+    // an" marker) and a bank cluster sits in the immediate run after `start`, skip past it so
+    // the FIRST post-cluster address is the real recipient — not the seller ("Malte Kiefer").
+    // (The footer bank line is far below this 24-line window, so it can't false-trigger.)
+    if (! viaMarker) {
+        const isBankish = (s) => /iban|bic\b|\bblz\b|kontonr|kontoinhaber|volksbank|sparkasse|^bank\b|steuernummer|amtsgericht|gesch[äa]ftsf[üu]hrer/i.test(s);
+        let j = -1;
+        for (let k = start; k < lines.length && k < start + 10; k++) if (lines[k] && isBankish(lines[k])) j = k;
+        if (j >= 0) start = j + 1;
+    }
+
     const deSpace = deSpaceWord;
-    // The recipient's VAT id ("USt.-IdNr. DE265814432") — the FIRST one in the top block is
-    // the customer's (the seller's own sits in the footer, below this window).
-    const vatOf = (s) => { const m = s.match(/USt\.?-?\s?IdNr\.?\s*:?\s*([A-Z]{2}\s?\d[\d\s]{5,})/i); return m ? m[1].replace(/\s+/g, '') : null; };
+    // The recipient's VAT id ("USt.-IdNr. DE265814432" / "UST: DE28...") — the FIRST one in
+    // the recipient block is the customer's (the seller's own sits in the footer / above the
+    // skipped bank cluster).
+    const vatOf = (s) => { const m = s.match(/\bUSt\.?(?:-?\s?IdNr\.?)?\s*:?\s*([A-Z]{2}\s?\d[\d\s]{5,})/i); return m ? m[1].replace(/\s+/g, '') : null; };
 
     const block = [];
     let vatId = '';
@@ -449,6 +462,54 @@ export function parseInvoiceText(text) {
 }
 
 function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+
+/**
+ * LEAN import draft — the ONLY fields the redesigned import captures: recipient, number,
+ * issue date, gross total (Summe), VAT rate (Steuer), currency. No line-item table is
+ * reconstructed (the original PDF is the authoritative record, shown inline); the user
+ * confirms/fixes these six fields against the PDF before committing. `net`/`vat` are
+ * derived from gross + rate at commit time, so the whole record is one synthetic net line.
+ * @param {object} f  parseInvoiceFilename result
+ * @param {object} p  parseInvoiceText result
+ * @param {object} opts  { id, currency, currentYear, defaultVat }
+ */
+export function buildImportDraft(f, p, opts = {}) {
+    const warnings = [];
+    const number = p.number || f.number || null;
+    const issueDate = p.dateLabeled || f.date || p.date || null;
+    const recipient = {
+        name: (p.customer && p.customer.name) || f.customer || '',
+        address: (p.customer && p.customer.address) || '',
+        vatId: (p.customer && p.customer.vatId) || '',
+    };
+    // Gross (Summe) is primary; fall back to net(+vat) when only those were parsed.
+    let gross = p.gross;
+    if (gross == null && p.net != null) gross = round2(p.net + (p.vat || 0));
+    // VAT rate (Steuer): parsed value, else small-business 0, else the company default.
+    let vatRate = p.vatRate;
+    if (vatRate == null) vatRate = p.smallBusiness ? 0 : (opts.defaultVat != null ? opts.defaultVat : 19);
+    const seq = opts.currentYear ? importedSeq(number, opts.currentYear) : null;
+
+    if (! number) warnings.push('number');
+    if (! issueDate) warnings.push('date');
+    if (gross == null) warnings.push('amount');
+    if (! recipient.name) warnings.push('recipient');
+
+    const rec = {
+        id: opts.id,
+        number,
+        issueDate,
+        dueDate: p.dueDate || issueDate,
+        currency: p.currency || opts.currency || 'EUR',
+        gross: gross == null ? null : round2(gross),
+        vatRate,
+        recipient,
+        selected: true,
+        _warnings: warnings,
+    };
+    if (seq != null) rec.seq = seq;
+    return rec;
+}
 
 /**
  * Build an invoice draft from the filename + text parses. The PDF TEXT is the primary

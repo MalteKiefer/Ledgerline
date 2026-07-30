@@ -1,8 +1,7 @@
 // invoices component. Extracted from app.js.
 import { zkModule, bootStore } from '../shared/zk-module';
 import { nextSeqForYear, duplicateNumbers as dupNumbers, invoicesInYear, invoiceYear } from '../shared/invoice-numbering';
-import { parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, buildInvoiceFromXml, looksMangled, mangleScore } from '../shared/invoice-pdf-import';
-import { parseEInvoiceXml, looksLikeEInvoiceXml } from '../shared/einvoice-xml';
+import { parseInvoiceFilename, parseInvoiceText, buildImportDraft } from '../shared/invoice-pdf-import';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
 import { jsonHeaders, postForm } from '../shared/api';
 import { saveBlobAs } from '../shared/dom';
@@ -14,7 +13,7 @@ import { autoPick, suggestBookings } from '../shared/receipt-match';
 import { projectTree as buildProjectTree, rolledTotal as projectRolled, ownTotal as projectOwn, projectReceipts as receiptsForProject } from '../shared/finance-projects';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary } from '../shared/finance-stats';
 import { matchInvoice } from '../shared/invoice-match';
-import { extractDocText, ocrPdf } from '../shared/doc-text';
+import { extractDocText } from '../shared/doc-text';
 import { analyzeReceiptText } from '../shared/receipt-ocr';
 import { normMerchant, matchPartner, learnedCategoryFor } from '../shared/merchant-learn';
 import { buildReceiptName } from '../shared/receipt-name';
@@ -58,7 +57,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -575,15 +574,32 @@ export default (config = {}, labels = {}) => ({
     partners: [],
     financeCategories: [],
     partnerEditing: null,
-    newPartner() { this.partnerEditing = { name: '', category: '', note: '' }; },
+    newPartner() { this.partnerEditing = { name: '', contact: '', url: '', address: '', email: '', phone: '', category: '', note: '' }; },
     editPartner(p) { this.partnerEditing = JSON.parse(JSON.stringify(p)); this.partnerEditing.id = p.id; },
     cancelPartner() { this.partnerEditing = null; },
     savePartner() {
         const p = this.partnerEditing; if (! p || ! String(p.name || '').trim()) return;
-        if (p.id) { const i = this.partners.findIndex((x) => x.id === p.id); if (i >= 0) Object.assign(this.partners[i], p); }
-        else { p.id = window.LLInvoicesStore.newId(); this.partners.push(p); }
+        let saved;
+        if (p.id) { const i = this.partners.findIndex((x) => x.id === p.id); if (i >= 0) { Object.assign(this.partners[i], p); saved = this.partners[i]; } }
+        else { p.id = window.LLInvoicesStore.newId(); this.partners.push(p); saved = p; }
         this._save(); this.partnerEditing = null;
+        // Best-effort: pull the partner's logo from its website (SSRF-guarded proxy).
+        if (saved && saved.url) this._fetchPartnerLogo(saved);
     },
+    // Fetch a partner logo/favicon from its URL via the same SSRF-guarded proxy as bank
+    // icons; store the returned data URI on the partner (non-secret, sealed like the rest).
+    async _fetchPartnerLogo(p) {
+        const host = this._bankHost(p.url);
+        if (! host || ! config.iconUrl) return;
+        try {
+            const res = await fetch(`${config.iconUrl}?domain=${encodeURIComponent(host)}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) return;
+            const { icon } = await res.json();
+            if (icon && p.logo !== icon) { p.logo = icon; this._save(); }
+        } catch (e) { /* best effort */ }
+    },
+    // A usable <img> src for a stored partner logo (only data:/http(s) URIs).
+    partnerLogoSrc(p) { const v = p && p.logo; return (typeof v === 'string' && /^(data:|https?:)/.test(v)) ? v : ''; },
     async removePartner(p) {
         if (! await this.$store.confirm.ask(labels.partner_delete_confirm || 'Delete this business partner?')) return;
         const i = this.partners.indexOf(p); if (i >= 0) this.partners.splice(i, 1);
@@ -1163,14 +1179,41 @@ export default (config = {}, labels = {}) => ({
         inv.currency ??= (this.company.currency || 'EUR');
         inv.customer ??= { name: '', attn: '', address: '', email: '', vatId: '', contactId: null };
         inv.customer.attn ??= '';
+        inv.customer.partnerId ??= null;
         this.current = inv;
         this.dirty = false;
         this.editUnlocked = false; // locked invoices open read-only until explicitly unlocked
         // A locked invoice (imported / finalized) is editable but every save is a versioned
         // correction (GoBD). Snapshot its state so unsaved edits can be reverted on leave.
         this._lockBaseline = this.isLocked(inv) ? JSON.stringify(this._editable(inv)) : null;
-        this.view = 'edit';
+        // Imported invoices open in the minimal PDF view (inline document + a bar of the six
+        // key fields); online-created invoices use the full editor.
+        if (inv.imported) { this.view = 'imported'; this._loadInvoicePdf(inv); }
+        else this.view = 'edit';
     },
+
+    // ---- Imported invoice: inline PDF + the six key fields ----
+    invoicePdf: null, // { url } — decrypted original PDF object URL
+    async _loadInvoicePdf(inv) {
+        this._revokeInvoicePdf();
+        const ref = inv?.pdf;
+        if (! ref?.blob) return;
+        try {
+            const buf = await fetchBlobBuffer(`${config.rawBase}/${ref.blob}`);
+            const bytes = window.Vault.decryptFile(buf, ref.key);
+            const url = URL.createObjectURL(new Blob([bytes], { type: ref.mime || 'application/pdf' }));
+            if (this.current === inv) this.invoicePdf = { url };
+            else URL.revokeObjectURL(url);
+        } catch (e) { this.invoicePdf = null; }
+    },
+    _revokeInvoicePdf() { if (this.invoicePdf?.url) { try { URL.revokeObjectURL(this.invoicePdf.url); } catch (e) { /* */ } } this.invoicePdf = null; },
+    // The single synthetic line carries the money; expose gross + rate as editable props that
+    // keep the line in sync (net = gross / (1 + rate/100)).
+    _impLine() { const i = this.current; if (! i) return null; if (! i.lines?.length) i.lines = [{ desc: i.customer?.name || 'Rechnung', qty: 1, unit: '', unitPrice: 0, vatRate: 0 }]; return i.lines[0]; },
+    get impGross() { return this._round2(this.computeTotals(this.current).gross); },
+    set impGross(v) { const l = this._impLine(); if (! l) return; const rate = parseFloat(l.vatRate) || 0; l.qty = 1; l.unitPrice = this._round2((parseFloat(v) || 0) / (1 + rate / 100)); },
+    get impRate() { const l = this.current?.lines?.[0]; return l ? (parseFloat(l.vatRate) || 0) : 0; },
+    set impRate(v) { const gross = this.computeTotals(this.current).gross; const l = this._impLine(); if (! l) return; l.vatRate = parseFloat(v) || 0; l.qty = 1; l.unitPrice = this._round2(gross / (1 + l.vatRate / 100)); },
     // A locked invoice's fields are disabled until the user explicitly asks to edit it and
     // confirms — a fixed record shouldn't be changed by accident.
     async requestEdit() {
@@ -1183,6 +1226,7 @@ export default (config = {}, labels = {}) => ({
         if (this.current && this.dirty && this._lockBaseline) {
             Object.assign(this.current, JSON.parse(this._lockBaseline));
         }
+        this._revokeInvoicePdf();
         this.view = 'list'; this.current = null; this.dirty = false; this.editUnlocked = false; this._lockBaseline = null;
     },
     saveSoon() { if (this.current) this.current.updated = new Date().toISOString(); this._save(); },
@@ -1330,86 +1374,47 @@ export default (config = {}, labels = {}) => ({
     async importPdfs(fileList) {
         const files = [...(fileList || [])].filter((f) => /\.pdf$/i.test(f.name));
         if (! files.length) return;
-        this.importReview = { items: [], total: files.length, done: 0, failed: 0, running: true };
+        this.importReview = { items: [], total: files.length, done: 0, failed: 0, running: true, idx: 0 };
         let pdfjs;
         try {
             pdfjs = await import('pdfjs-dist');
             pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
         } catch (e) { this.importReview = null; window.llToast?.(labels.importFailed || 'PDF engine failed to load.'); return; }
-        const summaryLabel = labels.importSummaryLabel || 'Rechnungsbetrag';
+        const defaultVat = this._defaultVat();
         for (const file of files) {
             try {
                 const bytes = new Uint8Array(await file.arrayBuffer());
                 const doc = await pdfjs.getDocument({ data: bytes.slice(0), isEvalSupported: false }).promise;
-                const opts = { id: window.LLInvoicesStore.newId(), currency: this.company.currency || 'EUR', summaryLabel, currentYear: new Date().getFullYear() };
-
-                // PREFERRED path: modern invoices embed a structured e-invoice XML
-                // (ZUGFeRD/Factur-X CII or XRechnung UBL). Reading it is 100% reliable —
-                // real line items, buyer, taxes, totals — no text scraping.
-                let draft = null;
-                try {
-                    const att = await doc.getAttachments();
-                    for (const key of Object.keys(att || {})) {
-                        const xml = new TextDecoder().decode(att[key].content);
-                        if (! looksLikeEInvoiceXml(xml)) continue;
-                        const parsed = parseEInvoiceXml(xml);
-                        if (parsed) { draft = buildInvoiceFromXml(parsed, opts); draft._source = 'xml'; break; }
-                    }
-                } catch (e) { /* no attachments — fall through to text parsing */ }
-
-                // FALLBACK: scrape the rendered PDF text (line-structure preserved via the
-                // items' y-position) for PDFs without an embedded XML.
-                if (! draft) {
-                    let text = '';
-                    for (let i = 1; i <= doc.numPages; i++) {
-                        const page = await doc.getPage(i);
-                        const content = await page.getTextContent();
-                        let lastY = null, prev = null;
-                        for (const it of content.items) {
-                            const y = it.transform ? it.transform[5] : null;
-                            if (prev && lastY !== null && y !== null && Math.abs(y - lastY) > 3) {
-                                text += '\n'; // new line (paragraph / table row)
-                            } else if (prev && text && ! text.endsWith('\n')) {
-                                // Same line: only insert a space on a REAL horizontal gap — pdf.js
-                                // splits a single word into several fragments ("W"+"artung"), so
-                                // gluing every pair with a space mangles words ("W artung").
-                                const fs = it.height || Math.abs(it.transform[3]) || 10;
-                                const gap = it.transform[4] - (prev.transform[4] + prev.width);
-                                if (gap > fs * 0.28 || /\s$/.test(prev.str) || /^\s/.test(it.str)) text += ' ';
-                            }
-                            text += it.str;
-                            lastY = y;
-                            prev = it;
+                // Scrape the rendered PDF text (line-structure preserved via items' y-position)
+                // to PREFILL the six fields. The PDF itself is the record (shown inline in the
+                // review); the user confirms/fixes recipient/number/date/gross/rate/currency.
+                let text = '';
+                for (let i = 1; i <= doc.numPages; i++) {
+                    const page = await doc.getPage(i);
+                    const content = await page.getTextContent();
+                    let lastY = null, prev = null;
+                    for (const it of content.items) {
+                        const y = it.transform ? it.transform[5] : null;
+                        if (prev && lastY !== null && y !== null && Math.abs(y - lastY) > 3) {
+                            text += '\n'; // new line (paragraph / table row)
+                        } else if (prev && text && ! text.endsWith('\n')) {
+                            // Same line: only a REAL horizontal gap yields a space — pdf.js splits a
+                            // word into fragments ("W"+"artung"), so gluing every pair mangles words.
+                            const fs = it.height || Math.abs(it.transform[3]) || 10;
+                            const gap = it.transform[4] - (prev.transform[4] + prev.width);
+                            if (gap > fs * 0.28 || /\s$/.test(prev.str) || /^\s/.test(it.str)) text += ' ';
                         }
-                        text += '\n';
+                        text += it.str;
+                        lastY = y;
+                        prev = it;
                     }
-                    const parsedText = parseInvoiceText(text);
-                    draft = buildImportedInvoice(parseInvoiceFilename(file.name), parsedText, opts);
-                    draft._source = 'text';
-
-                    // Some PDFs (e.g. debitoor) bake justification spaces INTO the text layer
-                    // ("Softw are", "Sw itch") — unfixable from that text. If it looks mangled,
-                    // rasterise the pages and OCR them client-side (ZK, self-hosted tesseract).
-                    // Accept the OCR draft ONLY when it is genuinely cleaner AND its net matches
-                    // the text-layer net (so the reliable text-layer amounts are never traded
-                    // for an OCR mis-read of the digits).
-                    if (looksMangled(text)) {
-                        try {
-                            const ocrText = await ocrPdf(bytes.slice(0), 3);
-                            if (ocrText && mangleScore(ocrText) < mangleScore(text)) {
-                                const op = parseInvoiceText(ocrText);
-                                const netOk = op.net != null && parsedText.net != null && Math.abs(op.net - parsedText.net) <= 0.02;
-                                if (netOk) {
-                                    draft = buildImportedInvoice(parseInvoiceFilename(file.name), op, opts);
-                                    draft._source = 'ocr';
-                                }
-                            }
-                        } catch (e) { /* OCR unavailable/failed → keep the text-layer draft */ }
-                    }
+                    text += '\n';
                 }
-                draft.selected = true;
+                const opts = { id: window.LLInvoicesStore.newId(), currency: this.company.currency || 'EUR', currentYear: new Date().getFullYear(), defaultVat };
+                const draft = buildImportDraft(parseInvoiceFilename(file.name), parseInvoiceText(text), opts);
                 draft._file = file.name;
                 draft._pdfBytes = bytes; // the original PDF, stored on import (GoBD)
+                draft._url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })); // inline preview in the review
                 this.importReview.items.push(draft);
             } catch (e) { this.importReview.failed++; }
             this.importReview.done++;
@@ -1417,6 +1422,25 @@ export default (config = {}, labels = {}) => ({
         this.importReview.running = false;
         // Sort by issue date so the review reads chronologically.
         this.importReview.items.sort((a, b) => (a.issueDate || '').localeCompare(b.issueDate || ''));
+        this.importReview.idx = 0;
+    },
+
+    // ---- Review stepper (one invoice at a time: PDF inline + the six fields) ----
+    get importCurrent() { const r = this.importReview; return r && ! r.running && ! r.saving && r.items[r.idx] ? r.items[r.idx] : null; },
+    importGoto(i) { const r = this.importReview; if (! r) return; r.idx = Math.max(0, Math.min(r.items.length - 1, i)); },
+    importPrev() { this.importGoto((this.importReview?.idx || 0) - 1); },
+    importNext() { this.importGoto((this.importReview?.idx || 0) + 1); },
+    // Partner name suggestions for the recipient field (datalist).
+    get partnerNames() { return (this.partners || []).map((p) => p.name).filter(Boolean).sort((a, b) => a.localeCompare(b)); },
+    importVatOptions: [19, 16, 7, 0],
+    // VAT-rate choices for the review select — the defaults plus the parsed rate if unusual.
+    importVatChoices() { const s = new Set([19, 16, 7, 0]); const v = this.importCurrent?.vatRate; if (v != null) s.add(Number(v)); return [...s].sort((a, b) => b - a); },
+    // Derived net/vat preview for the review row (gross + rate).
+    importNet(row) { const g = parseFloat(row?.gross) || 0; const r = parseFloat(row?.vatRate) || 0; return this._round2(g / (1 + r / 100)); },
+    importVat(row) { const g = parseFloat(row?.gross) || 0; return this._round2(g - this.importNet(row)); },
+    _closeImport() {
+        for (const it of (this.importReview?.items || [])) { if (it._url) { try { URL.revokeObjectURL(it._url); } catch (e) { /* */ } } }
+        this.importReview = null;
     },
 
     // ZUGFeRD / Factur-X (EN 16931) XML export — built + downloaded client-side (ZK).
@@ -1428,36 +1452,50 @@ export default (config = {}, labels = {}) => ({
     },
 
     get importSelectedCount() { return (this.importReview?.items || []).filter((i) => i.selected).length; },
-    cancelImport() { this.importReview = null; },
+    cancelImport() { this._closeImport(); },
+    _round2(n) { return Math.round(((Number(n) || 0) + Number.EPSILON) * 100) / 100; },
 
-    // Commit the reviewed drafts as records. Imported invoices keep their ORIGINAL
-    // number (historical) — no new number is minted; the duplicate-number banner still
-    // guards against a clash with the ongoing series.
+    // Commit the reviewed drafts as records. Each imported invoice keeps its ORIGINAL number
+    // (historical) and its ORIGINAL PDF (the authoritative record, shown inline). The six
+    // confirmed fields become one synthetic net line (net = gross / (1 + rate/100)) so totals,
+    // stats and the VAT return work unchanged. The recipient lands in the business-partner DB.
     async confirmImport() {
         const picked = (this.importReview?.items || []).filter((i) => i.selected);
-        if (! picked.length) { this.importReview = null; return; }
+        if (! picked.length) { this._closeImport(); return; }
+        await this._ensureContactsLoaded();
         // Persist each invoice as it lands (upload PDF → add record → flush), so a reload
-        // mid-import keeps every finished one and never orphans an uploaded blob. Progress
-        // is shown in the modal; the awaits never block the UI thread.
+        // mid-import keeps every finished one and never orphans an uploaded blob.
         this.importReview.saving = true;
         this.importReview.saved = 0;
         this.importReview.saveTotal = picked.length;
         let ok = 0;
         for (const draft of picked) {
             try {
+                const rate = parseFloat(draft.vatRate) || 0;
+                const gross = parseFloat(draft.gross) || 0;
+                const net = this._round2(gross / (1 + rate / 100));
+                const name = String(draft.recipient?.name || '').trim();
+                // Recipient → business partner (find or create); enrich a bare partner.
+                let partnerId = null;
+                if (name) {
+                    const partner = this._findOrCreatePartner(name);
+                    partnerId = partner.id;
+                    if (! partner.address && draft.recipient?.address) partner.address = draft.recipient.address;
+                    if (! partner.vatId && draft.recipient?.vatId) partner.vatId = draft.recipient.vatId;
+                }
                 const inv = {
                     id: draft.id, number: draft.number, status: 'paid',
                     issueDate: draft.issueDate || this._today(),
                     dueDate: draft.dueDate || draft.issueDate || this._today(),
-                    currency: draft.currency, lang: draft.lang || 'de',
-                    customer: draft.customer,
-                    lines: draft.lines, note: draft.note || '', footer: draft.footer || '',
-                    trashed: false, imported: true, updated: new Date().toISOString(),
+                    currency: draft.currency || 'EUR', lang: 'de',
+                    customer: { name, attn: '', address: draft.recipient?.address || '', email: '', vatId: draft.recipient?.vatId || '', contactId: null, partnerId },
+                    lines: [{ desc: name || (labels.importSummaryLabel || 'Rechnung'), qty: 1, unit: '', unitPrice: net, vatRate: rate }],
+                    note: '', footer: '', trashed: false, imported: true, minimal: true, updated: new Date().toISOString(),
                 };
                 // Carry the current-year sequence so the app's number counter advances.
                 if (draft.seq != null) inv.seq = draft.seq;
                 // Store the ORIGINAL PDF as a sealed blob (GoBD: the imported document is the
-                // authoritative record — the app must show it, not a regenerated one).
+                // authoritative record — the app shows it, not a regenerated one).
                 if (draft._pdfBytes) {
                     const pdf = await this._uploadPdf(draft._pdfBytes, draft._file || (draft.number + '.pdf'));
                     if (pdf) inv.pdf = pdf;
@@ -1471,7 +1509,7 @@ export default (config = {}, labels = {}) => ({
             this.importReview.saved++;
         }
         window.llToast?.((labels.importDone || ':n invoices imported.').replace(':n', ok));
-        this.importReview = null;
+        this._closeImport();
     },
 
     async trash(inv) {
@@ -1668,14 +1706,16 @@ export default (config = {}, labels = {}) => ({
     _uploadPdf(bytes, name) { return this._uploadFile(bytes, name, 'application/pdf'); },
 
     // Open a stored sealed file (invoice original / receipt) — decrypt client-side.
+    // Decrypt a stored PDF/image blob client-side and show it in the in-app preview modal
+    // (not a new tab). Reuses the receipt Quick-Look modal.
     async _openBlob(ref) {
         if (! ref?.blob) return;
         try {
             const buf = await fetchBlobBuffer(`${config.rawBase}/${ref.blob}`);
             const plain = window.Vault.decryptFile(buf, ref.key);
             const url = URL.createObjectURL(new Blob([plain], { type: ref.mime || 'application/octet-stream' }));
-            window.open(url, '_blank');
-            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            this.closeReceiptPreview(); // revoke any previous url first
+            this.receiptPreview = { url, mime: ref.mime || 'application/pdf', name: ref.name || 'PDF' };
         } catch (e) { window.llToast?.(labels.downloadFailed || 'Could not open file.'); }
     },
     openOriginalPdf(inv) { return this._openBlob(inv?.pdf ? { ...inv.pdf, mime: 'application/pdf' } : null); },

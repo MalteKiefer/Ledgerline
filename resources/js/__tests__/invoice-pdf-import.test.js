@@ -1,7 +1,32 @@
 import { describe, it, expect } from 'vitest';
 import {
-    parseAmount, parseGermanDate, parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, parseInvoiceNumber, parseCustomer, importedSeq, parseFirstLineItem, parseLineItems, mangleScore, looksMangled, deSpaceWord,
+    parseAmount, parseGermanDate, parseInvoiceFilename, parseInvoiceText, buildImportedInvoice, buildImportDraft, parseInvoiceNumber, parseCustomer, importedSeq, parseFirstLineItem, parseLineItems, mangleScore, looksMangled, deSpaceWord,
 } from '../shared/invoice-pdf-import.js';
+
+describe('buildImportDraft — lean 6-field import draft', () => {
+    const opts = { id: 'x', currency: 'EUR', currentYear: 2026, defaultVat: 19 };
+    it('captures the six key fields + derives nothing (money stays gross)', () => {
+        const p = { number: 'R-2024-00042', dateLabeled: '2024-03-05', date: '2024-03-05', dueDate: '2024-04-04', gross: 1190, vatRate: 19, currency: 'EUR', customer: { name: 'Acme GmbH', address: 'Weg 1\n12345 Stadt', vatId: 'DE123456789' } };
+        const d = buildImportDraft({ date: null, number: null, customer: null }, p, opts);
+        expect(d).toMatchObject({ number: 'R-2024-00042', issueDate: '2024-03-05', dueDate: '2024-04-04', gross: 1190, vatRate: 19, currency: 'EUR' });
+        expect(d.recipient).toMatchObject({ name: 'Acme GmbH', vatId: 'DE123456789' });
+        expect(d.selected).toBe(true);
+        expect(d.lines).toBeUndefined(); // no line-item reconstruction
+    });
+    it('falls back gross = net + vat, and defaults the rate to the company default', () => {
+        const p = { number: '5', dateLabeled: '2024-01-01', gross: null, net: 100, vat: 19, vatRate: null, currency: 'EUR', customer: null, smallBusiness: false };
+        const d = buildImportDraft({ date: null, number: null, customer: 'Fallback Kunde' }, p, opts);
+        expect(d.gross).toBe(119);
+        expect(d.vatRate).toBe(19); // opts.defaultVat
+        expect(d.recipient.name).toBe('Fallback Kunde'); // filename fallback
+    });
+    it('small-business invoice → rate 0 and warns on missing fields', () => {
+        const p = { number: null, dateLabeled: null, date: null, gross: 50, net: 50, vat: 0, vatRate: null, smallBusiness: true, currency: 'EUR', customer: null };
+        const d = buildImportDraft({ date: null, number: null, customer: null }, p, opts);
+        expect(d.vatRate).toBe(0);
+        expect(d._warnings).toEqual(expect.arrayContaining(['number', 'date', 'recipient']));
+    });
+});
 
 describe('invoice PDF import — mangled text-layer detection (OCR fallback trigger)', () => {
     it('scores a justified-mangled line high and a clean line ~zero', () => {
@@ -173,6 +198,12 @@ describe('invoice PDF import — text is authoritative over the filename', () =>
         expect(c.name).toBe('STN Nürnberg');
         expect(c.address).toContain('D-79183 Waldkirch'); // "W aldkirch" re-glued
         expect(c.vatId).toBe('DE265814432');
+    });
+    it('skips a header-style sender block (wordmark + bank) to the real recipient (2017 family)', () => {
+        const c = parseCustomer('KIEFER NETWORKS\nMalte Kiefer\nTalmatten 10\n79639 Grenzach-Wyhlen\nBank: Volksbank Breisgau Nord eG\nKontoinhaber: Malte Kiefer\nBIC: GENODE61EMM\nIBAN: DE14680920000015647205\nBanana Computers\nJüchters Tannen 4\n26188 Edewecht\nDeutschland\nUST: DE 28 91 26 970');
+        expect(c.name).toBe('Banana Computers'); // NOT "Malte Kiefer" (the sender)
+        expect(c.address).toContain('26188 Edewecht');
+        expect(c.vatId).toBe('DE289126970');
     });
     it('extracts the recipient block from the text (family B)', () => {
         const c = parseCustomer('Kiefer Networks - Adalbert-Stifter-Str. 6 - 95512 Neudrossenfeld\nIntellyTec GmbH\nIngo Radermacher\nGrünenborn 1\n53797 Lohmar\nRechnung\nR-2024-00001');

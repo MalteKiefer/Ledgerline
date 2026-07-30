@@ -1204,11 +1204,17 @@ components:
 
     FinancePartner:
       type: object
-      description: "A business partner (partners[] collection); doubles as a learned merchant→category rule via `category`."
+      description: "A business partner (partners[] collection); doubles as a learned merchant→category rule via `category`. Contact details are optional; `logo` is a data: URI fetched from `url` via the SSRF-guarded favicon proxy (non-secret, sealed with the store)."
       required: [id, name]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
+        contact: { type: string, description: "Contact person (Ansprechpartner)." }
+        url: { type: string, description: "Website; the logo is fetched from its host." }
+        logo: { type: string, description: "data: URI logo/favicon (sealed)." }
+        address: { type: string }
+        email: { type: string }
+        phone: { type: string }
         category: { type: string, description: "Learned default category for this merchant." }
         note: { type: string }
 
