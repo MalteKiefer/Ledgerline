@@ -649,8 +649,15 @@ export default (config = {}, labels = {}) => ({
     _migratePartnerContacts() {
         let changed = false;
         for (const p of (this.partners || [])) {
-            if (! Array.isArray(p.contacts)) { p.contacts = []; changed = true; }
-            if (! p.contacts.length && String(p.contact || '').trim()) { p.contacts.push({ id: window.LLInvoicesStore.newId(), name: String(p.contact).trim(), email: p.email || '', phone: p.phone || '', role: '' }); changed = true; }
+            // Normalise the shape in memory WITHOUT flagging a change — persisting a bare
+            // contacts:[] on every load marks the partner "modified", and on a device with a
+            // stale copy that would clobber a contact another device/tab added (record-level
+            // merge replaces the whole partner). Only a REAL legacy migration persists.
+            if (! Array.isArray(p.contacts)) p.contacts = [];
+            if (! p.contacts.length && String(p.contact || '').trim()) {
+                p.contacts.push({ id: window.LLInvoicesStore.newId(), name: String(p.contact).trim(), email: p.email || '', phone: p.phone || '', role: '' });
+                changed = true;
+            }
         }
         if (changed) this._save();
     },
