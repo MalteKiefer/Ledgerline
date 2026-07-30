@@ -1228,38 +1228,63 @@ export default (config = {}, labels = {}) => ({
     eigenbeleg: null, // fields when the modal is open
     _egTx: null,      // the booking it belongs to
     egBusy: false,
+    // Beleggrund options mirror the user's long-standing paper form.
+    egGrundOptions: ['privatentnahme', 'privateinlage', 'trinkgeld', 'betriebsausgabe', 'sachgeschenk', 'sonstiges'],
     newEigenbeleg(tx) {
         if (! tx) return;
+        const amt = Number(tx.amount) || 0;
+        // Guess the Beleggrund from the booking: a private VAT-category booking is a
+        // private draw (money out) or deposit (money in); otherwise a business expense.
+        const grund = tx.vatCat === 'private' ? (amt >= 0 ? 'privateinlage' : 'privatentnahme') : 'betriebsausgabe';
+        const ort = String(this.company.address || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean).pop() || '';
         this._egTx = tx;
         this.eigenbeleg = {
+            grund,
+            grundOther: '',
             recipient: tx.counterparty || '',
             address: '',
-            description: String(tx.purpose || tx.bookingText || '').slice(0, 300),
-            purpose: '',
+            ort,
             date: tx.date || this._today(),
-            gross: Math.abs(Number(tx.amount) || 0),
+            createdAt: this._today(),
+            buchungstext: String(tx.purpose || tx.bookingText || '').slice(0, 300),
+            gross: Math.abs(amt),
             vatRate: this._defaultVat(),
             reason: '',
-            issuer: this.company.company_name || '',
-            createdAt: this._today(),
+            issuer: this.company.name || '',
         };
     },
     cancelEigenbeleg() { this.eigenbeleg = null; this._egTx = null; },
+    // Only a "lost original receipt" business expense needs the strict recipient/net/VAT/
+    // reason fields; a Privatentnahme/-einlage etc. is just amount + note (like the paper form).
+    get egIsExpense() { return this.eigenbeleg?.grund === 'betriebsausgabe'; },
+    egGrundLabel(g) { return labels['eg_grund_' + g] || g; },
+    // Label a booking flagged as a private draw/deposit (vatCat 'private'); by sign.
+    privatLabel(tx) {
+        if (! tx || tx.vatCat !== 'private') return '';
+        return (Number(tx.amount) || 0) < 0 ? (labels.eg_grund_privatentnahme || 'Privatentnahme') : (labels.eg_grund_privateinlage || 'Privateinlage');
+    },
+    // A private draw/deposit needs a self-receipt (Steuerberater/Finanzamt); flag until one exists.
+    hasEigenbeleg(tx) { return !! (tx && (tx.receipts || []).some((r) => r && r.kind === 'eigenbeleg')); },
+    needsEigenbeleg(tx) { return !! tx && tx.vatCat === 'private' && ! this.hasEigenbeleg(tx); },
+    // Count of private bookings on the open account still missing a self-receipt.
+    get accountPrivateNoEg() { return this.accountTx.filter((tx) => this.needsEigenbeleg(tx)).length; },
     get egNet() { const g = parseFloat(this.eigenbeleg?.gross) || 0; const r = parseFloat(this.eigenbeleg?.vatRate) || 0; return this._round2(g / (1 + r / 100)); },
     get egVat() { return this._round2((parseFloat(this.eigenbeleg?.gross) || 0) - this.egNet); },
     egVatChoices() { const s = new Set([19, 16, 7, 0]); const v = this.eigenbeleg?.vatRate; if (v != null) s.add(Number(v)); return [...s].sort((a, b) => b - a); },
     async saveEigenbeleg() {
         const e = this.eigenbeleg, tx = this._egTx;
         if (! e || ! tx) return;
-        if (! String(e.recipient || '').trim() || ! String(e.reason || '').trim() || ! (parseFloat(e.gross) > 0)) {
-            window.llToast?.(labels.eg_missing || 'Empfänger, Betrag und Begründung sind Pflicht.');
+        // Amount is always required; a lost-receipt business expense also needs recipient + reason.
+        if (! (parseFloat(e.gross) > 0) || (this.egIsExpense && (! String(e.recipient || '').trim() || ! String(e.reason || '').trim()))) {
+            window.llToast?.(labels.eg_missing || 'Betrag (und bei Betriebsausgabe Empfänger + Begründung) sind Pflicht.');
             return;
         }
         this.egBusy = true;
         try {
             const bytes = await this._renderEigenbelegPdf();
             if (! bytes) throw new Error('render');
-            const base = `Eigenbeleg ${e.date} ${e.recipient}`.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120);
+            const label = String(e.recipient || '').trim() || this.egGrundLabel(e.grund);
+            const base = `Eigenbeleg ${e.date} ${label}`.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120);
             const up = await this._uploadFile(bytes, base + '.pdf', 'application/pdf');
             if (! up) throw new Error('upload');
             up.id = window.LLInvoicesStore.newId();

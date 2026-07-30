@@ -1163,19 +1163,21 @@ components:
         projectId: { type: [string, "null"], format: uuid }
         eigenbeleg:
           type: object
-          description: "Present when kind='eigenbeleg'. The self-receipt's fields (client-generated PDF blob is on blob/key). GoBD-mandatory data for an expense with no original receipt; no input-VAT deduction."
+          description: "Present when kind='eigenbeleg'. The self-receipt's fields (client-generated PDF blob is on blob/key). Mirrors the German paper Eigenbeleg. recipient/address/net/vat/reason are only meaningful for a lost-receipt business expense (grund='betriebsausgabe'); no input-VAT deduction."
           properties:
-            recipient: { type: string, description: "Payee." }
+            grund: { type: string, enum: [privatentnahme, privateinlage, trinkgeld, betriebsausgabe, sachgeschenk, sonstiges], description: "Beleggrund (reason type)." }
+            grundOther: { type: string, description: "Free text when grund='sonstiges'." }
+            recipient: { type: string, description: "Payee (business expense only)." }
             address: { type: string }
-            description: { type: string, description: "Kind of expense." }
-            purpose: { type: string, description: "Business purpose." }
+            ort: { type: string, description: "Place (Ort) for the signature block." }
+            buchungstext: { type: string, description: "Note / remark." }
             date: { type: string, description: "Date of expense (YYYY-MM-DD)." }
             createdAt: { type: string, description: "Date the voucher was issued." }
             gross: { type: number }
             vatRate: { type: number }
             net: { type: number }
             vat: { type: number }
-            reason: { type: string, description: "Why no original receipt exists." }
+            reason: { type: string, description: "Why no original receipt exists (business expense)." }
             issuer: { type: string }
 
     PaymentMethod:
