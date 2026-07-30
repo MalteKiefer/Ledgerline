@@ -153,6 +153,8 @@ return [
     'eg_issuer' => 'Issued by',
     'eg_signature' => 'Signature',
     'eg_signature_hint' => 'Sign by hand after printing.',
+    'eg_sig_clear' => 'Clear',
+    'eg_sig_hint' => 'Sign with your finger or trackpad — embedded in the sealed PDF.',
     'eg_novat_note' => 'No input-VAT deduction (self-receipt).',
     'eg_generate' => 'Create PDF',
     'eg_missing' => 'Payee, amount and reason are required.',
