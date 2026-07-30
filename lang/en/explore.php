@@ -147,4 +147,5 @@ return [
     'unit_km' => 'km',
     'unit_m' => 'm',
     'unit_kmh' => 'km/h',
+    'save_failed' => 'Save failed.',
 ];

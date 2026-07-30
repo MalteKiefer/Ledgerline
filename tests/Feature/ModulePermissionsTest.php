@@ -54,14 +54,10 @@ final class ModulePermissionsTest extends TestCase
         $this->actingAs($user)->get('/notes')->assertOk();
     }
 
-    public function test_generic_store_endpoint_is_blocked_for_a_disabled_module(): void
-    {
-        // explore is a still-ZK generic store + a toggle module: enabled → 200, absent → 403.
-        $allowed = User::factory()->create(['role' => 'user', 'modules' => ['explore']]);
-        $this->actingAs($allowed)->get('/store/explore')->assertStatus(200);
-        $blocked = User::factory()->create(['role' => 'user', 'modules' => ['files']]);
-        $this->actingAs($blocked)->get('/store/explore')->assertForbidden();
-    }
+    // (The generic /store/{module} gate test was dropped: after the pivot no
+    // user-facing toggle module is served by the generic sealed store anymore —
+    // only invoices + sharing remain, neither a toggle-keyed page module. The
+    // EnsureModule gate is still covered by test_web_route_is_blocked_for_a_disabled_module.)
 
     public function test_me_exposes_allowed_modules(): void
     {
