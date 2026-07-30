@@ -6,8 +6,19 @@ const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const yearOf = (inv) => parseInt(String(inv.issueDate || '').slice(0, 4), 10);
 const monthOf = (inv) => parseInt(String(inv.issueDate || '').slice(5, 7), 10) || 0;
 
-/** Net / VAT (grouped by rate) / gross for a single invoice, from its line items. */
+/**
+ * Net / VAT (grouped by rate) / gross for a single invoice. An IMPORTED invoice carries the
+ * EXACT printed gross (`inv.gross`) — trust it verbatim (derive net/vat by subtracting the VAT
+ * out of the gross) so a round-trip through the synthetic net line can't shift it by a cent.
+ */
 export function invoiceTotals(inv) {
+    if (inv && inv.imported && Number.isFinite(Number(inv.gross))) {
+        const rate = Number(inv.vatRate) || 0;
+        const gross = round2(Number(inv.gross));
+        const vat = round2(gross * rate / (100 + rate));
+        const net = round2(gross - vat);
+        return { net, vat, gross, vatByRate: { [rate]: vat } };
+    }
     let net = 0; const vatByRate = {};
     for (const l of (inv.lines || [])) {
         const lineNet = (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);

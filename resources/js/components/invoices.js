@@ -1743,8 +1743,11 @@ export default (config = {}, labels = {}) => ({
         for (const draft of picked) {
             try {
                 const rate = parseFloat(draft.vatRate) || 0;
-                const gross = parseFloat(draft.gross) || 0;
-                const net = this._round2(gross / (1 + rate / 100));
+                const gross = this._round2(parseFloat(draft.gross) || 0);
+                // Derive net by subtracting the VAT OUT of the confirmed gross (net = gross - vat)
+                // so the synthetic line reconstructs the exact printed gross, not gross±1 cent.
+                const vat = this._round2(gross * rate / (100 + rate));
+                const net = this._round2(gross - vat);
                 const name = String(draft.recipient?.name || '').trim();
                 // Recipient → business partner (find or create); enrich a bare partner.
                 let partnerId = null;
@@ -1764,6 +1767,7 @@ export default (config = {}, labels = {}) => ({
                     currency: draft.currency || 'EUR', lang: 'de',
                     customer: { name, attn, address: draft.recipient?.address || '', email: '', vatId: draft.recipient?.vatId || '', contactId: null, partnerId },
                     lines: [{ desc: name || (labels.importSummaryLabel || 'Rechnung'), qty: 1, unit: '', unitPrice: net, vatRate: rate }],
+                    gross, vatRate: rate, // the EXACT confirmed gross (computeTotals/invoiceTotals trust it)
                     note: '', footer: '', trashed: false, imported: true, minimal: true, updated: new Date().toISOString(),
                 };
                 // Carry the current-year sequence so the app's number counter advances.
@@ -1804,6 +1808,17 @@ export default (config = {}, labels = {}) => ({
     computeTotals(inv) {
         const t = { net: 0, vatByRate: {}, vat: 0, gross: 0 };
         if (! inv) return t;
+        // Imported invoices carry the EXACT printed gross — trust it (derive net/VAT out of it)
+        // so the value the user confirmed in the import review is never shifted by a rounding
+        // round-trip through the synthetic net line (e.g. 70,93 becoming 70,94).
+        if (inv.imported && Number.isFinite(Number(inv.gross))) {
+            const rate = parseFloat(inv.vatRate) || 0;
+            t.gross = this._round2(Number(inv.gross));
+            t.vat = this._round2(t.gross * rate / (100 + rate));
+            t.net = this._round2(t.gross - t.vat);
+            t.vatByRate[rate] = t.vat;
+            return t;
+        }
         for (const l of inv.lines || []) {
             const net = this.lineNet(l);
             const rate = parseFloat(l.vatRate) || 0;
