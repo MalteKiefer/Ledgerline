@@ -1736,7 +1736,10 @@ export default (config = {}, labels = {}) => ({
     },
     // Numbers assigned to more than one invoice — a GoBD violation the owner MUST fix
     // (a concurrent finalize on two offline devices is the only way to reach it).
-    get duplicateNumbers() { return dupNumbers(this.activeInvoices); },
+    // GoBD duplicate guard applies to the app's OWN issued series only — imported historical
+    // invoices carry archival numbers from other systems (may legitimately clash/repeat) and
+    // must not trip it.
+    get duplicateNumbers() { return dupNumbers(this.activeInvoices.filter((i) => ! i.imported)); },
 
     // ---- Numbering cycle (per year) ----
     get currentYear() { return String(new Date().getFullYear()); },
