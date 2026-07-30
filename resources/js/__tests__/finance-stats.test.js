@@ -18,6 +18,13 @@ describe('finance stats', () => {
         expect(invoiceTotals(data[0])).toMatchObject({ net: 157.5, vat: 29.93, gross: 187.43 });
         expect(invoiceTotals(data[2])).toMatchObject({ net: 500, vat: 35, gross: 535 });
     });
+    it('imported invoice keeps the exact printed gross (no cent round-trip)', () => {
+        // 70,93 gross @ 19% must stay 70,93, not become 70,94; net + VAT reconstruct the gross.
+        const inv = { imported: true, gross: 70.93, vatRate: 19, lines: [{ qty: 1, unitPrice: 59.61, vatRate: 19 }] };
+        const t = invoiceTotals(inv);
+        expect(t.gross).toBe(70.93);
+        expect(Math.round((t.net + t.vat) * 100) / 100).toBe(70.93);
+    });
     it('realized = issued and not trashed', () => {
         expect(realizedInvoices(data).map((i) => i.number)).toEqual(['2026-001', '2026-002', '2026-003', '2025-009']);
     });
