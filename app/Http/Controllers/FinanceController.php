@@ -708,7 +708,7 @@ class FinanceController extends Controller
     {
         $request->validate($this->transactionRules($request, false) + ['version' => ['sometimes', 'integer', 'min:0']]);
         $expected = $request->has('version') ? $request->integer('version') : null;
-        $result = $this->optimistic(BankTransaction::class, $transaction->id, $this->transactionPatch($request, false), $expected);
+        $result = $this->optimistic(BankTransaction::class, $transaction->id, $this->transactionPatch($request, false, $transaction), $expected);
 
         return $this->optimisticJson($result, BankTransaction::class, $transaction->id, 'transaction');
     }
@@ -849,7 +849,8 @@ class FinanceController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function transactionPatch(Request $request, bool $create): array
+    /** @return array<string, mixed> */
+    private function transactionPatch(Request $request, bool $create, ?BankTransaction $existing = null): array
     {
         $patch = [];
         if ($create || $request->has('payment_method_id')) {
@@ -872,10 +873,63 @@ class FinanceController extends Controller
             }
         }
         if ($create || $request->has('receipts')) {
-            $patch['receipts'] = $request->filled('receipts') ? $request->array('receipts') : null;
+            // SECURITY: never trust a client-supplied blob_path (arbitrary-file-read /
+            // IDOR). File receipts are only created via attachReceipt; here we accept
+            // metadata edits + fileless (invoice-link) entries, but the on-disk path
+            // and id of any file receipt are taken from the stored row, never the request.
+            $incoming = ($create || ! $request->filled('receipts')) ? [] : $request->array('receipts');
+            $patch['receipts'] = $this->sanitizeReceipts($incoming, $create ? null : $existing) ?: null;
         }
 
         return $patch;
+    }
+
+    /**
+     * Merge client receipt entries against the stored row: a file receipt keeps the
+     * SERVER's blob_path/id (matched by id); an entry with no matching stored id is
+     * allowed only if it carries no blob_path (a fileless invoice-link/eigenbeleg-meta
+     * entry) — any client-supplied blob_path is dropped. Prevents path injection.
+     *
+     * @param  array<array-key, mixed>  $incoming
+     * @return list<array<array-key, mixed>>
+     */
+    private function sanitizeReceipts(array $incoming, ?BankTransaction $existing): array
+    {
+        $storedById = [];
+        foreach ($existing?->receipts ?? [] as $r) {
+            if (is_array($r) && isset($r['id']) && is_scalar($r['id'])) {
+                $storedById[(string) $r['id']] = $r;
+            }
+        }
+        $out = [];
+        foreach ($incoming as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $id = isset($entry['id']) && is_scalar($entry['id']) ? (string) $entry['id'] : null;
+            unset($entry['blob_path']); // never from the client
+            if ($id !== null && isset($storedById[$id])) {
+                $stored = $storedById[$id];
+                $entry['id'] = $stored['id'];
+                if (isset($stored['blob_path']) && is_string($stored['blob_path'])) {
+                    $entry['blob_path'] = $stored['blob_path']; // server-owned path
+                }
+            } else {
+                // New entry via PUT is only allowed fileless (real files use attachReceipt).
+                unset($entry['id']);
+            }
+            $out[] = $entry;
+        }
+
+        return $out;
+    }
+
+    /** Guard: a stored receipt/PDF path must live under the finance blob prefix. */
+    private function safeBlobPath(mixed $path): ?string
+    {
+        return is_string($path) && str_starts_with($path, 'invoices/') && ! str_contains($path, '..')
+            ? $path
+            : null;
     }
 
     // ---- Receipts (files embedded in a transaction's receipts[] json) ----
@@ -939,7 +993,7 @@ class FinanceController extends Controller
     public function receiptRaw(Request $request, BankTransaction $transaction, string $receipt): StreamedResponse
     {
         $entry = $this->findReceipt($transaction, $receipt);
-        $path = is_array($entry) && isset($entry['blob_path']) && is_string($entry['blob_path']) ? $entry['blob_path'] : null;
+        $path = $this->safeBlobPath(is_array($entry) ? ($entry['blob_path'] ?? null) : null);
         if ($path === null || ! $this->fs()->exists($path)) {
             abort(404);
         }
@@ -963,7 +1017,7 @@ class FinanceController extends Controller
             $removed = null;
             foreach ($receipts as $r) {
                 if (is_array($r) && isset($r['id']) && $r['id'] === $receipt) {
-                    $removed = isset($r['blob_path']) && is_string($r['blob_path']) ? $r['blob_path'] : null;
+                    $removed = $this->safeBlobPath($r['blob_path'] ?? null);
 
                     continue;
                 }
@@ -1009,8 +1063,9 @@ class FinanceController extends Controller
         $paths = [];
         $receipts = is_array($transaction->receipts) ? $transaction->receipts : [];
         foreach ($receipts as $r) {
-            if (is_array($r) && isset($r['blob_path']) && is_string($r['blob_path']) && $r['blob_path'] !== '') {
-                $paths[] = $r['blob_path'];
+            $safe = $this->safeBlobPath(is_array($r) ? ($r['blob_path'] ?? null) : null);
+            if ($safe !== null) {
+                $paths[] = $safe;
             }
         }
 
