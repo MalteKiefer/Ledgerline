@@ -1159,8 +1159,24 @@ components:
         partnerName: { type: string }
         note: { type: string }
         locked: { type: boolean, description: "Auto-attached from a matched invoice — not user-deletable." }
-        kind: { type: string, enum: [invoice], description: "Present only for auto-attached invoice receipts." }
+        kind: { type: string, enum: [invoice, eigenbeleg], description: "'invoice' = auto-attached invoice receipt; 'eigenbeleg' = self-issued voucher (see eigenbeleg)." }
         projectId: { type: [string, "null"], format: uuid }
+        eigenbeleg:
+          type: object
+          description: "Present when kind='eigenbeleg'. The self-receipt's fields (client-generated PDF blob is on blob/key). GoBD-mandatory data for an expense with no original receipt; no input-VAT deduction."
+          properties:
+            recipient: { type: string, description: "Payee." }
+            address: { type: string }
+            description: { type: string, description: "Kind of expense." }
+            purpose: { type: string, description: "Business purpose." }
+            date: { type: string, description: "Date of expense (YYYY-MM-DD)." }
+            createdAt: { type: string, description: "Date the voucher was issued." }
+            gross: { type: number }
+            vatRate: { type: number }
+            net: { type: number }
+            vat: { type: number }
+            reason: { type: string, description: "Why no original receipt exists." }
+            issuer: { type: string }
 
     PaymentMethod:
       type: object

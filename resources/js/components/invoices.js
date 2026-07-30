@@ -57,7 +57,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; self.eigenbeleg = null; self._egTx = null; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -1219,6 +1219,81 @@ export default (config = {}, labels = {}) => ({
 
     _today() { return new Date().toISOString().slice(0, 10); },
     fmtDate(d) { return d ? formatDate(d) : ''; },
+
+    // ---- Eigenbeleg (self-issued voucher for a booking with no original receipt) ----
+    // GoBD/Finanzamt 2026 mandatory fields: payee (name + address), expense date, creation
+    // date, precise description + business purpose, net/VAT-rate/gross, reason the original
+    // is missing, issuer + signature. No input-VAT deduction from a self-receipt. Rendered to
+    // a PDF client-side (ZK) and attached to the booking as a receipt (kind 'eigenbeleg').
+    eigenbeleg: null, // fields when the modal is open
+    _egTx: null,      // the booking it belongs to
+    egBusy: false,
+    newEigenbeleg(tx) {
+        if (! tx) return;
+        this._egTx = tx;
+        this.eigenbeleg = {
+            recipient: tx.counterparty || '',
+            address: '',
+            description: String(tx.purpose || tx.bookingText || '').slice(0, 300),
+            purpose: '',
+            date: tx.date || this._today(),
+            gross: Math.abs(Number(tx.amount) || 0),
+            vatRate: this._defaultVat(),
+            reason: '',
+            issuer: this.company.company_name || '',
+            createdAt: this._today(),
+        };
+    },
+    cancelEigenbeleg() { this.eigenbeleg = null; this._egTx = null; },
+    get egNet() { const g = parseFloat(this.eigenbeleg?.gross) || 0; const r = parseFloat(this.eigenbeleg?.vatRate) || 0; return this._round2(g / (1 + r / 100)); },
+    get egVat() { return this._round2((parseFloat(this.eigenbeleg?.gross) || 0) - this.egNet); },
+    egVatChoices() { const s = new Set([19, 16, 7, 0]); const v = this.eigenbeleg?.vatRate; if (v != null) s.add(Number(v)); return [...s].sort((a, b) => b - a); },
+    async saveEigenbeleg() {
+        const e = this.eigenbeleg, tx = this._egTx;
+        if (! e || ! tx) return;
+        if (! String(e.recipient || '').trim() || ! String(e.reason || '').trim() || ! (parseFloat(e.gross) > 0)) {
+            window.llToast?.(labels.eg_missing || 'Empfänger, Betrag und Begründung sind Pflicht.');
+            return;
+        }
+        this.egBusy = true;
+        try {
+            const bytes = await this._renderEigenbelegPdf();
+            if (! bytes) throw new Error('render');
+            const base = `Eigenbeleg ${e.date} ${e.recipient}`.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120);
+            const up = await this._uploadFile(bytes, base + '.pdf', 'application/pdf');
+            if (! up) throw new Error('upload');
+            up.id = window.LLInvoicesStore.newId();
+            up.kind = 'eigenbeleg';
+            up.eigenbeleg = { ...e, net: this.egNet, vat: this.egVat };
+            tx.receipts = tx.receipts || [];
+            tx.receipts.push(up);
+            this._save();
+            this.reconcileBlobs();
+            this.eigenbeleg = null; this._egTx = null;
+            window.llToast?.(labels.eg_done || 'Eigenbeleg erstellt.');
+        } catch (err) { window.llToast?.(labels.eg_failed || 'Konnte den Eigenbeleg nicht erstellen.'); }
+        finally { this.egBusy = false; }
+    },
+    // Rasterise the off-screen #eigenbeleg-print node to a single-page A4 PDF (lazy deps, ZK).
+    async _renderEigenbelegPdf() {
+        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
+        await this.$nextTick();
+        await new Promise((r) => setTimeout(r, 60));
+        const node = document.getElementById('eigenbeleg-print');
+        if (! node) return null;
+        const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+        const img = canvas.toDataURL('image/jpeg', 0.92);
+        const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+        const pw = pdf.internal.pageSize.getWidth();
+        const ph = (canvas.height * pw) / canvas.width;
+        const pageH = pdf.internal.pageSize.getHeight();
+        let y = 0;
+        pdf.addImage(img, 'JPEG', 0, 0, pw, ph);
+        let remaining = ph - pageH;
+        while (remaining > 0) { pdf.addPage(); y -= pageH; pdf.addImage(img, 'JPEG', 0, y, pw, ph); remaining -= pageH; }
+        const blob = pdf.output('blob');
+        return new Uint8Array(await blob.arrayBuffer());
+    },
     _addDays(iso, days) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + (days || 0)); return d.toISOString().slice(0, 10); },
     _defaultVat() { const v = parseFloat(this.company.default_vat_rate); return Number.isFinite(v) ? v : 19; },
 
