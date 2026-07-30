@@ -2000,9 +2000,16 @@
                     <td class="px-4 py-2.5 text-gray-500 dark:text-gray-400 tabular-nums" x-text="inv.issueDate"></td>
                     <td class="px-4 py-2.5 text-right tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(computeTotals(inv).gross, inv.currency)"></td>
                     <td class="px-4 py-2.5">
-                      <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                        :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
-                        x-text="statusLabel(inv.status)"></span>
+                      <div class="flex flex-wrap items-center gap-1.5">
+                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                          :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
+                          x-text="statusLabel(inv.status)"></span>
+                        <template x-if="inv.paymentTxId">
+                          <span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'">
+                            <x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}
+                          </span>
+                        </template>
+                      </div>
                     </td>
                     <td class="px-4 py-2.5" @click.stop>
                       <div class="flex items-center justify-end gap-1">
@@ -2030,6 +2037,7 @@
               <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
               <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
               <span class="inline-flex items-center rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400" x-text="statusLabel(current?.status)"></span>
+              <template x-if="current?.paymentTxId"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
             </div>
             <x-action-menu :aria-label="__('invoices.col_actions')">
               <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
@@ -2091,6 +2099,7 @@
               <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                 :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
                 x-text="statusLabel(current?.status)"></span>
+              <template x-if="current?.paymentTxId"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               {{-- Locked invoice with pending edits → explicit versioned save (reason required). --}}

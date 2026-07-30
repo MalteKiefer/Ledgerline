@@ -408,6 +408,8 @@ return [
     'match_linked' => 'Linked invoice :n.',
     'match_done' => ':n invoices matched.',
     'match_gone' => 'Invoice not found.',
+    'linked_badge' => 'Linked',
+    'linked_hint' => 'Matched to a payment on a bank account.',
     'match_pick_title' => 'Link an invoice',
     'match_none' => 'No issued invoices to link.',
     'match_invoice' => 'Invoice :n',
