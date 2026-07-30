@@ -1160,16 +1160,13 @@
           <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.cats_title') }}</h2>
           <p class="mb-2 px-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.cats_intro') }}</p>
           <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
-            {{-- Built-in default categories (not removable) --}}
-            <template x-for="c in pagedCatSuggestions" :key="'def-'+c">
+            {{-- Built-in default categories (not removable) — shown in full, no pagination --}}
+            <template x-for="c in sortedCatSuggestions" :key="'def-'+c">
               <div class="flex items-center gap-3 px-4 py-2.5">
                 <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #e2915a"><x-icon name="hashtag" class="h-4 w-4" /></span>
                 <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="c"></span>
                 <x-badge variant="gray">{{ __('invoices.cats_default') }}</x-badge>
               </div>
-            </template>
-            <template x-if="sortedCatSuggestions.length > catDefPerPage">
-              @include('invoices._pagination', ['page' => 'catDefPage', 'perPage' => 'catDefPerPage', 'pageCount' => 'catDefPageCount', 'setPerPage' => 'setCatDefPerPage', 'goto' => 'catDefGoto'])
             </template>
             {{-- Custom categories (removable) --}}
             <template x-for="c in pagedCategories" :key="c.name">

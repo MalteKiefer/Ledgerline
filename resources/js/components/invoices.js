@@ -288,12 +288,6 @@ export default (config = {}, labels = {}) => ({
     _pageSlice(arr, page, per) { const s = (Math.max(1, page) - 1) * per; return (arr || []).slice(s, s + per); },
     _pageCount(len, per) { return Math.max(1, Math.ceil((len || 0) / per)); },
     // Built-in default categories paging.
-    catDefPage: 1,
-    catDefPerPage: 10,
-    get catDefPageCount() { return this._pageCount(this.sortedCatSuggestions.length, this.catDefPerPage); },
-    get pagedCatSuggestions() { return this._pageSlice(this.sortedCatSuggestions, this.catDefPage, this.catDefPerPage); },
-    setCatDefPerPage(n) { this.catDefPerPage = n; this.catDefPage = 1; },
-    catDefGoto(p) { this.catDefPage = Math.min(this.catDefPageCount, Math.max(1, p)); },
     accountTxCount(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).length; },
     // Balance = sum of an account's transactions (imported statements are signed).
     accountBalance(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).reduce((s, t) => s + (t.amount || 0), 0); },
