@@ -1263,8 +1263,8 @@ export default (config = {}, labels = {}) => ({
         if (this.filterStatus) list = list.filter((i) => i.status === this.filterStatus);
         if (this.invYear) list = list.filter((i) => invoiceYear(i) === String(this.invYear));
         if (this.invCustomer) list = list.filter((i) => (i.customer?.name || '') === this.invCustomer);
-        if (this.invLinked === 'linked') list = list.filter((i) => !! i.paymentTxId);
-        else if (this.invLinked === 'open') list = list.filter((i) => ! i.paymentTxId);
+        if (this.invLinked === 'linked') list = list.filter((i) => this.isInvoiceLinked(i));
+        else if (this.invLinked === 'open') list = list.filter((i) => ! this.isInvoiceLinked(i));
         if (q) list = list.filter((i) => (i.number || '').toLowerCase().includes(q) || (i.customer?.name || '').toLowerCase().includes(q) || amountMatches(this.computeTotals(i).gross, raw));
         return [...list].sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || '') || (b.number || '').localeCompare(a.number || ''));
     },
@@ -1682,10 +1682,15 @@ export default (config = {}, labels = {}) => ({
                     text += '\n';
                 }
                 const opts = { id: window.LLInvoicesStore.newId(), currency: this.company.currency || 'EUR', currentYear: new Date().getFullYear(), defaultVat };
-                const draft = buildImportDraft(parseInvoiceFilename(file.name), parseInvoiceText(text), opts);
+                const sellerBlob = [this.company.name, this.company.address].filter(Boolean).join(' ');
+                const draft = buildImportDraft(parseInvoiceFilename(file.name), parseInvoiceText(text, sellerBlob), opts);
                 draft._file = file.name;
                 draft._pdfBytes = bytes; // the original PDF, stored on import (GoBD)
                 draft._url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })); // inline preview in the review
+                // Flag an invoice that already exists (same number, active) so the review warns
+                // instead of silently creating a duplicate.
+                draft._dupe = !! (draft.number && this.activeInvoices.some((i) => String(i.number || '').trim() === String(draft.number).trim()));
+                if (draft._dupe) draft.selected = false;
                 this.importReview.items.push(draft);
             } catch (e) { this.importReview.failed++; }
             this.importReview.done++;
@@ -1935,6 +1940,14 @@ export default (config = {}, labels = {}) => ({
     // invoices carry archival numbers from other systems (may legitimately clash/repeat) and
     // must not trip it.
     get duplicateNumbers() { return dupNumbers(this.activeInvoices.filter((i) => ! i.imported)); },
+    // An invoice counts as "linked" if it carries a payment link OR any bank transaction points
+    // at it (by id or — after a re-import with a fresh id — by number). Robust to stale ids.
+    isInvoiceLinked(inv) {
+        if (! inv) return false;
+        if (inv.paymentTxId) return true;
+        const num = String(inv.number || '').trim();
+        return (this.transactions || []).some((t) => t.invoiceId === inv.id || (num && String(t.invoiceNumber || '').trim() === num));
+    },
     // Gaps in the per-year numbering (GoBD: gapless). Includes imported historical invoices —
     // uploading 8 and 10 flags the missing 9. Display caps at 40 to keep the banner sane.
     get gapNumbers() { return gapNumbers(this.activeInvoices).slice(0, 40); },

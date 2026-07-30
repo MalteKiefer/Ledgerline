@@ -125,6 +125,7 @@ return [
     'import_confirm' => 'Import :n',
     'import_step' => ':i / :n',
     'import_include' => 'Import this invoice',
+    'import_dupe' => 'Invoice number :n already exists — importing would create a duplicate.',
     'import_recipient' => 'Recipient',
     'import_gross' => 'Total (gross)',
     'import_vat_rate' => 'VAT rate',
