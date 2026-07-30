@@ -10,7 +10,6 @@ use App\Http\Controllers\Api\GroupController as ApiGroupController;
 use App\Http\Controllers\Api\InvoiceOcrController;
 use App\Http\Controllers\Api\PaperlessController as ApiPaperlessController;
 use App\Http\Controllers\Api\PasswordController as ApiPasswordController;
-use App\Http\Controllers\Api\PublicShareController as ApiPublicShareController;
 use App\Http\Controllers\Api\SecurityLogController as ApiSecurityLogController;
 use App\Http\Controllers\Api\SettingsController as ApiSettingsController;
 use App\Http\Controllers\Api\TwoFactorController as ApiTwoFactorController;
@@ -26,14 +25,12 @@ use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MapController;
-use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NotesController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TodosController;
-use App\Http\Controllers\VaultController;
 use App\Http\Middleware\UpdateTokenIp;
 use Illuminate\Support\Facades\Route;
 
@@ -45,16 +42,6 @@ use Illuminate\Support\Facades\Route;
  * for the browser. Per-route throttles mirror the web routes.
  */
 Route::prefix('v1')->group(function (): void {
-    // ─── Public share consumption: no auth, stateless, password → HMAC grant ───
-    // The share KEY lives in the URL fragment and never reaches the server.
-    // Password-protected shares issue a short-lived HMAC grant on /unlock.
-    Route::prefix('s/{token}')->name('api.s.')->group(function (): void {
-        Route::get('/meta', [ApiPublicShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
-        Route::post('/unlock', [ApiPublicShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
-        Route::get('/manifest', [ApiPublicShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
-        Route::get('/blob/{ref}', [ApiPublicShareController::class, 'blob'])->middleware('throttle:3000,1')->name('blob');
-    });
-
     // Public pairing exchange — the one-time code is the credential; hard-throttled.
     Route::middleware('throttle:auth-pair')->group(function (): void {
         Route::post('/auth/pair', [AuthController::class, 'pair'])->name('api.auth.pair');
@@ -72,18 +59,6 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/avatar', AvatarController::class)->middleware('throttle:120,1')->name('api.avatar');
         Route::post('/device/heartbeat', [AuthController::class, 'heartbeat'])->middleware('throttle:120,1')->name('api.device.heartbeat');
         Route::delete('/auth/session', [AuthController::class, 'destroy'])->name('api.auth.destroy');
-
-        // Zero-knowledge vault: KDF params + wrapped keys (unlock).
-        Route::get('/vault', [VaultController::class, 'show'])->name('api.vault.show');
-        // Vault lifecycle for native clients (no browser): first-time provisioning +
-        // passphrase rotation. Carries only wrapped key material + KDF params — never
-        // the plaintext vault key (ZK). Same controller as web, throttled like it.
-        Route::post('/vault', [VaultController::class, 'store'])->middleware('throttle:10,1')->name('api.vault.store');
-        Route::put('/vault', [VaultController::class, 'rotate'])->middleware('throttle:10,1')->name('api.vault.rotate');
-
-        // Per-module sealed stores (Store v3 split): one opaque row per module.
-        Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->middleware('module')->name('api.module-store.show');
-        Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware(['throttle:240,1', 'module'])->name('api.module-store.save');
 
         // Plaintext-relational Files core (pivot) — same controller as web, JSON per-record.
         Route::middleware('module:files')->group(function (): void {

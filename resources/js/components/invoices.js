@@ -5,7 +5,6 @@
 // server; previews use the raw URLs directly (no client decryption). The rendered/
 // printed invoice, ZUGFeRD/receipt parsing, bank-statement parsing, GoBD gap/dup
 // WARNINGS and money math stay client-side; the server owns GoBD numbering.
-import { bootStore } from '../shared/zk-module';
 import { nextSeqForYear, duplicateNumbers as dupNumbers, missingNumbers as gapNumbers, invoicesInYear, invoiceYear } from '../shared/invoice-numbering';
 import { parseInvoiceFilename, parseInvoiceText, buildImportDraft } from '../shared/invoice-pdf-import';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
@@ -745,7 +744,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
         this.receiptDoc = doc;
         this.tagsValue = (doc.r.tags || []).join(", ");
         this._loadDocPreview();
-        try { if (await bootStore(this.$store, 'contacts')) this._receiptContacts = (window.LLModuleStore.contacts.data.contacts || []).filter((c) => ! c.trashed); }
+        try { this._receiptContacts = []; }
         catch (e) { /* leave empty */ }
     },
     closeReceiptDoc() { this.closeDocPreview(); this.receiptDoc = null; },
@@ -1077,7 +1076,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
     },
     async _ensureContactsLoaded() {
         if ((this._receiptContacts || []).length) return;
-        try { if (await bootStore(this.$store, 'contacts')) this._receiptContacts = (window.LLModuleStore.contacts.data.contacts || []).filter((c) => ! c.trashed); }
+        try { this._receiptContacts = []; }
         catch (e) { /* leave empty */ }
     },
     _normName(s) { return normMerchant(s); },
@@ -2001,7 +2000,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
     async openCustomerPicker() {
         this.customerPicker = true;
         this.custQuery = '';
-        try { if (await bootStore(this.$store, 'contacts')) this._custContacts = (window.LLModuleStore.contacts.data.contacts || []).filter((c) => ! c.trashed); }
+        try { this._custContacts = []; }
         catch (e) { /* leave empty */ }
     },
     closeCustomerPicker() { this.customerPicker = false; },

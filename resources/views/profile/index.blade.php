@@ -56,7 +56,6 @@
             ['url' => route('profile.account'), 'icon' => 'user', 'tint' => '#7066f5', 'title' => __('account.nav_account'), 'desc' => __('account.nav_account_desc')],
             ['url' => route('profile.devices'), 'icon' => 'device-phone-mobile', 'tint' => '#3b9fd6', 'title' => __('account.nav_devices'), 'desc' => __('account.nav_devices_desc'), 'badge' => __('account.stat_devices_of', ['n' => $deviceCount, 'max' => $deviceMax])],
             ['url' => route('profile.sessions'), 'icon' => 'computer-desktop', 'tint' => '#9e70fa', 'title' => __('account.nav_sessions'), 'desc' => __('account.nav_sessions_desc'), 'badge' => (string) $sessionCount],
-            ['url' => route('profile.encryption'), 'icon' => 'lock-closed', 'tint' => '#59ad6b', 'title' => __('account.nav_encryption'), 'desc' => __('account.nav_encryption_desc')],
             ['url' => route('profile.security'), 'icon' => 'shield-check', 'tint' => '#e2915a', 'title' => __('account.nav_security'), 'desc' => __('account.nav_security_desc')],
         ];
         $personal = [

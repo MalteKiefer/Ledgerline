@@ -53,19 +53,18 @@
         <div class="ll-card">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_invoice_heading') }}</h2>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.company_invoice_hint') }}</p>
-            {{-- Numbering format + start are LOCKED once the current year has invoices
-                 (GoBD: the running sequence must not change mid-year). The check reads the
-                 zero-knowledge invoice store client-side after the vault unlocks. --}}
+            {{-- Numbering format + start are LOCKED once the current year has numbered
+                 invoices (GoBD: the running sequence must not change mid-year). Checked
+                 against the relational finance data. --}}
             <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2"
                  x-data="{ locked: false, async check() {
                      try {
-                         if (! this.$store.vault?.unlocked || ! window.LLInvoicesStore) { this.locked = false; return; }
-                         if (! window.LLInvoicesStore.loaded) await window.LLInvoicesStore.load();
+                         const d = await fetch('/finance/data', { headers: { Accept: 'application/json' } }).then((r) => r.json());
                          const y = String(new Date().getFullYear());
-                         this.locked = (window.LLInvoicesStore.data.invoices || []).some((i) => ! i.trashed && String(i.issueDate || '').slice(0, 4) === y);
+                         this.locked = (d.invoices || []).some((i) => ! i.deleted_at && i.number && String(i.issue_date || '').slice(0, 4) === y);
                      } catch (e) { this.locked = false; }
                  } }"
-                 x-init="check(); $watch('$store.vault.unlocked', () => check())">
+                 x-init="check()">
                 <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_number_format') }}
                     <input type="text" name="invoice_number_format" value="{{ old('invoice_number_format', $s->invoice_number_format ?: 'YYYY-NNNN') }}" placeholder="YYYY-NNNN" :readonly="locked" :class="locked && 'opacity-60 cursor-not-allowed'" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     <span class="mt-1 block text-xs text-gray-400 dark:text-gray-500">{{ __('settings.invoice_number_format_hint') }}</span>

@@ -25,7 +25,7 @@ class DesignSmokeRenderTest extends TestCase
             '/dashboard', '/health', '/finance', '/notes', '/todos', '/bookmarks',
             '/explore', '/gallery', '/files',
             '/profile', '/profile/account', '/profile/devices', '/profile/sessions',
-            '/profile/encryption', '/profile/security', '/profile/appearance',
+            '/profile/security', '/profile/appearance',
             '/profile/export', '/profile/danger',
             '/settings/files', '/settings/paperless',
         ];

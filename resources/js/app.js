@@ -1,13 +1,9 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
-import { Vault, ShareCrypto } from './vault';
 import { csrfToken, getJson } from './shared/api';
-import { buildModuleStores } from './shared/module-store';
 import health from './components/health';
 import vaultFiles from './components/files';
 import vaultGallery from './components/gallery';
-import publicShare from './components/public-share';
-import fileShare from './components/file-share';
 import invoices from './components/invoices';
 import todos from './components/todos';
 import notes from './components/notes';
@@ -37,34 +33,12 @@ window.addEventListener('vite:preloadError', () => {
 });
 
 
-// Zero-knowledge encryption vault (client-side crypto for the Files module).
-// Exposed globally so the vault UI + files component can lock/unlock/encrypt.
-// The reactive Alpine.store('vault') boots it (restores the cached key) on init.
-window.Vault = Vault;
-window.ShareCrypto = ShareCrypto;
+// Zero-knowledge removed (pivot complete): all modules are plaintext-relational
+// and served over REST. No client-side vault/crypto remains.
 
-/**
- * Per-module opaque zero-knowledge store registry (Store v3 split). Each module
- * (invoices/health/sharing/explore) has its OWN
- * sealed row at /store/<module>, so a write to one never re-seals the others; the
- * server only stores/returns ciphertext + a version. Each store loads + decrypts
- * once, holds it in memory, and saves (debounced, sealed, optimistic version) on
- * change. Files + gallery have their own sharded stores (below); binary content
- * stays as separate opaque blobs.
- */
-window.LLModuleStore = buildModuleStores();
+// All modules are plaintext-relational now (pivot complete) — served over REST.
+// No sealed per-module stores, no gallery/invoices sharded stores, no client crypto.
 
-// Separate sealed store for the gallery index (photos/albums/people), kept apart
-// from the module stores so gallery churn never re-seals notes/todos.
-// Gallery migrated to plaintext-relational (pivot) — served via /gallery/* REST.
-
-// Invoices graduated to a sharded store too (spec §3b) — they grow with sending/import
-// and must stay loss-safe for tax records. Each invoice is one shard record; numbering
-// safety is derived client-side from the invoices, not a store scalar (see invoices.js).
-// Finance migrated to plaintext-relational (pivot) — served via /finance/* REST.
-
-
-// Wait for the vault, then load the sealed gallery index once.
 // App-wide confirm modal store (replaces native window.confirm everywhere).
 // Usage in Alpine components: `if (! await this.$store.confirm.ask(msg)) return;`
 document.addEventListener('alpine:init', () => {
@@ -104,56 +78,6 @@ document.addEventListener('alpine:init', () => {
         closeAll() { this.navOpen = false; this.sidebarOpen = false; },
     });
 
-    // Reactive wrapper around the zero-knowledge Vault crypto module. Tracks
-    // whether the user's vault is configured (server) and unlocked (this login),
-    // so the Files UI can gate on it. All crypto stays in window.Vault; nothing
-    // secret is held here.
-    Alpine.store('vault', {
-        configured: false,
-        ready: false, // true once the cached key has been restored (or not) at load
-        _unlockedAt: 0, // reactive nonce bumped on lock/unlock so getters re-run
-        get unlocked() { this._unlockedAt; return window.Vault.unlocked(); },
-        async init() {
-            // Restore the cached key (it survives navigation between modules)
-            // BEFORE anything reads `unlocked`, and bump the reactive nonce so the
-            // getter reflects the restored state — otherwise leaving + returning to
-            // Files would wrongly show the vault as locked.
-            try { await window.Vault.boot(); } catch (e) { /* stays locked */ }
-            this._unlockedAt++;
-            this.ready = true;
-            try { this.configured = (await window.Vault.status()).configured; } catch (e) { /* leave false */ }
-            // Idle watchdog: auto-lock once the cached key's idle window passes,
-            // and extend that window on real user activity. Runs in-page (the
-            // previous check only ran at page load).
-            const bump = () => { if (window.Vault.unlocked()) window.Vault.touch(); };
-            let last = 0;
-            const onActivity = () => { const t = Date.now(); if (t - last > 15000) { last = t; bump(); } };
-            ['pointerdown', 'keydown', 'scroll'].forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
-            setInterval(() => {
-                if (window.Vault.unlocked() && window.Vault.expiresAt() > 0 && Date.now() > window.Vault.expiresAt()) {
-                    this.lock();
-                }
-            }, 15000);
-            // NB: do NOT lock on `pagehide` — it fires on every same-tab navigation
-            // and reload, which would drop the cached key on each page change and
-            // force re-entry of the passphrase everywhere. The key is held in
-            // sessionStorage (already cleared by the browser when the tab closes),
-            // bound to the current login (vault-owner), and auto-locked by the idle
-            // watchdog above — so it correctly survives navigation but not a real
-            // tab close, logout or idle timeout.
-        },
-        async setup(passphrase, remember = true) {
-            const code = await window.Vault.setup(passphrase, remember);
-            this.configured = true; this._unlockedAt++;
-            return code;
-        },
-        async unlock(passphrase, remember = true) { await window.Vault.unlock(passphrase, remember); this._unlockedAt++; },
-        async recover(code, remember = true) { await window.Vault.recover(code, remember); this._unlockedAt++; },
-        async changePassphrase(a, b) { const code = await window.Vault.changePassphrase(a, b); this._unlockedAt++; return code; },
-        async setPassphrase(b) { const code = await window.Vault.setPassphrase(b); this._unlockedAt++; return code; },
-        lock() { window.Vault.lock(); this._unlockedAt++; },
-    });
-    Alpine.store('vault').init();
 });
 
 // CSP-safe replacement for inline `onsubmit="return confirm(...)"`: any form
@@ -207,26 +131,12 @@ Alpine.data('notificationBell', notificationBell);
  */
 /* ---- Zero-knowledge gallery (client-driven) ----
  *
- * The whole library lives in a sealed index (LLGalleryStore); photo bytes +
+ * The whole library is served over the /gallery/* REST endpoints; photo bytes +
  * renditions + a per-photo metadata blob are opaque blobs. Nothing is server-
  * readable. On unlock the client processes any un-processed uploads through the
  * transient /gallery/process endpoint (plaintext in, derived out, discarded),
  * re-seals the derived data, and renders the grid from decrypted thumbnails.
  */
-/**
- * Public album share viewer (/s/{token}). Runs WITHOUT a vault: the share key
- * comes from the URL fragment and unwraps each blob's per-file key from the
- * sealed manifest. No key or plaintext ever goes to the server.
- */
-Alpine.data('publicShare', publicShare);
-
-/**
- * Public file/folder share viewer (/s/{token}). Like publicShare but lists files
- * (a single file or a folder subtree) with preview + download; the share key from
- * the fragment unwraps each blob's per-file key. No key/plaintext hits the server.
- */
-Alpine.data('fileShare', fileShare);
-
 Alpine.data('vaultGallery', vaultGallery);
 
 /* ---- Zero-knowledge file browser (manifest model) ----
@@ -419,7 +329,7 @@ window.Alpine = Alpine;
 /**
  * Shared lifecycle for the per-module zero-knowledge stores (notes, bookmarks,
  * to-dos, …). Each component points local arrays at its own
- * window.LLModuleStore.<module>.data.* once the vault is unlocked, mutates them
+ * the /<module> REST endpoints, mutates them
  * in place, and schedules a debounced sealed save; on lock it clears those
  * arrays and resets the store. Each component spreads this and supplies its
  * module-specific bits.

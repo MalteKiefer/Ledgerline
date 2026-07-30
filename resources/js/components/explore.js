@@ -3,7 +3,7 @@
 // / mutated over per-row REST endpoints (/explore/*, mirrored by the mobile API);
 // there is no vault gate or sealed store any more. Gallery photos, however, are
 // STILL zero-knowledge: they are read from the already-decrypted gallery index
-// (window.LLGalleryStore.data.photos) — their sealed EXIF lat/lng place a pin,
+// their EXIF lat/lng place a pin,
 // and photos without GPS are placed by matching their capture time against a
 // track (matchPhotoToTracks + interpolatePosition). Leaflet renders raster
 // OpenStreetMap tiles as <img> (allowed by the CSP img-src) — same tile layer the

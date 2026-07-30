@@ -23,22 +23,7 @@ class ApiDataTest extends TestCase
 
     public function test_data_endpoints_require_a_bearer(): void
     {
-        $this->getJson('/api/v1/vault')->assertStatus(401);
-        $this->getJson('/api/v1/store/invoices')->assertStatus(401);
         $this->getJson('/api/v1/files/entries')->assertStatus(401);
-    }
-
-    public function test_store_roundtrip_returns_only_the_opaque_envelope(): void
-    {
-        $user = User::factory()->create();
-        $h = $this->bearer($user);
-
-        $this->putJson('/api/v1/store/invoices', ['ciphertext' => 'sealed-blob', 'version' => 0], $h)->assertOk();
-        $res = $this->getJson('/api/v1/store/invoices', $h)->assertOk();
-
-        // Zero-knowledge: the only fields are the ciphertext + version — no plaintext.
-        $this->assertSame(['ciphertext', 'version'], array_keys($res->json()));
-        $res->assertJson(['ciphertext' => 'sealed-blob', 'version' => 1]);
     }
 
     public function test_files_raw_is_owner_scoped_over_the_api(): void

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\FileEntry;
-use App\Models\ModuleStore;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -15,24 +14,6 @@ use Tests\TestCase;
 class UserIsolationTest extends TestCase
 {
     use RefreshDatabase;
-
-    public function test_the_store_manifest_is_private_to_its_owner(): void
-    {
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
-
-        // Alice seals her notes module in her own per-module store.
-        $this->actingAs($alice)
-            ->putJson(route('module-store.save', 'invoices'), ['ciphertext' => 'alice-sealed-blob', 'version' => 0])
-            ->assertOk();
-        $this->actingAs($alice)->getJson(route('module-store.show', 'invoices'))
-            ->assertOk()->assertJson(['ciphertext' => 'alice-sealed-blob', 'version' => 1]);
-
-        // Bob has his own empty manifest and never sees Alice's ciphertext.
-        $this->actingAs($bob)->getJson(route('module-store.show', 'invoices'))
-            ->assertOk()->assertJson(['ciphertext' => null, 'version' => 0]);
-        $this->assertSame($alice->id, ModuleStore::query()->where('ciphertext', 'alice-sealed-blob')->value('user_id'));
-    }
 
     public function test_files_are_private_and_raw_download_is_owner_only(): void
     {
