@@ -153,6 +153,8 @@ return [
     'eg_issuer' => 'Aussteller',
     'eg_signature' => 'Unterschrift',
     'eg_signature_hint' => 'Nach dem Druck handschriftlich unterschreiben.',
+    'eg_sig_clear' => 'Löschen',
+    'eg_sig_hint' => 'Mit Finger oder Trackpad unterschreiben — wird in das versiegelte PDF eingebettet.',
     'eg_novat_note' => 'Kein Vorsteuerabzug möglich (Eigenbeleg).',
     'eg_generate' => 'PDF erstellen',
     'eg_missing' => 'Empfänger, Betrag und Begründung sind Pflicht.',

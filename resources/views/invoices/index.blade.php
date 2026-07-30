@@ -1635,7 +1635,17 @@
                         <input type="text" x-model="eigenbeleg.issuer" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
                       </div>
                     </div>
-                    <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.eg_signature_hint') }}</p>
+                    {{-- Signature pad (finger/trackpad); embedded into the sealed PDF --}}
+                    <div>
+                      <div class="mb-1 flex items-center justify-between">
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_signature') }}</label>
+                        <button type="button" @click="egSigClear()" class="text-xs font-medium text-accent hover:underline">{{ __('invoices.eg_sig_clear') }}</button>
+                      </div>
+                      <canvas x-ref="egCanvas" x-init="$nextTick(() => egSigInit())"
+                        class="h-32 w-full touch-none rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-white"
+                        @pointerdown.prevent="egSigStart($event)" @pointermove.prevent="egSigMove($event)" @pointerup.prevent="egSigEnd()" @pointerleave="egSigEnd()"></canvas>
+                      <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.eg_sig_hint') }}</p>
+                    </div>
                   </div>
                   <div class="flex items-center justify-end gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
                     <x-button variant="secondary" @click="cancelEigenbeleg()" ::disabled="egBusy">{{ __('common.cancel') }}</x-button>
@@ -1708,6 +1718,7 @@
                     <div style="margin-top:4px; font-size:10px; color:#777;">{{ __('invoices.eg_ort') }}, {{ __('invoices.eg_date') }}</div>
                   </div>
                   <div style="flex:1;">
+                    <img x-show="eigenbeleg.signature" :src="eigenbeleg.signature" style="height:52px; display:block; margin-bottom:-6px;" alt="">
                     <div style="border-top:1px solid #111; padding-top:6px; font-size:12px;" x-text="eigenbeleg.issuer || ''"></div>
                     <div style="margin-top:4px; font-size:10px; color:#777;">{{ __('invoices.eg_signature') }}</div>
                   </div>

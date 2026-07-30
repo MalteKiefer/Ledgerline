@@ -1251,9 +1251,31 @@ export default (config = {}, labels = {}) => ({
             vatRate: this._defaultVat(),
             reason: '',
             issuer: this.company.name || '',
+            signature: '', // drawn on-device (PNG data URL); embedded into the sealed PDF
         };
     },
-    cancelEigenbeleg() { this.eigenbeleg = null; this._egTx = null; },
+    cancelEigenbeleg() { this.eigenbeleg = null; this._egTx = null; this._egCtx = null; this._egDrawing = false; },
+
+    // Signature pad (finger/trackpad). A simple electronic signature is legally sufficient
+    // for an Eigenbeleg (no statutory written form); the sealed, immutable blob satisfies GoBD.
+    _egDrawing: false,
+    _egCtx: null,
+    egSigInit() {
+        const c = this.$refs.egCanvas; if (! c) return;
+        const ratio = window.devicePixelRatio || 1;
+        c.width = Math.max(1, c.clientWidth) * ratio;
+        c.height = Math.max(1, c.clientHeight) * ratio;
+        const ctx = c.getContext('2d');
+        ctx.scale(ratio, ratio);
+        ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
+        this._egCtx = ctx;
+        if (this.eigenbeleg?.signature) { const img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0, c.clientWidth, c.clientHeight); img.src = this.eigenbeleg.signature; }
+    },
+    _egPos(e) { const c = this.$refs.egCanvas; const r = c.getBoundingClientRect(); const p = e.touches ? e.touches[0] : e; return { x: p.clientX - r.left, y: p.clientY - r.top }; },
+    egSigStart(e) { if (! this._egCtx) this.egSigInit(); if (! this._egCtx) return; this._egDrawing = true; const { x, y } = this._egPos(e); this._egCtx.beginPath(); this._egCtx.moveTo(x, y); },
+    egSigMove(e) { if (! this._egDrawing || ! this._egCtx) return; const { x, y } = this._egPos(e); this._egCtx.lineTo(x, y); this._egCtx.stroke(); },
+    egSigEnd() { if (! this._egDrawing) return; this._egDrawing = false; const c = this.$refs.egCanvas; if (this.eigenbeleg && c) this.eigenbeleg.signature = c.toDataURL('image/png'); },
+    egSigClear() { const c = this.$refs.egCanvas; if (c && this._egCtx) this._egCtx.clearRect(0, 0, c.width, c.height); if (this.eigenbeleg) this.eigenbeleg.signature = ''; },
     // Only a "lost original receipt" business expense needs the strict recipient/net/VAT/
     // reason fields; a Privatentnahme/-einlage etc. is just amount + note (like the paper form).
     get egIsExpense() { return this.eigenbeleg?.grund === 'betriebsausgabe'; },

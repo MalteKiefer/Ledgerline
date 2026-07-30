@@ -1179,6 +1179,7 @@ components:
             vat: { type: number }
             reason: { type: string, description: "Why no original receipt exists (business expense)." }
             issuer: { type: string }
+            signature: { type: string, description: "Simple electronic signature drawn on-device (PNG data URL), embedded into the sealed PDF. Empty = not yet signed. A simple e-signature is legally sufficient for an Eigenbeleg (no statutory written form); the sealed immutable blob satisfies GoBD. SIGN QUEUE (ZK): there is deliberately NO server endpoint listing unsigned vouchers (the server cannot read the sealed store). A client builds the 'to sign' queue itself from GET /api/v1/invoices/store — every transactions[].receipts[] with kind='eigenbeleg' and an empty signature — lets the user sign each on the phone, then writes signature back (and re-uploads the regenerated PDF blob) via PUT /api/v1/invoices/store + POST /api/v1/invoices/upload." }
 
     PaymentMethod:
       type: object
