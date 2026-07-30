@@ -4,7 +4,7 @@ import { nextSeqForYear, duplicateNumbers as dupNumbers, invoicesInYear, invoice
 import { parseInvoiceFilename, parseInvoiceText, buildImportDraft } from '../shared/invoice-pdf-import';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
 import { jsonHeaders, postForm } from '../shared/api';
-import { saveBlobAs } from '../shared/dom';
+import { saveBlobAs, formatDate } from '../shared/dom';
 import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
 import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
@@ -1218,6 +1218,7 @@ export default (config = {}, labels = {}) => ({
     get totals() { return this.computeTotals(this.current); },
 
     _today() { return new Date().toISOString().slice(0, 10); },
+    fmtDate(d) { return d ? formatDate(d) : ''; },
     _addDays(iso, days) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + (days || 0)); return d.toISOString().slice(0, 10); },
     _defaultVat() { const v = parseFloat(this.company.default_vat_rate); return Number.isFinite(v) ? v : 19; },
 
