@@ -125,6 +125,7 @@ return [
     'import_confirm' => ':n importieren',
     'import_step' => ':i / :n',
     'import_include' => 'Diese Rechnung importieren',
+    'import_dupe' => 'Rechnungsnummer :n existiert bereits — der Import würde ein Duplikat anlegen.',
     'import_recipient' => 'Empfänger',
     'import_gross' => 'Summe (brutto)',
     'import_vat_rate' => 'Steuersatz',

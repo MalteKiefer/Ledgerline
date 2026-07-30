@@ -156,13 +156,19 @@ export function looksMangled(text) {
  * @param {string} text  newline-preserving PDF text (see the importer's extractor)
  * @param {RegExp} senderRe  matches the seller's own one-liner (to skip past it)
  */
-export function parseCustomer(text, sender = 'kiefernetworks') {
+export function parseCustomer(text, sender = 'kiefernetworks', sellerBlob = '') {
     // Only the top address block (the footer repeats the sender).
     const lines = String(text || '').split(/[\r\n]+/).map((s) => s.replace(/\s+/g, ' ').trim()).slice(0, 24);
     // Some PDFs letter-space the section headers ("R E C H N U N G   A N"); compare with
     // ALL whitespace removed so those markers/stop-words are still recognised.
     const flat = (s) => s.replace(/\s+/g, '').toLowerCase();
     const isSender = (s) => flat(s).includes(sender);
+    // The seller's OWN block (company name + owner + address, from the company profile) must
+    // never be mistaken for the recipient. Compare alphanumerics-only so bullet/dot separators
+    // ("Str. 6 • 95512 • Neudrossenfeld") still match the profile's plain address.
+    const alnum = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
+    const sellerAlnum = alnum(sellerBlob);
+    const isSellerLine = (s) => { const a = alnum(s); return isSender(s) || (a.length >= 5 && sellerAlnum.length >= 5 && sellerAlnum.includes(a)); };
     const isStop = (s) => /^(rechnungsdetails|rechnungs[üu]bersicht|beschreibung|von|zahlungs|notizen|steuer|pos|item|quantity|menge|rechnung(nr|snr|snummer|sdatum)?|kundennummer|datum|leistungs|status|f[äa]llig|ust)/.test(flat(s));
 
     let start = -1, viaMarker = false;
@@ -185,6 +191,9 @@ export function parseCustomer(text, sender = 'kiefernetworks') {
         let j = -1;
         for (let k = start; k < lines.length && k < start + 10; k++) if (lines[k] && isBankish(lines[k])) j = k;
         if (j >= 0) start = j + 1;
+        // Skip the seller's own consecutive lines (name / owner / address) so the recipient —
+        // never the seller — starts the block (e.g. "Malte Kiefer" is the sender, not the payee).
+        while (start < lines.length && lines[start] && isSellerLine(lines[start])) start++;
     }
 
     const deSpace = deSpaceWord;
@@ -208,6 +217,8 @@ export function parseCustomer(text, sender = 'kiefernetworks') {
             ln = ln.replace(/kiefer\s*networks/ig, '').replace(/^[\s,·|–-]+/, '').trim();
             if (! ln) continue;
         }
+        // A pure seller line that slipped through (name/owner/address) is not the recipient.
+        if (! block.length && isSellerLine(ln)) continue;
         block.push(deSpace(ln));
     }
     if (! block.length) return null;
@@ -318,7 +329,7 @@ export function importedSeq(number, currentYear) {
 }
 
 /** Money + dates + VAT + number + customer from the extracted PDF text. */
-export function parseInvoiceText(text) {
+export function parseInvoiceText(text, sellerBlob = '') {
     let t = String(text || '').replace(/ /g, ' ');
     t = t.replace(/(\d)\s+([.,])(\d{2})(?!\d)/g, '$1$2$3'); // glue a whitespace-split decimal: "160 .00" -> "160.00"
     t = t.replace(/\b(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})\b/g, '$1.$2.$3'); // glue a spaced date: "28 . 08 . 2020" -> "28.08.2020"
@@ -456,7 +467,7 @@ export function parseInvoiceText(text) {
     out.firstItem = out.items[0] || null;
 
     // Recipient block from the text (more reliable than a mojibake/renamed filename).
-    out.customer = parseCustomer(text);
+    out.customer = parseCustomer(text, 'kiefernetworks', sellerBlob);
 
     return out;
 }

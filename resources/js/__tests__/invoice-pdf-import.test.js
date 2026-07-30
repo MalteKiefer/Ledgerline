@@ -210,6 +210,15 @@ describe('invoice PDF import — text is authoritative over the filename', () =>
         expect(c.name).toBe('IntellyTec GmbH');
         expect(c.address).toContain('53797 Lohmar');
     });
+    it('skips the seller block via the company profile when there is no bank line', () => {
+        // Sender = "Malte Kiefer" + address, no IBAN/bank cluster — the seller profile blob is
+        // what lets us skip it so the recipient (Ronny Radke) is picked, not the sender.
+        const text = 'Kiefer Networks\nMalte Kiefer\nAdalbert-Stifter-Str. 6 • 95512 • Neudrossenfeld\nRonny Radke\nPionierstraße 43A\n13583 Berlin\nRechnungsnummer: 2025-10';
+        const seller = 'Kiefer Networks Malte Kiefer Adalbert-Stifter-Str. 6 95512 Neudrossenfeld';
+        const c = parseCustomer(text, 'kiefernetworks', seller);
+        expect(c.name).toBe('Ronny Radke'); // NOT "Malte Kiefer"
+        expect(c.address).toContain('13583 Berlin');
+    });
 });
 
 describe('invoice PDF import — the current-year 2026 format', () => {

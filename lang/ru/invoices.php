@@ -125,6 +125,7 @@ return [
     'import_confirm' => 'Импортировать :n',
     'import_step' => ':i / :n',
     'import_include' => 'Импортировать этот счёт',
+    'import_dupe' => 'Счёт с номером :n уже существует — импорт создаст дубликат.',
     'import_recipient' => 'Получатель',
     'import_gross' => 'Сумма (брутто)',
     'import_vat_rate' => 'Ставка НДС',

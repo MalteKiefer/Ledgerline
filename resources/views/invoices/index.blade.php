@@ -2066,7 +2066,7 @@
                         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                           :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
                           x-text="statusLabel(inv.status)"></span>
-                        <template x-if="inv.paymentTxId">
+                        <template x-if="isInvoiceLinked(inv)">
                           <span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'">
                             <x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}
                           </span>
@@ -2099,7 +2099,7 @@
               <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
               <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
               <span class="inline-flex items-center rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400" x-text="statusLabel(current?.status)"></span>
-              <template x-if="current?.paymentTxId"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
+              <template x-if="isInvoiceLinked(current)"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
             </div>
             <x-action-menu :aria-label="__('invoices.col_actions')">
               <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
@@ -2161,7 +2161,7 @@
               <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                 :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
                 x-text="statusLabel(current?.status)"></span>
-              <template x-if="current?.paymentTxId"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
+              <template x-if="isInvoiceLinked(current)"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               {{-- Locked invoice with pending edits → explicit versioned save (reason required). --}}
@@ -2684,6 +2684,9 @@
                     <input type="checkbox" x-model="importCurrent.selected" class="rounded border-gray-300 text-accent focus:ring-accent">
                     {{ __('invoices.import_include') }}
                   </label>
+                  <template x-if="importCurrent._dupe">
+                    <x-alert variant="warning" class="mb-3"><span x-text="'{{ __('invoices.import_dupe') }}'.replace(':n', importCurrent.number || '')"></span></x-alert>
+                  </template>
                   <div class="space-y-3">
                     <div class="relative" x-data="{ open: false }" @click.outside="open = false">
                       <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_recipient') }}</label>
