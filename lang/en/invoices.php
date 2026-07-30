@@ -84,6 +84,8 @@ return [
     'trash' => 'Move to trash',
     'restore' => 'Restore',
     'delete' => 'Delete permanently',
+    'trash_bin' => 'Trash',
+    'trash_empty' => 'The trash is empty.',
     'delete_confirm' => 'Delete this invoice permanently?',
 
     'company_missing' => 'Set up your company profile in Settings to number and brand invoices.',

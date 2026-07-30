@@ -267,6 +267,9 @@
             <input type="search" x-model.debounce.200ms="receiptQuery" @input="recPage = 1" placeholder="{{ __('invoices.receipts_search') }}" class="w-full max-w-xs rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
             <div class="flex items-center gap-3">
               <p class="text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.receipts_count') }}'.replace(':n', allReceipts.length)"></p>
+              <button type="button" @click="showReceiptTrash = ! showReceiptTrash" class="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium transition-colors" :class="showReceiptTrash ? 'bg-accent/10 text-accent' : 'text-gray-500 hover:bg-black/[0.04] dark:hover:bg-white/10'">
+                <x-icon name="trash" class="h-4 w-4" /><span x-text="'{{ __('invoices.trash_bin') }}' + (trashedReceipts.length ? ' (' + trashedReceipts.length + ')' : '')"></span>
+              </button>
               <template x-if="allReceipts.length">
                 <x-button variant="secondary" size="sm" icon="arrow-path" ::disabled="reanalyzeBusy" @click="reanalyzeAllReceipts(true)">
                   <span x-show="! reanalyzeBusy">{{ __('invoices.receipts_rescan_all') }}</span>
@@ -362,10 +365,34 @@
             </div>
           </div>
 
-          <template x-if="! filteredReceipts.length">
+          {{-- Receipt trash bin --}}
+          <template x-if="showReceiptTrash">
+            <div class="mt-4">
+              <template x-if="! trashedReceipts.length"><x-empty-state icon="trash" class="py-14">{{ __('invoices.trash_empty') }}</x-empty-state></template>
+              <template x-if="trashedReceipts.length">
+                <div class="ll-card !p-0 overflow-hidden">
+                  <div class="divide-y divide-black/[0.06] dark:divide-white/10">
+                    <template x-for="doc in trashedReceipts" :key="doc.r.id">
+                      <div class="flex items-center gap-3 px-4 py-3">
+                        <span class="ll-chip h-9 w-9 rounded-xl shrink-0" style="background:#6b7280"><x-icon name="document" class="h-4.5 w-4.5 text-white" /></span>
+                        <div class="min-w-0 flex-1">
+                          <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="doc.r.name || '{{ __('invoices.receipt') }}'"></p>
+                          <p class="truncate text-xs text-gray-500 dark:text-gray-400"><span x-text="doc.tx.date"></span> · <span x-text="doc.tx.counterparty || doc.tx.purpose || '—'"></span> · <span class="tabular-nums" x-text="fmtMoney(doc.tx.amount, doc.tx.currency)"></span></p>
+                        </div>
+                        <x-button variant="secondary" size="sm" icon="arrow-uturn-left" @click="restoreReceipt(doc)">{{ __('invoices.restore') }}</x-button>
+                        <x-icon-button name="trash" tone="red" size="sm" @click="deleteReceiptForever(doc)" :aria-label="__('invoices.delete')" />
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <template x-if="! showReceiptTrash && ! filteredReceipts.length">
             <x-empty-state icon="paper-clip" class="mt-6">{{ __('invoices.receipts_docs_empty') }}</x-empty-state>
           </template>
-          <template x-if="filteredReceipts.length">
+          <template x-if="! showReceiptTrash && filteredReceipts.length">
             <div class="ll-card !p-0 mt-4 overflow-hidden">
               <div class="divide-y divide-black/[0.06] dark:divide-white/10">
                 <template x-for="doc in pagedReceipts" :key="doc.r.id">
@@ -1576,7 +1603,7 @@
                     {{-- Existing receipts --}}
                     <template x-if="receiptCount(receiptTx)">
                       <div class="space-y-2">
-                        <template x-for="(r, ri) in receiptTx.receipts" :key="ri">
+                        <template x-for="(r, ri) in (receiptTx.receipts || []).filter((x) => ! x.trashed)" :key="ri">
                           <div class="flex items-center gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
                             <span class="ll-chip h-8 w-8 rounded-lg shrink-0" :style="{ background: r.locked ? '#7066f5' : '#3fae9f' }"><x-icon name="document" class="h-4 w-4 text-white" /></span>
                             <button type="button" @click="openReceipt(r)" class="min-w-0 flex-1 truncate text-left text-sm text-gray-800 dark:text-gray-200 hover:text-accent" x-text="r.name || '{{ __('invoices.receipt') }}'" :title="r.name"></button>
@@ -2028,9 +2055,41 @@
               <option value="open">{{ __('invoices.inv_link_open') }}</option>
             </select>
             <x-button x-show="invFiltersActive" variant="secondary" size="sm" icon="x-mark" @click="resetInvFilters()">{{ __('invoices.tx_filter_reset') }}</x-button>
+            <button type="button" @click="showInvTrash = ! showInvTrash" class="ml-auto inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium transition-colors" :class="showInvTrash ? 'bg-accent/10 text-accent' : 'text-gray-500 hover:bg-black/[0.04] dark:hover:bg-white/10'">
+              <x-icon name="trash" class="h-4 w-4" /><span x-text="'{{ __('invoices.trash_bin') }}' + (trashedInvoices.length ? ' (' + trashedInvoices.length + ')' : '')"></span>
+            </button>
           </div>
 
-          <template x-if="! filtered.length">
+          {{-- Trash bin --}}
+          <template x-if="showInvTrash">
+            <div class="mt-4">
+              <template x-if="! trashedInvoices.length"><x-empty-state icon="trash" class="py-14">{{ __('invoices.trash_empty') }}</x-empty-state></template>
+              <template x-if="trashedInvoices.length">
+                <div class="ll-card !p-0 overflow-hidden overflow-x-auto">
+                  <table class="min-w-full text-sm">
+                    <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
+                      <template x-for="inv in trashedInvoices" :key="inv.id">
+                        <tr>
+                          <td class="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100 tabular-nums" x-text="inv.number || @js(__('invoices.draft_label'))"></td>
+                          <td class="px-4 py-2.5 text-gray-700 dark:text-gray-300" x-text="inv.customer?.name || '—'"></td>
+                          <td class="px-4 py-2.5 text-gray-500 dark:text-gray-400 tabular-nums" x-text="inv.issueDate"></td>
+                          <td class="px-4 py-2.5 text-right tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(computeTotals(inv).gross, inv.currency)"></td>
+                          <td class="px-4 py-2.5">
+                            <div class="flex items-center justify-end gap-2">
+                              <x-button variant="secondary" size="sm" icon="arrow-uturn-left" @click="restore(inv)">{{ __('invoices.restore') }}</x-button>
+                              <x-icon-button name="trash" tone="red" size="sm" @click="deleteInvoiceForever(inv)" :aria-label="__('invoices.delete')" />
+                            </div>
+                          </td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <template x-if="! showInvTrash && ! filtered.length">
             <x-empty-state icon="banknotes" class="mt-10 py-16">
               <template x-if="invFiltersActive"><span class="block text-sm">{{ __('invoices.inv_no_match') }}</span></template>
               <template x-if="! invFiltersActive">
@@ -2042,7 +2101,7 @@
             </x-empty-state>
           </template>
 
-          <div x-show="filtered.length" class="ll-card !p-0 mt-4 overflow-hidden overflow-x-auto">
+          <div x-show="! showInvTrash && filtered.length" class="ll-card !p-0 mt-4 overflow-hidden overflow-x-auto">
             <table class="min-w-full text-sm">
               <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
                 <tr>

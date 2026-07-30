@@ -57,7 +57,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; self.eigenbeleg = null; self._egTx = null; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; self.eigenbeleg = null; self._egTx = null; self.showInvTrash = false; self.showReceiptTrash = false; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -358,7 +358,7 @@ export default (config = {}, labels = {}) => ({
     get unlinkedIncomeCount() { const id = this.payAccount?.id; return (this.transactions || []).filter((t) => t.account === id && t.amount > 0 && ! t.invoiceId).length; },
     // How many documentable bookings (non-private) still have no document attached.
     get missingReceipts() { return this.documentableTx.filter((t) => ! (t.receipts && t.receipts.length)).length; },
-    receiptCount(tx) { return (tx.receipts || []).length; },
+    receiptCount(tx) { return (tx.receipts || []).filter((r) => ! r.trashed).length; },
     // Per bank account: outgoing bookings + how many still lack a receipt (Belege tab).
     get receiptOverview() {
         return sortedPaymentMethods(this.paymentMethods).filter((p) => p.type === 'bank').map((pm) => {
@@ -485,11 +485,25 @@ export default (config = {}, labels = {}) => ({
         }
         if (changed) this._save();
     },
-    // Every receipt with its owning booking, newest booking first.
+    // Every ACTIVE receipt with its owning booking, newest booking first (trashed excluded).
     get allReceipts() {
         const out = [];
-        for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) out.push({ r, tx });
+        for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) if (! r.trashed) out.push({ r, tx });
         return out.sort((a, b) => (b.tx.date || '').localeCompare(a.tx.date || ''));
+    },
+    // Receipt trash bin.
+    showReceiptTrash: false,
+    get trashedReceipts() {
+        const out = [];
+        for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) if (r.trashed) out.push({ r, tx });
+        return out.sort((a, b) => String(b.r.trashed).localeCompare(String(a.r.trashed)));
+    },
+    restoreReceipt(d) { if (d?.r) { d.r.trashed = false; this._save(); } },
+    async deleteReceiptForever(d) {
+        if (! d?.r || ! await this.$store.confirm.ask(labels.receipt_delete_confirm || 'Remove this receipt?')) return;
+        const arr = d.tx.receipts || []; const i = arr.indexOf(d.r);
+        if (i >= 0) arr.splice(i, 1);
+        this._save(); this.reconcileBlobs();
     },
     get filteredReceipts() {
         const q = this.receiptQuery.trim().toLowerCase();
@@ -1077,10 +1091,9 @@ export default (config = {}, labels = {}) => ({
     async removeReceipt(tx, r) {
         if (r.locked) return; // auto-attached invoice — cannot be removed, only added to
         if (! await this.$store.confirm.ask(labels.receipt_delete_confirm || 'Remove this receipt?')) return;
-        const i = (tx.receipts || []).indexOf(r);
-        if (i >= 0) tx.receipts.splice(i, 1);
+        // Soft-trash: keep the sealed blob (reconcile still references it) so it can be restored.
+        r.trashed = new Date().toISOString();
         this._save();
-        this.reconcileBlobs();
     },
 
     // ---- Invoice ↔ transaction matching (incoming payments) ----
@@ -1248,6 +1261,15 @@ export default (config = {}, labels = {}) => ({
 
     // ---- Derived ----
     get activeInvoices() { return (this.invoices || []).filter((i) => ! i.trashed); },
+    // Invoice trash bin.
+    showInvTrash: false,
+    get trashedInvoices() { return (this.invoices || []).filter((i) => i.trashed).sort((a, b) => String(b.trashed).localeCompare(String(a.trashed))); },
+    async deleteInvoiceForever(inv) {
+        if (! await this.$store.confirm.ask(labels.deleteConfirm || 'Delete this invoice permanently?')) return;
+        const i = this.invoices.indexOf(inv);
+        if (i >= 0) this.invoices.splice(i, 1);
+        this._save(); this.reconcileBlobs();
+    },
     // Invoice-list filters (on top of search + status).
     invYear: '', invCustomer: '', invLinked: '', // '' | 'linked' | 'open'
     get invFiltersActive() { return !! (this.query.trim() || this.filterStatus || this.invYear || this.invCustomer || this.invLinked); },

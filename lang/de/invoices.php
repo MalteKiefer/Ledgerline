@@ -84,6 +84,8 @@ return [
     'trash' => 'In den Papierkorb',
     'restore' => 'Wiederherstellen',
     'delete' => 'Endgültig löschen',
+    'trash_bin' => 'Papierkorb',
+    'trash_empty' => 'Der Papierkorb ist leer.',
     'delete_confirm' => 'Diese Rechnung endgültig löschen?',
 
     'company_missing' => 'Richte dein Firmenprofil in den Einstellungen ein, um Rechnungen zu nummerieren und zu branden.',
