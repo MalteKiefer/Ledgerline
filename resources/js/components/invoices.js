@@ -1,6 +1,6 @@
 // invoices component. Extracted from app.js.
 import { zkModule, bootStore } from '../shared/zk-module';
-import { nextSeqForYear, duplicateNumbers as dupNumbers, invoicesInYear, invoiceYear } from '../shared/invoice-numbering';
+import { nextSeqForYear, duplicateNumbers as dupNumbers, missingNumbers as gapNumbers, invoicesInYear, invoiceYear } from '../shared/invoice-numbering';
 import { parseInvoiceFilename, parseInvoiceText, buildImportDraft } from '../shared/invoice-pdf-import';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
 import { jsonHeaders, postForm } from '../shared/api';
@@ -1862,6 +1862,9 @@ export default (config = {}, labels = {}) => ({
     // invoices carry archival numbers from other systems (may legitimately clash/repeat) and
     // must not trip it.
     get duplicateNumbers() { return dupNumbers(this.activeInvoices.filter((i) => ! i.imported)); },
+    // Gaps in the per-year numbering (GoBD: gapless). Includes imported historical invoices —
+    // uploading 8 and 10 flags the missing 9. Display caps at 40 to keep the banner sane.
+    get gapNumbers() { return gapNumbers(this.activeInvoices).slice(0, 40); },
 
     // ---- Numbering cycle (per year) ----
     get currentYear() { return String(new Date().getFullYear()); },

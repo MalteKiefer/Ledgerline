@@ -63,3 +63,44 @@ export function duplicateNumbers(invoices) {
     }
     return [...seen.values()].filter((e) => e.n > 1).map((e) => e.num);
 }
+
+/** The numeric sequence value of an invoice number, or null if not a plain/dated integer. */
+export function invoiceSeqNum(inv) {
+    const n = String((inv && inv.number) || '').trim();
+    let m = n.match(/^(?:\d{4}-)0*(\d+)$/); if (m) return parseInt(m[1], 10); // YYYY-NNNN
+    m = n.match(/^0*(\d+)$/); if (m) return parseInt(m[1], 10); // bare integer
+    return null; // e.g. R-2024-00042 or non-numeric → not gap-checked
+}
+
+/** Format a missing sequence number to match a sample number's shape (padding / YYYY- prefix). */
+function formatSeq(sample, i) {
+    const m = String(sample || '').match(/^(\d{4})-(\d+)$/);
+    if (m) return `${m[1]}-${String(i).padStart(m[2].length, '0')}`;
+    return String(i);
+}
+
+/**
+ * Missing invoice numbers — gaps in the per-year integer sequence (GoBD: numbering must be
+ * gapless). Considers all ACTIVE invoices (incl. imported historical ones — a gap there is
+ * exactly what to flag). Only plain-integer / YYYY-NNNN numbers are gap-checked; prefixed
+ * formats (R-…) are skipped. Returns the missing numbers formatted like their year's series
+ * (e.g. importing 8 and 10 yields ['9']).
+ */
+export function missingNumbers(invoices) {
+    const byYear = new Map();
+    for (const iv of invoices || []) {
+        if (! iv || iv.trashed) continue;
+        const v = invoiceSeqNum(iv); if (v == null) continue;
+        const y = invoiceYear(iv);
+        if (! byYear.has(y)) byYear.set(y, { nums: new Set(), sample: iv.number });
+        byYear.get(y).nums.add(v);
+    }
+    const missing = [];
+    for (const g of byYear.values()) {
+        const arr = [...g.nums]; if (arr.length < 2) continue;
+        const min = Math.min(...arr), max = Math.max(...arr);
+        if (max - min > 10000) continue; // guard pathological ranges
+        for (let i = min; i <= max; i++) if (! g.nums.has(i)) missing.push(formatSeq(g.sample, i));
+    }
+    return missing;
+}
