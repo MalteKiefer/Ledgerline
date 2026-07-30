@@ -157,7 +157,6 @@ export const MODULE_BLANKS = {
     // notes/todos/bookmarks/contacts migrated to plaintext-relational tables (pivot Etappe 1/2);
     // the password manager (+ its sharded store) was removed entirely.
     invoices: () => ({ v: 3, invoices: [], invoiceSeq: 0 }),
-    health: () => ({ v: 3, healthEntries: [], healthProfile: null }),
     sharing: () => ({ v: 3, knownFingerprints: {} }),
     explore: () => ({ v: 3, tracks: [], couplings: {}, settings: { couplingTimeToleranceS: 3600, couplingDistanceToleranceM: 100 } }),
 };

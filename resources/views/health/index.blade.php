@@ -37,6 +37,7 @@
 
   <div x-data="health({
         deleteConfirm: @js(__('health.delete_confirm')),
+        saveFailed: @js(__('health.save_failed')),
         userName: @js(auth()->user()->name ?? ''),
         fastAlreadyRunning: @js(__('health.fast_already_running')),
         fastStopConfirm: @js(__('health.fast_stop_confirm')),
@@ -52,27 +53,8 @@
             spo2:  @js(__('health.report_reference_spo2')),
             temp:  @js(__('health.report_reference_temp')),
         },
-     })">
+     }, @js(['profile' => $profile, 'entries' => $entries, 'fasts' => $fasts]))">
 
-    {{-- Zero-knowledge gate: health data decrypts with the vault key. --}}
-    @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
-
-    <template x-if="state === 'locked'">
-        <div class="mx-auto mt-16 max-w-md ll-card !p-8 text-center">
-            <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
-            <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
-               x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-            <x-button variant="primary" class="mt-5" icon="lock-open" @click="$dispatch('vault-panel')">
-                <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-            </x-button>
-        </div>
-    </template>
-
-    <template x-if="state === 'error'">
-        <p class="mx-auto mt-16 max-w-md rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-6 text-center text-sm text-red-700 dark:text-red-300">{{ __('health.save_failed') }}</p>
-    </template>
-
-    <template x-if="state === 'ready'">
       <div>
 
       {{-- ===== MAIN VIEW ===== --}}
@@ -224,7 +206,7 @@
                     {{-- Height --}}
                     <div>
                         <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('health.height_cm') }}</label>
-                        <input type="number" x-model.number="profile.heightCm" @change="saveProfile()" min="50" max="300" step="0.5"
+                        <input type="number" x-model.number="profile.heightCm" @change="saveProfile()" min="50" max="300" step="1"
                             class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
                     </div>
                     {{-- Sex --}}
@@ -233,9 +215,9 @@
                         <select x-model="profile.sex" @change="saveProfile()"
                             class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
                             <option value="">—</option>
-                            <option value="m">{{ __('health.sex_m') }}</option>
-                            <option value="f">{{ __('health.sex_f') }}</option>
-                            <option value="x">{{ __('health.sex_x') }}</option>
+                            <option value="male">{{ __('health.sex_m') }}</option>
+                            <option value="female">{{ __('health.sex_f') }}</option>
+                            <option value="other">{{ __('health.sex_x') }}</option>
                         </select>
                     </div>
                     {{-- Weight goal --}}
@@ -516,7 +498,7 @@
                 <div>
                     <dt class="text-xs text-gray-500 dark:text-gray-400">{{ __('health.sex') }}</dt>
                     <dd class="font-medium text-gray-900 dark:text-gray-100"
-                        x-text="profile.sex === 'm' ? @js(__('health.sex_m')) : (profile.sex === 'f' ? @js(__('health.sex_f')) : (profile.sex === 'x' ? @js(__('health.sex_x')) : '—'))">
+                        x-text="profile.sex === 'male' ? @js(__('health.sex_m')) : (profile.sex === 'female' ? @js(__('health.sex_f')) : (profile.sex === 'other' ? @js(__('health.sex_x')) : '—'))">
                     </dd>
                 </div>
             </dl>
@@ -608,8 +590,7 @@
 
       </div>{{-- end report view --}}
 
-      </div>{{-- end state=ready wrapper --}}
-    </template>
+      </div>{{-- end main+report wrapper --}}
 
     {{-- ===== ADD / EDIT MEASUREMENT MODAL ===== --}}
     <template x-if="editorOpen">
