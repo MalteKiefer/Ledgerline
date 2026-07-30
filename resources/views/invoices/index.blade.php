@@ -1810,83 +1810,54 @@
 
         {{-- ============= IMPORTED INVOICE (inline PDF + key-field bar) ============= --}}
         <template x-if="view === 'imported' && current">
-        <div x-cloak @input="onFieldInput()" @change="onFieldInput()" class="flex min-h-[calc(100vh-9rem)] flex-col">
-          {{-- Header --}}
+        <div x-cloak class="flex min-h-[calc(100vh-9rem)] flex-col">
+          {{-- Header — imported invoices are an immutable record (the original PDF); no edit mode. --}}
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
               <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
               <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
               <span class="inline-flex items-center rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400" x-text="statusLabel(current?.status)"></span>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <x-button variant="primary" size="sm" icon="check" x-show="editUnlocked && dirty" ::disabled="pdfBusy" @click="saveVersionedEdit()">
-                <span x-show="! pdfBusy">{{ __('invoices.save_changes') }}</span>
-                <span x-show="pdfBusy">{{ __('invoices.saving') }}</span>
-              </x-button>
-              <x-action-menu :aria-label="__('invoices.col_actions')">
-                <x-action-menu-item icon="pencil" x-show="! editUnlocked" @click="requestEdit()">{{ __('invoices.edit') }}</x-action-menu-item>
-                <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
-                <x-action-menu-item icon="trash" danger @click="trash(current)">{{ __('common.delete') }}</x-action-menu-item>
-              </x-action-menu>
+            <x-action-menu :aria-label="__('invoices.col_actions')">
+              <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
+              <x-action-menu-item icon="trash" danger @click="trash(current)">{{ __('common.delete') }}</x-action-menu-item>
+            </x-action-menu>
+          </div>
+
+          {{-- Key-field bar (read-only). Recipient links to the business partner. --}}
+          <div class="ll-card mt-4 grid grid-cols-2 gap-x-5 gap-y-3 md:grid-cols-6">
+            <div class="col-span-2">
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_recipient') }}</p>
+              <template x-if="current.customer?.partnerId">
+                <button type="button" @click="goToPartner(current)" class="mt-1 text-left text-sm font-medium text-accent hover:underline" x-text="current.customer?.name || '—'"></button>
+              </template>
+              <template x-if="! current.customer?.partnerId">
+                <p class="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100" x-text="current.customer?.name || '—'"></p>
+              </template>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.col_number') }}</p>
+              <p class="mt-1 text-sm tabular-nums text-gray-900 dark:text-gray-100" x-text="current.number || '—'"></p>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.issue_date') }}</p>
+              <p class="mt-1 text-sm tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtDate(current.issueDate) || '—'"></p>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_gross') }}</p>
+              <p class="mt-1 text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(impGross, current.currency, 'de')"></p>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_vat_rate') }}</p>
+              <p class="mt-1 text-sm tabular-nums text-gray-900 dark:text-gray-100" x-text="impRate + ' %'"></p>
             </div>
           </div>
 
-          <template x-if="editUnlocked">
-            <x-alert variant="info" class="mt-4 flex items-start gap-2">
-              <x-icon name="lock-closed" class="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{{ __('invoices.edit_versioned_note') }}</span>
-            </x-alert>
-          </template>
-
-          {{-- Key-field bar (the six fields; disabled until "Bearbeiten" + confirm) --}}
-          <fieldset :disabled="! editUnlocked" class="mt-4">
-            <div class="ll-card grid grid-cols-2 gap-x-5 gap-y-3 md:grid-cols-6">
-              <div class="col-span-2">
-                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_recipient') }}</label>
-                <input type="text" x-model="current.customer.name" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent disabled:border-transparent disabled:bg-transparent disabled:px-0 disabled:font-medium disabled:text-gray-900 dark:disabled:text-gray-100">
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.col_number') }}</label>
-                <input type="text" x-model="current.number" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums focus:border-accent focus:ring-accent disabled:border-transparent disabled:bg-transparent disabled:px-0 disabled:text-gray-900 dark:disabled:text-gray-100">
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.issue_date') }}</label>
-                <input type="date" x-model="current.issueDate" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent disabled:border-transparent disabled:bg-transparent disabled:px-0 disabled:text-gray-900 dark:disabled:text-gray-100">
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_gross') }}</label>
-                <input type="number" step="0.01" x-model.number="impGross" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums focus:border-accent focus:ring-accent disabled:border-transparent disabled:bg-transparent disabled:px-0 disabled:font-semibold disabled:text-gray-900 dark:disabled:text-gray-100">
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_vat_rate') }}</label>
-                <select x-model.number="impRate" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent disabled:border-transparent disabled:bg-transparent disabled:px-0 disabled:text-gray-900 dark:disabled:text-gray-100">
-                  <template x-for="r in importVatChoices()" :key="r"><option :value="r" x-text="r + ' %'"></option></template>
-                </select>
-              </div>
-            </div>
-          </fieldset>
-
-          {{-- Inline original PDF (the authoritative record) --}}
-          <div class="mt-4 min-h-[60vh] flex-1 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-gray-50 dark:bg-[#111]">
-            <template x-if="invoicePdf?.url"><iframe :src="invoicePdf.url" class="h-full w-full" title="{{ __('invoices.open_original') }}"></iframe></template>
-            <template x-if="! invoicePdf?.url"><div class="flex h-full min-h-[60vh] items-center justify-center text-sm text-gray-400 dark:text-gray-500"><x-icon name="arrow-path" class="mr-2 h-4 w-4 animate-spin" />{{ __('invoices.import_title') }}</div></template>
+          {{-- Inline original PDF (the authoritative record) — fit page width. --}}
+          <div class="mt-4 h-[75vh] flex-1 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-gray-100 dark:bg-[#111]">
+            <template x-if="invoicePdf?.url"><iframe :src="invoicePdf.url + '#view=FitH&toolbar=1'" class="h-full w-full" title="{{ __('invoices.open_original') }}"></iframe></template>
+            <template x-if="! invoicePdf?.url"><div class="flex h-full items-center justify-center text-sm text-gray-400 dark:text-gray-500"><x-icon name="arrow-path" class="mr-2 h-4 w-4 animate-spin" />{{ __('invoices.import_title') }}</div></template>
           </div>
-
-          {{-- Version history (GoBD correction trail) --}}
-          <template x-if="current?.versions?.length">
-            <div class="ll-card mt-6">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.versions_heading') }}</h2>
-              <div class="mt-3 divide-y divide-black/[0.06] dark:divide-white/10">
-                <template x-for="v in [...current.versions].reverse()" :key="v.seq">
-                  <div class="py-2">
-                    <div class="text-sm font-medium text-gray-900 dark:text-gray-100 tabular-nums" x-text="v.label"></div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400" x-text="fmtDate(v.at)"></div>
-                    <div class="mt-0.5 text-sm text-gray-700 dark:text-gray-300 break-words" x-text="v.reason"></div>
-                  </div>
-                </template>
-              </div>
-            </div>
-          </template>
         </div>
         </template>
 

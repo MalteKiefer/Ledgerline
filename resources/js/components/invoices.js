@@ -1250,6 +1250,15 @@ export default (config = {}, labels = {}) => ({
         } catch (e) { this.invoicePdf = null; }
     },
     _revokeInvoicePdf() { if (this.invoicePdf?.url) { try { URL.revokeObjectURL(this.invoicePdf.url); } catch (e) { /* */ } } this.invoicePdf = null; },
+    // Jump from an invoice's recipient to that business partner's page.
+    goToPartner(inv) {
+        const id = inv?.customer?.partnerId; if (! id) return;
+        const p = (this.partners || []).find((x) => x.id === id); if (! p) return;
+        this._revokeInvoicePdf();
+        this.view = 'list'; this.current = null;
+        this.setSection('partners');
+        this.openPartner(p);
+    },
     // The single synthetic line carries the money; expose gross + rate as editable props that
     // keep the line in sync (net = gross / (1 + rate/100)).
     _impLine() { const i = this.current; if (! i) return null; if (! i.lines?.length) i.lines = [{ desc: i.customer?.name || 'Rechnung', qty: 1, unit: '', unitPrice: 0, vatRate: 0 }]; return i.lines[0]; },
