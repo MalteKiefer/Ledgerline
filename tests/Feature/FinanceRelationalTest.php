@@ -236,6 +236,35 @@ class FinanceRelationalTest extends TestCase
         $this->assertCount(0, BankTransaction::findOrFail($tx)->receipts ?? []);
     }
 
+    public function test_transaction_update_rejects_client_supplied_receipt_blob_path(): void
+    {
+        Storage::fake(config('files.disk'));
+        $user = User::factory()->create();
+        $pm = $this->actingAs($user)->postJson(route('finance.payment-methods.store'), ['type' => 'bank', 'name' => 'Giro'])->json('payment_method.id');
+        $tx = $this->actingAs($user)->postJson(route('finance.transactions.store'), ['payment_method_id' => $pm, 'date' => '2026-01-02', 'amount' => -9.99])->json('transaction.id');
+
+        // Plant a secret the attacker must not be able to read via a poisoned path.
+        Storage::disk(config('files.disk'))->put('secret/appkey.txt', 'TOP-SECRET');
+
+        // A PUT that tries to inject an arbitrary blob_path (path traversal / absolute).
+        $this->actingAs($user)->putJson(route('finance.transactions.update', $tx), [
+            'payment_method_id' => $pm,
+            'date' => '2026-01-02',
+            'amount' => -9.99,
+            'receipts' => [
+                ['id' => 'evil', 'name' => 'x', 'blob_path' => '../secret/appkey.txt'],
+                ['id' => 'evil2', 'name' => 'y', 'blob_path' => 'secret/appkey.txt'],
+            ],
+        ])->assertOk();
+
+        $stored = BankTransaction::findOrFail($tx)->receipts ?? [];
+        foreach ($stored as $r) {
+            $this->assertArrayNotHasKey('blob_path', $r, 'a fileless PUT entry must never carry a client blob_path');
+        }
+        // The receipt-raw endpoint must not stream the injected path (404, not the secret).
+        $this->actingAs($user)->get(route('finance.transactions.receipts.raw', ['transaction' => $tx, 'receipt' => 'evil']))->assertNotFound();
+    }
+
     public function test_finance_data_is_private_per_user(): void
     {
         $a = User::factory()->create();
