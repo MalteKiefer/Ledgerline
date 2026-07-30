@@ -95,6 +95,13 @@
         match_linked: @js(__('invoices.match_linked')),
         match_done: @js(__('invoices.match_done')),
         match_gone: @js(__('invoices.match_gone')),
+        txtype_card: @js(__('invoices.txtype_card')),
+        txtype_debit: @js(__('invoices.txtype_debit')),
+        txtype_credit: @js(__('invoices.txtype_credit')),
+        txtype_standingorder: @js(__('invoices.txtype_standingorder')),
+        txtype_fee: @js(__('invoices.txtype_fee')),
+        txtype_transfer: @js(__('invoices.txtype_transfer')),
+        txtype_other: @js(__('invoices.txtype_other')),
      })">
 
     {{-- Zero-knowledge gate: invoices decrypt with the vault key. --}}
@@ -1364,9 +1371,42 @@
                   </div>
                 </template>
 
+                {{-- Filters --}}
+                <template x-if="_accountBase().length || txFiltersActive">
+                  <div class="mt-6 flex flex-wrap items-center gap-2">
+                    <div class="relative min-w-[12rem] flex-1">
+                      <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      <input type="search" x-model.debounce.250ms="txSearch" @input="txPage = 1" placeholder="{{ __('invoices.tx_search_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] pl-9 text-sm focus:border-accent focus:ring-accent">
+                    </div>
+                    <select x-model="txDir" @change="txPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                      <option value="">{{ __('invoices.tx_dir_all') }}</option>
+                      <option value="in">{{ __('invoices.tx_dir_in') }}</option>
+                      <option value="out">{{ __('invoices.tx_dir_out') }}</option>
+                    </select>
+                    <select x-model="txType" @change="txPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                      <option value="">{{ __('invoices.tx_all_types') }}</option>
+                      <template x-for="t in accountTxTypeOptions" :key="t"><option :value="t" x-text="txTypeName(t)"></option></template>
+                    </select>
+                    <select x-model="txCat" @change="txPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                      <option value="">{{ __('invoices.tx_all_cats') }}</option>
+                      <option value="19">19 %</option>
+                      <option value="16">16 %</option>
+                      <option value="7">7 %</option>
+                      <option value="0">0 %</option>
+                      <option value="private">{{ __('invoices.vatcat_private') }}</option>
+                      <option value="none">{{ __('invoices.vatcat_none') }}</option>
+                    </select>
+                    <select x-model="txCounterparty" @change="txPage = 1" class="max-w-[14rem] rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                      <option value="">{{ __('invoices.tx_all_cp') }}</option>
+                      <template x-for="cp in accountCounterparties" :key="cp"><option :value="cp" x-text="cp"></option></template>
+                    </select>
+                    <x-button x-show="txFiltersActive" variant="secondary" size="sm" icon="x-mark" @click="resetTxFilters()">{{ __('invoices.tx_filter_reset') }}</x-button>
+                  </div>
+                </template>
+
                 {{-- Transactions --}}
                 <template x-if="! accountTx.length">
-                  <x-empty-state icon="banknotes" class="mt-6 py-14">{{ __('invoices.acct_no_tx') }}</x-empty-state>
+                  <x-empty-state icon="banknotes" class="mt-6 py-14" x-text="txFiltersActive ? '{{ __('invoices.tx_no_match') }}' : '{{ __('invoices.acct_no_tx') }}'"></x-empty-state>
                 </template>
                 <template x-if="accountTx.length">
                   <div class="ll-card !p-0 mt-6 overflow-hidden overflow-x-auto">
