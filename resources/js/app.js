@@ -70,18 +70,6 @@ window.LLGalleryStore = makeShardedStore({
     ],
 });
 
-// Files sharded store (Store v3 §4.2/A10b): Files graduates out of the monolith
-// into its own sharded sealed store, identical engine to the gallery — root
-// pointer table + content-addressed id-bucketed record shards + a fileFolders
-// collection blob. File CONTENT stays as separate opaque blobs (the files ledger).
-window.LLFilesStore = makeShardedStore({
-    prefix: '/files',
-    recordKey: 'files',
-    collections: [
-        { key: 'fileFolders', rootRef: 'foldersRef', rootKey: 'foldersKey', rootHash: 'foldersHash' },
-    ],
-});
-
 // Passwords graduated to a sharded store too (spec §3b) — the extension mirrors it.
 // secrets = shard records; secretFolders = one collection blob (like files/folders).
 window.LLPasswordsStore = makeShardedStore({

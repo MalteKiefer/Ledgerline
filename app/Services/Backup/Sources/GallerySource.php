@@ -33,4 +33,11 @@ final class GallerySource extends DiskArchiveSource implements MirrorableSource
     {
         return GalleryBlob::class;
     }
+
+    public function supportsLedgerDelta(): bool
+    {
+        // GalleryBlob is a single-column blob ledger (PK `blob` = disk object
+        // name under gallery/), so the incremental delta upload works.
+        return true;
+    }
 }

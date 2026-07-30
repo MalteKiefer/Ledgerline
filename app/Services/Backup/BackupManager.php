@@ -109,7 +109,8 @@ final class BackupManager
                 // run is a fast delta of just the blobs added since the cursor.
                 $reconcileHoursCfg = config('backup.reconcile_hours', 24);
                 $reconcileHours = max(0, is_numeric($reconcileHoursCfg) ? (int) $reconcileHoursCfg : 24);
-                $needFull = $reconcileHours === 0
+                $needFull = ! $sourceObj->supportsLedgerDelta()
+                    || $reconcileHours === 0
                     || $job->last_full_mirror_at === null
                     || $job->last_full_mirror_at->lt(Carbon::now()->subHours($reconcileHours));
 

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\FileBlob;
+use App\Models\FileEntry;
 use App\Models\GalleryBlob;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -42,7 +42,9 @@ class MeUsageQuotaTest extends TestCase
         // Per-user overrides: 30 GB files + 20 GB gallery = 50 GB combined.
         $user->forceFill(['files_quota_mb' => 30_000, 'gallery_quota_mb' => 20_000])->save();
 
-        FileBlob::create(['blob' => (string) Str::uuid(), 'user_id' => $user->id, 'size' => 4096, 'created_at' => now()]);
+        (new FileEntry)->forceFill([
+            'user_id' => $user->id, 'name' => 'f.bin', 'size' => 4096, 'storage_path' => 'files/'.Str::uuid(),
+        ])->save();
         GalleryBlob::create(['blob' => (string) Str::uuid(), 'user_id' => $user->id, 'size' => 2048, 'created_at' => now()]);
 
         $this->getJson('/api/v1/me', ['Authorization' => 'Bearer '.$this->token($user)])

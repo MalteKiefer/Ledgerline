@@ -77,7 +77,6 @@ export default (config = {}, labels = {}) => ({
         if (! vault.unlocked) { this.state = 'locked'; return; }
 
         if (! window.LLModuleStore.health.loaded) await window.LLModuleStore.health.load();
-        if (! window.LLFilesStore.loaded) await window.LLFilesStore.load();
         // Passwords + invoices still on sharded ZK stores (spec §3b).
         if (! window.LLPasswordsStore.loaded) await window.LLPasswordsStore.load();
         if (! window.LLInvoicesStore.loaded) await window.LLInvoicesStore.load();
@@ -98,15 +97,17 @@ export default (config = {}, labels = {}) => ({
         this._thumbPending = {};
     },
 
-    // Plaintext-relational widgets (pivot Etappe 1): notes/todos/bookmarks via REST.
+    // Plaintext-relational widgets (pivot Etappe 1/2): notes/todos/bookmarks/files via REST.
     _relNotes: [],
     _relTodos: [],
     _relBookmarksCount: 0,
+    _relFiles: [],
     async _loadRelational() {
-        const [nt, td, bm] = await Promise.all([
+        const [nt, td, bm, fe] = await Promise.all([
             getJson('/notes/list').catch(() => ({ notes: [] })),
             getJson('/todos/list').catch(() => ({ todos: [] })),
             getJson('/bookmarks/list').catch(() => ({ bookmarks: [] })),
+            getJson('/files/entries').catch(() => ({ files: [], usage: null })),
         ]);
         this._relNotes = (nt.notes ?? []).map((n) => ({ id: n.id, title: n.title, updated: n.updated_at }));
         this._relTodos = (td.todos ?? []).map((t) => ({
@@ -114,6 +115,8 @@ export default (config = {}, labels = {}) => ({
             priority: t.priority, due: (t.due ?? '').slice(0, 10),
         }));
         this._relBookmarksCount = (bm.bookmarks ?? []).length;
+        this._relFiles = fe.files ?? [];
+        if (fe.usage) this.usage.files = fe.usage;
         this._mut++;
     },
 
@@ -121,7 +124,6 @@ export default (config = {}, labels = {}) => ({
     get _passwords() { return window.LLPasswordsStore?.data ?? null; },
     get _health() { return window.LLModuleStore.health?.data ?? null; },
     get _invoices() { return window.LLInvoicesStore?.data ?? null; },
-    get _files() { return window.LLFilesStore?.data ?? null; },
     get _g() { return this.galleryReady ? (window.LLGalleryStore?.data ?? null) : null; },
 
     // --- Todos widget ---
@@ -147,7 +149,7 @@ export default (config = {}, labels = {}) => ({
             passwords: (this._passwords?.secrets ?? []).length,
             bookmarks: this._relBookmarksCount,
             invoices: (this._invoices?.invoices ?? []).length,
-            files: (this._files?.files ?? []).filter((f) => ! f.trashed).length,
+            files: this._relFiles.filter((f) => ! f.deleted_at).length,
         };
     },
 
@@ -291,8 +293,8 @@ export default (config = {}, labels = {}) => ({
     },
 
     async _loadUsage() {
-        try { this.usage.files = await getJson('/files/usage'); } catch (_e) { /* widget shows — */ }
-        try { this.usage.gallery = await getJson('/gallery/usage'); } catch (_e) { /* — */ }
+        // Files usage now comes from the /files/entries payload in _loadRelational().
+        try { this.usage.gallery = await getJson('/gallery/usage'); } catch (_e) { /* widget shows — */ }
     },
 
     // --- On This Day widget ---

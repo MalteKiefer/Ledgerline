@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\AppSettings;
-use App\Models\FileBlob;
 use App\Models\GalleryBlob;
 use App\Models\User;
 use App\Models\UserSetting;
+use App\Support\FilesUsage;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -156,13 +156,13 @@ class ProfileController extends Controller
     }
 
     /**
-     * Storage the account occupies: the user's OWN sealed blob bytes (files +
-     * gallery). The server sees only ciphertext sizes — non-secret, the same
-     * figures the quota check + usage endpoints use.
+     * Storage the account occupies: the user's OWN file bytes (files + versions,
+     * plaintext-relational) plus gallery blob bytes. Same figures the quota check
+     * + usage endpoints use.
      */
     private function storageUsedBytes(User $user): int
     {
-        return (int) FileBlob::query()->where('user_id', $user->id)->sum('size')
+        return FilesUsage::forUser((int) $user->id)
             + (int) GalleryBlob::query()->where('user_id', $user->id)->sum('size');
     }
 

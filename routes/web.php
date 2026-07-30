@@ -9,9 +9,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\ExploreBlobController;
 use App\Http\Controllers\ExploreController;
-use App\Http\Controllers\FileController;
-use App\Http\Controllers\FileShareController;
-use App\Http\Controllers\FilesStoreController;
+use App\Http\Controllers\FilesController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryProcessController;
@@ -208,29 +206,40 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/vault', [VaultController::class, 'store'])->middleware('throttle:10,1')->name('vault.store');
     Route::put('/vault', [VaultController::class, 'rotate'])->middleware('throttle:10,1')->name('vault.rotate');
 
-    // Files: the whole directory tree (names, folders, tags, notes, trash flags,
-    // version history) lives in the sealed opaque store; the server only handles
-    // the opaque content blobs below (store/stream ciphertext + a quota ledger).
-    Route::get('/files', [FileController::class, 'index'])->middleware('module:files')->name('files.index');
-    Route::get('/files/usage', [FileController::class, 'usage'])->name('files.usage');
-    // Store v3 (§4.2/A10b): sealed files index (own sharded store, out of the monolith).
-    Route::get('/files/store', [FilesStoreController::class, 'show'])->middleware('module:files')->name('files.store.show');
-    Route::put('/files/store', [FilesStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:files'])->name('files.store.save');
-    // Reclaim blobs the (sealed) manifest no longer references — the client sends
-    // its live blob set; owner-scoped, grace-gated pruning of the quota ledger.
-    Route::post('/files/blobs/reconcile', [FileController::class, 'reconcile'])->middleware('throttle:120,1')->name('files.blobs.reconcile');
-    // Throttled to blunt a large-body upload flood (disk-fill / worker-hold),
-    // while staying generous enough for a normal batch upload.
-    Route::post('/files/upload', [FileController::class, 'upload'])
-        ->middleware('throttle:1200,1')->name('files.upload');
-    Route::post('/files/upload/init', [FileController::class, 'chunkInit'])->middleware('throttle:600,1')->name('files.upload.init');
-    Route::post('/files/upload/part', [FileController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('files.upload.part');
-    Route::post('/files/upload/complete', [FileController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('files.upload.complete');
-    Route::post('/files/upload/abort', [FileController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('files.upload.abort');
-    // Encrypted bytes stream back verbatim; the browser decrypts them. Version
-    // history is manifest-side, so a version download is just a raw blob fetch.
-    Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:3000,1')->name('files.raw');
-    Route::post('/files/raw-batch', [FileController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('files.raw-batch');
+    // Files: the whole directory tree + bytes are plaintext-relational now (pivot).
+    // The page hydrates folders + files inline; all CRUD is the relational core below.
+    Route::get('/files', [FilesController::class, 'page'])->middleware('module:files')->name('files.index');
+
+    // Plaintext-relational Files core (pivot): personal files + folders as rows,
+    // bytes plaintext on the file disk. Distinct URIs (/files/entries, /files/folders,
+    // /files/upload/chunk/*) so nothing collides with the ZK routes above.
+    Route::middleware('module:files')->group(function (): void {
+        Route::get('/files/trash', [FilesController::class, 'trashed'])->name('files.rel.trash');
+        Route::get('/files/entries', [FilesController::class, 'index'])->name('files.rel.index');
+        Route::post('/files/entries', [FilesController::class, 'upload'])->middleware('throttle:1200,1')->name('files.rel.upload');
+        Route::post('/files/entries/trash/empty', [FilesController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('files.rel.empty');
+        Route::put('/files/entries/{file}', [FilesController::class, 'update'])->whereNumber('file')->middleware('throttle:600,1')->name('files.rel.update');
+        Route::delete('/files/entries/{file}', [FilesController::class, 'destroy'])->whereNumber('file')->middleware('throttle:600,1')->name('files.rel.destroy');
+        Route::get('/files/entries/{file}/raw', [FilesController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('files.rel.raw');
+        Route::post('/files/entries/{file}/content', [FilesController::class, 'replaceContent'])->whereNumber('file')->middleware('throttle:1200,1')->name('files.rel.content');
+        Route::post('/files/entries/{file}/toggle', [FilesController::class, 'toggle'])->whereNumber('file')->middleware('throttle:1200,1')->name('files.rel.toggle');
+        Route::get('/files/entries/{file}/versions', [FilesController::class, 'versions'])->whereNumber('file')->name('files.rel.versions');
+        Route::get('/files/entries/{file}/versions/{version}/raw', [FilesController::class, 'versionRaw'])->whereNumber(['file', 'version'])->middleware('throttle:3000,1')->name('files.rel.version.raw');
+        Route::post('/files/entries/{file}/versions/{version}/restore', [FilesController::class, 'restoreVersion'])->whereNumber(['file', 'version'])->middleware('throttle:600,1')->name('files.rel.version.restore');
+        Route::post('/files/entries/{id}/restore', [FilesController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('files.rel.restore');
+        Route::delete('/files/entries/{id}/force', [FilesController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('files.rel.force');
+
+        Route::get('/files/folders', [FilesController::class, 'folders'])->name('files.rel.folders');
+        Route::post('/files/folders', [FilesController::class, 'storeFolder'])->middleware('throttle:600,1')->name('files.rel.folders.store');
+        Route::put('/files/folders/{folder}', [FilesController::class, 'renameFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('files.rel.folders.update');
+        Route::post('/files/folders/{folder}/move', [FilesController::class, 'moveFolder'])->whereNumber('folder')->middleware('throttle:1200,1')->name('files.rel.folders.move');
+        Route::delete('/files/folders/{folder}', [FilesController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('files.rel.folders.destroy');
+
+        Route::post('/files/upload/chunk/init', [FilesController::class, 'chunkInit'])->middleware('throttle:600,1')->name('files.rel.chunk.init');
+        Route::post('/files/upload/chunk/part', [FilesController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('files.rel.chunk.part');
+        Route::post('/files/upload/chunk/complete', [FilesController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('files.rel.chunk.complete');
+        Route::post('/files/upload/chunk/abort', [FilesController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('files.rel.chunk.abort');
+    });
 
     // Plaintext-relational Notes (pivot Etappe 1). Server-rendered page + JSON CRUD + trash.
     Route::middleware('module:notes')->group(function (): void {
@@ -258,17 +267,6 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/passwords/raw/{blob}', [PasswordBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('passwords.raw');
     Route::post('/passwords/raw-batch', [PasswordBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('passwords.raw-batch');
     Route::post('/passwords/blobs/reconcile', [PasswordBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('passwords.blobs.reconcile');
-    // Generous limit: emptying a large trash frees hundreds of blobs at once, and
-    // each delete is owner-scoped, idempotent and cheap (unlink + ledger row).
-    Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('files.blob.destroy');
-
-    // Public share links for a file or a whole folder subtree. Like the gallery
-    // shares, the client seals the manifest (file list + per-blob keys re-wrapped
-    // under the link's fragment key) before it arrives — ciphertext + access
-    // controls only. Served publicly via the shared /s/{token} routes.
-    Route::post('/files/shares', [FileShareController::class, 'store'])->middleware('throttle:60,1')->name('files.shares.store');
-    Route::put('/files/shares/{token}', [FileShareController::class, 'update'])->middleware('throttle:60,1')->name('files.shares.update');
-    Route::delete('/files/shares/{token}', [FileShareController::class, 'destroy'])->middleware('throttle:60,1')->name('files.shares.destroy');
 
     // Per-module sealed stores (Store v3 split): one opaque row per module.
     Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->middleware('module')->name('module-store.show');

@@ -4,13 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\FileBlob;
+use App\Models\FileEntry;
 use App\Models\ModuleStore;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class UserIsolationTest extends TestCase
@@ -42,16 +41,16 @@ class UserIsolationTest extends TestCase
         $bob = User::factory()->create();
 
         $this->actingAs($alice);
-        $blob = (string) Str::uuid();
-        Storage::disk(config('files.disk'))->put('files/'.$blob, 'secret bytes');
-        FileBlob::create(['blob' => $blob, 'user_id' => $alice->id, 'size' => 12, 'created_at' => now()]);
+        $id = (int) $this->post(route('files.rel.upload'), [
+            'file' => UploadedFile::fake()->createWithContent('a.txt', 'secret bytes'),
+        ])->assertCreated()->json('file.id');
 
-        // Owner can download their blob's ciphertext.
-        $this->get(route('files.raw', ['blob' => $blob]))->assertOk();
+        // Owner can download their file's bytes.
+        $this->get(route('files.rel.raw', $id))->assertOk();
 
-        // Bob cannot fetch Alice's blob by guessing its UUID.
+        // Bob cannot resolve Alice's file (owner global scope) → 404.
         $this->actingAs($bob);
-        $this->get(route('files.raw', ['blob' => $blob]))->assertNotFound();
+        $this->get(route('files.rel.raw', $id))->assertNotFound();
     }
 
     public function test_an_upload_is_owned_by_the_uploader(): void
@@ -60,10 +59,10 @@ class UserIsolationTest extends TestCase
         $alice = User::factory()->create();
         $this->actingAs($alice);
 
-        $blob = $this->post(route('files.upload'), [
+        $id = (int) $this->post(route('files.rel.upload'), [
             'file' => UploadedFile::fake()->create('doc.pdf', 12, 'application/pdf'),
-        ])->assertCreated()->json('id');
+        ])->assertCreated()->json('file.id');
 
-        $this->assertSame($alice->id, (int) FileBlob::find($blob)->user_id);
+        $this->assertSame($alice->id, (int) FileEntry::withoutGlobalScopes()->findOrFail($id)->user_id);
     }
 }

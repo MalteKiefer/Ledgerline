@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\FileBlob;
+use App\Models\FileEntry;
 use App\Models\SharedFolderBlob;
 use App\Models\SharedVault;
 use App\Models\SharedVaultMember;
@@ -107,7 +107,9 @@ class SharedFolderBlobTest extends TestCase
         $editor = User::factory()->create();
         $vault = $this->folderVaultWith($owner, $editor, 'editor');
         // Owner already fills their 1 MiB quota with personal files.
-        FileBlob::create(['blob' => (string) Str::uuid(), 'user_id' => $owner->id, 'size' => 1024 * 1024, 'created_at' => now()]);
+        (new FileEntry)->forceFill([
+            'user_id' => $owner->id, 'name' => 'big.bin', 'size' => 1024 * 1024, 'storage_path' => 'files/'.Str::uuid(),
+        ])->save();
 
         $this->actingAs($editor)->post(route('vaults.blobs.upload', $vault), [
             'file' => UploadedFile::fake()->create('b.enc', 4),

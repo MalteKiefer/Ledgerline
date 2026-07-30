@@ -6,9 +6,9 @@ namespace App\Services\Ops;
 
 use App\Models\BackupRun;
 use App\Models\ErrorEvent;
-use App\Models\FileBlob;
 use App\Models\GalleryBlob;
 use App\Providers\AppServiceProvider;
+use App\Support\FilesUsage;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Cache;
@@ -35,7 +35,7 @@ class SystemStatus
      */
     public function snapshot(): array
     {
-        $files = (int) FileBlob::sum('size');
+        $files = FilesUsage::total();
         $gallery = (int) GalleryBlob::sum('size');
         $database = $this->databaseBytes();
 

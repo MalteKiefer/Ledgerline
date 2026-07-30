@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\AppSettings;
-use App\Models\FileBlob;
+use App\Models\FileEntry;
 use App\Models\Group;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -63,7 +63,9 @@ class UsersApiTest extends TestCase
     {
         $token = $this->adminToken();
         $target = User::factory()->create();
-        FileBlob::create(['blob' => (string) Str::uuid(), 'user_id' => $target->id, 'size' => 5 * 1024 * 1024, 'created_at' => now()]);
+        (new FileEntry)->forceFill([
+            'user_id' => $target->id, 'name' => 'big.bin', 'size' => 5 * 1024 * 1024, 'storage_path' => 'files/'.Str::uuid(),
+        ])->save();
 
         $resp = $this->getJson('/api/v1/users', $this->auth($token))->assertOk();
 

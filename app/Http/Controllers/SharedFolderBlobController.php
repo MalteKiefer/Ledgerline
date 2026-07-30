@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Models\FileBlob;
 use App\Models\SharedFolderBlob;
 use App\Models\SharedVault;
 use App\Models\User;
+use App\Support\FilesUsage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -119,7 +119,7 @@ class SharedFolderBlobController extends BlobStoreController
      */
     protected function usedBytes(int $userId): int
     {
-        return (int) FileBlob::where('user_id', $userId)->sum('size')
+        return FilesUsage::forUser($userId)
             + (int) SharedFolderBlob::where('owner_id', $userId)->sum('size');
     }
 
