@@ -1,5 +1,35 @@
 import { describe, it, expect } from 'vitest';
-import { maxSeq, nextSeq, duplicateNumbers, maxSeqForYear, nextSeqForYear, invoicesInYear, invoiceYear } from '../shared/invoice-numbering.js';
+import { maxSeq, nextSeq, duplicateNumbers, missingNumbers, maxSeqForYear, nextSeqForYear, invoicesInYear, invoiceYear } from '../shared/invoice-numbering.js';
+
+describe('missingNumbers — gapless-sequence gaps (GoBD)', () => {
+    it('flags the missing number between two imported invoices (8 and 10 → 9)', () => {
+        const inv = [
+            { id: 'a', number: '8', issueDate: '2024-03-01', imported: true },
+            { id: 'b', number: '10', issueDate: '2024-03-05', imported: true },
+        ];
+        expect(missingNumbers(inv)).toEqual(['9']);
+    });
+    it('no gaps on a contiguous run', () => {
+        expect(missingNumbers([{ id: 'a', number: '1', issueDate: '2024-01-01' }, { id: 'b', number: '2', issueDate: '2024-01-02' }])).toEqual([]);
+    });
+    it('gaps are per year and match the YYYY-NNNN shape', () => {
+        const inv = [
+            { id: 'a', number: '2026-0001', issueDate: '2026-01-01' },
+            { id: 'b', number: '2026-0003', issueDate: '2026-01-03' },
+            { id: 'c', number: '1', issueDate: '2024-01-01' },
+            { id: 'd', number: '3', issueDate: '2024-01-03' },
+        ];
+        expect(missingNumbers(inv).sort()).toEqual(['2', '2026-0002']);
+    });
+    it('ignores trashed invoices and non-integer (R-…) numbers', () => {
+        const inv = [
+            { id: 'a', number: '5', issueDate: '2024-01-01' },
+            { id: 'b', number: '7', issueDate: '2024-01-07', trashed: '2026-01-01T00:00:00Z' },
+            { id: 'c', number: 'R-2024-0009', issueDate: '2024-01-09' },
+        ];
+        expect(missingNumbers(inv)).toEqual([]); // only one integer in range → no gap
+    });
+});
 
 describe('invoice numbering (GoBD: unique, gapless)', () => {
     it('nextSeq derives from the real invoices, not just the scalar', () => {

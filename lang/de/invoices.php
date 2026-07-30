@@ -6,6 +6,8 @@ return [
     'title' => 'Rechnungen',
     'dup_warning_title' => 'Doppelte Rechnungsnummern erkannt',
     'dup_warning_body' => 'Diese Nummern kommen mehrfach vor — bitte korrigieren für eine lückenlose, eindeutige Folge (GoBD):',
+    'gap_warning_title' => 'Lücke in der Rechnungsnummerierung',
+    'gap_warning_body' => 'Diese Nummern fehlen — die Folge muss lückenlos sein (GoBD):',
     'new' => 'Neue Rechnung',
     'search' => 'Rechnungen suchen',
     'filter_all' => 'Alle',

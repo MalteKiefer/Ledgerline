@@ -1927,6 +1927,14 @@
             </x-alert>
           </template>
 
+          {{-- GoBD: gapless numbering. Flag missing numbers (e.g. importing 8 and 10 → 9 missing). --}}
+          <template x-if="gapNumbers.length">
+            <x-alert variant="warning" class="mt-4">
+              <p class="font-semibold">{{ __('invoices.gap_warning_title') }}</p>
+              <p class="mt-0.5 text-xs" x-text="'{{ __('invoices.gap_warning_body') }} ' + gapNumbers.join(', ')"></p>
+            </x-alert>
+          </template>
+
           @unless ($s->company_name)
             <p class="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
               {{ __('invoices.company_missing') }} <a href="{{ route('settings.company.edit') }}" class="font-medium underline">{{ __('settings.company_section') }}</a>
