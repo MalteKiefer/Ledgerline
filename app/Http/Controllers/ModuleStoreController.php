@@ -25,7 +25,8 @@ class ModuleStoreController extends Controller
 
     /** The only module keys a client may read/write — an unknown key is a 404. */
     private const MODULES = [
-        'notes', 'todos', 'bookmarks', 'contacts', 'invoices',
+        // notes/todos/bookmarks migrated to plaintext-relational tables (pivot Phase 1).
+        'contacts', 'invoices',
         'passwords', 'health', 'sharing', 'explore',
     ];
 

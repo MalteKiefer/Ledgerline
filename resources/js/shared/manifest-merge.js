@@ -24,6 +24,32 @@ function changed(a, b) {
     return JSON.stringify(a) !== JSON.stringify(b);
 }
 
+/** An array whose entries are all plain objects carrying an `id` (a mergeable sub-list). */
+function isIdArray(v) {
+    return Array.isArray(v) && v.length > 0 && v.every((r) => isPlainObject(r) && 'id' in r);
+}
+
+/**
+ * Merge one record that BOTH sides modified (base → ours vs base → server), field by field,
+ * so a nested change on each side survives (e.g. a partner whose `contacts[]` grew on one
+ * device and whose `category` changed on another). Nested id-arrays recurse through
+ * mergeArrayById; every other field is "ours if we changed it, else the server's".
+ */
+function mergeRecord(base, ours, server) {
+    const b = isPlainObject(base) ? base : {};
+    if (! isPlainObject(ours) || ! isPlainObject(server)) return changed(base, ours) ? clone(ours) : clone(server);
+    const out = clone(server);
+    for (const k of new Set([...Object.keys(ours), ...Object.keys(server)])) {
+        const ov = ours[k], sv = server[k], bv = b[k];
+        if (isIdArray(ov) || isIdArray(sv) || isIdArray(bv)) {
+            out[k] = mergeArrayById(Array.isArray(bv) ? bv : [], Array.isArray(ov) ? ov : [], Array.isArray(sv) ? sv : []);
+        } else if (changed(bv, ov)) {
+            out[k] = clone(ov); // we changed this scalar/object → our value wins
+        }
+    }
+    return out;
+}
+
 /**
  * Merge an array of id-keyed records: start from the server's list, drop records we
  * deleted (in base, absent from ours), then upsert records we added or modified.
@@ -46,12 +72,17 @@ export function mergeArrayById(base, ours, server) {
     const result = server.filter((r) => ! deleted.has(r.id)).map(clone);
     const indexById = new Map(result.map((r, i) => [r.id, i]));
 
+    const serverById = new Map(server.map((r) => [r.id, r]));
     for (const rec of ours) {
         const b = baseById.get(rec.id);
         // Only touch records we actually added (no base) or modified.
         if (b !== undefined && ! changed(b, rec)) continue;
         if (indexById.has(rec.id)) {
-            result[indexById.get(rec.id)] = clone(rec);
+            // The record exists on the server too. If the server also changed it since our
+            // base, deep-merge field-by-field (nested id-arrays survive on both sides);
+            // otherwise our version wins outright.
+            const sv = serverById.get(rec.id);
+            result[indexById.get(rec.id)] = (b !== undefined && changed(b, sv)) ? mergeRecord(b, rec, sv) : clone(rec);
         } else {
             indexById.set(rec.id, result.length);
             result.push(clone(rec));

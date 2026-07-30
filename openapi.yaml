@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.506.91
+  version: 1.507.0
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -30,7 +30,7 @@ tags:
   - name: Store
     description: >
       Opaque zero-knowledge per-module sealed stores (Store v3 split). Each module
-      (notes, todos, bookmarks, contacts, invoices, passwords, health, sharing) owns
+      (contacts, invoices, passwords, health, sharing) owns
       its OWN sealed row, so a write to one module never re-seals the others. These
       modules have NO per-record REST endpoints (that would break zero-knowledge);
       their full CRUD is: read the module store (GET /store/{module}), mutate the
@@ -43,9 +43,8 @@ tags:
 
       DECRYPTED shapes (schemas) per module — a native client builds these from the
       decrypted object; the server never sees them. Preserve unknown keys on write.
-        • notes → {v:3, notes:[NoteRecord]} (sharded /notes/store)
-        • todos → {v:3, todos:[TodoRecord], todoLists:[TodoList]}
-        • bookmarks → {bookmarks:[BookmarkRecord], folders:[BookmarkFolder]}
+        • NOTE: notes/todos/bookmarks are no longer sealed stores — they use
+          plaintext-relational REST endpoints (tags Notes/Todos/Bookmarks).
         • contacts → {contacts:[ContactRecord]} (+ avatar blobs)
         • passwords → PasswordsStoreModel {secrets:[SecretItem], secretFolders:[PersonalVault], pwVaultMigrated} (sharded /passwords/store)
         • invoices → {invoices:[InvoiceRecord], transactions:[InvoiceTransaction], paymentMethods:[PaymentMethod], projects:[FinanceProject], partners:[FinancePartner], financeCategories:[FinanceCategory]} (sharded /invoices/store)
@@ -55,6 +54,21 @@ tags:
         • files → {v:3, files:[FileRecord], fileFolders:[FileFolder]} (sharded /files/store)
         • gallery → {v:3, photos:[GalleryPhoto], people:[GalleryPerson], albums:[GalleryAlbum]} (sharded /gallery/store)
         • shared vaults → SharedVaultManifest (GET/PUT /vaults/{vault}/store)
+  - name: Notes
+    description: >
+      Plaintext-relational notes (Phase 1 pivot away from the sealed store). Per-record
+      REST CRUD with soft-delete/trash and optimistic-concurrency `version`. Owner-scoped;
+      requires the `module:notes` gate on top of the device token.
+  - name: Todos
+    description: >
+      Plaintext-relational to-do lists and tasks (Phase 1 pivot away from the sealed
+      store). Per-record REST CRUD with soft-delete/trash and optimistic-concurrency
+      `version`. Owner-scoped; requires the `module:todos` gate on top of the device token.
+  - name: Bookmarks
+    description: >
+      Plaintext-relational bookmarks and nestable folders (Phase 1 pivot away from the
+      sealed store). Per-record REST CRUD with soft-delete/trash and optimistic-concurrency
+      `version`. Owner-scoped; requires the `module:bookmarks` gate on top of the device token.
   - name: Files
     description: Personal encrypted file blobs and multipart upload pipeline
   - name: SharedFolders
@@ -66,8 +80,7 @@ tags:
       Optional encrypted contact avatar blobs. The contact RECORDS themselves
       (names, vCard fields, etc.) live in the sealed contacts module store (see
       Store, GET/PUT /store/contacts) — these endpoints only hold the optional
-      avatar image bytes a contact record references. Notes and todos are
-      store-only (no blobs, no dedicated endpoints).
+      avatar image bytes a contact record references.
   - name: Explore
     description: >
       Optional encrypted Explore track blobs. The Explore RECORDS themselves
@@ -510,6 +523,76 @@ components:
           type: boolean
           example: true
 
+    ValidationError:
+      type: object
+      description: Standard Laravel 422 validation error.
+      required: [message]
+      properties:
+        message: { type: string }
+        errors:
+          type: object
+          description: Field name → list of validation messages.
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+    RecordVersionConflict:
+      type: object
+      description: >
+        409 Conflict on a plaintext-relational record update (notes/todos/bookmarks)
+        when the sent `version` is stale. Carries the current server version so the
+        caller can re-read and retry.
+      required: [error, version]
+      properties:
+        error:
+          type: string
+          enum: [version_conflict]
+        version:
+          type: integer
+          description: Current server-side record version.
+
+    NoteWrite:
+      type: object
+      description: Create/update body for a note (tag Notes).
+      properties:
+        title: { type: string, maxLength: 500 }
+        body: { type: string }
+        tags: { type: array, items: { type: string } }
+        pinned: { type: boolean }
+
+    TodoWrite:
+      type: object
+      description: Create/update body for a task (tag Todos).
+      properties:
+        title: { type: string, maxLength: 500 }
+        todo_list_id: { type: integer, description: "Owning list id, or omit/null for the inbox." }
+        priority: { type: string }
+        tags: { type: array, items: { type: string } }
+        due: { type: string, format: date-time }
+        url: { type: string, description: "http(s) only; a non-http(s) value is dropped server-side." }
+
+    BookmarkFolderWrite:
+      type: object
+      description: Create/update body for a bookmark folder (tag Bookmarks).
+      properties:
+        name: { type: string, maxLength: 200 }
+        parent_id: { type: integer }
+        color: { type: string, maxLength: 32 }
+        icon: { type: string, maxLength: 32 }
+
+    BookmarkWrite:
+      type: object
+      description: Create/update body for a bookmark (tag Bookmarks).
+      properties:
+        url: { type: string, format: uri, maxLength: 2000, description: "http(s) only." }
+        title: { type: string, maxLength: 500, description: "Defaults to the URL host when omitted." }
+        bookmark_folder_id: { type: integer }
+        description: { type: string }
+        tags: { type: array, items: { type: string } }
+        favorite: { type: boolean }
+        read_later: { type: boolean }
+        read: { type: boolean }
+
     UsageResponse:
       type: object
       description: Current storage usage vs quota for the caller's scope.
@@ -531,7 +614,7 @@ components:
     StoreVersionConflict:
       type: object
       description: >
-        409 Conflict from a sealed manifest store (files/gallery/notes/passwords/
+        409 Conflict from a sealed manifest store (files/gallery/passwords/
         invoices and the generic /store/{module}). The client must re-read the
         store, rebase its delta, and retry — it must NEVER blindly re-PUT stale data.
       required: [error]
@@ -543,7 +626,7 @@ components:
     MissingShardResponse:
       type: object
       description: >
-        422 from a sharded store save (files/gallery/notes/passwords/invoices) when a
+        422 from a sharded store save (files/gallery/passwords/invoices) when a
         referenced shard blob has no ledger row — the server refuses to persist a root
         pointing at a shard that was never durably uploaded.
       required: [error]
@@ -816,73 +899,91 @@ components:
     NoteRecord:
       type: object
       description: >
-        One note inside the sharded notes store (root {v:3, notes:[NoteRecord]},
-        GET/PUT /notes/store + record shards via /notes/raw). No content-attachment
-        blobs — `content` is inline markdown in the shard ciphertext.
-      required: [id, title, content, tags, pinned, trashed, updated]
+        One note row (plaintext-relational, tag Notes). Integer PK, snake_case
+        columns as the server returns them. `version` is the optimistic-concurrency
+        counter; `deleted_at` non-null means the note is trashed.
+      required: [id, title, pinned, version]
       properties:
-        id: { type: string, format: uuid }
+        id: { type: integer }
         title: { type: string }
-        content: { type: string, description: "Markdown body (rendered client-side)." }
-        tags: { type: array, items: { type: string } }
+        body: { type: [string, "null"], description: "Markdown body (rendered client-side)." }
+        tags: { type: [array, "null"], items: { type: string } }
         pinned: { type: boolean }
-        trashed: { type: [boolean, string], description: "false, or ISO-8601 trashed-at timestamp." }
-        updated: { type: string, format: date-time, description: "Set on every mutation; sort is pinned-first then updated desc." }
+        version: { type: integer }
+        created_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: [string, "null"], format: date-time }
+        deleted_at: { type: [string, "null"], format: date-time, description: "Non-null = trashed (soft-deleted)." }
+
+    TodoList:
+      type: object
+      description: >
+        A named to-do list (plaintext-relational, tag Todos). Deleting a list sets
+        member tasks' todo_list_id=null via FK (tasks are not deleted).
+      required: [id, name, version]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        version: { type: integer }
+        created_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: [string, "null"], format: date-time }
 
     TodoRecord:
       type: object
       description: >
-        One task in the todos module store (GET/PUT /store/todos; sealed shape
-        {v:3, todos:[TodoRecord], todoLists:[TodoList]}). Client sort: done asc →
-        marked desc → priority(high,normal,low) → due asc.
-      required: [id, title, done]
+        One task row (plaintext-relational, tag Todos). `version` is the
+        optimistic-concurrency counter; `deleted_at` non-null means trashed.
+      required: [id, title, marked, done, version]
       properties:
-        id: { type: string, format: uuid }
+        id: { type: integer }
+        todo_list_id: { type: [integer, "null"], description: "Owning TodoList.id, or null = inbox." }
         title: { type: string }
-        description: { type: string }
-        url: { type: string, description: "http(s) only (sanitized client-side); empty when absent." }
-        tags: { type: array, items: { type: string } }
-        priority: { type: string, enum: [high, normal, low] }
+        priority: { type: [string, "null"], description: "e.g. high/normal/low." }
         marked: { type: boolean, description: "Starred/flagged." }
-        due: { type: string, description: "ISO-8601 datetime or empty string." }
         done: { type: boolean }
-        listId: { type: [string, "null"], format: uuid, description: "TodoList.id, or null = inbox." }
-        trashed: { type: [boolean, string] }
-
-    TodoList:
-      type: object
-      description: "A named list in the todos store (key todoLists). Deleting a list sets member tasks' listId=null (tasks are not deleted)."
-      required: [id, name]
-      properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
-
-    BookmarkRecord:
-      type: object
-      description: "One bookmark in the bookmarks module store (GET/PUT /store/bookmarks; keys bookmarks[] + folders[])."
-      required: [id, title, url]
-      properties:
-        id: { type: string, format: uuid }
-        folderId: { type: [string, "null"], format: uuid, description: "Parent BookmarkFolder.id, or null = root." }
-        title: { type: string }
-        url: { type: string, format: uri }
-        description: { type: string, nullable: true }
-        tags: { type: array, items: { type: string } }
-        favorite: { type: boolean, default: false }
-        readLater: { type: boolean, default: false }
-        read: { type: boolean, default: false }
-        trashed: { type: [boolean, string] }
+        tags: { type: [array, "null"], items: { type: string } }
+        due: { type: [string, "null"], format: date-time }
+        url: { type: [string, "null"], description: "http(s) only (sanitised server-side; non-http(s) dropped)." }
+        version: { type: integer }
+        created_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: [string, "null"], format: date-time }
+        deleted_at: { type: [string, "null"], format: date-time, description: "Non-null = trashed (soft-deleted)." }
 
     BookmarkFolder:
       type: object
-      description: "Nestable bookmark folder (key folders). `icon` is an opaque icon-name string (web maps it to an SVG; native may ignore)."
+      description: >
+        Nestable bookmark folder (plaintext-relational, tag Bookmarks). `parent_id`
+        nests folders; `icon` is an opaque icon-name string (web maps it to an SVG;
+        native may ignore).
       required: [id, name]
       properties:
-        id: { type: string, format: uuid }
+        id: { type: integer }
+        parent_id: { type: [integer, "null"] }
         name: { type: string }
-        parentId: { type: [string, "null"], format: uuid }
-        color: { type: string, nullable: true }
-        icon: { type: string, nullable: true }
+        color: { type: [string, "null"] }
+        icon: { type: [string, "null"] }
+        created_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: [string, "null"], format: date-time }
+
+    BookmarkRecord:
+      type: object
+      description: >
+        One bookmark row (plaintext-relational, tag Bookmarks). `version` is the
+        optimistic-concurrency counter; `deleted_at` non-null means trashed.
+      required: [id, title, url, favorite, read_later, read, version]
+      properties:
+        id: { type: integer }
+        bookmark_folder_id: { type: [integer, "null"], description: "Owning BookmarkFolder.id, or null = root." }
+        title: { type: string }
+        url: { type: string, format: uri }
+        description: { type: [string, "null"] }
+        tags: { type: [array, "null"], items: { type: string } }
+        favorite: { type: boolean }
+        read_later: { type: boolean }
+        read: { type: boolean }
+        version: { type: integer }
+        created_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: [string, "null"], format: date-time }
+        deleted_at: { type: [string, "null"], format: date-time, description: "Non-null = trashed (soft-deleted)." }
 
     ContactRecord:
       type: object
@@ -1977,7 +2078,7 @@ paths:
                   items: { type: string, format: uuid }
                   description: >
                     Accepted but unused for the plain module store (no shard ledger);
-                    validated as UUIDs. Sharded stores (files/gallery/notes/passwords/
+                    validated as UUIDs. Sharded stores (files/gallery/passwords/
                     invoices) enforce it referentially.
       responses:
         "200":
@@ -5556,154 +5657,990 @@ paths:
         "403":
           description: Not an admin.
 
-  /notes/store:
+  /notes:
     get:
-      tags: [Store]
-      operationId: notesStoreShow
-      summary: Read the sealed sharded notes root
-      description: >
-        Sharded notes store (merge-safety spec §3b): the sealed root pointer table
-        (shard descriptors), mirroring /files/store. ETag/304 supported. The note
-        records live in the notes shard blobs (see /notes/raw).
+      tags: [Notes]
+      operationId: notesIndex
+      summary: List the current user's notes
+      description: Returns all non-trashed notes owned by the caller.
+      security:
+        - bearerAuth: []
       responses:
         "200":
-          description: Sealed root + version.
+          description: Notes list.
           content:
             application/json:
               schema:
                 type: object
+                required: [notes]
                 properties:
-                  ciphertext: { type: string, nullable: true }
-                  version: { type: integer }
-        "304": { description: Not modified (ETag match). }
+                  notes:
+                    type: array
+                    items: { $ref: "#/components/schemas/NoteRecord" }
+        "401": { description: Unauthenticated. }
         "403": { description: Module disabled for this account. }
-    put:
-      tags: [Store]
-      operationId: notesStoreSave
-      summary: Write the sealed sharded notes root
-      description: >
-        Optimistic concurrency (409 on stale version) + shard-reference integrity
-        guard: send the full shard-ref list; the server rejects (422 missing_shard)
-        a root pointing at a shard blob with no ledger row. Throttle 120/min.
+    post:
+      tags: [Notes]
+      operationId: notesStore
+      summary: Create a note
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [ciphertext, version]
-              properties:
-                ciphertext: { type: string }
-                version: { type: integer, minimum: 0 }
-                shards:
-                  type: array
-                  maxItems: 200000
-                  items: { type: string, format: uuid }
-                  description: The blob refs the new root points at (record shards).
-      responses:
-        "200":
-          description: Saved.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties: { version: { type: integer } }
-        "403": { description: Module disabled for this account. }
-        "409":
-          description: Version conflict — re-read, rebase, retry.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/StoreVersionConflict" }
-        "422":
-          description: A referenced shard blob has no ledger row (missing_shard).
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/MissingShardResponse" }
-
-  /notes/upload:
-    post:
-      tags: [Store]
-      operationId: notesUpload
-      summary: Upload a notes shard blob
-      description: "Stores an opaque record-shard ciphertext blob at notes/{id}. Throttle 1200/min."
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [file]
-              properties:
-                file: { type: string, format: binary }
+            schema: { $ref: "#/components/schemas/NoteWrite" }
       responses:
         "201":
-          description: Stored.
+          description: Note created.
           content:
             application/json:
               schema:
                 type: object
-                properties: { id: { type: string, format: uuid } }
-
-  /notes/raw/{blob}:
-    get:
-      tags: [Store]
-      operationId: notesRaw
-      summary: Download a notes shard blob (owner-scoped)
-      parameters:
-        - name: blob
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "200": { description: Opaque ciphertext bytes. }
-        "404": { description: Not found or not owned by caller. }
-
-  /notes/raw-batch:
-    post:
-      tags: [Store]
-      operationId: notesRawBatch
-      summary: Batch-download notes shard blobs (framed)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [blobs]
-              properties:
-                blobs:
-                  type: array
-                  maxItems: 512
-                  items: { type: string, format: uuid }
-      responses:
-        "200": { description: Framed concatenated ciphertext blobs. }
-
-  /notes/blobs/reconcile:
-    post:
-      tags: [Store]
-      operationId: notesReconcile
-      summary: Reconcile the notes shard live-set
-      description: >
-        The client sends the full set of blob refs its root still points at; the
-        server frees grace-expired shard blobs no longer referenced. Throttle 120/min.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [blobs]
-              properties:
-                blobs:
-                  type: array
-                  maxItems: 100000
-                  items: { type: string, format: uuid }
-      responses:
-        "200":
-          description: Reconciled; returns updated usage.
+                required: [note]
+                properties:
+                  note: { $ref: "#/components/schemas/NoteRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "422":
+          description: Validation failed.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/UsageResponse" }
+              schema: { $ref: "#/components/schemas/ValidationError" }
+
+  /notes/{note}:
+    put:
+      tags: [Notes]
+      operationId: notesUpdate
+      summary: Update a note
+      description: >
+        Optimistic concurrency: if `version` is sent and does not match the current
+        server version, the update is rejected (409). Owner-scoped.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: note
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/NoteWrite"
+                - type: object
+                  properties:
+                    version: { type: integer, description: "Expected current version for optimistic concurrency." }
+      responses:
+        "200":
+          description: Note updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [note]
+                properties:
+                  note: { $ref: "#/components/schemas/NoteRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+        "409":
+          description: Version conflict — re-read and retry with a fresh version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordVersionConflict" }
+        "422":
+          description: Validation failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+    delete:
+      tags: [Notes]
+      operationId: notesDestroy
+      summary: Trash a note (soft-delete)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: note
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Trashed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+
+  /notes/trash:
+    get:
+      tags: [Notes]
+      operationId: notesTrash
+      summary: List soft-deleted notes
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Trashed notes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [notes]
+                properties:
+                  notes:
+                    type: array
+                    items: { $ref: "#/components/schemas/NoteRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+
+  /notes/{id}/restore:
+    post:
+      tags: [Notes]
+      operationId: notesRestore
+      summary: Restore a note from trash
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Restored.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [note]
+                properties:
+                  note: { $ref: "#/components/schemas/NoteRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+
+  /notes/{id}/force:
+    delete:
+      tags: [Notes]
+      operationId: notesForceDestroy
+      summary: Permanently delete a trashed note
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Permanently deleted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+
+  /todo-lists:
+    get:
+      tags: [Todos]
+      operationId: todoListsIndex
+      summary: List the current user's to-do lists
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Lists.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [lists]
+                properties:
+                  lists:
+                    type: array
+                    items: { $ref: "#/components/schemas/TodoList" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+    post:
+      tags: [Todos]
+      operationId: todoListsStore
+      summary: Create a to-do list
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 200 }
+      responses:
+        "201":
+          description: List created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [list]
+                properties:
+                  list: { $ref: "#/components/schemas/TodoList" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "422":
+          description: Validation failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+
+  /todo-lists/{list}:
+    put:
+      tags: [Todos]
+      operationId: todoListsUpdate
+      summary: Rename a to-do list
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: list
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 200 }
+      responses:
+        "200":
+          description: List updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [list]
+                properties:
+                  list: { $ref: "#/components/schemas/TodoList" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+        "422":
+          description: Validation failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+    delete:
+      tags: [Todos]
+      operationId: todoListsDestroy
+      summary: Delete a to-do list
+      description: >
+        Tasks in the list are NOT deleted — their `todo_list_id` is set null via FK.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: list
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+
+  /todos:
+    get:
+      tags: [Todos]
+      operationId: todosIndex
+      summary: List the current user's tasks
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Tasks.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [todos]
+                properties:
+                  todos:
+                    type: array
+                    items: { $ref: "#/components/schemas/TodoRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+    post:
+      tags: [Todos]
+      operationId: todosStore
+      summary: Create a task
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - type: object
+                  required: [title]
+                - $ref: "#/components/schemas/TodoWrite"
+      responses:
+        "201":
+          description: Task created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [todo]
+                properties:
+                  todo: { $ref: "#/components/schemas/TodoRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "422":
+          description: Validation failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+
+  /todos/{todo}:
+    put:
+      tags: [Todos]
+      operationId: todosUpdate
+      summary: Update a task
+      description: >
+        Optimistic concurrency: if `version` is sent and does not match the current
+        server version, the update is rejected (409). Owner-scoped.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: todo
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/TodoWrite"
+                - type: object
+                  properties:
+                    version: { type: integer, description: "Expected current version for optimistic concurrency." }
+      responses:
+        "200":
+          description: Task updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [todo]
+                properties:
+                  todo: { $ref: "#/components/schemas/TodoRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+        "409":
+          description: Version conflict — re-read and retry with a fresh version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordVersionConflict" }
+        "422":
+          description: Validation failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+    delete:
+      tags: [Todos]
+      operationId: todosDestroy
+      summary: Trash a task (soft-delete)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: todo
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Trashed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+
+  /todos/{todo}/toggle:
+    post:
+      tags: [Todos]
+      operationId: todosToggle
+      summary: Toggle a task boolean field
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: todo
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [field, value]
+              properties:
+                field: { type: string, enum: [done, marked] }
+                value: { type: boolean }
+      responses:
+        "200":
+          description: Task updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [todo]
+                properties:
+                  todo: { $ref: "#/components/schemas/TodoRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+        "422":
+          description: Validation failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+
+  /todos/trash:
+    get:
+      tags: [Todos]
+      operationId: todosTrash
+      summary: List soft-deleted tasks
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Trashed tasks.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [todos]
+                properties:
+                  todos:
+                    type: array
+                    items: { $ref: "#/components/schemas/TodoRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+
+  /todos/{id}/restore:
+    post:
+      tags: [Todos]
+      operationId: todosRestore
+      summary: Restore a task from trash
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Restored.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [todo]
+                properties:
+                  todo: { $ref: "#/components/schemas/TodoRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+
+  /todos/{id}/force:
+    delete:
+      tags: [Todos]
+      operationId: todosForceDestroy
+      summary: Permanently delete a trashed task
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Permanently deleted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+
+  /bookmark-folders:
+    get:
+      tags: [Bookmarks]
+      operationId: bookmarkFoldersIndex
+      summary: List the current user's bookmark folders
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Folders.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [folders]
+                properties:
+                  folders:
+                    type: array
+                    items: { $ref: "#/components/schemas/BookmarkFolder" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+    post:
+      tags: [Bookmarks]
+      operationId: bookmarkFoldersStore
+      summary: Create a bookmark folder
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookmarkFolderWrite" }
+      responses:
+        "201":
+          description: Folder created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [folder]
+                properties:
+                  folder: { $ref: "#/components/schemas/BookmarkFolder" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "422":
+          description: Validation failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+
+  /bookmark-folders/{folder}:
+    put:
+      tags: [Bookmarks]
+      operationId: bookmarkFoldersUpdate
+      summary: Update a bookmark folder
+      description: >
+        A `parent_id` that would create a cycle is silently ignored — the folder keeps
+        its old parent.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: folder
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookmarkFolderWrite" }
+      responses:
+        "200":
+          description: Folder updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [folder]
+                properties:
+                  folder: { $ref: "#/components/schemas/BookmarkFolder" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+        "422":
+          description: Validation failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+    delete:
+      tags: [Bookmarks]
+      operationId: bookmarkFoldersDestroy
+      summary: Delete a bookmark folder
+      description: >
+        Children reparent to root and contained bookmarks unfile via FK nullOnDelete
+        (not cascade — nothing is deleted along with the folder).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: folder
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+
+  /bookmark-folders/{folder}/move:
+    post:
+      tags: [Bookmarks]
+      operationId: bookmarkFoldersMove
+      summary: Move a bookmark folder to a new parent
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: folder
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parent_id: { type: [integer, "null"], description: "New parent folder id, or null = root." }
+      responses:
+        "200":
+          description: Moved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [folder]
+                properties:
+                  folder: { $ref: "#/components/schemas/BookmarkFolder" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+        "422":
+          description: The move would create a cycle.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string, enum: [cycle] }
+
+  /bookmarks:
+    get:
+      tags: [Bookmarks]
+      operationId: bookmarksIndex
+      summary: List the current user's bookmarks
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Bookmarks.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bookmarks]
+                properties:
+                  bookmarks:
+                    type: array
+                    items: { $ref: "#/components/schemas/BookmarkRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+    post:
+      tags: [Bookmarks]
+      operationId: bookmarksStore
+      summary: Create a bookmark
+      description: "`url` is required and must be http(s); `title` defaults to the URL host."
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - type: object
+                  required: [url]
+                - $ref: "#/components/schemas/BookmarkWrite"
+      responses:
+        "201":
+          description: Bookmark created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bookmark]
+                properties:
+                  bookmark: { $ref: "#/components/schemas/BookmarkRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "422":
+          description: Validation failed (e.g. a non-http(s) URL).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+
+  /bookmarks/{bookmark}:
+    put:
+      tags: [Bookmarks]
+      operationId: bookmarksUpdate
+      summary: Update a bookmark
+      description: >
+        Optimistic concurrency: if `version` is sent and does not match the current
+        server version, the update is rejected (409). Owner-scoped.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bookmark
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/BookmarkWrite"
+                - type: object
+                  properties:
+                    version: { type: integer, description: "Expected current version for optimistic concurrency." }
+      responses:
+        "200":
+          description: Bookmark updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bookmark]
+                properties:
+                  bookmark: { $ref: "#/components/schemas/BookmarkRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+        "409":
+          description: Version conflict — re-read and retry with a fresh version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RecordVersionConflict" }
+        "422":
+          description: Validation failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+    delete:
+      tags: [Bookmarks]
+      operationId: bookmarksDestroy
+      summary: Trash a bookmark (soft-delete)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bookmark
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Trashed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+
+  /bookmarks/{bookmark}/toggle:
+    post:
+      tags: [Bookmarks]
+      operationId: bookmarksToggle
+      summary: Toggle a bookmark boolean field
+      description: "Turning `read_later` off also clears `read`."
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bookmark
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [field, value]
+              properties:
+                field: { type: string, enum: [favorite, read_later, read] }
+                value: { type: boolean }
+      responses:
+        "200":
+          description: Bookmark updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bookmark]
+                properties:
+                  bookmark: { $ref: "#/components/schemas/BookmarkRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+        "422":
+          description: Validation failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+
+  /bookmarks/{bookmark}/move:
+    post:
+      tags: [Bookmarks]
+      operationId: bookmarksMove
+      summary: Move a bookmark to a folder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bookmark
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bookmark_folder_id: { type: [integer, "null"], description: "Target folder id, or null = root." }
+      responses:
+        "200":
+          description: Moved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bookmark]
+                properties:
+                  bookmark: { $ref: "#/components/schemas/BookmarkRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+
+  /bookmarks/trash:
+    get:
+      tags: [Bookmarks]
+      operationId: bookmarksTrash
+      summary: List soft-deleted bookmarks
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Trashed bookmarks.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bookmarks]
+                properties:
+                  bookmarks:
+                    type: array
+                    items: { $ref: "#/components/schemas/BookmarkRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+
+  /bookmarks/trash/empty:
+    post:
+      tags: [Bookmarks]
+      operationId: bookmarksTrashEmpty
+      summary: Permanently delete all trashed bookmarks
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Emptied; returns the number of bookmarks permanently deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted: { type: integer }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+
+  /bookmarks/{id}/restore:
+    post:
+      tags: [Bookmarks]
+      operationId: bookmarksRestore
+      summary: Restore a bookmark from trash
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Restored.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bookmark]
+                properties:
+                  bookmark: { $ref: "#/components/schemas/BookmarkRecord" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
+
+  /bookmarks/{id}/force:
+    delete:
+      tags: [Bookmarks]
+      operationId: bookmarksForceDestroy
+      summary: Permanently delete a trashed bookmark
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Permanently deleted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found or not owned by caller. }
 
   /invoices/store:
     get:
@@ -5712,7 +6649,7 @@ paths:
       summary: Read the sealed sharded invoices root
       description: >
         Sharded invoices store (merge-safety spec §3b): the sealed root pointer table
-        (shard descriptors), mirroring /notes/store. ETag/304 supported. The invoice
+        (shard descriptors), mirroring /files/store. ETag/304 supported. The invoice
         records live in the invoices shard blobs (see /invoices/raw). Invoice numbering
         is derived client-side from the actual invoices (each stores its seq) plus the
         company floor — unique and gapless (GoBD), not a store scalar.

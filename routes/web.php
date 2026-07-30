@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AvatarController;
+use App\Http\Controllers\BookmarksController;
 use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\ContactNotifyController;
 use App\Http\Controllers\DashboardController;
@@ -25,8 +26,7 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\ModuleStoreController;
-use App\Http\Controllers\NoteBlobController;
-use App\Http\Controllers\NotesStoreController;
+use App\Http\Controllers\NotesController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PasswordBlobController;
@@ -53,6 +53,7 @@ use App\Http\Controllers\SharedVaultController;
 use App\Http\Controllers\SharedVaultMemberController;
 use App\Http\Controllers\SharedVaultStoreController;
 use App\Http\Controllers\ThemeController;
+use App\Http\Controllers\TodosController;
 use App\Http\Controllers\TwoFactorDirectoryController;
 use App\Http\Controllers\UserKeyController;
 use App\Http\Controllers\VaultController;
@@ -236,13 +237,17 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:3000,1')->name('files.raw');
     Route::post('/files/raw-batch', [FileController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('files.raw-batch');
 
-    // Notes sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
-    Route::get('/notes/store', [NotesStoreController::class, 'show'])->middleware('module:notes')->name('notes.store.show');
-    Route::put('/notes/store', [NotesStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:notes'])->name('notes.store.save');
-    Route::post('/notes/upload', [NoteBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('notes.upload');
-    Route::get('/notes/raw/{blob}', [NoteBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('notes.raw');
-    Route::post('/notes/raw-batch', [NoteBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('notes.raw-batch');
-    Route::post('/notes/blobs/reconcile', [NoteBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('notes.blobs.reconcile');
+    // Plaintext-relational Notes (pivot Phase 1). Server-rendered page + JSON CRUD + trash.
+    Route::middleware('module:notes')->group(function (): void {
+        Route::get('/notes/list', [NotesController::class, 'index'])->name('notes.list');
+        Route::post('/notes', [NotesController::class, 'store'])->middleware('throttle:600,1')->name('notes.rel.store');
+        Route::put('/notes/{note}', [NotesController::class, 'update'])->whereNumber('note')->middleware('throttle:600,1')->name('notes.rel.update');
+        Route::delete('/notes/{note}', [NotesController::class, 'destroy'])->whereNumber('note')->middleware('throttle:600,1')->name('notes.rel.destroy');
+        Route::get('/notes/trash', [NotesController::class, 'trashed'])->name('notes.trash');
+        Route::post('/notes/{id}/restore', [NotesController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('notes.rel.restore');
+        Route::delete('/notes/{id}/force', [NotesController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('notes.rel.force');
+        Route::post('/notes/trash/empty', [NotesController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('notes.rel.empty');
+    });
 
     Route::get('/invoices/store', [InvoicesStoreController::class, 'show'])->middleware('module:finance')->name('invoices.store.show');
     Route::put('/invoices/store', [InvoicesStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:finance'])->name('invoices.store.save');
@@ -307,11 +312,45 @@ Route::middleware('auth')->group(function (): void {
 
     // Notes live entirely in the zero-knowledge store now; only the page shell
     // remains here (all data flows through GET/PUT /store).
-    Route::view('/notes', 'notes.index')->middleware('module:notes')->name('notes.index');
+    Route::get('/notes', [NotesController::class, 'page'])->middleware('module:notes')->name('notes.index');
     // To-dos: zero-knowledge, living entirely in the opaque store manifest.
-    Route::view('/todos', 'todos.index')->middleware('module:todos')->name('todos.index');
+    // Plaintext-relational Todos (pivot Phase 1).
+    Route::middleware('module:todos')->group(function (): void {
+        Route::get('/todos', [TodosController::class, 'page'])->name('todos.index');
+        Route::get('/todos/list', [TodosController::class, 'index'])->name('todos.list');
+        Route::get('/todos/trash', [TodosController::class, 'trashed'])->name('todos.trash');
+        Route::post('/todos', [TodosController::class, 'store'])->middleware('throttle:600,1')->name('todos.store');
+        Route::put('/todos/{todo}', [TodosController::class, 'update'])->whereNumber('todo')->middleware('throttle:600,1')->name('todos.update');
+        Route::post('/todos/{todo}/toggle', [TodosController::class, 'toggle'])->whereNumber('todo')->middleware('throttle:1200,1')->name('todos.toggle');
+        Route::delete('/todos/{todo}', [TodosController::class, 'destroy'])->whereNumber('todo')->middleware('throttle:600,1')->name('todos.destroy');
+        Route::post('/todos/{id}/restore', [TodosController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('todos.restore');
+        Route::delete('/todos/{id}/force', [TodosController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('todos.force');
+        Route::post('/todos/trash/empty', [TodosController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('todos.empty');
+        Route::get('/todo-lists', [TodosController::class, 'lists'])->name('todos.lists');
+        Route::post('/todo-lists', [TodosController::class, 'storeList'])->middleware('throttle:600,1')->name('todos.lists.store');
+        Route::put('/todo-lists/{list}', [TodosController::class, 'renameList'])->whereNumber('list')->middleware('throttle:600,1')->name('todos.lists.rename');
+        Route::delete('/todo-lists/{list}', [TodosController::class, 'destroyList'])->whereNumber('list')->middleware('throttle:600,1')->name('todos.lists.destroy');
+    });
     // Bookmarks: zero-knowledge, driven client-side from the opaque manifest.
-    Route::view('/bookmarks', 'bookmarks.index')->middleware('module:bookmarks')->name('bookmarks.index');
+    // Plaintext-relational Bookmarks (pivot Phase 1).
+    Route::middleware('module:bookmarks')->group(function (): void {
+        Route::get('/bookmarks', [BookmarksController::class, 'page'])->name('bookmarks.index');
+        Route::get('/bookmarks/list', [BookmarksController::class, 'index'])->name('bookmarks.list');
+        Route::get('/bookmarks/trash', [BookmarksController::class, 'trashed'])->name('bookmarks.trash');
+        Route::post('/bookmarks', [BookmarksController::class, 'store'])->middleware('throttle:600,1')->name('bookmarks.store');
+        Route::put('/bookmarks/{bookmark}', [BookmarksController::class, 'update'])->whereNumber('bookmark')->middleware('throttle:600,1')->name('bookmarks.update');
+        Route::post('/bookmarks/{bookmark}/toggle', [BookmarksController::class, 'toggle'])->whereNumber('bookmark')->middleware('throttle:1200,1')->name('bookmarks.toggle');
+        Route::post('/bookmarks/{bookmark}/move', [BookmarksController::class, 'move'])->whereNumber('bookmark')->middleware('throttle:1200,1')->name('bookmarks.move');
+        Route::delete('/bookmarks/{bookmark}', [BookmarksController::class, 'destroy'])->whereNumber('bookmark')->middleware('throttle:600,1')->name('bookmarks.destroy');
+        Route::post('/bookmarks/{id}/restore', [BookmarksController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('bookmarks.restore');
+        Route::delete('/bookmarks/{id}/force', [BookmarksController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('bookmarks.force');
+        Route::post('/bookmarks/trash/empty', [BookmarksController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('bookmarks.empty');
+        Route::get('/bookmark-folders', [BookmarksController::class, 'folders'])->name('bookmarks.folders');
+        Route::post('/bookmark-folders', [BookmarksController::class, 'storeFolder'])->middleware('throttle:600,1')->name('bookmarks.folders.store');
+        Route::put('/bookmark-folders/{folder}', [BookmarksController::class, 'updateFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('bookmarks.folders.update');
+        Route::post('/bookmark-folders/{folder}/move', [BookmarksController::class, 'moveFolder'])->whereNumber('folder')->middleware('throttle:1200,1')->name('bookmarks.folders.move');
+        Route::delete('/bookmark-folders/{folder}', [BookmarksController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('bookmarks.folders.destroy');
+    });
     // Passwords: zero-knowledge password manager, records in the opaque /store
     // manifest (six item types, per-item version history, client-side TOTP/QR).
     Route::view('/passwords', 'passwords.index')->middleware('module:passwords')->name('passwords.index');

@@ -6,27 +6,8 @@
         deleteConfirm: @js(__('bookmarks.delete_confirm')),
         emptyTrashConfirm: @js(__('bookmarks.empty_trash_confirm')),
         urlRequired: @js(__('bookmarks.url_required')),
-     })">
+     }, @js($folders), @js($bookmarks))">
 
-    {{-- Zero-knowledge gate: bookmarks decrypt with the vault key. --}}
-    @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
-
-    <template x-if="state === 'locked'">
-        <div class="mx-auto mt-16 max-w-md ll-card !p-8 text-center">
-            <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
-            <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
-               x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-            <x-button variant="primary" icon="lock-open" class="mt-5" @click="$dispatch('vault-panel')">
-                <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-            </x-button>
-        </div>
-    </template>
-
-    <template x-if="state === 'error'">
-        <p class="mx-auto mt-16 max-w-md rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-6 text-center text-sm text-red-700 dark:text-red-300">{{ __('bookmarks.save_failed') }}</p>
-    </template>
-
-    <template x-if="state === 'ready'">
       <div>
         <x-page-heading :title="__('bookmarks.title')">
             <x-slot:actions>
@@ -104,7 +85,6 @@
             </section>
         </div>
       </div>
-    </template>
 
     {{-- Folder editor modal (create / subfolder / edit + colour + icon) --}}
     <template x-teleport="body">

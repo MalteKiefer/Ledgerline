@@ -1,5 +1,9 @@
-// bookmarks component. Extracted from app.js.
-import { zkModule } from '../shared/zk-module';
+// bookmarks component — plaintext-relational (pivot Phase 1). Inlined initial
+// folders + bookmarks; every mutation is a small JSON request to the per-row
+// endpoints (shared with the mobile API). Client keeps the old field surface
+// (folderId / parentId / readLater) and maps to server columns at the boundary.
+import { getJson, apiRequest, postForm } from '../shared/api';
+import { parseTags, addTags, removeTagFrom, popTag } from '../shared/tag-chips';
 
 // Monochrome icon paths a bookmark folder can be given (rendered inline so the
 // name can be data-driven, unlike the server-side <x-icon>).
@@ -60,18 +64,50 @@ const FOLDER_ICONS = {
     wifi: 'M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z',
 };
 
-export default (labels = {}) => ({
-    ...zkModule({ store: 'bookmarks', map: { bookmarks: 'bookmarks', bookmarkFolders: 'folders' } }),
-    folders: [],
-    bookmarks: [],
+const normFolder = (f) => ({ id: f.id, name: f.name ?? '', parentId: f.parent_id ?? null, color: f.color ?? '', icon: f.icon ?? '' });
+const normBookmark = (b) => ({
+    id: b.id,
+    folderId: b.bookmark_folder_id ?? null,
+    title: b.title ?? '',
+    url: b.url ?? '',
+    description: b.description ?? '',
+    tags: Array.isArray(b.tags) ? b.tags : [],
+    favorite: !! b.favorite,
+    readLater: !! b.read_later,
+    read: !! b.read,
+    version: b.version ?? 0,
+    updated_at: b.updated_at ?? null,
+});
+
+export default (labels = {}, initialFolders = [], initialBookmarks = []) => ({
+    folders: (initialFolders || []).map(normFolder),
+    bookmarks: (initialBookmarks || []).map(normBookmark),
+    trashItems: [],
+    trashLoaded: false,
     view: 'all', // all | favorites | readlater | trash | a folder id
+    query: '',
+    activeTag: '',
+    error: '',
     editorOpen: false,
     // Kept a non-null blank so the teleported editor's x-model bindings never
     // read from null before a bookmark is opened.
     editing: { id: null, folderId: null, title: '', url: '', description: '', tags: [], favorite: false, readLater: false },
     dragItem: null, // { type: 'bookmark' | 'folder', id }
+    tagsValue: '',
+    tagDraft: '',
+    tagList() { return parseTags(this.tagsValue); },
+    commitTag() { this.tagsValue = addTags(this.tagsValue, this.tagDraft); this.tagDraft = ''; },
+    onTagInput() { if ((this.tagDraft || '').includes(',')) this.commitTag(); },
+    tagBackspace() { if ((this.tagDraft || '') === '') this.tagsValue = popTag(this.tagsValue); },
+    removeTag(tag) { this.tagsValue = removeTagFrom(this.tagsValue, tag); },
 
-    async init() { await this._initZk(); },
+    init() {
+        this.$watch('view', (v) => { if (v === 'trash') this._loadTrash(); });
+    },
+    async _loadTrash() {
+        if (this.trashLoaded) return;
+        try { const d = await getJson('/bookmarks/trash'); this.trashItems = (d.bookmarks || []).map(normBookmark); this.trashLoaded = true; } catch (e) { /* keep */ }
+    },
 
     host(url) { try { return new URL(url).host; } catch (e) { return ''; } },
 
@@ -85,31 +121,36 @@ export default (labels = {}) => ({
     openFolderEdit(f) {
         this.folderEditor = { open: true, id: f.id, parentId: f.parentId ?? null, name: f.name || '', color: f.color || '', icon: f.icon || '' };
     },
-    saveFolder() {
+    async saveFolder() {
         const e = this.folderEditor;
         const name = (e.name || '').trim();
         if (! name) return;
-        if (e.id) {
-            const f = this.folders.find((x) => x.id === e.id);
-            if (f) { f.name = name; f.color = e.color || ''; f.icon = e.icon || ''; }
-        } else {
-            this.folders.push({ id: window.LLModuleStore.bookmarks.newId(), name, parentId: e.parentId ?? null, color: e.color || '', icon: e.icon || '' });
-        }
-        this._save();
-        this.folderEditor.open = false;
+        const body = { name, parent_id: e.parentId ?? null, color: e.color || '', icon: e.icon || '' };
+        try {
+            if (e.id) {
+                const d = await apiRequest('PUT', '/bookmark-folders/' + e.id, body);
+                const f = this.folders.find((x) => x.id === e.id);
+                if (f) Object.assign(f, normFolder(d.folder));
+            } else {
+                const d = await postForm('/bookmark-folders', body);
+                this.folders.push(normFolder(d.folder));
+            }
+            this.folderEditor.open = false;
+        } catch (err) { window.llToast?.(labels.saveFailed); }
     },
     addSubfolder(parent) { this.openFolderCreate(parent.id); },
 
     async deleteFolder(f) {
         if (! await this.$store.confirm.ask(labels.deleteFolderConfirm)) return;
-        // Reparent this folder's subfolders to roots and drop the folder from its
-        // bookmarks, so nothing is orphaned inside the manifest.
-        for (const child of this.folders) if (child.parentId === f.id) child.parentId = null;
-        for (const b of this.bookmarks) if (b.folderId === f.id) b.folderId = null;
-        const i = this.folders.findIndex((x) => x.id === f.id);
-        if (i >= 0) this.folders.splice(i, 1);
-        if (this.view === f.id) this.view = 'all';
-        this._save();
+        try {
+            await apiRequest('DELETE', '/bookmark-folders/' + f.id);
+            // Server FK nulled children's parent + bookmarks' folder — reflect locally.
+            for (const child of this.folders) if (child.parentId === f.id) child.parentId = null;
+            for (const b of this.bookmarks) if (b.folderId === f.id) b.folderId = null;
+            const i = this.folders.findIndex((x) => x.id === f.id);
+            if (i >= 0) this.folders.splice(i, 1);
+            if (this.view === f.id) this.view = 'all';
+        } catch (err) { window.llToast?.(labels.saveFailed); }
     },
 
     // Name of the folder a bookmark lives in (for the list badge).
@@ -141,23 +182,35 @@ export default (labels = {}) => ({
         else if (d.type === 'folder' && d.id !== folderId) this.moveFolderTo(d.id, folderId);
     },
 
-    moveBookmarkToFolder(id, folderId) {
+    async moveBookmarkToFolder(id, folderId) {
         const b = this.bookmarks.find((x) => x.id === id);
-        if (b) { b.folderId = folderId; this._save(); }
+        if (! b) return;
+        const prev = b.folderId;
+        b.folderId = folderId;
+        try { await postForm('/bookmarks/' + id + '/move', { bookmark_folder_id: folderId }); }
+        catch (e) { b.folderId = prev; window.llToast?.(labels.saveFailed); }
     },
 
-    moveFolderTo(id, parentId) {
+    async moveFolderTo(id, parentId) {
         const f = this.folders.find((x) => x.id === id);
-        if (f) { f.parentId = parentId; this._save(); }
+        if (! f) return;
+        const prev = f.parentId;
+        f.parentId = parentId;
+        try { await postForm('/bookmark-folders/' + id + '/move', { parent_id: parentId }); }
+        catch (e) { f.parentId = prev; window.llToast?.(labels.saveFailed); }
     },
 
-    get allTags() { return this._tagsOf(this.bookmarks); },
-    get trashCount() { return this._trashCount(this.bookmarks); },
-    get readLaterCount() { return this.bookmarks.filter((b) => ! b.trashed && b.readLater && ! b.read).length; },
+    get allTags() {
+        const s = new Set();
+        for (const b of this.bookmarks) for (const t of (b.tags || [])) s.add(t);
+        return [...s].sort((a, b) => a.localeCompare(b));
+    },
+    get trashCount() { return this.trashItems.length; },
+    get readLaterCount() { return this.bookmarks.filter((b) => b.readLater && ! b.read).length; },
 
     get filtered() {
         const q = this.query.trim().toLowerCase();
-        let list = this.bookmarks.filter((b) => this.view === 'trash' ? this._isTrashed(b) : ! this._isTrashed(b));
+        let list = this.view === 'trash' ? this.trashItems : this.bookmarks;
         if (this.view === 'favorites') list = list.filter((b) => b.favorite);
         else if (this.view === 'readlater') list = list.filter((b) => b.readLater && ! b.read);
         else if (this.view !== 'all' && this.view !== 'trash') list = list.filter((b) => b.folderId === this.view);
@@ -184,40 +237,76 @@ export default (labels = {}) => ({
     },
     closeEditor() { this.editorOpen = false; this.editing = { id: null, folderId: null, title: '', url: '', description: '', tags: [], favorite: false, readLater: false }; },
 
-    saveBookmark() {
+    async saveBookmark() {
         const e = this.editing;
         const url = (e?.url || '').trim();
         if (! e || ! url) { this.error = labels.urlRequired; return; }
         // Only http(s): a javascript:/data: URL would execute on click via :href.
         if (! /^https?:\/\//i.test(url)) { this.error = labels.urlRequired; return; }
         this.error = '';
-        // Fall back to the host as the title so a bookmark is never untitled.
-        const title = (e.title || '').trim() || this.host(url) || url;
-        const description = e.description || '';
         const tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
-        const folderId = e.folderId ?? null;
-        const favorite = !! e.favorite;
-        const readLater = !! e.readLater;
-        if (e.id) {
-            const b = this.bookmarks.find((x) => x.id === e.id);
-            if (b) { b.url = url; b.title = title; b.description = description; b.tags = tags; b.folderId = folderId; b.favorite = favorite; b.readLater = readLater; }
-        } else {
-            this.bookmarks.unshift({ id: window.LLModuleStore.bookmarks.newId(), url, title, description, tags, folderId, favorite, readLater, read: false, trashed: false });
-        }
-        this._save();
-        this.closeEditor();
+        const body = {
+            bookmark_folder_id: e.folderId ?? null,
+            title: (e.title || '').trim(),
+            url,
+            description: e.description || '',
+            tags,
+            favorite: !! e.favorite,
+            read_later: !! e.readLater,
+            read: !! e.read,
+        };
+        try {
+            if (e.id) {
+                const d = await apiRequest('PUT', '/bookmarks/' + e.id, { ...body, version: e.version });
+                const b = this.bookmarks.find((x) => x.id === e.id);
+                if (b) Object.assign(b, normBookmark(d.bookmark));
+            } else {
+                const d = await postForm('/bookmarks', body);
+                this.bookmarks.unshift(normBookmark(d.bookmark));
+            }
+            this.closeEditor();
+        } catch (err) { this.error = labels.saveFailed; }
     },
 
-    toggleReadLater(b) { b.readLater = ! b.readLater; if (! b.readLater) b.read = false; this._save(); },
-    markRead(b) { b.read = true; this._save(); },
-    toggleFavorite(b) { b.favorite = ! b.favorite; this._save(); },
-    trash(b) { this._trash(b); },
-    restore(b) { this._restore(b); },
+    async _toggle(b, field, next) {
+        const clientField = field === 'read_later' ? 'readLater' : field;
+        const prev = b[clientField];
+        b[clientField] = next;
+        if (field === 'read_later' && ! next) b.read = false;
+        try { await postForm('/bookmarks/' + b.id + '/toggle', { field, value: next }); }
+        catch (e) { b[clientField] = prev; window.llToast?.(labels.saveFailed); }
+    },
+    toggleReadLater(b) { return this._toggle(b, 'read_later', ! b.readLater); },
+    markRead(b) { return this._toggle(b, 'read', true); },
+    toggleFavorite(b) { return this._toggle(b, 'favorite', ! b.favorite); },
+
+    async trash(b) {
+        try {
+            await apiRequest('DELETE', '/bookmarks/' + b.id);
+            const i = this.bookmarks.findIndex((x) => x.id === b.id);
+            if (i >= 0) this.bookmarks.splice(i, 1);
+            if (this.trashLoaded) this.trashItems.unshift(b);
+        } catch (e) { window.llToast?.(labels.saveFailed); }
+    },
+    async restore(b) {
+        try {
+            const d = await postForm('/bookmarks/' + b.id + '/restore', {});
+            const i = this.trashItems.findIndex((x) => x.id === b.id);
+            if (i >= 0) this.trashItems.splice(i, 1);
+            this.bookmarks.unshift(normBookmark(d.bookmark));
+        } catch (e) { window.llToast?.(labels.saveFailed); }
+    },
     async remove(b) {
         if (! await this.$store.confirm.ask(labels.deleteConfirm)) return;
-        const i = this.bookmarks.findIndex((x) => x.id === b.id);
-        if (i >= 0) this.bookmarks.splice(i, 1);
-        this._save();
+        try {
+            await apiRequest('DELETE', '/bookmarks/' + b.id + '/force');
+            const i = this.trashItems.findIndex((x) => x.id === b.id);
+            if (i >= 0) this.trashItems.splice(i, 1);
+        } catch (e) { window.llToast?.(labels.saveFailed); }
     },
-    emptyTrash() { return this._emptyTrashArr(this.bookmarks, labels.emptyTrashConfirm); },
+    async emptyTrash() {
+        if (! this.trashItems.length || ! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
+        try { await postForm('/bookmarks/trash/empty', {}); this.trashItems = []; }
+        catch (e) { window.llToast?.(labels.saveFailed); }
+    },
 });

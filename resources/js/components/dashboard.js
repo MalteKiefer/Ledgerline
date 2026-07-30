@@ -4,7 +4,7 @@
 import { bootGalleryStore } from '../shared/zk-module';
 import { sortTodos, upcomingBirthdays, yearsAgoPhotos } from '../shared/dashboard-utils';
 import { contactDisplayName } from '../shared/contact-utils';
-import { getJson } from '../shared/api';
+import { getJson, postForm } from '../shared/api';
 import {
     METRICS, metric,
     kgToLb, lbToKg, cToF, fToC, mgdlToMmoll, mmollToMgdl,
@@ -77,13 +77,14 @@ export default (config = {}, labels = {}) => ({
         while (! vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
         if (! vault.unlocked) { this.state = 'locked'; return; }
 
-        await Promise.all(['todos', 'contacts', 'health', 'bookmarks']
+        await Promise.all(['contacts', 'health']
             .map((m) => (window.LLModuleStore[m].loaded ? null : window.LLModuleStore[m].load())));
         if (! window.LLFilesStore.loaded) await window.LLFilesStore.load();
-        // Notes + passwords + invoices graduated to sharded stores (spec §3b).
-        if (! window.LLNotesStore.loaded) await window.LLNotesStore.load();
+        // Passwords + invoices still on sharded ZK stores (spec §3b).
         if (! window.LLPasswordsStore.loaded) await window.LLPasswordsStore.load();
         if (! window.LLInvoicesStore.loaded) await window.LLInvoicesStore.load();
+        // Notes/todos/bookmarks are plaintext-relational (pivot Phase 1) — plain REST reads.
+        await this._loadRelational();
 
         this.state = 'ready';
         try { this.galleryReady = await bootGalleryStore(this.$store); } catch (_e) { this.galleryReady = false; }
@@ -99,9 +100,26 @@ export default (config = {}, labels = {}) => ({
         this._thumbPending = {};
     },
 
+    // Plaintext-relational widgets (pivot Phase 1): notes/todos/bookmarks via REST.
+    _relNotes: [],
+    _relTodos: [],
+    _relBookmarksCount: 0,
+    async _loadRelational() {
+        const [nt, td, bm] = await Promise.all([
+            getJson('/notes/list').catch(() => ({ notes: [] })),
+            getJson('/todos/list').catch(() => ({ todos: [] })),
+            getJson('/bookmarks/list').catch(() => ({ bookmarks: [] })),
+        ]);
+        this._relNotes = (nt.notes ?? []).map((n) => ({ id: n.id, title: n.title, updated: n.updated_at }));
+        this._relTodos = (td.todos ?? []).map((t) => ({
+            id: t.id, title: t.title, done: !! t.done, marked: !! t.marked,
+            priority: t.priority, due: (t.due ?? '').slice(0, 10),
+        }));
+        this._relBookmarksCount = (bm.bookmarks ?? []).length;
+        this._mut++;
+    },
+
     // Per-module data getters (store v3 split — each module owns its sealed store).
-    get _notes() { return window.LLNotesStore?.data ?? null; },
-    get _todos() { return window.LLModuleStore.todos?.data ?? null; },
     get _contacts() { return window.LLModuleStore.contacts?.data ?? null; },
     get _passwords() { return window.LLPasswordsStore?.data ?? null; },
     get _health() { return window.LLModuleStore.health?.data ?? null; },
@@ -112,22 +130,26 @@ export default (config = {}, labels = {}) => ({
     // --- Todos widget ---
     get todos() {
         void this._mut;
-        return this._todos ? sortTodos(this._todos.todos ?? [], new Date().toISOString().slice(0, 10)).slice(0, 6) : [];
+        return sortTodos(this._relTodos, new Date().toISOString().slice(0, 10)).slice(0, 6);
     },
 
-    completeTodo(id) {
-        const t = (this._todos?.todos ?? []).find((x) => x.id === id);
-        if (t) { t.done = true; window.LLModuleStore.todos.touch(); this._mut++; }
+    async completeTodo(id) {
+        const t = this._relTodos.find((x) => x.id === id);
+        if (! t) return;
+        t.done = true;
+        this._relTodos = this._relTodos.filter((x) => x.id !== id);
+        this._mut++;
+        try { await postForm('/todos/' + id + '/toggle', { field: 'done', value: true }); } catch (_e) { /* best-effort */ }
     },
 
     // --- Counter tiles ---
     get counts() {
         void this._mut; // recompute after a manifest mutation (store .data is not Alpine-reactive)
         return {
-            notes: (this._notes?.notes ?? []).filter((n) => ! n.trashed).length,
+            notes: this._relNotes.length,
             passwords: (this._passwords?.secrets ?? []).length,
             contacts: (this._contacts?.contacts ?? []).length,
-            bookmarks: (window.LLModuleStore.bookmarks?.data?.bookmarks ?? []).length,
+            bookmarks: this._relBookmarksCount,
             invoices: (this._invoices?.invoices ?? []).length,
             files: (this._files?.files ?? []).filter((f) => ! f.trashed).length,
         };
@@ -136,8 +158,8 @@ export default (config = {}, labels = {}) => ({
     // --- Recent notes ---
     get recentNotes() {
         void this._mut;
-        return (this._notes?.notes ?? []).filter((n) => ! n.trashed)
-            .slice().sort((a, b) => (b.updated ?? '').localeCompare(a.updated ?? '')).slice(0, 5);
+        return this._relNotes.slice()
+            .sort((a, b) => (b.updated ?? '').localeCompare(a.updated ?? '')).slice(0, 5);
     },
 
     // --- Birthdays widget ---

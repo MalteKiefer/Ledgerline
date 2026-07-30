@@ -1,111 +1,150 @@
-// notes component. Extracted from app.js.
-import { zkModule } from '../shared/zk-module';
+// Notes — plaintext-relational (pivot Phase 1). No vault, no sealed store: the page
+// inlines the initial rows (fast first paint) and every mutation is a small JSON
+// request to the per-row endpoints (shared with the mobile API). Markdown preview is
+// still rendered client-side (cosmetic; the body is plaintext on the server).
 import { loadMarkdown } from '../shared/markdown';
-import { jsonHeaders } from '../shared/api';
+import { getJson, apiRequest, postForm } from '../shared/api';
+import { parseTags, addTags, removeTagFrom, popTag } from '../shared/tag-chips';
 
-// One-time dual-read migration from the old single-blob module store (/store/notes)
-// to the new sharded store (LLNotesStore). Runs only while the sharded store is empty;
-// after moving the notes it clears the old monolith so a later "delete all" can never
-// re-import them. Best-effort — a failure just leaves the notes in the old store.
-async function migrateFromMonolith(ms) {
-    if ((ms.data.notes?.length ?? 0) > 0) return; // already sharded
-    let d = null;
-    try {
-        d = await fetch('/store/notes', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
-    } catch (e) { return; }
-    if (! d || ! d.ciphertext) return;
-    let old = null;
-    try { old = window.Vault.openManifest(d.ciphertext); } catch (e) { return; }
-    if (! Array.isArray(old.notes) || old.notes.length === 0) return;
-    ms.data.notes.push(...old.notes);
-    await ms.flush(); // persist into the sharded store first
-    try {
-        const empty = window.Vault.sealManifest({ v: 3, notes: [] });
-        await fetch('/store/notes', { method: 'PUT', headers: jsonHeaders(), body: JSON.stringify({ ciphertext: empty, version: d.version ?? 0 }) });
-    } catch (e) { /* the length guard still prevents re-import this session */ }
-}
+const norm = (n) => ({
+    id: n.id,
+    title: n.title ?? '',
+    body: n.body ?? '',
+    tags: Array.isArray(n.tags) ? n.tags : [],
+    pinned: !! n.pinned,
+    version: n.version ?? 0,
+    updated_at: n.updated_at ?? null,
+});
 
-export default (labels = {}) => ({
-    ...zkModule({ store: 'notes', instance: () => window.LLNotesStore, afterLoad: (self, ms) => migrateFromMonolith(ms), map: { notes: 'notes' }, onLock: (self) => { self.currentId = null; } }),
-    notes: [],
+export default (labels = {}, initial = []) => ({
+    notes: (initial || []).map(norm),
+    trash: [],
+    trashLoaded: false,
     currentId: null,
     view: 'active', // active | trash
+    query: '',
+    activeTag: '',
     previewHtml: '',
     previewTimer: null,
+    // Tag chips (x-tag-field contract) over `tagsValue`.
+    tagsValue: '',
+    tagDraft: '',
+    tagList() { return parseTags(this.tagsValue); },
+    commitTag() { this.tagsValue = addTags(this.tagsValue, this.tagDraft); this.tagDraft = ''; },
+    onTagInput() { if ((this.tagDraft || '').includes(',')) this.commitTag(); },
+    tagBackspace() { if ((this.tagDraft || '') === '') this.tagsValue = popTag(this.tagsValue); },
+    removeTag(tag) { this.tagsValue = removeTagFrom(this.tagsValue, tag); },
 
-    async init() {
-        await this._initZk();
-        // Deep link (?note=<id>, e.g. from the dashboard "recent notes" widget) → open it.
+    init() {
         const nid = new URLSearchParams(location.search).get('note');
-        if (nid) {
-            const it = this.notes.find((n) => n.id === nid);
-            if (it) { this.view = it.trashed ? 'trash' : 'active'; this.open(it); }
-        }
+        if (nid) { const it = this.notes.find((n) => String(n.id) === String(nid)); if (it) this.open(it); }
     },
 
-    get allTags() { return this._tagsOf(this.notes); },
-    get trashCount() { return this._trashCount(this.notes); },
-    get current() { return this.notes.find((n) => n.id === this.currentId) ?? null; },
+    get list() { return this.view === 'trash' ? this.trash : this.notes; },
+    get allTags() {
+        const s = new Set();
+        for (const n of this.notes) for (const t of (n.tags || [])) s.add(t);
+        return [...s].sort((a, b) => a.localeCompare(b));
+    },
+    get trashCount() { return this.trash.length; },
+    get current() { return this.list.find((n) => n.id === this.currentId) ?? null; },
 
     get filtered() {
         const q = this.query.trim().toLowerCase();
-        let list = this.notes.filter((n) => this.view === 'trash' ? n.trashed : ! n.trashed);
+        let list = this.list;
         if (this.activeTag !== '') list = list.filter((n) => (n.tags ?? []).includes(this.activeTag));
         if (q !== '') {
             list = list.filter((n) => (n.title ?? '').toLowerCase().includes(q)
-                || (n.content ?? '').toLowerCase().includes(q)
+                || (n.body ?? '').toLowerCase().includes(q)
                 || (n.tags ?? []).some((t) => t.toLowerCase().includes(q)));
         }
-        return [...list].sort((a, b) => (Number(b.pinned) - Number(a.pinned)) || (b.updated ?? '').localeCompare(a.updated ?? ''));
+        return [...list].sort((a, b) => (Number(b.pinned) - Number(a.pinned)) || String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? '')));
     },
 
-    excerpt(n) { return (n.content ?? '').replace(/[#*_`>\[\]()-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80); },
+    excerpt(n) { return (n.body ?? '').replace(/[#*_`>\[\]()-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80); },
 
-    async open(n) {
+    async setView(v) {
+        this.view = v;
+        this.currentId = null;
+        if (v === 'trash' && ! this.trashLoaded) {
+            try { const d = await getJson('/notes/trash'); this.trash = (d.notes || []).map(norm); this.trashLoaded = true; } catch (e) { /* keep */ }
+        }
+    },
+
+    open(n) {
         this.currentId = n.id;
         this.tagsValue = (n.tags ?? []).join(', ');
         this.refreshPreview();
     },
+    closeCurrent() { this.currentId = null; },
 
-    newNote() {
-        const note = { id: window.LLNotesStore.newId(), title: '', content: '', tags: [], pinned: false, trashed: false, updated: new Date().toISOString() };
-        this.notes.unshift(note);
-        this._save();
-        this.open(note);
+    async newNote() {
+        try {
+            const d = await postForm('/notes', { title: '', body: '' });
+            const note = norm(d.note);
+            this.notes.unshift(note);
+            this.open(note);
+        } catch (e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
     },
 
-    schedulePreview() {
-        clearTimeout(this.previewTimer);
-        this.previewTimer = setTimeout(() => this.refreshPreview(), 250);
-    },
-    // Render the current note's markdown IN THE BROWSER (server never sees it).
-    // The markdown stack is lazy-loaded on first preview (kept out of the
-    // initial bundle); guard against a stale render if the note changed while
-    // it loaded.
+    schedulePreview() { clearTimeout(this.previewTimer); this.previewTimer = setTimeout(() => this.refreshPreview(), 250); },
     async refreshPreview() {
         if (! this.current) { this.previewHtml = ''; return; }
         const id = this.currentId;
         const md = await loadMarkdown();
-        if (this.currentId === id) this.previewHtml = md.render(this.current.content || '');
+        if (this.currentId === id) this.previewHtml = md.render(this.current.body || '');
     },
 
+    _saveTimer: null,
     save() {
         const n = this.current;
         if (! n) return;
         n.tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
-        n.updated = new Date().toISOString();
-        this._save();
+        clearTimeout(this._saveTimer);
+        const id = n.id;
+        this._saveTimer = setTimeout(() => this._persist(id), 600);
+    },
+    async _persist(id) {
+        const n = this.notes.find((x) => x.id === id);
+        if (! n) return;
+        try {
+            const d = await apiRequest('PUT', '/notes/' + id, { title: n.title, body: n.body, tags: n.tags, pinned: n.pinned, version: n.version });
+            if (d && d.note) { n.version = d.note.version; n.updated_at = d.note.updated_at; }
+        } catch (e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
     },
 
-    togglePin(n) { n.pinned = ! n.pinned; n.updated = new Date().toISOString(); this._save(); },
-    trash(n) { n.trashed = new Date().toISOString(); if (this.currentId === n.id) this.currentId = null; this._save(); },
-    restore(n) { n.trashed = false; this._save(); },
+    togglePin(n) { n.pinned = ! n.pinned; this._persist(n.id); },
+
+    async trashNote(n) {
+        try {
+            await apiRequest('DELETE', '/notes/' + n.id);
+            const i = this.notes.findIndex((x) => x.id === n.id);
+            if (i >= 0) this.notes.splice(i, 1);
+            if (this.trashLoaded) this.trash.unshift(n); else this.trash.push(n);
+            if (this.currentId === n.id) this.currentId = null;
+        } catch (e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
+    },
+    async restore(n) {
+        try {
+            const d = await postForm('/notes/' + n.id + '/restore', {});
+            const i = this.trash.findIndex((x) => x.id === n.id);
+            if (i >= 0) this.trash.splice(i, 1);
+            this.notes.unshift(norm(d.note));
+            if (this.currentId === n.id) this.currentId = null;
+        } catch (e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
+    },
     async remove(n) {
         if (! await this.$store.confirm.ask(labels.deleteConfirm)) return;
-        const i = this.notes.findIndex((x) => x.id === n.id);
-        if (i >= 0) this.notes.splice(i, 1);
-        if (this.currentId === n.id) this.currentId = null;
-        this._save();
+        try {
+            await apiRequest('DELETE', '/notes/' + n.id + '/force');
+            const i = this.trash.findIndex((x) => x.id === n.id);
+            if (i >= 0) this.trash.splice(i, 1);
+            if (this.currentId === n.id) this.currentId = null;
+        } catch (e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
     },
-    emptyTrash() { return this._emptyTrashArr(this.notes, labels.emptyTrashConfirm); },
+    async emptyTrash() {
+        if (! this.trash.length || ! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
+        try { await postForm('/notes/trash/empty', {}); this.trash = []; this.currentId = null; }
+        catch (e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
+    },
 });
