@@ -1,5 +1,5 @@
-// Per-module sealed store (Store v3 split). Each module (notes/todos/bookmarks/
-// contacts/invoices/passwords/health/sharing) gets its own opaque sealed row at
+// Per-module sealed store (Store v3 split). Each module (invoices/health/
+// sharing/explore) gets its own opaque sealed row at
 // GET/PUT /store/<module>, so a mutation in one module never re-seals the others.
 //
 // Same optimistic-concurrency + debounced-save contract as the old monolith
@@ -154,9 +154,9 @@ export function makeStore(module, blankFn) {
 
 /** The per-module blank shapes (each module's own sealed collection). */
 export const MODULE_BLANKS = {
-    // notes/todos/bookmarks/contacts migrated to plaintext-relational tables (pivot Etappe 1/2).
+    // notes/todos/bookmarks/contacts migrated to plaintext-relational tables (pivot Etappe 1/2);
+    // the password manager (+ its sharded store) was removed entirely.
     invoices: () => ({ v: 3, invoices: [], invoiceSeq: 0 }),
-    passwords: () => ({ v: 3, secrets: [], secretFolders: [], pwVaultMigrated: false }),
     health: () => ({ v: 3, healthEntries: [], healthProfile: null }),
     sharing: () => ({ v: 3, knownFingerprints: {} }),
     explore: () => ({ v: 3, tracks: [], couplings: {}, settings: { couplingTimeToleranceS: 3600, couplingDistanceToleranceM: 100 } }),

@@ -31,19 +31,10 @@ use App\Http\Controllers\MapController;
 use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NotesController;
 use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\PasswordBlobController;
-use App\Http\Controllers\PasswordBreachController;
 use App\Http\Controllers\PasswordIconController;
-use App\Http\Controllers\PasswordsStoreController;
 use App\Http\Controllers\PreferencesController;
-use App\Http\Controllers\SharedFolderBlobController;
-use App\Http\Controllers\SharedVaultController;
-use App\Http\Controllers\SharedVaultMemberController;
-use App\Http\Controllers\SharedVaultStoreController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TodosController;
-use App\Http\Controllers\TwoFactorDirectoryController;
-use App\Http\Controllers\UserKeyController;
 use App\Http\Controllers\VaultController;
 use App\Http\Middleware\UpdateTokenIp;
 use Illuminate\Support\Facades\Route;
@@ -195,14 +186,6 @@ Route::prefix('v1')->group(function (): void {
         Route::put('/company', [ApiCompanyController::class, 'update'])->middleware('throttle:60,1')->name('api.company.update');
         Route::get('/company/logo', [ApiCompanyController::class, 'logo'])->middleware('throttle:120,1')->name('api.company.logo');
 
-        // Passwords sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
-        Route::get('/passwords/store', [PasswordsStoreController::class, 'show'])->middleware('module:passwords')->name('api.passwords.store.show');
-        Route::put('/passwords/store', [PasswordsStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:passwords'])->name('api.passwords.store.save');
-        Route::post('/passwords/upload', [PasswordBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('api.passwords.upload');
-        Route::get('/passwords/raw/{blob}', [PasswordBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.passwords.raw');
-        Route::post('/passwords/raw-batch', [PasswordBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.passwords.raw-batch');
-        Route::post('/passwords/blobs/reconcile', [PasswordBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.passwords.reconcile');
-
         // Gallery: sealed index + opaque photo blobs + the stateless transform.
         Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->middleware('module:gallery')->name('api.gallery.store.show');
         Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:gallery'])->name('api.gallery.store.save');
@@ -247,12 +230,10 @@ Route::prefix('v1')->group(function (): void {
         // Google-hosts-only egress, link never logged; same opt-in class.
         Route::get('/maps/resolve', [MapController::class, 'resolve'])->middleware('throttle:30,1')->name('api.maps.resolve');
 
-        // Password enrichment: icon (BIMI/favicon proxy), breach check (HIBP
-        // k-anonymity), and 2fa.directory dataset. Same controllers as the web
-        // routes — guard-agnostic, SSRF-guarded, nothing stored server-side.
+        // Site-icon (BIMI/favicon) proxy: guard-agnostic, SSRF-guarded, nothing
+        // stored server-side. Retained for the Finance module (bank logos /
+        // partner favicons); the password manager that first used it is removed.
         Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:1200,1')->name('api.passwords.icon');
-        Route::get('/passwords/breach', [PasswordBreachController::class, 'range'])->middleware('throttle:300,1')->name('api.passwords.breach');
-        Route::get('/passwords/tfa-directory', [TwoFactorDirectoryController::class, 'index'])->middleware('throttle:120,1')->name('api.passwords.tfa');
 
         // Connected devices: list, revoke a device's token, request a remote wipe of a
         // lost device (the wipe flag is delivered on that device's next heartbeat).
@@ -286,41 +267,6 @@ Route::prefix('v1')->group(function (): void {
         // Per-user non-display settings (contact notify channels + file version cap).
         Route::get('/settings', [ApiSettingsController::class, 'show'])->name('api.settings.show');
         Route::put('/settings', [ApiSettingsController::class, 'update'])->middleware('throttle:60,1')->name('api.settings.update');
-
-        // Shared vault-sharing: identity keys, vault containers, sealed manifest
-        // stores, and membership management. Same controllers as the web routes —
-        // all are guard-agnostic (use $request->user() / Auth::id()).
-        Route::prefix('vaults')->name('api.vaults.')->group(function (): void {
-            Route::get('/keys', [UserKeyController::class, 'show'])->middleware('throttle:240,1')->name('keys.show');
-            Route::put('/keys', [UserKeyController::class, 'store'])->middleware('throttle:30,1')->name('keys.store');
-            Route::post('/', [SharedVaultController::class, 'store'])->name('store');
-            Route::get('/', [SharedVaultController::class, 'index'])->name('index');
-            Route::post('/{vault}/resolve-recipient', [SharedVaultController::class, 'resolveRecipient'])
-                ->middleware('throttle:pubkey-lookup')
-                ->name('resolve-recipient');
-            Route::get('/{vault}/store', [SharedVaultStoreController::class, 'show'])->name('store.show');
-            Route::put('/{vault}/store', [SharedVaultStoreController::class, 'save'])->middleware('throttle:600,1')->name('store.save');
-            Route::post('/{vault}/members', [SharedVaultMemberController::class, 'store'])->middleware('throttle:30,1')->name('members.store');
-            Route::post('/{vault}/members/{member}/accept', [SharedVaultMemberController::class, 'accept'])->middleware('throttle:30,1')->name('members.accept');
-            Route::patch('/{vault}/members/{member}', [SharedVaultMemberController::class, 'update'])->middleware('throttle:30,1')->name('members.update');
-            Route::delete('/{vault}/members/{member}', [SharedVaultMemberController::class, 'destroy'])->name('members.destroy');
-            Route::get('/{vault}/members', [SharedVaultMemberController::class, 'index'])->middleware('throttle:60,1')->name('members.index');
-            Route::post('/{vault}/rotate', [SharedVaultController::class, 'rotate'])->middleware('throttle:30,1')->name('rotate');
-            Route::delete('/{vault}', [SharedVaultController::class, 'destroy'])->middleware('throttle:30,1')->name('destroy');
-
-            // Shared-folder blob store: member-scoped upload/download/delete/reconcile.
-            Route::prefix('{vault}/blobs')->name('blobs.')->group(function (): void {
-                Route::get('/usage', [SharedFolderBlobController::class, 'usage'])->name('usage');
-                Route::post('/reconcile', [SharedFolderBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('reconcile');
-                Route::post('/upload', [SharedFolderBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('upload');
-                Route::post('/upload/init', [SharedFolderBlobController::class, 'chunkInit'])->middleware('throttle:600,1')->name('upload.init');
-                Route::post('/upload/part', [SharedFolderBlobController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('upload.part');
-                Route::post('/upload/complete', [SharedFolderBlobController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('upload.complete');
-                Route::post('/upload/abort', [SharedFolderBlobController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('upload.abort');
-                Route::get('/raw/{blob}', [SharedFolderBlobController::class, 'raw'])->middleware('throttle:600,1')->name('raw');
-                Route::delete('/{blob}', [SharedFolderBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('destroy');
-            });
-        });
 
         // 2FA management: enable, QR/secret, confirm, recovery codes, regenerate, disable.
         // Mirrors Fortify's web routes (/user/two-factor-*) for Sanctum bearer clients.

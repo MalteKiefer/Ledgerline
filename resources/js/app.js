@@ -5,7 +5,6 @@ import { csrfToken, getJson } from './shared/api';
 import { buildModuleStores } from './shared/module-store';
 import { makeShardedStore } from './shared/sharded-store';
 import health from './components/health';
-import passwords from './components/passwords';
 import vaultFiles from './components/files';
 import vaultGallery from './components/gallery';
 import publicShare from './components/public-share';
@@ -47,7 +46,7 @@ window.ShareCrypto = ShareCrypto;
 
 /**
  * Per-module opaque zero-knowledge store registry (Store v3 split). Each module
- * (notes/todos/bookmarks/contacts/invoices/passwords/health/sharing) has its OWN
+ * (invoices/health/sharing/explore) has its OWN
  * sealed row at /store/<module>, so a write to one never re-seals the others; the
  * server only stores/returns ciphertext + a version. Each store loads + decrypts
  * once, holds it in memory, and saves (debounced, sealed, optimistic version) on
@@ -67,16 +66,6 @@ window.LLGalleryStore = makeShardedStore({
     collections: [
         { key: 'albums', rootRef: 'albumsRef', rootKey: 'albumsKey', rootHash: 'albumsHash' },
         { key: 'people', rootRef: 'peopleRef', rootKey: 'peopleKey', rootHash: 'peopleHash' },
-    ],
-});
-
-// Passwords graduated to a sharded store too (spec §3b) — the extension mirrors it.
-// secrets = shard records; secretFolders = one collection blob (like files/folders).
-window.LLPasswordsStore = makeShardedStore({
-    prefix: '/passwords',
-    recordKey: 'secrets',
-    collections: [
-        { key: 'secretFolders', rootRef: 'foldersRef', rootKey: 'foldersKey', rootHash: 'foldersHash' },
     ],
 });
 
@@ -510,14 +499,6 @@ Alpine.data('bookmarks', bookmarks);
  * own pages (linked from here). Replaces the cramped account modal.
  */
 
-/**
- * Password manager ("passwords"). Zero-knowledge like the other opaque-store
- * modules: every secret lives as a record in the sealed passwords store
- * (LLModuleStore.passwords.data.secrets), unlocked with the vault key. Six item types (login, password,
- * card, wifi, license, server); per-item version history on every field change;
- * client-side TOTP, password generator, Wi-Fi QR, and copy-with-auto-clear.
- */
-Alpine.data('passwords', passwords);
 Alpine.data('dashboard', dashboard);
 
 /**

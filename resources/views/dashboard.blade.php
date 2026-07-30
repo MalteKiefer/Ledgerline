@@ -128,17 +128,6 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('passwords.index') }}"
-                                class="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5 transition-colors">
-                                <span class="ll-chip h-8 w-8 rounded-lg" style="--chip:#7066f5">
-                                    <x-icon name="key" class="h-4 w-4" />
-                                </span>
-                                <span class="flex-1 text-sm text-gray-800 dark:text-gray-200">{{ __('dashboard.passwords_module') }}</span>
-                                <span class="text-sm font-semibold text-gray-500 dark:text-gray-400" x-text="counts.passwords"></span>
-                                <x-icon name="chevron-right" class="h-4 w-4 text-gray-400" />
-                            </a>
-                        </li>
-                        <li>
                             <a href="{{ route('bookmarks.index') }}"
                                 class="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5 transition-colors">
                                 <span class="ll-chip h-8 w-8 rounded-lg" style="--chip:#d9a441">
@@ -404,63 +393,6 @@
                             </template>
                         </div>
                     </div>
-                </div>
-
-                {{-- ── Password Health widget ── --}}
-                <div class="ll-card flex flex-col">
-                    <div class="flex items-center justify-between mb-3">
-                        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                            {{ __('dashboard.pw_health_title') }}
-                        </h2>
-                        <a href="{{ route('passwords.index') }}"
-                            class="text-xs font-medium text-accent hover:underline">
-                            {{ __('dashboard.open') }}
-                        </a>
-                    </div>
-
-                    <template x-if="pwHealth.reused === 0 && pwHealth.cards === 0 && pwHealth.no2fa === 0">
-                        <div class="flex flex-1 flex-col items-center justify-center py-6 text-center">
-                            <span class="flex h-10 w-10 items-center justify-center rounded-xl text-white mb-2"
-                                style="background:#59ad6b">
-                                <x-icon name="shield-check" class="h-5 w-5" />
-                            </span>
-                            <p class="text-sm text-gray-400 dark:text-gray-500">
-                                {{ __('dashboard.pw_health_all_good') }}
-                            </p>
-                        </div>
-                    </template>
-
-                    <template x-if="pwHealth.reused > 0 || pwHealth.cards > 0 || pwHealth.no2fa > 0">
-                        <ul class="!p-0 -mx-4 divide-y divide-black/[0.06] dark:divide-white/10">
-                            <template x-if="pwHealth.reused > 0">
-                                <li class="flex items-center gap-3 px-4 py-2.5">
-                                    <span class="ll-chip h-8 w-8 shrink-0 rounded-lg" style="--chip:#e2915a">
-                                        <x-icon name="arrow-path" class="h-4 w-4" />
-                                    </span>
-                                    <span class="flex-1 text-sm text-gray-800 dark:text-gray-200"
-                                        x-text="@js(__('dashboard.pw_health_reused')).replace(':n', pwHealth.reused)"></span>
-                                </li>
-                            </template>
-                            <template x-if="pwHealth.cards > 0">
-                                <li class="flex items-center gap-3 px-4 py-2.5">
-                                    <span class="ll-chip h-8 w-8 shrink-0 rounded-lg" style="--chip:#3b9fd6">
-                                        <x-icon name="credit-card" class="h-4 w-4" />
-                                    </span>
-                                    <span class="flex-1 text-sm text-gray-800 dark:text-gray-200"
-                                        x-text="@js(__('dashboard.pw_health_expiring_cards')).replace(':n', pwHealth.cards)"></span>
-                                </li>
-                            </template>
-                            <template x-if="pwHealth.no2fa > 0">
-                                <li class="flex items-center gap-3 px-4 py-2.5">
-                                    <span class="ll-chip h-8 w-8 shrink-0 rounded-lg" style="--chip:#d9a441">
-                                        <x-icon name="shield-exclamation" class="h-4 w-4" />
-                                    </span>
-                                    <span class="flex-1 text-sm text-gray-800 dark:text-gray-200"
-                                        x-text="@js(__('dashboard.pw_health_no_twofa')).replace(':n', pwHealth.no2fa)"></span>
-                                </li>
-                            </template>
-                        </ul>
-                    </template>
                 </div>
 
             </div>

@@ -5,9 +5,7 @@ use App\Support\UserData\FilesData;
 use App\Support\UserData\GalleryData;
 use App\Support\UserData\InvoicesData;
 use App\Support\UserData\PaperlessData;
-use App\Support\UserData\PasswordsData;
 use App\Support\UserData\SettingsData;
-use App\Support\UserData\SharedData;
 use App\Support\UserData\StoreData;
 
 // Modules that contribute to per-user GDPR export and account erasure.
@@ -17,10 +15,8 @@ return [
         StoreData::class,
         FilesData::class,
         GalleryData::class,
-        PasswordsData::class,
         InvoicesData::class,
         ExploreData::class,
-        SharedData::class,
         PaperlessData::class,
         SettingsData::class,
     ],

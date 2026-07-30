@@ -20,11 +20,9 @@ Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
 // Reclaim stored file/gallery bytes on disk with no ownership record (leaked/
 // aborted uploads, or bytes orphaned by an interrupted erasure). The client
 // reconciles manifest-unreferenced blobs on its own; this is the crash net.
-Schedule::command('passwords:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('invoices:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('gallery:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('explore:sweep-orphans')->daily()->withoutOverlapping();
-Schedule::command('shared-folders:sweep-orphans')->daily()->withoutOverlapping();
 
 // Refresh EUR exchange rates once a day for the finance amount suggestions (no user data).
 Schedule::command('finance:fetch-fx')->dailyAt('03:15')->withoutOverlapping();

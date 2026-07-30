@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.509.0
+  version: 1.510.0
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -30,7 +30,7 @@ tags:
   - name: Store
     description: >
       Opaque zero-knowledge per-module sealed stores (Store v3 split). Each module
-      (contacts, invoices, passwords, health, sharing) owns
+      (invoices, health, sharing, explore) owns
       its OWN sealed row, so a write to one module never re-seals the others. These
       modules have NO per-record REST endpoints (that would break zero-knowledge);
       their full CRUD is: read the module store (GET /store/{module}), mutate the
@@ -44,14 +44,13 @@ tags:
       DECRYPTED shapes (schemas) per module — a native client builds these from the
       decrypted object; the server never sees them. Preserve unknown keys on write.
         • NOTE: notes/todos/bookmarks are no longer sealed stores — they use
-          plaintext-relational REST endpoints (tags Notes/Todos/Bookmarks).
-        • passwords → PasswordsStoreModel {secrets:[SecretItem], secretFolders:[PersonalVault], pwVaultMigrated} (sharded /passwords/store)
+          plaintext-relational REST endpoints (tags Notes/Todos/Bookmarks). The
+          password manager and cross-user shared-vault sharing were removed entirely.
         • invoices → {invoices:[InvoiceRecord], transactions:[InvoiceTransaction], paymentMethods:[PaymentMethod], projects:[FinanceProject], partners:[FinancePartner], financeCategories:[FinanceCategory]} (sharded /invoices/store)
         • health → {healthProfile:HealthProfile, healthEntries:[HealthEntry], healthFasts:[HealthFast]}
         • explore → ExploreStoreModel {tracks:[ExploreTrack], couplings:[ExploreCoupling], settings:ExploreSettings}
-        • sharing → SharingStoreModel {knownFingerprints:{userId→hex}} (TOFU, used by passwords)
+        • sharing → SharingStoreModel {knownFingerprints:{userId→hex}} (TOFU map)
         • gallery → {v:3, photos:[GalleryPhoto], people:[GalleryPerson], albums:[GalleryAlbum]} (sharded /gallery/store)
-        • shared vaults → SharedVaultManifest (GET/PUT /vaults/{vault}/store)
   - name: Notes
     description: >
       Plaintext-relational notes (Phase 1 pivot away from the sealed store). Per-record
@@ -69,8 +68,6 @@ tags:
       `version`. Owner-scoped; requires the `module:bookmarks` gate on top of the device token.
   - name: Files
     description: Plaintext-relational personal files + folders (rows), raw byte download, version history, trash, and multipart upload
-  - name: SharedFolders
-    description: Member-scoped blob store for shared vault folders (blobs at shared-folders/{blob})
   - name: Gallery
     description: Gallery blobs, multipart upload, and ML processing pipeline
   - name: Explore
@@ -110,10 +107,6 @@ tags:
       router that snaps clicked waypoints onto real paths/roads. A user-initiated,
       opt-in boundary crossing (same class as gallery geocoding); coordinates are
       never logged or persisted.
-  - name: Passwords
-    description: Password-manager enrichment endpoints (favicon, HIBP, 2FA directory)
-  - name: Vaults
-    description: Shared password vault container management, ZK key wrapping, and membership lifecycle
   - name: Devices
     description: Connected device listing, revocation, and remote-wipe management
   - name: Notifications
@@ -234,7 +227,7 @@ components:
             modules). A member's effective modules are the union across their groups
             (a group with null grants all); a per-user allow-list overrides. Enforced
             server-side and surfaced at /me as user.modules.
-          items: { type: string, enum: [dashboard, files, gallery, passwords, notes, todos, bookmarks, contacts, finance, health, explore] }
+          items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, contacts, finance, health, explore] }
         members:
           type: array
           items:
@@ -288,7 +281,7 @@ components:
             toggles). A native client should hide the tabs for modules NOT listed
             here; the API also enforces it — a disabled module's store endpoints
             return 403.
-          items: { type: string, enum: [dashboard, files, gallery, passwords, notes, todos, bookmarks, contacts, finance, health, explore] }
+          items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, contacts, finance, health, explore] }
         has_avatar:
           type: boolean
           description: "Whether a non-secret avatar is stored. True → fetch it via GET /api/v1/avatar (Bearer)."
@@ -606,8 +599,8 @@ components:
     StoreVersionConflict:
       type: object
       description: >
-        409 Conflict from a sealed manifest store (files/gallery/passwords/
-        invoices and the generic /store/{module}). The client must re-read the
+        409 Conflict from a sealed manifest store (files/gallery/invoices and the
+        generic /store/{module}). The client must re-read the
         store, rebase its delta, and retry — it must NEVER blindly re-PUT stale data.
       required: [error]
       properties:
@@ -618,7 +611,7 @@ components:
     MissingShardResponse:
       type: object
       description: >
-        422 from a sharded store save (files/gallery/passwords/invoices) when a
+        422 from a sharded store save (files/gallery/invoices) when a
         referenced shard blob has no ledger row — the server refuses to persist a root
         pointing at a shard that was never durably uploaded.
       required: [error]
@@ -764,22 +757,6 @@ components:
           description: Monotone version counter used for optimistic concurrency.
           example: 42
 
-    SharedStoreResponse:
-      type: object
-      description: Sealed manifest for a shared vault, with optimistic-concurrency version.
-      required: [version]
-      properties:
-        sealed_manifest:
-          type: string
-          nullable: true
-          description: >
-            Opaque sealed ciphertext encrypted under the vault's VK_vault.
-            The server never reads this value. Null before the first write.
-        version:
-          type: integer
-          description: Monotone version counter for optimistic concurrency.
-          example: 7
-
     VersionResponse:
       type: object
       description: New version counter returned after a successful store write.
@@ -804,11 +781,7 @@ components:
         ciphertext:
           type: string
           nullable: true
-          description: Current sealed ciphertext (personal store conflict).
-        sealed_manifest:
-          type: string
-          nullable: true
-          description: Current sealed manifest (shared vault store conflict).
+          description: Current sealed ciphertext (module store conflict).
 
     TokenResponse:
       type: object
@@ -977,98 +950,12 @@ components:
         updated_at: { type: [string, "null"], format: date-time }
         deleted_at: { type: [string, "null"], format: date-time, description: "Non-null = trashed (soft-deleted)." }
 
-    CustomField:
-      type: object
-      description: "User-defined field on a SecretItem."
-      required: [label, value, kind]
-      properties:
-        label: { type: string }
-        value: { type: string }
-        kind: { type: string, enum: [text, secret, multiline, url] }
-
-    PasskeyCredential:
-      type: object
-      description: "A WebAuthn passkey — standalone (type=passkey) or embedded in a login/password item's fields.passkeys[]."
-      required: [credentialId, privateKey, rpId]
-      properties:
-        credentialId: { type: string, description: "base64url." }
-        privateKey: { type: string, description: "P-256 private JWK (JSON). SECRET — masked in history, never rendered." }
-        publicKey: { type: string, description: "P-256 public JWK (JSON)." }
-        rpId: { type: string }
-        rpName: { type: string }
-        userHandle: { type: string }
-        userName: { type: string }
-        userDisplayName: { type: string }
-        alg: { type: integer, description: "COSE alg, -7 (ES256)." }
-        signCount: { type: integer, default: 0 }
-        createdAt: { type: string, format: date-time }
-
-    VersionEntry:
-      type: object
-      description: "One prior revision in a SecretItem's versions[] (cap 100). Secret fields are masked as '(changed)' in history."
-      required: [at]
-      properties:
-        at: { type: string, format: date-time }
-        title: { type: string }
-        fields: { type: object, description: "Snapshot of fields (secret keys masked)." }
-        custom: { type: array, items: { $ref: "#/components/schemas/CustomField" } }
-
-    SecretItem:
-      type: object
-      description: >
-        One vault item in the passwords store. `fields` is keyed by `type`:
-        login {username,password*,urls[],totp*,note, passkeys?[]};
-        password {password*,note, passkeys?[]};
-        card {cardholder,number,expiry "MM/YY",cvv*,pin*,note};
-        wifi {ssid,password*,security(enum nopass|WEP|WPA|WPA2|WPA3|WPA2-Enterprise|WPA3-Enterprise),hidden,note};
-        license {product,licensekey*,owner,email,note};
-        server {host,port,username,password*,note};
-        passkey {see PasskeyCredential fields};
-        identity {firstName,lastName,email,phone,company,street,city,state,zip,country,note};
-        secure_note {note}.
-        SECRET fields (*): password,totp,cvv,pin,licensekey,privateKey (+passkeys,publicKey masked in history).
-        `fields.totp` may be an otpauth:// URI OR a raw base64 HMAC-SHA1 secret.
-        `fields.urls` is a string[] (multi-URL logins). `icon` is a data: URI (from
-        /passwords/icon) stored sealed — never re-upload it raw.
-      required: [id, type, title]
-      properties:
-        id: { type: string, format: uuid }
-        type: { type: string, enum: [login, password, card, wifi, license, server, passkey, identity, secure_note] }
-        title: { type: string }
-        favorite: { type: boolean }
-        folder: { type: [string, "null"], format: uuid, description: "PersonalVault.id (personal items). Shared-vault items omit this / set null." }
-        tags: { type: array, items: { type: string } }
-        custom: { type: array, items: { $ref: "#/components/schemas/CustomField" } }
-        icon: { type: [string, "null"], description: "data: URI favicon (stored sealed)." }
-        fields: { type: object, description: "Per-type field dictionary (see description); may contain passkeys[] on login/password." }
-        versions: { type: array, items: { $ref: "#/components/schemas/VersionEntry" }, description: "Cap 100." }
-        created: { type: string, format: date-time }
-        updated: { type: string, format: date-time }
-        trashed: { type: [string, "null"], format: date-time, description: "null = active; ISO string = trashed-at." }
-
-    PersonalVault:
-      type: object
-      description: "A personal password vault (secretFolders[] in the passwords manifest). role is always 'manage' for the owner."
-      required: [id, name, role]
-      properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
-        role: { type: string, enum: [read, edit, manage] }
-
-    PasswordsStoreModel:
-      type: object
-      description: "Decrypted root of the sharded passwords store. Preserve pwVaultMigrated (and any unknown keys) on write."
-      properties:
-        secrets: { type: array, items: { $ref: "#/components/schemas/SecretItem" } }
-        secretFolders: { type: array, items: { $ref: "#/components/schemas/PersonalVault" } }
-        pwVaultMigrated: { type: boolean, description: "Durable one-time migration flag — MUST be preserved on PUT." }
-
     SharingStoreModel:
       type: object
       description: >
-        Decrypted `sharing` module store (GET/PUT /store/sharing), shared by Passwords
-        + Files. `knownFingerprints` is the TOFU map read before every invite to detect
-        a recipient key-swap.
+        Decrypted `sharing` module store (GET/PUT /store/sharing). `knownFingerprints`
+        is a TOFU map of userId → public-key fingerprint (retained; the password
+        manager and shared-vault sharing that populated it have been removed).
       properties:
         knownFingerprints:
           type: object
@@ -1409,55 +1296,6 @@ components:
         updated_at: { type: string, format: date-time }
         deleted_at: { type: [string, "null"], format: date-time }
 
-    SharedFolderNode:
-      type: object
-      description: "A folder node inside a zero-knowledge shared-folder vault manifest (SharedVaultManifest)."
-      required: [id, name]
-      properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
-        parent: { type: [string, "null"], format: uuid }
-        created: { type: string, format: date-time }
-
-    HybridEnvelope:
-      type: object
-      description: "Store v3 §6.3 PQ-hybrid wrap (X25519+ML-KEM-768). Used for wrapped_vault_key and shared-vault key material. Opaque to the server."
-      required: [suite, epk, kem_ct, c, n]
-      properties:
-        suite: { type: integer, enum: [1] }
-        epk: { type: string, description: "Ephemeral X25519 public key (base64)." }
-        kem_ct: { type: string, description: "ML-KEM-768 ciphertext (base64)." }
-        c: { type: string, description: "XChaCha20-Poly1305 ciphertext (base64)." }
-        n: { type: string, description: "Nonce (base64)." }
-
-    ShareCryptoEnvelope:
-      type: object
-      description: >
-        Symmetric per-blob key wrap for PUBLIC share links (separate from the PQ-hybrid
-        vault format). The share key lives ONLY in the URL fragment (#, never sent to the
-        server). Each per-file key is wrapped as this {c,n} XChaCha20-Poly1305 envelope.
-      required: [c, n]
-      properties:
-        c: { type: string, description: "Ciphertext (base64)." }
-        n: { type: string, description: "Nonce (base64)." }
-
-    SharedVaultManifest:
-      type: object
-      description: >
-        Decrypted content of a shared vault (GET/PUT /vaults/{vault}/store), sealed under
-        VK_vault. Shape depends on the vault's kind: kind=password → {name, items:[SecretItem]};
-        kind=folder → {name, folders:[SharedFolderNode], files:[{ref, key, name, mime, path?}]}
-        where each file `key` is the per-file content key wrapped under VK_folder.
-      required: [name]
-      properties:
-        name: { type: string }
-        items: { type: array, items: { $ref: "#/components/schemas/SecretItem" }, description: "Password vaults only." }
-        folders: { type: array, items: { $ref: "#/components/schemas/SharedFolderNode" }, description: "Folder vaults only." }
-        files:
-          type: array
-          description: "Folder vaults only."
-          items: { type: object, properties: { ref: { type: string, format: uuid }, key: { type: string }, name: { type: string }, mime: { type: string }, path: { type: string } } }
-
     # ── Request/response schemas for the batch 1–5 API surface ──
     VaultWrite:
       type: object
@@ -1508,7 +1346,7 @@ components:
         files_quota_mb: { type: integer, minimum: 0, maximum: 100000000, nullable: true }
         gallery_quota_mb: { type: integer, minimum: 0, maximum: 100000000, nullable: true }
         max_connected_devices: { type: integer, minimum: 1, maximum: 50, nullable: true }
-        modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, passwords, notes, todos, bookmarks, contacts, finance, health, explore] } }
+        modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, contacts, finance, health, explore] } }
         modules_marker: { type: string, enum: ['set'], description: "Send with an (empty) modules[] to set an explicit list rather than 'no change'." }
         groups: { type: array, nullable: true, items: { type: integer } }
 
@@ -1913,7 +1751,7 @@ paths:
         "401":
           description: Unauthenticated.
     post:
-      tags: [Vaults]
+      tags: [Me/Device]
       operationId: vaultStore
       summary: Provision the vault (first-time setup)
       description: >
@@ -1933,7 +1771,7 @@ paths:
         "422": { description: Validation error. }
         "429": { description: Rate limit exceeded. }
     put:
-      tags: [Vaults]
+      tags: [Me/Device]
       operationId: vaultRotate
       summary: Rotate the vault passphrase
       description: >
@@ -1971,10 +1809,10 @@ paths:
         required: true
         description: >
           Module key. One of: notes, todos, bookmarks, contacts, invoices,
-          passwords, health, sharing, explore. Any other value is a 404.
+          health, sharing, explore. Any other value is a 404.
         schema:
           type: string
-          enum: [notes, todos, bookmarks, contacts, invoices, passwords, health, sharing, explore]
+          enum: [notes, todos, bookmarks, contacts, invoices, health, sharing, explore]
     get:
       tags: [Store]
       operationId: moduleStoreShow
@@ -2038,8 +1876,8 @@ paths:
                   items: { type: string, format: uuid }
                   description: >
                     Accepted but unused for the plain module store (no shard ledger);
-                    validated as UUIDs. Sharded stores (files/gallery/passwords/
-                    invoices) enforce it referentially.
+                    validated as UUIDs. Sharded stores (files/gallery/invoices)
+                    enforce it referentially.
       responses:
         "200":
           description: Write successful; new version counter.
@@ -2735,335 +2573,6 @@ paths:
               schema: { $ref: "#/components/schemas/OkResponse" }
         "401": { description: Unauthenticated. }
         "403": { description: Module disabled for this account. }
-
-  # --------------------------------------------------------------------------
-  # SharedFolders (member-scoped blobs for shared vaults)
-  # --------------------------------------------------------------------------
-
-  /vaults/{vault}/blobs/usage:
-    get:
-      tags: [SharedFolders]
-      operationId: vaultBlobsUsage
-      summary: Shared folder blob storage usage
-      description: >
-        Returns bytes used vs quota for blobs in the shared folder vault. Quota is
-        attributed to the folder owner. Requires vault membership (viewer+).
-        No per-route throttle beyond default.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: Shared vault UUID.
-      responses:
-        "200":
-          description: Usage.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UsageResponse"
-        "401":
-          description: Unauthenticated.
-        "404":
-          description: Vault not found or caller is not a member.
-
-  /vaults/{vault}/blobs/upload:
-    post:
-      tags: [SharedFolders]
-      operationId: vaultBlobsUpload
-      summary: Upload a blob to a shared folder vault
-      description: >
-        Stores one opaque ciphertext blob encrypted under the vault's VK_vault.
-        Requires editor+ membership. Quota is attributed to the vault owner.
-        Throttle: 1200 req/min.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [file]
-              properties:
-                file:
-                  type: string
-                  format: binary
-                  description: Opaque ciphertext bytes (client-encrypted under VK_vault).
-      responses:
-        "201":
-          description: Blob stored.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IdResponse"
-        "404":
-          description: Vault not found or insufficient membership role.
-        "413":
-          description: Quota exceeded.
-        "429":
-          description: Rate limit exceeded.
-
-  /vaults/{vault}/blobs/upload/init:
-    post:
-      tags: [SharedFolders]
-      operationId: vaultBlobsUploadInit
-      summary: Initiate S3 multipart upload for a shared folder blob
-      description: >
-        Begins an S3 multipart upload session. Requires editor+ membership.
-        Throttle: 600 req/min.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ChunkInitRequest"
-      responses:
-        "200":
-          description: Session initialised.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ChunkInitResponse"
-        "413":
-          description: Owner quota would be exceeded.
-        "404":
-          description: Vault not found or insufficient role.
-        "429":
-          description: Rate limit exceeded.
-
-  /vaults/{vault}/blobs/upload/part:
-    post:
-      tags: [SharedFolders]
-      operationId: vaultBlobsUploadPart
-      summary: Upload one part of a shared folder multipart upload
-      description: >
-        Uploads a single part of an in-progress multipart upload. Throttle: 6000 req/min.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [token, part, chunk]
-              properties:
-                token:
-                  type: string
-                part:
-                  type: integer
-                  minimum: 1
-                  maximum: 10000
-                  description: 1-based part number (upload order).
-                chunk:
-                  type: string
-                  format: binary
-      responses:
-        "200":
-          description: Part accepted.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ChunkPartResponse"
-        "429":
-          description: Rate limit exceeded.
-
-  /vaults/{vault}/blobs/upload/complete:
-    post:
-      tags: [SharedFolders]
-      operationId: vaultBlobsUploadComplete
-      summary: Complete a shared folder multipart upload
-      description: >
-        Finalises the multipart upload and registers the blob. Throttle: 600 req/min.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ChunkCompleteRequest"
-      responses:
-        "201":
-          description: Blob registered.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IdResponse"
-        "429":
-          description: Rate limit exceeded.
-
-  /vaults/{vault}/blobs/upload/abort:
-    post:
-      tags: [SharedFolders]
-      operationId: vaultBlobsUploadAbort
-      summary: Abort a shared folder multipart upload
-      description: >
-        Cancels an in-progress multipart upload and discards staged parts.
-        Throttle: 600 req/min.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [token]
-              properties:
-                token:
-                  type: string
-      responses:
-        "200":
-          description: Aborted.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkResponse"
-        "429":
-          description: Rate limit exceeded.
-
-  /vaults/{vault}/blobs/raw/{blob}:
-    get:
-      tags: [SharedFolders]
-      operationId: vaultBlobsRaw
-      summary: Stream a shared folder blob (ciphertext)
-      description: >
-        Streams the raw ciphertext bytes of a shared folder blob. Requires viewer+
-        membership. Served with immutable cache headers. Throttle: 600 req/min.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: blob
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Blob ciphertext stream.
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
-        "404":
-          description: Vault or blob not found, or insufficient membership.
-        "429":
-          description: Rate limit exceeded.
-
-  /vaults/{vault}/blobs/{blob}:
-    delete:
-      tags: [SharedFolders]
-      operationId: vaultBlobsDestroy
-      summary: Delete a shared folder blob
-      description: >
-        Deletes a blob from the shared folder. Requires editor+ membership.
-        Idempotent. Throttle: 3000 req/min.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: blob
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Deleted.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  deleted:
-                    type: boolean
-        "404":
-          description: Vault not found or insufficient role.
-        "429":
-          description: Rate limit exceeded.
-
-  /vaults/{vault}/blobs/reconcile:
-    post:
-      tags: [SharedFolders]
-      operationId: vaultBlobsReconcile
-      summary: Reclaim unreferenced blobs from a shared folder vault
-      description: >
-        Same orphan-reclaim protocol as the personal files reconcile. Requires
-        editor or manager role (it deletes blobs); serialised per vault owner.
-        Throttle: 120 req/min.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [blobs]
-              properties:
-                blobs:
-                  type: array
-                  items:
-                    type: string
-                    format: uuid
-                  maxItems: 100000
-      responses:
-        "200":
-          description: Reconciled; updated usage.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UsageResponse"
-        "404":
-          description: Vault not found or not a member.
-        "429":
-          description: Rate limit exceeded.
 
   # --------------------------------------------------------------------------
   # Gallery
@@ -3963,12 +3472,12 @@ paths:
           description: Rate limit exceeded.
 
   # --------------------------------------------------------------------------
-  # Passwords (enrichment endpoints)
+  # Site-icon proxy (favicon/BIMI — used by Finance for bank logos / partner favicons)
   # --------------------------------------------------------------------------
 
   /passwords/icon:
     get:
-      tags: [Passwords]
+      tags: [Company]
       operationId: passwordsIcon
       summary: Fetch favicon/BIMI for a domain
       description: >
@@ -3997,750 +3506,6 @@ paths:
                     description: Data URI (e.g. "data:image/png;base64,...") or null if none found.
         "429":
           description: Rate limit exceeded.
-
-  /passwords/breach:
-    get:
-      tags: [Passwords]
-      operationId: passwordsBreach
-      summary: HIBP k-anonymity breach check
-      description: >
-        Proxies a Have I Been Pwned range query. The client sends only the first 5
-        hex characters of the SHA-1 hash of the password; the server forwards the
-        query to HIBP and returns the matching suffix/count lines. The full hash
-        never leaves the client. SHA-1 is used here solely because HIBP requires
-        it for the k-anonymity protocol. Throttle: 300 req/min.
-      parameters:
-        - name: prefix
-          in: query
-          required: true
-          schema:
-            type: string
-            pattern: "^[0-9A-Fa-f]{5}$"
-          description: First 5 hex chars of the SHA-1 hash (uppercase preferred).
-      responses:
-        "200":
-          description: "HIBP range response (suffix:count lines)."
-          content:
-            text/plain:
-              schema:
-                type: string
-                description: HIBP range response text forwarded verbatim.
-        "429":
-          description: Rate limit exceeded.
-
-  /passwords/tfa-directory:
-    get:
-      tags: [Passwords]
-      operationId: passwordsTfaDirectory
-      summary: 2FA support directory
-      description: >
-        Returns the server-cached 2fa.directory dataset wrapped in an `entries` key.
-        The value is a domain → documentation URL map. Used by the client to show a
-        "this site supports 2FA" hint on login entries. Server caches the dataset for
-        24 hours. Throttle: 120 req/min.
-      responses:
-        "200":
-          description: Domain to 2FA documentation URL map, wrapped in an entries object.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [entries]
-                properties:
-                  entries:
-                    type: object
-                    description: >
-                      Map of domain → documentation URL (http/https only, empty string
-                      when no doc URL is known). Keys are lower-cased domain names.
-                    additionalProperties:
-                      type: string
-                      description: Documentation URL (http/https only) or empty string.
-        "429":
-          description: Rate limit exceeded.
-
-  # --------------------------------------------------------------------------
-  # Vaults (shared password vault management)
-  # --------------------------------------------------------------------------
-
-  /vaults/keys:
-    get:
-      tags: [Vaults]
-      operationId: vaultKeysShow
-      summary: Retrieve the caller's X25519 identity key material
-      description: >
-        Returns the caller's published X25519 public key, the wrapped secret key
-        (sealed under VK), and the fingerprint. Allows the client to recover the
-        secret key on a second device. Returns null fields if no key has been
-        published. Throttle: 240 req/min.
-      responses:
-        "200":
-          description: Identity key material.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  public_key:
-                    type: string
-                    nullable: true
-                    description: X25519 public key (base64). Not secret.
-                  wrapped_secret_key:
-                    type: string
-                    nullable: true
-                    description: >
-                      X25519 secret key wrapped under the caller's VK. Opaque ciphertext;
-                      the server never reads it.
-                  fingerprint:
-                    type: string
-                    nullable: true
-                    description: BLAKE2b-16 hex fingerprint of the public key.
-                  mlkem_public_key:
-                    type: string
-                    nullable: true
-                    description: >
-                      Store v3 (§6.3): ML-KEM-768 (FIPS 203) encapsulation key
-                      (base64). Not secret. Published alongside the X25519 key so
-                      cross-user wraps are post-quantum hybrid.
-                  wrapped_mlkem_secret_key:
-                    type: string
-                    nullable: true
-                    description: >
-                      ML-KEM-768 identity secret sealed under the caller's VK. By
-                      convention this is the 64-byte FIPS-203 SEED (not the expanded
-                      decapsulation key) — the portable canonical secret from which
-                      every client (noble keygen(seed) / CryptoKit
-                      seedRepresentation) reproduces the identical keypair. Opaque
-                      ciphertext; the server never reads it.
-        "429":
-          description: Rate limit exceeded.
-
-    put:
-      tags: [Vaults]
-      operationId: vaultKeysStore
-      summary: Publish the caller's X25519 identity keypair
-      description: >
-        Write-once: publishes the X25519 public key, wrapped secret key, and
-        fingerprint. A re-publish of the same public key is idempotent. Attempting
-        to change the public key returns 409 (would orphan existing vault
-        invitations). Throttle: 30 requests/minute.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [public_key, wrapped_secret_key, fingerprint, mlkem_public_key, wrapped_mlkem_secret_key]
-              properties:
-                public_key:
-                  type: string
-                  description: X25519 public key (base64).
-                wrapped_secret_key:
-                  type: string
-                  description: >
-                    X25519 secret key sealed under the caller's VK. Opaque to the server.
-                fingerprint:
-                  type: string
-                  description: BLAKE2b-16 hex fingerprint of the public key.
-                mlkem_public_key:
-                  type: string
-                  description: >
-                    Store v3 (§6.3): ML-KEM-768 (FIPS 203) encapsulation key (base64).
-                    Required from v3 clients; published with the X25519 key.
-                wrapped_mlkem_secret_key:
-                  type: string
-                  description: >
-                    ML-KEM-768 identity secret sealed under the caller's VK — the
-                    64-byte FIPS-203 SEED (not the expanded decapsulation key), the
-                    portable canonical secret. Opaque to the server.
-      responses:
-        "200":
-          description: Published (or idempotent re-publish).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkResponse"
-        "409":
-          description: Different public key already stored (key conflict).
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [error]
-                properties:
-                  error:
-                    type: string
-                    enum: [key_conflict]
-
-  /vaults:
-    get:
-      tags: [Vaults]
-      operationId: vaultsIndex
-      summary: List the caller's shared vault memberships
-      description: >
-        Returns all vault memberships (all statuses: pending/active/revoked) for
-        the authenticated user, including the per-vault wrapped_vault_key so the
-        client can unlock each invited vault. Each row carries `kind`
-        (password|folder) and `owner` (true when the caller created the vault, not
-        just an invited manager). No throttle beyond default.
-
-
-        Converting a folder between private and shared is a CLIENT-COMPOSED flow —
-        there is no dedicated server endpoint (zero-knowledge: the server cannot
-        re-encrypt). Private → shared: create a vault (POST /vaults kind=folder),
-        for each file re-wrap its per-file key under the new folder key and
-        re-upload the unchanged ciphertext via POST /vaults/{vault}/blobs/upload,
-        PUT /vaults/{vault}/store, then drop the files from the personal files index
-        (PUT /files/store). Shared → private (owner only): the reverse — fetch each
-        blob via GET /vaults/{vault}/blobs/raw/{blob}, re-wrap under the personal
-        vault key, re-upload via POST /files/upload, add to PUT /files/store, then
-        DELETE /vaults/{vault} (revokes all members + frees the shared blobs).
-      parameters:
-        - name: kind
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [password, folder]
-          description: Filter by vault kind. Omit to return all kinds.
-      responses:
-        "200":
-          description: List of vault membership objects.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-                  required: [id, vault_id, role, status, kind, owner, wrapped_vault_key]
-                  properties:
-                    id:
-                      type: integer
-                      description: Membership row id (integer PK).
-                    vault_id:
-                      type: string
-                      format: uuid
-                    role:
-                      type: string
-                      enum: [viewer, editor, manager]
-                    status:
-                      type: string
-                      enum: [pending, active, revoked]
-                    kind:
-                      type: string
-                      enum: [password, folder]
-                      description: Vault kind (password vault or shared folder).
-                    owner:
-                      type: boolean
-                      description: >
-                        True when the caller owns this vault (created it), not just an
-                        invited manager. Gates owner-only actions such as converting a
-                        shared folder back to a private folder.
-                    wrapped_vault_key:
-                      type: string
-                      description: >
-                        VK_vault hybrid-wrapped (X25519+ML-KEM-768 suite envelope) to
-                        the member. Opaque ciphertext; the server never reads VK_vault.
-
-    post:
-      tags: [Vaults]
-      operationId: vaultsStore
-      summary: Create a new shared vault
-      description: >
-        Creates a shared vault, an empty sealed manifest store, and an active
-        manager membership for the caller in a single transaction. The
-        `wrapped_vault_key` is the caller's own VK_vault wrapped under their
-        X25519 public key — opaque to the server. `kind` defaults to `password`.
-        No throttle beyond default.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [wrapped_vault_key]
-              properties:
-                wrapped_vault_key:
-                  type: string
-                  description: >
-                    VK_vault sealed under the owner's X25519 public key. Opaque
-                    ciphertext; the server never reads VK_vault.
-                kind:
-                  type: string
-                  enum: [password, folder]
-                  default: password
-                  description: Vault kind. Defaults to `password` for backward compatibility.
-      responses:
-        "201":
-          description: Vault created.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IdResponse"
-        "422":
-          description: Validation error.
-
-  /vaults/{vault}:
-    delete:
-      tags: [Vaults]
-      operationId: vaultsDestroy
-      summary: Delete a shared vault
-      description: >
-        Permanently deletes the vault, cascading to its sealed store and all
-        membership rows. Manager-gated. Throttle: 30 req/min.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "204":
-          description: Vault deleted. No response body.
-        "404":
-          description: Vault not found or caller is not a manager.
-        "429":
-          description: Rate limit exceeded.
-
-  /vaults/{vault}/store:
-    get:
-      tags: [Vaults]
-      operationId: vaultsStoreShow
-      summary: Read the shared vault's sealed manifest
-      description: >
-        Returns the sealed manifest and version for the shared vault. Requires
-        viewer+ membership. Cache-Control: no-store. No per-route throttle.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Sealed vault manifest.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SharedStoreResponse"
-        "404":
-          description: Vault not found or not a member.
-
-    put:
-      tags: [Vaults]
-      operationId: vaultsStoreSave
-      summary: Write the shared vault's sealed manifest
-      description: >
-        Saves the sealed vault manifest with optimistic concurrency. On conflict
-        the server returns 409 with the current version and sealed_manifest so the
-        client can re-read and re-apply. Requires editor+ membership.
-        Throttle: 600 req/min.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [sealed_manifest, expected_version]
-              properties:
-                sealed_manifest:
-                  type: string
-                  description: >
-                    Updated opaque sealed manifest encrypted under VK_vault.
-                    The server stores this without reading it.
-                expected_version:
-                  type: integer
-                  minimum: 0
-                  description: Version the client last read (optimistic concurrency token).
-      responses:
-        "200":
-          description: Write successful.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/VersionResponse"
-        "409":
-          description: Concurrent write conflict.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ConflictResponse"
-        "404":
-          description: Vault not found or insufficient role.
-        "429":
-          description: Rate limit exceeded.
-
-  /vaults/{vault}/resolve-recipient:
-    post:
-      tags: [Vaults]
-      operationId: vaultsResolveRecipient
-      summary: Look up a user's X25519 public key for vault invitation
-      description: >
-        Manager-gated. Returns the X25519 public key and fingerprint of the
-        prospective invitee so the manager can wrap VK_vault for them. Returns a
-        uniform 422 for both "user not found" and "user has no key" to prevent
-        user enumeration. Throttle: named `pubkey-lookup` (30 req/min per user).
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [identifier]
-              properties:
-                identifier:
-                  type: string
-                  description: Email address or username of the user to invite.
-      responses:
-        "200":
-          description: Recipient's public key data.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  user_id:
-                    type: integer
-                  public_key:
-                    type: string
-                    description: X25519 public key (base64). Safe to send to the manager.
-                  fingerprint:
-                    type: string
-                    description: BLAKE2b-16 hex fingerprint for TOFU verification.
-                  mlkem_public_key:
-                    type: string
-                    description: >
-                      Store v3 (§6.3): recipient's ML-KEM-768 encapsulation key (base64),
-                      needed to build the hybrid wrap. A recipient without ML-KEM material
-                      resolves as "no key" (422).
-        "404":
-          description: Vault not found or caller is not a manager.
-        "422":
-          description: >
-            User not found, or user has no full identity key published (both X25519
-            and ML-KEM required; uniform response for enumeration resistance).
-        "429":
-          description: Rate limit exceeded.
-
-  /vaults/{vault}/members:
-    get:
-      tags: [Vaults]
-      operationId: vaultsMembersIndex
-      summary: List vault members
-      description: >
-        Returns all members with their role, status, and X25519 public key.
-        Manager-gated. The wrapped_vault_key is intentionally excluded (per-recipient
-        ciphertext that only the inviting client needs). Throttle: 60 req/min.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: List of members.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-                  required: [id, user_id, role, status]
-                  properties:
-                    id:
-                      type: integer
-                      description: Membership row id (integer PK).
-                    user_id:
-                      type: integer
-                    name:
-                      type: string
-                      nullable: true
-                    email:
-                      type: string
-                      nullable: true
-                    role:
-                      type: string
-                      enum: [viewer, editor, manager]
-                    status:
-                      type: string
-                      enum: [pending, active, revoked]
-                    recipient_fingerprint:
-                      type: string
-                      nullable: true
-                    public_key:
-                      type: string
-                      nullable: true
-                      description: The member's X25519 public key (base64).
-                    mlkem_public_key:
-                      type: string
-                      nullable: true
-                      description: >
-                        The member's ML-KEM-768 encapsulation key (base64); needed to
-                        re-wrap VK_vault to this member on rotate.
-        "404":
-          description: Vault not found or caller is not a manager.
-        "429":
-          description: Rate limit exceeded.
-
-    post:
-      tags: [Vaults]
-      operationId: vaultsMembersStore
-      summary: Invite a user to the vault
-      description: >
-        Creates a pending membership. The `wrapped_vault_key` is VK_vault
-        PQ-hybrid-wrapped (X25519+ML-KEM-768 suite envelope `{suite,epk,kem_ct,c,n}`,
-        Store v3 §6.3) to the recipient's identity keys (from GET /vaults/keys /
-        resolve-recipient) — opaque to the server. Manager-gated. Throttle: 30 req/min.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [user_id, role, wrapped_vault_key]
-              properties:
-                user_id:
-                  type: integer
-                  description: ID of the user to invite.
-                role:
-                  type: string
-                  enum: [viewer, editor, manager]
-                  description: Role to assign. Cannot exceed the inviting manager's own role.
-                wrapped_vault_key:
-                  type: string
-                  description: >
-                    VK_vault PQ-hybrid-wrapped (X25519+ML-KEM-768 suite envelope
-                    `{suite,epk,kem_ct,c,n}`, Store v3 §6.3) to the recipient's
-                    identity keys. Opaque ciphertext; the server never reads VK_vault.
-                recipient_fingerprint:
-                  type: string
-                  nullable: true
-                  description: TOFU fingerprint of the recipient's public key for audit.
-      responses:
-        "201":
-          description: Membership created (pending).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkResponse"
-        "404":
-          description: Vault not found or caller is not a manager.
-        "422":
-          description: Validation error.
-
-  /vaults/{vault}/members/{member}/accept:
-    post:
-      tags: [Vaults]
-      operationId: vaultsMembersAccept
-      summary: Accept a vault invitation
-      description: >
-        Transitions the caller's own pending membership to active. Only the invited
-        user may accept their own invitation. Throttle: 30 requests/minute.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: member
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Member row ID.
-      responses:
-        "200":
-          description: Membership activated.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkResponse"
-        "403":
-          description: Caller is not the invited user.
-        "404":
-          description: Membership not found or does not belong to the caller.
-        "422":
-          description: Membership is not in pending status.
-
-  /vaults/{vault}/members/{member}:
-    patch:
-      tags: [Vaults]
-      operationId: vaultsMembersUpdate
-      summary: Update a member's role
-      description: >
-        Changes the role of an existing active member. Manager-gated; a manager
-        cannot change their own role. Throttle: 30 requests/minute.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: member
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [role]
-              properties:
-                role:
-                  type: string
-                  enum: [viewer, editor, manager]
-      responses:
-        "200":
-          description: Role updated.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkResponse"
-        "404":
-          description: Vault or member not found, or insufficient permissions.
-        "422":
-          description: Cannot change own role or invalid role.
-
-    delete:
-      tags: [Vaults]
-      operationId: vaultsMembersDestroy
-      summary: Remove a member from the vault (triggers key rotation)
-      description: >
-        Removes a member. Manager-gated. The client must immediately follow this
-        call with POST /vaults/{vault}/rotate to cryptographically revoke access
-        (re-key the vault for remaining members). No per-route throttle.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: member
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Member removed.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkResponse"
-        "404":
-          description: Vault or member not found, or caller is not a manager.
-
-  /vaults/{vault}/rotate:
-    post:
-      tags: [Vaults]
-      operationId: vaultsRotate
-      summary: Re-key the vault (rotate VK_vault after member removal)
-      description: >
-        Atomically replaces the sealed manifest, bumps the version, and re-wraps
-        VK_vault for all remaining active members in a single DB transaction with
-        optimistic concurrency. This is the cryptographic revocation step that must
-        follow member removal. On version conflict the server returns 409 so the
-        client can re-read the current state and retry. Throttle: 30 req/min.
-      parameters:
-        - name: vault
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [sealed_manifest, expected_version, members, remove_member_id]
-              properties:
-                sealed_manifest:
-                  type: string
-                  description: >
-                    Re-sealed manifest encrypted under the fresh VK_vault. Opaque
-                    ciphertext; the server never reads it.
-                expected_version:
-                  type: integer
-                  minimum: 0
-                  description: Current version to guard against concurrent writes.
-                remove_member_id:
-                  type: integer
-                  description: >
-                    ID of the SharedVaultMember row to remove. Must belong to this
-                    vault. The caller (manager) cannot remove themselves.
-                members:
-                  type: array
-                  description: >
-                    Updated wrapped_vault_key for each REMAINING active member
-                    (the removed member must NOT appear here), each hybrid-wrapped
-                    (X25519+ML-KEM-768 suite envelope) to their identity keys.
-                  items:
-                    type: object
-                    required: [user_id, wrapped_vault_key]
-                    properties:
-                      user_id:
-                        type: integer
-                        description: User ID of the remaining member.
-                      wrapped_vault_key:
-                        type: string
-                        description: >
-                          Fresh VK_vault wrapped under the member's X25519 public key.
-                          Opaque ciphertext.
-      responses:
-        "200":
-          description: Rotation complete; new version.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/VersionResponse"
-        "409":
-          description: Version conflict; re-read current state and retry.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ConflictResponse"
-        "422":
-          description: >
-            Business-rule error — remove_member_id is not a member of this vault,
-            the manager tried to remove themselves, the removed member appears in the
-            members list, or members contains an unknown/inactive user.
-        "404":
-          description: Vault not found or caller is not a manager.
-        "429":
-          description: Rate limit exceeded.
-
   # --------------------------------------------------------------------------
   # Devices
   # --------------------------------------------------------------------------
@@ -5205,7 +3970,7 @@ paths:
       summary: GDPR data export (streamed zip)
       description: >
         Streams a zip file containing the user's data as JSON files (one per module:
-        notes, todos, bookmarks, passwords meta, account info, etc.). Data only — no
+        notes, todos, bookmarks, invoices, account info, etc.). Data only — no
         blob bytes. The zip is generated on the fly and not stored server-side.
         Throttle: 6 req/min.
       responses:
@@ -5467,7 +4232,7 @@ paths:
                 gallery_quota_mb: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
                 max_connected_devices: { type: integer, nullable: true, minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
-                modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, passwords, notes, todos, bookmarks, contacts, finance, health, explore] }, description: "Enabled module keys (null = all)." }
+                modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, contacts, finance, health, explore] }, description: "Enabled module keys (null = all)." }
                 members:
                   type: array
                   items: { type: integer }
@@ -5510,7 +4275,7 @@ paths:
                 gallery_quota_mb: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
                 max_connected_devices: { type: integer, nullable: true, minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
-                modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, passwords, notes, todos, bookmarks, contacts, finance, health, explore] }, description: "Enabled module keys (null = all)." }
+                modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, contacts, finance, health, explore] }, description: "Enabled module keys (null = all)." }
                 members:
                   type: array
                   items: { type: integer }
@@ -6846,156 +5611,6 @@ paths:
             application/octet-stream:
               schema: { type: string, format: binary }
         "404": { description: No logo stored. }
-
-  /passwords/store:
-    get:
-      tags: [Store]
-      operationId: passwordsStoreShow
-      summary: Read the sealed sharded passwords root
-      description: >
-        Sharded passwords store (merge-safety spec §3b): the sealed root pointer table
-        (shard descriptors), mirroring /files/store. ETag/304 supported. The password
-        records (`secrets`) + the `secretFolders` collection live in the passwords
-        shard blobs (see /passwords/raw). Decrypted shape: PasswordsStoreModel.
-      responses:
-        "200":
-          description: Sealed root + version.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  ciphertext: { type: string, nullable: true }
-                  version: { type: integer }
-        "304": { description: Not modified (ETag match). }
-        "403": { description: Module disabled for this account. }
-    put:
-      tags: [Store]
-      operationId: passwordsStoreSave
-      summary: Write the sealed sharded passwords root
-      description: >
-        Optimistic concurrency (409 on stale version) + shard-reference integrity
-        guard: send the full shard-ref list; the server rejects (422 missing_shard)
-        a root pointing at a shard blob with no ledger row. Throttle 120/min.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [ciphertext, version]
-              properties:
-                ciphertext: { type: string }
-                version: { type: integer, minimum: 0 }
-                shards:
-                  type: array
-                  maxItems: 200000
-                  items: { type: string, format: uuid }
-                  description: The blob refs the new root points at (record shards).
-      responses:
-        "200":
-          description: Saved.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties: { version: { type: integer } }
-        "403": { description: Module disabled for this account. }
-        "409":
-          description: Version conflict — re-read, rebase, retry.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/StoreVersionConflict" }
-        "422":
-          description: A referenced shard blob has no ledger row (missing_shard).
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/MissingShardResponse" }
-
-  /passwords/upload:
-    post:
-      tags: [Store]
-      operationId: passwordsUpload
-      summary: Upload a passwords shard blob
-      description: "Stores an opaque record-shard ciphertext blob at passwords/{id}. Throttle 1200/min."
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [file]
-              properties:
-                file: { type: string, format: binary }
-      responses:
-        "201":
-          description: Stored.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties: { id: { type: string, format: uuid } }
-
-  /passwords/raw/{blob}:
-    get:
-      tags: [Store]
-      operationId: passwordsRaw
-      summary: Download a passwords shard blob (owner-scoped)
-      parameters:
-        - name: blob
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        "200": { description: Opaque ciphertext bytes. }
-        "404": { description: Not found or not owned by caller. }
-
-  /passwords/raw-batch:
-    post:
-      tags: [Store]
-      operationId: passwordsRawBatch
-      summary: Batch-download passwords shard blobs (framed)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [blobs]
-              properties:
-                blobs:
-                  type: array
-                  maxItems: 512
-                  items: { type: string, format: uuid }
-      responses:
-        "200": { description: Framed concatenated ciphertext blobs. }
-
-  /passwords/blobs/reconcile:
-    post:
-      tags: [Store]
-      operationId: passwordsReconcile
-      summary: Reconcile the passwords shard live-set
-      description: >
-        The client sends the full set of blob refs its root still points at; the
-        server frees grace-expired shard blobs no longer referenced. Throttle 120/min.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [blobs]
-              properties:
-                blobs:
-                  type: array
-                  maxItems: 100000
-                  items: { type: string, format: uuid }
-      responses:
-        "200":
-          description: Reconciled; returns updated usage.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/UsageResponse" }
 
   # ── Vault lifecycle (native provisioning + passphrase rotation) ──
   # ── Per-user non-display settings (contact notify channels + file version cap) ──
