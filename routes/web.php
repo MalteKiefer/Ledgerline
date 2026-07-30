@@ -15,6 +15,7 @@ use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
+use App\Http\Controllers\HealthController;
 use App\Http\Controllers\InviteLinkController;
 use App\Http\Controllers\InvoiceBlobController;
 use App\Http\Controllers\InvoicesStoreController;
@@ -331,8 +332,23 @@ Route::middleware('auth')->group(function (): void {
     // stored; SSRF-guarded. Retained for the Finance module (bank logos / partner
     // favicons); the password manager that first used it has been removed.
     Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:1200,1')->name('passwords.icon');
-    // Health: zero-knowledge, records (measurements + profile) in the opaque /store manifest.
-    Route::view('/health', 'health.index')->middleware('module:health')->name('health.index');
+    // Plaintext-relational Health (pivot). Server-rendered page + JSON per-record
+    // CRUD (profile / entries / fasts). Sensitive columns are `encrypted`-cast.
+    Route::get('/health', [HealthController::class, 'page'])->middleware('module:health')->name('health.index');
+    Route::middleware('module:health')->group(function (): void {
+        Route::get('/health/data', [HealthController::class, 'index'])->name('health.data');
+        Route::put('/health/profile', [HealthController::class, 'saveProfile'])->middleware('throttle:600,1')->name('health.profile.save');
+        Route::get('/health/entries', [HealthController::class, 'entries'])->name('health.entries');
+        Route::post('/health/entries', [HealthController::class, 'storeEntry'])->middleware('throttle:600,1')->name('health.entries.store');
+        Route::put('/health/entries/{entry}', [HealthController::class, 'updateEntry'])->whereNumber('entry')->middleware('throttle:600,1')->name('health.entries.update');
+        Route::delete('/health/entries/{entry}', [HealthController::class, 'destroyEntry'])->whereNumber('entry')->middleware('throttle:600,1')->name('health.entries.destroy');
+        Route::get('/health/fasts', [HealthController::class, 'fasts'])->name('health.fasts');
+        Route::get('/health/fasts/active', [HealthController::class, 'activeFast'])->name('health.fasts.active');
+        Route::post('/health/fasts', [HealthController::class, 'startFast'])->middleware('throttle:600,1')->name('health.fasts.start');
+        Route::post('/health/fasts/{fast}/stop', [HealthController::class, 'stopFast'])->whereNumber('fast')->middleware('throttle:600,1')->name('health.fasts.stop');
+        Route::put('/health/fasts/{fast}', [HealthController::class, 'updateFast'])->whereNumber('fast')->middleware('throttle:600,1')->name('health.fasts.update');
+        Route::delete('/health/fasts/{fast}', [HealthController::class, 'destroyFast'])->whereNumber('fast')->middleware('throttle:600,1')->name('health.fasts.destroy');
+    });
     // Invoices: zero-knowledge, records in the opaque /store manifest. The per-user
     // company profile (printed on invoices) is plaintext in the user's settings.
     Route::view('/finance', 'invoices.index')->middleware('module:finance')->name('finance.index');

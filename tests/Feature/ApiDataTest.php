@@ -25,7 +25,7 @@ class ApiDataTest extends TestCase
     public function test_data_endpoints_require_a_bearer(): void
     {
         $this->getJson('/api/v1/vault')->assertStatus(401);
-        $this->getJson('/api/v1/store/health')->assertStatus(401);
+        $this->getJson('/api/v1/store/invoices')->assertStatus(401);
         $this->getJson('/api/v1/gallery/store')->assertStatus(401);
         $this->getJson('/api/v1/files/entries')->assertStatus(401);
     }
@@ -35,8 +35,8 @@ class ApiDataTest extends TestCase
         $user = User::factory()->create();
         $h = $this->bearer($user);
 
-        $this->putJson('/api/v1/store/health', ['ciphertext' => 'sealed-blob', 'version' => 0], $h)->assertOk();
-        $res = $this->getJson('/api/v1/store/health', $h)->assertOk();
+        $this->putJson('/api/v1/store/invoices', ['ciphertext' => 'sealed-blob', 'version' => 0], $h)->assertOk();
+        $res = $this->getJson('/api/v1/store/invoices', $h)->assertOk();
 
         // Zero-knowledge: the only fields are the ciphertext + version — no plaintext.
         $this->assertSame(['ciphertext', 'version'], array_keys($res->json()));

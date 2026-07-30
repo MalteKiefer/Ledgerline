@@ -28,7 +28,7 @@ class ModuleStoreController extends Controller
         // notes/todos/bookmarks/contacts migrated to plaintext-relational tables (pivot Etappe 1/2);
         // the password manager (+ its sharded store) was removed entirely.
         'invoices',
-        'health', 'sharing', 'explore',
+        'sharing', 'explore',
     ];
 
     private const MAX_BYTES = 67108864; // 64 MiB sealed-index cap (metadata, not blobs)

@@ -56,10 +56,11 @@ final class ModulePermissionsTest extends TestCase
 
     public function test_generic_store_endpoint_is_blocked_for_a_disabled_module(): void
     {
-        $user = User::factory()->create(['role' => 'user', 'modules' => ['health']]);
-        // explore disabled → 403; health allowed → not 403 (200/empty depending on state)
-        $this->actingAs($user)->get('/store/explore')->assertForbidden();
-        $this->actingAs($user)->get('/store/health')->assertStatus(200);
+        // explore is a still-ZK generic store + a toggle module: enabled → 200, absent → 403.
+        $allowed = User::factory()->create(['role' => 'user', 'modules' => ['explore']]);
+        $this->actingAs($allowed)->get('/store/explore')->assertStatus(200);
+        $blocked = User::factory()->create(['role' => 'user', 'modules' => ['files']]);
+        $this->actingAs($blocked)->get('/store/explore')->assertForbidden();
     }
 
     public function test_me_exposes_allowed_modules(): void

@@ -1,6 +1,9 @@
-// Health tracking component (ZK). All measurements + master profile live in
-// the shared opaque /store manifest — server never sees plaintext.
-import { zkModule } from '../shared/zk-module';
+// Health tracking (plaintext-relational — pivot). No vault, no sealed store: the
+// page server-renders the shell and inlines the current data, and every mutation
+// is a small JSON request to the per-row endpoints (shared with the mobile API).
+// The single-active-fast invariant is enforced by the DB (partial unique index),
+// so there is no client-side normalisation. Display units are a global preference
+// (shared/prefs.js), not per-record.
 import {
     METRICS, metric, computeAge, computeBmi, classify,
     kgToLb, lbToKg, cToF, fToC, mgdlToMmoll, mmollToMgdl,
@@ -9,41 +12,49 @@ import {
 import { loadUplot } from '../shared/uplot-loader';
 import { saveBlobAs, formatDate } from '../shared/dom';
 import {
-    FAST_TEMPLATES, activeFast, fastProgress, formatDuration, formatDurationHMS, templateLabel, isValidFast, normalizeFasts,
+    FAST_TEMPLATES, activeFast, fastProgress, formatDuration, formatDurationHMS, templateLabel, isValidFast,
 } from '../shared/health-fasting';
-import { healthUnits, setPrefs, prefs } from '../shared/prefs';
-import { postForm } from '../shared/api';
+import { healthUnits } from '../shared/prefs';
+import { getJson, apiRequest, jsonHeaders } from '../shared/api';
 
-const DEFAULT_PROFILE = () => ({
-    birthdate: '',
-    heightCm: null,
-    sex: '',
-    weightGoalKg: null,
-    units: { weight: 'kg', glucose: 'mgdl', temp: 'c' },
+// --- snake_case (server row) ↔ the shape the component + pure helpers expect ----
+// Entries already use ts/v/v2/note; v/v2 arrive as decrypted STRINGS → coerce to
+// Number so the metric helpers (sum/min/max/convert) do arithmetic, not string
+// concatenation. Fasts map start_at→start, end_at→end, target_hours→targetHours
+// so the unchanged health-fasting helpers keep working.
+const normEntry = (e) => ({
+    id: e.id,
+    metric: e.metric,
+    ts: e.ts,
+    v: e.v == null || e.v === '' ? 0 : Number(e.v),
+    v2: e.v2 == null || e.v2 === '' ? null : Number(e.v2),
+    note: e.note ?? '',
+    version: e.version ?? 0,
 });
 
-export default (labels = {}) => ({
-    ...zkModule({
-        store: 'health',
-        map: { healthEntries: 'entries', healthFasts: 'fasts' },
-        onLock: (self) => {
-            self.selectedMetric = 'weight';
-            self.chartRange = '90d';
-            self.profile = DEFAULT_PROFILE();
-            self.editorOpen = false;
-            self.editing = null;
-            self.view = 'main';
-            self._stopFastClock();
-            self.fastEditorOpen = false;
-            self.fastEditing = null;
-            self._destroyChart();
-            self._destroyReportCharts();
-        },
-    }),
+const normFast = (f) => ({
+    id: f.id,
+    start: f.start_at ?? null,
+    end: f.end_at ?? null,
+    targetHours: Number(f.target_hours) || 0,
+    note: f.note ?? '',
+    version: f.version ?? 0,
+});
 
-    entries: [],
-    fasts: [],
-    profile: DEFAULT_PROFILE(),
+const DEFAULT_PROFILE = () => ({ birthdate: '', heightCm: null, sex: '', weightGoalKg: null, version: 0 });
+
+const normProfile = (p) => (p ? {
+    birthdate: p.birthdate ?? '',
+    heightCm: p.height_cm ?? null,
+    sex: p.sex ?? '',
+    weightGoalKg: p.weight_goal_kg == null || p.weight_goal_kg === '' ? null : Number(p.weight_goal_kg),
+    version: p.version ?? 0,
+} : DEFAULT_PROFILE());
+
+export default (labels = {}, initial = {}) => ({
+    entries: (initial.entries || []).map(normEntry),
+    fasts: (initial.fasts || []).map(normFast),
+    profile: normProfile(initial.profile),
     selectedMetric: 'weight',
     fastTemplates: FAST_TEMPLATES,
     _now: Date.now(),        // ticking clock so a running fast's elapsed updates live
@@ -67,89 +78,71 @@ export default (labels = {}) => ({
     _form: { metric: 'weight', v: '', v2: '', ts: '', note: '' },
     _chartAbort: null, // AbortController for chart event listeners
 
-    async init() {
-        await this._initZk();
-        if (this.state === 'ready') { this._initProfile(); this._initFasting(); this.$nextTick(() => this.renderChart()); }
-        // Bind on the state transition to 'ready' (not vault.unlocked): _initZk's
-        // boot is async, so at the unlocked-tick state is still 'locked' and the
-        // bind would be skipped (profile edits would then be lost until reload).
-        // $nextTick so the x-if="state==='ready'" subtree (chart ref) is mounted.
-        this.$watch('state', (s) => { if (s === 'ready') { this._initProfile(); this._initFasting(); this.$nextTick(() => this.renderChart()); } });
-
+    init() {
+        this.$nextTick(() => this.renderChart());
         // Re-render the chart whenever the selected metric, range, or entry
-        // list changes (Alpine reactivity — _mut increments on every _save()).
-        // Watchers don't fire for initial values, so the first render is the
-        // explicit renderChart() on the ready transition above.
+        // list changes (_mut increments on every mutation).
         this.$watch('selectedMetric', () => this.renderChart());
         this.$watch('chartRange', () => this.renderChart());
         this.$watch('_mut', () => this.renderChart());
-        // Drive the live seconds clock off the reactive activeFast getter, not a
-        // one-shot check in _initFasting: on reload the sealed store loads async, so
-        // activeFast is false at init time and the clock would never start (the
-        // banner still renders when _mut bumps, but stays frozen until reload). The
-        // watcher starts the 1s clock the moment a running fast appears, stops it
-        // when none. `void this._mut` makes it re-fire on store loads/mutations.
+        // Drive the live seconds clock off the reactive activeFast getter; start it
+        // now if a fast is already running (watchers don't fire for initial values).
         this.$watch('activeFast', (f) => { if (f) this._startFastClock(); else this._stopFastClock(); });
+        if (this.activeFast) this._startFastClock();
+    },
+
+    destroy() {
+        this._stopFastClock();
+        this._destroyChart();
+        this._destroyReportCharts();
     },
 
     // Localized metric label (passed from Blade via @js since the factory's
     // `labels` closure is not visible inside Blade x-for expressions).
     metricLabel(key) { return (labels.metricLabels && labels.metricLabels[key]) || key; },
 
-    // Ensure healthProfile exists on the store data and bind this.profile to it.
-    // Mirrors how passwords.js handles folders with _migrateVaults.
-    _initProfile() {
-        if (! window.LLModuleStore.health.data) return;
-        if (! window.LLModuleStore.health.data.healthProfile || typeof window.LLModuleStore.health.data.healthProfile !== 'object') {
-            window.LLModuleStore.health.data.healthProfile = DEFAULT_PROFILE();
-        }
-        // Ensure nested units object exists (forward-compat for older manifests).
-        if (! window.LLModuleStore.health.data.healthProfile.units) {
-            window.LLModuleStore.health.data.healthProfile.units = { weight: 'kg', glucose: 'mgdl', temp: 'c' };
-        }
-        // Bind this.profile to the same reference so mutations are reflected in the store data.
-        this.profile = window.LLModuleStore.health.data.healthProfile;
-        this._seedUnitPrefs();
+    // --- REST plumbing ---------------------------------------------------
+
+    // A fetch that surfaces status + body so 409 conflicts (version_conflict /
+    // active_fast_exists) can be handled — apiRequest/postForm throw on non-2xx.
+    async _req(method, url, body) {
+        const res = await fetch(url, { method, headers: jsonHeaders(), body: body != null ? JSON.stringify(body) : undefined });
+        let data = {};
+        try { data = await res.json(); } catch (_e) { data = {}; }
+        return { ok: res.ok, status: res.status, data };
     },
 
-    // One-time migration: units used to live in the sealed profile; they are now a
-    // global preference. If the global prefs are still at default but this user had
-    // chosen non-default sealed units, adopt them so nothing silently switches units.
-    _seedUnitPrefs() {
-        const g = prefs();
-        const globalDefault = g.weight === 'kg' && g.temp === 'c' && g.glucose === 'mgdl';
-        const u = this.profile.units || {};
-        const patch = {};
-        if (u.weight === 'lb') patch.weight = 'lb';
-        if (u.temp === 'f') patch.temp = 'f';
-        if (u.glucose === 'mmoll') patch.glucose = 'mmoll';
-        if (! globalDefault || Object.keys(patch).length === 0) return;
-        setPrefs(patch); // reflect immediately
-        postForm('/preferences', patch).catch(() => {});
+    // Re-pull the whole snapshot (used after a conflict to reconcile).
+    async reload() {
+        try {
+            const d = await getJson('/health/data');
+            this.entries = (d.entries || []).map(normEntry);
+            this.fasts = (d.fasts || []).map(normFast);
+            this.profile = normProfile(d.profile);
+            this._mut++;
+        } catch (_e) { /* keep in-memory state */ }
     },
 
-    // Override zkModule._save to track mutations (mirrors passwords.js).
-    _save() { this._mut++; window.LLModuleStore.health.touch(); },
+    // --- Profile ---------------------------------------------------------
 
-    saveProfile() { this._save(); },
-
-    // ---- Intermittent fasting (ZK — lives in the sealed `health` store) --------
-
-    // Ensure the healthFasts array exists on the store data + bind this.fasts to it,
-    // then run the live clock if a fast is active. (An older manifest has no key.)
-    _initFasting() {
-        const data = window.LLModuleStore.health.data;
-        if (! data) return;
-        if (! Array.isArray(data.healthFasts)) data.healthFasts = [];
-        this.fasts = data.healthFasts;
-        // A concurrent start on two clients can leave two active fasts after the
-        // store rebase-merge — void the duplicates deterministically and persist.
-        if (normalizeFasts(this.fasts)) this._save();
-        if (this.activeFast) this._startFastClock(); else this._stopFastClock();
+    async saveProfile() {
+        try {
+            const r = await this._req('PUT', '/health/profile', {
+                birthdate: this.profile.birthdate || null,
+                height_cm: this.profile.heightCm ?? null,
+                sex: this.profile.sex || null,
+                weight_goal_kg: this.profile.weightGoalKg ?? null,
+            });
+            if (! r.ok) throw new Error('failed');
+            if (r.data.profile) this.profile = normProfile(r.data.profile);
+            this._mut++;
+        } catch (_e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
     },
 
-    // The mapped `fasts` array is bound to the (non-Alpine) store — touch _mut so
-    // every fasting getter recomputes after a save.
+    // ---- Intermittent fasting (plaintext-relational) -------------------
+
+    // Every fasting getter reads the reactive `fasts` array; `void this._mut`
+    // keeps them recomputing in lockstep with every save.
     get activeFast() { void this._mut; return activeFast(this.fasts); },
     get fastHistory() {
         void this._mut;
@@ -189,43 +182,44 @@ export default (labels = {}) => ({
         if (this._fastClock) { clearInterval(this._fastClock); this._fastClock = null; }
     },
 
-    // Pull the latest sealed store so a fast started on ANOTHER device (mobile) is
-    // visible before we decide whether a new fast may start. Only one fast may ever
-    // be active across all clients.
-    async _reloadFasting() {
-        try {
-            await window.LLModuleStore.health.flush();
-            await window.LLModuleStore.health.load();
-        } catch (e) { /* offline / transient — fall back to in-memory state */ }
-        this._initProfile();
-        const data = window.LLModuleStore.health.data;
-        if (data) { this.entries = data.healthEntries || (data.healthEntries = []); this._initFasting(); }
-        this._mut++;
+    // Upsert a server fast row into the local list (replace by id, else append).
+    _upsertFast(raw) {
+        const f = normFast(raw);
+        const idx = this.fasts.findIndex((x) => x.id === f.id);
+        if (idx >= 0) this.fasts[idx] = f; else this.fasts.push(f);
+        return f;
     },
 
     async startFast(hours) {
         const h = Number(hours) || 16;
-        // Re-check against the freshest server state — never start a second fast.
-        await this._reloadFasting();
-        if (this.activeFast) { window.llToast?.(labels.fastAlreadyRunning || 'A fast is already running.'); return; }
-        this.fasts.push({
-            id: window.LLModuleStore.health.newId(),
-            start: new Date().toISOString(),
-            end: null,
-            targetHours: h,
-            note: '',
-        });
-        this._save();
-        this._startFastClock();
+        try {
+            const r = await this._req('POST', '/health/fasts', { target_hours: h });
+            // The DB partial unique index makes a second active fast impossible: a
+            // fast started on another device comes back as 409 — adopt it + toast.
+            if (r.status === 409 && r.data.error === 'active_fast_exists') {
+                if (r.data.fast) this._upsertFast(r.data.fast);
+                this._mut++;
+                window.llToast?.(labels.fastAlreadyRunning || 'A fast is already running.');
+                return;
+            }
+            if (! r.ok) throw new Error('failed');
+            if (r.data.fast) this._upsertFast(r.data.fast);
+            this._mut++;
+            this._startFastClock();
+        } catch (_e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
     },
 
     async stopFast() {
         const f = this.activeFast;
         if (! f) return;
         if (! await this.$store.confirm.ask(labels.fastStopConfirm || 'End this fast now?')) return;
-        f.end = new Date().toISOString();
-        this._save();
-        this._stopFastClock();
+        try {
+            const r = await this._req('POST', '/health/fasts/' + f.id + '/stop', {});
+            if (! r.ok) throw new Error('failed');
+            if (r.data.fast) this._upsertFast(r.data.fast);
+            this._mut++;
+            this._stopFastClock();
+        } catch (_e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
     },
 
     openFastEditor(fast) {
@@ -247,31 +241,47 @@ export default (labels = {}) => ({
     },
     closeFastEditor() { this.fastEditorOpen = false; this.fastEditing = null; },
 
-    saveFastEdit() {
+    async saveFastEdit() {
         const f = this.fastEditing;
         if (! f) return;
         const start = this._fastForm.start ? new Date(this._fastForm.start).toISOString() : f.start;
         const end = this._fastForm.end ? new Date(this._fastForm.end).toISOString() : null;
         const candidate = { start, end, targetHours: Number(this._fastForm.targetHours) || 16, note: this._fastForm.note || '' };
         if (! isValidFast(candidate)) { window.llToast?.(labels.fastInvalid || 'Please check the start, end and target.'); return; }
-        // Editing a finished fast back to running (end cleared) must not create a
-        // second active fast.
-        if (! end && this.activeFast && this.activeFast !== f) {
-            window.llToast?.(labels.fastAlreadyRunning || 'A fast is already running.');
-            return;
-        }
-        Object.assign(f, candidate);
-        this._save();
-        if (this.activeFast) this._startFastClock(); else this._stopFastClock();
-        this.closeFastEditor();
+        try {
+            const r = await this._req('PUT', '/health/fasts/' + f.id, {
+                start_at: start,
+                end_at: end,
+                target_hours: candidate.targetHours,
+                note: candidate.note,
+                version: f.version,
+            });
+            // Clearing end while another fast is active (active_fast_exists) or a
+            // stale version both come back 409 — reconcile against the server.
+            if (r.status === 409) {
+                window.llToast?.(r.data.error === 'active_fast_exists'
+                    ? (labels.fastAlreadyRunning || 'A fast is already running.')
+                    : (labels.saveFailed || 'Save failed.'));
+                await this.reload();
+                return;
+            }
+            if (! r.ok) throw new Error('failed');
+            if (r.data.fast) this._upsertFast(r.data.fast);
+            this._mut++;
+            if (this.activeFast) this._startFastClock(); else this._stopFastClock();
+            this.closeFastEditor();
+        } catch (_e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
     },
 
     async deleteFast(fast) {
         if (! await this.$store.confirm.ask(labels.fastDeleteConfirm || 'Delete this fast?')) return;
-        const i = this.fasts.indexOf(fast);
-        if (i >= 0) this.fasts.splice(i, 1);
-        this._save();
-        if (! this.activeFast) this._stopFastClock();
+        try {
+            await apiRequest('DELETE', '/health/fasts/' + fast.id);
+            const i = this.fasts.findIndex((x) => x.id === fast.id);
+            if (i >= 0) this.fasts.splice(i, 1);
+            this._mut++;
+            if (! this.activeFast) this._stopFastClock();
+        } catch (_e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
     },
 
     // --- Chart ---
@@ -319,7 +329,7 @@ export default (labels = {}) => ({
      */
     async renderChart() {
         // Only render metric detail views, not master data or report view.
-        if (this.selectedMetric === '_master' || this.view === 'report') {
+        if (this.selectedMetric === '_master' || this.selectedMetric === '_fasting' || this.view === 'report') {
             this._destroyChart();
             return;
         }
@@ -609,26 +619,19 @@ export default (labels = {}) => ({
     // --- Getters ---
 
     get age() {
-        void this._mut; // profile lives on the (non-Alpine) store — recompute on save
+        void this._mut;
         return computeAge(this.profile.birthdate, new Date().toISOString());
     },
 
     get bmi() {
-        // Both the weight entries AND the profile live on the sealed store, which
-        // is NOT an Alpine proxy — without touching _mut this getter wouldn't
-        // recompute when a weight is added or the height edited (the store-getter
-        // gotcha), so the BMI stayed stale/empty.
         void this._mut;
         const latest = this._latestEntry('weight');
         if (! latest) return null;
         return computeBmi(latest.v, this.profile.heightCm);
     },
 
-    // Filtered, sorted entries for a given metric key.
+    // Filtered, sorted (newest first) entries for a given metric key.
     entriesFor(key) {
-        // `entries` is bound to the sealed store array (NOT an Alpine proxy), so
-        // every store-derived reader must touch _mut to recompute after a save —
-        // otherwise latestFor/avgFor/minFor/maxFor/bmi stay stale until reload.
         void this._mut;
         return this.entries
             .filter((e) => e.metric === key)
@@ -688,9 +691,8 @@ export default (labels = {}) => ({
         return String(this._displaySingle(key, v));
     },
 
-    // Display units now come from the GLOBAL user preference (set on the appearance
-    // page, "like the language"), not the sealed health profile. weight/temp/glucose
-    // tokens are byte-compatible (kg|lb, c|f, mgdl|mmoll).
+    // Display units come from the GLOBAL user preference (set on the appearance
+    // page, "like the language"). weight/temp/glucose tokens are kg|lb, c|f, mgdl|mmoll.
     _units() { return healthUnits(); },
 
     // Convert a single canonical value to display units.
@@ -760,7 +762,7 @@ export default (labels = {}) => ({
         this.editing = null;
     },
 
-    saveEditor() {
+    async saveEditor() {
         const v = parseFloat(this._form.v);
         if (isNaN(v) || v <= 0) return;
         const ts = this._form.ts ? new Date(this._form.ts).toISOString() : new Date().toISOString();
@@ -779,25 +781,27 @@ export default (labels = {}) => ({
             if (! isNaN(raw2) && raw2 > 0) canonV2 = raw2;
         }
 
-        if (this.editing) {
-            // Update in place (same reference, array is bound to the store data).
-            const idx = this.entries.findIndex((e) => e.id === this.editing.id);
-            if (idx >= 0) {
-                this.entries[idx] = { ...this.entries[idx], v: canonV, v2: canonV2, ts, note: this._form.note };
-            }
-        } else {
-            this.entries.unshift({
-                id: crypto.randomUUID(),
-                metric: key,
-                v: canonV,
-                v2: canonV2,
-                ts,
-                note: this._form.note,
-            });
-        }
+        const payload = { metric: key, ts, v: canonV, v2: canonV2, note: this._form.note || '' };
 
-        this._save();
-        this.closeEditor();
+        try {
+            if (this.editing) {
+                const r = await this._req('PUT', '/health/entries/' + this.editing.id, { ...payload, version: this.editing.version });
+                if (r.status === 409) {
+                    window.llToast?.(labels.saveFailed || 'Save failed.');
+                    await this.reload();
+                    return;
+                }
+                if (! r.ok) throw new Error('failed');
+                const idx = this.entries.findIndex((e) => e.id === this.editing.id);
+                if (idx >= 0 && r.data.entry) this.entries[idx] = normEntry(r.data.entry);
+            } else {
+                const r = await this._req('POST', '/health/entries', payload);
+                if (! r.ok) throw new Error('failed');
+                if (r.data.entry) this.entries.push(normEntry(r.data.entry));
+            }
+            this._mut++;
+            this.closeEditor();
+        } catch (_e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
     },
 
     // Expose classify for use in Alpine x-bind expressions.
@@ -805,8 +809,11 @@ export default (labels = {}) => ({
 
     async deleteEntry(entry) {
         if (! await this.$store.confirm.ask(labels.deleteConfirm || '')) return;
-        const idx = this.entries.findIndex((e) => e.id === entry.id);
-        if (idx >= 0) this.entries.splice(idx, 1);
-        this._save();
+        try {
+            await apiRequest('DELETE', '/health/entries/' + entry.id);
+            const idx = this.entries.findIndex((e) => e.id === entry.id);
+            if (idx >= 0) this.entries.splice(idx, 1);
+            this._mut++;
+        } catch (_e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
     },
 });

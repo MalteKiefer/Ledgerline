@@ -24,6 +24,7 @@ use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
+use App\Http\Controllers\HealthController;
 use App\Http\Controllers\InvoiceBlobController;
 use App\Http\Controllers\InvoicesStoreController;
 use App\Http\Controllers\LocaleController;
@@ -158,6 +159,22 @@ Route::prefix('v1')->group(function (): void {
             Route::put('/bookmark-folders/{folder}', [BookmarksController::class, 'updateFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.bookmarks.folders.update');
             Route::post('/bookmark-folders/{folder}/move', [BookmarksController::class, 'moveFolder'])->whereNumber('folder')->middleware('throttle:1200,1')->name('api.bookmarks.folders.move');
             Route::delete('/bookmark-folders/{folder}', [BookmarksController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.bookmarks.folders.destroy');
+        });
+
+        // Plaintext-relational Health (pivot) — same controller as web, JSON per-record.
+        Route::middleware('module:health')->group(function (): void {
+            Route::get('/health/data', [HealthController::class, 'index'])->name('api.health.data');
+            Route::put('/health/profile', [HealthController::class, 'saveProfile'])->middleware('throttle:600,1')->name('api.health.profile.save');
+            Route::get('/health/entries', [HealthController::class, 'entries'])->name('api.health.entries');
+            Route::post('/health/entries', [HealthController::class, 'storeEntry'])->middleware('throttle:600,1')->name('api.health.entries.store');
+            Route::put('/health/entries/{entry}', [HealthController::class, 'updateEntry'])->whereNumber('entry')->middleware('throttle:600,1')->name('api.health.entries.update');
+            Route::delete('/health/entries/{entry}', [HealthController::class, 'destroyEntry'])->whereNumber('entry')->middleware('throttle:600,1')->name('api.health.entries.destroy');
+            Route::get('/health/fasts', [HealthController::class, 'fasts'])->name('api.health.fasts');
+            Route::get('/health/fasts/active', [HealthController::class, 'activeFast'])->name('api.health.fasts.active');
+            Route::post('/health/fasts', [HealthController::class, 'startFast'])->middleware('throttle:600,1')->name('api.health.fasts.start');
+            Route::post('/health/fasts/{fast}/stop', [HealthController::class, 'stopFast'])->whereNumber('fast')->middleware('throttle:600,1')->name('api.health.fasts.stop');
+            Route::put('/health/fasts/{fast}', [HealthController::class, 'updateFast'])->whereNumber('fast')->middleware('throttle:600,1')->name('api.health.fasts.update');
+            Route::delete('/health/fasts/{fast}', [HealthController::class, 'destroyFast'])->whereNumber('fast')->middleware('throttle:600,1')->name('api.health.fasts.destroy');
         });
 
         Route::get('/invoices/store', [InvoicesStoreController::class, 'show'])->middleware('module:finance')->name('api.invoices.store.show');

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.510.0
+  version: 1.511.0
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -30,7 +30,7 @@ tags:
   - name: Store
     description: >
       Opaque zero-knowledge per-module sealed stores (Store v3 split). Each module
-      (invoices, health, sharing, explore) owns
+      (invoices, sharing, explore) owns
       its OWN sealed row, so a write to one module never re-seals the others. These
       modules have NO per-record REST endpoints (that would break zero-knowledge);
       their full CRUD is: read the module store (GET /store/{module}), mutate the
@@ -43,11 +43,11 @@ tags:
 
       DECRYPTED shapes (schemas) per module — a native client builds these from the
       decrypted object; the server never sees them. Preserve unknown keys on write.
-        • NOTE: notes/todos/bookmarks are no longer sealed stores — they use
-          plaintext-relational REST endpoints (tags Notes/Todos/Bookmarks). The
-          password manager and cross-user shared-vault sharing were removed entirely.
+        • NOTE: notes/todos/bookmarks/contacts/health are no longer sealed stores —
+          they use plaintext-relational REST endpoints (tags Notes/Todos/Bookmarks/
+          Health; contacts removed). The password manager and cross-user shared-vault
+          sharing were removed entirely.
         • invoices → {invoices:[InvoiceRecord], transactions:[InvoiceTransaction], paymentMethods:[PaymentMethod], projects:[FinanceProject], partners:[FinancePartner], financeCategories:[FinanceCategory]} (sharded /invoices/store)
-        • health → {healthProfile:HealthProfile, healthEntries:[HealthEntry], healthFasts:[HealthFast]}
         • explore → ExploreStoreModel {tracks:[ExploreTrack], couplings:[ExploreCoupling], settings:ExploreSettings}
         • sharing → SharingStoreModel {knownFingerprints:{userId→hex}} (TOFU map)
         • gallery → {v:3, photos:[GalleryPhoto], people:[GalleryPerson], albums:[GalleryAlbum]} (sharded /gallery/store)
@@ -101,6 +101,12 @@ tags:
 
       Writes use the standard optimistic-concurrency PUT /store/explore
       (read → mutate the decrypted object → write with the version; 409 → re-read).
+  - name: Health
+    description: >
+      Plaintext-relational health tracking (pivot). Profile + measurements + fasts as
+      owner-scoped rows; sensitive values (v/v2/note, birthdate, weight_goal_kg) are
+      encrypted at rest (APP_KEY). Charts, unit conversion and doctor export are
+      client-side. One active fast per user is DB-enforced.
   - name: Maps
     description: >
       Explore tour-planner auto-routing. Server-side proxy to an OSRM-compatible
@@ -297,35 +303,21 @@ components:
     HealthFast:
       type: object
       description: >
-        One intermittent-fasting record inside the `health` module store, under the
-        key `healthFasts` (array). DECRYPTED shape — the server never sees it. The
-        ACTIVE fast is the one with `end: null`; only ONE fast may be active at a
-        time. This is a cross-client invariant: web AND mobile MUST refuse to start a
-        second fast while one is active, and MUST always show the running fast. The
-        constraint is enforced client-side (the server can't read the sealed store)
-        plus by the store's optimistic version — before starting, re-read the store
-        (GET /store/health) to observe a fast started on another device, and never
-        write a second `end: null` record. targetHours is the fasting window (the
-        "X" in X:Y, e.g. 16 for 16:8); goal reached when elapsed ≥ targetHours.
-      required: [id, start, targetHours]
+        One intermittent-fasting record (relational table health_fasts, plaintext
+        pivot; `note` encrypted at rest). Exactly one active fast per user is
+        DB-enforced (partial unique index WHERE end_at IS NULL) — POST /health/fasts
+        returns 409 active_fast_exists if one is already running. The active fast is
+        the row with end_at null. target_hours is the fasting window (e.g. 16 for 16:8).
+      required: [id, start_at, target_hours]
       properties:
-        id:
-          type: string
-          description: Client-generated UUID v4.
-        start:
-          type: string
-          format: date-time
-          description: ISO-8601 fast start.
-        end:
-          type: [string, "null"]
-          format: date-time
-          description: ISO-8601 end, or null while the fast is running (the active fast).
-        targetHours:
-          type: number
-          description: Target fasting hours (e.g. 12, 14, 16, 18, 20). Goal met at elapsed ≥ this.
-          example: 16
-        note:
-          type: string
+        id: { type: integer }
+        start_at: { type: string, format: date-time }
+        end_at: { type: [string, "null"], format: date-time, description: "null while running (the active fast)." }
+        target_hours: { type: integer, description: "Fasting window in hours." }
+        note: { type: [string, "null"] }
+        version: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
 
     ExploreStoreModel:
       type: object
@@ -964,30 +956,31 @@ components:
 
     HealthProfile:
       type: object
-      description: "Personal health profile (health store key healthProfile). Canonical storage; units drive display only."
+      description: "Personal health profile (relational table health_profiles; birthdate + weight_goal_kg encrypted at rest). Units come from UserSettings, not here."
       properties:
-        birthdate: { type: string, nullable: true, description: "YYYY-MM-DD; empty = unset." }
-        heightCm: { type: number, nullable: true }
-        sex: { type: string, nullable: true, description: "'m' | 'f' | ''." }
-        weightGoalKg: { type: number, nullable: true }
-        units:
-          type: object
-          properties:
-            weight: { type: string, enum: [kg, lb] }
-            glucose: { type: string, enum: [mgdl, mmoll] }
-            temp: { type: string, enum: [c, f] }
+        id: { type: integer }
+        birthdate: { type: [string, "null"], description: "YYYY-MM-DD." }
+        height_cm: { type: [integer, "null"] }
+        sex: { type: [string, "null"], description: "male | female | other | null." }
+        weight_goal_kg: { type: [string, "null"] }
+        version: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
 
     HealthEntry:
       type: object
-      description: "One measurement (health store key healthEntries[]). Values are canonical (kg/mmHg/bpm/%/°C/mg-dL); display conversion is client-only."
+      description: "One measurement (relational table health_entries; v/v2/note encrypted at rest, stored canonical kg/mmHg/bpm/%/°C/mg-dL as strings). Display conversion is client-only."
       required: [id, metric, v, ts]
       properties:
-        id: { type: string, format: uuid }
+        id: { type: integer }
         metric: { type: string, enum: [weight, bp, pulse, spo2, temp, glucose] }
-        v: { type: number, description: "Primary value (canonical unit)." }
-        v2: { type: number, nullable: true, description: "Diastolic mmHg for metric=bp; null otherwise." }
+        v: { type: string, description: "Primary value (canonical unit), decrypted." }
+        v2: { type: [string, "null"], description: "Diastolic mmHg for metric=bp; null otherwise." }
         ts: { type: string, format: date-time }
-        note: { type: string, nullable: true }
+        note: { type: [string, "null"] }
+        version: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
 
     InvoiceRecord:
       type: object
@@ -1808,11 +1801,10 @@ paths:
         in: path
         required: true
         description: >
-          Module key. One of: notes, todos, bookmarks, contacts, invoices,
-          health, sharing, explore. Any other value is a 404.
+          Module key. One of: invoices, sharing, explore. Any other value is a 404.
         schema:
           type: string
-          enum: [notes, todos, bookmarks, contacts, invoices, health, sharing, explore]
+          enum: [invoices, sharing, explore]
     get:
       tags: [Store]
       operationId: moduleStoreShow
@@ -1848,11 +1840,7 @@ paths:
         Optimistic-concurrency write for a single module. The caller sends the
         ciphertext and the version it last read; if another client wrote in the
         meantime the server returns 409 so the client can re-read, re-apply, retry.
-        Throttle: 240 req/min. For module=health, the decrypted object may carry
-        `healthFasts[]` (intermittent fasting, see schema HealthFast): only ONE fast
-        may be active (end=null) across ALL clients — re-read before starting and
-        never write a second active fast; web and mobile must always show the
-        running fast.
+        Throttle: 240 req/min.
       requestBody:
         required: true
         content:
@@ -4308,6 +4296,220 @@ paths:
         "403":
           description: Not an admin.
 
+  /health/data:
+    get:
+      tags: [Health]
+      operationId: healthData
+      summary: Read the profile, entries and fasts
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: Health snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries, fasts]
+                properties:
+                  profile: { oneOf: [ { $ref: "#/components/schemas/HealthProfile" }, { type: "null" } ] }
+                  entries: { type: array, items: { $ref: "#/components/schemas/HealthEntry" } }
+                  fasts: { type: array, items: { $ref: "#/components/schemas/HealthFast" } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+  /health/profile:
+    put:
+      tags: [Health]
+      operationId: healthProfileSave
+      summary: Create or update the health profile
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                birthdate: { type: [string, "null"] }
+                height_cm: { type: [integer, "null"] }
+                sex: { type: [string, "null"], enum: [male, female, other, "", null] }
+                weight_goal_kg: { type: [string, "null"] }
+      responses:
+        "200":
+          description: Saved profile.
+          content: { application/json: { schema: { type: object, properties: { profile: { $ref: "#/components/schemas/HealthProfile" } } } } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "422": { description: Validation failed. }
+  /health/entries:
+    get:
+      tags: [Health]
+      operationId: healthEntries
+      summary: List measurements (optionally filtered by metric)
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: metric, in: query, required: false, schema: { type: string, enum: [weight, bp, pulse, spo2, temp, glucose] } }
+      responses:
+        "200":
+          description: Entries.
+          content: { application/json: { schema: { type: object, required: [entries], properties: { entries: { type: array, items: { $ref: "#/components/schemas/HealthEntry" } } } } } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+    post:
+      tags: [Health]
+      operationId: healthEntryStore
+      summary: Add a measurement
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [metric, ts, v]
+              properties:
+                metric: { type: string, enum: [weight, bp, pulse, spo2, temp, glucose] }
+                ts: { type: string, format: date-time }
+                v: { type: string }
+                v2: { type: [string, "null"] }
+                note: { type: [string, "null"] }
+      responses:
+        "201":
+          description: Entry created.
+          content: { application/json: { schema: { type: object, properties: { entry: { $ref: "#/components/schemas/HealthEntry" } } } } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "422": { description: Validation failed. }
+  /health/entries/{entry}:
+    put:
+      tags: [Health]
+      operationId: healthEntryUpdate
+      summary: Edit a measurement (optimistic concurrency)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: entry, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                metric: { type: string, enum: [weight, bp, pulse, spo2, temp, glucose] }
+                ts: { type: string, format: date-time }
+                v: { type: string }
+                v2: { type: [string, "null"] }
+                note: { type: [string, "null"] }
+                version: { type: integer }
+      responses:
+        "200":
+          description: Updated entry.
+          content: { application/json: { schema: { type: object, properties: { entry: { $ref: "#/components/schemas/HealthEntry" } } } } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not found. }
+        "409":
+          description: Version conflict.
+          content: { application/json: { schema: { type: object, properties: { error: { type: string, example: version_conflict }, version: { type: integer } } } } }
+    delete:
+      tags: [Health]
+      operationId: healthEntryDestroy
+      summary: Delete a measurement
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: entry, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
+  /health/fasts:
+    get:
+      tags: [Health]
+      operationId: healthFasts
+      summary: List fasts
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Fasts., content: { application/json: { schema: { type: object, required: [fasts], properties: { fasts: { type: array, items: { $ref: "#/components/schemas/HealthFast" } } } } } } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+    post:
+      tags: [Health]
+      operationId: healthFastStart
+      summary: Start a fast (one active per user, DB-enforced)
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_hours]
+              properties:
+                target_hours: { type: integer }
+                note: { type: [string, "null"] }
+      responses:
+        "201":
+          description: Fast started.
+          content: { application/json: { schema: { type: object, properties: { fast: { $ref: "#/components/schemas/HealthFast" } } } } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "409":
+          description: A fast is already running.
+          content: { application/json: { schema: { type: object, properties: { error: { type: string, example: active_fast_exists }, fast: { $ref: "#/components/schemas/HealthFast" } } } } }
+        "422": { description: Validation failed. }
+  /health/fasts/active:
+    get:
+      tags: [Health]
+      operationId: healthFastActive
+      summary: The currently running fast (or null)
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Active fast or null., content: { application/json: { schema: { type: object, properties: { fast: { oneOf: [ { $ref: "#/components/schemas/HealthFast" }, { type: "null" } ] } } } } } }
+        "401": { description: Unauthenticated. }
+  /health/fasts/{fast}:
+    put:
+      tags: [Health]
+      operationId: healthFastUpdate
+      summary: Edit a fast (optimistic concurrency)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: fast, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                start_at: { type: string, format: date-time }
+                end_at: { type: [string, "null"], format: date-time }
+                target_hours: { type: integer }
+                note: { type: [string, "null"] }
+                version: { type: integer }
+      responses:
+        "200": { description: Updated fast., content: { application/json: { schema: { type: object, properties: { fast: { $ref: "#/components/schemas/HealthFast" } } } } } }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
+        "409":
+          description: Conflict (version or another active fast).
+          content: { application/json: { schema: { type: object, properties: { error: { type: string }, fast: { $ref: "#/components/schemas/HealthFast" }, version: { type: integer } } } } }
+    delete:
+      tags: [Health]
+      operationId: healthFastDestroy
+      summary: Delete a fast
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: fast, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
+  /health/fasts/{fast}/stop:
+    post:
+      tags: [Health]
+      operationId: healthFastStop
+      summary: Stop the running fast (set end_at=now)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: fast, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Stopped fast., content: { application/json: { schema: { type: object, properties: { fast: { $ref: "#/components/schemas/HealthFast" } } } } } }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
   /notes:
     get:
       tags: [Notes]

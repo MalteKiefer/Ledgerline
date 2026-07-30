@@ -12,6 +12,24 @@ import { loadUplot } from '../shared/uplot-loader';
 import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
 import { formatBytes } from '../shared/file-categories';
 import { activeFast, fastProgress, formatDuration, formatDurationHMS, templateLabel } from '../shared/health-fasting';
+import { healthUnits } from '../shared/prefs';
+
+// Map plaintext-relational health rows (snake_case) to the shape the widgets +
+// pure helpers expect. v/v2 arrive as decrypted STRINGS → coerce to Number;
+// fasts map start_at→start, end_at→end, target_hours→targetHours.
+const dashEntry = (e) => ({
+    id: e.id,
+    metric: e.metric,
+    ts: e.ts,
+    v: e.v == null || e.v === '' ? 0 : Number(e.v),
+    v2: e.v2 == null || e.v2 === '' ? null : Number(e.v2),
+});
+const dashFast = (f) => ({
+    id: f.id,
+    start: f.start_at ?? null,
+    end: f.end_at ?? null,
+    targetHours: Number(f.target_hours) || 0,
+});
 
 export default (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | ready
@@ -76,10 +94,9 @@ export default (config = {}, labels = {}) => ({
         while (! vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
         if (! vault.unlocked) { this.state = 'locked'; return; }
 
-        if (! window.LLModuleStore.health.loaded) await window.LLModuleStore.health.load();
         // Invoices still on a sharded ZK store (spec §3b).
         if (! window.LLInvoicesStore.loaded) await window.LLInvoicesStore.load();
-        // Notes/todos/bookmarks/contacts are plaintext-relational (pivot Etappe 1/2) — plain REST reads.
+        // Notes/todos/bookmarks/health/files are plaintext-relational (pivot) — plain REST reads.
         await this._loadRelational();
 
         this.state = 'ready';
@@ -96,17 +113,19 @@ export default (config = {}, labels = {}) => ({
         this._thumbPending = {};
     },
 
-    // Plaintext-relational widgets (pivot Etappe 1/2): notes/todos/bookmarks/files via REST.
+    // Plaintext-relational widgets (pivot): notes/todos/bookmarks/health/files via REST.
     _relNotes: [],
     _relTodos: [],
     _relBookmarksCount: 0,
     _relFiles: [],
+    _relHealth: null, // { healthEntries, healthFasts }
     async _loadRelational() {
-        const [nt, td, bm, fe] = await Promise.all([
+        const [nt, td, bm, fe, hd] = await Promise.all([
             getJson('/notes/list').catch(() => ({ notes: [] })),
             getJson('/todos/list').catch(() => ({ todos: [] })),
             getJson('/bookmarks/list').catch(() => ({ bookmarks: [] })),
             getJson('/files/entries').catch(() => ({ files: [], usage: null })),
+            getJson('/health/data').catch(() => ({ entries: [], fasts: [] })),
         ]);
         this._relNotes = (nt.notes ?? []).map((n) => ({ id: n.id, title: n.title, updated: n.updated_at }));
         this._relTodos = (td.todos ?? []).map((t) => ({
@@ -116,11 +135,23 @@ export default (config = {}, labels = {}) => ({
         this._relBookmarksCount = (bm.bookmarks ?? []).length;
         this._relFiles = fe.files ?? [];
         if (fe.usage) this.usage.files = fe.usage;
+        this._relHealth = { healthEntries: (hd.entries ?? []).map(dashEntry), healthFasts: (hd.fasts ?? []).map(dashFast) };
         this._mut++;
     },
 
-    // Per-module data getters (store v3 split — each module owns its sealed store).
-    get _health() { return window.LLModuleStore.health?.data ?? null; },
+    // Re-pull just the health snapshot (after a quick-add) so the chips + sparkline
+    // + fasting banner recompute.
+    async _refreshHealth() {
+        try {
+            const hd = await getJson('/health/data');
+            this._relHealth = { healthEntries: (hd.entries ?? []).map(dashEntry), healthFasts: (hd.fasts ?? []).map(dashFast) };
+            this._mut++;
+        } catch (_e) { /* keep in-memory state */ }
+    },
+
+    // Per-module data getters. Health is plaintext-relational (pivot); invoices +
+    // gallery are still sealed ZK stores.
+    get _health() { return this._relHealth; },
     get _invoices() { return window.LLInvoicesStore?.data ?? null; },
     get _g() { return this.galleryReady ? (window.LLGalleryStore?.data ?? null) : null; },
 
@@ -158,8 +189,6 @@ export default (config = {}, labels = {}) => ({
     },
 
     // --- Health widget ---
-    get healthProfile() { return this._health?.healthProfile ?? null; },
-
     get healthLatest() {
         void this._mut;
         const entries = this._health?.healthEntries ?? [];
@@ -178,8 +207,9 @@ export default (config = {}, labels = {}) => ({
     },
 
     // Convert a single canonical value to display units (mirrors health.js _displaySingle).
+    // Units come from the global preference (shared/prefs.js), not per-record.
     _displaySingle(key, v) {
-        const u = this.healthProfile?.units ?? {};
+        const u = healthUnits();
         if (key === 'weight' && u.weight === 'lb') return kgToLb(v);
         if (key === 'temp' && u.temp === 'f') return cToF(v);
         if (key === 'glucose' && u.glucose === 'mmoll') return mgdlToMmoll(v);
@@ -188,7 +218,7 @@ export default (config = {}, labels = {}) => ({
 
     // Convert a display-unit value back to canonical storage units (mirrors health.js saveEditor).
     _toCanonical(key, v) {
-        const u = this.healthProfile?.units ?? {};
+        const u = healthUnits();
         if (key === 'weight' && u.weight === 'lb') return lbToKg(v);
         if (key === 'temp' && u.temp === 'f') return fToC(v);
         if (key === 'glucose' && u.glucose === 'mmoll') return mmollToMgdl(v);
@@ -197,7 +227,7 @@ export default (config = {}, labels = {}) => ({
 
     // Unit label for a metric (display unit).
     _unitLabel(key) {
-        const u = this.healthProfile?.units ?? {};
+        const u = healthUnits();
         if (key === 'weight') return u.weight === 'lb' ? 'lb' : 'kg';
         if (key === 'temp') return u.temp === 'f' ? '°F' : '°C';
         if (key === 'glucose') return u.glucose === 'mmoll' ? 'mmol/L' : 'mg/dL';
@@ -213,24 +243,18 @@ export default (config = {}, labels = {}) => ({
         return map[tintName] || '#6b7280';
     },
 
-    saveQuickAdd() {
+    async saveQuickAdd() {
         const m = this.quickAdd.metric;
         const v = parseFloat(this.quickAdd.v);
         if (! Number.isFinite(v)) return;
         const canon = this._toCanonical(m, v);
         const v2 = m === 'bp' ? (parseFloat(this.quickAdd.v2) || null) : null;
-        (this._health.healthEntries ||= []).push({
-            id: window.LLModuleStore.health.newId(),
-            ts: new Date().toISOString(),
-            metric: m,
-            v: canon,
-            v2,
-            note: '',
-        });
-        window.LLModuleStore.health.touch();
-        this._mut++;
         this.quickAdd.v = '';
         this.quickAdd.v2 = '';
+        try {
+            await postForm('/health/entries', { metric: m, ts: new Date().toISOString(), v: canon, v2, note: '' });
+            await this._refreshHealth();
+        } catch (_e) { /* best-effort */ }
     },
 
     // --- Weight sparkline ---
