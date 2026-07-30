@@ -2685,19 +2685,27 @@
                     {{ __('invoices.import_include') }}
                   </label>
                   <div class="space-y-3">
-                    <div>
+                    <div class="relative" x-data="{ open: false }" @click.outside="open = false">
                       <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_recipient') }}</label>
-                      <input type="text" list="import-partner-names" x-model="importCurrent.recipient.name" placeholder="{{ __('invoices.customer_name') }}"
+                      <input type="text" x-model="importCurrent.recipient.name" @focus="open = true" @input="open = true" @keydown.escape="open = false" autocomplete="off" placeholder="{{ __('invoices.customer_name') }}"
                         :class="importCurrent._warnings.includes('recipient') && ! importCurrent.recipient.name ? 'ring-1 ring-amber-400' : ''"
                         class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
-                      <datalist id="import-partner-names"><template x-for="n in partnerNames" :key="n"><option :value="n"></option></template></datalist>
+                      <div x-show="open && filteredPartnerNames(importCurrent.recipient.name).length" x-cloak class="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-lg">
+                        <template x-for="n in filteredPartnerNames(importCurrent.recipient.name)" :key="n">
+                          <button type="button" @click="importCurrent.recipient.name = n; open = false" class="block w-full px-3 py-2 text-left text-sm text-gray-800 dark:text-gray-200 hover:bg-accent/5" x-text="n"></button>
+                        </template>
+                      </div>
                     </div>
                     {{-- Contact person (Ansprechpartner) — pick one of the partner's, or type a new one --}}
-                    <div>
+                    <div class="relative" x-data="{ open: false }" @click.outside="open = false">
                       <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_contact_person') }}</label>
-                      <input type="text" list="import-partner-contacts" x-model="importCurrent.contactPerson" placeholder="—"
+                      <input type="text" x-model="importCurrent.contactPerson" @focus="open = true" @input="open = true" @keydown.escape="open = false" autocomplete="off" placeholder="—"
                         class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
-                      <datalist id="import-partner-contacts"><template x-for="c in partnerContactsFor(importCurrent.recipient.name)" :key="c.id"><option :value="c.name"></option></template></datalist>
+                      <div x-show="open && filteredPartnerContacts(importCurrent.recipient.name, importCurrent.contactPerson).length" x-cloak class="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-lg">
+                        <template x-for="c in filteredPartnerContacts(importCurrent.recipient.name, importCurrent.contactPerson)" :key="c.id">
+                          <button type="button" @click="importCurrent.contactPerson = c.name; open = false" class="block w-full px-3 py-2 text-left text-sm text-gray-800 dark:text-gray-200 hover:bg-accent/5" x-text="c.name"></button>
+                        </template>
+                      </div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                       <div>

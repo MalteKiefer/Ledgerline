@@ -1703,6 +1703,9 @@ export default (config = {}, labels = {}) => ({
     importNext() { this.importGoto((this.importReview?.idx || 0) + 1); },
     // Partner name suggestions for the recipient field (datalist).
     get partnerNames() { return (this.partners || []).map((p) => p.name).filter(Boolean).sort((a, b) => a.localeCompare(b)); },
+    // Styled-autocomplete option lists for the import review (replaces the native <datalist>).
+    filteredPartnerNames(q) { const s = String(q || '').toLowerCase(); return this.partnerNames.filter((n) => ! s || n.toLowerCase().includes(s)).slice(0, 50); },
+    filteredPartnerContacts(name, q) { const s = String(q || '').toLowerCase(); return this.partnerContactsFor(name).filter((c) => ! s || String(c.name || '').toLowerCase().includes(s)).slice(0, 50); },
     importVatOptions: [19, 16, 7, 0],
     // VAT-rate choices for the review select — the defaults plus the parsed rate if unusual.
     importVatChoices() { const s = new Set([19, 16, 7, 0]); const v = this.importCurrent?.vatRate; if (v != null) s.add(Number(v)); return [...s].sort((a, b) => b - a); },
