@@ -88,15 +88,42 @@ export default (config = {}, labels = {}) => ({
     },
 
     async init() {
-        const h = (location.hash || '').replace('#', '');
-        if (['dashboard', 'receipts', 'invoices', 'payments', 'projects', 'partners', 'stats', 'settings'].includes(h)) this.section = h;
+        // Deep link: #section or #section/<id> (open a specific invoice/receipt/account/
+        // project/partner directly). Parse the section synchronously; the entity is opened
+        // after the sealed store has loaded (below).
+        const [sec, deepId] = (location.hash || '').replace('#', '').split('/');
+        if (['dashboard', 'receipts', 'invoices', 'payments', 'projects', 'partners', 'stats', 'settings'].includes(sec)) this.section = sec;
+        // Keep the URL in sync with any detail that is open, across every tab, so a reload or
+        // shared link lands on the exact target.
+        for (const prop of ['section', 'current', 'receiptDoc', 'payAccount', 'payView', 'openProjectId', 'openPartnerId', 'partnersView']) {
+            this.$watch(prop, () => this._writeHash());
+        }
         await this._initZk();
-        if (this.state === 'ready') { this._ensureReceiptIds(); this.reconcileBlobs(); }
+        if (this.state === 'ready') { this._ensureReceiptIds(); this.reconcileBlobs(); this._restoreDeepLink(sec, deepId); }
+    },
+
+    // Build #section/<id> from the current open detail and replace it into the URL.
+    _writeHash() {
+        let h = this.section;
+        if (this.section === 'invoices' && this.current) h += '/' + this.current.id;
+        else if (this.section === 'receipts' && this.receiptDoc?.r) h += '/' + this.receiptDoc.r.id;
+        else if (this.section === 'payments' && this.payView === 'account' && this.payAccount) h += '/' + this.payAccount.id;
+        else if (this.section === 'projects' && this.openProjectId) h += '/' + this.openProjectId;
+        else if (this.section === 'partners' && this.partnersView === 'detail' && this.openPartnerId) h += '/' + this.openPartnerId;
+        try { history.replaceState(null, '', '#' + h); } catch (e) { /* ignore */ }
+    },
+    // Open the entity named by a deep link once the data is loaded.
+    _restoreDeepLink(sec, id) {
+        if (! id) return;
+        if (sec === 'invoices') { const inv = (this.invoices || []).find((i) => i.id === id); if (inv) this.open(inv); }
+        else if (sec === 'receipts') { const d = this.allReceipts.find((x) => x.r && x.r.id === id); if (d) this.openReceiptDoc(d); }
+        else if (sec === 'payments') { const pm = (this.paymentMethods || []).find((p) => p.id === id); if (pm) this.openAccount(pm); }
+        else if (sec === 'projects') { if ((this.projects || []).some((p) => p.id === id)) this.openProjectDetail(id); }
+        else if (sec === 'partners') { const p = (this.partners || []).find((x) => x.id === id); if (p) this.openPartner(p); }
     },
 
     setSection(s) {
-        this.section = s;
-        try { history.replaceState(null, '', '#' + s); } catch (e) { /* ignore */ }
+        this.section = s; // the $watch above writes the hash
         try { window.scrollTo({ top: 0 }); } catch (e) { /* ignore */ }
     },
 
@@ -1236,7 +1263,10 @@ export default (config = {}, labels = {}) => ({
     },
 
     // ---- Imported invoice: inline PDF + the six key fields ----
-    invoicePdf: null, // { url } — decrypted original PDF object URL
+    // Rendered client-side with pdf.js to full-width page images (no browser PDF viewer /
+    // zoom chrome) so the document fills the whole field and scrolls cleanly. ZK: the PDF is
+    // decrypted in-page, rendered locally, never leaves the browser.
+    invoicePdf: null, // { pages: [dataURL,...] }
     async _loadInvoicePdf(inv) {
         this._revokeInvoicePdf();
         const ref = inv?.pdf;
@@ -1244,12 +1274,23 @@ export default (config = {}, labels = {}) => ({
         try {
             const buf = await fetchBlobBuffer(`${config.rawBase}/${ref.blob}`);
             const bytes = window.Vault.decryptFile(buf, ref.key);
-            const url = URL.createObjectURL(new Blob([bytes], { type: ref.mime || 'application/pdf' }));
-            if (this.current === inv) this.invoicePdf = { url };
-            else URL.revokeObjectURL(url);
+            const pdfjs = await import('pdfjs-dist');
+            pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+            const doc = await pdfjs.getDocument({ data: bytes.slice(0), isEvalSupported: false }).promise;
+            const pages = [];
+            for (let i = 1; i <= doc.numPages; i++) {
+                if (this.current !== inv) return; // navigated away mid-render
+                const page = await doc.getPage(i);
+                const vp = page.getViewport({ scale: 2 }); // crisp; displayed at container width
+                const canvas = document.createElement('canvas');
+                canvas.width = vp.width; canvas.height = vp.height;
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+                pages.push(canvas.toDataURL('image/jpeg', 0.9));
+            }
+            if (this.current === inv) this.invoicePdf = { pages };
         } catch (e) { this.invoicePdf = null; }
     },
-    _revokeInvoicePdf() { if (this.invoicePdf?.url) { try { URL.revokeObjectURL(this.invoicePdf.url); } catch (e) { /* */ } } this.invoicePdf = null; },
+    _revokeInvoicePdf() { this.invoicePdf = null; },
     // Jump from an invoice's recipient to that business partner's page.
     goToPartner(inv) {
         const id = inv?.customer?.partnerId; if (! id) return;

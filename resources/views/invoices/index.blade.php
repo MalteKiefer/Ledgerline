@@ -1853,10 +1853,17 @@
             </div>
           </div>
 
-          {{-- Inline original PDF (the authoritative record) — fit page width. --}}
-          <div class="mt-4 h-[75vh] flex-1 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-gray-100 dark:bg-[#111]">
-            <template x-if="invoicePdf?.url"><iframe :src="invoicePdf.url + '#view=FitH&toolbar=1'" class="h-full w-full" title="{{ __('invoices.open_original') }}"></iframe></template>
-            <template x-if="! invoicePdf?.url"><div class="flex h-full items-center justify-center text-sm text-gray-400 dark:text-gray-500"><x-icon name="arrow-path" class="mr-2 h-4 w-4 animate-spin" />{{ __('invoices.import_title') }}</div></template>
+          {{-- Inline original PDF (authoritative record) — rendered client-side to full-width
+               page images; fills the field and scrolls, no browser PDF chrome. --}}
+          <div class="mt-4 min-h-[60vh] flex-1 overflow-auto rounded-2xl border border-black/[0.06] dark:border-white/10 bg-gray-100 dark:bg-[#111] p-3 sm:p-4">
+            <template x-if="invoicePdf?.pages?.length">
+              <div class="mx-auto flex max-w-4xl flex-col gap-4">
+                <template x-for="(pg, i) in invoicePdf.pages" :key="i">
+                  <img :src="pg" class="w-full rounded-lg bg-white shadow" alt="">
+                </template>
+              </div>
+            </template>
+            <template x-if="! invoicePdf?.pages?.length"><div class="flex h-full min-h-[50vh] items-center justify-center text-sm text-gray-400 dark:text-gray-500"><x-icon name="arrow-path" class="mr-2 h-4 w-4 animate-spin" />{{ __('invoices.import_title') }}</div></template>
           </div>
         </div>
         </template>
