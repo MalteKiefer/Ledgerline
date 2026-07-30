@@ -247,6 +247,7 @@ export default (config = {}, labels = {}) => ({
     stmt: null,             // import wizard state
     openAccount(pm) {
         this.payAccount = pm; this.payView = 'account'; this.txPage = 1;
+        this.resetTxFilters();
         this.txYear = new Date().getFullYear(); // default to the current year
         this.rematchAll(true); // auto-link payments to invoices on open (silent)
         try { window.scrollTo({ top: 0 }); } catch (e) { /* */ }
@@ -267,10 +268,34 @@ export default (config = {}, labels = {}) => ({
         return [...set].sort((a, b) => b - a);
     },
     // Transactions of the open account for the selected year, newest first.
-    get accountTx() {
+    // Account transactions before the row filters (account + year + global scope) — the base
+    // both the filtered list and the filter-option dropdowns derive from.
+    _accountBase() {
         const id = this.payAccount?.id;
         const yr = this.txYear ? String(this.txYear) : null;
-        return (this.transactions || []).filter((t) => t.account === id && this._scopeMatch(this._txPrivate(t)) && (! yr || String(t.date || '').startsWith(yr))).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        return (this.transactions || []).filter((t) => t.account === id && this._scopeMatch(this._txPrivate(t)) && (! yr || String(t.date || '').startsWith(yr)));
+    },
+    // Row filters for the account view.
+    txSearch: '', txDir: '', txType: '', txCat: '', txCounterparty: '',
+    get txFiltersActive() { return !! (this.txSearch.trim() || this.txDir || this.txType || this.txCat || this.txCounterparty); },
+    resetTxFilters() { this.txSearch = ''; this.txDir = ''; this.txType = ''; this.txCat = ''; this.txCounterparty = ''; this.txPage = 1; },
+    get accountCounterparties() { return [...new Set(this._accountBase().map((t) => t.counterparty).filter(Boolean))].sort((a, b) => a.localeCompare(b)); },
+    get accountTxTypeOptions() { const seen = new Set(this._accountBase().map((t) => classifyTxType(t))); return ['card', 'debit', 'credit', 'standingorder', 'fee', 'transfer', 'other'].filter((t) => seen.has(t)); },
+    get accountTx() {
+        const q = this.txSearch.trim().toLowerCase();
+        const raw = this.txSearch.trim();
+        return this._accountBase().filter((t) => {
+            if (this.txDir === 'in' && ! (Number(t.amount) > 0)) return false;
+            if (this.txDir === 'out' && ! (Number(t.amount) < 0)) return false;
+            if (this.txType && classifyTxType(t) !== this.txType) return false;
+            if (this.txCat && (this.txCat === 'none' ? !! t.vatCat : t.vatCat !== this.txCat)) return false;
+            if (this.txCounterparty && (t.counterparty || '') !== this.txCounterparty) return false;
+            if (q) {
+                const hit = [t.counterparty, t.purpose, t.iban, t.bookingText, t.eref].some((v) => String(v || '').toLowerCase().includes(q)) || amountMatches(t.amount, raw);
+                if (! hit) return false;
+            }
+            return true;
+        }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     },
     // Payment methods for the Zahlungsmittel tab, filtered by the global scope.
     get scopedPayments() { return this.sortedPayments.filter((pm) => this._scopeMatch(this._pmPrivate(pm))); },
@@ -1211,6 +1236,7 @@ export default (config = {}, labels = {}) => ({
     // Localised payment-type label + tint for a transaction.
     txType(tx) { return classifyTxType(tx); },
     txTypeLabel(tx) { return labels['txtype_' + classifyTxType(tx)] || ''; },
+    txTypeName(type) { return labels['txtype_' + type] || type; },
 
     // ---- VAT category per booking (for the USt calculation) ----
     vatCats: VAT_CATS,
@@ -1303,7 +1329,9 @@ export default (config = {}, labels = {}) => ({
     },
     // A private draw/deposit needs a self-receipt (Steuerberater/Finanzamt); flag until one exists.
     hasEigenbeleg(tx) { return !! (tx && (tx.receipts || []).some((r) => r && r.kind === 'eigenbeleg')); },
-    needsEigenbeleg(tx) { return !! tx && tx.vatCat === 'private' && ! this.hasEigenbeleg(tx); },
+    // Prompt for a self-receipt only when the private booking has NO document at all yet — a
+    // real uploaded/imported receipt (or a linked invoice) already documents it.
+    needsEigenbeleg(tx) { return !! tx && tx.vatCat === 'private' && ! (tx.receipts && tx.receipts.length); },
     // Count of private bookings on the open account still missing a self-receipt.
     get accountPrivateNoEg() { return this.accountTx.filter((tx) => this.needsEigenbeleg(tx)).length; },
     get egNet() { const g = parseFloat(this.eigenbeleg?.gross) || 0; const r = parseFloat(this.eigenbeleg?.vatRate) || 0; return this._round2(g / (1 + r / 100)); },
