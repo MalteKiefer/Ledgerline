@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\FileBlob;
 use App\Models\GalleryBlob;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Auth\Pairing;
 use App\Support\DeviceAudit;
+use App\Support\FilesUsage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -72,7 +72,7 @@ class AuthController extends Controller
         return response()->json([
             'user' => $this->userPayload($user),
             'usage' => [
-                'files' => (int) FileBlob::query()->where('user_id', $user->id)->sum('size'),
+                'files' => FilesUsage::forUser((int) $user->id),
                 'gallery' => (int) GalleryBlob::query()->where('user_id', $user->id)->sum('size'),
                 // Combined storage limit in bytes (files + gallery), or null when
                 // unlimited. Null if EITHER dimension is unlimited (0) — the pool has

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\AppSettings;
-use App\Models\FileBlob;
+use App\Models\FileEntry;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -110,7 +110,9 @@ class AdminUserManagementTest extends TestCase
     {
         $this->actingAs(User::factory()->admin()->create());
         $target = User::factory()->create(['name' => 'Heavy User']);
-        FileBlob::create(['blob' => (string) Str::uuid(), 'user_id' => $target->id, 'size' => 3 * 1024 * 1024, 'created_at' => now()]);
+        (new FileEntry)->forceFill([
+            'user_id' => $target->id, 'name' => 'big.bin', 'size' => 3 * 1024 * 1024, 'storage_path' => 'files/'.Str::uuid(),
+        ])->save();
 
         $this->get(route('settings.users'))->assertOk()->assertSee('Heavy User');
     }

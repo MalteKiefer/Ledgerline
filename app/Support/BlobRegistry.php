@@ -4,20 +4,23 @@ declare(strict_types=1);
 
 namespace App\Support;
 
-use App\Models\FileBlob;
+use App\Models\FileEntry;
 use App\Models\GalleryBlob;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Registry mapping module keys to their blob model and disk prefix.
- * Single source of truth for gallery→GalleryBlob and files→FileBlob.
+ * Registry mapping module keys to their ownership-ledger model and disk prefix.
+ * gallery→GalleryBlob is the zero-knowledge blob ledger; files→FileEntry is the
+ * plaintext-relational Files core (bytes at files/<uuid>). The `files` entry
+ * only serves the legacy public file-share consumption path in
+ * PublicShareController (creation removed in the pivot, viewer rebuilt later).
  */
 final class BlobRegistry
 {
     /** @var array<string, array{model: class-string<Model>, prefix: string}> */
     private const MAP = [
         'gallery' => ['model' => GalleryBlob::class, 'prefix' => 'gallery'],
-        'files' => ['model' => FileBlob::class,    'prefix' => 'files'],
+        'files' => ['model' => FileEntry::class,   'prefix' => 'files'],
     ];
 
     /** @return class-string<Model> */

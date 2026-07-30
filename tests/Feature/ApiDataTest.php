@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\FileBlob;
+use App\Models\FileEntry;
 use App\Models\GalleryStore;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -27,7 +27,7 @@ class ApiDataTest extends TestCase
         $this->getJson('/api/v1/vault')->assertStatus(401);
         $this->getJson('/api/v1/store/health')->assertStatus(401);
         $this->getJson('/api/v1/gallery/store')->assertStatus(401);
-        $this->getJson('/api/v1/files/raw/'.Str::uuid())->assertStatus(401);
+        $this->getJson('/api/v1/files/entries')->assertStatus(401);
     }
 
     public function test_store_roundtrip_returns_only_the_opaque_envelope(): void
@@ -49,15 +49,15 @@ class ApiDataTest extends TestCase
         $alice = User::factory()->create();
         $bob = User::factory()->create();
 
-        $blob = (string) Str::uuid();
-        Storage::disk(config('files.disk'))->put('files/'.$blob, 'ciphertext-bytes');
-        FileBlob::create(['blob' => $blob, 'user_id' => $alice->id, 'size' => 16, 'created_at' => now()]);
+        $id = (int) $this->post('/api/v1/files/entries', [
+            'file' => UploadedFile::fake()->createWithContent('a.txt', 'ciphertext-bytes'),
+        ], $this->bearer($alice))->assertCreated()->json('file.id');
 
-        $this->get('/api/v1/files/raw/'.$blob, $this->bearer($alice))->assertOk();
+        $this->get('/api/v1/files/entries/'.$id.'/raw', $this->bearer($alice))->assertOk();
         // Reset the memoised guard so the next request re-resolves as Bob (a single-
         // process test artifact — each real request is fresh).
         $this->app['auth']->forgetGuards();
-        $this->get('/api/v1/files/raw/'.$blob, $this->bearer($bob))->assertNotFound();
+        $this->get('/api/v1/files/entries/'.$id.'/raw', $this->bearer($bob))->assertNotFound();
     }
 
     public function test_upload_over_the_api_is_owned_by_the_token_user(): void
@@ -65,11 +65,11 @@ class ApiDataTest extends TestCase
         Storage::fake(config('files.disk'));
         $user = User::factory()->create();
 
-        $blob = $this->post('/api/v1/files/upload', [
+        $id = (int) $this->post('/api/v1/files/entries', [
             'file' => UploadedFile::fake()->create('doc.pdf', 12, 'application/pdf'),
-        ], $this->bearer($user))->assertCreated()->json('id');
+        ], $this->bearer($user))->assertCreated()->json('file.id');
 
-        $this->assertSame($user->id, (int) FileBlob::find($blob)->user_id);
+        $this->assertSame($user->id, (int) FileEntry::withoutGlobalScopes()->findOrFail($id)->user_id);
     }
 
     public function test_gallery_store_is_opaque_and_private(): void
@@ -88,9 +88,12 @@ class ApiDataTest extends TestCase
     public function test_usage_endpoints_report_the_token_users_bytes(): void
     {
         $user = User::factory()->create();
-        FileBlob::create(['blob' => (string) Str::uuid(), 'user_id' => $user->id, 'size' => 500, 'created_at' => now()]);
+        (new FileEntry)->forceFill([
+            'user_id' => $user->id, 'name' => 'f.bin', 'size' => 500, 'storage_path' => 'files/'.Str::uuid(),
+        ])->save();
 
-        $this->getJson('/api/v1/files/usage', $this->bearer($user))
-            ->assertOk()->assertJson(['used' => 500]);
+        // Usage now rides on the relational entries listing (files + versions).
+        $this->getJson('/api/v1/files/entries', $this->bearer($user))
+            ->assertOk()->assertJson(['usage' => ['used' => 500]]);
     }
 }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Backup;
 
-use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Services\Backup\Sources\FilesSource;
 use App\Services\Backup\Sources\GallerySource;
@@ -13,7 +12,7 @@ use Tests\TestCase;
 
 /**
  * A backup mirror uploads the disk prefix a source names; blobs are written to
- * the prefix the blob controller's module() returns. If those drift, the mirror
+ * that same prefix by the module that owns them. If those drift, the mirror
  * scans an empty prefix and silently backs up nothing — this locks them together.
  */
 class BackupSourcePrefixTest extends TestCase
@@ -25,21 +24,19 @@ class BackupSourcePrefixTest extends TestCase
         return (string) $m->invoke($o);
     }
 
-    public function test_source_prefixes_match_the_blob_controller_modules(): void
+    public function test_source_prefixes_match_where_blobs_are_written(): void
     {
-        $this->assertSame(
-            $this->protectedString(new FileController, 'module'),
-            $this->protectedString(new FilesSource, 'prefix'),
-            'FilesSource must mirror the same disk prefix FileController writes to.',
-        );
+        // Files (plaintext-relational core): FilesController stores bytes at
+        // files/<uuid>, so the backup source must mirror the `files` prefix.
+        $this->assertSame('files', $this->protectedString(new FilesSource, 'prefix'));
 
+        // Gallery (still zero-knowledge): GalleryBlobController writes under the
+        // prefix its module() returns; the source must mirror the same one.
         $this->assertSame(
             $this->protectedString(new GalleryBlobController, 'module'),
             $this->protectedString(new GallerySource, 'prefix'),
             'GallerySource must mirror the same disk prefix GalleryBlobController writes to.',
         );
-
-        // Guard the concrete values too, so a rename of both in lockstep still trips.
         $this->assertSame('gallery', $this->protectedString(new GalleryBlobController, 'module'));
     }
 }

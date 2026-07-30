@@ -19,10 +19,7 @@ use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\BookmarksController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\ExploreBlobController;
-use App\Http\Controllers\FileController;
 use App\Http\Controllers\FilesController;
-use App\Http\Controllers\FileShareController;
-use App\Http\Controllers\FilesStoreController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryShareController;
@@ -98,20 +95,6 @@ Route::prefix('v1')->group(function (): void {
         // Per-module sealed stores (Store v3 split): one opaque row per module.
         Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->middleware('module')->name('api.module-store.show');
         Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware(['throttle:240,1', 'module'])->name('api.module-store.save');
-
-        // Files: opaque content blobs + quota ledger.
-        Route::get('/files/usage', [FileController::class, 'usage'])->name('api.files.usage');
-        // Store v3 (§4.2/A10b): sealed files index (own sharded store, out of the monolith).
-        Route::get('/files/store', [FilesStoreController::class, 'show'])->middleware('module:files')->name('api.files.store.show');
-        Route::put('/files/store', [FilesStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:files'])->name('api.files.store.save');
-        Route::post('/files/blobs/reconcile', [FileController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.files.reconcile');
-        Route::post('/files/upload', [FileController::class, 'upload'])->middleware('throttle:1200,1')->name('api.files.upload');
-        Route::post('/files/upload/init', [FileController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.files.upload.init');
-        Route::post('/files/upload/part', [FileController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.files.upload.part');
-        Route::post('/files/upload/complete', [FileController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.files.upload.complete');
-        Route::post('/files/upload/abort', [FileController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.files.upload.abort');
-        Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:600,1')->name('api.files.raw');
-        Route::post('/files/raw-batch', [FileController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.files.raw-batch');
 
         // Plaintext-relational Files core (pivot) — same controller as web, JSON per-record.
         Route::middleware('module:files')->group(function (): void {
@@ -219,13 +202,6 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/passwords/raw/{blob}', [PasswordBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.passwords.raw');
         Route::post('/passwords/raw-batch', [PasswordBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.passwords.raw-batch');
         Route::post('/passwords/blobs/reconcile', [PasswordBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.passwords.reconcile');
-        Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.files.blob.destroy');
-
-        // File / folder public share links: create, update metadata, revoke.
-        // Mirrors web routes files.shares.{store|update|destroy} on the mobile API.
-        Route::post('/files/shares', [FileShareController::class, 'store'])->middleware('throttle:60,1')->name('api.files.shares.store');
-        Route::put('/files/shares/{token}', [FileShareController::class, 'update'])->middleware('throttle:60,1')->name('api.files.shares.update');
-        Route::delete('/files/shares/{token}', [FileShareController::class, 'destroy'])->middleware('throttle:60,1')->name('api.files.shares.destroy');
 
         // Gallery: sealed index + opaque photo blobs + the stateless transform.
         Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->middleware('module:gallery')->name('api.gallery.store.show');
