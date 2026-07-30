@@ -3,27 +3,8 @@
         saveFailed: @js(__('notes.save_failed')),
         deleteConfirm: @js(__('notes.delete_confirm')),
         emptyTrashConfirm: @js(__('notes.empty_trash_confirm')),
-     })">
+     }, @js($notes))">
 
-    {{-- Zero-knowledge gate: notes decrypt with the vault key. --}}
-    @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
-
-    <template x-if="state === 'locked'">
-        <div class="mx-auto mt-16 max-w-md ll-card !p-8 text-center">
-            <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
-            <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
-               x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-            <x-button variant="primary" icon="lock-open" class="mt-5" @click="$dispatch('vault-panel')">
-                <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-            </x-button>
-        </div>
-    </template>
-
-    <template x-if="state === 'error'">
-        <p class="mx-auto mt-16 max-w-md rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-6 text-center text-sm text-red-700 dark:text-red-300">{{ __('notes.save_failed') }}</p>
-    </template>
-
-    <template x-if="state === 'ready'">
       <div class="flex h-[calc(100dvh-11rem)] gap-4 md:h-[calc(100vh-10rem)]">
         {{-- List pane (full screen on mobile until a note is opened) --}}
         <aside class="w-full flex-col ll-card !p-0 overflow-hidden md:w-80 md:shrink-0"
@@ -33,8 +14,8 @@
                 <x-button variant="primary" icon="plus" class="shrink-0 !gap-0" title="{{ __('notes.new_note') }}" @click="newNote()"></x-button>
             </div>
             <div class="flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 px-3 py-2 text-xs">
-                <button type="button" @click="view = 'active'" :class="view === 'active' ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'">{{ __('notes.active') }}</button>
-                <button type="button" @click="view = 'trash'" :class="view === 'trash' ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'">{{ __('notes.trash') }} (<span x-text="trashCount"></span>)</button>
+                <button type="button" @click="setView('active')" :class="view === 'active' ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'">{{ __('notes.active') }}</button>
+                <button type="button" @click="setView('trash')" :class="view === 'trash' ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'">{{ __('notes.trash') }} (<span x-text="trashCount"></span>)</button>
                 <button type="button" x-show="view === 'trash' && trashCount" @click="emptyTrash()" class="ml-auto text-red-600 hover:text-red-700">{{ __('notes.empty_trash') }}</button>
             </div>
             <div x-show="allTags.length" class="flex flex-wrap gap-1 border-b border-gray-100 dark:border-gray-800 p-2">
@@ -64,7 +45,7 @@
             <template x-if="current">
               <div class="flex h-full flex-col gap-3 lg:flex-row">
                 <div class="flex min-w-0 flex-1 flex-col ll-card">
-                    <button type="button" @click="current = null; currentId = null"
+                    <button type="button" @click="closeCurrent()"
                         class="mb-2 inline-flex min-h-11 w-max items-center gap-1 text-sm text-gray-600 dark:text-gray-400 md:hidden">
                         <x-icon name="chevron-left" class="h-4 w-4" />{{ __('common.back') }}
                     </button>
@@ -75,25 +56,21 @@
                             <x-action-menu-item icon="bookmark-solid" x-show="current?.pinned" @click="togglePin(current)">{{ __('notes.unpin') }}</x-action-menu-item>
                             <x-action-menu-item icon="arrow-uturn-left" x-show="view === 'trash'" @click="restore(current)">{{ __('notes.restore') }}</x-action-menu-item>
                             <x-action-menu-item icon="trash" danger x-show="view === 'trash'" @click="remove(current)">{{ __('notes.delete_forever') }}</x-action-menu-item>
-                            <x-action-menu-item icon="trash" danger x-show="view !== 'trash'" @click="trash(current)">{{ __('notes.to_trash') }}</x-action-menu-item>
+                            <x-action-menu-item icon="trash" danger x-show="view !== 'trash'" @click="trashNote(current)">{{ __('notes.to_trash') }}</x-action-menu-item>
                         </x-action-menu>
                     </div>
                     <x-tag-field commit="save()" :placeholder="__('notes.tags_placeholder')" />
-                    <textarea x-model="current.content" @input="save(); schedulePreview()" placeholder="{{ __('notes.content') }}" class="mt-3 min-h-0 w-full flex-1 rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
+                    <textarea x-model="current.body" @input="save(); schedulePreview()" placeholder="{{ __('notes.content') }}" class="mt-3 min-h-0 w-full flex-1 rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
                 </div>
 
                 {{-- Rendered preview (client-side markdown, DOMPurify-sanitised) --}}
                 <div class="min-w-0 flex-1 overflow-y-auto ll-card lg:max-w-md">
                     <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('notes.preview') }}</p>
-                    {{-- github-markdown-css styles .markdown-body (imported in app.js);
-                         Tailwind preflight strips raw <h1>/<strong>/lists otherwise.
-                         markdown-body brings its own GitHub light styling + bg. --}}
                     <div class="markdown-body rounded-md p-3 text-sm" x-html="previewHtml"></div>
                 </div>
               </div>
             </template>
         </section>
       </div>
-    </template>
   </div>
 </x-layouts.app>

@@ -873,22 +873,11 @@ export default (config = {}, labels = {}) => ({
         this.migrateOpen = true;
     },
 
-    // Create a note from a title + content. Notes live in the same opaque store,
-    // so this just adds a row to the shared notes manifest (no plaintext ever
-    // leaves the vault) and schedules a sealed save.
+    // Create a note from a title + body. Notes are plaintext-relational now
+    // (pivot Phase 1) — POST a row to the notes API.
     async migrateAddNote(note) {
         try {
-            // Notes graduated to the sharded LLNotesStore (spec §3b).
-            const ns = window.LLNotesStore;
-            while (! this.$store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
-            if (! this.$store.vault.unlocked) return false;
-            if (! ns.loaded) await ns.load();
-            ns.data.notes.unshift({
-                id: ns.newId(),
-                title: note.title || '', content: note.content || '',
-                tags: [], pinned: false, trashed: false, updated: new Date().toISOString(),
-            });
-            ns.touch();
+            await postForm('/notes', { title: note.title || '', body: note.content || '', tags: [] });
             return true;
         } catch (e) {
             return false;

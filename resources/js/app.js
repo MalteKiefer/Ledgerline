@@ -83,14 +83,6 @@ window.LLFilesStore = makeShardedStore({
     ],
 });
 
-// Notes graduated to a sharded store (merge-safety spec §3b) — id-bucket shards so
-// concurrent edits to different notes never conflict. No collection blobs.
-window.LLNotesStore = makeShardedStore({
-    prefix: '/notes',
-    recordKey: 'notes',
-    collections: [],
-});
-
 // Passwords graduated to a sharded store too (spec §3b) — the extension mirrors it.
 // secrets = shard records; secretFolders = one collection blob (like files/folders).
 window.LLPasswordsStore = makeShardedStore({

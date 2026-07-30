@@ -154,9 +154,7 @@ export function makeStore(module, blankFn) {
 
 /** The per-module blank shapes (each module's own sealed collection). */
 export const MODULE_BLANKS = {
-    notes: () => ({ v: 3, notes: [] }),
-    todos: () => ({ v: 3, todos: [], todoLists: [] }),
-    bookmarks: () => ({ v: 3, bookmarks: [], bookmarkFolders: [] }),
+    // notes/todos/bookmarks migrated to plaintext-relational tables (pivot Phase 1).
     contacts: () => ({ v: 3, contacts: [] }),
     invoices: () => ({ v: 3, invoices: [], invoiceSeq: 0 }),
     passwords: () => ({ v: 3, secrets: [], secretFolders: [], pwVaultMigrated: false }),
