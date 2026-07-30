@@ -5,8 +5,6 @@ declare(strict_types=1);
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\BookmarksController;
-use App\Http\Controllers\ContactBlobController;
-use App\Http\Controllers\ContactNotifyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\ExploreBlobController;
@@ -38,7 +36,6 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicShareController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
-use App\Http\Controllers\Settings\ContactsController as SettingsContactsController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
 use App\Http\Controllers\Settings\GroupsController as SettingsGroupsController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
@@ -132,8 +129,6 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/settings', SettingsController::class)->name('settings');
 
     // Per-user Files preferences (version-history depth).
-    Route::get('/settings/contacts', [SettingsContactsController::class, 'edit'])->name('settings.contacts.edit');
-    Route::put('/settings/contacts', [SettingsContactsController::class, 'update'])->name('settings.contacts.update');
     Route::get('/settings/files', [SettingsFilesController::class, 'edit'])->name('settings.files.edit');
     Route::put('/settings/files', [SettingsFilesController::class, 'update'])->name('settings.files.update');
 
@@ -237,7 +232,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:3000,1')->name('files.raw');
     Route::post('/files/raw-batch', [FileController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('files.raw-batch');
 
-    // Plaintext-relational Notes (pivot Phase 1). Server-rendered page + JSON CRUD + trash.
+    // Plaintext-relational Notes (pivot Etappe 1). Server-rendered page + JSON CRUD + trash.
     Route::middleware('module:notes')->group(function (): void {
         Route::get('/notes/list', [NotesController::class, 'index'])->name('notes.list');
         Route::post('/notes', [NotesController::class, 'store'])->middleware('throttle:600,1')->name('notes.rel.store');
@@ -314,7 +309,7 @@ Route::middleware('auth')->group(function (): void {
     // remains here (all data flows through GET/PUT /store).
     Route::get('/notes', [NotesController::class, 'page'])->middleware('module:notes')->name('notes.index');
     // To-dos: zero-knowledge, living entirely in the opaque store manifest.
-    // Plaintext-relational Todos (pivot Phase 1).
+    // Plaintext-relational Todos (pivot Etappe 1).
     Route::middleware('module:todos')->group(function (): void {
         Route::get('/todos', [TodosController::class, 'page'])->name('todos.index');
         Route::get('/todos/list', [TodosController::class, 'index'])->name('todos.list');
@@ -332,7 +327,7 @@ Route::middleware('auth')->group(function (): void {
         Route::delete('/todo-lists/{list}', [TodosController::class, 'destroyList'])->whereNumber('list')->middleware('throttle:600,1')->name('todos.lists.destroy');
     });
     // Bookmarks: zero-knowledge, driven client-side from the opaque manifest.
-    // Plaintext-relational Bookmarks (pivot Phase 1).
+    // Plaintext-relational Bookmarks (pivot Etappe 1).
     Route::middleware('module:bookmarks')->group(function (): void {
         Route::get('/bookmarks', [BookmarksController::class, 'page'])->name('bookmarks.index');
         Route::get('/bookmarks/list', [BookmarksController::class, 'index'])->name('bookmarks.list');
@@ -372,17 +367,6 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/settings/company', [SettingsCompanyController::class, 'edit'])->name('settings.company.edit');
     Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
     Route::get('/settings/company/logo', [SettingsCompanyController::class, 'logo'])->name('settings.company.logo');
-    // Contacts: zero-knowledge, records in the opaque /store manifest; only the
-    // optional avatar images are opaque content blobs (contacts/{blob}).
-    Route::view('/contacts', 'contacts.index')->middleware('module:contacts')->name('contacts.index');
-    Route::get('/contacts/usage', [ContactBlobController::class, 'usage'])->name('contacts.usage');
-    Route::post('/contacts/blobs/reconcile', [ContactBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('contacts.blobs.reconcile');
-    Route::post('/contacts/upload', [ContactBlobController::class, 'upload'])->middleware('throttle:600,1')->name('contacts.upload');
-    Route::get('/contacts/raw/{blob}', [ContactBlobController::class, 'raw'])->middleware('throttle:600,1')->name('contacts.raw');
-    Route::delete('/contacts/blob/{blob}', [ContactBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('contacts.blob.destroy');
-    // Client-relayed birthday/anniversary alert (ZK: the client detects the due
-    // date; the server only forwards to the user's chosen channels).
-    Route::post('/contacts/notify', [ContactNotifyController::class, 'send'])->middleware('throttle:60,1')->name('contacts.notify');
     // Explore (map/GPS): the records (tracks, couplings, tolerances) live in the
     // opaque `explore` module store (GET/PUT /store/explore); only the optional
     // raw track files are opaque content blobs (explore/{blob}). Same

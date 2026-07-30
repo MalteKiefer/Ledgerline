@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Backup;
 
-use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Services\Backup\Sources\FilesSource;
@@ -42,6 +41,5 @@ class BackupSourcePrefixTest extends TestCase
 
         // Guard the concrete values too, so a rename of both in lockstep still trips.
         $this->assertSame('gallery', $this->protectedString(new GalleryBlobController, 'module'));
-        $this->assertSame('contacts', $this->protectedString(new ContactBlobController, 'module'));
     }
 }

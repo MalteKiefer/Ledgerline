@@ -18,7 +18,7 @@ class StoreTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $this->actingAs($user)->getJson(route('module-store.show', 'contacts'))
+        $this->actingAs($user)->getJson(route('module-store.show', 'health'))
             ->assertOk()
             ->assertExactJson(['ciphertext' => null, 'version' => 0]);
     }
@@ -35,23 +35,23 @@ class StoreTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $this->actingAs($user)->putJson(route('module-store.save', 'contacts'), ['ciphertext' => 'x', 'version' => 0])
+        $this->actingAs($user)->putJson(route('module-store.save', 'health'), ['ciphertext' => 'x', 'version' => 0])
             ->assertOk()
             ->assertJson(['version' => 1]);
 
-        $this->assertSame('x', ModuleStore::query()->where('user_id', $user->id)->where('module', 'contacts')->value('ciphertext'));
-        $this->assertSame(1, (int) ModuleStore::query()->where('user_id', $user->id)->where('module', 'contacts')->value('version'));
+        $this->assertSame('x', ModuleStore::query()->where('user_id', $user->id)->where('module', 'health')->value('ciphertext'));
+        $this->assertSame(1, (int) ModuleStore::query()->where('user_id', $user->id)->where('module', 'health')->value('version'));
     }
 
     public function test_a_version_conflict_leaves_a_store_conflict_trail(): void
     {
         $user = User::factory()->create();
-        $this->actingAs($user)->putJson(route('module-store.save', 'contacts'), ['ciphertext' => 'a', 'version' => 0])->assertOk();
+        $this->actingAs($user)->putJson(route('module-store.save', 'health'), ['ciphertext' => 'a', 'version' => 0])->assertOk();
         // Stale write at version 0 (server is at 1) → 409.
-        $this->actingAs($user)->putJson(route('module-store.save', 'contacts'), ['ciphertext' => 'b', 'version' => 0])->assertStatus(409);
+        $this->actingAs($user)->putJson(route('module-store.save', 'health'), ['ciphertext' => 'b', 'version' => 0])->assertStatus(409);
 
         $this->assertDatabaseHas('blob_audit_log', [
-            'module' => 'store:contacts',
+            'module' => 'store:health',
             'action' => 'store_conflict',
             'result' => 'conflict',
         ]);
@@ -78,7 +78,7 @@ class StoreTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $this->actingAs($user)->putJson(route('module-store.save', 'contacts'), ['ciphertext' => 'n', 'version' => 0])
+        $this->actingAs($user)->putJson(route('module-store.save', 'health'), ['ciphertext' => 'n', 'version' => 0])
             ->assertOk();
 
         // A different module is still empty — the notes write did not touch it.
@@ -92,16 +92,16 @@ class StoreTest extends TestCase
         $user = User::factory()->create();
 
         // First write moves the server to version 1.
-        $this->actingAs($user)->putJson(route('module-store.save', 'contacts'), ['ciphertext' => 'x', 'version' => 0])
+        $this->actingAs($user)->putJson(route('module-store.save', 'health'), ['ciphertext' => 'x', 'version' => 0])
             ->assertOk();
 
         // A second write still based on version 0 is a lost-update conflict.
-        $this->actingAs($user)->putJson(route('module-store.save', 'contacts'), ['ciphertext' => 'y', 'version' => 0])
+        $this->actingAs($user)->putJson(route('module-store.save', 'health'), ['ciphertext' => 'y', 'version' => 0])
             ->assertStatus(409)
             ->assertJson(['error' => 'version_conflict']);
 
         // The stale write did not overwrite the stored manifest.
-        $this->assertSame('x', ModuleStore::query()->where('user_id', $user->id)->where('module', 'contacts')->value('ciphertext'));
+        $this->assertSame('x', ModuleStore::query()->where('user_id', $user->id)->where('module', 'health')->value('ciphertext'));
     }
 
     public function test_a_matching_etag_returns_304_and_a_write_invalidates_it(): void
@@ -109,25 +109,25 @@ class StoreTest extends TestCase
         $user = User::factory()->create();
 
         // Even an empty module store emits a version-derived ETag.
-        $first = $this->actingAs($user)->getJson(route('module-store.show', 'contacts'))->assertOk();
+        $first = $this->actingAs($user)->getJson(route('module-store.show', 'health'))->assertOk();
         $etag = $first->headers->get('ETag');
         $this->assertNotNull($etag);
 
         // Re-GET with the matching If-None-Match → bodyless 304.
-        $revalidated = $this->actingAs($user)->getJson(route('module-store.show', 'contacts'), ['If-None-Match' => $etag]);
+        $revalidated = $this->actingAs($user)->getJson(route('module-store.show', 'health'), ['If-None-Match' => $etag]);
         $revalidated->assertStatus(304);
         $this->assertSame('', $revalidated->getContent());
 
         // A write bumps the version, so the ETag must change.
-        $this->actingAs($user)->putJson(route('module-store.save', 'contacts'), ['ciphertext' => 'x', 'version' => 0])
+        $this->actingAs($user)->putJson(route('module-store.save', 'health'), ['ciphertext' => 'x', 'version' => 0])
             ->assertOk();
 
-        $afterWrite = $this->actingAs($user)->getJson(route('module-store.show', 'contacts'))->assertOk();
+        $afterWrite = $this->actingAs($user)->getJson(route('module-store.show', 'health'))->assertOk();
         $newEtag = $afterWrite->headers->get('ETag');
         $this->assertNotSame($etag, $newEtag);
 
         // The stale ETag no longer matches → fresh 200 with the current ciphertext.
-        $this->actingAs($user)->getJson(route('module-store.show', 'contacts'), ['If-None-Match' => $etag])
+        $this->actingAs($user)->getJson(route('module-store.show', 'health'), ['If-None-Match' => $etag])
             ->assertOk()
             ->assertJson(['ciphertext' => 'x', 'version' => 1]);
     }

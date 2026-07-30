@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\ContactBlob;
 use App\Models\FileBlob;
 use App\Models\GalleryStore;
 use App\Models\User;
@@ -26,7 +25,7 @@ class ApiDataTest extends TestCase
     public function test_data_endpoints_require_a_bearer(): void
     {
         $this->getJson('/api/v1/vault')->assertStatus(401);
-        $this->getJson('/api/v1/store/contacts')->assertStatus(401);
+        $this->getJson('/api/v1/store/health')->assertStatus(401);
         $this->getJson('/api/v1/gallery/store')->assertStatus(401);
         $this->getJson('/api/v1/files/raw/'.Str::uuid())->assertStatus(401);
     }
@@ -36,8 +35,8 @@ class ApiDataTest extends TestCase
         $user = User::factory()->create();
         $h = $this->bearer($user);
 
-        $this->putJson('/api/v1/store/contacts', ['ciphertext' => 'sealed-blob', 'version' => 0], $h)->assertOk();
-        $res = $this->getJson('/api/v1/store/contacts', $h)->assertOk();
+        $this->putJson('/api/v1/store/health', ['ciphertext' => 'sealed-blob', 'version' => 0], $h)->assertOk();
+        $res = $this->getJson('/api/v1/store/health', $h)->assertOk();
 
         // Zero-knowledge: the only fields are the ciphertext + version — no plaintext.
         $this->assertSame(['ciphertext', 'version'], array_keys($res->json()));
@@ -59,23 +58,6 @@ class ApiDataTest extends TestCase
         // process test artifact — each real request is fresh).
         $this->app['auth']->forgetGuards();
         $this->get('/api/v1/files/raw/'.$blob, $this->bearer($bob))->assertNotFound();
-    }
-
-    public function test_contact_avatar_blobs_are_reachable_and_owner_scoped_over_the_api(): void
-    {
-        Storage::fake(config('files.disk'));
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
-
-        $this->getJson('/api/v1/contacts/usage')->assertStatus(401); // needs a bearer
-
-        $blob = (string) Str::uuid();
-        Storage::disk(config('files.disk'))->put('contacts/'.$blob, 'avatar-ciphertext');
-        ContactBlob::create(['blob' => $blob, 'user_id' => $alice->id, 'size' => 8, 'created_at' => now()]);
-
-        $this->get('/api/v1/contacts/raw/'.$blob, $this->bearer($alice))->assertOk();
-        $this->app['auth']->forgetGuards();
-        $this->get('/api/v1/contacts/raw/'.$blob, $this->bearer($bob))->assertNotFound();
     }
 
     public function test_upload_over_the_api_is_owned_by_the_token_user(): void

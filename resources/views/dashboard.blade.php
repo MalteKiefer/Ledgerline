@@ -139,17 +139,6 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('contacts.index') }}"
-                                class="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5 transition-colors">
-                                <span class="ll-chip h-8 w-8 rounded-lg" style="--chip:#3b9fd6">
-                                    <x-icon name="contacts" class="h-4 w-4" />
-                                </span>
-                                <span class="flex-1 text-sm text-gray-800 dark:text-gray-200">{{ __('dashboard.contacts_module') }}</span>
-                                <span class="text-sm font-semibold text-gray-500 dark:text-gray-400" x-text="counts.contacts"></span>
-                                <x-icon name="chevron-right" class="h-4 w-4 text-gray-400" />
-                            </a>
-                        </li>
-                        <li>
                             <a href="{{ route('bookmarks.index') }}"
                                 class="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5 transition-colors">
                                 <span class="ll-chip h-8 w-8 rounded-lg" style="--chip:#d9a441">
@@ -219,64 +208,6 @@
                                             x-text="n.title || @js(__('notes.untitled'))"></span>
                                         <span class="text-xs text-gray-400 dark:text-gray-500"
                                             x-text="n.updated ? n.updated.slice(0,10) : ''"></span>
-                                    </a>
-                                </li>
-                            </template>
-                        </ul>
-                    </template>
-                </div>
-
-                {{-- ── Birthdays & anniversaries widget ── --}}
-                <div class="ll-card flex flex-col">
-                    <div class="flex items-center justify-between mb-3">
-                        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                            {{ __('dashboard.birthdays_title') }}
-                        </h2>
-                        <a href="{{ route('contacts.index') }}"
-                            class="text-xs font-medium text-accent hover:underline">
-                            {{ __('dashboard.open') }}
-                        </a>
-                    </div>
-
-                    <template x-if="birthdays.length === 0">
-                        <div class="flex flex-1 flex-col items-center justify-center py-6 text-center">
-                            <span class="flex h-10 w-10 items-center justify-center rounded-xl text-white mb-2"
-                                style="background:#d16ba5">
-                                <x-icon name="cake" class="h-5 w-5" />
-                            </span>
-                            <p class="text-sm text-gray-400 dark:text-gray-500">
-                                {{ __('dashboard.birthdays_empty') }}
-                            </p>
-                        </div>
-                    </template>
-
-                    <template x-if="birthdays.length > 0">
-                        <ul class="divide-y divide-black/[0.06] dark:divide-white/10 -mx-4 px-0">
-                            <template x-for="b in birthdays" :key="b.id + b.kind">
-                                <li>
-                                    <a href="{{ route('contacts.index') }}"
-                                        class="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5 transition-colors">
-                                        <span class="ll-chip h-8 w-8 shrink-0 rounded-lg"
-                                            :style="'--chip:' + (b.kind === 'anniversary' ? '#9e70fa' : '#d16ba5')">
-                                            <template x-if="b.kind === 'birthday'">
-                                                <x-icon name="cake" class="h-4 w-4" />
-                                            </template>
-                                            <template x-if="b.kind === 'anniversary'">
-                                                <x-icon name="heart" class="h-4 w-4" />
-                                            </template>
-                                        </span>
-                                        <span class="flex-1 min-w-0 text-sm text-gray-800 dark:text-gray-200 truncate"
-                                            x-text="b.name"></span>
-                                        <span class="shrink-0 text-right">
-                                            <span class="block text-xs text-gray-500 dark:text-gray-400"
-                                                x-text="b.in === 0
-                                                    ? @js(__('dashboard.today'))
-                                                    : @js(__('dashboard.in_days')).replace(':n', b.in)"></span>
-                                            <template x-if="b.turning !== null && b.kind === 'birthday'">
-                                                <span class="block text-xs text-accent"
-                                                    x-text="@js(__('dashboard.turning')).replace(':n', b.turning)"></span>
-                                            </template>
-                                        </span>
                                     </a>
                                 </li>
                             </template>

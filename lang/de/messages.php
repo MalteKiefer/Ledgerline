@@ -8,7 +8,6 @@ return [
         'notes' => 'Notizen',
         'bookmarks' => 'Lesezeichen',
         'passwords' => 'Passwörter',
-        'contacts' => 'Kontakte',
         'invoices' => 'Rechnungen',
         'finance' => 'Finanzen',
         'files' => 'Dateien',
