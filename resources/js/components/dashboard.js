@@ -94,9 +94,7 @@ export default (config = {}, labels = {}) => ({
         while (! vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
         if (! vault.unlocked) { this.state = 'locked'; return; }
 
-        // Invoices still on a sharded ZK store (spec §3b).
-        if (! window.LLInvoicesStore.loaded) await window.LLInvoicesStore.load();
-        // Notes/todos/bookmarks/health/files are plaintext-relational (pivot) — plain REST reads.
+        // Notes/todos/bookmarks/health/files/finance are plaintext-relational (pivot) — plain REST reads.
         await this._loadRelational();
 
         this.state = 'ready';
@@ -119,14 +117,17 @@ export default (config = {}, labels = {}) => ({
     _relBookmarksCount: 0,
     _relFiles: [],
     _relHealth: null, // { healthEntries, healthFasts }
+    _relInvoices: [],
     async _loadRelational() {
-        const [nt, td, bm, fe, hd] = await Promise.all([
+        const [nt, td, bm, fe, hd, fin] = await Promise.all([
             getJson('/notes/list').catch(() => ({ notes: [] })),
             getJson('/todos/list').catch(() => ({ todos: [] })),
             getJson('/bookmarks/list').catch(() => ({ bookmarks: [] })),
             getJson('/files/entries').catch(() => ({ files: [], usage: null })),
             getJson('/health/data').catch(() => ({ entries: [], fasts: [] })),
+            getJson('/finance/data').catch(() => ({ invoices: [] })),
         ]);
+        this._relInvoices = fin.invoices ?? [];
         this._relNotes = (nt.notes ?? []).map((n) => ({ id: n.id, title: n.title, updated: n.updated_at }));
         this._relTodos = (td.todos ?? []).map((t) => ({
             id: t.id, title: t.title, done: !! t.done, marked: !! t.marked,
@@ -149,10 +150,10 @@ export default (config = {}, labels = {}) => ({
         } catch (_e) { /* keep in-memory state */ }
     },
 
-    // Per-module data getters. Health is plaintext-relational (pivot); invoices +
-    // gallery are still sealed ZK stores.
+    // Per-module data getters. Notes/todos/bookmarks/health/files/finance are
+    // plaintext-relational (pivot); gallery is still a sealed ZK store.
     get _health() { return this._relHealth; },
-    get _invoices() { return window.LLInvoicesStore?.data ?? null; },
+    get _invoices() { return { invoices: this._relInvoices }; },
     get _g() { return this.galleryReady ? (window.LLGalleryStore?.data ?? null) : null; },
 
     // --- Todos widget ---

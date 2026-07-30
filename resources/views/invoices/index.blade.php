@@ -5,7 +5,6 @@
 @endphp
 <x-layouts.app :title="__('messages.nav.finance')">
   <div x-data="invoices({
-        token: '{{ csrf_token() }}',
         company: @js([
             'name' => $s->company_name,
             'address' => $s->company_address,
@@ -30,9 +29,6 @@
             'currency' => 'EUR',
         ]),
         labelsByLang: @js(['de' => __('invoices', [], 'de'), 'en' => __('invoices', [], 'en')]),
-        uploadUrl: '{{ url('/invoices/upload') }}',
-        rawBase: '{{ url('/invoices/raw') }}',
-        reconcileUrl: '{{ url('/invoices/blobs/reconcile') }}',
         iconUrl: '{{ url('/passwords/icon') }}',
         fxRates: @js($fxRates),
      }, {
@@ -104,31 +100,19 @@
         txtype_fee: @js(__('invoices.txtype_fee')),
         txtype_transfer: @js(__('invoices.txtype_transfer')),
         txtype_other: @js(__('invoices.txtype_other')),
-     })">
-
-    {{-- Zero-knowledge gate: invoices decrypt with the vault key. --}}
-    @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
+     }, @js([
+        'invoices' => $invoices,
+        'partners' => $partners,
+        'paymentMethods' => $paymentMethods,
+        'projects' => $projects,
+        'financeCategories' => $financeCategories,
+        'transactions' => $transactions,
+     ]))">
 
     {{-- Shared Paperless transfer modal (send a receipt to Paperless) --}}
     @include('_paperless_modal')
 
-    <template x-if="state === 'locked'">
-      <div class="mx-auto mt-16 max-w-md ll-card !p-8 text-center">
-        <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
-        <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
-           x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-        <x-button variant="primary" class="mt-5" icon="lock-open" @click="$dispatch('vault-panel')">
-          <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-        </x-button>
-      </div>
-    </template>
-
-    <template x-if="state === 'error'">
-      <p class="mx-auto mt-16 max-w-md rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-6 text-center text-sm text-red-700 dark:text-red-300">{{ __('invoices.save_failed') }}</p>
-    </template>
-
-    <template x-if="state === 'ready'">
-      <div>
+    <div>
         {{-- ===================== FINANCE HUB (tabs) ===================== --}}
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('messages.nav.finance') }}</h1>
@@ -443,7 +427,7 @@
                             <x-icon name="arrow-path" class="h-4 w-4" />{{ __('invoices.receipt_reanalyze') }}
                           </button>
                         </template>
-                        <template x-if="receiptDoc.r.blob && $store.paperless.configured">
+                        <template x-if="receiptDoc.r.blob_path && $store.paperless.configured">
                           <button type="button" @click="menu = false; sendReceiptToPaperless(receiptDoc)" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5 hover:text-accent">
                             <x-icon name="share" class="h-4 w-4" />{{ __('paperless.send_to_paperless') }}
                           </button>
@@ -465,8 +449,8 @@
                         <template x-if="docPreview && docPreviewIsImage"><div class="flex h-full w-full items-center justify-center p-2"><img :src="docPreview.url" class="max-h-full max-w-full object-contain" alt="preview"></div></template>
                         <template x-if="! docPreview">
                           <div class="flex h-full w-full items-center justify-center p-4 text-center text-xs text-gray-400">
-                            <span x-show="receiptDoc?.r?.blob">{{ __('invoices.assign_preview_loading') }}</span>
-                            <span x-show="! receiptDoc?.r?.blob" x-cloak>{{ __('invoices.receipt_no_preview') }}</span>
+                            <span x-show="receiptDoc?.r?.blob_path">{{ __('invoices.assign_preview_loading') }}</span>
+                            <span x-show="! receiptDoc?.r?.blob_path" x-cloak>{{ __('invoices.receipt_no_preview') }}</span>
                           </div>
                         </template>
                       </div>
@@ -506,7 +490,7 @@
                     {{-- Tax rate (VAT) — stored on the linked booking; the receipt's detected rate is shown as a hint --}}
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_vat_label') }}</label>
-                      <select x-model="receiptDoc.tx.vatCat" @change="_save()" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <select x-model="receiptDoc.tx.vatCat" @change="_persistTx(receiptDoc.tx)" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
                         <option value="">{{ __('invoices.vatcat_none') }}</option>
                         <option value="19">{{ __('invoices.vatcat_19') }}</option>
                         <option value="16">{{ __('invoices.vatcat_16') }}</option>
@@ -2834,7 +2818,6 @@
           </template>
         </div>
       </div>
-    </template>
   </div>
 
   {{-- Editorial template styles (scoped; only render in print). --}}

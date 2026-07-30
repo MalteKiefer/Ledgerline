@@ -1,0 +1,95 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use App\Models\Concerns\OwnsUserData;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
+
+/**
+ * An invoice (plaintext-relational pivot). Rows are private per user via
+ * OwnsUserData. number/seq/year + money columns (gross/net/vat) stay plaintext
+ * so the server can drive GoBD numbering + VAT-return/revenue stats. The
+ * customer snapshot, line items, note and GoBD correction history carry an
+ * `encrypted` cast. number/seq/year/version/version_seq/pdf_path are
+ * server-managed (assigned on finalisation / never mass-assigned).
+ *
+ * @property int $id
+ * @property int $user_id
+ * @property string|null $number
+ * @property int|null $seq
+ * @property int|null $year
+ * @property string $status
+ * @property Carbon|null $issue_date
+ * @property Carbon|null $due_date
+ * @property string $currency
+ * @property string|null $vat_rate
+ * @property string|null $gross
+ * @property string|null $net
+ * @property string|null $vat
+ * @property bool $imported
+ * @property Carbon|null $paid_at
+ * @property string|null $payment_account
+ * @property int|null $partner_id
+ * @property string|null $pdf_path
+ * @property array<string, mixed>|null $customer
+ * @property array<int, array<string, mixed>>|null $lines
+ * @property string|null $note
+ * @property array<int, array<string, mixed>>|null $versions
+ * @property int $version_seq
+ * @property int $version
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
+ */
+class Invoice extends Model
+{
+    use OwnsUserData;
+    use SoftDeletes;
+
+    protected $fillable = [
+        'number', 'seq', 'year', 'status', 'issue_date', 'due_date', 'currency',
+        'vat_rate', 'gross', 'net', 'vat', 'imported', 'paid_at', 'payment_account',
+        'partner_id', 'customer', 'lines', 'note', 'versions',
+    ];
+
+    protected $casts = [
+        'issue_date' => 'date',
+        'due_date' => 'date',
+        'paid_at' => 'datetime',
+        'vat_rate' => 'decimal:2',
+        'gross' => 'decimal:2',
+        'net' => 'decimal:2',
+        'vat' => 'decimal:2',
+        'imported' => 'boolean',
+        'customer' => 'encrypted:array',
+        'lines' => 'encrypted:array',
+        'note' => 'encrypted',
+        'versions' => 'encrypted:array',
+        'seq' => 'integer',
+        'year' => 'integer',
+        'version' => 'integer',
+        'version_seq' => 'integer',
+    ];
+
+    /**
+     * @return BelongsTo<FinancePartner, $this>
+     */
+    public function partner(): BelongsTo
+    {
+        return $this->belongsTo(FinancePartner::class, 'partner_id');
+    }
+
+    /**
+     * @return HasMany<BankTransaction, $this>
+     */
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(BankTransaction::class);
+    }
+}
