@@ -408,6 +408,8 @@ return [
     'match_linked' => 'Rechnung :n verknüpft.',
     'match_done' => ':n Rechnungen zugeordnet.',
     'match_gone' => 'Rechnung nicht gefunden.',
+    'linked_badge' => 'Verknüpft',
+    'linked_hint' => 'Einer Zahlung auf einem Bankkonto zugeordnet.',
     'match_pick_title' => 'Rechnung verknüpfen',
     'match_none' => 'Keine gestellten Rechnungen zum Verknüpfen.',
     'match_invoice' => 'Rechnung :n',
