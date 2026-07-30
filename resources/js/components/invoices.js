@@ -330,7 +330,7 @@ export default (config = {}, labels = {}) => ({
     // receipt — both stored in tx.receipts, so the check is uniform.
     get documentableTx() { return this.accountTx.filter((t) => t.vatCat !== 'private'); },
     // Income bookings not yet linked to an invoice (drives the "match invoices" action).
-    get unlinkedIncomeCount() { return this.accountTx.filter((t) => t.amount > 0 && ! t.invoiceId).length; },
+    get unlinkedIncomeCount() { const id = this.payAccount?.id; return (this.transactions || []).filter((t) => t.account === id && t.amount > 0 && ! t.invoiceId).length; },
     // How many documentable bookings (non-private) still have no document attached.
     get missingReceipts() { return this.documentableTx.filter((t) => ! (t.receipts && t.receipts.length)).length; },
     receiptCount(tx) { return (tx.receipts || []).length; },
@@ -965,7 +965,7 @@ export default (config = {}, labels = {}) => ({
     // stored PDF open the invoice view instead.
     receiptPreview: null, // { url, mime, name }
     async openReceipt(r) {
-        if (r.kind === 'invoice' && ! r.blob) return this.openInvoiceById(r.invoiceId);
+        if (r.kind === 'invoice' && ! r.blob) return this.openInvoiceById(r.invoiceId, r.invoiceNumber);
         try {
             const buf = await fetchBlobBuffer(`${config.rawBase}/${r.blob}`);
             const plain = window.Vault.decryptFile(buf, r.key);
@@ -1092,9 +1092,12 @@ export default (config = {}, labels = {}) => ({
     // Auto-match every not-yet-linked income booking of the open account to an invoice.
     // silent = run without a toast (used when opening an account).
     rematchAll(silent = false) {
+        // Match across ALL of the account's income bookings (every year), not just the
+        // year-filtered view — otherwise a payment dated outside the selected year is skipped.
+        const id = this.payAccount?.id;
         let n = 0;
-        for (const tx of this.accountTx) {
-            if (tx.amount > 0 && ! tx.invoiceId) {
+        for (const tx of (this.transactions || [])) {
+            if (tx.account === id && tx.amount > 0 && ! tx.invoiceId) {
                 const inv = matchInvoice(tx, this.invoices);
                 if (inv && this._linkInvoice(tx, inv, false)) n++;
             }
@@ -1110,9 +1113,22 @@ export default (config = {}, labels = {}) => ({
         return (this.invoices || []).filter((i) => ! i.trashed && i.number && i.status !== 'draft')
             .sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || ''));
     },
-    // Open the invoice a locked receipt / booking refers to.
-    openInvoiceById(id) {
-        const inv = (this.invoices || []).find((i) => i.id === id);
+    // Open the invoice a locked receipt / booking refers to. Falls back to the invoice NUMBER
+    // when the id is stale (e.g. the invoice was deleted + re-imported with a fresh id after
+    // the link was made) and self-heals the stale link to the current id.
+    openInvoiceById(id, number = null) {
+        let inv = (this.invoices || []).find((i) => i.id === id);
+        if (! inv && number) {
+            const n = String(number).trim();
+            inv = (this.invoices || []).find((i) => ! i.trashed && String(i.number || '').trim() === n);
+            if (inv) { // heal any bookings still pointing at the old id
+                for (const tx of (this.transactions || [])) {
+                    if (tx.invoiceNumber === inv.number && tx.invoiceId !== inv.id) tx.invoiceId = inv.id;
+                    for (const r of (tx.receipts || [])) if (r.kind === 'invoice' && r.invoiceNumber === inv.number) r.invoiceId = inv.id;
+                }
+                this._save();
+            }
+        }
         if (! inv) { window.llToast?.(labels.match_gone || 'Invoice not found.'); return; }
         this.receiptTx = null;
         this.setSection('invoices');
