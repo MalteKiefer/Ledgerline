@@ -12,7 +12,6 @@ return [
 
     'counts_title' => 'Your vault',
     'notes_module' => 'Notes',
-    'passwords_module' => 'Passwords',
     'contacts_module' => 'Contacts',
     'bookmarks_module' => 'Bookmarks',
     'invoices_module' => 'Invoices',
@@ -46,9 +45,4 @@ return [
     'storage_of' => ':used of :quota',
     'storage_used' => ':used used',
 
-    'pw_health_title' => 'Password health',
-    'pw_health_reused' => ':n reused passwords',
-    'pw_health_expiring_cards' => ':n expiring cards',
-    'pw_health_no_twofa' => ':n logins without 2FA',
-    'pw_health_all_good' => 'All good',
 ];

@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -181,17 +180,6 @@ class User extends Authenticatable implements MustVerifyEmail
     public function effectiveGroups(): array
     {
         return $this->isAdmin() ? ['admin'] : [];
-    }
-
-    /**
-     * All shared-vault memberships this user holds (as a member, not necessarily
-     * as owner). Includes pending, active and revoked rows so callers can filter
-     * by status themselves.
-     */
-    /** @return HasMany<SharedVaultMember, $this> */
-    public function vaultMemberships(): HasMany
-    {
-        return $this->hasMany(SharedVaultMember::class);
     }
 
     /**

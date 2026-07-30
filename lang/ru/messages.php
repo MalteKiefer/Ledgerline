@@ -7,7 +7,6 @@ return [
         'dashboard' => 'Dashboard',
         'notes' => 'Заметки',
         'bookmarks' => 'Закладки',
-        'passwords' => 'Пароли',
         'invoices' => 'Счета',
         'finance' => 'Финансы',
         'files' => 'Файлы',

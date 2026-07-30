@@ -77,8 +77,7 @@ export default (config = {}, labels = {}) => ({
         if (! vault.unlocked) { this.state = 'locked'; return; }
 
         if (! window.LLModuleStore.health.loaded) await window.LLModuleStore.health.load();
-        // Passwords + invoices still on sharded ZK stores (spec §3b).
-        if (! window.LLPasswordsStore.loaded) await window.LLPasswordsStore.load();
+        // Invoices still on a sharded ZK store (spec §3b).
         if (! window.LLInvoicesStore.loaded) await window.LLInvoicesStore.load();
         // Notes/todos/bookmarks/contacts are plaintext-relational (pivot Etappe 1/2) — plain REST reads.
         await this._loadRelational();
@@ -121,7 +120,6 @@ export default (config = {}, labels = {}) => ({
     },
 
     // Per-module data getters (store v3 split — each module owns its sealed store).
-    get _passwords() { return window.LLPasswordsStore?.data ?? null; },
     get _health() { return window.LLModuleStore.health?.data ?? null; },
     get _invoices() { return window.LLInvoicesStore?.data ?? null; },
     get _g() { return this.galleryReady ? (window.LLGalleryStore?.data ?? null) : null; },
@@ -146,7 +144,6 @@ export default (config = {}, labels = {}) => ({
         void this._mut; // recompute after a manifest mutation (store .data is not Alpine-reactive)
         return {
             notes: this._relNotes.length,
-            passwords: (this._passwords?.secrets ?? []).length,
             bookmarks: this._relBookmarksCount,
             invoices: (this._invoices?.invoices ?? []).length,
             files: this._relFiles.filter((f) => ! f.deleted_at).length,
@@ -328,44 +325,5 @@ export default (config = {}, labels = {}) => ({
     // formatBytes is imported for use in Blade via a window-exposed helper.
     _fmtBytes(n) {
         return n == null ? '—' : formatBytes(n);
-    },
-
-    // --- Password Health widget ---
-    // Cheap subset: reused passwords, expiring cards, logins without TOTP.
-    // No HIBP, no zxcvbn.
-    get pwHealth() {
-        void this._mut;
-        const secrets = this._passwords?.secrets ?? [];
-        // Reused: count passwords appearing more than once across all items.
-        const pw = {};
-        for (const s of secrets) {
-            const val = s.fields?.password;
-            if (val) pw[val] = (pw[val] || 0) + 1;
-        }
-        const reused = Object.values(pw).filter((n) => n > 1).reduce((a, n) => a + n, 0);
-
-        // Expiring/expired cards: expiry within 45 days or already past.
-        const soon = Date.now() + 45 * 86400000;
-        let cards = 0;
-        for (const s of secrets) {
-            if (s.type !== 'card') continue;
-            const exp = this._cardExpiry(s);
-            if (exp && exp.getTime() <= soon) cards++;
-        }
-
-        // Logins without a TOTP field.
-        const no2fa = secrets.filter((s) => s.type === 'login' && ! s.fields?.totp).length;
-
-        return { reused, cards, no2fa };
-    },
-
-    // Parse card expiry from fields.expiry (format "MM/YY" or "MM/YYYY").
-    // Returns a Date for the first day after the expiry month, or null if unparseable.
-    _cardExpiry(s) {
-        const m = String(s.fields?.expiry ?? '').match(/(\d{1,2})\D+(\d{2,4})/);
-        if (! m) return null;
-        const mm = +m[1]; let yr = +m[2]; if (yr < 100) yr += 2000;
-        if (mm < 1 || mm > 12) return null;
-        return new Date(yr, mm, 1); // first day after the expiry month
     },
 });

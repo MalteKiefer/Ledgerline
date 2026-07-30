@@ -10,13 +10,12 @@
 //   icon    — x-icon name (monochrome set)
 
 return [
-    // The four most-used destinations: direct links on desktop, the four slots
-    // of the mobile navigation drawer primary section.
+    // The most-used destinations: direct links on desktop, the primary slots
+    // of the mobile navigation drawer.
     'primary' => [
         ['label' => 'messages.nav.dashboard', 'route' => 'dashboard', 'pattern' => 'dashboard', 'icon' => 'home', 'module' => 'dashboard'],
         ['label' => 'messages.nav.files', 'route' => 'files.index', 'pattern' => 'files.*', 'icon' => 'files', 'module' => 'files'],
         ['label' => 'messages.nav.gallery', 'route' => 'gallery.index', 'pattern' => 'gallery.*', 'icon' => 'photo', 'module' => 'gallery'],
-        ['label' => 'messages.nav.passwords', 'route' => 'passwords.index', 'pattern' => 'passwords.*', 'icon' => 'key', 'module' => 'passwords'],
     ],
     // The rest: a "More" dropdown on desktop, the "More" sheet on mobile.
     'more' => [

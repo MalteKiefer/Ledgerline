@@ -12,7 +12,6 @@ return [
 
     'counts_title' => 'Dein Tresor',
     'notes_module' => 'Notizen',
-    'passwords_module' => 'Passwörter',
     'contacts_module' => 'Kontakte',
     'bookmarks_module' => 'Lesezeichen',
     'invoices_module' => 'Rechnungen',
@@ -46,9 +45,4 @@ return [
     'storage_of' => ':used von :quota',
     'storage_used' => ':used belegt',
 
-    'pw_health_title' => 'Passwort-Gesundheit',
-    'pw_health_reused' => ':n wiederverwendete Passwörter',
-    'pw_health_expiring_cards' => ':n ablaufende Karten',
-    'pw_health_no_twofa' => ':n Logins ohne 2FA',
-    'pw_health_all_good' => 'Alles gut',
 ];

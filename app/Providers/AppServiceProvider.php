@@ -49,11 +49,6 @@ class AppServiceProvider extends ServiceProvider
         // pairs a handful of devices by hand.
         RateLimiter::for('auth-pair', fn (Request $request) => Limit::perMinute(30)->by($request->ip()));
 
-        // Shared-vault recipient public-key lookup. Keyed by authenticated user
-        // id to prevent bulk enumeration of registered public keys; falls back
-        // to IP for unauthenticated callers (should never happen on this route).
-        RateLimiter::for('pubkey-lookup', fn (Request $request) => Limit::perMinute(30)->by($request->user()?->id ?: $request->ip()));
-
         $this->applySettingOverrides();
         $this->applyMailSettings();
 

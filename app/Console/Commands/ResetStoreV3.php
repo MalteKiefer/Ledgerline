@@ -27,19 +27,16 @@ class ResetStoreV3 extends Command
     protected $description = 'Clean-slate wipe of all sealed stores, blob ledgers and disk blobs for the Store v3 rebuild (irreversible, accepted data loss).';
 
     /** Disk prefixes that hold client-ciphertext blobs (all module blob trees). */
-    private const BLOB_PREFIXES = ['gallery', 'files', 'shared-folders'];
+    private const BLOB_PREFIXES = ['gallery', 'files'];
 
     /** Ledger + sealed-store tables to truncate. */
     // file_blobs/files_store (Files) + contact_blobs (Contacts) were dropped by the
-    // pivot to plaintext-relational; only the still-ZK ledgers/stores remain here.
+    // pivot to plaintext-relational; the password manager + the cross-user shared-vault
+    // stack were removed entirely — only the still-ZK ledgers/stores remain here.
     private const TABLES = [
         'gallery_blobs',
-        'shared_folder_blobs',
         'gallery_store',
         'module_stores',
-        'shared_vault_stores',
-        'shared_vault_members',
-        'shared_vaults',
     ];
 
     public function handle(): int
@@ -52,8 +49,8 @@ class ResetStoreV3 extends Command
             return self::FAILURE;
         }
 
-        $this->warn('This IRREVERSIBLY deletes ALL gallery/files/shared/contact blobs,');
-        $this->warn('every sealed store row, and all shared vaults. Identity keys are reset.');
+        $this->warn('This IRREVERSIBLY deletes ALL gallery/files blobs and');
+        $this->warn('every sealed store row. Identity keys are reset.');
         if (! $force && ! $this->confirm('Proceed with the clean-slate Store v3 reset?')) {
             $this->info('Aborted.');
 

@@ -12,7 +12,6 @@ return [
 
     'counts_title' => 'Ваше хранилище',
     'notes_module' => 'Заметки',
-    'passwords_module' => 'Пароли',
     'contacts_module' => 'Контакты',
     'bookmarks_module' => 'Закладки',
     'invoices_module' => 'Счета',
@@ -46,9 +45,4 @@ return [
     'storage_of' => ':used из :quota',
     'storage_used' => ':used использовано',
 
-    'pw_health_title' => 'Безопасность паролей',
-    'pw_health_reused' => ':n повторяющихся паролей',
-    'pw_health_expiring_cards' => ':n истекающих карт',
-    'pw_health_no_twofa' => ':n входов без 2FA',
-    'pw_health_all_good' => 'Всё хорошо',
 ];

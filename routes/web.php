@@ -25,10 +25,7 @@ use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NotesController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
-use App\Http\Controllers\PasswordBlobController;
-use App\Http\Controllers\PasswordBreachController;
 use App\Http\Controllers\PasswordIconController;
-use App\Http\Controllers\PasswordsStoreController;
 use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicShareController;
@@ -43,14 +40,8 @@ use App\Http\Controllers\Settings\SecurityLogController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
 use App\Http\Controllers\Settings\UsersController as SettingsUsersController;
-use App\Http\Controllers\SharedFolderBlobController;
-use App\Http\Controllers\SharedVaultController;
-use App\Http\Controllers\SharedVaultMemberController;
-use App\Http\Controllers\SharedVaultStoreController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TodosController;
-use App\Http\Controllers\TwoFactorDirectoryController;
-use App\Http\Controllers\UserKeyController;
 use App\Http\Controllers\VaultController;
 use Illuminate\Support\Facades\Route;
 
@@ -260,14 +251,6 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/invoices/raw-batch', [InvoiceBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('invoices.raw-batch');
     Route::post('/invoices/blobs/reconcile', [InvoiceBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('invoices.blobs.reconcile');
 
-    // Passwords sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
-    Route::get('/passwords/store', [PasswordsStoreController::class, 'show'])->middleware('module:passwords')->name('passwords.store.show');
-    Route::put('/passwords/store', [PasswordsStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:passwords'])->name('passwords.store.save');
-    Route::post('/passwords/upload', [PasswordBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('passwords.upload');
-    Route::get('/passwords/raw/{blob}', [PasswordBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('passwords.raw');
-    Route::post('/passwords/raw-batch', [PasswordBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('passwords.raw-batch');
-    Route::post('/passwords/blobs/reconcile', [PasswordBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('passwords.blobs.reconcile');
-
     // Per-module sealed stores (Store v3 split): one opaque row per module.
     Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->middleware('module')->name('module-store.show');
     Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware('throttle:1200,1')->middleware('module')->name('module-store.save');
@@ -344,18 +327,10 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/bookmark-folders/{folder}/move', [BookmarksController::class, 'moveFolder'])->whereNumber('folder')->middleware('throttle:1200,1')->name('bookmarks.folders.move');
         Route::delete('/bookmark-folders/{folder}', [BookmarksController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('bookmarks.folders.destroy');
     });
-    // Passwords: zero-knowledge password manager, records in the opaque /store
-    // manifest (six item types, per-item version history, client-side TOTP/QR).
-    Route::view('/passwords', 'passwords.index')->middleware('module:passwords')->name('passwords.index');
-    // Login site-icon (BIMI/favicon) proxy: domain sent transiently, never
-    // stored; SSRF-guarded; result cached client-side in the sealed item.
+    // Login/bank site-icon (BIMI/favicon) proxy: domain sent transiently, never
+    // stored; SSRF-guarded. Retained for the Finance module (bank logos / partner
+    // favicons); the password manager that first used it has been removed.
     Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:1200,1')->name('passwords.icon');
-    // Have I Been Pwned k-anonymity range proxy (only a 5-char SHA-1 prefix is
-    // ever sent; SSRF-guarded; nothing stored).
-    Route::get('/passwords/breach', [PasswordBreachController::class, 'range'])->middleware('throttle:300,1')->name('passwords.breach');
-    // Public 2fa.directory dataset (server-cached; leaks nothing about the vault):
-    // domains that support app 2FA, so the client can hint where to add a code.
-    Route::get('/passwords/tfa-directory', [TwoFactorDirectoryController::class, 'index'])->middleware('throttle:120,1')->name('passwords.tfa');
     // Health: zero-knowledge, records (measurements + profile) in the opaque /store manifest.
     Route::view('/health', 'health.index')->middleware('module:health')->name('health.index');
     // Invoices: zero-knowledge, records in the opaque /store manifest. The per-user
@@ -388,89 +363,4 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');
     Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->name('paperless.terms.create');
     Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->name('paperless.documents');
-
-    // -----------------------------------------------------------------------
-    // Shared password-Tresor API (zero-knowledge vault sharing).
-    //
-    // Identity keypair: write-once publish so the owner can later receive
-    // wrapped vault keys from vault managers. The server only stores the public
-    // half + the client-wrapped secret key (ciphertext at rest).
-    //
-    // Vault lifecycle: create → sealed store at v0 + active manager membership;
-    // resolve-recipient → manage-gated public-key lookup (rate-limited);
-    // members: pending invite → accept → active; manager can update role or
-    // remove member.
-    //
-    // The vault store uses the same optimistic-concurrency protocol as the
-    // personal store (GET/PUT returns {sealed_manifest, version}).
-    // -----------------------------------------------------------------------
-
-    // Identity keypair (write-once, idempotent re-publish of same key).
-    Route::get('/vaults/keys', [UserKeyController::class, 'show'])
-        ->middleware('throttle:240,1')
-        ->name('user.keys.show');
-    Route::put('/vaults/keys', [UserKeyController::class, 'store'])
-        ->middleware('throttle:30,1')
-        ->name('user.keys.store');
-
-    // Vault container management.
-    Route::get('/vaults', [SharedVaultController::class, 'index'])->name('vaults.index');
-    Route::post('/vaults', [SharedVaultController::class, 'store'])
-        ->middleware('throttle:60,1')
-        ->name('vaults.store');
-
-    // Per-vault sealed manifest store (optimistic-lock read/write).
-    Route::get('/vaults/{vault}/store', [SharedVaultStoreController::class, 'show'])
-        ->name('vaults.storeShow');
-    Route::put('/vaults/{vault}/store', [SharedVaultStoreController::class, 'save'])
-        ->middleware('throttle:600,1')
-        ->name('vaults.storeSave');
-
-    // Manage-gated recipient key lookup (rate-limited per-user).
-    Route::post('/vaults/{vault}/resolve-recipient', [SharedVaultController::class, 'resolveRecipient'])
-        ->middleware('throttle:pubkey-lookup')
-        ->name('vaults.resolveRecipient');
-
-    // Membership management.
-    Route::post('/vaults/{vault}/members', [SharedVaultMemberController::class, 'store'])
-        ->middleware('throttle:30,1')
-        ->name('vaults.members.store');
-    Route::post('/vaults/{vault}/members/{member}/accept', [SharedVaultMemberController::class, 'accept'])
-        ->middleware('throttle:30,1')
-        ->name('vaults.members.accept');
-    Route::patch('/vaults/{vault}/members/{member}', [SharedVaultMemberController::class, 'update'])
-        ->middleware('throttle:30,1')
-        ->name('vaults.members.update');
-    Route::delete('/vaults/{vault}/members/{member}', [SharedVaultMemberController::class, 'destroy'])
-        ->middleware('throttle:60,1')
-        ->name('vaults.members.destroy');
-
-    // Vault member list (manage-gated).
-    Route::get('/vaults/{vault}/members', [SharedVaultMemberController::class, 'index'])
-        ->middleware('throttle:60,1')
-        ->name('vaults.members.index');
-
-    // Cryptographic key rotation (atomic member removal + manifest re-seal).
-    Route::post('/vaults/{vault}/rotate', [SharedVaultController::class, 'rotate'])
-        ->middleware('throttle:30,1')
-        ->name('vaults.rotate');
-
-    // Vault deletion (manager only; cascades members + store).
-    Route::delete('/vaults/{vault}', [SharedVaultController::class, 'destroy'])
-        ->middleware('throttle:30,1')
-        ->name('vaults.destroy');
-
-    // Shared-folder blob store: member-scoped upload/download/delete/reconcile.
-    // Read (view) requires viewer+; mutations (upload/delete/reconcile) require editor+.
-    Route::prefix('vaults/{vault}/blobs')->name('vaults.blobs.')->group(function (): void {
-        Route::get('/usage', [SharedFolderBlobController::class, 'usage'])->name('usage');
-        Route::post('/reconcile', [SharedFolderBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('reconcile');
-        Route::post('/upload', [SharedFolderBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('upload');
-        Route::post('/upload/init', [SharedFolderBlobController::class, 'chunkInit'])->middleware('throttle:600,1')->name('upload.init');
-        Route::post('/upload/part', [SharedFolderBlobController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('upload.part');
-        Route::post('/upload/complete', [SharedFolderBlobController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('upload.complete');
-        Route::post('/upload/abort', [SharedFolderBlobController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('upload.abort');
-        Route::get('/raw/{blob}', [SharedFolderBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('raw');
-        Route::delete('/{blob}', [SharedFolderBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('destroy');
-    });
 });
