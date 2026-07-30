@@ -21,13 +21,27 @@ describe('missingNumbers — gapless-sequence gaps (GoBD)', () => {
         ];
         expect(missingNumbers(inv).sort()).toEqual(['2', '2026-0002']);
     });
-    it('ignores trashed invoices and non-integer (R-…) numbers', () => {
+    it('reads one continuous run across format changes (bare + R- prefixed)', () => {
+        const inv = [
+            { id: 'a', number: '48', issueDate: '2018-01-18' },
+            { id: 'b', number: 'R-00047', issueDate: '2018-01-16' },
+            { id: 'c', number: 'R-00049', issueDate: '2018-03-13' },
+        ];
+        expect(missingNumbers(inv)).toEqual([]); // 47,48,49 contiguous despite mixed formats
+    });
+    it('flags a gap across a format change, formatted like the newest sample', () => {
+        const inv = [
+            { id: 'a', number: 'R-00057', issueDate: '2018-05-02' },
+            { id: 'b', number: 'R-00061', issueDate: '2018-11-12' },
+        ];
+        expect(missingNumbers(inv)).toEqual(['R-00058', 'R-00059', 'R-00060']);
+    });
+    it('ignores trashed invoices', () => {
         const inv = [
             { id: 'a', number: '5', issueDate: '2024-01-01' },
             { id: 'b', number: '7', issueDate: '2024-01-07', trashed: '2026-01-01T00:00:00Z' },
-            { id: 'c', number: 'R-2024-0009', issueDate: '2024-01-09' },
         ];
-        expect(missingNumbers(inv)).toEqual([]); // only one integer in range → no gap
+        expect(missingNumbers(inv)).toEqual([]); // only one active integer → no range
     });
 });
 
