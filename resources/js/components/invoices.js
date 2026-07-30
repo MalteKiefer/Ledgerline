@@ -57,7 +57,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -89,7 +89,7 @@ export default (config = {}, labels = {}) => ({
 
     async init() {
         const h = (location.hash || '').replace('#', '');
-        if (['dashboard', 'receipts', 'invoices', 'payments', 'projects', 'stats', 'settings'].includes(h)) this.section = h;
+        if (['dashboard', 'receipts', 'invoices', 'payments', 'projects', 'partners', 'stats', 'settings'].includes(h)) this.section = h;
         await this._initZk();
         if (this.state === 'ready') { this._ensureReceiptIds(); this.reconcileBlobs(); }
     },
@@ -273,8 +273,8 @@ export default (config = {}, labels = {}) => ({
     // Settings tab: business partners.
     parPage: 1,
     parPerPage: 10,
-    get parPageCount() { return Math.max(1, Math.ceil(this.sortedPartners.length / this.parPerPage)); },
-    get pagedPartners() { const s = (this.parPage - 1) * this.parPerPage; return this.sortedPartners.slice(s, s + this.parPerPage); },
+    get parPageCount() { return Math.max(1, Math.ceil(this.filteredPartners.length / this.parPerPage)); },
+    get pagedPartners() { const s = (this.parPage - 1) * this.parPerPage; return this.filteredPartners.slice(s, s + this.parPerPage); },
     setParPerPage(n) { this.parPerPage = n; this.parPage = 1; },
     parGoto(p) { this.parPage = Math.min(this.parPageCount, Math.max(1, p)); },
     // Settings tab: custom categories (defaults are a small fixed list, not paginated).
@@ -574,7 +574,22 @@ export default (config = {}, labels = {}) => ({
     partners: [],
     financeCategories: [],
     partnerEditing: null,
-    newPartner() { this.partnerEditing = { name: '', contact: '', url: '', address: '', email: '', phone: '', category: '', note: '' }; },
+    newPartner() { this.partnerEditing = { name: '', url: '', address: '', email: '', phone: '', vatId: '', category: '', note: '', contacts: [] }; },
+    // Contact persons (Ansprechpartner) — multiple per partner.
+    _newContact() { return { id: window.LLInvoicesStore.newId(), name: '', email: '', phone: '', role: '' }; },
+    addPartnerContact(p) { if (! p) return; (p.contacts ||= []).push(this._newContact()); },
+    removePartnerContact(p, i) { if (p && Array.isArray(p.contacts)) p.contacts.splice(i, 1); },
+    // Migrate the legacy single `contact` string into the contacts[] list (one-time, idempotent).
+    _migratePartnerContacts() {
+        let changed = false;
+        for (const p of (this.partners || [])) {
+            if (! Array.isArray(p.contacts)) { p.contacts = []; changed = true; }
+            if (! p.contacts.length && String(p.contact || '').trim()) { p.contacts.push({ id: window.LLInvoicesStore.newId(), name: String(p.contact).trim(), email: p.email || '', phone: p.phone || '', role: '' }); changed = true; }
+        }
+        if (changed) this._save();
+    },
+    // Contact persons of the partner matching a recipient name (for the import picker).
+    partnerContactsFor(name) { const p = matchPartner(this.partners, name); return (p && Array.isArray(p.contacts)) ? p.contacts : []; },
     editPartner(p) { this.partnerEditing = JSON.parse(JSON.stringify(p)); this.partnerEditing.id = p.id; },
     cancelPartner() { this.partnerEditing = null; },
     savePartner() {
@@ -606,6 +621,40 @@ export default (config = {}, labels = {}) => ({
         this._save();
     },
     get sortedPartners() { return [...(this.partners || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))); },
+
+    // ---- Business-partners tab (own section: list/table ↔ detail) ----
+    partnersView: 'list', // 'list' | 'detail'
+    openPartnerId: null,
+    partnerSearch: '',
+    partnerEditMode: false, // detail: read-only until "Bearbeiten"
+    get filteredPartners() {
+        const q = this.partnerSearch.trim().toLowerCase();
+        let list = this.sortedPartners;
+        if (q) list = list.filter((p) => [p.name, p.contact, p.email, p.phone, p.vatId, p.address, p.url, p.category, p.note].some((v) => String(v || '').toLowerCase().includes(q)));
+        return list;
+    },
+    openPartner(p) { this.openPartnerId = p.id; this.partnersView = 'detail'; this.partnerEditMode = false; },
+    backToPartners() { this.partnersView = 'list'; this.openPartnerId = null; this.partnerEditMode = false; },
+    get openPartnerRec() { return (this.partners || []).find((p) => p.id === this.openPartnerId) || null; },
+    editOpenPartner() { this.partnerEditMode = true; },
+    async deleteOpenPartner() {
+        const p = this.openPartnerRec; if (! p) return;
+        if (! await this.$store.confirm.ask(labels.partner_delete_confirm || 'Delete this business partner?')) return;
+        const i = this.partners.indexOf(p); if (i >= 0) this.partners.splice(i, 1);
+        this._save();
+        this.backToPartners();
+    },
+    saveOpenPartner() {
+        const p = this.openPartnerRec; if (! p || ! String(p.name || '').trim()) return;
+        this.partnerEditMode = false;
+        this._save();
+        if (p.url) this._fetchPartnerLogo(p);
+    },
+    // Invoices whose recipient is this partner.
+    invoicesForPartner(id) { return (this.invoices || []).filter((i) => ! i.trashed && i.customer && i.customer.partnerId === id).sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || '')); },
+    // Receipts (booking documents) wired to this partner.
+    receiptsForPartner(id) { return this.allReceipts.filter((d) => d.r && d.r.partnerId === id); },
+    partnerLinkCount(id) { return this.invoicesForPartner(id).length + this.receiptsForPartner(id).length; },
 
     // Locale for alphabetical sorting (follows the app language).
     _catLocale() { return document.documentElement.lang || undefined; },
@@ -1477,18 +1526,21 @@ export default (config = {}, labels = {}) => ({
                 const name = String(draft.recipient?.name || '').trim();
                 // Recipient → business partner (find or create); enrich a bare partner.
                 let partnerId = null;
+                const attn = String(draft.contactPerson || '').trim();
                 if (name) {
                     const partner = this._findOrCreatePartner(name);
                     partnerId = partner.id;
                     if (! partner.address && draft.recipient?.address) partner.address = draft.recipient.address;
                     if (! partner.vatId && draft.recipient?.vatId) partner.vatId = draft.recipient.vatId;
+                    // Remember a newly-typed contact person on the partner.
+                    if (attn) { partner.contacts ||= []; if (! partner.contacts.some((c) => String(c.name || '').trim().toLowerCase() === attn.toLowerCase())) partner.contacts.push({ id: window.LLInvoicesStore.newId(), name: attn, email: '', phone: '', role: '' }); }
                 }
                 const inv = {
                     id: draft.id, number: draft.number, status: 'paid',
                     issueDate: draft.issueDate || this._today(),
                     dueDate: draft.dueDate || draft.issueDate || this._today(),
                     currency: draft.currency || 'EUR', lang: 'de',
-                    customer: { name, attn: '', address: draft.recipient?.address || '', email: '', vatId: draft.recipient?.vatId || '', contactId: null, partnerId },
+                    customer: { name, attn, address: draft.recipient?.address || '', email: '', vatId: draft.recipient?.vatId || '', contactId: null, partnerId },
                     lines: [{ desc: name || (labels.importSummaryLabel || 'Rechnung'), qty: 1, unit: '', unitPrice: net, vatRate: rate }],
                     note: '', footer: '', trashed: false, imported: true, minimal: true, updated: new Date().toISOString(),
                 };
