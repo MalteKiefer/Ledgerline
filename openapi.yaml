@@ -1204,17 +1204,30 @@ components:
 
     FinancePartner:
       type: object
-      description: "A business partner (partners[] collection); doubles as a learned merchant→category rule via `category`. Contact details are optional; `logo` is a data: URI fetched from `url` via the SSRF-guarded favicon proxy (non-secret, sealed with the store)."
+      description: "A business partner (partners[] collection); doubles as a learned merchant→category rule via `category`. Contact details are optional; `logo` is a data: URI fetched from `url` via the SSRF-guarded favicon proxy (non-secret, sealed with the store). A partner may hold multiple contact persons in `contacts[]`; the legacy single `contact` string is migrated into `contacts[0]` client-side (kept for back-compat)."
       required: [id, name]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
-        contact: { type: string, description: "Contact person (Ansprechpartner)." }
+        contact: { type: string, description: "DEPRECATED — legacy single contact person; migrated into contacts[0]. Prefer `contacts[]`." }
+        contacts:
+          type: array
+          description: "Contact persons (Ansprechpartner) for this partner. On invoice import the chosen contact person is written to the invoice's customer.attn."
+          items:
+            type: object
+            required: [name]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+              email: { type: string }
+              phone: { type: string }
+              role: { type: string, description: "Function/position." }
         url: { type: string, description: "Website; the logo is fetched from its host." }
         logo: { type: string, description: "data: URI logo/favicon (sealed)." }
         address: { type: string }
         email: { type: string }
         phone: { type: string }
+        vatId: { type: string, description: "VAT identification number (USt-IdNr.)." }
         category: { type: string, description: "Learned default category for this merchant." }
         note: { type: string }
 

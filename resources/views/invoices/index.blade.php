@@ -108,7 +108,7 @@
           <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('messages.nav.finance') }}</h1>
           <div class="-mx-1 max-w-full overflow-x-auto px-1 pb-1">
             <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/10 p-0.5 text-sm font-medium">
-              @php $tabs = ['dashboard' => 'tab_dashboard', 'invoices' => 'tab_invoices', 'payments' => 'tab_payments', 'receipts' => 'tab_receipts', 'projects' => 'tab_projects', 'stats' => 'tab_stats', 'settings' => 'tab_settings']; @endphp
+              @php $tabs = ['dashboard' => 'tab_dashboard', 'invoices' => 'tab_invoices', 'payments' => 'tab_payments', 'receipts' => 'tab_receipts', 'projects' => 'tab_projects', 'partners' => 'tab_partners', 'stats' => 'tab_stats', 'settings' => 'tab_settings']; @endphp
               @foreach ($tabs as $key => $lbl)
                 <button type="button" @click="setSection('{{ $key }}')"
                   class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 transition-colors"
@@ -817,6 +817,227 @@
           </div>
         </div>
 
+        {{-- ===================== BUSINESS PARTNERS ===================== --}}
+        <div x-show="section === 'partners'" class="mt-6">
+          {{-- LIST / TABLE --}}
+          <div x-show="partnersView === 'list'">
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div class="relative max-w-xs flex-1">
+                <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input type="search" x-model="partnerSearch" @input="parPage = 1" placeholder="{{ __('invoices.partners_search') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] pl-9 text-sm focus:border-accent focus:ring-accent">
+              </div>
+              <x-button variant="primary" icon="plus" @click="newPartner()">{{ __('invoices.partner_add') }}</x-button>
+            </div>
+
+            <template x-if="! filteredPartners.length">
+              <x-empty-state icon="user" class="py-16">{{ __('invoices.partners_empty') }}</x-empty-state>
+            </template>
+
+            <template x-if="filteredPartners.length">
+              <div class="ll-card !p-0 overflow-hidden">
+                <div class="overflow-x-auto">
+                  <table class="min-w-full text-sm">
+                    <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                      <tr>
+                        <th class="px-4 py-3">{{ __('invoices.partner_name') }}</th>
+                        <th class="px-4 py-3 hidden md:table-cell">{{ __('invoices.partner_contact_person') }}</th>
+                        <th class="px-4 py-3 hidden lg:table-cell">{{ __('invoices.partner_email') }}</th>
+                        <th class="px-4 py-3 hidden lg:table-cell">{{ __('invoices.partner_phone') }}</th>
+                        <th class="px-4 py-3 hidden md:table-cell">{{ __('invoices.partner_vat') }}</th>
+                        <th class="px-4 py-3 hidden xl:table-cell">{{ __('invoices.receipt_category') }}</th>
+                        <th class="px-4 py-3 text-right">{{ __('invoices.partner_links') }}</th>
+                        <th class="px-4 py-3 w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
+                      <template x-for="p in pagedPartners" :key="p.id">
+                        <tr class="group cursor-pointer transition-colors hover:bg-accent/5" @click="openPartner(p)">
+                          <td class="px-4 py-3">
+                            <div class="flex items-center gap-3">
+                              <template x-if="partnerLogoSrc(p)"><img :src="partnerLogoSrc(p)" alt="" class="h-8 w-8 shrink-0 rounded-lg object-contain bg-white border border-black/[0.06] dark:border-white/10"></template>
+                              <template x-if="! partnerLogoSrc(p)"><span class="ll-chip h-8 w-8 shrink-0" style="--chip: #6b7280"><x-icon name="user" class="h-4 w-4" /></span></template>
+                              <span class="font-medium text-gray-900 dark:text-gray-100" x-text="p.name"></span>
+                            </div>
+                          </td>
+                          <td class="px-4 py-3 hidden md:table-cell text-gray-600 dark:text-gray-300" x-text="(p.contacts && p.contacts[0] && p.contacts[0].name) || '—'"></td>
+                          <td class="px-4 py-3 hidden lg:table-cell text-gray-600 dark:text-gray-300" x-text="p.email || '—'"></td>
+                          <td class="px-4 py-3 hidden lg:table-cell text-gray-600 dark:text-gray-300 tabular-nums" x-text="p.phone || '—'"></td>
+                          <td class="px-4 py-3 hidden md:table-cell text-gray-600 dark:text-gray-300 tabular-nums" x-text="p.vatId || '—'"></td>
+                          <td class="px-4 py-3 hidden xl:table-cell"><template x-if="p.category"><x-badge variant="gray"><span x-text="p.category"></span></x-badge></template></td>
+                          <td class="px-4 py-3 text-right tabular-nums text-gray-500 dark:text-gray-400" x-text="partnerLinkCount(p.id)"></td>
+                          <td class="px-4 py-3 text-right"><x-icon name="chevron-right" class="h-4 w-4 text-gray-300 dark:text-gray-600" /></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+                <template x-if="filteredPartners.length > parPerPage">
+                  @include('invoices._pagination', ['page' => 'parPage', 'perPage' => 'parPerPage', 'pageCount' => 'parPageCount', 'setPerPage' => 'setParPerPage', 'goto' => 'parGoto'])
+                </template>
+              </div>
+            </template>
+          </div>
+
+          {{-- DETAIL (info + linked invoices/receipts; read-only until "Bearbeiten") --}}
+          <template x-if="partnersView === 'detail' && openPartnerRec">
+            <div>
+              <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <x-icon-button name="arrow-left" @click="backToPartners()" :aria-label="__('common.back')" />
+                  <template x-if="partnerLogoSrc(openPartnerRec)"><img :src="partnerLogoSrc(openPartnerRec)" alt="" class="h-10 w-10 shrink-0 rounded-xl object-contain bg-white border border-black/[0.06] dark:border-white/10"></template>
+                  <template x-if="! partnerLogoSrc(openPartnerRec)"><span class="ll-chip h-10 w-10 shrink-0" style="--chip: #6b7280"><x-icon name="user" class="h-5 w-5" /></span></template>
+                  <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="openPartnerRec.name"></h1>
+                </div>
+                <div class="flex items-center gap-2">
+                  <x-button variant="secondary" size="sm" icon="pencil" @click="editPartner(openPartnerRec)">{{ __('common.edit') }}</x-button>
+                  <x-icon-button name="trash" tone="red" size="sm" @click="deleteOpenPartner()" :aria-label="__('common.delete')" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                {{-- Info --}}
+                <div class="ll-card lg:col-span-1">
+                  <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.partner_info') }}</h2>
+                  <dl class="mt-3 space-y-2 text-sm">
+                    <div x-show="openPartnerRec.vatId"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_vat') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.vatId"></dd></div>
+                    <div x-show="openPartnerRec.email"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.email" class="text-accent hover:underline" x-text="openPartnerRec.email"></a></dd></div>
+                    <div x-show="openPartnerRec.phone"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_phone') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.phone"></dd></div>
+                    <div x-show="openPartnerRec.url"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_url') }}</dt><dd><a :href="openPartnerRec.url" target="_blank" rel="noopener" class="text-accent hover:underline break-all" x-text="openPartnerRec.url"></a></dd></div>
+                    <div x-show="openPartnerRec.address"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_address') }}</dt><dd class="whitespace-pre-line text-gray-800 dark:text-gray-200" x-text="openPartnerRec.address"></dd></div>
+                    <div x-show="openPartnerRec.category"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_category') }}</dt><dd class="text-gray-800 dark:text-gray-200" x-text="openPartnerRec.category"></dd></div>
+                    <div x-show="openPartnerRec.note"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_note') }}</dt><dd class="whitespace-pre-line text-gray-800 dark:text-gray-200" x-text="openPartnerRec.note"></dd></div>
+                  </dl>
+                  {{-- Contact persons --}}
+                  <template x-if="openPartnerRec.contacts && openPartnerRec.contacts.length">
+                    <div class="mt-4 border-t border-black/[0.06] dark:border-white/10 pt-3">
+                      <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.partner_contacts') }}</h3>
+                      <ul class="mt-2 space-y-2">
+                        <template x-for="c in openPartnerRec.contacts" :key="c.id">
+                          <li class="text-sm">
+                            <div class="font-medium text-gray-900 dark:text-gray-100"><span x-text="c.name"></span><span x-show="c.role" class="ml-1 text-xs font-normal text-gray-400" x-text="'· ' + c.role"></span></div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400" x-text="[c.email, c.phone].filter(Boolean).join(' · ')"></div>
+                          </li>
+                        </template>
+                      </ul>
+                    </div>
+                  </template>
+                </div>
+
+                {{-- Linked invoices + receipts --}}
+                <div class="space-y-6 lg:col-span-2">
+                  <div class="ll-card !p-0 overflow-hidden">
+                    <h2 class="border-b border-black/[0.06] dark:border-white/10 px-4 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.partner_linked_invoices') }} <span class="text-gray-400" x-text="'(' + invoicesForPartner(openPartnerRec.id).length + ')'"></span></h2>
+                    <div class="divide-y divide-black/[0.06] dark:divide-white/10">
+                      <template x-for="inv in invoicesForPartner(openPartnerRec.id)" :key="inv.id">
+                        <button type="button" @click="openInvoiceById(inv.id)" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-accent/5">
+                          <span class="ll-chip h-8 w-8 shrink-0" style="--chip: #7066f5"><x-icon name="document-text" class="h-4 w-4" /></span>
+                          <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100 tabular-nums" x-text="inv.number || '—'"></span><span class="block text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="inv.issueDate || ''"></span></span>
+                          <span class="shrink-0 text-sm tabular-nums text-gray-700 dark:text-gray-300" x-text="fmtMoney(computeTotals(inv).gross, inv.currency, 'de')"></span>
+                        </button>
+                      </template>
+                      <template x-if="! invoicesForPartner(openPartnerRec.id).length"><p class="px-4 py-3 text-sm text-gray-400 dark:text-gray-500">—</p></template>
+                    </div>
+                  </div>
+                  <div class="ll-card !p-0 overflow-hidden">
+                    <h2 class="border-b border-black/[0.06] dark:border-white/10 px-4 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.partner_linked_receipts') }} <span class="text-gray-400" x-text="'(' + receiptsForPartner(openPartnerRec.id).length + ')'"></span></h2>
+                    <div class="divide-y divide-black/[0.06] dark:divide-white/10">
+                      <template x-for="d in receiptsForPartner(openPartnerRec.id)" :key="d.r.id">
+                        <button type="button" @click="openReceiptDoc(d)" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-accent/5">
+                          <span class="ll-chip h-8 w-8 shrink-0" style="--chip: #e2915a"><x-icon name="paper-clip" class="h-4 w-4" /></span>
+                          <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="d.r.name || d.r.merchant || '{{ __('invoices.receipt') }}'"></span><span class="block text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="d.tx.date || ''"></span></span>
+                          <span class="shrink-0 text-sm tabular-nums text-gray-700 dark:text-gray-300" x-text="fmtMoney(d.tx.amount, 'EUR', 'de')"></span>
+                        </button>
+                      </template>
+                      <template x-if="! receiptsForPartner(openPartnerRec.id).length"><p class="px-4 py-3 text-sm text-gray-400 dark:text-gray-500">—</p></template>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          {{-- Partner editor modal (create + edit; multiple contact persons) --}}
+          <div x-show="partnerEditing" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelPartner()">
+            <div class="absolute inset-0 bg-gray-900/50" @click="cancelPartner()"></div>
+            <div class="relative flex max-h-[88vh] w-full max-w-md flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <template x-if="partnerEditing">
+                <div class="flex min-h-0 flex-col">
+                  <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="partnerEditing.id ? '{{ __('common.edit') }}' : '{{ __('invoices.partner_add') }}'"></h3>
+                    <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelPartner()" :aria-label="__('common.close')" />
+                  </div>
+                  <div class="min-h-0 flex-1 space-y-3 overflow-auto px-5 py-4">
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_name') }} <span class="text-red-500">*</span></label>
+                      <input type="text" x-model="partnerEditing.name" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_url') }}</label>
+                      <div class="flex items-center gap-2">
+                        <template x-if="partnerLogoSrc(partnerEditing)"><img :src="partnerLogoSrc(partnerEditing)" alt="" class="h-8 w-8 shrink-0 rounded-lg object-contain bg-white"></template>
+                        <input type="url" x-model="partnerEditing.url" placeholder="https://…" class="min-w-0 flex-1 rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      </div>
+                      <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{{ __('invoices.partner_url_hint') }}</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_email') }}</label>
+                        <input type="email" x-model="partnerEditing.email" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_phone') }}</label>
+                        <input type="tel" x-model="partnerEditing.phone" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      </div>
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_vat') }}</label>
+                      <input type="text" x-model="partnerEditing.vatId" placeholder="DE…" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums">
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_address') }}</label>
+                      <textarea x-model="partnerEditing.address" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                    </div>
+                    {{-- Contact persons (multiple) --}}
+                    <div>
+                      <div class="mb-1 flex items-center justify-between">
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_contacts') }}</label>
+                        <button type="button" @click="addPartnerContact(partnerEditing)" class="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"><x-icon name="plus" class="h-3.5 w-3.5" />{{ __('invoices.partner_contact_add') }}</button>
+                      </div>
+                      <div class="space-y-2">
+                        <template x-for="(c, ci) in (partnerEditing.contacts || [])" :key="c.id">
+                          <div class="rounded-xl border border-black/[0.06] dark:border-white/10 p-2">
+                            <div class="flex items-center gap-2">
+                              <input type="text" x-model="c.name" placeholder="{{ __('invoices.partner_contact_person') }}" class="min-w-0 flex-1 rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                              <input type="text" x-model="c.role" placeholder="{{ __('invoices.partner_contact_role') }}" class="min-w-0 w-28 rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                              <x-icon-button name="trash" tone="red" size="sm" @click="removePartnerContact(partnerEditing, ci)" :aria-label="__('common.delete')" />
+                            </div>
+                            <div class="mt-2 grid grid-cols-2 gap-2">
+                              <input type="email" x-model="c.email" placeholder="{{ __('invoices.partner_email') }}" class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                              <input type="tel" x-model="c.phone" placeholder="{{ __('invoices.partner_phone') }}" class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_category') }}</label>
+                      <input type="text" x-model="partnerEditing.category" list="receiptCats" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_note') }}</label>
+                      <textarea x-model="partnerEditing.note" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-end gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <x-button variant="secondary" @click="cancelPartner()">{{ __('common.cancel') }}</x-button>
+                    <x-button variant="primary" @click="savePartner()">{{ __('common.save') }}</x-button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
         {{-- ===================== STATISTICS ===================== --}}
         <div x-show="section === 'stats'" class="mt-6">
           <template x-if="! statsKpis.count && statsYear === {{ (int) date('Y') }} && ! projects.length">
@@ -935,36 +1156,8 @@
 
         {{-- ===================== SETTINGS (partners + categories) — iOS grouped lists ===================== --}}
         <div x-show="section === 'settings'" class="mt-6 mx-auto max-w-2xl">
-          {{-- Business partners --}}
-          <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.partners_title') }}</h2>
-          <p class="mb-2 px-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partners_intro') }}</p>
-          <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
-            <template x-for="p in pagedPartners" :key="p.id">
-              <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5">
-                <template x-if="partnerLogoSrc(p)"><img :src="partnerLogoSrc(p)" alt="" class="h-9 w-9 shrink-0 rounded-lg object-contain bg-white border border-black/[0.06] dark:border-white/10"></template>
-                <template x-if="! partnerLogoSrc(p)"><span class="ll-chip h-9 w-9 shrink-0" style="--chip: #6b7280"><x-icon name="user" class="h-5 w-5" /></span></template>
-                <div class="min-w-0 flex-1">
-                  <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="p.name"></p>
-                  <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="[p.contact, p.email, p.phone, p.category].filter(Boolean).join(' · ') || '—'"></p>
-                </div>
-                <div class="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100">
-                  <x-icon-button name="pencil" tone="gray" size="sm" @click="editPartner(p)" :aria-label="__('common.edit')" />
-                  <x-icon-button name="trash" tone="red" size="sm" @click="removePartner(p)" :aria-label="__('common.delete')" />
-                </div>
-              </div>
-            </template>
-            {{-- Add row --}}
-            <button type="button" @click="newPartner()" class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-accent/5">
-              <span class="ll-chip h-9 w-9 shrink-0" style="--chip: #7066f5"><x-icon name="plus" class="h-5 w-5" /></span>
-              <span class="text-sm font-medium text-accent">{{ __('invoices.partner_add') }}</span>
-            </button>
-            <template x-if="sortedPartners.length > parPerPage">
-              @include('invoices._pagination', ['page' => 'parPage', 'perPage' => 'parPerPage', 'pageCount' => 'parPageCount', 'setPerPage' => 'setParPerPage', 'goto' => 'parGoto'])
-            </template>
-          </div>
-
           {{-- Categories --}}
-          <h2 class="mb-2 mt-7 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.cats_title') }}</h2>
+          <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.cats_title') }}</h2>
           <p class="mb-2 px-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.cats_intro') }}</p>
           <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
             {{-- Built-in default categories (not removable) --}}
@@ -997,64 +1190,6 @@
             </template>
           </div>
 
-          {{-- Partner editor modal --}}
-          <div x-show="partnerEditing" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelPartner()">
-            <div class="absolute inset-0 bg-gray-900/50" @click="cancelPartner()"></div>
-            <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
-              <template x-if="partnerEditing">
-                <div>
-                  <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.partner_add') }}</h3>
-                    <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelPartner()" :aria-label="__('common.close')" />
-                  </div>
-                  <div class="space-y-3 px-5 py-4">
-                    <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_name') }} <span class="text-red-500">*</span></label>
-                      <input type="text" x-model="partnerEditing.name" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                    </div>
-                    <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_contact_person') }}</label>
-                      <input type="text" x-model="partnerEditing.contact" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                    </div>
-                    <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_url') }}</label>
-                      <div class="flex items-center gap-2">
-                        <template x-if="partnerLogoSrc(partnerEditing)"><img :src="partnerLogoSrc(partnerEditing)" alt="" class="h-8 w-8 shrink-0 rounded-lg object-contain bg-white"></template>
-                        <input type="url" x-model="partnerEditing.url" placeholder="https://…" class="min-w-0 flex-1 rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                      </div>
-                      <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{{ __('invoices.partner_url_hint') }}</p>
-                    </div>
-                    <div class="grid grid-cols-2 gap-3">
-                      <div>
-                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_email') }}</label>
-                        <input type="email" x-model="partnerEditing.email" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                      </div>
-                      <div>
-                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_phone') }}</label>
-                        <input type="tel" x-model="partnerEditing.phone" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                      </div>
-                    </div>
-                    <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_address') }}</label>
-                      <textarea x-model="partnerEditing.address" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
-                    </div>
-                    <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_category') }}</label>
-                      <input type="text" x-model="partnerEditing.category" list="receiptCats" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                    </div>
-                    <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_note') }}</label>
-                      <textarea x-model="partnerEditing.note" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
-                    </div>
-                  </div>
-                  <div class="flex items-center justify-end gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <x-button variant="secondary" @click="cancelPartner()">{{ __('common.cancel') }}</x-button>
-                    <x-button variant="primary" @click="savePartner()">{{ __('common.save') }}</x-button>
-                  </div>
-                </div>
-              </template>
-            </div>
-          </div>
         </div>
 
         {{-- ===================== PAYMENT METHODS ===================== --}}
@@ -2297,6 +2432,13 @@
                         :class="importCurrent._warnings.includes('recipient') && ! importCurrent.recipient.name ? 'ring-1 ring-amber-400' : ''"
                         class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
                       <datalist id="import-partner-names"><template x-for="n in partnerNames" :key="n"><option :value="n"></option></template></datalist>
+                    </div>
+                    {{-- Contact person (Ansprechpartner) — pick one of the partner's, or type a new one --}}
+                    <div>
+                      <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_contact_person') }}</label>
+                      <input type="text" list="import-partner-contacts" x-model="importCurrent.contactPerson" placeholder="—"
+                        class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                      <datalist id="import-partner-contacts"><template x-for="c in partnerContactsFor(importCurrent.recipient.name)" :key="c.id"><option :value="c.name"></option></template></datalist>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                       <div>

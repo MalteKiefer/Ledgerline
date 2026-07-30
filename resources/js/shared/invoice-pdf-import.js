@@ -504,6 +504,7 @@ export function buildImportDraft(f, p, opts = {}) {
         gross: gross == null ? null : round2(gross),
         vatRate,
         recipient,
+        contactPerson: '',
         selected: true,
         _warnings: warnings,
     };
