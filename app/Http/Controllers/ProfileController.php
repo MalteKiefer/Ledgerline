@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\AppSettings;
-use App\Models\GalleryBlob;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Support\FilesUsage;
+use App\Support\GalleryUsage;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -163,7 +163,7 @@ class ProfileController extends Controller
     private function storageUsedBytes(User $user): int
     {
         return FilesUsage::forUser((int) $user->id)
-            + (int) GalleryBlob::query()->where('user_id', $user->id)->sum('size');
+            + GalleryUsage::forUser((int) $user->id);
     }
 
     /** Combined files+gallery quota in bytes, or 0 when either module is unlimited. */

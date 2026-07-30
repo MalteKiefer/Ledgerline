@@ -27,10 +27,10 @@ interface MirrorableSource extends BackupSource
     /**
      * Whether the ledger model is a single-column blob ledger whose primary key
      * (queried as `blob`) maps 1:1 to a disk object under diskPrefix(). Sources
-     * where that holds (gallery's GalleryBlob) can use the fast incremental delta;
-     * sources whose disk keys don't come from a single `blob` column (the
-     * plaintext-relational Files core, whose bytes live at row storage_paths across
-     * two tables) return false and are always mirrored by a full prefix reconcile.
+     * where that holds can use the fast incremental delta. The plaintext-relational
+     * cores (Files + Gallery), whose bytes live at row storage_paths (and extra
+     * rendition paths) rather than a single `blob` column, return false and are
+     * always mirrored by a full prefix reconcile.
      */
     public function supportsLedgerDelta(): bool;
 }

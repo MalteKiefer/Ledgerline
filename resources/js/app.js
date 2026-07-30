@@ -3,7 +3,6 @@ import intersect from '@alpinejs/intersect';
 import { Vault, ShareCrypto } from './vault';
 import { csrfToken, getJson } from './shared/api';
 import { buildModuleStores } from './shared/module-store';
-import { makeShardedStore } from './shared/sharded-store';
 import health from './components/health';
 import vaultFiles from './components/files';
 import vaultGallery from './components/gallery';
@@ -57,17 +56,7 @@ window.LLModuleStore = buildModuleStores();
 
 // Separate sealed store for the gallery index (photos/albums/people), kept apart
 // from the module stores so gallery churn never re-seals notes/todos.
-// Store v3 (spec §4.1/§5.1): a small sealed pointer-table root + content-addressed
-// id-bucketed photo shards + albums/people collection blobs. Same sharded engine
-// as Files (shared/sharded-store.js) — see there for the full mechanics.
-window.LLGalleryStore = makeShardedStore({
-    prefix: '/gallery',
-    recordKey: 'photos',
-    collections: [
-        { key: 'albums', rootRef: 'albumsRef', rootKey: 'albumsKey', rootHash: 'albumsHash' },
-        { key: 'people', rootRef: 'peopleRef', rootKey: 'peopleKey', rootHash: 'peopleHash' },
-    ],
-});
+// Gallery migrated to plaintext-relational (pivot) — served via /gallery/* REST.
 
 // Invoices graduated to a sharded store too (spec §3b) — they grow with sending/import
 // and must stay loss-safe for tax records. Each invoice is one shard record; numbering

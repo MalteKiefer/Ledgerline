@@ -27,15 +27,14 @@ class ResetStoreV3 extends Command
     protected $description = 'Clean-slate wipe of all sealed stores, blob ledgers and disk blobs for the Store v3 rebuild (irreversible, accepted data loss).';
 
     /** Disk prefixes that hold client-ciphertext blobs (all module blob trees). */
-    private const BLOB_PREFIXES = ['gallery', 'files'];
+    private const BLOB_PREFIXES = ['files'];
 
     /** Ledger + sealed-store tables to truncate. */
-    // file_blobs/files_store (Files) + contact_blobs (Contacts) were dropped by the
-    // pivot to plaintext-relational; the password manager + the cross-user shared-vault
-    // stack were removed entirely — only the still-ZK ledgers/stores remain here.
+    // file_blobs/files_store (Files) + contact_blobs (Contacts) + gallery_blobs/
+    // gallery_store (Gallery) were dropped by the pivot to plaintext-relational; the
+    // password manager + the cross-user shared-vault stack were removed entirely —
+    // only the still-ZK module stores remain here.
     private const TABLES = [
-        'gallery_blobs',
-        'gallery_store',
         'module_stores',
     ];
 

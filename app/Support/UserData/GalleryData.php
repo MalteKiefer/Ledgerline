@@ -4,24 +4,18 @@ declare(strict_types=1);
 
 namespace App\Support\UserData;
 
-use App\Models\GalleryBlob;
-use App\Models\GalleryStore;
+use App\Models\GalleryPhoto;
 use App\Models\User;
 use App\Support\BlobStore;
-use Illuminate\Support\Str;
 
 /**
- * Per-user data contributor for the gallery module under zero-knowledge. The
- * whole gallery structure (photo list, albums, people, metadata, EXIF, faces)
- * lives sealed inside the gallery index (gallery_store) and the only other
- * server-side state is the opaque content blobs + their ownership ledger
- * (gallery_blobs). The export is therefore the sealed index ciphertext plus the
- * ciphertext blob inventory (ids/sizes — no plaintext); purge deletes the user's
- * stored bytes, thumbnails, ledger rows and sealed index so no orphans remain.
- *
- * Without this contributor a purge relied on the gallery_blobs / gallery_store FK
- * cascade, which drops the ledger rows but leaves the ciphertext bytes and thumbs
- * on disk forever — unreclaimable, since the orphan sweep never scanned them.
+ * Per-user data contributor for the plaintext-relational Gallery core (pivot).
+ * Photos/videos live as rows in `gallery_photos` (albums cascade with the user
+ * delete via their FK); the original bytes plus the server-generated renditions
+ * (thumb/medium/motion) live plaintext on the file disk at each row's *_path
+ * columns. Export is a plaintext inventory of the user's photos; purge deletes
+ * every photo's disk bytes (all renditions) and rows — including trashed ones,
+ * which still occupy disk — so no orphaned bytes remain.
  */
 final class GalleryData implements UserDataContributor
 {
@@ -35,43 +29,45 @@ final class GalleryData implements UserDataContributor
      */
     public function export(User $user): array
     {
-        $blobs = GalleryBlob::query()
+        $photos = GalleryPhoto::query()
+            ->withoutGlobalScopes()
             ->where('user_id', $user->getKey())
-            ->orderBy('blob')
-            ->get(['blob', 'size', 'created_at'])
-            ->map(fn (GalleryBlob $b): array => [
-                'blob' => $b->blob,
-                'size' => $b->size,
-                'created_at' => $b->created_at,
+            ->orderBy('id')
+            ->get(['id', 'kind', 'mime', 'size', 'width', 'height', 'taken_at', 'created_at'])
+            ->map(fn (GalleryPhoto $p): array => [
+                'id' => $p->id,
+                'kind' => $p->kind,
+                'mime' => $p->mime,
+                'size' => $p->size,
+                'width' => $p->width,
+                'height' => $p->height,
+                'taken_at' => $p->taken_at,
+                'created_at' => $p->created_at,
             ])
             ->all();
 
-        return [
-            'index' => GalleryStore::query()->where('user_id', $user->getKey())->value('ciphertext'),
-            'blobs' => $blobs,
-        ];
+        return ['photos' => $photos];
     }
 
     public function purge(User $user): void
     {
         $disk = BlobStore::disk();
 
-        GalleryBlob::query()
+        GalleryPhoto::query()
+            ->withoutGlobalScopes()
             ->where('user_id', $user->getKey())
-            ->orderBy('blob')
-            ->chunkById(500, function ($blobs) use ($disk): void {
-                foreach ($blobs as $blob) {
-                    if (is_string($blob->blob) && Str::isUuid($blob->blob)) {
-                        $disk->delete('gallery/'.$blob->blob);
-                        $disk->delete('thumbs/'.$blob->blob.'.jpg');
+            ->orderBy('id')
+            ->chunkById(500, function ($photos) use ($disk): void {
+                foreach ($photos as $photo) {
+                    foreach ($photo->storagePaths() as $path) {
+                        $disk->delete($path);
                     }
                 }
 
-                GalleryBlob::query()
-                    ->whereIn('blob', $blobs->modelKeys())
-                    ->delete();
-            }, 'blob');
-
-        GalleryStore::query()->where('user_id', $user->getKey())->delete();
+                GalleryPhoto::query()
+                    ->withoutGlobalScopes()
+                    ->whereIn('id', $photos->modelKeys())
+                    ->forceDelete();
+            });
     }
 }

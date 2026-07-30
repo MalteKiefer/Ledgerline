@@ -10,11 +10,8 @@ use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\ExploreController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FinanceController;
-use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryProcessController;
-use App\Http\Controllers\GalleryShareController;
-use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\InviteLinkController;
 use App\Http\Controllers\LocaleController;
@@ -63,6 +60,17 @@ Route::prefix('s/{token}')->name('public.share.')->group(function (): void {
     Route::post('/unlock', [PublicShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
     Route::get('/manifest', [PublicShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
     Route::get('/blob/{ref}', [PublicShareController::class, 'blob'])->middleware('throttle:3000,1')->name('blob');
+});
+
+// Public, unauthenticated PLAINTEXT gallery share links (pivot). Distinct prefix
+// from the ZK /s/{token} PublicShareController: bytes are served in the clear
+// (no fragment key) with an optional rate-limited password gate. Owner-scoped by
+// token; a photo raw is only streamed for a valid (unexpired, unlocked) share.
+Route::prefix('gallery-share/{token}')->name('public.gallery-share.')->group(function (): void {
+    Route::get('/', [GalleryController::class, 'shareMeta'])->middleware('throttle:120,1')->name('meta');
+    Route::post('/unlock', [GalleryController::class, 'shareUnlock'])->middleware('throttle:10,1')->name('unlock');
+    Route::get('/manifest', [GalleryController::class, 'shareManifest'])->middleware('throttle:120,1')->name('manifest');
+    Route::get('/photo/{photo}/raw', [GalleryController::class, 'sharePhotoRaw'])->whereNumber('photo')->middleware('throttle:3000,1')->name('photo.raw');
 });
 
 // First-party auth (login, registration, password reset, email verification,
@@ -185,10 +193,47 @@ Route::middleware('auth')->group(function (): void {
 
     // POST /logout is owned by Fortify (AuthenticatedSessionController@destroy).
 
-    // Zero-knowledge gallery: the client holds all keys and renders entirely
-    // from the sealed index + decrypted blobs. The server ships only the shell
-    // here; upload/process/blob/store live in the dedicated routes below.
-    Route::get('/gallery', [GalleryController::class, 'index'])->middleware('module:gallery')->name('gallery.index');
+    // Gallery: photos + albums are plaintext-relational now (pivot). The page
+    // hydrates photos + albums + usage inline; all CRUD is the relational core
+    // below. The legacy ZK routes (/gallery/store, /gallery/raw/{blob}, …) are
+    // kept for now and never collide (relational uses /gallery/photos*,
+    // /gallery/albums*, /gallery/data, /gallery/photos/chunk/*).
+    Route::get('/gallery', [GalleryController::class, 'page'])->middleware('module:gallery')->name('gallery.index');
+
+    // Plaintext-relational Gallery core (pivot): photos + albums as rows, bytes
+    // (original + server renditions) plaintext on the file disk.
+    Route::middleware('module:gallery')->group(function (): void {
+        Route::get('/gallery/data', [GalleryController::class, 'data'])->name('gallery.rel.data');
+        Route::get('/gallery/trash', [GalleryController::class, 'trashed'])->name('gallery.rel.trash');
+        Route::post('/gallery/photos', [GalleryController::class, 'upload'])->middleware('throttle:1200,1')->name('gallery.rel.upload');
+        Route::post('/gallery/photos/trash/empty', [GalleryController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('gallery.rel.empty');
+        Route::put('/gallery/photos/{photo}', [GalleryController::class, 'update'])->whereNumber('photo')->middleware('throttle:600,1')->name('gallery.rel.update');
+        Route::post('/gallery/photos/{photo}/toggle', [GalleryController::class, 'toggle'])->whereNumber('photo')->middleware('throttle:1200,1')->name('gallery.rel.toggle');
+        Route::delete('/gallery/photos/{photo}', [GalleryController::class, 'destroy'])->whereNumber('photo')->middleware('throttle:600,1')->name('gallery.rel.destroy');
+        Route::get('/gallery/photos/{photo}/raw', [GalleryController::class, 'raw'])->whereNumber('photo')->middleware('throttle:3000,1')->name('gallery.rel.raw');
+        Route::get('/gallery/photos/{photo}/thumb', [GalleryController::class, 'thumb'])->whereNumber('photo')->middleware('throttle:6000,1')->name('gallery.rel.thumb');
+        Route::get('/gallery/photos/{photo}/medium', [GalleryController::class, 'medium'])->whereNumber('photo')->middleware('throttle:6000,1')->name('gallery.rel.medium');
+        Route::get('/gallery/photos/{photo}/motion', [GalleryController::class, 'motion'])->whereNumber('photo')->middleware('throttle:3000,1')->name('gallery.rel.motion');
+        Route::post('/gallery/photos/{id}/restore', [GalleryController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('gallery.rel.restore');
+        Route::delete('/gallery/photos/{id}/force', [GalleryController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('gallery.rel.force');
+
+        Route::post('/gallery/photos/chunk/init', [GalleryController::class, 'chunkInit'])->middleware('throttle:600,1')->name('gallery.rel.chunk.init');
+        Route::post('/gallery/photos/chunk/part', [GalleryController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('gallery.rel.chunk.part');
+        Route::post('/gallery/photos/chunk/complete', [GalleryController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('gallery.rel.chunk.complete');
+        Route::post('/gallery/photos/chunk/abort', [GalleryController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('gallery.rel.chunk.abort');
+
+        Route::get('/gallery/albums', [GalleryController::class, 'albums'])->name('gallery.rel.albums');
+        Route::post('/gallery/albums', [GalleryController::class, 'storeAlbum'])->middleware('throttle:600,1')->name('gallery.rel.albums.store');
+        Route::put('/gallery/albums/{album}', [GalleryController::class, 'updateAlbum'])->whereNumber('album')->middleware('throttle:600,1')->name('gallery.rel.albums.update');
+        Route::delete('/gallery/albums/{album}', [GalleryController::class, 'destroyAlbum'])->whereNumber('album')->middleware('throttle:600,1')->name('gallery.rel.albums.destroy');
+        Route::post('/gallery/albums/{album}/photos', [GalleryController::class, 'addPhotos'])->whereNumber('album')->middleware('throttle:600,1')->name('gallery.rel.albums.photos.add');
+        Route::delete('/gallery/albums/{album}/photos/{photo}', [GalleryController::class, 'removePhoto'])->whereNumber(['album', 'photo'])->middleware('throttle:600,1')->name('gallery.rel.albums.photos.remove');
+        Route::post('/gallery/albums/{album}/cover', [GalleryController::class, 'setCover'])->whereNumber('album')->middleware('throttle:600,1')->name('gallery.rel.albums.cover');
+
+        Route::post('/gallery/rel-shares', [GalleryController::class, 'storeShare'])->middleware('throttle:60,1')->name('gallery.rel.shares.store');
+        Route::put('/gallery/rel-shares/{share}', [GalleryController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('gallery.rel.shares.update');
+        Route::delete('/gallery/rel-shares/{share}', [GalleryController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('gallery.rel.shares.destroy');
+    });
 
     // Zero-knowledge encryption vault (Files): the server only stores ciphertext
     // and KDF params — never the passphrase, recovery code or vault key.
@@ -247,36 +292,10 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->middleware('module')->name('module-store.show');
     Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware('throttle:1200,1')->middleware('module')->name('module-store.save');
 
-    // Opaque zero-knowledge gallery index (photo/album/people structure sealed).
-    Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->middleware('module:gallery')->name('gallery.store.show');
-    Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:gallery'])->name('gallery.store.save');
-    // Public share links for an album: the client seals the share manifest (photo
-    // list + per-blob keys re-wrapped under the link's fragment key) before it
-    // arrives, so these only ever carry ciphertext + coarse access controls.
-    Route::post('/gallery/shares', [GalleryShareController::class, 'store'])->middleware('throttle:60,1')->name('gallery.shares.store');
-    Route::put('/gallery/shares/{token}', [GalleryShareController::class, 'update'])->middleware('throttle:60,1')->name('gallery.shares.update');
-    Route::delete('/gallery/shares/{token}', [GalleryShareController::class, 'destroy'])->middleware('throttle:60,1')->name('gallery.shares.destroy');
-    // Zero-knowledge transform: the browser POSTs one photo's PLAINTEXT, we return
-    // its derived data (renditions/exif/embedding/faces/place) and discard the
-    // bytes — nothing is persisted server-side. embed-text embeds a search query.
-    Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('throttle:600,1')->name('gallery.process');
-    Route::post('/gallery/analyze', [GalleryProcessController::class, 'analyze'])->middleware('throttle:600,1')->name('gallery.analyze');
-    Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('throttle:300,1')->name('gallery.embed-text');
+    // Gallery geocoding (kept): forward-geocode a place query for the bulk
+    // location picker. Passes through the server only (client CSP forbids
+    // third-party calls) and is never persisted.
     Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('throttle:60,1')->name('gallery.geocode');
-
-    // Opaque zero-knowledge gallery content blobs (ciphertext bytes only).
-    Route::get('/gallery/usage', [GalleryBlobController::class, 'usage'])->name('gallery.usage');
-    Route::post('/gallery/blobs/reconcile', [GalleryBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('gallery.blobs.reconcile');
-    Route::post('/gallery/upload', [GalleryBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('gallery.upload');
-    Route::post('/gallery/upload/init', [GalleryBlobController::class, 'chunkInit'])->middleware('throttle:600,1')->name('gallery.upload.init');
-    Route::post('/gallery/upload/part', [GalleryBlobController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('gallery.upload.part');
-    Route::post('/gallery/upload/complete', [GalleryBlobController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('gallery.upload.complete');
-    Route::post('/gallery/upload/abort', [GalleryBlobController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('gallery.upload.abort');
-    Route::get('/gallery/raw/{blob}', [GalleryBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('gallery.raw');
-    Route::post('/gallery/raw-batch', [GalleryBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('gallery.raw-batch');
-    // Generous limit: emptying a large trash frees hundreds of blobs at once, and
-    // each delete is owner-scoped, idempotent and cheap (unlink + ledger row).
-    Route::delete('/gallery/blob/{blob}', [GalleryBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('gallery.blob.destroy');
 
     // Notes live entirely in the zero-knowledge store now; only the page shell
     // remains here (all data flows through GET/PUT /store).

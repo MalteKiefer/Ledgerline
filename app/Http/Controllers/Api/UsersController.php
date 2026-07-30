@@ -9,13 +9,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Settings\GroupsController;
 use App\Models\AppSettings;
 use App\Models\AuditLog;
-use App\Models\GalleryBlob;
 use App\Models\Group;
 use App\Models\InviteLink;
 use App\Models\User;
 use App\Notifications\InviteLinkNotification;
 use App\Support\BlobStore;
 use App\Support\FilesUsage;
+use App\Support\GalleryUsage;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -46,10 +46,7 @@ class UsersController extends Controller
 
         // Per-user storage (files + gallery bytes), one grouped query each.
         $filesBy = FilesUsage::byUser();
-        $galleryBy = GalleryBlob::query()
-            ->groupBy('user_id')
-            ->selectRaw('user_id, SUM(size) AS bytes')
-            ->pluck('bytes', 'user_id');
+        $galleryBy = GalleryUsage::byUser();
 
         $int = static fn (mixed $v): int => is_numeric($v) ? (int) $v : 0;
 

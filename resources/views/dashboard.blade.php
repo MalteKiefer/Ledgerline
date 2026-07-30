@@ -1,20 +1,6 @@
 <x-layouts.app :title="__('messages.nav.dashboard')">
 <div x-data="dashboard({ rawBase: '{{ url('/gallery/raw') }}' }, {})">
 
-    {{-- Zero-knowledge gate --}}
-    @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
-
-    <template x-if="state === 'locked'">
-        <div class="mx-auto mt-16 max-w-md ll-card !p-8 text-center">
-            <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
-            <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
-               x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-            <x-button variant="primary" icon="lock-open" @click="$dispatch('vault-panel')" class="mt-5">
-                <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-            </x-button>
-        </div>
-    </template>
-
     <template x-if="state === 'ready'">
         <div>
             {{-- Header --}}

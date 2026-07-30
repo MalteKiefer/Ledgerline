@@ -6,9 +6,9 @@ namespace App\Services\Ops;
 
 use App\Models\BackupRun;
 use App\Models\ErrorEvent;
-use App\Models\GalleryBlob;
 use App\Providers\AppServiceProvider;
 use App\Support\FilesUsage;
+use App\Support\GalleryUsage;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Cache;
@@ -36,7 +36,7 @@ class SystemStatus
     public function snapshot(): array
     {
         $files = FilesUsage::total();
-        $gallery = (int) GalleryBlob::sum('size');
+        $gallery = GalleryUsage::total();
         $database = $this->databaseBytes();
 
         $lastError = ErrorEvent::whereNull('resolved_at')->max('last_seen_at');
