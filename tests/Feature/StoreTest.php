@@ -61,10 +61,10 @@ class StoreTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $this->actingAs($user)->putJson(route('module-store.save', 'explore'), ['ciphertext' => 'aaaaaa', 'version' => 0])->assertOk();
-        $this->actingAs($user)->putJson(route('module-store.save', 'explore'), ['ciphertext' => 'bb', 'version' => 1])->assertOk();
+        $this->actingAs($user)->putJson(route('module-store.save', 'invoices'), ['ciphertext' => 'aaaaaa', 'version' => 0])->assertOk();
+        $this->actingAs($user)->putJson(route('module-store.save', 'invoices'), ['ciphertext' => 'bb', 'version' => 1])->assertOk();
 
-        $rows = BlobAuditLog::query()->where('module', 'store:explore')->where('action', 'root_write')->orderBy('id')->get();
+        $rows = BlobAuditLog::query()->where('module', 'store:invoices')->where('action', 'root_write')->orderBy('id')->get();
         $this->assertCount(2, $rows);
         // The trail records version + ciphertext hash + byte length (a shrink between
         // versions is the smoking gun for a dropped-records overwrite). Never plaintext.

@@ -1,24 +1,28 @@
-// Explore map module (ZK). Tracks, photo↔track couplings and the coupling
-// tolerances live in the sealed `explore` module store (window.LLModuleStore.
-// explore); the server only ever sees ciphertext. Gallery photos are read from
-// the already-decrypted gallery index (window.LLGalleryStore.data.photos) —
-// their sealed EXIF lat/lng place a pin, and photos without GPS are placed by
-// matching their capture time against an imported track (matchPhotoToTracks +
-// interpolatePosition). Leaflet renders raster OpenStreetMap tiles as <img>
-// (allowed by the CSP img-src) — same tile layer the gallery location-picker
-// and viewer mini-map use; no tile relay / tileserver is involved.
+// Explore map module (plaintext-relational — pivot). Tracks, photo↔track
+// couplings and the coupling tolerances live in relational tables and are pulled
+// / mutated over per-row REST endpoints (/explore/*, mirrored by the mobile API);
+// there is no vault gate or sealed store any more. Gallery photos, however, are
+// STILL zero-knowledge: they are read from the already-decrypted gallery index
+// (window.LLGalleryStore.data.photos) — their sealed EXIF lat/lng place a pin,
+// and photos without GPS are placed by matching their capture time against a
+// track (matchPhotoToTracks + interpolatePosition). Leaflet renders raster
+// OpenStreetMap tiles as <img> (allowed by the CSP img-src) — same tile layer the
+// gallery location-picker and viewer mini-map use; no tile relay is involved.
+//
+// Track `stats` is an opaque JSON blob on the server, so the client-computed
+// stats (from computeStats/buildPlannedTrack) round-trip verbatim; startedAt /
+// endedAt / surfaces are folded into it so they survive a reload too.
 //
 // Everything heavy is lazy: Leaflet (loadLeaflet()), uPlot (loadUplot()) and the
 // KMZ unzip (fflate, dynamic import) are only pulled when the view needs them,
 // so none of them touch the startup bundle.
 
-import { bootStore, bootGalleryStore } from '../shared/zk-module';
+import { bootGalleryStore } from '../shared/zk-module';
 import { parseTrack, parseTrackBinary, smoothedAscentDescent } from '../shared/track-parse';
 import { matchPhotoToTracks, interpolatePosition } from '../shared/photo-track-match';
 import { loadLeaflet } from '../shared/lazy-loaders';
 import { loadUplot } from '../shared/uplot-loader';
 import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
-import { padBlob } from '../shared/padme';
 import { buildPlannedTrack, hasElevation, downsampleProfile, normalizeRouteElevation, aggregateSurfaces } from '../shared/explore-detail';
 import { haversineM } from '../shared/track-parse';
 import { classifySearch } from '../shared/geo-search';
@@ -29,12 +33,51 @@ import {
 import { buildGpx, gpxFilename } from '../shared/track-export';
 import { estimateCalories } from '../shared/explore-calories';
 import { routeGroup } from '../shared/track-similarity';
+import { getJson, apiRequest, jsonHeaders } from '../shared/api';
 
 // Distinct, deterministic polyline colours cycled per track (iOS-ish accents).
 const TRACK_COLORS = ['#7066f5', '#3b9fd6', '#59ad6b', '#e2915a', '#d9a441', '#3fae9f', '#9e70fa', '#ef4444'];
 
-export default (config = {}, labels = {}) => ({
-    state: 'boot', // boot | locked | ready | error
+// --- snake_case (server row) ↔ the shape the component + pure helpers expect ---
+// The server persists `stats` as an opaque JSON blob, so the client-computed
+// stats round-trip verbatim; startedAt/endedAt/surfaces are folded INTO stats on
+// write and lifted back to the top level here so the blade + helpers keep working.
+const normTrack = (t) => {
+    const stats = (t && typeof t.stats === 'object' && t.stats) ? t.stats : {};
+    return {
+        id: t.id,
+        name: t.name || '',
+        sourceFormat: t.source_format || t.sourceFormat || 'imported',
+        points: Array.isArray(t.points) ? t.points : [],
+        stats,
+        note: t.note ?? '',
+        startedAt: stats.startedAt ?? null,
+        endedAt: stats.endedAt ?? null,
+        surfaces: stats.surfaces ?? null,
+        importedAt: t.imported_at ?? null,
+        version: t.version ?? 0,
+        updated: t.updated_at ?? null,
+        trashed: t.deleted_at ?? null,
+    };
+};
+
+// Couplings arrive as an ARRAY of rows; the component renders/matches against a
+// MAP keyed by photo id (couplings[photoId] = {trackId, lat, lng, source}).
+const normCouplings = (arr) => {
+    const map = {};
+    for (const c of (Array.isArray(arr) ? arr : [])) {
+        if (! c || c.photo_id == null) continue;
+        map[c.photo_id] = { trackId: c.explore_track_id, lat: c.lat ?? null, lng: c.lng ?? null, source: c.source || null };
+    }
+    return map;
+};
+
+const normSettings = (s) => ({
+    couplingTimeToleranceS: Number.isFinite(Number(s?.coupling_time_tolerance_s)) ? Number(s.coupling_time_tolerance_s) : 3600,
+    couplingDistanceToleranceM: Number.isFinite(Number(s?.coupling_distance_tolerance_m)) ? Number(s.coupling_distance_tolerance_m) : 100,
+});
+
+export default (config = {}, labels = {}, initial = {}) => ({
     view: 'media', // media | tracks | detail
     error: '',
     busy: false,
@@ -77,12 +120,11 @@ export default (config = {}, labels = {}) => ({
     _planChartAbort: null,
     _planElToken: 0,      // monotonic token guarding concurrent plan-chart renders
 
-    // Store-bound collections (aliased to the sealed store's own objects so
-    // mutations persist through touch()). `_mut` is bumped on every save so
-    // store-derived getters recompute (the store data is NOT an Alpine proxy).
-    tracks: [],
-    couplings: {},
-    settings: { couplingTimeToleranceS: 3600, couplingDistanceToleranceM: 100 },
+    // Relational collections, hydrated from the inlined snapshot and refreshed
+    // over REST. `_mut` is bumped after every mutation so getters recompute.
+    tracks: (initial.tracks || []).map(normTrack),
+    couplings: normCouplings(initial.couplings),
+    settings: normSettings(initial.settings),
     _mut: 0,
 
     photos: [],          // gallery photos (best-effort; [] when gallery empty/locked)
@@ -113,11 +155,17 @@ export default (config = {}, labels = {}) => ({
     _chart: null,        // uPlot elevation instance
     _chartAbort: null,
 
-    async init() {
-        await this._boot();
-        this.$watch('$store.vault.unlocked', async (on) => {
-            if (on && this.state !== 'ready') await this._boot();
-            if (! on) this._onLock();
+    init() {
+        this.$nextTick(() => this._initMap());
+        // Tracks/couplings/settings are plaintext — refresh them straight away.
+        this.refresh();
+        // Photos + the calorie health profile are best-effort and (photos) still
+        // vault-gated, so (re)load them now and whenever the vault unlocks/locks.
+        this._loadGallery();
+        this._loadHealth();
+        this.$watch('$store.vault.unlocked', (on) => {
+            if (on) { this._loadGallery(); this._loadHealth(); }
+            else { this.photos = []; this._revokeThumbs(); this._mut++; this._renderView(); }
         });
         // Re-render map contents when the view flips or the data mutates.
         this.$watch('view', () => {
@@ -129,83 +177,100 @@ export default (config = {}, labels = {}) => ({
         this.$watch('selectedTrackId', () => { this.focusedPhotoId = null; this._renderView(); this.$nextTick(() => this.renderElevation()); });
     },
 
-    async _boot() {
-        this.state = 'boot';
+    // A fetch that surfaces status + body so a 409 version_conflict can be handled
+    // (apiRequest/postForm throw on non-2xx).
+    async _req(method, url, body) {
+        const res = await fetch(url, { method, headers: jsonHeaders(), body: body != null ? JSON.stringify(body) : undefined });
+        let data = {};
+        try { data = await res.json(); } catch (_e) { data = {}; }
+        return { ok: res.ok, status: res.status, data };
+    },
+
+    // Re-pull the whole snapshot (initial load + after a conflict, to reconcile).
+    async refresh() {
         try {
-            if (! await bootStore(this.$store, 'explore')) { this.state = 'locked'; return; }
-        } catch (e) { this.state = 'error'; return; }
+            const d = await getJson(config.dataUrl);
+            this.tracks = (d.tracks || []).map(normTrack);
+            this.couplings = normCouplings(d.couplings);
+            this.settings = normSettings(d.settings);
+            this._mut++;
+            this._healAscent();
+        } catch (_e) { /* keep the inlined snapshot */ }
+    },
 
-        const data = window.LLModuleStore.explore.data;
-        this.tracks = data.tracks;
-        this.couplings = data.couplings;
-        this.settings = data.settings;
-        this._healAscent();
-
-        // Gallery photos are best-effort — Explore still works with none.
+    // Gallery photos are best-effort — Explore still works with none. They remain
+    // zero-knowledge (read from the decrypted gallery index, not from the server).
+    async _loadGallery() {
         try {
             if (await bootGalleryStore(this.$store)) {
                 this.photos = (window.LLGalleryStore.data.photos || []).filter((p) => ! p.trashed);
+                this._mut++;
             }
-        } catch (e) { this.photos = []; }
+        } catch (_e) { this.photos = []; }
+    },
 
-        // Health profile is best-effort too — drives the optional calorie estimate,
-        // only when height + sex + latest weight are all on file. Read-only.
+    // Health profile drives the optional calorie estimate (only shown when height
+    // + sex + a recorded weight are all on file). Read-only, best-effort — health
+    // is its own relational module now, so a plain GET is enough.
+    async _loadHealth() {
         try {
-            if (await bootStore(this.$store, 'health')) {
-                const h = window.LLModuleStore.health.data || {};
-                this.healthProfile = h.healthProfile || null;
-                // Weight is a health MEASUREMENT (metric 'weight'), not a profile
-                // field — take the most recent one. Coerce v (it may be stored as a
-                // string) so a valid weight is never dropped.
-                const weights = (h.healthEntries || [])
-                    .filter((e) => e.metric === 'weight' && Number.isFinite(Number(e.v)))
-                    .sort((a, b) => new Date(b.ts) - new Date(a.ts));
-                this.latestWeightKg = weights.length ? Number(weights[0].v) : null;
+            const h = await getJson('/health/data');
+            const p = h.profile || {};
+            this.healthProfile = (p.height_cm != null || p.sex) ? { heightCm: p.height_cm ?? null, sex: p.sex || '' } : null;
+            // Weight is a MEASUREMENT (metric 'weight'), not a profile field — take
+            // the most recent one; v may be a string, so coerce.
+            const weights = (h.entries || [])
+                .filter((e) => e.metric === 'weight' && Number.isFinite(Number(e.v)))
+                .sort((a, b) => new Date(b.ts) - new Date(a.ts));
+            this.latestWeightKg = weights.length ? Number(weights[0].v) : null;
+            this._mut++;
+        } catch (_e) { this.healthProfile = null; this.latestWeightKg = null; }
+    },
+
+    // Build the stats JSON blob sent to the server: the client-computed stats plus
+    // the top-level startedAt/endedAt/surfaces folded in so they survive a reload.
+    _statsPayload(track) {
+        const s = { ...(track.stats || {}) };
+        if (track.startedAt != null) s.startedAt = track.startedAt;
+        if (track.endedAt != null) s.endedAt = track.endedAt;
+        if (track.surfaces != null) s.surfaces = track.surfaces;
+        return s;
+    },
+
+    // PUT a patch onto a track with optimistic concurrency; on 409 reconcile.
+    // `patch` may carry name / note / stats / points; version is always sent.
+    async _updateTrack(track, patch) {
+        try {
+            const body = { version: track.version, ...patch };
+            const r = await this._req('PUT', `${config.tracksUrl}/${track.id}`, body);
+            if (r.status === 409) { await this.refresh(); window.llToast?.(labels.saveFailed || 'Save failed.'); return false; }
+            if (! r.ok) throw new Error('failed');
+            if (r.data.track) {
+                const n = normTrack(r.data.track);
+                const i = this.tracks.findIndex((t) => t.id === track.id);
+                if (i >= 0) this.tracks[i] = n;
             }
-        } catch (e) { this.healthProfile = null; this.latestWeightKg = null; }
-
-        this.state = 'ready';
-        this.$nextTick(() => this._initMap());
+            this._mut++;
+            return true;
+        } catch (_e) { window.llToast?.(labels.saveFailed || 'Save failed.'); return false; }
     },
 
-    _onLock() {
-        this.state = 'locked';
-        this.tracks = [];
-        this.couplings = {};
-        this.photos = [];
-        this.trackQuery = '';
-        this.mediaQuery = '';
-        this.renamingId = null;
-        this.focusedPhotoId = null;
-        this._photoMarkers = {};
-        this._exitPlan();
-        this._revokeThumbs();
-        this._destroyChart();
-        this._destroyMap();
-        window.LLModuleStore.explore.reset();
-    },
-
-    // Persist the sealed store (debounced) after a mutation.
-    _save() { this._mut++; window.LLModuleStore.explore.touch(); },
-
-    // Re-derive ascent/descent for existing tracks with the GPS-noise smoothing
-    // (older tracks were stored with raw per-point deltas that inflated total
-    // climb ~5-10x — wrong on the display AND in the calorie estimate). One
-    // debounced save if anything changed; leaves duration/distance untouched.
+    // Re-derive ascent/descent for tracks with the GPS-noise smoothing (older data
+    // stored raw per-point deltas that inflated total climb ~5-10x — wrong on the
+    // display AND in the calorie estimate). PUTs only the tracks that actually
+    // changed; leaves duration/distance untouched. Runs once after a refresh.
     _healAscent() {
-        let dirty = false;
+        const round2 = (n) => Math.round(n * 100) / 100;
         for (const t of (this.tracks || [])) {
             const pts = t.points || [];
             if (! t.stats || pts.length < 2) continue;
             const { ascentM, descentM } = smoothedAscentDescent(pts);
-            const round2 = (n) => Math.round(n * 100) / 100;
             if (Math.abs(round2(ascentM) - (Number(t.stats.ascentM) || 0)) > 1) {
                 t.stats.ascentM = round2(ascentM);
                 t.stats.descentM = round2(descentM);
-                dirty = true;
+                this._updateTrack(t, { stats: this._statsPayload(t) });
             }
         }
-        if (dirty) this._save();
     },
 
     /* ---------------------------------------------------------------- Map */
@@ -558,36 +623,30 @@ export default (config = {}, labels = {}) => ({
         const name = file.name || 'track';
         const ext = (name.split('.').pop() || '').toLowerCase();
         let track;
-        let rawForBlob = null; // ArrayBuffer or string to seal
 
         if (ext === 'fit') {
-            const buf = await file.arrayBuffer();
-            track = parseTrackBinary(buf, name);
-            rawForBlob = buf;
+            track = parseTrackBinary(await file.arrayBuffer(), name);
         } else if (ext === 'kmz') {
-            const buf = await file.arrayBuffer();
-            const kml = await this._extractKmlFromKmz(new Uint8Array(buf));
+            const kml = await this._extractKmlFromKmz(new Uint8Array(await file.arrayBuffer()));
             track = parseTrack(kml, name.replace(/\.kmz$/i, '.kml'));
-            rawForBlob = buf;
         } else {
             // gpx / kml / tcx — text, sniffed if extension unknown.
-            const text = await file.text();
-            track = parseTrack(text, name);
-            rawForBlob = text;
+            track = parseTrack(await file.text(), name);
         }
 
-        const entry = { id: window.LLModuleStore.explore.newId(), ...track, importedAt: new Date().toISOString(), rawBlobId: null, rawBlobKey: null };
-
-        // Best-effort seal of the original file so it can be re-exported later;
-        // never blocks the import (a failed upload just leaves rawBlobId null).
-        try {
-            const sealed = await this._sealRaw(rawForBlob, name);
-            entry.rawBlobId = sealed.id;
-            entry.rawBlobKey = sealed.key;
-        } catch (e) { /* optional */ }
-
-        this.tracks.push(entry);
-        this._save();
+        // parseTrack tags sourceFormat with the file type (gpx/kml/…); the server
+        // enum only accepts recorded|imported|planned, so a file import is 'imported'.
+        const r = await this._req('POST', config.tracksUrl, {
+            name: track.name || name,
+            source_format: 'imported',
+            points: track.points || [],
+            stats: this._statsPayload(track),
+            imported_at: new Date().toISOString(),
+        });
+        if (! r.ok || ! r.data.track) throw new Error('save failed');
+        const entry = normTrack(r.data.track);
+        this.tracks.unshift(entry); // newest first (matches server orderByDesc created_at)
+        this._mut++;
         this.selectedTrackId = entry.id;
         this.view = 'tracks';
     },
@@ -602,37 +661,44 @@ export default (config = {}, labels = {}) => ({
         return strFromU8(files[kmlName]);
     },
 
-    // Encrypt the raw track bytes with a fresh per-blob key (Padmé-padded) and
-    // upload; returns { id, key }. The plaintext never leaves the browser
-    // un-sealed — the id + key live sealed inside the manifest for later export.
-    async _sealRaw(raw, name) {
-        const bytes = raw instanceof ArrayBuffer ? new Uint8Array(raw)
-            : (raw instanceof Uint8Array ? raw : new TextEncoder().encode(String(raw)));
-        const enc = window.Vault.encryptContent(bytes, { name, mime: 'application/octet-stream' });
-        const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
-        const data = new FormData();
-        data.append('_token', config.token);
-        data.append('file', cipher, cipher.name);
-        const res = await fetch(config.uploadUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: data });
-        if (! res.ok) throw new Error('upload failed');
-        const d = await res.json();
-        return { id: d.id, key: enc.encFileKey };
-    },
-
     /* ------------------------------------------------------- Photo coupling */
 
-    // Match every gallery photo against the imported tracks using the current
-    // tolerances, writing results into data.couplings. A photo already given a
-    // manual coupling is left untouched.
+    // Upsert a coupling on the server, then mirror it into the local map.
+    async _persistCoupling(photoId, trackId, lat, lng, source) {
+        const r = await this._req('POST', config.couplingsUrl, {
+            photo_id: photoId, explore_track_id: trackId,
+            lat: lat ?? null, lng: lng ?? null, source: source || null,
+        });
+        if (r.ok && r.data.coupling) {
+            const c = r.data.coupling;
+            this.couplings[photoId] = { trackId: c.explore_track_id, lat: c.lat ?? null, lng: c.lng ?? null, source: c.source || null };
+        }
+        return r.ok;
+    },
+
+    // Delete a coupling on the server (by photo id), then drop it locally.
+    async _removeCoupling(photoId) {
+        try {
+            await apiRequest('DELETE', config.couplingsUrl, { photo_id: photoId });
+            delete this.couplings[photoId];
+        } catch (_e) { /* leave the local map as-is on failure */ }
+    },
+
+    // Match every gallery photo against the tracks using the current tolerances,
+    // persisting each coupling that actually changed. A photo already given a
+    // manual coupling is left untouched; a photo that no longer matches has its
+    // stale auto coupling removed.
     async matchPhotos(silent = false) {
         if (! this.tracks.length || ! this.photos.length) return;
         if (! silent) this.busy = true;
         try {
             const matchTracks = this.tracks.map((t) => ({ id: t.id, points: t.points || [] }));
             const opts = { timeToleranceS: this.settings.couplingTimeToleranceS, distanceToleranceM: this.settings.couplingDistanceToleranceM };
+            const ops = [];
             let n = 0;
             for (const p of this.photos) {
-                if (this.couplings[p.id] && this.couplings[p.id].source === 'manual') continue;
+                const existing = this.couplings[p.id];
+                if (existing && existing.source === 'manual') continue;
                 const photoLat = p.lat != null ? parseFloat(p.lat) : null;
                 const photoLng = p.lng != null ? parseFloat(p.lng) : null;
                 const photoTime = p.taken_at ? Date.parse(p.taken_at) : (p.created ? Date.parse(p.created) : null);
@@ -640,11 +706,19 @@ export default (config = {}, labels = {}) => ({
                     { photoLat, photoLng, photoTime: Number.isFinite(photoTime) ? photoTime : null },
                     matchTracks, opts,
                 );
-                if (m.source === 'none') { delete this.couplings[p.id]; continue; }
-                this.couplings[p.id] = { trackId: m.trackId, source: m.source, lat: m.lat ?? null, lng: m.lng ?? null };
-                n++;
+                if (m.source === 'none') {
+                    if (existing) ops.push(this._removeCoupling(p.id));
+                    continue;
+                }
+                // Only hit the server when the coupling is new or changed.
+                const lat = m.lat ?? null, lng = m.lng ?? null;
+                if (! existing || existing.trackId !== m.trackId || existing.source !== m.source || existing.lat !== lat || existing.lng !== lng) {
+                    ops.push(this._persistCoupling(p.id, m.trackId, lat, lng, m.source));
+                    n++;
+                }
             }
-            if (n > 0) this._save();
+            await Promise.allSettled(ops);
+            if (ops.length) this._mut++;
             if (! silent) window.llToast?.((labels.matched || ':n matched').replace(':n', n));
         } finally {
             if (! silent) this.busy = false;
@@ -675,7 +749,7 @@ export default (config = {}, labels = {}) => ({
 
     // Manually pin a photo to a specific track (interpolated position by time),
     // marking the coupling as 'manual' so a re-match won't overwrite it.
-    assignToTrack(mediaId, trackId) {
+    async assignToTrack(mediaId, trackId) {
         const p = this.photos.find((x) => x.id === mediaId);
         const track = this.tracks.find((t) => t.id === trackId);
         if (! p || ! track) return;
@@ -688,14 +762,14 @@ export default (config = {}, labels = {}) => ({
         );
         const lat = p.lat != null ? parseFloat(p.lat) : (m.lat ?? null);
         const lng = p.lng != null ? parseFloat(p.lng) : (m.lng ?? null);
-        this.couplings[mediaId] = { trackId, source: 'manual', lat, lng };
         this.assignFor = null;
-        this._save();
+        await this._persistCoupling(mediaId, trackId, lat, lng, 'manual');
+        this._mut++;
     },
 
-    clearCoupling(mediaId) {
-        delete this.couplings[mediaId];
-        this._save();
+    async clearCoupling(mediaId) {
+        await this._removeCoupling(mediaId);
+        this._mut++;
     },
 
     // Track-detail "add photos" picker: choose from ALL gallery photos (including
@@ -744,11 +818,18 @@ export default (config = {}, labels = {}) => ({
 
     /* -------------------------------------------------------- Settings */
 
-    saveSettings() {
+    async saveSettings() {
         this.settings.couplingTimeToleranceS = Math.max(0, parseInt(this.settings.couplingTimeToleranceS, 10) || 0);
         this.settings.couplingDistanceToleranceM = Math.max(0, parseInt(this.settings.couplingDistanceToleranceM, 10) || 0);
-        this._save();
         this.settingsOpen = false;
+        try {
+            const r = await this._req('PUT', config.settingsUrl, {
+                coupling_time_tolerance_s: this.settings.couplingTimeToleranceS,
+                coupling_distance_tolerance_m: this.settings.couplingDistanceToleranceM,
+            });
+            if (r.ok && r.data.settings) this.settings = normSettings(r.data.settings);
+            this._mut++;
+        } catch (_e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
         this.matchPhotos();
     },
 
@@ -779,21 +860,15 @@ export default (config = {}, labels = {}) => ({
         if (! await this.$store.confirm.ask(labels.deleteTrackConfirm || 'Delete this track?')) return;
         const idx = this.tracks.findIndex((t) => t.id === track.id);
         if (idx < 0) return;
-        // Drop couplings that pointed at this track.
+        try {
+            // Soft-delete; the server also drops this track's couplings.
+            await apiRequest('DELETE', `${config.tracksUrl}/${track.id}`);
+        } catch (_e) { window.llToast?.(labels.saveFailed || 'Save failed.'); return; }
+        // Mirror the server's coupling cleanup locally.
         for (const [mid, c] of Object.entries(this.couplings)) if (c.trackId === track.id) delete this.couplings[mid];
-        // Best-effort cleanup of the sealed raw-track blob (orphan sweep is the
-        // backstop; a failed delete just leaves an orphan the sweep collects).
-        if (track.rawBlobId) {
-            try {
-                await fetch(`${config.deleteUrl || '/explore/blob'}/${encodeURIComponent(track.rawBlobId)}`, {
-                    method: 'DELETE',
-                    headers: { 'X-CSRF-TOKEN': config.token, 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' },
-                });
-            } catch (e) { /* orphan sweep handles it */ }
-        }
         this.tracks.splice(idx, 1);
         if (this.selectedTrackId === track.id) { this.selectedTrackId = null; if (this.view === 'detail') this.view = 'tracks'; }
-        this._save();
+        this._mut++;
     },
 
     /* --------------------------------------------------------- Rename / note */
@@ -816,16 +891,17 @@ export default (config = {}, labels = {}) => ({
     cancelRename() { this.renamingId = null; this.renameValue = ''; },
     saveRename(track) {
         const name = String(this.renameValue || '').trim();
-        if (name) { track.name = name; this._save(); }
         this.renamingId = null;
         this.renameValue = '';
+        if (name && name !== track.name) { track.name = name; this._updateTrack(track, { name }); }
     },
 
-    // Free-text note on a track (debounced-persisted through the store touch()).
+    // Free-text note on a track (persisted via PUT).
     saveNote(track, value) {
         const note = String(value ?? '').trim();
-        if (note) track.note = note; else delete track.note;
-        this._save();
+        if (note === (track.note || '')) return;
+        track.note = note;
+        this._updateTrack(track, { note });
     },
 
     /* --------------------------------------------------------- Tour planning */
@@ -1079,7 +1155,7 @@ export default (config = {}, labels = {}) => ({
         const track = buildPlannedTrack(
             this._planLine(),
             String(name || '').trim() || labels.plannedRoute || 'Route',
-            window.LLModuleStore.explore.newId(),
+            0, // temp id — the server assigns the real one
             new Date().toISOString(),
         );
         if (! track) return;
@@ -1107,10 +1183,20 @@ export default (config = {}, labels = {}) => ({
                 track.surfaces = this._routeMeta.surfaces;
             }
         }
-        this.tracks.push(track);
         this._exitPlan();
-        this._save();
-        this.selectedTrackId = track.id;
+        try {
+            const r = await this._req('POST', config.tracksUrl, {
+                name: track.name,
+                source_format: 'planned',
+                points: track.points || [],
+                stats: this._statsPayload(track),
+            });
+            if (! r.ok || ! r.data.track) throw new Error('save failed');
+            const entry = normTrack(r.data.track);
+            this.tracks.unshift(entry);
+            this._mut++;
+            this.selectedTrackId = entry.id;
+        } catch (_e) { window.llToast?.(labels.saveFailed || 'Save failed.'); }
     },
 
     trackColor(track) {

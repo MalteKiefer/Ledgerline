@@ -18,7 +18,7 @@ use App\Http\Controllers\Api\UsersController as ApiUsersController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\BookmarksController;
 use App\Http\Controllers\DevicePairingController;
-use App\Http\Controllers\ExploreBlobController;
+use App\Http\Controllers\ExploreController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryProcessController;
@@ -231,13 +231,25 @@ Route::prefix('v1')->group(function (): void {
         Route::put('/gallery/shares/{token}', [GalleryShareController::class, 'update'])->middleware('throttle:60,1')->name('api.gallery.shares.update');
         Route::delete('/gallery/shares/{token}', [GalleryShareController::class, 'destroy'])->middleware('throttle:60,1')->name('api.gallery.shares.destroy');
 
-        // Explore (map/GPS): records live in the opaque `explore` module store
-        // (GET/PUT /store/explore); these are only the optional raw track blobs.
-        Route::get('/explore/usage', [ExploreBlobController::class, 'usage'])->name('api.explore.usage');
-        Route::post('/explore/blobs/reconcile', [ExploreBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.explore.reconcile');
-        Route::post('/explore/upload', [ExploreBlobController::class, 'upload'])->middleware('throttle:600,1')->name('api.explore.upload');
-        Route::get('/explore/raw/{blob}', [ExploreBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.explore.raw');
-        Route::delete('/explore/blob/{blob}', [ExploreBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.explore.blob.destroy');
+        // Plaintext-relational Explore (pivot) — same controller as web, JSON.
+        // Track point lists are location PII → `encrypted`-cast at rest.
+        Route::middleware('module:explore')->group(function (): void {
+            Route::get('/explore/data', [ExploreController::class, 'index'])->name('api.explore.data');
+            Route::get('/explore/trash', [ExploreController::class, 'trash'])->name('api.explore.trash');
+            Route::post('/explore/tracks', [ExploreController::class, 'storeTrack'])->middleware('throttle:600,1')->name('api.explore.tracks.store');
+            Route::put('/explore/tracks/{track}', [ExploreController::class, 'updateTrack'])->whereNumber('track')->middleware('throttle:600,1')->name('api.explore.tracks.update');
+            Route::delete('/explore/tracks/{track}', [ExploreController::class, 'destroyTrack'])->whereNumber('track')->middleware('throttle:600,1')->name('api.explore.tracks.destroy');
+            Route::post('/explore/tracks/{track}/restore', [ExploreController::class, 'restoreTrack'])->whereNumber('track')->middleware('throttle:600,1')->name('api.explore.tracks.restore');
+            Route::delete('/explore/tracks/{track}/force', [ExploreController::class, 'forceDeleteTrack'])->whereNumber('track')->middleware('throttle:600,1')->name('api.explore.tracks.force');
+            Route::post('/explore/tracks/{track}/file', [ExploreController::class, 'uploadTrackFile'])->whereNumber('track')->middleware('throttle:600,1')->name('api.explore.tracks.file.upload');
+            Route::get('/explore/tracks/{track}/file', [ExploreController::class, 'trackFile'])->whereNumber('track')->middleware('throttle:600,1')->name('api.explore.tracks.file');
+            Route::post('/explore/couplings', [ExploreController::class, 'setCoupling'])->middleware('throttle:600,1')->name('api.explore.couplings.set');
+            Route::delete('/explore/couplings', [ExploreController::class, 'deleteCoupling'])->middleware('throttle:600,1')->name('api.explore.couplings.destroy');
+            Route::put('/explore/settings', [ExploreController::class, 'saveSettings'])->middleware('throttle:600,1')->name('api.explore.settings.save');
+        });
+
+        // Legacy ZK explore blob endpoints (frontend switch + teardown is a later step):
+        // records live in the opaque `explore` module store; these are the raw track blobs.
         // Explore tour-planner auto-routing: snap clicked waypoints to real paths via
         // an OSRM-compatible upstream. SSRF-guarded, coordinates never logged/persisted,
         // clean {geometry:null} when the upstream is unset/unreachable. User-initiated,

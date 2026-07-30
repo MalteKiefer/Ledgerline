@@ -1,14 +1,13 @@
 <x-layouts.app :title="__('explore.title')">
   <div x-data="explore({
-        uploadUrl: '{{ url('/explore/upload') }}',
-        rawBase: '{{ url('/explore/raw') }}',
+        dataUrl: '{{ url('/explore/data') }}',
+        tracksUrl: '{{ url('/explore/tracks') }}',
+        couplingsUrl: '{{ url('/explore/couplings') }}',
+        settingsUrl: '{{ url('/explore/settings') }}',
         galleryRawBase: '{{ url('/gallery/raw') }}',
-        usageUrl: '{{ url('/explore/usage') }}',
-        deleteUrl: '{{ url('/explore/blob') }}',
         routeUrl: '{{ url('/maps/route') }}',
         geocodeUrl: '{{ url('/gallery/geocode') }}',
         resolveUrl: '{{ url('/maps/resolve') }}',
-        token: '{{ csrf_token() }}',
      }, {
         loadFailed: @js(__('explore.load_failed')),
         mapUnavailable: @js(__('explore.map_unavailable')),
@@ -35,15 +34,12 @@
         searchNotFound: @js(__('explore.search_not_found')),
         searchFailed: @js(__('explore.search_failed')),
         searchResult: @js(__('explore.search_result')),
-     })">
-
-    {{-- Zero-knowledge gate: tracks + couplings decrypt with the vault key. --}}
-    @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
+        saveFailed: @js(__('explore.save_failed')),
+     }, @js(['tracks' => $tracks, 'couplings' => $couplings, 'settings' => $settings]))">
 
     <x-page-heading :title="__('explore.title')" :subtitle="__('explore.subtitle')">
       <x-slot:actions>
-        <template x-if="state === 'ready'">
-          <div class="flex flex-wrap items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
             {{-- View toggle (iOS segmented control) --}}
             <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/10 p-0.5">
               <button type="button" @click="view = 'media'"
@@ -70,28 +66,10 @@
             <x-icon-button name="clock" size="sm" @click="settingsOpen = true"
               title="{{ __('explore.settings') }}" aria-label="{{ __('explore.settings') }}" />
           </div>
-        </template>
       </x-slot:actions>
     </x-page-heading>
 
-    {{-- Locked --}}
-    <template x-if="state === 'locked'">
-      <div class="mx-auto mt-16 max-w-md ll-card !p-8 text-center">
-        <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
-        <p class="mt-3 text-sm text-gray-600 dark:text-gray-400">{{ __('explore.locked') }}</p>
-        <x-button variant="primary" icon="lock-open" @click="$dispatch('vault-panel')" class="mt-5">
-          <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-        </x-button>
-      </div>
-    </template>
-
-    <template x-if="state === 'error'">
-      <p class="mx-auto mt-16 max-w-md rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-6 text-center text-sm text-red-700 dark:text-red-300">{{ __('explore.load_failed') }}</p>
-    </template>
-
-    {{-- Ready --}}
-    <template x-if="state === 'ready'">
-      <div class="mt-4">
+    <div class="mt-4">
         <x-alert variant="error" x-show="error" x-cloak class="mb-3" x-text="error" />
 
         <div class="grid gap-4 lg:grid-cols-[1fr_22rem]">
@@ -591,7 +569,6 @@
         </template>
 
       </div>
-    </template>
 
   </div>
 </x-layouts.app>

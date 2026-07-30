@@ -1,6 +1,5 @@
 <?php
 
-use App\Support\UserData\ExploreData;
 use App\Support\UserData\FilesData;
 use App\Support\UserData\GalleryData;
 use App\Support\UserData\InvoicesData;
@@ -16,7 +15,6 @@ return [
         FilesData::class,
         GalleryData::class,
         InvoicesData::class,
-        ExploreData::class,
         PaperlessData::class,
         SettingsData::class,
     ],

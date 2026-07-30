@@ -22,7 +22,6 @@ Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
 // reconciles manifest-unreferenced blobs on its own; this is the crash net.
 Schedule::command('invoices:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('gallery:sweep-orphans')->daily()->withoutOverlapping();
-Schedule::command('explore:sweep-orphans')->daily()->withoutOverlapping();
 
 // Refresh EUR exchange rates once a day for the finance amount suggestions (no user data).
 Schedule::command('finance:fetch-fx')->dailyAt('03:15')->withoutOverlapping();

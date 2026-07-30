@@ -158,7 +158,6 @@ export const MODULE_BLANKS = {
     // the password manager (+ its sharded store) was removed entirely.
     invoices: () => ({ v: 3, invoices: [], invoiceSeq: 0 }),
     sharing: () => ({ v: 3, knownFingerprints: {} }),
-    explore: () => ({ v: 3, tracks: [], couplings: {}, settings: { couplingTimeToleranceS: 3600, couplingDistanceToleranceM: 100 } }),
 };
 
 /** Build the window-global registry of per-module stores. */
