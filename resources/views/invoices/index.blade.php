@@ -941,10 +941,11 @@
           <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
             <template x-for="p in pagedPartners" :key="p.id">
               <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5">
-                <span class="ll-chip h-9 w-9 shrink-0" style="--chip: #6b7280"><x-icon name="user" class="h-5 w-5" /></span>
+                <template x-if="partnerLogoSrc(p)"><img :src="partnerLogoSrc(p)" alt="" class="h-9 w-9 shrink-0 rounded-lg object-contain bg-white border border-black/[0.06] dark:border-white/10"></template>
+                <template x-if="! partnerLogoSrc(p)"><span class="ll-chip h-9 w-9 shrink-0" style="--chip: #6b7280"><x-icon name="user" class="h-5 w-5" /></span></template>
                 <div class="min-w-0 flex-1">
                   <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="p.name"></p>
-                  <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="[p.category, p.note].filter(Boolean).join(' · ') || '—'"></p>
+                  <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="[p.contact, p.email, p.phone, p.category].filter(Boolean).join(' · ') || '—'"></p>
                 </div>
                 <div class="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100">
                   <x-icon-button name="pencil" tone="gray" size="sm" @click="editPartner(p)" :aria-label="__('common.edit')" />
@@ -1010,6 +1011,32 @@
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_name') }} <span class="text-red-500">*</span></label>
                       <input type="text" x-model="partnerEditing.name" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_contact_person') }}</label>
+                      <input type="text" x-model="partnerEditing.contact" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_url') }}</label>
+                      <div class="flex items-center gap-2">
+                        <template x-if="partnerLogoSrc(partnerEditing)"><img :src="partnerLogoSrc(partnerEditing)" alt="" class="h-8 w-8 shrink-0 rounded-lg object-contain bg-white"></template>
+                        <input type="url" x-model="partnerEditing.url" placeholder="https://…" class="min-w-0 flex-1 rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      </div>
+                      <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{{ __('invoices.partner_url_hint') }}</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_email') }}</label>
+                        <input type="email" x-model="partnerEditing.email" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_phone') }}</label>
+                        <input type="tel" x-model="partnerEditing.phone" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      </div>
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_address') }}</label>
+                      <textarea x-model="partnerEditing.address" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
                     </div>
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_category') }}</label>
@@ -1649,6 +1676,88 @@
           </div>
         </div>
 
+        {{-- ============= IMPORTED INVOICE (inline PDF + key-field bar) ============= --}}
+        <template x-if="view === 'imported' && current">
+        <div x-cloak @input="onFieldInput()" @change="onFieldInput()" class="flex min-h-[calc(100vh-9rem)] flex-col">
+          {{-- Header --}}
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
+              <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
+              <span class="inline-flex items-center rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400" x-text="statusLabel(current?.status)"></span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <x-button variant="primary" size="sm" icon="check" x-show="editUnlocked && dirty" ::disabled="pdfBusy" @click="saveVersionedEdit()">
+                <span x-show="! pdfBusy">{{ __('invoices.save_changes') }}</span>
+                <span x-show="pdfBusy">{{ __('invoices.saving') }}</span>
+              </x-button>
+              <x-action-menu :aria-label="__('invoices.col_actions')">
+                <x-action-menu-item icon="pencil" x-show="! editUnlocked" @click="requestEdit()">{{ __('invoices.edit') }}</x-action-menu-item>
+                <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
+                <x-action-menu-item icon="trash" danger @click="trash(current)">{{ __('common.delete') }}</x-action-menu-item>
+              </x-action-menu>
+            </div>
+          </div>
+
+          <template x-if="editUnlocked">
+            <x-alert variant="info" class="mt-4 flex items-start gap-2">
+              <x-icon name="lock-closed" class="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{{ __('invoices.edit_versioned_note') }}</span>
+            </x-alert>
+          </template>
+
+          {{-- Key-field bar (the six fields; disabled until "Bearbeiten" + confirm) --}}
+          <fieldset :disabled="! editUnlocked" class="mt-4">
+            <div class="ll-card grid grid-cols-2 gap-x-5 gap-y-3 md:grid-cols-6">
+              <div class="col-span-2">
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_recipient') }}</label>
+                <input type="text" x-model="current.customer.name" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent disabled:border-transparent disabled:bg-transparent disabled:px-0 disabled:font-medium disabled:text-gray-900 dark:disabled:text-gray-100">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.col_number') }}</label>
+                <input type="text" x-model="current.number" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums focus:border-accent focus:ring-accent disabled:border-transparent disabled:bg-transparent disabled:px-0 disabled:text-gray-900 dark:disabled:text-gray-100">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.issue_date') }}</label>
+                <input type="date" x-model="current.issueDate" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent disabled:border-transparent disabled:bg-transparent disabled:px-0 disabled:text-gray-900 dark:disabled:text-gray-100">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_gross') }}</label>
+                <input type="number" step="0.01" x-model.number="impGross" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums focus:border-accent focus:ring-accent disabled:border-transparent disabled:bg-transparent disabled:px-0 disabled:font-semibold disabled:text-gray-900 dark:disabled:text-gray-100">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_vat_rate') }}</label>
+                <select x-model.number="impRate" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent disabled:border-transparent disabled:bg-transparent disabled:px-0 disabled:text-gray-900 dark:disabled:text-gray-100">
+                  <template x-for="r in importVatChoices()" :key="r"><option :value="r" x-text="r + ' %'"></option></template>
+                </select>
+              </div>
+            </div>
+          </fieldset>
+
+          {{-- Inline original PDF (the authoritative record) --}}
+          <div class="mt-4 min-h-[60vh] flex-1 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-gray-50 dark:bg-[#111]">
+            <template x-if="invoicePdf?.url"><iframe :src="invoicePdf.url" class="h-full w-full" title="{{ __('invoices.open_original') }}"></iframe></template>
+            <template x-if="! invoicePdf?.url"><div class="flex h-full min-h-[60vh] items-center justify-center text-sm text-gray-400 dark:text-gray-500"><x-icon name="arrow-path" class="mr-2 h-4 w-4 animate-spin" />{{ __('invoices.import_title') }}</div></template>
+          </div>
+
+          {{-- Version history (GoBD correction trail) --}}
+          <template x-if="current?.versions?.length">
+            <div class="ll-card mt-6">
+              <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.versions_heading') }}</h2>
+              <div class="mt-3 divide-y divide-black/[0.06] dark:divide-white/10">
+                <template x-for="v in [...current.versions].reverse()" :key="v.seq">
+                  <div class="py-2">
+                    <div class="text-sm font-medium text-gray-900 dark:text-gray-100 tabular-nums" x-text="v.label"></div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400" x-text="fmtDate(v.at)"></div>
+                    <div class="mt-0.5 text-sm text-gray-700 dark:text-gray-300 break-words" x-text="v.reason"></div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+        </template>
+
         {{-- ===================== EDITOR ===================== --}}
         <template x-if="view === 'edit' && current">
         <div x-cloak @input="onFieldInput()">
@@ -2129,7 +2238,7 @@
     <template x-teleport="body">
       <div x-show="importReview" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="! importReview?.running && ! importReview?.saving && cancelImport()">
         <div class="absolute inset-0 bg-gray-900/50" @click="! importReview?.running && ! importReview?.saving && cancelImport()"></div>
-        <div class="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+        <div class="relative flex h-[85vh] w-[80vw] max-w-6xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
           <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-5 py-3">
             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.import_title') }}</h3>
             <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelImport()" x-show="! importReview?.running && ! importReview?.saving" aria-label="{{ __('common.close') }}" />
@@ -2139,7 +2248,7 @@
           <template x-if="importReview?.running">
             <div class="flex items-center justify-center gap-3 px-5 py-16 text-sm text-gray-500 dark:text-gray-400">
               <x-icon name="arrow-path" class="h-5 w-5 animate-spin" />
-              <span x-text="'{{ __('invoices.import_parsing') }}'.replace(':done', importReview.done).replace(':total', importReview.total)"></span>
+              <span x-text="'{{ __('invoices.import_parsing') }}'.replace(':done', importReview?.done ?? 0).replace(':total', importReview?.total ?? 0)"></span>
             </div>
           </template>
 
@@ -2148,47 +2257,93 @@
             <div class="flex flex-col items-center justify-center gap-4 px-5 py-16">
               <div class="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
                 <x-icon name="arrow-path" class="h-5 w-5 animate-spin" />
-                <span x-text="'{{ __('invoices.import_saving') }}'.replace(':done', importReview.saved).replace(':total', importReview.saveTotal)"></span>
+                <span x-text="'{{ __('invoices.import_saving') }}'.replace(':done', importReview?.saved ?? 0).replace(':total', importReview?.saveTotal ?? 0)"></span>
               </div>
               <div class="h-2 w-64 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                <div class="h-full ll-accent transition-all" :style="{ width: (importReview.saveTotal ? Math.round(importReview.saved / importReview.saveTotal * 100) : 0) + '%' }"></div>
+                <div class="h-full ll-accent transition-all" :style="{ width: (importReview?.saveTotal ? Math.round(importReview.saved / importReview.saveTotal * 100) : 0) + '%' }"></div>
               </div>
             </div>
           </template>
 
-          {{-- Review list --}}
-          <template x-if="importReview && ! importReview.running && ! importReview.saving">
+          {{-- Review stepper: one invoice at a time — original PDF inline (left) + the six
+               key fields (right), editable, confirmed against the document before commit. --}}
+          <template x-if="importCurrent">
             <div class="flex min-h-0 flex-1 flex-col">
-              <div class="border-b border-gray-100 dark:border-gray-800 px-5 py-2.5 text-xs text-gray-500 dark:text-gray-400">
-                <span x-text="'{{ __('invoices.import_summary') }}'.replace(':n', importReview.items.length)"></span>
-                <span x-show="importReview.failed" class="text-red-600 dark:text-red-400" x-text="' · ' + '{{ __('invoices.import_failed_n') }}'.replace(':n', importReview.failed)"></span>
+              {{-- Stepper header: position + prev/next + failed count --}}
+              <div class="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-5 py-2.5">
+                <div class="flex items-center gap-2">
+                  <x-icon-button name="chevron-left" tone="gray" size="sm" @click="importPrev()" ::disabled="importReview.idx <= 0" aria-label="{{ __('common.back') }}" />
+                  <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="'{{ __('invoices.import_step') }}'.replace(':i', importReview.idx + 1).replace(':n', importReview.items.length)"></span>
+                  <x-icon-button name="chevron-right" tone="gray" size="sm" @click="importNext()" ::disabled="importReview.idx >= importReview.items.length - 1" aria-label="{{ __('common.next') }}" />
+                </div>
+                <span x-show="importReview.failed" class="text-xs text-red-600 dark:text-red-400" x-text="'{{ __('invoices.import_failed_n') }}'.replace(':n', importReview.failed)"></span>
               </div>
-              <div class="min-h-0 flex-1 overflow-auto px-5 py-3">
-                <table class="w-full text-sm">
-                  <thead class="text-left text-xs text-gray-400 dark:text-gray-500">
-                    <tr>
-                      <th class="pb-2 pr-2"></th>
-                      <th class="pb-2 pr-3">{{ __('invoices.col_number') }}</th>
-                      <th class="pb-2 pr-3">{{ __('invoices.col_date') }}</th>
-                      <th class="pb-2 pr-3">{{ __('invoices.col_customer') }}</th>
-                      <th class="pb-2 pl-3 text-right">{{ __('invoices.col_total') }}</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
-                    <template x-for="row in importReview.items" :key="row.id">
-                      <tr :class="row._warnings.length ? 'text-amber-700 dark:text-amber-400' : 'text-gray-800 dark:text-gray-200'">
-                        <td class="py-2 pr-2"><input type="checkbox" x-model="row.selected" class="rounded"></td>
-                        <td class="py-2 pr-3 tabular-nums" x-text="row.number || '—'"></td>
-                        <td class="py-2 pr-3 tabular-nums" x-text="row.issueDate || '—'"></td>
-                        <td class="max-w-[16rem] truncate py-2 pr-3" x-text="row.customer.name || '—'" :title="row.customer.name"></td>
-                        <td class="py-2 pl-3 text-right tabular-nums" x-text="fmtMoney((row._parsedGross ?? computeTotals(row).gross), row.currency, 'de')"></td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
+
+              <div class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2">
+                {{-- PDF preview --}}
+                <div class="min-h-0 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#111] md:border-b-0 md:border-r">
+                  <iframe :src="importCurrent._url" class="h-full min-h-[40vh] w-full" title="{{ __('invoices.import_title') }}"></iframe>
+                </div>
+                {{-- Six key fields --}}
+                <div class="min-h-0 overflow-auto px-5 py-4">
+                  <label class="mb-3 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+                    <input type="checkbox" x-model="importCurrent.selected" class="rounded border-gray-300 text-accent focus:ring-accent">
+                    {{ __('invoices.import_include') }}
+                  </label>
+                  <div class="space-y-3">
+                    <div>
+                      <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_recipient') }}</label>
+                      <input type="text" list="import-partner-names" x-model="importCurrent.recipient.name" placeholder="{{ __('invoices.customer_name') }}"
+                        :class="importCurrent._warnings.includes('recipient') && ! importCurrent.recipient.name ? 'ring-1 ring-amber-400' : ''"
+                        class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                      <datalist id="import-partner-names"><template x-for="n in partnerNames" :key="n"><option :value="n"></option></template></datalist>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.col_number') }}</label>
+                        <input type="text" x-model="importCurrent.number" placeholder="—"
+                          :class="importCurrent._warnings.includes('number') && ! importCurrent.number ? 'ring-1 ring-amber-400' : ''"
+                          class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums focus:border-accent focus:ring-accent">
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.issue_date') }}</label>
+                        <input type="date" x-model="importCurrent.issueDate"
+                          :class="importCurrent._warnings.includes('date') && ! importCurrent.issueDate ? 'ring-1 ring-amber-400' : ''"
+                          class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                      </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-3">
+                      <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_gross') }}</label>
+                        <input type="number" step="0.01" x-model.number="importCurrent.gross"
+                          :class="importCurrent._warnings.includes('amount') && importCurrent.gross == null ? 'ring-1 ring-amber-400' : ''"
+                          class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm text-right tabular-nums focus:border-accent focus:ring-accent">
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_vat_rate') }}</label>
+                        <select x-model.number="importCurrent.vatRate" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                          <template x-for="r in importVatChoices()" :key="r"><option :value="r" x-text="r + ' %'"></option></template>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.currency') }}</label>
+                        <select x-model="importCurrent.currency" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                          <template x-for="c in currencyOptions" :key="c"><option :value="c" x-text="c"></option></template>
+                        </select>
+                      </div>
+                    </div>
+                    {{-- Derived net + VAT preview --}}
+                    <dl class="rounded-xl bg-gray-50 dark:bg-[#2c2c2e]/60 px-3 py-2 text-sm">
+                      <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">{{ __('invoices.net') }}</dt><dd class="tabular-nums text-gray-700 dark:text-gray-200" x-text="fmtMoney(importNet(importCurrent), importCurrent.currency, 'de')"></dd></div>
+                      <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400" x-text="'{{ __('invoices.vat_at') }}'.replace(':rate', importCurrent.vatRate)"></dt><dd class="tabular-nums text-gray-700 dark:text-gray-200" x-text="fmtMoney(importVat(importCurrent), importCurrent.currency, 'de')"></dd></div>
+                    </dl>
+                    <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.import_hint') }}</p>
+                  </div>
+                </div>
               </div>
+
               <div class="flex items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-800 px-5 py-3">
-                <span class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.import_hint') }}</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.import_summary') }}'.replace(':n', importReview.items.length)"></span>
                 <div class="flex items-center gap-3">
                   <x-button variant="secondary" @click="cancelImport()">{{ __('common.cancel') }}</x-button>
                   <x-button variant="primary" @click="confirmImport()" ::disabled="! importSelectedCount">

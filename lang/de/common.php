@@ -7,6 +7,7 @@ return [
     'cancel' => 'Abbrechen',
     'sections' => 'Bereiche',
     'back' => 'Zurück',
+    'next' => 'Weiter',
     'save' => 'Speichern',
     'edit' => 'Bearbeiten',
     'close' => 'Schließen',
