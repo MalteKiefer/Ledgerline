@@ -1248,13 +1248,24 @@ export default (config = {}, labels = {}) => ({
 
     // ---- Derived ----
     get activeInvoices() { return (this.invoices || []).filter((i) => ! i.trashed); },
+    // Invoice-list filters (on top of search + status).
+    invYear: '', invCustomer: '', invLinked: '', // '' | 'linked' | 'open'
+    get invFiltersActive() { return !! (this.query.trim() || this.filterStatus || this.invYear || this.invCustomer || this.invLinked); },
+    resetInvFilters() { this.query = ''; this.filterStatus = ''; this.invYear = ''; this.invCustomer = ''; this.invLinked = ''; this.invPage = 1; },
+    get invoiceYears() { return [...new Set(this.activeInvoices.map((i) => invoiceYear(i)).filter(Boolean))].sort((a, b) => b.localeCompare(a)); },
+    get invoiceCustomers() { return [...new Set(this.activeInvoices.map((i) => i.customer?.name).filter(Boolean))].sort((a, b) => a.localeCompare(b)); },
     get filtered() {
         // Invoices are business documents — hidden in the private scope.
         if (this.financeScope === 'private') return [];
         const q = this.query.trim().toLowerCase();
+        const raw = this.query.trim();
         let list = this.activeInvoices;
         if (this.filterStatus) list = list.filter((i) => i.status === this.filterStatus);
-        if (q) list = list.filter((i) => (i.number || '').toLowerCase().includes(q) || (i.customer?.name || '').toLowerCase().includes(q));
+        if (this.invYear) list = list.filter((i) => invoiceYear(i) === String(this.invYear));
+        if (this.invCustomer) list = list.filter((i) => (i.customer?.name || '') === this.invCustomer);
+        if (this.invLinked === 'linked') list = list.filter((i) => !! i.paymentTxId);
+        else if (this.invLinked === 'open') list = list.filter((i) => ! i.paymentTxId);
+        if (q) list = list.filter((i) => (i.number || '').toLowerCase().includes(q) || (i.customer?.name || '').toLowerCase().includes(q) || amountMatches(this.computeTotals(i).gross, raw));
         return [...list].sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || '') || (b.number || '').localeCompare(a.number || ''));
     },
     get totals() { return this.computeTotals(this.current); },
