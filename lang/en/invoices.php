@@ -56,6 +56,8 @@ return [
     'vat_at' => 'VAT :rate%',
     'gross' => 'Total',
     'payable' => 'Amount due',
+    'edit' => 'Edit',
+    'edit_confirm' => 'Edit this fixed invoice? Saving records a new numbered version with a reason.',
     'save_changes' => 'Save changes',
     'saving' => 'Saving…',
     'edit_versioned_note' => 'This invoice is a fixed record. Editing it saves a new, numbered version and requires a reason (kept for your records).',

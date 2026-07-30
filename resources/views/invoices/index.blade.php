@@ -1667,6 +1667,7 @@
                 <span x-show="pdfBusy">{{ __('invoices.saving') }}</span>
               </x-button>
               <x-action-menu :aria-label="__('invoices.col_actions')">
+                <x-action-menu-item icon="pencil" x-show="isLocked(current) && ! editUnlocked" @click="requestEdit()">{{ __('invoices.edit') }}</x-action-menu-item>
                 <x-action-menu-item icon="document-text" x-show="current?.imported && current?.pdf" @click="openOriginalPdf(current)">{{ __('invoices.open_original') }}</x-action-menu-item>
                 <x-action-menu-item icon="printer" x-show="! current?.imported || ! current?.pdf" @click="printInvoice(current)">{{ __('invoices.print') }}</x-action-menu-item>
                 <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
@@ -1685,7 +1686,7 @@
             </x-alert>
           </template>
 
-          <fieldset class="contents">
+          <fieldset ::disabled="isLocked(current) && ! editUnlocked" class="contents">
 
           <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
             {{-- Customer --}}

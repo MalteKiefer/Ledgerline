@@ -56,6 +56,8 @@ return [
     'vat_at' => 'USt :rate%',
     'gross' => 'Gesamt',
     'payable' => 'Zu zahlen',
+    'edit' => 'Bearbeiten',
+    'edit_confirm' => 'Diese festgeschriebene Rechnung bearbeiten? Beim Speichern wird eine neue, nummerierte Version mit Grund angelegt.',
     'save_changes' => 'Änderungen speichern',
     'saving' => 'Speichern…',
     'edit_versioned_note' => 'Diese Rechnung ist ein festgeschriebener Beleg. Eine Bearbeitung legt eine neue, nummerierte Version an und verlangt einen Grund (wird gespeichert).',
