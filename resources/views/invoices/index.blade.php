@@ -95,6 +95,8 @@
         match_linked: @js(__('invoices.match_linked')),
         match_done: @js(__('invoices.match_done')),
         match_gone: @js(__('invoices.match_gone')),
+        restore_dupe: @js(__('invoices.restore_dupe')),
+        trash_empty_confirm: @js(__('invoices.trash_empty_confirm')),
         txtype_card: @js(__('invoices.txtype_card')),
         txtype_debit: @js(__('invoices.txtype_debit')),
         txtype_credit: @js(__('invoices.txtype_credit')),
@@ -370,6 +372,8 @@
             <div class="mt-4">
               <template x-if="! trashedReceipts.length"><x-empty-state icon="trash" class="py-14">{{ __('invoices.trash_empty') }}</x-empty-state></template>
               <template x-if="trashedReceipts.length">
+                <div>
+                <div class="mb-3 flex justify-end"><x-button variant="danger" size="sm" icon="trash" @click="emptyReceiptTrash()">{{ __('invoices.trash_empty_btn') }}</x-button></div>
                 <div class="ll-card !p-0 overflow-hidden">
                   <div class="divide-y divide-black/[0.06] dark:divide-white/10">
                     <template x-for="doc in trashedReceipts" :key="doc.r.id">
@@ -384,6 +388,7 @@
                       </div>
                     </template>
                   </div>
+                </div>
                 </div>
               </template>
             </div>
@@ -2065,6 +2070,8 @@
             <div class="mt-4">
               <template x-if="! trashedInvoices.length"><x-empty-state icon="trash" class="py-14">{{ __('invoices.trash_empty') }}</x-empty-state></template>
               <template x-if="trashedInvoices.length">
+                <div>
+                <div class="mb-3 flex justify-end"><x-button variant="danger" size="sm" icon="trash" @click="emptyInvoiceTrash()">{{ __('invoices.trash_empty_btn') }}</x-button></div>
                 <div class="ll-card !p-0 overflow-hidden overflow-x-auto">
                   <table class="min-w-full text-sm">
                     <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
@@ -2084,6 +2091,7 @@
                       </template>
                     </tbody>
                   </table>
+                </div>
                 </div>
               </template>
             </div>

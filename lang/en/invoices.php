@@ -86,6 +86,9 @@ return [
     'delete' => 'Delete permanently',
     'trash_bin' => 'Trash',
     'trash_empty' => 'The trash is empty.',
+    'trash_empty_btn' => 'Empty trash',
+    'trash_empty_confirm' => 'Permanently delete everything in the trash? This cannot be undone.',
+    'restore_dupe' => 'An active invoice with number :n already exists.',
     'delete_confirm' => 'Delete this invoice permanently?',
 
     'company_missing' => 'Set up your company profile in Settings to number and brand invoices.',

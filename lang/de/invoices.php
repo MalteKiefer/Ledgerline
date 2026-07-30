@@ -86,6 +86,9 @@ return [
     'delete' => 'Endgültig löschen',
     'trash_bin' => 'Papierkorb',
     'trash_empty' => 'Der Papierkorb ist leer.',
+    'trash_empty_btn' => 'Papierkorb leeren',
+    'trash_empty_confirm' => 'Alles im Papierkorb endgültig löschen? Das kann nicht rückgängig gemacht werden.',
+    'restore_dupe' => 'Eine aktive Rechnung mit Nummer :n existiert bereits.',
     'delete_confirm' => 'Diese Rechnung endgültig löschen?',
 
     'company_missing' => 'Richte dein Firmenprofil in den Einstellungen ein, um Rechnungen zu nummerieren und zu branden.',

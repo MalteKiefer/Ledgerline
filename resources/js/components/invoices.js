@@ -505,6 +505,12 @@ export default (config = {}, labels = {}) => ({
         if (i >= 0) arr.splice(i, 1);
         this._save(); this.reconcileBlobs();
     },
+    async emptyReceiptTrash() {
+        if (! this.trashedReceipts.length) return;
+        if (! await this.$store.confirm.ask(labels.trash_empty_confirm || 'Permanently delete all receipts in the trash?')) return;
+        for (const tx of (this.transactions || [])) if (tx.receipts) tx.receipts = tx.receipts.filter((r) => ! r.trashed);
+        this._save(); this.reconcileBlobs();
+    },
     get filteredReceipts() {
         const q = this.receiptQuery.trim().toLowerCase();
         let list = this.allReceipts.filter((d) => this._scopeMatch(this._receiptPrivate(d)));
@@ -1270,6 +1276,12 @@ export default (config = {}, labels = {}) => ({
         if (i >= 0) this.invoices.splice(i, 1);
         this._save(); this.reconcileBlobs();
     },
+    async emptyInvoiceTrash() {
+        if (! this.trashedInvoices.length) return;
+        if (! await this.$store.confirm.ask(labels.trash_empty_confirm || 'Permanently delete all invoices in the trash?')) return;
+        this.invoices = (this.invoices || []).filter((i) => ! i.trashed);
+        this._save(); this.reconcileBlobs();
+    },
     // Invoice-list filters (on top of search + status).
     invYear: '', invCustomer: '', invLinked: '', // '' | 'linked' | 'open'
     get invFiltersActive() { return !! (this.query.trim() || this.filterStatus || this.invYear || this.invCustomer || this.invLinked); },
@@ -1824,7 +1836,16 @@ export default (config = {}, labels = {}) => ({
         if (! await this.$store.confirm.ask(labels.trashConfirm || 'Move this invoice to the trash?')) return;
         inv.trashed = new Date().toISOString(); this._save(); if (this.current === inv) this.backToList();
     },
-    restore(inv) { inv.trashed = false; this._save(); },
+    restore(inv) {
+        // Refuse to restore when an ACTIVE invoice already carries this number (would create a
+        // duplicate / break the gapless-unique series). Numberless drafts always restore.
+        const num = String(inv.number || '').trim();
+        if (num && this.activeInvoices.some((i) => i !== inv && String(i.number || '').trim() === num)) {
+            window.llToast?.((labels.restore_dupe || 'An active invoice with number :n already exists.').replace(':n', num));
+            return;
+        }
+        inv.trashed = false; this._save();
+    },
     async remove(inv) {
         if (! await this.$store.confirm.ask(labels.deleteConfirm || 'Delete this invoice permanently?')) return;
         const i = this.invoices.indexOf(inv);
