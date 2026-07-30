@@ -1531,6 +1531,7 @@
                       <template x-if="receiptTx.amount > 0 && ! receiptTx.invoiceId">
                         <x-button variant="secondary" size="sm" icon="link" @click="openInvoicePicker(receiptTx)">{{ __('invoices.match_link') }}</x-button>
                       </template>
+                      <x-button variant="secondary" size="sm" icon="pencil" @click="newEigenbeleg(receiptTx)">{{ __('invoices.eg_create') }}</x-button>
                       <input type="file" x-ref="receiptFile" accept="application/pdf,image/*" multiple class="hidden" @change="uploadReceipts($event.target.files); $event.target.value = ''">
                       <x-button variant="primary" size="sm" icon="arrow-up-tray" ::disabled="receiptBusy" @click="$refs.receiptFile.click()">{{ __('invoices.receipts_add') }}</x-button>
                     </div>
@@ -1539,6 +1540,117 @@
               </template>
             </div>
           </div>
+
+          {{-- ---- EIGENBELEG (self-receipt: prefilled from the booking → PDF) ---- --}}
+          <div x-show="eigenbeleg" x-cloak class="fixed inset-0 z-[1130] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="! egBusy && cancelEigenbeleg()">
+            <div class="absolute inset-0 bg-gray-900/50" @click="! egBusy && cancelEigenbeleg()"></div>
+            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <template x-if="eigenbeleg">
+                <div class="flex min-h-0 flex-col">
+                  <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.eg_title') }}</h3>
+                    <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelEigenbeleg()" :aria-label="__('common.close')" />
+                  </div>
+                  <div class="min-h-0 flex-1 space-y-3 overflow-auto px-5 py-4">
+                    <x-alert variant="info">{{ __('invoices.eg_intro') }}</x-alert>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_recipient') }} <span class="text-red-500">*</span></label>
+                      <input type="text" x-model="eigenbeleg.recipient" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_address') }}</label>
+                      <textarea x-model="eigenbeleg.address" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_date') }}</label>
+                        <input type="date" x-model="eigenbeleg.date" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_created') }}</label>
+                        <input type="date" x-model="eigenbeleg.createdAt" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      </div>
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_description') }}</label>
+                      <textarea x-model="eigenbeleg.description" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_purpose') }}</label>
+                      <input type="text" x-model="eigenbeleg.purpose" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_gross') }} <span class="text-red-500">*</span></label>
+                        <input type="number" step="0.01" x-model.number="eigenbeleg.gross" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm text-right tabular-nums">
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_vat_rate') }}</label>
+                        <select x-model.number="eigenbeleg.vatRate" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                          <template x-for="r in egVatChoices()" :key="r"><option :value="r" x-text="r + ' %'"></option></template>
+                        </select>
+                      </div>
+                    </div>
+                    <dl class="rounded-xl bg-gray-50 dark:bg-[#2c2c2e]/60 px-3 py-2 text-sm">
+                      <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">{{ __('invoices.net') }}</dt><dd class="tabular-nums text-gray-700 dark:text-gray-200" x-text="fmtMoney(egNet, 'EUR', 'de')"></dd></div>
+                      <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400" x-text="'{{ __('invoices.vat_at') }}'.replace(':rate', eigenbeleg.vatRate)"></dt><dd class="tabular-nums text-gray-700 dark:text-gray-200" x-text="fmtMoney(egVat, 'EUR', 'de')"></dd></div>
+                    </dl>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_reason') }} <span class="text-red-500">*</span></label>
+                      <textarea x-model="eigenbeleg.reason" rows="2" placeholder="z. B. Originalquittung verloren" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_issuer') }}</label>
+                      <input type="text" x-model="eigenbeleg.issuer" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-end gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <x-button variant="secondary" @click="cancelEigenbeleg()" ::disabled="egBusy">{{ __('common.cancel') }}</x-button>
+                    <x-button variant="primary" icon="document-text" @click="saveEigenbeleg()" ::disabled="egBusy">
+                      <span x-show="! egBusy">{{ __('invoices.eg_generate') }}</span>
+                      <span x-show="egBusy">{{ __('invoices.saving') }}</span>
+                    </x-button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          {{-- Off-screen print node for the Eigenbeleg PDF (rasterised by html2canvas).
+               Teleported to <body> so no ancestor display:none/overflow can blank it. --}}
+          <template x-teleport="body">
+          <div id="eigenbeleg-print" style="position:fixed; left:-10000px; top:0; width:794px; background:#fff; color:#111;">
+            <template x-if="eigenbeleg">
+              <div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:56px 56px; font-size:13px; line-height:1.6; color:#111;">
+                <div style="font-size:24px; font-weight:700; letter-spacing:-0.4px;">{{ __('invoices.eg_title') }}</div>
+                <div style="height:2px; background:#111; width:96px; margin:10px 0 26px;"></div>
+                <table style="width:100%; border-collapse:collapse;">
+                  <tbody>
+                    <tr><td style="padding:7px 0; color:#555; width:38%; vertical-align:top;">{{ __('invoices.eg_recipient') }}</td><td style="padding:7px 0; font-weight:600; white-space:pre-line;" x-text="[eigenbeleg.recipient, eigenbeleg.address].filter(Boolean).join('\n')"></td></tr>
+                    <tr><td style="padding:7px 0; color:#555;">{{ __('invoices.eg_date') }}</td><td style="padding:7px 0;" x-text="fmtDate(eigenbeleg.date)"></td></tr>
+                    <tr><td style="padding:7px 0; color:#555;">{{ __('invoices.eg_description') }}</td><td style="padding:7px 0; white-space:pre-line;" x-text="eigenbeleg.description || '—'"></td></tr>
+                    <tr><td style="padding:7px 0; color:#555;">{{ __('invoices.eg_purpose') }}</td><td style="padding:7px 0;" x-text="eigenbeleg.purpose || '—'"></td></tr>
+                    <tr><td style="padding:7px 0; color:#555;">{{ __('invoices.net') }}</td><td style="padding:7px 0;" x-text="fmtMoney(egNet, 'EUR', 'de')"></td></tr>
+                    <tr><td style="padding:7px 0; color:#555;"><span x-text="'{{ __('invoices.vat_at') }}'.replace(':rate', eigenbeleg.vatRate)"></span></td><td style="padding:7px 0;" x-text="fmtMoney(egVat, 'EUR', 'de')"></td></tr>
+                    <tr><td style="padding:7px 0; color:#555; font-weight:700;">{{ __('invoices.eg_gross') }}</td><td style="padding:7px 0; font-weight:700; font-size:15px;" x-text="fmtMoney(eigenbeleg.gross, 'EUR', 'de')"></td></tr>
+                    <tr><td style="padding:7px 0; color:#555; vertical-align:top;">{{ __('invoices.eg_reason') }}</td><td style="padding:7px 0; white-space:pre-line;" x-text="eigenbeleg.reason"></td></tr>
+                  </tbody>
+                </table>
+                <div style="margin-top:14px; font-size:11px; color:#777;">{{ __('invoices.eg_novat_note') }}</div>
+                <div style="margin-top:48px; display:flex; justify-content:space-between; align-items:flex-end; gap:40px;">
+                  <div style="flex:1;">
+                    <div style="border-top:1px solid #111; padding-top:6px; font-size:11px; color:#555;">{{ __('invoices.eg_issuer') }}: <span x-text="eigenbeleg.issuer || '—'"></span></div>
+                    <div style="margin-top:4px; font-size:11px; color:#555;">{{ __('invoices.eg_created') }}: <span x-text="fmtDate(eigenbeleg.createdAt)"></span></div>
+                  </div>
+                  <div style="flex:1;">
+                    <div style="border-top:1px solid #111; padding-top:6px; font-size:11px; color:#555;">{{ __('invoices.eg_signature') }}</div>
+                    <div style="margin-top:4px; font-size:10px; color:#999;">{{ __('invoices.eg_signature_hint') }}</div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+          </template>
 
           {{-- ---- RECEIPT PREVIEW (quick look, decrypted client-side) ---- --}}
           <div x-show="receiptPreview" x-cloak class="fixed inset-0 z-[1140] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeReceiptPreview()">
