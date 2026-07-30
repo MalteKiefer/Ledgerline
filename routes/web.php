@@ -10,6 +10,7 @@ use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\ExploreBlobController;
 use App\Http\Controllers\ExploreController;
 use App\Http\Controllers\FileController;
+use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileShareController;
 use App\Http\Controllers\FilesStoreController;
 use App\Http\Controllers\GalleryBlobController;
@@ -231,6 +232,37 @@ Route::middleware('auth')->group(function (): void {
     // history is manifest-side, so a version download is just a raw blob fetch.
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:3000,1')->name('files.raw');
     Route::post('/files/raw-batch', [FileController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('files.raw-batch');
+
+    // Plaintext-relational Files core (pivot): personal files + folders as rows,
+    // bytes plaintext on the file disk. Distinct URIs (/files/entries, /files/folders,
+    // /files/upload/chunk/*) so nothing collides with the ZK routes above.
+    Route::middleware('module:files')->group(function (): void {
+        Route::get('/files/trash', [FilesController::class, 'trashed'])->name('files.rel.trash');
+        Route::get('/files/entries', [FilesController::class, 'index'])->name('files.rel.index');
+        Route::post('/files/entries', [FilesController::class, 'upload'])->middleware('throttle:1200,1')->name('files.rel.upload');
+        Route::post('/files/entries/trash/empty', [FilesController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('files.rel.empty');
+        Route::put('/files/entries/{file}', [FilesController::class, 'update'])->whereNumber('file')->middleware('throttle:600,1')->name('files.rel.update');
+        Route::delete('/files/entries/{file}', [FilesController::class, 'destroy'])->whereNumber('file')->middleware('throttle:600,1')->name('files.rel.destroy');
+        Route::get('/files/entries/{file}/raw', [FilesController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('files.rel.raw');
+        Route::post('/files/entries/{file}/content', [FilesController::class, 'replaceContent'])->whereNumber('file')->middleware('throttle:1200,1')->name('files.rel.content');
+        Route::post('/files/entries/{file}/toggle', [FilesController::class, 'toggle'])->whereNumber('file')->middleware('throttle:1200,1')->name('files.rel.toggle');
+        Route::get('/files/entries/{file}/versions', [FilesController::class, 'versions'])->whereNumber('file')->name('files.rel.versions');
+        Route::get('/files/entries/{file}/versions/{version}/raw', [FilesController::class, 'versionRaw'])->whereNumber(['file', 'version'])->middleware('throttle:3000,1')->name('files.rel.version.raw');
+        Route::post('/files/entries/{file}/versions/{version}/restore', [FilesController::class, 'restoreVersion'])->whereNumber(['file', 'version'])->middleware('throttle:600,1')->name('files.rel.version.restore');
+        Route::post('/files/entries/{id}/restore', [FilesController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('files.rel.restore');
+        Route::delete('/files/entries/{id}/force', [FilesController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('files.rel.force');
+
+        Route::get('/files/folders', [FilesController::class, 'folders'])->name('files.rel.folders');
+        Route::post('/files/folders', [FilesController::class, 'storeFolder'])->middleware('throttle:600,1')->name('files.rel.folders.store');
+        Route::put('/files/folders/{folder}', [FilesController::class, 'renameFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('files.rel.folders.update');
+        Route::post('/files/folders/{folder}/move', [FilesController::class, 'moveFolder'])->whereNumber('folder')->middleware('throttle:1200,1')->name('files.rel.folders.move');
+        Route::delete('/files/folders/{folder}', [FilesController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('files.rel.folders.destroy');
+
+        Route::post('/files/upload/chunk/init', [FilesController::class, 'chunkInit'])->middleware('throttle:600,1')->name('files.rel.chunk.init');
+        Route::post('/files/upload/chunk/part', [FilesController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('files.rel.chunk.part');
+        Route::post('/files/upload/chunk/complete', [FilesController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('files.rel.chunk.complete');
+        Route::post('/files/upload/chunk/abort', [FilesController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('files.rel.chunk.abort');
+    });
 
     // Plaintext-relational Notes (pivot Etappe 1). Server-rendered page + JSON CRUD + trash.
     Route::middleware('module:notes')->group(function (): void {
