@@ -40,7 +40,11 @@ export function zkModule(cfg) {
         tagDraft: '',
 
         // The committed chips derived from tagsValue (reactive on tagsValue).
-        get tagList() { return parseTags(this.tagsValue); },
+        // A METHOD, not a getter: components spread this mixin (`{ ...zkModule() }`), and
+        // object spread INVOKES a getter and copies its (static) result — which would freeze
+        // the chip list at init and never react to tagsValue. A method survives the spread by
+        // reference and stays reactive when called in x-for.
+        tagList() { return parseTags(this.tagsValue); },
         // Commit the draft (splitting on comma too) into chips; skip duplicates.
         commitTag() { this.tagsValue = addTags(this.tagsValue, this.tagDraft); this.tagDraft = ''; },
         // Auto-commit when the user types/pastes a comma.

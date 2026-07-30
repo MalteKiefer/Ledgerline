@@ -54,7 +54,7 @@ export default (config = {}, labels = {}) => ({
     // live here). tagsValue stays the source of truth (comma-joined), read/written as
     // chips; saveTags() still reads tagsValue unchanged.
     tagDraft: '',
-    get tagList() { return parseTags(this.tagsValue); },
+    tagList() { return parseTags(this.tagsValue); }, // method (see zk-module tagList note)
     commitTag() { this.tagsValue = addTags(this.tagsValue, this.tagDraft); this.tagDraft = ''; },
     onTagInput() { if ((this.tagDraft || '').includes(',')) this.commitTag(); },
     tagBackspace() { if ((this.tagDraft || '') === '') this.tagsValue = popTag(this.tagsValue); },

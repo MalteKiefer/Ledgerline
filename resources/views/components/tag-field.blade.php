@@ -16,7 +16,7 @@
 
 <div {{ $attributes->class('mt-1 flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 dark:bg-gray-800 px-2 py-1.5 text-sm transition focus-within:border-accent focus-within:ring-1 focus-within:ring-accent') }}
      @click="$refs.tagInput.focus()">
-    <template x-for="tag in tagList" :key="tag">
+    <template x-for="tag in tagList()" :key="tag">
         <span class="inline-flex items-center gap-1 rounded-md bg-accent/10 py-0.5 pl-2 pr-1 text-xs font-medium text-accent">
             <span x-text="tag"></span>
             <button type="button" @click.stop="removeTag(tag){{ $after }}" class="rounded p-0.5 hover:bg-accent/15" aria-label="{{ __('common.delete') }}"><x-icon name="x-mark" class="h-3 w-3" /></button>
