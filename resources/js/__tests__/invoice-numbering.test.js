@@ -41,6 +41,23 @@ describe('invoice numbering (GoBD: unique, gapless)', () => {
         expect(duplicateNumbers(invoices)).toEqual([]);
     });
 
+    it('ignores trashed invoices (deleted-then-reimported is not a duplicate)', () => {
+        const invoices = [
+            { id: 'old', number: '2', issueDate: '2014-04-25', trashed: '2026-07-30T00:00:00Z' },
+            { id: 'new', number: '2', issueDate: '2014-04-25' },
+            { id: 'a', number: '1', issueDate: '2014-04-25' },
+        ];
+        expect(duplicateNumbers(invoices)).toEqual([]);
+    });
+
+    it('same bare number in two different years is not a duplicate', () => {
+        const invoices = [
+            { id: 'a', number: '1', issueDate: '2014-04-25' },
+            { id: 'b', number: '1', issueDate: '2015-01-10' },
+        ];
+        expect(duplicateNumbers(invoices)).toEqual([]);
+    });
+
     it('numbers per year: each year has its own sequence', () => {
         const invoices = [
             { id: 'a', seq: 3, issueDate: '2025-12-01' },
