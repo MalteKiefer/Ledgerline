@@ -92,6 +92,9 @@
         eg_missing: @js(__('invoices.eg_missing')),
         eg_done: @js(__('invoices.eg_done')),
         eg_failed: @js(__('invoices.eg_failed')),
+        match_linked: @js(__('invoices.match_linked')),
+        match_done: @js(__('invoices.match_done')),
+        match_gone: @js(__('invoices.match_gone')),
      })">
 
     {{-- Zero-knowledge gate: invoices decrypt with the vault key. --}}
@@ -1400,7 +1403,7 @@
                                 </div>
                               </template>
                               <p x-show="tx.iban && ! tx.invoiceId" class="truncate text-xs text-gray-400 dark:text-gray-500 tabular-nums" x-text="tx.iban"></p>
-                              <button type="button" x-show="tx.invoiceId" @click="openInvoiceById(tx.invoiceId)" class="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline">
+                              <button type="button" x-show="tx.invoiceId" @click="openInvoiceById(tx.invoiceId, tx.invoiceNumber)" class="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline">
                                 <x-icon name="link" class="h-3 w-3" /><span x-text="'{{ __('invoices.match_invoice') }}'.replace(':n', tx.invoiceNumber || '')"></span>
                               </button>
                             </td>
