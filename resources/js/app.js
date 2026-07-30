@@ -72,25 +72,7 @@ window.LLGalleryStore = makeShardedStore({
 // Invoices graduated to a sharded store too (spec §3b) — they grow with sending/import
 // and must stay loss-safe for tax records. Each invoice is one shard record; numbering
 // safety is derived client-side from the invoices, not a store scalar (see invoices.js).
-window.LLInvoicesStore = makeShardedStore({
-    prefix: '/invoices',
-    recordKey: 'invoices',
-    // Payment methods (bank accounts, cards, …) and imported bank transactions live
-    // sealed in the finance store as collection blobs — sensitive (IBAN/statements), so
-    // zero-knowledge like invoices. Transactions are re-sealed only when they change.
-    // NOTE (cross-client invariant): every client MUST declare EVERY collection here, or
-    // its save() drops the undeclared collection's root refs → data loss. iOS/Go/Android
-    // must mirror this list (passthrough is fine — load + preserve, no UI needed).
-    collections: [
-        { key: 'paymentMethods', rootRef: 'payRef', rootKey: 'payKey', rootHash: 'payHash' },
-        { key: 'transactions', rootRef: 'txRef', rootKey: 'txKey', rootHash: 'txHash' },
-        { key: 'partners', rootRef: 'partRef', rootKey: 'partKey', rootHash: 'partHash' },
-        { key: 'financeCategories', rootRef: 'catRef', rootKey: 'catKey', rootHash: 'catHash' },
-        // Cost projects (nestable) bundling receipts + manual "hand" expenses. Each project:
-        // { id, name, parentId|null, note, expenses:[{id, amount, date, note}], created }.
-        { key: 'projects', rootRef: 'projRef', rootKey: 'projKey', rootHash: 'projHash' },
-    ],
-});
+// Finance migrated to plaintext-relational (pivot) — served via /finance/* REST.
 
 
 // Wait for the vault, then load the sealed gallery index once.
