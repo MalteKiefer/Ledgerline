@@ -60,14 +60,6 @@ class ProfileController extends Controller
         ]);
     }
 
-    /** Zero-knowledge vault: change passphrase / reset via recovery code. */
-    public function encryption(Request $request): View
-    {
-        $this->requireUser($request);
-
-        return view('profile.encryption');
-    }
-
     /** Login security: two-factor authentication (TOTP) via Fortify. */
     public function security(Request $request): View
     {

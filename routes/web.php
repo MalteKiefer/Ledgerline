@@ -17,14 +17,12 @@ use App\Http\Controllers\InviteLinkController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
-use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NotesController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\PublicShareController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
@@ -38,7 +36,6 @@ use App\Http\Controllers\Settings\SystemController;
 use App\Http\Controllers\Settings\UsersController as SettingsUsersController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TodosController;
-use App\Http\Controllers\VaultController;
 use Illuminate\Support\Facades\Route;
 
 // The root simply forwards to the dashboard; unauthenticated visitors are then
@@ -49,22 +46,9 @@ Route::get('/', static fn () => redirect()->route('dashboard'));
 // token (OPS_METRICS_TOKEN) and disabled when unset. Rate-limited.
 Route::get('/metrics', [MetricsController::class, 'index'])->middleware('throttle:60,1')->name('metrics');
 
-// Public, unauthenticated gallery-album share links. Zero-knowledge: the server
-// only serves the sealed manifest + opaque ciphertext blobs on the owner's
-// allow-list; the decryption key rides in the URL fragment and never arrives
-// here. The optional password gate is hard-throttled; blob/manifest reads are
-// generous (a shared album loads many thumbnails).
-Route::prefix('s/{token}')->name('public.share.')->group(function (): void {
-    Route::get('/', [PublicShareController::class, 'show'])->middleware('throttle:120,1')->name('show');
-    Route::get('/meta', [PublicShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
-    Route::post('/unlock', [PublicShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
-    Route::get('/manifest', [PublicShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
-    Route::get('/blob/{ref}', [PublicShareController::class, 'blob'])->middleware('throttle:3000,1')->name('blob');
-});
-
-// Public, unauthenticated PLAINTEXT gallery share links (pivot). Distinct prefix
-// from the ZK /s/{token} PublicShareController: bytes are served in the clear
-// (no fragment key) with an optional rate-limited password gate. Owner-scoped by
+// Public, unauthenticated PLAINTEXT gallery share links (pivot). Bytes are served
+// in the clear (no fragment key) with an optional rate-limited password gate.
+// Owner-scoped by
 // token; a photo raw is only streamed for a valid (unexpired, unlocked) share.
 Route::prefix('gallery-share/{token}')->name('public.gallery-share.')->group(function (): void {
     Route::get('/', [GalleryController::class, 'shareMeta'])->middleware('throttle:120,1')->name('meta');
@@ -93,7 +77,6 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/profile/account', [ProfileController::class, 'account'])->name('profile.account');
     Route::get('/profile/devices', [ProfileController::class, 'devices'])->name('profile.devices');
     Route::get('/profile/sessions', [ProfileController::class, 'sessions'])->name('profile.sessions');
-    Route::get('/profile/encryption', [ProfileController::class, 'encryption'])->name('profile.encryption');
     Route::get('/profile/security', [ProfileController::class, 'security'])->name('profile.security');
     Route::get('/profile/appearance', [ProfileController::class, 'appearance'])->name('profile.appearance');
     Route::get('/profile/export', [ProfileController::class, 'exportPage'])->name('profile.export');
@@ -235,19 +218,12 @@ Route::middleware('auth')->group(function (): void {
         Route::delete('/gallery/rel-shares/{share}', [GalleryController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('gallery.rel.shares.destroy');
     });
 
-    // Zero-knowledge encryption vault (Files): the server only stores ciphertext
-    // and KDF params — never the passphrase, recovery code or vault key.
-    Route::get('/vault', [VaultController::class, 'show'])->name('vault.show');
-    Route::post('/vault', [VaultController::class, 'store'])->middleware('throttle:10,1')->name('vault.store');
-    Route::put('/vault', [VaultController::class, 'rotate'])->middleware('throttle:10,1')->name('vault.rotate');
-
     // Files: the whole directory tree + bytes are plaintext-relational now (pivot).
     // The page hydrates folders + files inline; all CRUD is the relational core below.
     Route::get('/files', [FilesController::class, 'page'])->middleware('module:files')->name('files.index');
 
     // Plaintext-relational Files core (pivot): personal files + folders as rows,
-    // bytes plaintext on the file disk. Distinct URIs (/files/entries, /files/folders,
-    // /files/upload/chunk/*) so nothing collides with the ZK routes above.
+    // bytes plaintext on the file disk.
     Route::middleware('module:files')->group(function (): void {
         Route::get('/files/trash', [FilesController::class, 'trashed'])->name('files.rel.trash');
         Route::get('/files/entries', [FilesController::class, 'index'])->name('files.rel.index');
@@ -287,10 +263,6 @@ Route::middleware('auth')->group(function (): void {
         Route::delete('/notes/{id}/force', [NotesController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('notes.rel.force');
         Route::post('/notes/trash/empty', [NotesController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('notes.rel.empty');
     });
-
-    // Per-module sealed stores (Store v3 split): one opaque row per module.
-    Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->middleware('module')->name('module-store.show');
-    Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware('throttle:1200,1')->middleware('module')->name('module-store.save');
 
     // Gallery geocoding (kept): forward-geocode a place query for the bulk
     // location picker. Passes through the server only (client CSP forbids

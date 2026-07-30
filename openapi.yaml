@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.514.0
+  version: 1.515.0
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -27,27 +27,6 @@ tags:
     description: Device pairing exchange and session management
   - name: Me/Device
     description: Authenticated user info, avatar, and device heartbeat
-  - name: Store
-    description: >
-      Opaque zero-knowledge per-module sealed stores (Store v3 split). Each module
-      (sharing) owns
-      its OWN sealed row, so a write to one module never re-seals the others. These
-      modules have NO per-record REST endpoints (that would break zero-knowledge);
-      their full CRUD is: read the module store (GET /store/{module}), mutate the
-      decrypted object client-side, and write it back (PUT /store/{module}) with
-      optimistic concurrency. The files tree has its own sharded sealed store
-      (GET/PUT /files/store, tag Files). Only binary blobs (contact avatars,
-      file/gallery bytes) have their own endpoints; the records that reference them
-      live in these stores.
-
-
-      DECRYPTED shapes (schemas) per module — a native client builds these from the
-      decrypted object; the server never sees them. Preserve unknown keys on write.
-        • NOTE: notes/todos/bookmarks/contacts/health are no longer sealed stores —
-          they use plaintext-relational REST endpoints (tags Notes/Todos/Bookmarks/
-          Health; contacts removed). The password manager and cross-user shared-vault
-          sharing were removed entirely.
-        • sharing → SharingStoreModel {knownFingerprints:{userId→hex}} (TOFU map)
   - name: Notes
     description: >
       Plaintext-relational notes (Phase 1 pivot away from the sealed store). Per-record
@@ -472,30 +451,6 @@ components:
           minimum: 0
           example: 10737418240
 
-    StoreVersionConflict:
-      type: object
-      description: >
-        409 Conflict from a sealed manifest store (files/gallery/invoices and the
-        generic /store/{module}). The client must re-read the
-        store, rebase its delta, and retry — it must NEVER blindly re-PUT stale data.
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [version_conflict]
-
-    MissingShardResponse:
-      type: object
-      description: >
-        422 from a sharded store save (files/gallery/invoices) when a
-        referenced shard blob has no ledger row — the server refuses to persist a root
-        pointing at a shard that was never durably uploaded.
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [missing_shard]
-
     ShareVersionConflict:
       type: object
       description: >
@@ -617,22 +572,6 @@ components:
           type: object
           description: Structured address components (key→value strings).
 
-    StoreResponse:
-      type: object
-      description: Opaque sealed manifest + optimistic-concurrency version counter.
-      required: [version]
-      properties:
-        ciphertext:
-          type: string
-          nullable: true
-          description: >
-            Opaque sealed ciphertext (XChaCha20-Poly1305, Padme-padded). The server
-            never reads this value. Null on first access before any write.
-        version:
-          type: integer
-          description: Monotone version counter used for optimistic concurrency.
-          example: 42
-
     VersionResponse:
       type: object
       description: New version counter returned after a successful store write.
@@ -673,69 +612,6 @@ components:
           description: >
             Optimistic-concurrency version of the share record. Echo it as
             expected_version on the next update to avoid clobbering a concurrent edit.
-
-    VaultResponse:
-      type: object
-      description: KDF parameters and wrapped vault key material for vault unlock.
-      required: [configured]
-      properties:
-        configured:
-          type: boolean
-          description: Whether the caller has set up a vault.
-        version:
-          type: integer
-          description: >
-            Optimistic-concurrency version. Echo it as expected_version when
-            rotating (PUT /vault) so a stale passphrase change is rejected (409)
-            instead of clobbering a concurrent rotate on another device.
-        salt:
-          type: string
-          nullable: true
-          description: Argon2id salt (base64). Null when not configured.
-        kdf_ops:
-          type: integer
-          nullable: true
-          description: Argon2id opslimit parameter.
-          example: 4
-        kdf_mem:
-          type: integer
-          nullable: true
-          description: Argon2id memlimit parameter (bytes).
-          example: 268435456
-        wrapped_vault_key:
-          type: string
-          nullable: true
-          description: >
-            Opaque vault-key wrap ciphertext. Server never reads this value.
-        wrap_nonce:
-          type: string
-          nullable: true
-          description: Nonce used for the wrapped vault key (base64).
-        has_recovery:
-          type: boolean
-          nullable: true
-          description: Whether a recovery key wrap is present.
-        wrapped_vault_key_recovery:
-          type: string
-          nullable: true
-          description: >
-            Optional recovery-wrap of the vault key. Opaque ciphertext.
-        recovery_nonce:
-          type: string
-          nullable: true
-          description: Nonce used for the recovery-key wrap (base64).
-
-    # ======================================================================
-    # DECRYPTED store data models (ZERO-KNOWLEDGE)
-    # ----------------------------------------------------------------------
-    # The server NEVER sees these — it stores only the opaque sealed ciphertext
-    # of each store. They are documented so native clients (iOS/Android/Go) can
-    # build the modules against a precise contract (like HealthFast/ExploreTrack).
-    # RULE: a client writing a store back MUST preserve every unknown key it did
-    # not author (passthrough) — a dropped key is silent data loss for other
-    # clients. `trashed` is a shared convention: false = active, ISO-8601 string
-    # = trashed-at timestamp.
-    # ======================================================================
 
     NoteRecord:
       type: object
@@ -825,18 +701,6 @@ components:
         created_at: { type: [string, "null"], format: date-time }
         updated_at: { type: [string, "null"], format: date-time }
         deleted_at: { type: [string, "null"], format: date-time, description: "Non-null = trashed (soft-deleted)." }
-
-    SharingStoreModel:
-      type: object
-      description: >
-        Decrypted `sharing` module store (GET/PUT /store/sharing). `knownFingerprints`
-        is a TOFU map of userId → public-key fingerprint (retained; the password
-        manager and shared-vault sharing that populated it have been removed).
-      properties:
-        knownFingerprints:
-          type: object
-          description: "Map userId(string) → public-key fingerprint (hex)."
-          additionalProperties: { type: string }
 
     HealthProfile:
       type: object
@@ -1517,177 +1381,6 @@ paths:
 
   # --------------------------------------------------------------------------
   # Vault (KDF material + wrapped vault key)
-  # --------------------------------------------------------------------------
-
-  /vault:
-    get:
-      tags: [Me/Device]
-      operationId: vaultShow
-      summary: Retrieve vault KDF parameters and wrapped vault key
-      description: >
-        Returns the Argon2id KDF parameters and the wrapped vault key so the
-        browser can derive the KEK from the passphrase and unwrap the vault key.
-        All returned values are opaque to the server. No throttle beyond default.
-      responses:
-        "200":
-          description: Vault configuration.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/VaultResponse"
-        "401":
-          description: Unauthenticated.
-    post:
-      tags: [Me/Device]
-      operationId: vaultStore
-      summary: Provision the vault (first-time setup)
-      description: >
-        First-time zero-knowledge vault setup for a native client that never used
-        the web app. Carries only the passphrase-wrapped vault key + KDF params +
-        the recovery wrap — NEVER the plaintext vault key. Refuses to overwrite an
-        existing vault (409 — that is a passphrase change → PUT /vault). Throttle 10/min.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/VaultWrite" }
-      responses:
-        "201": { description: "Vault provisioned.", content: { application/json: { schema: { type: object, properties: { configured: { type: boolean, enum: [true] } } } } } }
-        "401": { description: Unauthenticated. }
-        "409": { description: A vault already exists (use PUT /vault to rotate). }
-        "422": { description: Validation error. }
-        "429": { description: Rate limit exceeded. }
-    put:
-      tags: [Me/Device]
-      operationId: vaultRotate
-      summary: Rotate the vault passphrase
-      description: >
-        Re-wraps the SAME vault key under a new passphrase-derived key (fresh salt +
-        nonce) and mints a new recovery wrap. The vault key is unchanged, so no blob
-        re-encryption is needed. Optimistic concurrency: send `expected_version`
-        (from GET /vault) to reject a stale rotate (409) instead of clobbering a
-        concurrent change on another device. Throttle 10/min.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              allOf:
-                - $ref: "#/components/schemas/VaultWrite"
-                - type: object
-                  properties:
-                    expected_version: { type: integer, minimum: 0, description: "Optimistic-concurrency guard (from GET /vault)." }
-      responses:
-        "200": { description: "Rotated.", content: { application/json: { schema: { type: object, required: [configured, version], properties: { configured: { type: boolean }, version: { type: integer } } } } } }
-        "401": { description: Unauthenticated. }
-        "404": { description: Vault not yet configured (POST /vault first). }
-        "409": { description: "Version conflict.", content: { application/json: { schema: { $ref: "#/components/schemas/ShareVersionConflict" } } } }
-        "422": { description: Validation error. }
-        "429": { description: Rate limit exceeded. }
-
-  # --------------------------------------------------------------------------
-  # Store (personal workspace manifest)
-  # --------------------------------------------------------------------------
-
-  /store/{module}:
-    parameters:
-      - name: module
-        in: path
-        required: true
-        description: >
-          Module key. One of: sharing. Any other value is a 404.
-        schema:
-          type: string
-          enum: [sharing]
-    get:
-      tags: [Store]
-      operationId: moduleStoreShow
-      summary: Read one module's sealed store
-      description: >
-        Store v3 per-module split: every module owns its OWN opaque sealed row, so
-        a write to one module never re-seals the others. Returns the current sealed
-        ciphertext and version for {module}. Mobile CRUD for a module is:
-        GET /store/{module} → decrypt+mutate the object client-side →
-        PUT /store/{module}. There is no per-record endpoint (zero-knowledge).
-        The server never reads the ciphertext. A weak ETag (W/"{uid}-{module}-{ver}")
-        supports 304. No per-route throttle beyond the default API rate.
-      responses:
-        "200":
-          description: Current sealed module store.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StoreResponse"
-        "304":
-          description: Not modified (ETag matched If-None-Match).
-        "401":
-          description: Unauthenticated.
-        "403":
-          description: Module disabled for this account.
-        "404":
-          description: Unknown module key.
-    put:
-      tags: [Store]
-      operationId: moduleStoreSave
-      summary: Write one module's sealed store
-      description: >
-        Optimistic-concurrency write for a single module. The caller sends the
-        ciphertext and the version it last read; if another client wrote in the
-        meantime the server returns 409 so the client can re-read, re-apply, retry.
-        Throttle: 240 req/min.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [ciphertext, version]
-              properties:
-                ciphertext:
-                  type: string
-                  description: >
-                    Opaque sealed module ciphertext. The server stores this
-                    without reading it.
-                version:
-                  type: integer
-                  minimum: 0
-                  description: Version the client last read (optimistic concurrency token).
-                shards:
-                  type: array
-                  maxItems: 200000
-                  items: { type: string, format: uuid }
-                  description: >
-                    Accepted but unused for the plain module store (no shard ledger);
-                    validated as UUIDs. Sharded stores (files/gallery/invoices)
-                    enforce it referentially.
-      responses:
-        "200":
-          description: Write successful; new version counter.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/VersionResponse"
-        "403":
-          description: Module disabled for this account.
-        "409":
-          description: Concurrent write conflict; re-read and retry.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    enum: [version_conflict]
-        "404":
-          description: Unknown module key.
-        "422":
-          description: Validation error.
-        "429":
-          description: Rate limit exceeded.
-
-  # --------------------------------------------------------------------------
-  # Files (personal encrypted blobs)
   # --------------------------------------------------------------------------
 
   /files/entries:
@@ -5760,58 +5453,3 @@ paths:
         "403": { description: Not an admin. }
         "422": { description: Wrong passphrase / not encrypted. }
 
-  # ── Public share consumption (unauthenticated) ──
-  /s/{token}/meta:
-    get:
-      tags: [PublicShare]
-      operationId: publicShareMeta
-      summary: Public share metadata (no auth)
-      description: "Non-secret: whether a password is needed + validity. The share key lives in the URL fragment (never sent to the server)."
-      security: []
-      parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
-      responses:
-        "200": { description: "Meta.", content: { application/json: { schema: { type: object, required: [found, expired, kind, needs_password, allow_download], properties: { found: { type: boolean }, expired: { type: boolean }, kind: { type: string }, needs_password: { type: boolean }, allow_download: { type: boolean }, name: { type: string, nullable: true } } } } } }
-        "404": { description: Not found. }
-        "410": { description: Expired. }
-  /s/{token}/unlock:
-    post:
-      tags: [PublicShare]
-      operationId: publicShareUnlock
-      summary: Unlock a password-protected share (stateless HMAC grant)
-      description: "On success returns a short-lived (1h) HMAC grant token to pass on /manifest + /blob via `?grant=` or the `X-Share-Grant` header. Hard-throttled 10/min."
-      security: []
-      parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string, maxLength: 200 } } } } } }
-      responses:
-        "200": { description: "Grant.", content: { application/json: { schema: { type: object, required: [ok, grant], properties: { ok: { type: boolean }, grant: { type: string } } } } } }
-        "404": { description: Not found / expired. }
-        "422": { description: Wrong password. }
-  /s/{token}/manifest:
-    get:
-      tags: [PublicShare]
-      operationId: publicShareManifest
-      summary: Sealed share manifest (no auth)
-      description: "Returns the opaque sealed manifest (client decrypts with the fragment key). Password shares require the grant."
-      security: []
-      parameters:
-        - { name: token, in: path, required: true, schema: { type: string } }
-        - { name: grant, in: query, required: false, schema: { type: string }, description: "HMAC grant from /unlock (or X-Share-Grant header)." }
-      responses:
-        "200": { description: "Sealed manifest.", content: { application/json: { schema: { type: object, required: [sealed, allow_download], properties: { sealed: { type: string }, allow_download: { type: boolean } } } } } }
-        "403": { description: Grant missing/invalid. }
-        "404": { description: Not found / expired. }
-  /s/{token}/blob/{ref}:
-    get:
-      tags: [PublicShare]
-      operationId: publicShareBlob
-      summary: Stream a sealed share blob (no auth)
-      description: "Raw ciphertext (client decrypts with the per-blob key from the manifest). Requires allow_download + (for password shares) the grant."
-      security: []
-      parameters:
-        - { name: token, in: path, required: true, schema: { type: string } }
-        - { name: ref, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: grant, in: query, required: false, schema: { type: string } }
-      responses:
-        "200": { description: "Sealed bytes.", content: { application/octet-stream: { schema: { type: string, format: binary } } } }
-        "403": { description: Download disabled / grant invalid. }
-        "404": { description: Not found / expired / ref not in share. }

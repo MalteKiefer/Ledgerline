@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Actions\PurgeUserAccount;
-use App\Models\ModuleStore;
+use App\Models\Note;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -14,23 +14,22 @@ class AccountLifecycleTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function ownedStore(User $user, string $ciphertext): ModuleStore
+    private function ownedNote(User $user, string $title): Note
     {
-        // Store v3 splits the workspace into one sealed row per module. The notes
-        // module row is keyed by (user_id, module) — exported as ciphertext by
-        // StoreData, purged on erase.
-        return ModuleStore::query()->create([
+        // Post-pivot the modules are plaintext-relational: a note is one owned row
+        // (user_id FK, cascade on delete). Used here to prove per-user erase +
+        // isolation through PurgeUserAccount.
+        return (new Note)->forceFill([
             'user_id' => $user->id,
-            'module' => 'notes',
-            'ciphertext' => $ciphertext,
-            'version' => 1,
+            'title' => $title,
+            'body' => 'body',
         ]);
     }
 
     public function test_export_streams_a_zip_of_all_modules(): void
     {
         $user = User::factory()->create();
-        $this->ownedStore($user, 'mine-sealed-blob');
+        $this->ownedNote($user, 'mine')->save();
 
         $res = $this->actingAs($user)->get(route('account.export'));
         $res->assertOk();
@@ -50,15 +49,15 @@ class AccountLifecycleTest extends TestCase
     public function test_purge_action_erases_the_user_and_their_data(): void
     {
         $user = User::factory()->create(['email' => 'gdpr@example.com']);
-        $this->ownedStore($user, 'secret-sealed-blob');
+        $this->ownedNote($user, 'secret')->save();
         $otherUser = User::factory()->create();
-        $this->ownedStore($otherUser, 'keep-sealed-blob');
+        $this->ownedNote($otherUser, 'keep')->save();
 
         app(PurgeUserAccount::class)->handle($user);
 
         $this->assertNull(User::find($user->id));
-        $this->assertNull(ModuleStore::query()->where('user_id', $user->id)->first());
-        $this->assertNotNull(ModuleStore::query()->where('user_id', $otherUser->id)->first());
+        $this->assertNull(Note::withTrashed()->where('user_id', $user->id)->first());
+        $this->assertNotNull(Note::query()->where('user_id', $otherUser->id)->first());
         $this->assertNotNull(User::find($otherUser->id));
     }
 }
