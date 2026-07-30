@@ -69,6 +69,7 @@ export default (config = {}, labels = {}) => ({
     _printing: null,     // invoice rendered into the hidden print sheet
     dirty: false,        // a LOCKED invoice has unsaved edits (drafts autosave; locked don't)
     pdfBusy: false,      // a version PDF is being rendered
+    editUnlocked: false, // locked invoice: fields stay disabled until "Bearbeiten" + confirm
     _lockBaseline: null, // JSON of a locked invoice as opened, to revert unsaved edits on leave
     // Finance section: the page is a "Finanzen" hub with tabs. Invoices are one tab.
     section: 'dashboard', // 'dashboard' | 'receipts' | 'invoices' | 'payments' | 'projects' | 'stats' | 'settings'
@@ -1164,17 +1165,25 @@ export default (config = {}, labels = {}) => ({
         inv.customer.attn ??= '';
         this.current = inv;
         this.dirty = false;
+        this.editUnlocked = false; // locked invoices open read-only until explicitly unlocked
         // A locked invoice (imported / finalized) is editable but every save is a versioned
         // correction (GoBD). Snapshot its state so unsaved edits can be reverted on leave.
         this._lockBaseline = this.isLocked(inv) ? JSON.stringify(this._editable(inv)) : null;
         this.view = 'edit';
+    },
+    // A locked invoice's fields are disabled until the user explicitly asks to edit it and
+    // confirms — a fixed record shouldn't be changed by accident.
+    async requestEdit() {
+        if (! this.isLocked(this.current)) { this.editUnlocked = true; return; }
+        const ok = await this.$store.confirm.ask(labels.edit_confirm || 'Edit this finalized invoice? Saving records a new version.');
+        if (ok) this.editUnlocked = true;
     },
     backToList() {
         // Revert un-committed edits to a locked invoice (they were never persisted).
         if (this.current && this.dirty && this._lockBaseline) {
             Object.assign(this.current, JSON.parse(this._lockBaseline));
         }
-        this.view = 'list'; this.current = null; this.dirty = false; this._lockBaseline = null;
+        this.view = 'list'; this.current = null; this.dirty = false; this.editUnlocked = false; this._lockBaseline = null;
     },
     saveSoon() { if (this.current) this.current.updated = new Date().toISOString(); this._save(); },
 
@@ -1183,7 +1192,7 @@ export default (config = {}, labels = {}) => ({
     isLocked(inv) { const i = inv || this.current; return !! i && (i.imported || i.status === 'sent' || i.status === 'paid'); },
     // Field input: drafts autosave live; a locked invoice only marks dirty (persist happens
     // via saveVersionedEdit, which records a reason + a new version).
-    onFieldInput() { if (this.isLocked(this.current)) this.dirty = true; else this.saveSoon(); },
+    onFieldInput() { if (this.isLocked(this.current)) { if (this.editUnlocked) this.dirty = true; } else this.saveSoon(); },
     _editable(inv) {
         return {
             number: inv.number, status: inv.status, issueDate: inv.issueDate, dueDate: inv.dueDate,
@@ -1211,6 +1220,7 @@ export default (config = {}, labels = {}) => ({
             this._save();
             this.reconcileBlobs();
             this.dirty = false;
+            this.editUnlocked = false; // re-lock after a versioned save (re-confirm to edit again)
             this._lockBaseline = JSON.stringify(this._editable(inv));
             window.llToast?.((labels.version_saved || 'Version :label saved.').replace(':label', inv.versions[inv.versions.length - 1].label));
         } catch (e) { window.llToast?.(labels.version_failed || 'Could not save the version.'); }
