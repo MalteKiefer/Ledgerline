@@ -18,6 +18,7 @@
     <div class="flex items-center gap-8">
         <a href="{{ route('finance.index') }}" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Ledgerline</a>
         @auth
+            @if ($primary->isNotEmpty() || $more->isNotEmpty())
             <div class="flex items-center gap-1">
                 @foreach ($primary as $item)
                     <a href="{{ $item['url'] }}"
@@ -30,6 +31,7 @@
                         {{ $item['label'] }}
                     </a>
                 @endforeach
+                @if ($more->isNotEmpty())
                 <div class="relative" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
                     <button type="button" @click="open = ! open"
                         @class([
@@ -55,7 +57,9 @@
                         @endforeach
                     </div>
                 </div>
+                @endif
             </div>
+            @endif
         @endauth
     </div>
 

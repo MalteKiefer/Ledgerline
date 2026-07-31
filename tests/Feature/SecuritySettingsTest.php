@@ -14,32 +14,25 @@ class SecuritySettingsTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_admin_can_set_the_vault_lock_policy(): void
+    public function test_admin_can_set_the_device_cap(): void
     {
         $this->signInAdmin(); // single-user install = admin
 
         $this->get(route('settings.security.edit'))->assertOk();
 
         $this->put(route('settings.security.update'), [
-            'vault_remember_days' => 14,
-            'vault_public_idle_minutes' => 5,
             'max_connected_devices' => 8,
         ])->assertRedirect();
 
-        $s = AppSettings::current();
-        $this->assertSame(14, $s->vault_remember_days);
-        $this->assertSame(5, $s->vault_public_idle_minutes);
-        $this->assertSame(8, $s->max_connected_devices);
+        $this->assertSame(8, AppSettings::current()->max_connected_devices);
     }
 
     public function test_it_validates_the_ranges(): void
     {
         $this->signInAdmin();
         $this->put(route('settings.security.update'), [
-            'vault_remember_days' => 0,
-            'vault_public_idle_minutes' => 99999,
             'max_connected_devices' => 0,
-        ])->assertSessionHasErrors(['vault_remember_days', 'vault_public_idle_minutes', 'max_connected_devices']);
+        ])->assertSessionHasErrors(['max_connected_devices']);
     }
 
     public function test_pairing_respects_the_admin_device_cap_over_config(): void
