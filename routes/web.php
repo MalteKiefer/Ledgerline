@@ -274,6 +274,21 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->middleware('module')->name('module-store.show');
     Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware('throttle:1200,1')->middleware('module')->name('module-store.save');
 
+    // Sealed-root history (recovery net): list retained previous versions + fetch one
+    // to re-merge a dropped record. Read-only, owner-scoped, same module gate.
+    Route::get('/store/{module}/history', [ModuleStoreController::class, 'history'])->whereAlpha('module')->middleware('module')->name('module-store.history');
+    Route::get('/store/{module}/history/{version}', [ModuleStoreController::class, 'historyVersion'])->whereAlpha('module')->whereNumber('version')->middleware('module')->name('module-store.history.version');
+    Route::get('/files/store/history', [FilesStoreController::class, 'history'])->middleware('module:files')->name('files.store.history');
+    Route::get('/files/store/history/{version}', [FilesStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:files')->name('files.store.history.version');
+    Route::get('/gallery/store/history', [GalleryStoreController::class, 'history'])->middleware('module:gallery')->name('gallery.store.history');
+    Route::get('/gallery/store/history/{version}', [GalleryStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:gallery')->name('gallery.store.history.version');
+    Route::get('/notes/store/history', [NotesStoreController::class, 'history'])->middleware('module:notes')->name('notes.store.history');
+    Route::get('/notes/store/history/{version}', [NotesStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:notes')->name('notes.store.history.version');
+    Route::get('/passwords/store/history', [PasswordsStoreController::class, 'history'])->middleware('module:passwords')->name('passwords.store.history');
+    Route::get('/passwords/store/history/{version}', [PasswordsStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:passwords')->name('passwords.store.history.version');
+    Route::get('/invoices/store/history', [InvoicesStoreController::class, 'history'])->middleware('module:finance')->name('invoices.store.history');
+    Route::get('/invoices/store/history/{version}', [InvoicesStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:finance')->name('invoices.store.history.version');
+
     // Opaque zero-knowledge gallery index (photo/album/people structure sealed).
     Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->middleware('module:gallery')->name('gallery.store.show');
     Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:gallery'])->name('gallery.store.save');

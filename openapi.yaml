@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.533.2
+  version: 1.533.3
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -6783,3 +6783,336 @@ paths:
         "200": { description: "Sealed bytes.", content: { application/octet-stream: { schema: { type: string, format: binary } } } }
         "403": { description: Download disabled / grant invalid. }
         "404": { description: Not found / expired / ref not in share. }
+
+  /store/{module}/history:
+    get:
+      operationId: moduleStoreHistory
+      tags: [Store]
+      summary: List retained sealed-root versions (recovery net).
+      description: >
+        Newest-first index of retained previous sealed roots (version + byte size +
+        timestamp, NO ciphertext) so the client can pick a version to recover a
+        dropped record from. Owner-scoped, read-only; retention is the last N per
+        store. Zero-knowledge: the stored roots are opaque ciphertext.
+      parameters:
+        - { name: module, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Retained versions, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        version: { type: integer }
+                        bytes: { type: integer }
+                        created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Unknown module. }
+  /store/{module}/history/{version}:
+    get:
+      operationId: moduleStoreHistoryVersion
+      tags: [Store]
+      summary: Fetch one retained sealed-root ciphertext to re-merge a lost record.
+      description: >
+        Returns a single retained sealed root ciphertext by version. The client
+        decrypts it and re-merges the dropped record(s). Owner-scoped; 404 if that
+        version is no longer retained.
+      parameters:
+        - { name: module, in: path, required: true, schema: { type: string } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: The retained sealed root.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, ciphertext]
+                properties:
+                  version: { type: integer }
+                  ciphertext: { type: string, description: "Opaque sealed root ciphertext." }
+                  created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Version not retained. }
+  /files/store/history:
+    get:
+      operationId: filesStoreHistory
+      tags: [Files]
+      summary: List retained sealed-root versions (recovery net).
+      description: >
+        Newest-first index of retained previous sealed roots (version + byte size +
+        timestamp, NO ciphertext) so the client can pick a version to recover a
+        dropped record from. Owner-scoped, read-only; retention is the last N per
+        store. Zero-knowledge: the stored roots are opaque ciphertext.
+      parameters:
+      responses:
+        "200":
+          description: Retained versions, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        version: { type: integer }
+                        bytes: { type: integer }
+                        created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Unknown module. }
+  /files/store/history/{version}:
+    get:
+      operationId: filesStoreHistoryVersion
+      tags: [Files]
+      summary: Fetch one retained sealed-root ciphertext to re-merge a lost record.
+      description: >
+        Returns a single retained sealed root ciphertext by version. The client
+        decrypts it and re-merges the dropped record(s). Owner-scoped; 404 if that
+        version is no longer retained.
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: The retained sealed root.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, ciphertext]
+                properties:
+                  version: { type: integer }
+                  ciphertext: { type: string, description: "Opaque sealed root ciphertext." }
+                  created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Version not retained. }
+  /gallery/store/history:
+    get:
+      operationId: galleryStoreHistory
+      tags: [Gallery]
+      summary: List retained sealed-root versions (recovery net).
+      description: >
+        Newest-first index of retained previous sealed roots (version + byte size +
+        timestamp, NO ciphertext) so the client can pick a version to recover a
+        dropped record from. Owner-scoped, read-only; retention is the last N per
+        store. Zero-knowledge: the stored roots are opaque ciphertext.
+      parameters:
+      responses:
+        "200":
+          description: Retained versions, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        version: { type: integer }
+                        bytes: { type: integer }
+                        created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Unknown module. }
+  /gallery/store/history/{version}:
+    get:
+      operationId: galleryStoreHistoryVersion
+      tags: [Gallery]
+      summary: Fetch one retained sealed-root ciphertext to re-merge a lost record.
+      description: >
+        Returns a single retained sealed root ciphertext by version. The client
+        decrypts it and re-merges the dropped record(s). Owner-scoped; 404 if that
+        version is no longer retained.
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: The retained sealed root.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, ciphertext]
+                properties:
+                  version: { type: integer }
+                  ciphertext: { type: string, description: "Opaque sealed root ciphertext." }
+                  created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Version not retained. }
+  /notes/store/history:
+    get:
+      operationId: notesStoreHistory
+      tags: [Store]
+      summary: List retained sealed-root versions (recovery net).
+      description: >
+        Newest-first index of retained previous sealed roots (version + byte size +
+        timestamp, NO ciphertext) so the client can pick a version to recover a
+        dropped record from. Owner-scoped, read-only; retention is the last N per
+        store. Zero-knowledge: the stored roots are opaque ciphertext.
+      parameters:
+      responses:
+        "200":
+          description: Retained versions, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        version: { type: integer }
+                        bytes: { type: integer }
+                        created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Unknown module. }
+  /notes/store/history/{version}:
+    get:
+      operationId: notesStoreHistoryVersion
+      tags: [Store]
+      summary: Fetch one retained sealed-root ciphertext to re-merge a lost record.
+      description: >
+        Returns a single retained sealed root ciphertext by version. The client
+        decrypts it and re-merges the dropped record(s). Owner-scoped; 404 if that
+        version is no longer retained.
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: The retained sealed root.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, ciphertext]
+                properties:
+                  version: { type: integer }
+                  ciphertext: { type: string, description: "Opaque sealed root ciphertext." }
+                  created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Version not retained. }
+  /passwords/store/history:
+    get:
+      operationId: passwordsStoreHistory
+      tags: [Passwords]
+      summary: List retained sealed-root versions (recovery net).
+      description: >
+        Newest-first index of retained previous sealed roots (version + byte size +
+        timestamp, NO ciphertext) so the client can pick a version to recover a
+        dropped record from. Owner-scoped, read-only; retention is the last N per
+        store. Zero-knowledge: the stored roots are opaque ciphertext.
+      parameters:
+      responses:
+        "200":
+          description: Retained versions, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        version: { type: integer }
+                        bytes: { type: integer }
+                        created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Unknown module. }
+  /passwords/store/history/{version}:
+    get:
+      operationId: passwordsStoreHistoryVersion
+      tags: [Passwords]
+      summary: Fetch one retained sealed-root ciphertext to re-merge a lost record.
+      description: >
+        Returns a single retained sealed root ciphertext by version. The client
+        decrypts it and re-merges the dropped record(s). Owner-scoped; 404 if that
+        version is no longer retained.
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: The retained sealed root.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, ciphertext]
+                properties:
+                  version: { type: integer }
+                  ciphertext: { type: string, description: "Opaque sealed root ciphertext." }
+                  created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Version not retained. }
+  /invoices/store/history:
+    get:
+      operationId: invoicesStoreHistory
+      tags: [Store]
+      summary: List retained sealed-root versions (recovery net).
+      description: >
+        Newest-first index of retained previous sealed roots (version + byte size +
+        timestamp, NO ciphertext) so the client can pick a version to recover a
+        dropped record from. Owner-scoped, read-only; retention is the last N per
+        store. Zero-knowledge: the stored roots are opaque ciphertext.
+      parameters:
+      responses:
+        "200":
+          description: Retained versions, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        version: { type: integer }
+                        bytes: { type: integer }
+                        created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Unknown module. }
+  /invoices/store/history/{version}:
+    get:
+      operationId: invoicesStoreHistoryVersion
+      tags: [Store]
+      summary: Fetch one retained sealed-root ciphertext to re-merge a lost record.
+      description: >
+        Returns a single retained sealed root ciphertext by version. The client
+        decrypts it and re-merges the dropped record(s). Owner-scoped; 404 if that
+        version is no longer retained.
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: The retained sealed root.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, ciphertext]
+                properties:
+                  version: { type: integer }
+                  ciphertext: { type: string, description: "Opaque sealed root ciphertext." }
+                  created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Version not retained. }

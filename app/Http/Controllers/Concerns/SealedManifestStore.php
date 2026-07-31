@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Concerns;
 
+use App\Models\StoreHistory;
 use App\Support\BlobAudit;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -239,6 +240,11 @@ trait SealedManifestStore
         // versions pinpoints the write that added or DROPPED a shard — the single most
         // useful signal when reconstructing a data-loss event.
         if ($auditModule !== null) {
+            // Recovery net: retain this sealed root so an earlier version can be
+            // pulled back if a later save dropped a record (store:anomaly-scan flags
+            // the drop; this makes it undoable). Opaque ciphertext — ZK preserved.
+            $this->recordHistory($request, $auditModule, $ciphertext, $next);
+
             $counts = $this->manifestCounts($request);
             BlobAudit::record('root_write', $auditModule, [
                 'user_id' => (int) $this->requireUser($request)->id,
@@ -259,6 +265,97 @@ trait SealedManifestStore
         }
 
         return response()->json(['version' => $next]);
+    }
+
+    /**
+     * List the retained previous sealed roots for this store (newest first), without
+     * the ciphertext — a cheap version index the client uses to pick a version to
+     * recover from. Owner-scoped by the manifest scope's user id + the store module.
+     */
+    public function history(Request $request): JsonResponse
+    {
+        $this->guardManifestRequest($request);
+        $module = $this->manifestAuditModule($request);
+        if ($module === null) {
+            return response()->json(['versions' => []]);
+        }
+
+        $rows = StoreHistory::query()
+            ->where('user_id', (int) $this->requireUser($request)->id)
+            ->where('module', $module)
+            ->orderByDesc('version')
+            ->get(['version', 'ciphertext', 'created_at']);
+
+        return response()->json([
+            'versions' => $rows->map(static fn (StoreHistory $r): array => [
+                'version' => $r->version,
+                'bytes' => strlen($r->ciphertext),
+                'created_at' => $r->created_at?->toIso8601String(),
+            ])->all(),
+        ]);
+    }
+
+    /**
+     * Return one retained sealed root ciphertext by version so the client can decrypt
+     * it and re-merge a lost record. Owner-scoped; 404 if that version isn't retained.
+     */
+    public function historyVersion(Request $request): JsonResponse
+    {
+        $this->guardManifestRequest($request);
+        // Read `version` by name, not as a positional arg: the module-store route has
+        // TWO params ({module}/history/{version}) so a positional $version would get
+        // the module. whereNumber on the route guarantees it is numeric.
+        $version = (int) $request->route('version');
+        $module = $this->manifestAuditModule($request);
+        $row = $module === null ? null : StoreHistory::query()
+            ->where('user_id', (int) $this->requireUser($request)->id)
+            ->where('module', $module)
+            ->where('version', $version)
+            ->first();
+
+        if ($row === null) {
+            return response()->json(['error' => 'not_found'], 404);
+        }
+
+        return response()->json([
+            'version' => $row->version,
+            'ciphertext' => $row->ciphertext,
+            'created_at' => $row->created_at?->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * Persist this sealed root as history and prune to the last N versions per
+     * (user, module). Best-effort: a history failure must never break the save.
+     */
+    private function recordHistory(Request $request, string $module, string $ciphertext, int $version): void
+    {
+        try {
+            $uid = (int) $this->requireUser($request)->id;
+            StoreHistory::query()->updateOrCreate(
+                ['user_id' => $uid, 'module' => $module, 'version' => $version],
+                ['ciphertext' => $ciphertext, 'created_at' => now()],
+            );
+
+            $keepCfg = config('store.history_versions', 20);
+            $keep = is_numeric($keepCfg) ? max(1, (int) $keepCfg) : 20;
+            $cutoff = StoreHistory::query()
+                ->where('user_id', $uid)
+                ->where('module', $module)
+                ->orderByDesc('version')
+                ->skip($keep)
+                ->take(1)
+                ->value('version');
+            if (is_numeric($cutoff)) {
+                StoreHistory::query()
+                    ->where('user_id', $uid)
+                    ->where('module', $module)
+                    ->where('version', '<=', (int) $cutoff)
+                    ->delete();
+            }
+        } catch (\Throwable) {
+            // Recovery history is best-effort; never break the audited save.
+        }
     }
 
     /**
