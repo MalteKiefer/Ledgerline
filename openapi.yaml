@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.534.0
+  version: 1.534.1
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -2078,12 +2078,17 @@ paths:
                     type: string
                     format: uuid
                   description: >
-                    Optional referential-integrity guard. The blob refs (record shards
-                    + collection blobs) the new sealed root points at. When present, the
+                    STRONGLY RECOMMENDED for sharded stores — a client SHOULD always send
+                    the COMPLETE set of blob refs (every record-shard blob AND every
+                    collection blob) the new sealed root points at. When present, the
                     server rejects the write (422 missing_shard) if any ref has no blob
                     ledger row — preventing a root that dangles at a shard whose upload
-                    never durably landed (the sharded-store data-loss failure mode). The
-                    refs are non-secret UUIDs, so this preserves zero-knowledge.
+                    never durably landed (the sharded-store data-loss failure mode).
+                    OMITTING this array DISABLES the guard, so a partial/racy save can
+                    persist a corrupt dangling-shard root that 404s on load and loses
+                    those records — always send it. An INCOMPLETE set (missing a live
+                    shard ref) is also unsafe: the omitted shard becomes reclaimable.
+                    The refs are non-secret UUIDs, so this preserves zero-knowledge.
       responses:
         "200":
           description: Write successful; new version counter.
@@ -3009,8 +3014,10 @@ paths:
                     type: string
                     format: uuid
                   description: >
-                    Optional referential-integrity guard. The blob refs (record shards
-                    + collection blobs) the new sealed root points at. When present, the
+                    STRONGLY RECOMMENDED. A client SHOULD always send the COMPLETE set of
+                    blob refs (every record-shard AND collection blob) the new root points
+                    at; OMITTING or sending an INCOMPLETE set disables/weakens the guard and
+                    can persist a corrupt dangling-shard root that loses records. When present, the
                     server rejects the write (422 missing_shard) if any ref has no blob
                     ledger row — preventing a root that dangles at a shard whose upload
                     never durably landed. Non-secret UUIDs; zero-knowledge preserved.
@@ -5693,7 +5700,13 @@ paths:
                   type: array
                   maxItems: 200000
                   items: { type: string, format: uuid }
-                  description: The blob refs the new root points at (record shards).
+                  description: >
+                    STRONGLY RECOMMENDED: the COMPLETE set of blob refs (every record-shard
+                    AND collection blob) the new sealed root points at. The server rejects
+                    the write (422 missing_shard) if any ref lacks a ledger row. OMITTING or
+                    sending an INCOMPLETE set disables/weakens this guard and can persist a
+                    corrupt dangling-shard root that 404s on load and loses those records —
+                    always send the full set. Non-secret UUIDs (zero-knowledge preserved).
       responses:
         "200":
           description: Saved.
@@ -5878,7 +5891,13 @@ paths:
                   type: array
                   maxItems: 200000
                   items: { type: string, format: uuid }
-                  description: The blob refs the new root points at (record shards).
+                  description: >
+                    STRONGLY RECOMMENDED: the COMPLETE set of blob refs (every record-shard
+                    AND collection blob) the new sealed root points at. The server rejects
+                    the write (422 missing_shard) if any ref lacks a ledger row. OMITTING or
+                    sending an INCOMPLETE set disables/weakens this guard and can persist a
+                    corrupt dangling-shard root that 404s on load and loses those records —
+                    always send the full set. Non-secret UUIDs (zero-knowledge preserved).
       responses:
         "200":
           description: Saved.
@@ -6198,7 +6217,13 @@ paths:
                   type: array
                   maxItems: 200000
                   items: { type: string, format: uuid }
-                  description: The blob refs the new root points at (record shards).
+                  description: >
+                    STRONGLY RECOMMENDED: the COMPLETE set of blob refs (every record-shard
+                    AND collection blob) the new sealed root points at. The server rejects
+                    the write (422 missing_shard) if any ref lacks a ledger row. OMITTING or
+                    sending an INCOMPLETE set disables/weakens this guard and can persist a
+                    corrupt dangling-shard root that 404s on load and loses those records —
+                    always send the full set. Non-secret UUIDs (zero-knowledge preserved).
       responses:
         "200":
           description: Saved.
