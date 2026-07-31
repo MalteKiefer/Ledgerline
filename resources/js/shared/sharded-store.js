@@ -153,11 +153,17 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
             return state;
         },
 
-        // A snapshot of the current record + collection set, used as the rebase base.
-        _snapshotBase() {
-            const base = { [recordKey]: clone(this.data?.[recordKey] ?? []) };
-            for (const c of collections) base[c.key] = clone(this.data?.[c.key] ?? []);
+        // A snapshot of the record + collection slices of `src`, used as the rebase
+        // base. The base must reflect what is actually COMMITTED (what we sent, or the
+        // server's copy) — never the live this.data, which may hold un-pushed edits.
+        _snapshotFrom(src) {
+            const base = { [recordKey]: clone(src?.[recordKey] ?? []) };
+            for (const c of collections) base[c.key] = clone(src?.[c.key] ?? []);
             return base;
+        },
+
+        _snapshotBase() {
+            return this._snapshotFrom(this.data);
         },
 
         async load() {
@@ -199,7 +205,10 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
             }
             this.version = s.version;
             this._shardBits = s.shardBits; this._shards = s.shards; this._collDesc = s.collDesc;
-            this._base = this._snapshotBase();
+            // The committed state we rebased onto is the SERVER's, not our merged copy;
+            // baking our still-un-pushed delta into _base would hide it from the next
+            // 409 rebase and drop it.
+            this._base = this._snapshotFrom(s.data);
         },
 
         touch() {
@@ -282,6 +291,12 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
         async _doFlush(retry = 0) {
             if (! this.loaded || ! this.data) return;
             try {
+                // Snapshot the slices that go into this root BEFORE any await. A record
+                // added to this.data while _buildRoot / the PUT is in flight is not in
+                // the root we send, so it must stay OUT of _base — otherwise the next
+                // 409 rebase sees no delta for it and drops it. _buildRoot reads
+                // this.data[recordKey] synchronously first, so this matches what it seals.
+                const sent = this._snapshotFrom(this.data);
                 const root = await this._buildRoot();
                 // Send the shard/collection blob refs the new root points at. The
                 // server rejects (422) a root referencing a blob with no ledger row —
@@ -328,8 +343,9 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
                     return this._doFlush(retry + 1);
                 } else if (res.ok) {
                     this.version = (await res.json()).version ?? this.version + 1;
-                    // Committed: our current record + collection set is the new rebase base.
-                    this._base = this._snapshotBase();
+                    // Committed: the base is exactly what we SENT (captured pre-await),
+                    // not the live this.data — see the `sent` snapshot above.
+                    this._base = sent;
                 } else {
                     throw new Error('store save failed');
                 }
