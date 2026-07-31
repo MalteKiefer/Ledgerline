@@ -1,7 +1,7 @@
 {
     "name": "Ledgerline",
     "short_name": "Ledgerline",
-    "description": "Self-hosted zero-knowledge personal cloud: passwords, gallery, files, notes, todos, bookmarks, contacts, invoices.",
+    "description": "Self-hosted finance app: invoices, receipts, bank import, payment methods, projects, business partners, VAT reporting.",
     "start_url": "/",
     "scope": "/",
     "display": "standalone",
