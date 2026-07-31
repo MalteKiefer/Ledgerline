@@ -85,8 +85,22 @@ export function mergeObjectByKey(base, ours, server) {
         if (! (k in ours)) delete result[k]; // we removed this key
     }
     for (const k of Object.keys(ours)) {
-        if (changed(base[k], ours[k])) result[k] = clone(ours[k]);
-        else if (! (k in result)) result[k] = clone(ours[k]);
+        if (changed(base[k], ours[k])) {
+            const sv = result[k]; // the server's value for this key
+            // If BOTH sides changed this key and its value is itself an id-array or a
+            // nested object, recurse so a concurrently-edited nested collection (e.g. a
+            // login item's fields.passkeys[] / fields.urls[] edited on another device)
+            // is merged rather than overwritten wholesale.
+            if (changed(base[k], sv) && Array.isArray(ours[k]) && Array.isArray(sv)) {
+                result[k] = mergeArrayById(Array.isArray(base[k]) ? base[k] : [], ours[k], sv);
+            } else if (changed(base[k], sv) && isPlainObject(ours[k]) && isPlainObject(sv)) {
+                result[k] = mergeObjectByKey(isPlainObject(base[k]) ? base[k] : {}, ours[k], sv);
+            } else {
+                result[k] = clone(ours[k]);
+            }
+        } else if (! (k in result)) {
+            result[k] = clone(ours[k]);
+        }
     }
     return result;
 }

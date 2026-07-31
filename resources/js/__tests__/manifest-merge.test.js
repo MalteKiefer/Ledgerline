@@ -126,3 +126,18 @@ describe('mergeArrayById — same-record concurrent edit (D1/H1 deep-merge)', ()
         expect(merged.c[0]).toMatchObject({ a: 2, b: 9 }); // both changes survive
     });
 });
+
+describe('mergeObjectByKey — recursive nested merge (fields.passkeys etc.)', () => {
+    it('merges an id-array nested inside a changed object key', () => {
+        const merged = mergeManifest(
+            { s: [{ id: 'X', fields: { passkeys: [{ id: 'a' }] } }] },
+            { s: [{ id: 'X', fields: { passkeys: [{ id: 'a' }, { id: 'ours' }] } }] },
+            { s: [{ id: 'X', fields: { passkeys: [{ id: 'a' }, { id: 'srv' }] } }] },
+        );
+        expect(merged.s[0].fields.passkeys.map((p) => p.id).sort()).toEqual(['a', 'ours', 'srv']);
+    });
+    it('still drops a key we removed from the object', () => {
+        const merged = mergeObjectByKey({ a: 1, b: 2 }, { a: 1 }, { a: 1, b: 2, c: 3 });
+        expect(merged).toEqual({ a: 1, c: 3 });
+    });
+});

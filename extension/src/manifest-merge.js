@@ -51,7 +51,18 @@ export function mergeArrayById(base, ours, server) {
         // Only touch records we actually added (no base) or modified.
         if (b !== undefined && ! changed(b, rec)) continue;
         if (indexById.has(rec.id)) {
-            result[indexById.get(rec.id)] = clone(rec);
+            const idx = indexById.get(rec.id);
+            const serverRec = result[idx];
+            // Both writers changed the SAME record (server diverged from base AND so did
+            // we). Taking our whole record here would discard the winner's nested changes
+            // to this id — e.g. a login item's embedded passkeys[] or a password item's
+            // fields edited concurrently on the web app. Deep-merge instead so both survive
+            // (mirrors the web shared/manifest-merge.js fix).
+            if (b !== undefined && isPlainObject(b) && isPlainObject(rec) && isPlainObject(serverRec) && changed(b, serverRec)) {
+                result[idx] = mergeManifest(b, rec, serverRec);
+            } else {
+                result[idx] = clone(rec);
+            }
         } else {
             indexById.set(rec.id, result.length);
             result.push(clone(rec));
@@ -70,8 +81,21 @@ export function mergeObjectByKey(base, ours, server) {
         if (! (k in ours)) delete result[k]; // we removed this key
     }
     for (const k of Object.keys(ours)) {
-        if (changed(base[k], ours[k])) result[k] = clone(ours[k]);
-        else if (! (k in result)) result[k] = clone(ours[k]);
+        if (changed(base[k], ours[k])) {
+            const sv = result[k]; // the server's value for this key
+            // Recurse into a concurrently-edited nested id-array / object (e.g. a login
+            // item's fields.passkeys[] edited on another device) so it is merged, not
+            // overwritten wholesale. Mirrors the web shared/manifest-merge.js.
+            if (changed(base[k], sv) && Array.isArray(ours[k]) && Array.isArray(sv)) {
+                result[k] = mergeArrayById(Array.isArray(base[k]) ? base[k] : [], ours[k], sv);
+            } else if (changed(base[k], sv) && isPlainObject(ours[k]) && isPlainObject(sv)) {
+                result[k] = mergeObjectByKey(isPlainObject(base[k]) ? base[k] : {}, ours[k], sv);
+            } else {
+                result[k] = clone(ours[k]);
+            }
+        } else if (! (k in result)) {
+            result[k] = clone(ours[k]);
+        }
     }
     return result;
 }
