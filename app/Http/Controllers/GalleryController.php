@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\GalleryAlbum;
+use App\Models\GalleryFace;
+use App\Models\GalleryPerson;
 use App\Models\GalleryPhoto;
 use App\Models\GalleryShare;
 use App\Models\User;
+use App\Services\Gallery\GalleryMl;
 use App\Services\Gallery\GalleryProcessor;
 use App\Support\DiskTempFile;
 use Illuminate\Contracts\Filesystem\Filesystem;
@@ -25,15 +28,18 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 /**
  * Plaintext-relational Gallery core (final pivot). Photos + videos + albums as
  * owner-scoped rows (OwnsUserData); the original bytes plus the server-generated
  * renditions (thumb/medium webp + motion clip) live plaintext on the file disk.
- * Renditions/EXIF/pHash/dimensions come from GalleryProcessor->process(withMl:
- * false) — CLIP semantic search + face/people detection are DEFERRED (not built
- * here), same as the Files content-search deferral. Public /gallery-share links
- * serve plaintext bytes with an optional rate-limited password gate.
+ * Renditions/EXIF/pHash/dimensions come from GalleryProcessor->process(). When
+ * ML is enabled it also produces a CLIP embedding + detected faces, which
+ * GalleryMl persists (pgvector, Postgres only) for semantic search + face/people
+ * grouping; with ML off or no pgvector the plumbing degrades to plain rows.
+ * Public /gallery-share links serve plaintext bytes with an optional
+ * rate-limited password gate.
  *
  * Every write is a single-row transaction — no whole-blob re-serialize, so the
  * opaque last-writer-wins loss class of the ZK stores cannot occur.
@@ -141,7 +147,7 @@ class GalleryController extends Controller
 
     // ---- Whole upload ----
 
-    public function upload(Request $request, GalleryProcessor $processor): JsonResponse
+    public function upload(Request $request, GalleryProcessor $processor, GalleryMl $ml): JsonResponse
     {
         $uid = (int) $this->requireUser($request)->id;
         $request->validate([
@@ -160,7 +166,7 @@ class GalleryController extends Controller
         $mime = (string) ($upload->getMimeType() ?: $upload->getClientMimeType() ?: 'application/octet-stream');
         $real = $upload->getRealPath();
         $derived = is_string($real) && $real !== ''
-            ? $processor->process($real, $mime, withMl: false)
+            ? $processor->process($real, $mime, withMl: $ml->enabled())
             : null;
 
         $uuid = Str::uuid()->toString();
@@ -174,6 +180,8 @@ class GalleryController extends Controller
             mime: $mime,
             derived: $derived,
         ));
+
+        $this->storeMl($ml, $photo, $derived);
 
         return response()->json(['photo' => $photo], 201);
     }
@@ -222,7 +230,7 @@ class GalleryController extends Controller
         return response()->json(['ok' => true, 'index' => $request->integer('index')]);
     }
 
-    public function chunkComplete(Request $request, GalleryProcessor $processor): JsonResponse
+    public function chunkComplete(Request $request, GalleryProcessor $processor, GalleryMl $ml): JsonResponse
     {
         $uid = (int) $this->requireUser($request)->id;
         $request->validate(['id' => ['required', 'string']]);
@@ -268,7 +276,7 @@ class GalleryController extends Controller
         }
 
         $mime = $session['mime'];
-        $derived = $processor->process($tmp->path(), $mime, withMl: false);
+        $derived = $processor->process($tmp->path(), $mime, withMl: $ml->enabled());
 
         $uuid = Str::uuid()->toString();
         $origPath = 'gallery/'.$uuid;
@@ -290,7 +298,32 @@ class GalleryController extends Controller
             derived: $derived,
         ));
 
+        $this->storeMl($ml, $photo, $derived);
+
         return response()->json(['photo' => $photo], 201);
+    }
+
+    /**
+     * Persist a photo's CLIP embedding + faces (best-effort): an ML sidecar or DB
+     * hiccup must never fail the upload — the photo is already saved and the
+     * embedding/faces are backfillable via reprocess/gallery:backfill-ml.
+     *
+     * @param  array<string, mixed>|null  $derived
+     */
+    private function storeMl(GalleryMl $ml, GalleryPhoto $photo, ?array $derived): void
+    {
+        if ($derived === null || ! $ml->enabled()) {
+            return;
+        }
+        /** @var ?list<float> $embedding */
+        $embedding = $derived['embedding'] ?? null;
+        /** @var list<array{score: float, box: array{0:float,1:float,2:float,3:float}, embedding: list<float>, crop: ?string}> $faces */
+        $faces = is_array($derived['faces'] ?? null) ? $derived['faces'] : [];
+        try {
+            $ml->storeDerived($photo, ['embedding' => $embedding, 'faces' => $faces]);
+        } catch (Throwable) {
+            // Best-effort — leave embedding/faces missing, backfill later.
+        }
     }
 
     public function chunkAbort(Request $request): JsonResponse
@@ -813,6 +846,202 @@ class GalleryController extends Controller
     private function shareGateKey(GalleryShare $share): string
     {
         return 'gallery_share_unlocked.'.$share->id;
+    }
+
+    // ---- ML: semantic search, people, faces ----
+
+    /** CLIP text search over the user's photo embeddings (empty on sqlite / ML-off). */
+    public function search(Request $request, GalleryMl $ml): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $q = trim($request->string('q')->value());
+        $scores = $q === '' ? [] : $ml->searchText($uid, $q);
+
+        return response()->json(['photos' => $this->photosInOrder($scores), 'scores' => $scores]);
+    }
+
+    /** Image→image similarity: photos nearest to this one (empty on sqlite / ML-off). */
+    public function similar(Request $request, GalleryPhoto $photo, GalleryMl $ml): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $scores = $ml->similarTo($uid, $photo);
+
+        return response()->json(['photos' => $this->photosInOrder($scores), 'scores' => $scores]);
+    }
+
+    /**
+     * Hydrate photo rows in the given id => distance order (owner-scoped).
+     *
+     * @param  array<int, float>  $scores
+     * @return Collection<int, GalleryPhoto>
+     */
+    private function photosInOrder(array $scores): Collection
+    {
+        if ($scores === []) {
+            /** @var Collection<int, GalleryPhoto> */
+            return collect();
+        }
+        $ids = array_keys($scores);
+        $order = array_flip($ids);
+
+        return GalleryPhoto::query()->whereIn('id', $ids)->get()
+            ->sortBy(fn (GalleryPhoto $p): int => $order[$p->id] ?? PHP_INT_MAX)
+            ->values();
+    }
+
+    /** People with at least one non-hidden face (each with a cover + sample crops). */
+    public function people(): JsonResponse
+    {
+        $people = GalleryPerson::query()
+            ->whereHas('faces', fn (Builder $q): Builder => $q->where('hidden', false))
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(fn (GalleryPerson $p): array => $this->personSummary($p))
+            ->values();
+
+        return response()->json(['people' => $people]);
+    }
+
+    /** One person with their faces + the photos those faces appear in. */
+    public function person(GalleryPerson $person): JsonResponse
+    {
+        $faces = $person->faces()->orderByDesc('id')->get();
+        $photoIds = $faces->pluck('gallery_photo_id')->unique()->values()->all();
+
+        return response()->json([
+            'person' => [
+                'id' => $person->id,
+                'name' => $person->name,
+                'cover' => $person->cover_face_id,
+                'version' => $person->version,
+            ],
+            'faces' => $faces,
+            'photos' => GalleryPhoto::query()->whereIn('id', $photoIds)->get(),
+        ]);
+    }
+
+    public function updatePerson(Request $request, GalleryPerson $person): JsonResponse
+    {
+        $request->validate([
+            'name' => ['nullable', 'string', 'max:200'],
+            'version' => ['sometimes', 'integer', 'min:0'],
+        ]);
+        $expected = $request->has('version') ? $request->integer('version') : null;
+        $name = $request->filled('name') ? $request->string('name')->value() : null;
+
+        $result = DB::transaction(function () use ($person, $name, $expected): GalleryPerson|bool|null {
+            $fresh = GalleryPerson::query()->lockForUpdate()->find($person->id);
+            if ($fresh === null) {
+                return null;
+            }
+            if ($expected !== null && $fresh->version !== $expected) {
+                return false;
+            }
+            $fresh->name = $name;
+            $fresh->version = $fresh->version + 1;
+            $fresh->save();
+
+            return $fresh;
+        });
+
+        if ($result === null) {
+            abort(404);
+        }
+        if ($result === false) {
+            $current = GalleryPerson::query()->find($person->id);
+
+            return response()->json(['error' => 'version_conflict', 'version' => (int) ($current?->version ?? 0)], 409);
+        }
+
+        return response()->json(['person' => $result]);
+    }
+
+    /** Soft-delete a person; detach its faces (they become unassigned). */
+    public function destroyPerson(GalleryPerson $person): JsonResponse
+    {
+        DB::transaction(function () use ($person): void {
+            $person->faces()->update(['gallery_person_id' => null]);
+            $person->delete();
+        });
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Merge one person's faces into another, then soft-delete the source. */
+    public function mergePeople(Request $request): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'source_id' => ['required', 'integer', Rule::exists('gallery_people', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'target_id' => ['required', 'integer', 'different:source_id', Rule::exists('gallery_people', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+        ]);
+        $source = $request->integer('source_id');
+        $target = $request->integer('target_id');
+
+        DB::transaction(function () use ($source, $target): void {
+            GalleryFace::query()->where('gallery_person_id', $source)->update(['gallery_person_id' => $target]);
+            GalleryPerson::query()->whereKey($source)->first()?->delete();
+        });
+
+        return response()->json(['ok' => true, 'target_id' => $target]);
+    }
+
+    /** Move a face to another person, or detach it (null). */
+    public function assignFace(Request $request, GalleryFace $face): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'gallery_person_id' => ['nullable', 'integer', Rule::exists('gallery_people', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+        ]);
+        $face->forceFill([
+            'gallery_person_id' => $request->filled('gallery_person_id') ? $request->integer('gallery_person_id') : null,
+        ])->save();
+
+        return response()->json(['face' => $face]);
+    }
+
+    /** Hide (or unhide) a face from the people views. */
+    public function hideFace(Request $request, GalleryFace $face): JsonResponse
+    {
+        $request->validate(['value' => ['sometimes', 'boolean']]);
+        $face->forceFill(['hidden' => $request->has('value') ? $request->boolean('value') : true])->save();
+
+        return response()->json(['face' => $face]);
+    }
+
+    /** Stream a face crop (owner-scoped; 404 when the row/crop is absent). */
+    public function faceCrop(GalleryFace $face): StreamedResponse
+    {
+        return $this->streamPath($face->crop_path, 'image/jpeg', 'face-'.$face->id, false);
+    }
+
+    /** Re-run ML on one photo (backfill embedding + faces for an off-ML upload). */
+    public function reprocess(GalleryPhoto $photo, GalleryMl $ml): JsonResponse
+    {
+        $ok = $ml->reprocess($photo);
+
+        return response()->json(['ok' => $ok, 'photo' => $photo->fresh()]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function personSummary(GalleryPerson $person): array
+    {
+        $faces = $person->faces()->where('hidden', false)->orderByDesc('id')->get();
+        $samples = $faces->take(4)->map(fn (GalleryFace $f): array => [
+            'id' => $f->id,
+            'url' => is_string($f->crop_path) && $f->crop_path !== '' ? route('gallery.rel.faces.crop', $f->id) : null,
+        ])->values();
+
+        return [
+            'id' => $person->id,
+            'name' => $person->name,
+            'cover' => $person->cover_face_id,
+            'version' => $person->version,
+            'face_count' => $faces->count(),
+            'samples' => $samples,
+        ];
     }
 
     // ---- Shared helpers ----

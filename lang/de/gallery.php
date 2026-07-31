@@ -198,4 +198,8 @@ return [
     'share_err_no_key' => 'Diesem Link fehlt der Schlüssel; er kann nicht geöffnet werden.',
     'share_err_bad_key' => 'Der Schlüssel dieses Links ist ungültig — das Album kann nicht entschlüsselt werden.',
     'share_err_wrong_password' => 'Falsches Passwort.',
+    'smart_results' => 'Intelligente Treffer',
+    'find_similar' => 'Ähnliche finden',
+    'delete_person' => 'Person löschen',
+    'delete_person_confirm' => 'Diese Person löschen? Die Gesichter werden getrennt; die Fotos bleiben in deiner Mediathek.',
 ];

@@ -79,6 +79,11 @@ return [
 
     'face_min_score' => (float) env('GALLERY_FACE_MIN_SCORE', 0.7),
 
+    // Max cosine distance (0..2) between two face embeddings to treat them as the
+    // same person during auto-grouping. Lower = stricter (fewer false merges);
+    // ~0.35 groups the same face across photos without merging different people.
+    'face_match_distance' => (float) env('GALLERY_FACE_MATCH_DISTANCE', 0.35),
+
     /*
     |--------------------------------------------------------------------------
     | Reverse-geocoding endpoint + automatic-on-upload opt-in

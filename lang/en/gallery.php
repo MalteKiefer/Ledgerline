@@ -198,4 +198,8 @@ return [
     'share_err_no_key' => 'This link is missing its key and cannot be opened.',
     'share_err_bad_key' => 'This link’s key is invalid — the album cannot be decrypted.',
     'share_err_wrong_password' => 'Wrong password.',
+    'smart_results' => 'Smart results',
+    'find_similar' => 'Find similar',
+    'delete_person' => 'Delete person',
+    'delete_person_confirm' => 'Delete this person? Their faces are detached; the photos stay in your library.',
 ];
