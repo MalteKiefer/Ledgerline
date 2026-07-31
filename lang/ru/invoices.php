@@ -472,4 +472,10 @@ return [
     'trash_confirm' => 'Переместить этот счёт в корзину?',
     'open_original' => 'Открыть оригинал PDF',
     'imported_readonly' => 'Импортированный счёт — только для чтения (не изменяется для налоговой). Оригинал PDF сохранён.',
+    'duplicates_warn' => 'Обнаружено возможных дубликатов: :n',
+    'duplicates_hint' => 'Проверьте эти записи — ничего не удаляется автоматически.',
+    'duplicates_invoices' => 'Счета:',
+    'duplicates_transactions' => 'Операции:',
+    'suggestion_label' => 'Предложение:',
+    'apply_suggestion' => 'Применить предложение',
 ];

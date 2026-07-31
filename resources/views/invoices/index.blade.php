@@ -1459,6 +1459,15 @@
                                   </template>
                                 </div>
                               </template>
+                              {{-- Read-only server insight: merchant->category suggestion for an uncategorised tx; one-click apply via the existing save path. --}}
+                              <template x-if="suggestionFor(tx)">
+                                <button type="button" @click="applySuggestion(tx, suggestionFor(tx)?.suggested_category)"
+                                  class="mt-0.5 inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/20"
+                                  :title="'{{ __('invoices.apply_suggestion') }}'">
+                                  <x-icon name="sparkles" class="h-3 w-3" />
+                                  <span x-text="'{{ __('invoices.suggestion_label') }} ' + (suggestionFor(tx)?.suggested_category || '')"></span>
+                                </button>
+                              </template>
                               <p x-show="tx.iban && ! tx.invoiceId" class="truncate text-xs text-gray-400 dark:text-gray-500 tabular-nums" x-text="tx.iban"></p>
                               <button type="button" x-show="tx.invoiceId" @click="openInvoiceById(tx.invoiceId, tx.invoiceNumber)" class="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline">
                                 <x-icon name="link" class="h-3 w-3" /><span x-text="'{{ __('invoices.match_invoice') }}'.replace(':n', tx.invoiceNumber || '')"></span>
@@ -1992,6 +2001,22 @@
             <x-alert variant="warning" class="mt-4">
               <p class="font-semibold">{{ __('invoices.gap_warning_title') }}</p>
               <p class="mt-0.5 text-xs" x-text="'{{ __('invoices.gap_warning_body') }} ' + gapNumbers.join(', ')"></p>
+            </x-alert>
+          </template>
+
+          {{-- Read-only server insight: suspected duplicate invoices/transactions. Display only — no auto-delete. --}}
+          <template x-if="hasDuplicates">
+            <x-alert variant="warning" class="mt-4">
+              <p class="font-semibold" x-text="'{{ __('invoices.duplicates_warn') }}'.replace(':n', duplicateCount)"></p>
+              <p class="mt-0.5 text-xs">{{ __('invoices.duplicates_hint') }}</p>
+              <ul class="mt-1.5 space-y-0.5 text-xs">
+                <template x-for="g in (duplicates.invoices || [])" :key="'i' + g.key">
+                  <li><span class="font-medium">{{ __('invoices.duplicates_invoices') }}</span> <span x-text="(g.key || g.reason) + ' — #' + (g.ids || []).join(', #')"></span></li>
+                </template>
+                <template x-for="g in (duplicates.transactions || [])" :key="'t' + g.key">
+                  <li><span class="font-medium">{{ __('invoices.duplicates_transactions') }}</span> <span x-text="(g.key || g.reason) + ' — #' + (g.ids || []).join(', #')"></span></li>
+                </template>
+              </ul>
             </x-alert>
           </template>
 
