@@ -26,6 +26,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $note
  * @property string|null $address
  * @property string|null $email
+ * @property string|null $invoice_email
  * @property string|null $phone
  * @property string|null $vat_id
  * @property array<int, array<string, mixed>>|null $contacts
@@ -41,7 +42,7 @@ class FinancePartner extends Model
 
     protected $fillable = [
         'name', 'category', 'kind', 'url', 'logo', 'note',
-        'address', 'email', 'phone', 'vat_id', 'contacts',
+        'address', 'email', 'invoice_email', 'phone', 'vat_id', 'contacts',
     ];
 
     protected $casts = [

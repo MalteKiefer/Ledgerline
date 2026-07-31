@@ -55,6 +55,25 @@ class FinanceReportController extends Controller
         return response()->json($reports->accountVatSummary($tx));
     }
 
+    /** Unified USt-Voranmeldung (output − input VAT = Zahllast) for a year/quarter. */
+    public function vatAdvance(Request $request, FinanceReports $reports): JsonResponse
+    {
+        $this->requireUser($request);
+        $year = $request->integer('year') ?: (int) date('Y');
+        $quarter = $request->integer('quarter') ?: null;
+
+        return response()->json($reports->vatAdvanceReturn($year, $quarter));
+    }
+
+    /** Simplified EÜR (income − expenses = profit) for a year. */
+    public function euer(Request $request, FinanceReports $reports): JsonResponse
+    {
+        $this->requireUser($request);
+        $year = $request->integer('year') ?: (int) date('Y');
+
+        return response()->json($reports->euer($year));
+    }
+
     /** Read-only suspected-duplicate groups (invoices + transactions). */
     public function duplicates(Request $request, FinanceDuplicates $dupes): JsonResponse
     {

@@ -48,6 +48,7 @@ class CompanyController extends Controller
             'invoice_number_format' => ['nullable', 'string', 'max:40'],
             'invoice_next_number' => ['nullable', 'integer', 'min:1', 'max:100000000'],
             'invoice_default_vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'small_business' => ['nullable', 'boolean'],
             'invoice_payment_terms_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'invoice_footer_text' => ['nullable', 'string', 'max:2000'],
             'invoice_accent_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
@@ -97,6 +98,9 @@ class CompanyController extends Controller
         if (array_key_exists('company_smtp_enabled', $data)) {
             $data['company_smtp_enabled'] = $request->boolean('company_smtp_enabled');
         }
+        // §19 toggle is always rendered on the form → resolve it from the checkbox
+        // (unchecked = off), never left stale.
+        $data['small_business'] = $request->boolean('small_business');
 
         $settings = UserSetting::for($this->requireUser($request)->id);
 

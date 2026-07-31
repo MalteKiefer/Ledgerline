@@ -126,6 +126,7 @@ components:
         invoice_number_format: { type: [string, "null"], maxLength: 40, description: "e.g. YYYY-NNNN. Locked client-side once the current year has invoices (GoBD)." }
         invoice_next_number: { type: [integer, "null"], minimum: 1, maximum: 100000000, description: "Numbering floor; the actual next number is derived per year from the invoices." }
         invoice_default_vat_rate: { type: [number, "null"], minimum: 0, maximum: 100 }
+        small_business: { type: boolean, description: "§19 Kleinunternehmer — when true, invoices show no VAT and the VAT return reports zero output VAT." }
         invoice_payment_terms_days: { type: [integer, "null"], minimum: 0, maximum: 365 }
         invoice_footer_text: { type: [string, "null"], maxLength: 2000 }
         invoice_accent_color: { type: [string, "null"], pattern: "^#[0-9a-fA-F]{6}$" }
@@ -261,7 +262,7 @@ components:
         payment_account: { type: [string, "null"] }
         partner_id: { type: [integer, "null"] }
         pdf_path: { type: [string, "null"] }
-        customer: { type: object, additionalProperties: true }
+        customer: { type: object, additionalProperties: true, description: "Denormalised customer snapshot. May carry `invoiceEmail` (dedicated Rechnungs-E-Mail, preferred over `email` when emailing/dunning) alongside name/attn/address/email/vatId/partnerId." }
         lines: { type: array, items: { type: object, additionalProperties: true } }
         note: { type: [string, "null"] }
         versions: { type: array, items: { type: object, additionalProperties: true } }
@@ -284,6 +285,7 @@ components:
         note: { type: [string, "null"] }
         address: { type: [string, "null"] }
         email: { type: [string, "null"] }
+        invoice_email: { type: [string, "null"], description: "Dedicated invoice email (Rechnungs-E-Mail); invoices are sent here when set, else the general email." }
         phone: { type: [string, "null"] }
         vat_id: { type: [string, "null"] }
         contacts: { type: array, items: { type: object, additionalProperties: true } }
@@ -432,6 +434,67 @@ components:
         payable: { type: number }
         privateSum: { type: number }
         undecided: { type: integer }
+
+    VatAdvanceReturn:
+      type: object
+      description: >
+        Unified USt-Voranmeldung: output VAT (from realized invoices) minus input
+        VAT / Vorsteuer (from ALL of the user's bank transactions) = payable
+        (Zahllast), for a year and optional quarter. For a §19 Kleinunternehmer
+        outputVat is 0 (turnover reported as net = gross) and payable = −inputVat.
+      required: [year, quarter, net, outputVat, inputVat, payable, byRate, small_business]
+      properties:
+        year: { type: integer }
+        quarter: { type: [integer, "null"], minimum: 1, maximum: 4, description: "1–4, or null for the full year." }
+        net: { type: number, description: "Net turnover for the period (output side)." }
+        outputVat: { type: number, description: "VAT collected on sales." }
+        inputVat: { type: number, description: "Vorsteuer paid on expenses." }
+        payable: { type: number, description: "outputVat − inputVat (Zahllast)." }
+        byRate:
+          type: array
+          items:
+            type: object
+            properties:
+              rate: { type: number }
+              outputNet: { type: number }
+              outputVat: { type: number }
+              inputNet: { type: number }
+              inputVat: { type: number }
+        small_business: { type: boolean }
+
+    EuerReport:
+      type: object
+      description: >
+        Simplified EÜR (Einnahmenüberschussrechnung): income − expenses = profit
+        for a year. Income = realized invoices by issue_date (net, or gross for a
+        §19 KU) grouped by customer; expenses = that year's expense bank
+        transactions (excluding private movements) + FinanceProject manual
+        expenses, grouped by VAT/expense category. Not the full Anlage-EÜR form.
+      required: [year, income, expenses, profit, small_business]
+      properties:
+        year: { type: integer }
+        income:
+          type: object
+          required: [total, byCategory]
+          properties:
+            total: { type: number }
+            byCategory:
+              type: array
+              items:
+                type: object
+                properties: { name: { type: string }, amount: { type: number } }
+        expenses:
+          type: object
+          required: [total, byCategory]
+          properties:
+            total: { type: number }
+            byCategory:
+              type: array
+              items:
+                type: object
+                properties: { name: { type: string }, amount: { type: number } }
+        profit: { type: number }
+        small_business: { type: boolean }
 
     DuplicateGroup:
       type: object
@@ -1564,6 +1627,50 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AccountVatSummary" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+  /finance/reports/vat-advance:
+    get:
+      tags: [Finance]
+      operationId: financeVatAdvance
+      summary: Unified USt-Voranmeldung — output − input VAT = payable (read-only)
+      description: >
+        Server-authoritative combined VAT advance return: output VAT from realized
+        invoices minus input VAT (Vorsteuer) from all of the user's bank
+        transactions, for a year and optional quarter, yielding a single payable
+        (Zahllast). §19 Kleinunternehmer → output VAT is zero. Read-only; never
+        mutates a finance row. Throttle 120/min.
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: year, in: query, required: false, schema: { type: integer }, description: "Target year (defaults to the current year)." }
+        - { name: quarter, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 4 }, description: "Optional quarter 1–4; omit for the full year." }
+      responses:
+        "200":
+          description: The unified VAT advance return.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VatAdvanceReturn" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+  /finance/reports/euer:
+    get:
+      tags: [Finance]
+      operationId: financeEuer
+      summary: Simplified EÜR — income − expenses = profit (read-only)
+      description: >
+        Server-computed simplified Einnahmenüberschussrechnung for a year: income
+        (realized invoices) minus expenses (expense bank transactions + project
+        manual expenses) = profit, grouped by category. Read-only; never mutates a
+        finance row. Throttle 120/min.
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: year, in: query, required: false, schema: { type: integer }, description: "Target year (defaults to the current year)." }
+      responses:
+        "200":
+          description: The EÜR report.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EuerReport" }
         "401": { description: Unauthenticated. }
         "403": { description: Module disabled for this account. }
   /finance/duplicates:

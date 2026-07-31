@@ -228,6 +228,7 @@ class FinanceController extends Controller
             'note' => ['nullable', 'string', 'max:100000'],
             'address' => ['nullable', 'string', 'max:2000'],
             'email' => ['nullable', 'string', 'max:320'],
+            'invoice_email' => ['nullable', 'string', 'email:rfc', 'max:320'],
             'phone' => ['nullable', 'string', 'max:100'],
             'vat_id' => ['nullable', 'string', 'max:64'],
             'contacts' => ['nullable', 'array', 'max:200'],
@@ -240,7 +241,7 @@ class FinanceController extends Controller
     private function partnerPatch(Request $request, bool $create): array
     {
         $patch = [];
-        foreach (['name', 'category', 'kind', 'url', 'logo', 'note', 'address', 'email', 'phone', 'vat_id'] as $field) {
+        foreach (['name', 'category', 'kind', 'url', 'logo', 'note', 'address', 'email', 'invoice_email', 'phone', 'vat_id'] as $field) {
             if ($create || $request->has($field)) {
                 $patch[$field] = $request->filled($field) ? $request->string($field)->value() : ($field === 'name' ? '' : null);
             }
@@ -456,15 +457,31 @@ class FinanceController extends Controller
      * @var list<string>
      */
     private const CATEGORY_ICONS = [
-        'hashtag', 'tag', 'banknotes', 'credit-card', 'wallet', 'building-library',
-        'receipt-percent', 'chart-bar', 'arrow-trending-up', 'arrow-trending-down',
-        'globe', 'globe-alt', 'home', 'camera', 'photo', 'film', 'bell', 'bookmark',
-        'star', 'heart', 'calendar', 'clock', 'document', 'document-text',
-        'document-duplicate', 'folder', 'inbox-stack', 'archive-box', 'server', 'key',
-        'lock-closed', 'shield', 'shield-check', 'wifi', 'command-line', 'beaker',
-        'thermometer', 'scale', 'cake', 'sparkles', 'map-pin', 'map', 'route',
-        'paperclip', 'paper-clip', 'envelope', 'printer', 'users', 'user-group',
-        'sun', 'moon',
+        'hashtag', 'tag', 'banknotes', 'credit-card', 'wallet', 'currency-euro',
+        'currency-dollar', 'currency-pound', 'currency-yen', 'currency-rupee', 'receipt-percent', 'receipt-refund',
+        'calculator', 'building-library', 'building-office', 'building-office-2', 'building-storefront', 'briefcase',
+        'chart-bar', 'chart-bar-square', 'chart-pie', 'presentation-chart-line', 'presentation-chart-bar', 'arrow-trending-up',
+        'arrow-trending-down', 'table-cells', 'list-bullet', 'queue-list', 'document', 'document-text',
+        'document-check', 'document-duplicate', 'document-magnifying-glass', 'document-currency-euro', 'document-currency-dollar', 'document-plus',
+        'document-minus', 'clipboard-document', 'clipboard-document-check', 'clipboard-document-list', 'newspaper', 'book-open',
+        'folder', 'folder-open', 'archive-box', 'archive-box-arrow-down', 'inbox', 'inbox-stack',
+        'rectangle-stack', 'square-3-stack-3d', 'rectangle-group', 'server', 'server-stack', 'cpu-chip',
+        'shopping-cart', 'shopping-bag', 'gift', 'gift-top', 'truck', 'cube',
+        'cube-transparent', 'wrench', 'wrench-screwdriver', 'cog-6-tooth', 'cog-8-tooth', 'bolt',
+        'fire', 'light-bulb', 'command-line', 'beaker', 'scale', 'swatch',
+        'paint-brush', 'pencil-square', 'scissors', 'envelope', 'at-symbol', 'phone',
+        'phone-arrow-up-right', 'chat-bubble-left', 'chat-bubble-left-right', 'chat-bubble-oval-left', 'megaphone', 'video-camera',
+        'microphone', 'musical-note', 'speaker-wave', 'signal', 'rss', 'cloud',
+        'cloud-arrow-up', 'cloud-arrow-down', 'globe', 'globe-alt', 'globe-europe-africa', 'globe-americas',
+        'globe-asia-australia', 'map', 'map-pin', 'route', 'home', 'home-modern',
+        'camera', 'photo', 'film', 'printer', 'device-tablet', 'users',
+        'user-group', 'academic-cap', 'hand-thumb-up', 'hand-thumb-down', 'hand-raised', 'trophy',
+        'flag', 'ticket', 'bell', 'bell-alert', 'bookmark', 'star',
+        'heart', 'sparkles', 'calendar', 'calendar-days', 'calendar-date-range', 'clock',
+        'sun', 'moon', 'plus-circle', 'minus-circle', 'check-badge', 'exclamation-circle',
+        'question-mark-circle', 'adjustments-horizontal', 'adjustments-vertical', 'funnel', 'bars-arrow-down', 'bars-arrow-up',
+        'eye-slash', 'key', 'lock-closed', 'shield', 'shield-check', 'wifi',
+        'paper-clip', 'backspace', 'battery-100', 'thermometer', 'cake',
     ];
 
     public function storeCategory(Request $request): JsonResponse
@@ -779,12 +796,22 @@ class FinanceController extends Controller
         return response()->json(['ok' => true, 'level' => $level, 'reminded_at' => $now->toIso8601String()]);
     }
 
-    /** The customer snapshot's email, if a valid-looking address is present. */
+    /**
+     * The recipient for a finalized invoice: prefer the customer snapshot's
+     * dedicated invoice email (Rechnungs-E-Mail) if it is a valid-looking address,
+     * else fall back to the general customer email.
+     */
     private function customerEmail(Invoice $invoice): ?string
     {
         $customer = is_array($invoice->customer) ? $invoice->customer : [];
-        $email = $customer['email'] ?? null;
 
+        return $this->validEmail($customer['invoiceEmail'] ?? null)
+            ?? $this->validEmail($customer['email'] ?? null);
+    }
+
+    /** A trimmed address if it looks like an email, else null. */
+    private function validEmail(mixed $email): ?string
+    {
         return is_string($email) && str_contains($email, '@') && trim($email) !== '' ? trim($email) : null;
     }
 
