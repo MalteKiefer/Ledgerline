@@ -631,6 +631,14 @@ class FinanceController extends Controller
                 $patch[$field] = $request->filled($field) ? $request->date($field) : null;
             }
         }
+        // Populate `year` on create from the issue date. Imported invoices arrive
+        // with a number + issue_date but no year; without this the (user_id, year,
+        // number) unique index does NOT catch duplicate imports, because Postgres
+        // treats each NULL year as distinct — so the same invoice could be imported
+        // twice. Finalisation may still overwrite year for self-issued invoices.
+        if ($create && ($patch['issue_date'] ?? null) instanceof Carbon) {
+            $patch['year'] = (int) $patch['issue_date']->format('Y');
+        }
         foreach (['vat_rate', 'gross', 'net', 'vat'] as $field) {
             if ($create || $request->has($field)) {
                 $patch[$field] = $request->filled($field) ? $request->float($field) : null;

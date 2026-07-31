@@ -292,7 +292,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
         if (! r.ok || ! r.data[key]) { window.llToast?.(labels.save_failed || 'Save failed.'); return null; }
         return norm(r.data[key]);
     },
-    async _destroy(seg, id) { try { await apiRequest('DELETE', '/finance/' + seg + '/' + id); } catch (e) { /* */ } },
+    async _destroy(seg, id) { try { await apiRequest('DELETE', '/finance/' + seg + '/' + id); return true; } catch (e) { window.llToast?.(labels.delete_failed || 'Could not delete — please try again.'); return false; } },
 
     // Re-pull the whole snapshot (used after a conflict / a bulk import).
     async reload() {
@@ -1993,7 +1993,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
 
     async trash(inv) {
         if (! await this.$store.confirm.ask(labels.trashConfirm || 'Move this invoice to the trash?')) return;
-        await this._destroy('invoices', inv.id);
+        if (! await this._destroy('invoices', inv.id)) return;
         const i = this.invoices.indexOf(inv); if (i >= 0) this.invoices.splice(i, 1);
         if (this.current === inv) this.backToList();
         if (this.showInvTrash) this._loadInvTrash();

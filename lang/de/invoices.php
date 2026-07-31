@@ -90,6 +90,7 @@ return [
     'trash_empty_confirm' => 'Alles im Papierkorb endgültig löschen? Das kann nicht rückgängig gemacht werden.',
     'restore_dupe' => 'Eine aktive Rechnung mit Nummer :n existiert bereits.',
     'delete_confirm' => 'Diese Rechnung endgültig löschen?',
+    'delete_failed' => 'Löschen fehlgeschlagen — bitte erneut versuchen.',
 
     'company_missing' => 'Richte dein Firmenprofil in den Einstellungen ein, um Rechnungen zu nummerieren und zu branden.',
 
