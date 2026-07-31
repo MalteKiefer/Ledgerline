@@ -16,7 +16,7 @@ use Tests\TestCase;
 
 /**
  * Plaintext-relational Explore (pivot): track CRUD + optimistic version,
- * encryption-at-rest of the location-PII point list, coupling upsert/delete,
+ * plaintext-at-rest of the location point list, coupling upsert/delete,
  * settings upsert, raw track-file upload/download + owner-scope, the
  * trash→restore→force lifecycle (blob removed, couplings cascade), and per-user
  * isolation.
@@ -71,7 +71,7 @@ class ExploreRelationalTest extends TestCase
         $this->assertSame(1, ExploreTrack::onlyTrashed()->count());
     }
 
-    public function test_track_points_and_note_encrypted_at_rest(): void
+    public function test_track_points_and_note_stored_plaintext_at_rest(): void
     {
         $this->actingAs(User::factory()->create());
 
@@ -80,13 +80,13 @@ class ExploreRelationalTest extends TestCase
 
         $raw = DB::table('explore_tracks')->where('id', $id)->first();
         $this->assertNotNull($raw);
-        // Location PII + note are encrypted → the plaintext never appears in the column.
+        // Location + note are plaintext at rest (encryption removed in v1.516.0).
         $this->assertStringContainsString('52.520008', (string) $raw->points);
         $this->assertStringContainsString('secret-trailhead', (string) $raw->note);
         // Aggregate stats stay plaintext for listing/sorting.
         $this->assertStringContainsString('1234', (string) $raw->stats);
 
-        // Round-trips through the encrypted:array cast.
+        // Round-trips through the array cast (plaintext).
         $track = ExploreTrack::findOrFail($id);
         $this->assertEquals(52.520008, $track->points[0]['lat']);
         $this->assertSame('secret-trailhead', $track->note);

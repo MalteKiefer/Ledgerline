@@ -1,7 +1,7 @@
 // Pure, headless-testable photo→track matcher for the "Explore" map module.
 //
-// Zero-knowledge: the match runs entirely in the browser over already-decrypted
-// photo metadata and parsed tracks. No DOM, no network, no Date.now/random — the
+// The match runs entirely in the browser over the photo metadata and parsed
+// tracks already in memory. No DOM, no network, no Date.now/random — the
 // result is a deterministic function of its inputs.
 //
 // The cascade decides where a photo sits on the map:

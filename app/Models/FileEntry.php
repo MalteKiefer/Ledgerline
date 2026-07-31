@@ -40,6 +40,9 @@ class FileEntry extends Model
     /** Server-set fields (size/storage_path/sha256/mime) are never mass-assigned. */
     protected $fillable = ['name', 'file_folder_id', 'tags', 'note', 'favorite'];
 
+    /** Extracted full-text index; queried server-side, never serialized (can be ~1 MiB). */
+    protected $hidden = ['search_text'];
+
     protected $casts = [
         'tags' => 'array',
         'favorite' => 'boolean',

@@ -1,8 +1,8 @@
 // Pure, testable logic for intermittent-fasting tracking in the Health module.
-// A "fast" is a client-side record { id, start, end|null, targetHours, note } kept
-// in the sealed `health` module store (key `healthFasts`) — zero-knowledge, no new
-// server field. The ACTIVE fast is the one with end === null; only one may ever be
-// active (enforced client-side + by the store's optimistic version, see health.js).
+// A "fast" is a record { id, start, end|null, targetHours, note } stored in the
+// relational `health_fasts` table and served over the /health/* REST endpoints.
+// The ACTIVE fast is the one with end === null; only one may ever be active
+// (enforced by a partial unique index, see health.js).
 
 /**
  * Common fasting protocols. `targetHours` is the FASTING window (the "X" in X:Y,

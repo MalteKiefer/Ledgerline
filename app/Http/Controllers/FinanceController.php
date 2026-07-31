@@ -572,8 +572,8 @@ class FinanceController extends Controller
     {
         $invoice = Invoice::withTrashed()->findOrFail($id);
         DB::transaction(function () use ($invoice): void {
-            if (is_string($invoice->pdf_path) && $invoice->pdf_path !== '') {
-                $this->fs()->delete($invoice->pdf_path);
+            foreach ($this->invoiceBlobPaths($invoice) as $path) {
+                $this->fs()->delete($path);
             }
             $invoice->forceDelete();
         });
@@ -658,17 +658,53 @@ class FinanceController extends Controller
 
     public function uploadInvoicePdf(Request $request, Invoice $invoice): JsonResponse
     {
-        $request->validate(['file' => ['required', 'file', 'max:'.$this->maxUploadKb()]]);
+        $request->validate([
+            'file' => ['required', 'file', 'max:'.$this->maxUploadKb()],
+            'version_seq' => ['sometimes', 'nullable', 'integer', 'min:1'],
+        ]);
         $upload = $request->file('file');
         if (! $upload instanceof UploadedFile) {
             abort(422);
         }
+        $versionSeq = $request->filled('version_seq') ? $request->integer('version_seq') : null;
 
         $path = 'invoices/'.Str::uuid()->toString();
         $this->fs()->putFileAs('invoices', $upload, basename($path));
 
-        $fresh = DB::transaction(function () use ($invoice, $path): Invoice {
+        $fresh = DB::transaction(function () use ($invoice, $path, $versionSeq): Invoice {
             $current = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+
+            // Per-version PDF: attach the uploaded document to the matching versions[]
+            // entry (GoBD correction trail — each version keeps its own PDF). The shared
+            // pdf_path is left untouched so historical versions never clobber each other.
+            if ($versionSeq !== null) {
+                $versions = is_array($current->versions) ? $current->versions : [];
+                $matched = false;
+                foreach ($versions as &$entry) {
+                    if (is_array($entry) && isset($entry['seq']) && is_numeric($entry['seq']) && (int) $entry['seq'] === $versionSeq) {
+                        $old = $this->safeBlobPath($entry['pdf'] ?? null);
+                        if ($old !== null && $old !== $path) {
+                            $this->fs()->delete($old);
+                        }
+                        $entry['pdf'] = $path;
+                        $matched = true;
+                        break;
+                    }
+                }
+                unset($entry);
+                if (! $matched) {
+                    // No such version yet → nothing to attach; drop the orphan blob.
+                    $this->fs()->delete($path);
+
+                    return $current;
+                }
+                $current->versions = $versions;
+                $current->save();
+
+                return $current;
+            }
+
+            // No version_seq → the invoice's current/original PDF (unchanged behaviour).
             if (is_string($current->pdf_path) && $current->pdf_path !== '' && $current->pdf_path !== $path) {
                 $this->fs()->delete($current->pdf_path);
             }
@@ -683,17 +719,79 @@ class FinanceController extends Controller
 
     public function invoicePdf(Request $request, Invoice $invoice): StreamedResponse
     {
-        if (! is_string($invoice->pdf_path) || $invoice->pdf_path === '' || ! $this->fs()->exists($invoice->pdf_path)) {
+        $versionSeq = $request->filled('version_seq') ? $request->integer('version_seq') : null;
+
+        // A version_seq streams that version's own stored PDF; otherwise the invoice's
+        // current/original PDF. The version path comes from the (client-writable)
+        // versions[] json, so it is prefix-guarded via safeBlobPath — never a raw path.
+        if ($versionSeq !== null) {
+            $path = $this->safeBlobPath($this->versionPdfPath($invoice, $versionSeq));
+            $label = $this->versionLabel($invoice, $versionSeq) ?? ($invoice->number ?? 'invoice');
+        } else {
+            $path = $this->safeBlobPath($invoice->pdf_path);
+            $label = $invoice->number ?? 'invoice';
+        }
+        if ($path === null || ! $this->fs()->exists($path)) {
             abort(404);
         }
-        $filename = $this->safeName(($invoice->number ?? 'invoice').'.pdf');
+        $filename = $this->safeName($label.'.pdf');
 
-        return $this->fs()->response($invoice->pdf_path, $filename, [
+        return $this->fs()->response($path, $filename, [
             'Content-Type' => 'application/pdf',
             'X-Content-Type-Options' => 'nosniff',
             'Content-Security-Policy' => "default-src 'none'; sandbox",
             'Cache-Control' => 'private, max-age=3600',
         ], $request->boolean('download') ? 'attachment' : 'inline');
+    }
+
+    /** The stored blob path of a version entry's own PDF (or null if none / no such version). */
+    private function versionPdfPath(Invoice $invoice, int $seq): ?string
+    {
+        foreach (is_array($invoice->versions) ? $invoice->versions : [] as $entry) {
+            if (is_array($entry) && isset($entry['seq']) && is_numeric($entry['seq']) && (int) $entry['seq'] === $seq) {
+                $pdf = $entry['pdf'] ?? null;
+
+                return is_string($pdf) ? $pdf : null;
+            }
+        }
+
+        return null;
+    }
+
+    /** The display label of a version entry (for the download filename). */
+    private function versionLabel(Invoice $invoice, int $seq): ?string
+    {
+        foreach (is_array($invoice->versions) ? $invoice->versions : [] as $entry) {
+            if (is_array($entry) && isset($entry['seq']) && is_numeric($entry['seq']) && (int) $entry['seq'] === $seq) {
+                $label = $entry['label'] ?? null;
+
+                return is_string($label) && $label !== '' ? $label : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Every stored PDF blob path owned by an invoice (pdf_path + per-version pdfs).
+     *
+     * @return list<string>
+     */
+    private function invoiceBlobPaths(Invoice $invoice): array
+    {
+        $paths = [];
+        $main = $this->safeBlobPath($invoice->pdf_path);
+        if ($main !== null) {
+            $paths[] = $main;
+        }
+        foreach (is_array($invoice->versions) ? $invoice->versions : [] as $entry) {
+            $safe = $this->safeBlobPath(is_array($entry) ? ($entry['pdf'] ?? null) : null);
+            if ($safe !== null) {
+                $paths[] = $safe;
+            }
+        }
+
+        return array_values(array_unique($paths));
     }
 
     // ---- Bank transactions ----

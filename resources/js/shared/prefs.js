@@ -1,6 +1,6 @@
 // Global, non-secret DISPLAY preferences (measurement units + clock format),
 // injected by the layout as <meta name="ll-prefs"> and mirrored to mobile via
-// GET /me. Presentation only — the underlying data stays zero-knowledge; only the
+// GET /me. Presentation only — the underlying data is unchanged; only the
 // unit/format it is shown in is chosen here. Canonical storage is unchanged
 // (meters, kg, °C, mg/dL); these helpers convert for display.
 //

@@ -1,5 +1,5 @@
-// Dashboard component — reads the decrypted per-module stores and gallery store
-// to populate widgets (todos, counters, recent notes, health).
+// Dashboard component — reads plaintext-relational module data over REST
+// to populate widgets (todos, counters, recent notes, health, gallery).
 // Gallery is best-effort: the widget degrades gracefully if unavailable.
 import { sortTodos, yearsAgoPhotos } from '../shared/dashboard-utils';
 import { getJson, postForm } from '../shared/api';
@@ -13,7 +13,7 @@ import { activeFast, fastProgress, formatDuration, formatDurationHMS, templateLa
 import { healthUnits } from '../shared/prefs';
 
 // Map plaintext-relational health rows (snake_case) to the shape the widgets +
-// pure helpers expect. v/v2 arrive as decrypted STRINGS → coerce to Number;
+// pure helpers expect. v/v2 may arrive as JSON STRINGS → coerce to Number;
 // fasts map start_at→start, end_at→end, target_hours→targetHours.
 const dashEntry = (e) => ({
     id: e.id,
@@ -45,7 +45,7 @@ export default (config = {}, labels = {}) => ({
         await this._boot();
         this.$watch('_mut', () => this.renderSpark());
         // Start/stop the 1s clock off the reactive activeFast getter (not a one-shot
-        // state check): the sealed store loads async, so activeFast is false at
+        // state check): the health data loads async, so activeFast is false at
         // state-ready and a state-gated start would never fire on reload. The
         // watcher starts it the moment a running fast appears.
         this.$watch('activeFast', (f) => { if (f) this._startFastClock(); else this._stopFastClock(); });
@@ -141,8 +141,8 @@ export default (config = {}, labels = {}) => ({
         } catch (_e) { /* keep in-memory state */ }
     },
 
-    // Per-module data getters. Notes/todos/bookmarks/health/files/finance are
-    // plaintext-relational (pivot); gallery is still a sealed ZK store.
+    // Per-module data getters. Notes/todos/bookmarks/health/files/finance/gallery
+    // are all plaintext-relational (pivot), loaded over REST.
     get _health() { return this._relHealth; },
     get _invoices() { return { invoices: this._relInvoices }; },
     get _g() { return { photos: this._relPhotos }; },
@@ -164,7 +164,7 @@ export default (config = {}, labels = {}) => ({
 
     // --- Counter tiles ---
     get counts() {
-        void this._mut; // recompute after a manifest mutation (store .data is not Alpine-reactive)
+        void this._mut; // recompute after an in-memory mutation (plain arrays aren't deeply reactive)
         return {
             notes: this._relNotes.length,
             bookmarks: this._relBookmarksCount,

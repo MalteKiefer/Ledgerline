@@ -13,11 +13,11 @@ use Illuminate\Support\Carbon;
 
 /**
  * An invoice (plaintext-relational pivot). Rows are private per user via
- * OwnsUserData. number/seq/year + money columns (gross/net/vat) stay plaintext
- * so the server can drive GoBD numbering + VAT-return/revenue stats. The
- * customer snapshot, line items, note and GoBD correction history carry an
- * `encrypted` cast. number/seq/year/version/version_seq/pdf_path are
- * server-managed (assigned on finalisation / never mass-assigned).
+ * OwnsUserData. number/seq/year + money columns (gross/net/vat) drive GoBD
+ * numbering + VAT-return/revenue stats. The customer snapshot, line items, note
+ * and GoBD correction history are JSON/array columns. All columns are plaintext
+ * at rest (encryption removed in v1.516.0). number/seq/year/version/version_seq/
+ * pdf_path are server-managed (assigned on finalisation / never mass-assigned).
  *
  * @property int $id
  * @property int $user_id

@@ -1,8 +1,8 @@
 // Pure, headless-testable track parsing for the "Explore" map module.
 //
-// Zero-knowledge: every byte of a GPX/KML/TCX/FIT track is parsed HERE, in the
-// browser — the server never sees track plaintext. Nothing in this file touches
-// the DOM, network, Date.now() or random; it is deterministic and Vitest-safe.
+// Every byte of a GPX/KML/TCX/FIT track is parsed HERE, in the browser, before
+// the parsed track is persisted over REST. Nothing in this file touches the DOM,
+// network, Date.now() or random; it is deterministic and Vitest-safe.
 //
 // The XML formats (GPX/KML/TCX) are parsed with the browser's native DOMParser
 // when it exists, and otherwise with a tiny dependency-free XML walker so the

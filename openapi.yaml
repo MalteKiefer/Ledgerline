@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.518.0
+  version: 1.519.0
   description: >
     Plaintext-relational personal cloud API for the Ledgerline mobile client.
 
@@ -873,6 +873,7 @@ components:
         note: { type: [string, "null"] }
         favorite: { type: boolean }
         version: { type: integer, description: "Optimistic-concurrency counter for metadata updates." }
+        indexed_at: { type: [string, "null"], format: date-time, description: "When the content text index was last built (null = not yet indexed). The extracted search_text itself is server-only and never serialized." }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         deleted_at: { type: [string, "null"], format: date-time, description: "Set when soft-trashed." }
@@ -1719,6 +1720,36 @@ paths:
                 required: [deleted]
                 properties:
                   deleted: { type: integer, description: "Number of files permanently deleted." }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+
+  /files/search:
+    get:
+      tags: [Files]
+      operationId: filesSearch
+      summary: Full-text search over the owner's files
+      description: >
+        Server-side content search. Matches extracted file text (search_text —
+        PDF text layer / image OCR / plain text) plus the file name. PostgreSQL
+        uses a GIN full-text index; owner-scoped. Throttled 120/min.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+          description: Search query. Empty query returns an empty result set.
+      responses:
+        "200":
+          description: Matching files (max 100), newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [files]
+                properties:
+                  files: { type: array, items: { $ref: "#/components/schemas/FileEntry" } }
         "401": { description: Unauthenticated. }
         "403": { description: Module disabled for this account. }
 

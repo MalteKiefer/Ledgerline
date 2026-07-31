@@ -1675,7 +1675,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
         this.pdfBusy = true;
         try {
             await this._commitVersion(inv, String(reason).trim());
-            await this._persistInvoice(inv);
             this.dirty = false;
             this.editUnlocked = false;
             this._lockBaseline = JSON.stringify(this._editable(inv));
@@ -1690,16 +1689,19 @@ export default (config = {}, labels = {}, initial = {}) => ({
         const snapshot = JSON.parse(JSON.stringify(this._editable(inv)));
         snapshot.totals = this.computeTotals(inv);
         const version = { seq, label, reason, at: new Date().toISOString(), snapshot };
-        // Online-created invoices regenerate + store a PDF (the invoice's latest pdf_path);
-        // imported keep their original. Per-version PDF storage is not available server-side,
-        // so all versions reference the invoice's current PDF.
-        if (! inv.imported) { await this._renderAndUploadInvoicePdf(inv, label); }
         inv.versions = inv.versions || [];
         inv.versions.push(version);
+        // Persist the field edits + the new version entry first so the server has the
+        // entry, then — for online invoices — render THIS version's own PDF and attach
+        // it to the entry server-side (imported invoices keep only the field snapshot;
+        // their original uploaded PDF remains authoritative).
+        await this._persistInvoice(inv);
+        if (! inv.imported) { await this._renderAndUploadInvoicePdf(inv, label, seq); }
     },
-    // Render the invoice's print sheet to a (raster) PDF client-side and upload it as the
-    // invoice's pdf_path (plaintext on the server). Lazy-loaded so the deps stay out of the bundle.
-    async _renderAndUploadInvoicePdf(inv, label) {
+    // Render the invoice's print sheet to a (raster) PDF client-side and upload it. With a
+    // versionSeq it is stored on that versions[] entry (per-version PDF); otherwise as the
+    // invoice's pdf_path. Lazy-loaded so the deps stay out of the bundle.
+    async _renderAndUploadInvoicePdf(inv, label, versionSeq = null) {
         try {
             const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
             this._printing = inv;
@@ -1719,24 +1721,40 @@ export default (config = {}, labels = {}, initial = {}) => ({
             let remaining = ph - pageH;
             while (remaining > 0) { pdf.addPage(); y -= pageH; pdf.addImage(img, 'JPEG', 0, y, pw, ph); remaining -= pageH; }
             const bytes = new Uint8Array(await pdf.output('blob').arrayBuffer());
-            const row = await this._uploadInvoicePdf(inv.id, bytes, `${label || inv.number || 'invoice'}.pdf`);
-            if (row) inv.pdfPath = row.pdfPath ?? inv.pdfPath;
+            const row = await this._uploadInvoicePdf(inv.id, bytes, `${label || inv.number || 'invoice'}.pdf`, versionSeq);
+            if (row) {
+                if (Array.isArray(row.versions)) inv.versions = row.versions;
+                inv.pdfPath = row.pdfPath ?? inv.pdfPath;
+                if (row.version != null) inv.version = row.version;
+            }
         } catch (e) { this._printing = null; }
     },
-    // Upload a PDF for an invoice (multipart). Returns the normalized invoice or null.
-    async _uploadInvoicePdf(id, bytes, name) {
+    // Upload a PDF for an invoice (multipart). With versionSeq the server attaches it to
+    // that versions[] entry; otherwise it becomes the invoice's pdf_path. Returns the
+    // normalized invoice or null.
+    async _uploadInvoicePdf(id, bytes, name, versionSeq = null) {
         try {
             const fd = new FormData();
             fd.append('file', new File([bytes], name || 'invoice.pdf', { type: 'application/pdf' }));
+            if (versionSeq != null) fd.append('version_seq', String(versionSeq));
             const res = await fetch(`/finance/invoices/${id}/pdf`, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() }, body: fd });
             if (! res.ok) return null;
             const d = await res.json();
             return d.invoice ? normInvoice(d.invoice) : null;
         } catch (e) { return null; }
     },
-    // Open a version's PDF — the invoice's current stored PDF (per-version storage is
-    // unavailable server-side).
-    openVersionPdf() { if (this.current) this.openOriginalPdf(this.current); },
+    // Open a version's own stored PDF (each versioned edit keeps its own document).
+    openVersionPdf(v) {
+        const inv = this.current;
+        if (! inv) return;
+        if (v && v.pdf && v.seq != null) {
+            this.closeReceiptPreview();
+            this.receiptPreview = { url: `${this._invoicePdfUrl(inv)}?version_seq=${encodeURIComponent(v.seq)}`, mime: 'application/pdf', name: (v.label || inv.number || 'PDF') + '.pdf' };
+            return;
+        }
+        // Fallback for legacy versions without their own PDF / imported originals.
+        this.openOriginalPdf(inv);
+    },
 
     addLine() { this.current.lines.push({ desc: '', qty: 1, unit: '', unitPrice: 0, vatRate: this._defaultVat() }); this.saveSoon(); },
     removeLine(i) { this.current.lines.splice(i, 1); if (! this.current.lines.length) this.addLine(); else this.saveSoon(); },
@@ -2119,10 +2137,11 @@ export default (config = {}, labels = {}, initial = {}) => ({
     },
     async _lockCommit(inv, reason) {
         this.pdfBusy = true;
-        try { await this._commitVersion(inv, reason); } catch (e) { /* keep going even if PDF fails */ }
+        // _commitVersion persists the field state + version entry itself; if it throws
+        // (e.g. mid-render), still make sure the invoice is saved.
+        try { await this._commitVersion(inv, reason); } catch (e) { try { await this._persistInvoice(inv); } catch (_e) { /* ignore */ } }
         this.pdfBusy = false;
         if (this.current && this.current.id === inv.id) { this.dirty = false; this._lockBaseline = JSON.stringify(this._editable(inv)); }
-        await this._persistInvoice(inv);
     },
     statusLabel(s) { return ({ draft: labels.statusDraft, sent: labels.statusSent, paid: labels.statusPaid })[s] || s; },
 

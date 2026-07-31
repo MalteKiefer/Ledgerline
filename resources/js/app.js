@@ -129,13 +129,12 @@ Alpine.data('notificationBell', notificationBell);
  *
  * @param {number[]} allIds  Ids of the files currently listed.
  */
-/* ---- Zero-knowledge gallery (client-driven) ----
+/* ---- Gallery (client-driven, plaintext-relational) ----
  *
- * The whole library is served over the /gallery/* REST endpoints; photo bytes +
- * renditions + a per-photo metadata blob are opaque blobs. Nothing is server-
- * readable. On unlock the client processes any un-processed uploads through the
- * transient /gallery/process endpoint (plaintext in, derived out, discarded),
- * re-seals the derived data, and renders the grid from decrypted thumbnails.
+ * The whole library is served over the /gallery/* REST endpoints; photos +
+ * server-generated renditions are plaintext rows/blobs. The client uploads
+ * originals, the server extracts EXIF/derives renditions, and the grid renders
+ * from thumbnail URLs by id (no client-side decryption).
  */
 Alpine.data('vaultGallery', vaultGallery);
 
@@ -157,7 +156,7 @@ Alpine.store('paperless', {
 
     open: false,
     submitting: false,
-    preparing: false, // fetching/decrypting the document while the modal is open
+    preparing: false, // fetching the document while the modal is open
     error: '',
     file: null, filename: '',
     // Autocomplete query text per picker (also the name used when the typed
@@ -235,9 +234,9 @@ Alpine.store('paperless', {
         this.preparing = false;
     },
 
-    // Open the modal right away while the document is still being fetched /
-    // decrypted (IMAP round-trip or client-side decryption can take seconds);
-    // setFile() fills it in when ready, so the UI never blocks.
+    // Open the modal right away while the document is still being fetched over
+    // REST (a large file can take a moment); setFile() fills it in when ready,
+    // so the UI never blocks.
     begin(filename, defaults = {}, opts = {}) {
         this._reset(filename, defaults, opts);
         this.file = null;
@@ -322,10 +321,9 @@ Alpine.data('health', health);
 
 
 /**
- * Bookmarks + folders. Zero-knowledge: everything lives in the opaque manifest
- * (one sealed blob shared with notes/todos), so there is no fetch/seal per row —
- * fields are plaintext inside the sealed manifest and every mutation edits the
- * in-memory arrays in place then schedules a debounced sealed save.
+ * Bookmarks + folders (plaintext-relational — pivot). Rows are served over the
+ * /bookmarks/* REST endpoints; the page is server-rendered with inlined initial
+ * data and every mutation is a per-record JSON call (optimistic version + 409).
  */
 Alpine.data('bookmarks', bookmarks);
 
@@ -348,10 +346,11 @@ Alpine.data('bookmarks', bookmarks);
 Alpine.data('dashboard', dashboard);
 
 /**
- * Explore: zero-knowledge map. Tracks, photo↔track couplings and coupling
- * tolerances live in the sealed `explore` module store; gallery photos are read
- * from the decrypted gallery index. Leaflet (OSM raster tiles in the browser),
- * uPlot (elevation) and fflate (KMZ unzip) are all lazy-loaded on demand.
+ * Explore map (plaintext-relational — pivot). Tracks, photo↔track couplings and
+ * coupling tolerances live in relational tables served over /explore/* REST;
+ * gallery photos are read from the plaintext gallery index. Leaflet (OSM raster
+ * tiles in the browser), uPlot (elevation) and fflate (KMZ unzip) are all
+ * lazy-loaded on demand.
  */
 Alpine.data('explore', explore);
 

@@ -12,10 +12,11 @@ use Illuminate\Support\Carbon;
 
 /**
  * A bank-statement booking (plaintext-relational pivot). Rows are private per
- * user via OwnsUserData. date/amount + vat_cat stay plaintext for stats and
- * filtering; the free-text booking details (counterparty/purpose/IBAN/…) and
- * the attached receipts list carry an `encrypted` cast. `receipts` receipt file
- * bytes live plaintext on the file disk; each entry references its blob_path.
+ * user via OwnsUserData. date/amount + vat_cat drive stats and filtering. All
+ * columns — including the free-text booking details (counterparty/purpose/
+ * IBAN/…) and the attached receipts list — are plaintext at rest (encryption
+ * removed in v1.516.0). Receipt file bytes live plaintext on the file disk;
+ * each entry references its blob_path.
  *
  * @property int $id
  * @property int $user_id

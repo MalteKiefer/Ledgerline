@@ -1,5 +1,5 @@
 // Rough energy-expenditure estimate for an Explore tour, computed client-side
-// from the track stats + the user's (decrypted) health profile. Deliberately
+// from the track stats + the user's health profile. Deliberately
 // approximate — a MET-by-speed model plus an explicit vertical-work term — and
 // only ever shown when height, sex and weight are all on file. Pure + tested.
 

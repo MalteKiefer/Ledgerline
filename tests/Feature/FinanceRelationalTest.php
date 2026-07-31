@@ -21,7 +21,7 @@ use Tests\TestCase;
 /**
  * Plaintext-relational Finance (pivot): CRUD for partners / payment methods /
  * projects / categories / invoices / bank transactions, optimistic version
- * conflicts, encryption-at-rest of the sensitive columns, GoBD gapless per-year
+ * conflicts, plaintext-at-rest of the sensitive columns, GoBD gapless per-year
  * numbering, bulk-import dedup by signature, invoice PDF + receipt file storage
  * with owner-scope, and per-user isolation.
  */
@@ -100,7 +100,7 @@ class FinanceRelationalTest extends TestCase
         $this->assertSame(1, FinanceCategory::query()->count());
     }
 
-    public function test_sensitive_columns_encrypted_at_rest(): void
+    public function test_sensitive_columns_stored_plaintext_at_rest(): void
     {
         $this->actingAs(User::factory()->create());
 
@@ -120,7 +120,7 @@ class FinanceRelationalTest extends TestCase
             'counterparty' => 'Secret Vendor Ltd', 'purpose' => 'Office supplies',
         ])->assertCreated()->json('transaction.id');
 
-        // Encrypted columns never store the plaintext.
+        // Columns are plaintext at rest (encryption removed in v1.516.0).
         $rawPm = DB::table('payment_methods')->where('id', $pm)->first();
         $this->assertNotNull($rawPm);
         $this->assertStringContainsString('DE00SECRETIBAN0001', (string) $rawPm->iban);
@@ -136,7 +136,7 @@ class FinanceRelationalTest extends TestCase
         $this->assertStringContainsString('Secret Vendor Ltd', (string) $rawTx->counterparty);
         $this->assertStringContainsString('-50', (string) $rawTx->amount);
 
-        // Round-trips through the encrypted casts.
+        // Round-trips through the array casts (plaintext).
         $this->assertSame('DE00SECRETIBAN0001', PaymentMethod::findOrFail($pm)->iban);
         $this->assertSame('Secret Customer AG', Invoice::findOrFail($inv)->customer['name'] ?? null);
     }

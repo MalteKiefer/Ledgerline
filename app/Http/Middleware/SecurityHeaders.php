@@ -40,6 +40,10 @@ final class SecurityHeaders
         // Isolate this browsing context group from cross-origin openers/popups
         // (mitigates cross-window attacks; harmless for a same-origin SPA).
         $response->headers->set('Cross-Origin-Opener-Policy', 'same-origin');
+        // No resource of this single-origin app is meant to be embedded/read by
+        // another origin. Blocks cross-site hotlinking/embedding of the now-
+        // plaintext user blobs (photos/files/PDFs) that COOP does not cover.
+        $response->headers->set('Cross-Origin-Resource-Policy', 'same-origin');
         // Deny access to powerful browser features the app never uses.
         $response->headers->set(
             'Permissions-Policy',

@@ -620,9 +620,9 @@ class FilesController extends Controller
     public function emptyTrash(): JsonResponse
     {
         $n = 0;
-        FileEntry::onlyTrashed()->chunkById(100, function ($chunk) use (&$n): void {
+        FileEntry::onlyTrashed()->with('versions')->chunkById(100, function ($chunk) use (&$n): void {
             foreach ($chunk as $file) {
-                foreach ($file->versions()->get() as $v) {
+                foreach ($file->versions as $v) {
                     $this->fs()->delete($v->storage_path);
                 }
                 $this->fs()->delete($file->storage_path);

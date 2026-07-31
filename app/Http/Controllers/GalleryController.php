@@ -138,9 +138,27 @@ class GalleryController extends Controller
      *
      * @return Builder<GalleryPhoto>
      */
+    /**
+     * Every gallery_photos column EXCEPT the pgvector `embedding` (512 floats).
+     * A bare SELECT * pulls that vector for the whole library on every gallery
+     * load — never needed in list context (the ML paths query it via raw SQL).
+     *
+     * @var list<string>
+     */
+    private const LIST_COLUMNS = [
+        'id', 'user_id', 'kind', 'mime', 'size', 'width', 'height', 'taken_at',
+        'lat', 'lng', 'camera', 'phash', 'favorite', 'description', 'storage_path',
+        'thumb_path', 'medium_path', 'motion_path', 'exif', 'embedded_at',
+        'version', 'created_at', 'updated_at', 'deleted_at',
+    ];
+
+    /**
+     * @return Builder<GalleryPhoto>
+     */
     private function photoQuery(): Builder
     {
         return GalleryPhoto::query()
+            ->select(self::LIST_COLUMNS)
             ->orderByRaw('COALESCE(taken_at, created_at) DESC')
             ->orderByDesc('id');
     }
@@ -894,6 +912,7 @@ class GalleryController extends Controller
     {
         $people = GalleryPerson::query()
             ->whereHas('faces', fn (Builder $q): Builder => $q->where('hidden', false))
+            ->with('faces')
             ->orderByDesc('updated_at')
             ->get()
             ->map(fn (GalleryPerson $p): array => $this->personSummary($p))
@@ -1028,7 +1047,12 @@ class GalleryController extends Controller
      */
     private function personSummary(GalleryPerson $person): array
     {
-        $faces = $person->faces()->where('hidden', false)->orderByDesc('id')->get();
+        // Use the eager-loaded relation when present (people() list) to avoid an
+        // N+1 — filter/sort in memory; fall back to a scoped query for
+        // single-person callers that pass an unloaded model.
+        $faces = $person->relationLoaded('faces')
+            ? $person->faces->where('hidden', false)->sortByDesc('id')->values()
+            : $person->faces()->where('hidden', false)->orderByDesc('id')->get();
         $samples = $faces->take(4)->map(fn (GalleryFace $f): array => [
             'id' => $f->id,
             'url' => is_string($f->crop_path) && $f->crop_path !== '' ? route('gallery.rel.faces.crop', $f->id) : null,

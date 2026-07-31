@@ -1,4 +1,4 @@
-// Cost projects (client-side, ZK). A project bundles receipts and manual "hand" expenses
+// Cost projects (client-side). A project bundles receipts and manual "hand" expenses
 // and can nest sub-projects (parentId). Totals roll up through the tree. Pure + testable.
 // Project shape: { id, name, parentId|null, note, expenses:[{id, amount, date, note}] }.
 

@@ -1,9 +1,8 @@
 // Explore map module (plaintext-relational — pivot). Tracks, photo↔track
 // couplings and the coupling tolerances live in relational tables and are pulled
 // / mutated over per-row REST endpoints (/explore/*, mirrored by the mobile API);
-// there is no vault gate or sealed store any more. Gallery photos, however, are
-// STILL zero-knowledge: they are read from the already-decrypted gallery index
-// their EXIF lat/lng place a pin,
+// there is no vault gate or sealed store any more. Gallery photos are read from
+// the plaintext gallery index over REST; their EXIF lat/lng place a pin,
 // and photos without GPS are placed by matching their capture time against a
 // track (matchPhotoToTracks + interpolatePosition). Leaflet renders raster
 // OpenStreetMap tiles as <img> (allowed by the CSP img-src) — same tile layer the
@@ -81,7 +80,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
     busy: false,
     importing: false,
 
-    // Client-side search over the decrypted data (never leaves the browser).
+    // Client-side search over the in-memory data (never leaves the browser).
     trackQuery: '',
     mediaQuery: '',
 
@@ -126,9 +125,9 @@ export default (config = {}, labels = {}, initial = {}) => ({
     _mut: 0,
 
     photos: [],          // gallery photos (best-effort; [] when gallery empty/locked)
-    thumbs: {},          // photoId -> decrypted object URL (for media pins/popups)
+    thumbs: {},          // photoId -> object URL (for media pins/popups)
     _thumbPending: {},
-    healthProfile: null, // { heightCm, sex, ... } from the sealed health store (best-effort)
+    healthProfile: null, // { heightCm, sex, ... } from the health API (best-effort)
     latestWeightKg: null, // most recent weight entry (kg), for the calorie estimate
 
     selectedTrackId: null,
@@ -593,8 +592,8 @@ export default (config = {}, labels = {}, initial = {}) => ({
 
     /* --------------------------------------------------------------- Import */
 
-    // File input change handler: read + parse each file, push the track, seal
-    // the raw bytes (best-effort), then re-match photos.
+    // File input change handler: read + parse each file, POST the track over
+    // REST, then re-match photos.
     async onImport(event) {
         const files = [...(event.target.files || [])];
         event.target.value = ''; // allow re-picking the same file
@@ -866,9 +865,8 @@ export default (config = {}, labels = {}, initial = {}) => ({
 
     /* --------------------------------------------------------- Rename / note */
 
-    // Download a track (recorded, imported or planned) as a GPX file. Fully
-    // client-side from the already-decrypted points — nothing leaves the ZK
-    // boundary; the server never sees the track in the clear.
+    // Download a track (recorded, imported or planned) as a GPX file. Built
+    // client-side from the track points already in memory — nothing is uploaded.
     downloadGpx(track) {
         if (! track || ! (track.points || []).length) return;
         const gpx = buildGpx(track);

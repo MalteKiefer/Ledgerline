@@ -1,6 +1,6 @@
-// Pure finance analytics over the (already-decrypted) invoice records. All client-side
-// and zero-knowledge — the server never sees invoice contents. Used by the Finance
-// dashboard (VAT advance return) and the Statistics tab (revenue by customer, growth).
+// Pure finance analytics over the invoice records. All client-side, computed from the
+// records already in memory. Used by the Finance dashboard (VAT advance return) and
+// the Statistics tab (revenue by customer, growth).
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const yearOf = (inv) => parseInt(String(inv.issueDate || '').slice(0, 4), 10);

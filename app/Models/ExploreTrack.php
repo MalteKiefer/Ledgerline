@@ -12,9 +12,9 @@ use Illuminate\Support\Carbon;
 
 /**
  * A GPS track (plaintext-relational pivot). Rows are private per user via
- * OwnsUserData. The ordered point list is location PII → `points` carries an
- * `encrypted` cast; the note is encrypted too. Aggregate `stats` stay plaintext
- * for listing/sorting. blob_path (optional raw track file on disk) is server-set,
+ * OwnsUserData. The ordered point list (`points`) and `note` are plaintext at
+ * rest (encryption removed in v1.516.0); aggregate `stats` are used for
+ * listing/sorting. blob_path (optional raw track file on disk) is server-set,
  * never mass-assigned. Track parsing (GPX/KML/TCX/FIT) happens client-side; the
  * server only stores the already-parsed points + stats.
  *
