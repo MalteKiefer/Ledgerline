@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Models\AppSettings;
-use App\Models\FileEntry;
 use App\Models\User;
-use App\Observers\FileEntryObserver;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Events\ScheduledTaskFailed;
@@ -42,8 +40,6 @@ class AppServiceProvider extends ServiceProvider
         // and never in the test env, so it can't mask a real failure with a
         // lazy-load error.
         Model::preventLazyLoading(app()->environment('local'));
-
-        FileEntry::observe(FileEntryObserver::class);
 
         // Only admins may manage the non-personal, workspace-wide settings.
         Gate::define('manage-global-settings', fn (User $user): bool => $user->managesGlobalSettings());

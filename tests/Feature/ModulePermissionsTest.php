@@ -28,20 +28,22 @@ final class ModulePermissionsTest extends TestCase
 
     public function test_per_user_allow_list_wins(): void
     {
-        $user = User::factory()->create(['role' => 'user', 'modules' => ['notes', 'todos']]);
-        $this->assertSame(['notes', 'todos'], $user->allowedModules());
+        // allowedModules() intersects the stored list with the registered modules,
+        // so a list that omits finance (or names only unknown modules) yields none.
+        $user = User::factory()->create(['role' => 'user', 'modules' => ['reports']]);
+        $this->assertSame([], $user->allowedModules());
         $this->assertFalse($user->canModule('finance'));
     }
 
     public function test_group_union_applies_and_a_null_group_grants_all(): void
     {
-        $g1 = Group::create(['name' => 'A', 'modules' => ['notes']]);
+        $g1 = Group::create(['name' => 'A', 'modules' => ['reports']]); // unknown → filtered out
         $g2 = Group::create(['name' => 'B', 'modules' => ['finance']]);
         $user = User::factory()->create(['role' => 'user']);
         $user->memberGroups()->sync([$g1->id, $g2->id]);
-        $this->assertEqualsCanonicalizing(['notes', 'finance'], $user->fresh()->allowedModules());
+        $this->assertSame(['finance'], $user->fresh()->allowedModules());
 
-        // A group without a restriction (null) grants everything.
+        // A group without a restriction (null) grants everything registered.
         $open = Group::create(['name' => 'C', 'modules' => null]);
         $user->memberGroups()->sync([$g1->id, $open->id]);
         $this->assertSame(array_keys(config('modules.list')), $user->fresh()->allowedModules());
@@ -49,23 +51,22 @@ final class ModulePermissionsTest extends TestCase
 
     public function test_web_route_is_blocked_for_a_disabled_module(): void
     {
-        $user = User::factory()->create(['role' => 'user', 'modules' => ['notes']]);
-        $this->actingAs($user)->get('/finance')->assertForbidden();
-        $this->actingAs($user)->get('/notes')->assertOk();
-    }
+        // A user whose module allow-list excludes finance is denied the page.
+        $blocked = User::factory()->create(['role' => 'user', 'modules' => ['reports']]);
+        $this->actingAs($blocked)->get('/finance')->assertForbidden();
 
-    // (The generic /store/{module} gate test was dropped: after the pivot no
-    // user-facing toggle module is served by the generic sealed store anymore —
-    // only invoices + sharing remain, neither a toggle-keyed page module. The
-    // EnsureModule gate is still covered by test_web_route_is_blocked_for_a_disabled_module.)
+        // A user who has finance enabled can open it.
+        $allowed = User::factory()->create(['role' => 'user', 'modules' => ['finance']]);
+        $this->actingAs($allowed)->get('/finance')->assertOk();
+    }
 
     public function test_me_exposes_allowed_modules(): void
     {
-        $user = User::factory()->create(['role' => 'user', 'modules' => ['notes', 'health']]);
+        $user = User::factory()->create(['role' => 'user', 'modules' => ['finance']]);
         $token = $user->createToken('t', ['device'])->plainTextToken;
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/v1/me')
             ->assertOk()
-            ->assertJsonPath('user.modules', ['notes', 'health']);
+            ->assertJsonPath('user.modules', ['finance']);
     }
 }

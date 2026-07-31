@@ -68,7 +68,7 @@ class InviteLinkTest extends TestCase
 
         $this->post(route('invite.store', ['invite' => $link->id, 'token' => $token]), [
             'password' => 'a-brand-new-passphrase', 'password_confirmation' => 'a-brand-new-passphrase',
-        ])->assertRedirect(route('dashboard'));
+        ])->assertRedirect(route('finance.index'));
 
         $user->refresh();
         $this->assertTrue(Hash::check('a-brand-new-passphrase', (string) $user->password));

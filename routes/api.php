@@ -15,37 +15,21 @@ use App\Http\Controllers\Api\SettingsController as ApiSettingsController;
 use App\Http\Controllers\Api\TwoFactorController as ApiTwoFactorController;
 use App\Http\Controllers\Api\UsersController as ApiUsersController;
 use App\Http\Controllers\AvatarController;
-use App\Http\Controllers\BookmarksController;
 use App\Http\Controllers\DevicePairingController;
-use App\Http\Controllers\ExploreController;
-use App\Http\Controllers\FilesController;
-use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
-use App\Http\Controllers\GalleryController;
-use App\Http\Controllers\GalleryProcessController;
-use App\Http\Controllers\HealthController;
 use App\Http\Controllers\LocaleController;
-use App\Http\Controllers\MapController;
-use App\Http\Controllers\NotesController;
-use App\Http\Controllers\NoteSearchController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
-use App\Http\Controllers\SharedFolderController;
-use App\Http\Controllers\SharedWithMeController;
 use App\Http\Controllers\ThemeController;
-use App\Http\Controllers\TodosController;
-use App\Http\Controllers\TodoSearchController;
 use App\Http\Middleware\UpdateTokenIp;
 use Illuminate\Support\Facades\Route;
 
 /*
  * Mobile API. Versioned under /api/v1; the native app authenticates with a
  * first-party Sanctum bearer obtained via QR device pairing. The data endpoints
- * reuse the web controllers — every payload is opaque ciphertext / a sealed
- * manifest, so the server stays zero-knowledge for the app exactly as it does
- * for the browser. Per-route throttles mirror the web routes.
+ * reuse the web controllers. Per-route throttles mirror the web routes.
  */
 Route::prefix('v1')->group(function (): void {
     // Public pairing exchange — the one-time code is the credential; hard-throttled.
@@ -66,126 +50,12 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/device/heartbeat', [AuthController::class, 'heartbeat'])->middleware('throttle:120,1')->name('api.device.heartbeat');
         Route::delete('/auth/session', [AuthController::class, 'destroy'])->name('api.auth.destroy');
 
-        // Plaintext-relational Files core (pivot) — same controller as web, JSON per-record.
-        Route::middleware('module:files')->group(function (): void {
-            Route::get('/files/trash', [FilesController::class, 'trashed'])->name('api.files.rel.trash');
-            Route::get('/files/entries', [FilesController::class, 'index'])->name('api.files.rel.index');
-            Route::get('/files/search', [FileSearchController::class, 'search'])->middleware('throttle:120,1')->name('api.files.rel.search');
-            Route::post('/files/entries', [FilesController::class, 'upload'])->middleware('throttle:1200,1')->name('api.files.rel.upload');
-            Route::post('/files/entries/trash/empty', [FilesController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('api.files.rel.empty');
-            Route::put('/files/entries/{file}', [FilesController::class, 'update'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.rel.update');
-            Route::delete('/files/entries/{file}', [FilesController::class, 'destroy'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.rel.destroy');
-            Route::get('/files/entries/{file}/raw', [FilesController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('api.files.rel.raw');
-            Route::post('/files/entries/{file}/content', [FilesController::class, 'replaceContent'])->whereNumber('file')->middleware('throttle:1200,1')->name('api.files.rel.content');
-            Route::post('/files/entries/{file}/toggle', [FilesController::class, 'toggle'])->whereNumber('file')->middleware('throttle:1200,1')->name('api.files.rel.toggle');
-            Route::get('/files/entries/{file}/versions', [FilesController::class, 'versions'])->whereNumber('file')->name('api.files.rel.versions');
-            Route::get('/files/entries/{file}/versions/{version}/raw', [FilesController::class, 'versionRaw'])->whereNumber(['file', 'version'])->middleware('throttle:3000,1')->name('api.files.rel.version.raw');
-            Route::post('/files/entries/{file}/versions/{version}/restore', [FilesController::class, 'restoreVersion'])->whereNumber(['file', 'version'])->middleware('throttle:600,1')->name('api.files.rel.version.restore');
-            Route::post('/files/entries/{id}/restore', [FilesController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.files.rel.restore');
-            Route::delete('/files/entries/{id}/force', [FilesController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.files.rel.force');
-
-            Route::get('/files/folders', [FilesController::class, 'folders'])->name('api.files.rel.folders');
-            Route::post('/files/folders', [FilesController::class, 'storeFolder'])->middleware('throttle:600,1')->name('api.files.rel.folders.store');
-            Route::put('/files/folders/{folder}', [FilesController::class, 'renameFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.files.rel.folders.update');
-            Route::post('/files/folders/{folder}/move', [FilesController::class, 'moveFolder'])->whereNumber('folder')->middleware('throttle:1200,1')->name('api.files.rel.folders.move');
-            Route::delete('/files/folders/{folder}', [FilesController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.files.rel.folders.destroy');
-
-            Route::post('/files/upload/chunk/init', [FilesController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.files.rel.chunk.init');
-            Route::post('/files/upload/chunk/part', [FilesController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.files.rel.chunk.part');
-            Route::post('/files/upload/chunk/complete', [FilesController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.files.rel.chunk.complete');
-            Route::post('/files/upload/chunk/abort', [FilesController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.files.rel.chunk.abort');
-
-            // Public share links (owner side) — plaintext /file-share/{token}.
-            Route::post('/files/rel-shares', [FilesController::class, 'storeShare'])->middleware('throttle:60,1')->name('api.files.rel.shares.store');
-            Route::put('/files/rel-shares/{share}', [FilesController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.rel.shares.update');
-            Route::delete('/files/rel-shares/{share}', [FilesController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.rel.shares.destroy');
-
-            // Cross-user plaintext folder sharing (pivot). Owner side: grant/list/manage.
-            // Member side (/shared-with-me): browse the shared subtree, download, and —
-            // as an editor — upload/rename/delete. Same controllers as web.
-            Route::get('/files/folder-shares', [SharedFolderController::class, 'index'])->name('api.files.folder-shares.index');
-            Route::post('/files/folder-shares', [SharedFolderController::class, 'store'])->middleware('throttle:60,1')->name('api.files.folder-shares.store');
-            Route::put('/files/folder-shares/{share}/members', [SharedFolderController::class, 'updateMember'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.folder-shares.members.update');
-            Route::delete('/files/folder-shares/{share}/members', [SharedFolderController::class, 'removeMember'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.folder-shares.members.remove');
-            Route::delete('/files/folder-shares/{share}', [SharedFolderController::class, 'destroy'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.folder-shares.destroy');
-            Route::get('/shared-with-me', [SharedWithMeController::class, 'index'])->name('api.shared-with-me.index');
-            Route::get('/shared-with-me/{share}', [SharedWithMeController::class, 'browse'])->whereNumber('share')->name('api.shared-with-me.browse');
-            Route::get('/shared-with-me/{share}/files/{file}/raw', [SharedWithMeController::class, 'raw'])->whereNumber(['share', 'file'])->middleware('throttle:3000,1')->name('api.shared-with-me.raw');
-            Route::post('/shared-with-me/{share}/upload', [SharedWithMeController::class, 'upload'])->whereNumber('share')->middleware('throttle:1200,1')->name('api.shared-with-me.upload');
-            Route::put('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'rename'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('api.shared-with-me.rename');
-            Route::delete('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'destroy'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('api.shared-with-me.destroy');
-        });
-
-        // Plaintext-relational Notes (pivot Etappe 1) — same controller as web, JSON per-record.
-        Route::get('/notes', [NotesController::class, 'index'])->middleware('module:notes')->name('api.notes.index');
-        Route::get('/notes/search', [NoteSearchController::class, 'search'])->middleware(['module:notes', 'throttle:120,1'])->name('api.notes.search');
-        Route::get('/notes/tags', [NoteSearchController::class, 'tags'])->middleware(['module:notes', 'throttle:120,1'])->name('api.notes.tags');
-        Route::post('/notes', [NotesController::class, 'store'])->middleware(['throttle:600,1', 'module:notes'])->name('api.notes.store');
-        Route::put('/notes/{note}', [NotesController::class, 'update'])->whereNumber('note')->middleware(['throttle:600,1', 'module:notes'])->name('api.notes.update');
-        Route::delete('/notes/{note}', [NotesController::class, 'destroy'])->whereNumber('note')->middleware(['throttle:600,1', 'module:notes'])->name('api.notes.destroy');
-        Route::get('/notes/trash', [NotesController::class, 'trashed'])->middleware('module:notes')->name('api.notes.trash');
-        Route::post('/notes/{id}/restore', [NotesController::class, 'restore'])->whereNumber('id')->middleware(['throttle:600,1', 'module:notes'])->name('api.notes.restore');
-        Route::delete('/notes/{id}/force', [NotesController::class, 'forceDelete'])->whereNumber('id')->middleware(['throttle:600,1', 'module:notes'])->name('api.notes.force');
-
-        // Plaintext-relational Todos (pivot Etappe 1).
-        Route::middleware('module:todos')->group(function (): void {
-            Route::get('/todos', [TodosController::class, 'index'])->name('api.todos.index');
-            Route::get('/todos/search', [TodoSearchController::class, 'search'])->middleware('throttle:600,1')->name('api.todos.search');
-            Route::get('/todos/trash', [TodosController::class, 'trashed'])->name('api.todos.trash');
-            Route::post('/todos', [TodosController::class, 'store'])->middleware('throttle:600,1')->name('api.todos.store');
-            Route::put('/todos/{todo}', [TodosController::class, 'update'])->whereNumber('todo')->middleware('throttle:600,1')->name('api.todos.update');
-            Route::post('/todos/{todo}/toggle', [TodosController::class, 'toggle'])->whereNumber('todo')->middleware('throttle:1200,1')->name('api.todos.toggle');
-            Route::delete('/todos/{todo}', [TodosController::class, 'destroy'])->whereNumber('todo')->middleware('throttle:600,1')->name('api.todos.destroy');
-            Route::post('/todos/{id}/restore', [TodosController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.todos.restore');
-            Route::delete('/todos/{id}/force', [TodosController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.todos.force');
-            Route::get('/todo-lists', [TodosController::class, 'lists'])->name('api.todos.lists');
-            Route::post('/todo-lists', [TodosController::class, 'storeList'])->middleware('throttle:600,1')->name('api.todos.lists.store');
-            Route::put('/todo-lists/{list}', [TodosController::class, 'renameList'])->whereNumber('list')->middleware('throttle:600,1')->name('api.todos.lists.rename');
-            Route::delete('/todo-lists/{list}', [TodosController::class, 'destroyList'])->whereNumber('list')->middleware('throttle:600,1')->name('api.todos.lists.destroy');
-        });
-
-        // Plaintext-relational Bookmarks (pivot Etappe 1).
-        Route::middleware('module:bookmarks')->group(function (): void {
-            Route::get('/bookmarks', [BookmarksController::class, 'index'])->name('api.bookmarks.index');
-            Route::get('/bookmarks/trash', [BookmarksController::class, 'trashed'])->name('api.bookmarks.trash');
-            Route::post('/bookmarks', [BookmarksController::class, 'store'])->middleware('throttle:600,1')->name('api.bookmarks.store');
-            Route::put('/bookmarks/{bookmark}', [BookmarksController::class, 'update'])->whereNumber('bookmark')->middleware('throttle:600,1')->name('api.bookmarks.update');
-            Route::post('/bookmarks/{bookmark}/toggle', [BookmarksController::class, 'toggle'])->whereNumber('bookmark')->middleware('throttle:1200,1')->name('api.bookmarks.toggle');
-            Route::post('/bookmarks/{bookmark}/move', [BookmarksController::class, 'move'])->whereNumber('bookmark')->middleware('throttle:1200,1')->name('api.bookmarks.move');
-            Route::delete('/bookmarks/{bookmark}', [BookmarksController::class, 'destroy'])->whereNumber('bookmark')->middleware('throttle:600,1')->name('api.bookmarks.destroy');
-            Route::post('/bookmarks/{id}/restore', [BookmarksController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.bookmarks.restore');
-            Route::delete('/bookmarks/{id}/force', [BookmarksController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.bookmarks.force');
-            Route::post('/bookmarks/trash/empty', [BookmarksController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('api.bookmarks.empty');
-            Route::get('/bookmark-folders', [BookmarksController::class, 'folders'])->name('api.bookmarks.folders');
-            Route::post('/bookmark-folders', [BookmarksController::class, 'storeFolder'])->middleware('throttle:600,1')->name('api.bookmarks.folders.store');
-            Route::put('/bookmark-folders/{folder}', [BookmarksController::class, 'updateFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.bookmarks.folders.update');
-            Route::post('/bookmark-folders/{folder}/move', [BookmarksController::class, 'moveFolder'])->whereNumber('folder')->middleware('throttle:1200,1')->name('api.bookmarks.folders.move');
-            Route::delete('/bookmark-folders/{folder}', [BookmarksController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.bookmarks.folders.destroy');
-        });
-
-        // Plaintext-relational Health (pivot) — same controller as web, JSON per-record.
-        Route::middleware('module:health')->group(function (): void {
-            Route::get('/health/data', [HealthController::class, 'index'])->name('api.health.data');
-            Route::put('/health/profile', [HealthController::class, 'saveProfile'])->middleware('throttle:600,1')->name('api.health.profile.save');
-            Route::get('/health/entries', [HealthController::class, 'entries'])->name('api.health.entries');
-            Route::post('/health/entries', [HealthController::class, 'storeEntry'])->middleware('throttle:600,1')->name('api.health.entries.store');
-            Route::put('/health/entries/{entry}', [HealthController::class, 'updateEntry'])->whereNumber('entry')->middleware('throttle:600,1')->name('api.health.entries.update');
-            Route::delete('/health/entries/{entry}', [HealthController::class, 'destroyEntry'])->whereNumber('entry')->middleware('throttle:600,1')->name('api.health.entries.destroy');
-            Route::get('/health/fasts', [HealthController::class, 'fasts'])->name('api.health.fasts');
-            Route::get('/health/fasts/active', [HealthController::class, 'activeFast'])->name('api.health.fasts.active');
-            Route::post('/health/fasts', [HealthController::class, 'startFast'])->middleware('throttle:600,1')->name('api.health.fasts.start');
-            Route::post('/health/fasts/{fast}/stop', [HealthController::class, 'stopFast'])->whereNumber('fast')->middleware('throttle:600,1')->name('api.health.fasts.stop');
-            Route::put('/health/fasts/{fast}', [HealthController::class, 'updateFast'])->whereNumber('fast')->middleware('throttle:600,1')->name('api.health.fasts.update');
-            Route::delete('/health/fasts/{fast}', [HealthController::class, 'destroyFast'])->whereNumber('fast')->middleware('throttle:600,1')->name('api.health.fasts.destroy');
-        });
-
-        // Transient server-side OCR of a raw (decrypted) receipt: returns line-structured
-        // text only (recognition is client-side). Nothing is persisted/logged — same
-        // transient-cleartext window as /gallery/process. Best-effort for the client.
+        // Transient server-side OCR of a raw receipt: returns line-structured text
+        // only (recognition is client-side). Nothing is persisted/logged.
         Route::post('/invoices/ocr', [InvoiceOcrController::class, 'ocr'])->middleware(['throttle:120,1', 'module:finance'])->name('api.invoices.ocr');
 
-        // Plaintext-relational Finance (pivot): invoices + partners + payment
-        // methods + bank transactions + projects + categories as owner-scoped rows.
+        // Plaintext-relational Finance: invoices + partners + payment methods +
+        // bank transactions + projects + categories as owner-scoped rows.
         Route::middleware('module:finance')->group(function (): void {
             Route::get('/finance/data', [FinanceController::class, 'index'])->name('api.finance.data');
             Route::get('/finance/reports', [FinanceReportController::class, 'reports'])->middleware('throttle:120,1')->name('api.finance.reports');
@@ -239,9 +109,8 @@ Route::prefix('v1')->group(function (): void {
 
         // Per-user Paperless-ngx integration: cached term quick-picks, live term
         // creation, document forwarding, and cache sync. The /documents endpoint is
-        // a transient-cleartext boundary (client posts decrypted bytes; server
-        // forwards to the user's own Paperless and stores/logs nothing — same ZK
-        // window as /gallery/process and /invoices/ocr).
+        // a transient-cleartext boundary (client posts bytes; server forwards to the
+        // user's own Paperless and stores/logs nothing).
         Route::get('/paperless/terms', [ApiPaperlessController::class, 'terms'])->middleware('throttle:60,1')->name('api.paperless.terms');
         Route::post('/paperless/terms', [ApiPaperlessController::class, 'createTerm'])->middleware('throttle:30,1')->name('api.paperless.terms.create');
         Route::post('/paperless/documents', [ApiPaperlessController::class, 'submit'])->middleware('throttle:20,1')->name('api.paperless.documents');
@@ -252,92 +121,9 @@ Route::prefix('v1')->group(function (): void {
         Route::put('/company', [ApiCompanyController::class, 'update'])->middleware('throttle:60,1')->name('api.company.update');
         Route::get('/company/logo', [ApiCompanyController::class, 'logo'])->middleware('throttle:120,1')->name('api.company.logo');
 
-        // Gallery geocoding (kept): reverse-geocode a photo coordinate to a place
-        // name (viewer display) — self-hosted Photon first (ZK), snap-to-grid before
-        // egress, never cached server-side — and forward-geocode a place search for
-        // location tagging. The ZK gallery index/blob/transform endpoints were
-        // removed with the plaintext-relational Gallery pivot.
-        Route::get('/gallery/reverse', [GalleryProcessController::class, 'reverse'])->middleware('throttle:60,1')->name('api.gallery.reverse');
-        Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('throttle:60,1')->name('api.gallery.geocode');
-
-        // Plaintext-relational Gallery core (pivot) — same controller as web, JSON.
-        // Distinct URIs (/gallery/photos*, /gallery/albums*, /gallery/data) so
-        // nothing collides with the ZK gallery routes above.
-        Route::middleware('module:gallery')->group(function (): void {
-            Route::get('/gallery/data', [GalleryController::class, 'data'])->name('api.gallery.rel.data');
-            Route::get('/gallery/trash', [GalleryController::class, 'trashed'])->name('api.gallery.rel.trash');
-            Route::post('/gallery/photos', [GalleryController::class, 'upload'])->middleware('throttle:1200,1')->name('api.gallery.rel.upload');
-            Route::post('/gallery/photos/trash/empty', [GalleryController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('api.gallery.rel.empty');
-            Route::put('/gallery/photos/{photo}', [GalleryController::class, 'update'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.rel.update');
-            Route::post('/gallery/photos/{photo}/toggle', [GalleryController::class, 'toggle'])->whereNumber('photo')->middleware('throttle:1200,1')->name('api.gallery.rel.toggle');
-            Route::delete('/gallery/photos/{photo}', [GalleryController::class, 'destroy'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.rel.destroy');
-            Route::get('/gallery/photos/{photo}/raw', [GalleryController::class, 'raw'])->whereNumber('photo')->middleware('throttle:3000,1')->name('api.gallery.rel.raw');
-            Route::get('/gallery/photos/{photo}/thumb', [GalleryController::class, 'thumb'])->whereNumber('photo')->middleware('throttle:6000,1')->name('api.gallery.rel.thumb');
-            Route::get('/gallery/photos/{photo}/medium', [GalleryController::class, 'medium'])->whereNumber('photo')->middleware('throttle:6000,1')->name('api.gallery.rel.medium');
-            Route::get('/gallery/photos/{photo}/motion', [GalleryController::class, 'motion'])->whereNumber('photo')->middleware('throttle:3000,1')->name('api.gallery.rel.motion');
-            Route::post('/gallery/photos/{id}/restore', [GalleryController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.gallery.rel.restore');
-            Route::delete('/gallery/photos/{id}/force', [GalleryController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.gallery.rel.force');
-            Route::post('/gallery/photos/chunk/init', [GalleryController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.gallery.rel.chunk.init');
-            Route::post('/gallery/photos/chunk/part', [GalleryController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.gallery.rel.chunk.part');
-            Route::post('/gallery/photos/chunk/complete', [GalleryController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.gallery.rel.chunk.complete');
-            Route::post('/gallery/photos/chunk/abort', [GalleryController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.gallery.rel.chunk.abort');
-            Route::get('/gallery/albums', [GalleryController::class, 'albums'])->name('api.gallery.rel.albums');
-            Route::post('/gallery/albums', [GalleryController::class, 'storeAlbum'])->middleware('throttle:600,1')->name('api.gallery.rel.albums.store');
-            Route::put('/gallery/albums/{album}', [GalleryController::class, 'updateAlbum'])->whereNumber('album')->middleware('throttle:600,1')->name('api.gallery.rel.albums.update');
-            Route::delete('/gallery/albums/{album}', [GalleryController::class, 'destroyAlbum'])->whereNumber('album')->middleware('throttle:600,1')->name('api.gallery.rel.albums.destroy');
-            Route::post('/gallery/albums/{album}/photos', [GalleryController::class, 'addPhotos'])->whereNumber('album')->middleware('throttle:600,1')->name('api.gallery.rel.albums.photos.add');
-            Route::delete('/gallery/albums/{album}/photos/{photo}', [GalleryController::class, 'removePhoto'])->whereNumber(['album', 'photo'])->middleware('throttle:600,1')->name('api.gallery.rel.albums.photos.remove');
-            Route::post('/gallery/albums/{album}/cover', [GalleryController::class, 'setCover'])->whereNumber('album')->middleware('throttle:600,1')->name('api.gallery.rel.albums.cover');
-            Route::post('/gallery/rel-shares', [GalleryController::class, 'storeShare'])->middleware('throttle:60,1')->name('api.gallery.rel.shares.store');
-            Route::put('/gallery/rel-shares/{share}', [GalleryController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.gallery.rel.shares.update');
-            Route::delete('/gallery/rel-shares/{share}', [GalleryController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.gallery.rel.shares.destroy');
-
-            // ML: CLIP semantic search + face/people recognition (pgvector-backed;
-            // empty/degraded when ML is off or the vector extension is absent).
-            Route::get('/gallery/search', [GalleryController::class, 'search'])->middleware('throttle:120,1')->name('api.gallery.rel.search');
-            Route::get('/gallery/photos/{photo}/similar', [GalleryController::class, 'similar'])->whereNumber('photo')->middleware('throttle:120,1')->name('api.gallery.rel.similar');
-            Route::post('/gallery/photos/{photo}/reprocess', [GalleryController::class, 'reprocess'])->whereNumber('photo')->middleware('throttle:120,1')->name('api.gallery.rel.reprocess');
-            Route::get('/gallery/people', [GalleryController::class, 'people'])->name('api.gallery.rel.people');
-            Route::get('/gallery/people/{person}', [GalleryController::class, 'person'])->whereNumber('person')->name('api.gallery.rel.people.show');
-            Route::put('/gallery/people/{person}', [GalleryController::class, 'updatePerson'])->whereNumber('person')->middleware('throttle:600,1')->name('api.gallery.rel.people.update');
-            Route::delete('/gallery/people/{person}', [GalleryController::class, 'destroyPerson'])->whereNumber('person')->middleware('throttle:600,1')->name('api.gallery.rel.people.destroy');
-            Route::post('/gallery/people/merge', [GalleryController::class, 'mergePeople'])->middleware('throttle:600,1')->name('api.gallery.rel.people.merge');
-            Route::post('/gallery/faces/{face}/assign', [GalleryController::class, 'assignFace'])->whereNumber('face')->middleware('throttle:600,1')->name('api.gallery.rel.faces.assign');
-            Route::post('/gallery/faces/{face}/hide', [GalleryController::class, 'hideFace'])->whereNumber('face')->middleware('throttle:600,1')->name('api.gallery.rel.faces.hide');
-            Route::get('/gallery/faces/{face}/crop', [GalleryController::class, 'faceCrop'])->whereNumber('face')->middleware('throttle:6000,1')->name('api.gallery.rel.faces.crop');
-        });
-
-        // Plaintext-relational Explore (pivot) — same controller as web, JSON.
-        // Track point lists are location PII → `encrypted`-cast at rest.
-        Route::middleware('module:explore')->group(function (): void {
-            Route::get('/explore/data', [ExploreController::class, 'index'])->name('api.explore.data');
-            Route::get('/explore/trash', [ExploreController::class, 'trash'])->name('api.explore.trash');
-            Route::post('/explore/tracks', [ExploreController::class, 'storeTrack'])->middleware('throttle:600,1')->name('api.explore.tracks.store');
-            Route::put('/explore/tracks/{track}', [ExploreController::class, 'updateTrack'])->whereNumber('track')->middleware('throttle:600,1')->name('api.explore.tracks.update');
-            Route::delete('/explore/tracks/{track}', [ExploreController::class, 'destroyTrack'])->whereNumber('track')->middleware('throttle:600,1')->name('api.explore.tracks.destroy');
-            Route::post('/explore/tracks/{track}/restore', [ExploreController::class, 'restoreTrack'])->whereNumber('track')->middleware('throttle:600,1')->name('api.explore.tracks.restore');
-            Route::delete('/explore/tracks/{track}/force', [ExploreController::class, 'forceDeleteTrack'])->whereNumber('track')->middleware('throttle:600,1')->name('api.explore.tracks.force');
-            Route::post('/explore/tracks/{track}/file', [ExploreController::class, 'uploadTrackFile'])->whereNumber('track')->middleware('throttle:600,1')->name('api.explore.tracks.file.upload');
-            Route::get('/explore/tracks/{track}/file', [ExploreController::class, 'trackFile'])->whereNumber('track')->middleware('throttle:600,1')->name('api.explore.tracks.file');
-            Route::post('/explore/couplings', [ExploreController::class, 'setCoupling'])->middleware('throttle:600,1')->name('api.explore.couplings.set');
-            Route::delete('/explore/couplings', [ExploreController::class, 'deleteCoupling'])->middleware('throttle:600,1')->name('api.explore.couplings.destroy');
-            Route::put('/explore/settings', [ExploreController::class, 'saveSettings'])->middleware('throttle:600,1')->name('api.explore.settings.save');
-        });
-
-        // Legacy ZK explore blob endpoints (frontend switch + teardown is a later step):
-        // records live in the opaque `explore` module store; these are the raw track blobs.
-        // Explore tour-planner auto-routing: snap clicked waypoints to real paths via
-        // an OSRM-compatible upstream. SSRF-guarded, coordinates never logged/persisted,
-        // clean {geometry:null} when the upstream is unset/unreachable. User-initiated,
-        // opt-in egress — same class as /gallery/geocode.
-        Route::get('/maps/route', [MapController::class, 'route'])->middleware('throttle:180,1')->name('api.maps.route');
-        // Resolve a Google-Maps short link to coordinates for the Explore search.
-        // Google-hosts-only egress, link never logged; same opt-in class.
-        Route::get('/maps/resolve', [MapController::class, 'resolve'])->middleware('throttle:30,1')->name('api.maps.resolve');
-
         // Site-icon (BIMI/favicon) proxy: guard-agnostic, SSRF-guarded, nothing
         // stored server-side. Retained for the Finance module (bank logos /
-        // partner favicons); the password manager that first used it is removed.
+        // partner favicons).
         Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:1200,1')->name('api.passwords.icon');
 
         // Connected devices: list, revoke a device's token, request a remote wipe of a
@@ -375,8 +161,6 @@ Route::prefix('v1')->group(function (): void {
 
         // 2FA management: enable, QR/secret, confirm, recovery codes, regenerate, disable.
         // Mirrors Fortify's web routes (/user/two-factor-*) for Sanctum bearer clients.
-        // Note: Fortify's `confirm => true` applies only to the web guard; no additional
-        // password-confirmation step is required here — only the TOTP code (POST confirm).
         Route::prefix('user')->name('api.user.')->group(function (): void {
             Route::prefix('two-factor')->name('2fa.')->group(function (): void {
                 Route::post('/enable', [ApiTwoFactorController::class, 'enable'])->middleware('throttle:10,1')->name('enable');
@@ -393,7 +177,7 @@ Route::prefix('v1')->group(function (): void {
 
         // Admin group management (workspace-wide limit templates + shareable flag).
         // Gated by the admin role on top of the device token; JSON mirror of the web
-        // Settings/GroupsController. Non-secret metadata — zero-knowledge unaffected.
+        // Settings/GroupsController. Non-secret metadata.
         Route::middleware('can:manage-global-settings')->prefix('groups')->name('api.groups.')->group(function (): void {
             Route::get('/', [ApiGroupController::class, 'index'])->name('index');
             Route::post('/', [ApiGroupController::class, 'store'])->middleware('throttle:60,1')->name('store');
@@ -414,14 +198,12 @@ Route::prefix('v1')->group(function (): void {
         });
 
         // Admin security-log API — read-only, metadata-only audit trail.
-        // Gated by manage-global-settings (same as web Settings/SecurityLogController).
         Route::middleware('can:manage-global-settings')->prefix('security-log')->name('api.security-log.')->group(function (): void {
             Route::get('/', [ApiSecurityLogController::class, 'index'])->middleware('throttle:60,1')->name('index');
             Route::get('/export', [ApiSecurityLogController::class, 'export'])->middleware('throttle:10,1')->name('export');
         });
 
         // Admin backup management — JSON mirror of web Settings/BackupController.
-        // Gated by the admin role on top of the device token.
         // SECURITY: config (remote credentials) and passphrase (vault-key protection)
         // are encrypted:array / encrypted casts and are NEVER serialised in responses.
         Route::middleware('can:manage-global-settings')->prefix('backup')->name('api.backup.')->group(function (): void {

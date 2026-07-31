@@ -5,7 +5,7 @@
         ->filter(fn ($i) => ! isset($i['module']) || (auth()->user()?->canModule($i['module']) ?? true))
         ->map(fn ($i) => [
             'label' => __($i['label']),
-            'url' => route($i['route']),
+            'url' => route($i['route']).($i['fragment'] ?? ''),
             'active' => request()->routeIs($i['pattern']),
             'icon' => $i['icon'],
         ]);
@@ -16,7 +16,7 @@
 @endphp
 <nav class="mx-auto hidden w-full max-w-[1700px] items-center justify-between px-4 py-3 sm:flex sm:w-[92%] sm:px-6">
     <div class="flex items-center gap-8">
-        <a href="{{ route('dashboard') }}" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Ledgerline</a>
+        <a href="{{ route('finance.index') }}" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Ledgerline</a>
         @auth
             <div class="flex items-center gap-1">
                 @foreach ($primary as $item)

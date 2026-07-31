@@ -71,7 +71,6 @@
         {{-- User list --}}
         <div class="mt-5 space-y-3">
             @foreach ($users as $u)
-                @php $use = $usage[$u->id] ?? ['used' => 0, 'quota' => null]; @endphp
                 <div class="ll-card">
                     <div class="flex items-center gap-3">
                         @if ($u->avatar)
@@ -97,7 +96,6 @@
                                 </div>
                             @endif
                             <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-gray-400 dark:text-gray-500">
-                                <span class="inline-flex items-center gap-1"><x-icon name="circle-stack" class="h-3 w-3" />{{ $hb($use['used']) }}@if ($use['quota']) / {{ $hb($use['quota']) }}@else <span class="text-gray-400 dark:text-gray-500">· {{ __('account.storage_unlimited') }}</span>@endif</span>
                                 <span class="inline-flex items-center gap-1"><x-icon name="clock" class="h-3 w-3" />{{ $u->last_login_at ? $u->last_login_at->diffForHumans() : __('settings.users_never_logged_in') }}</span>
                             </div>
                         </div>

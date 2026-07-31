@@ -1,22 +1,12 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
 import { csrfToken, getJson } from './shared/api';
-import health from './components/health';
-import vaultFiles from './components/files';
-import sharedFolders from './components/shared-folders';
-import vaultGallery from './components/gallery';
 import invoices from './components/invoices';
-import todos from './components/todos';
-import notes from './components/notes';
-import bookmarks from './components/bookmarks';
 import toastHub from './components/toast-hub';
-import cropModal from './components/crop-modal';
 import backupRuns from './components/backup-runs';
 import devicePairing from './components/device-pairing';
 import paperlessSettings from './components/paperless-settings';
 import notificationBell from './components/notification-bell';
-import dashboard from './components/dashboard';
-import explore from './components/explore';
 import pwStrength from './components/pw-strength';
 import tagSelect from './components/tag-select';
 
@@ -116,7 +106,6 @@ window.llToast = toast;
 
 // Component registrations (definitions live in ./components/*).
 Alpine.data('toastHub', toastHub);
-Alpine.data('cropModal', cropModal);
 Alpine.data('devicePairing', devicePairing);
 Alpine.data('pwStrength', pwStrength);
 Alpine.data('tagSelect', tagSelect);
@@ -125,29 +114,9 @@ Alpine.data('paperlessSettings', paperlessSettings);
 Alpine.data('notificationBell', notificationBell);
 
 /**
- * File explorer: multiselect, a shared "move to folder" modal (for a single row
- * or the whole selection), inline rename, and a bulk-delete modal.
- *
- * @param {number[]} allIds  Ids of the files currently listed.
- */
-/* ---- Gallery (client-driven, plaintext-relational) ----
- *
- * The whole library is served over the /gallery/* REST endpoints; photos +
- * server-generated renditions are plaintext rows/blobs. The client uploads
- * originals, the server extracts EXIF/derives renditions, and the grid renders
- * from thumbnail URLs by id (no client-side decryption).
- */
-Alpine.data('vaultGallery', vaultGallery);
-
-/* ---- File browser (plaintext-relational) ----
- * Folders + files are relational rows served over /files/* REST; bytes stream
- * plaintext by id. Listing/search/sort/rename/move/delete are per-record calls.
- */
-
-/**
  * Shared Paperless transfer state. One store drives a single modal reused by
- * both the mail attachment list and the file browser: it holds the cached
- * quick-pick terms, the document being sent, and the metadata form.
+ * the Finance receipt browser: it holds the cached quick-pick terms, the
+ * document being sent, and the metadata form.
  */
 Alpine.store('paperless', {
     configured: false,
@@ -300,61 +269,13 @@ Alpine.store('paperless', {
 });
 
 
-Alpine.data('vaultFiles', vaultFiles);
-Alpine.data('sharedFolders', sharedFolders);
-
-
 Alpine.plugin(intersect);
 
 window.Alpine = Alpine;
 
-// Every module is plaintext-relational: components hydrate from inlined @js()
-// initial data and do per-record JSON CRUD over each module's REST endpoints.
+// Finance is plaintext-relational: the component hydrates from inlined @js()
+// initial data and does per-record JSON CRUD over the /finance/* REST endpoints.
 Alpine.data('invoices', invoices);
-
-Alpine.data('todos', todos);
-
-// Notes: relational rows over /notes/*; markdown rendered client-side
-// (DOMPurify-sanitised).
-Alpine.data('notes', notes);
-
-
-Alpine.data('health', health);
-
-
-/**
- * Bookmarks + folders (plaintext-relational — pivot). Rows are served over the
- * /bookmarks/* REST endpoints; the page is server-rendered with inlined initial
- * data and every mutation is a per-record JSON call (optimistic version + 409).
- */
-Alpine.data('bookmarks', bookmarks);
-
-/**
- * Mail signatures management page: list + rich-text editor for reusable HTML
- * signatures (unlimited, one default).
- */
-
-/**
- * Mail identities management page: all identities grouped by account, each
- * editable with an optional linked signature. At least one identity per account.
- */
-
-/**
- * Dedicated mail account settings page (add/edit). Clean sectioned form with an
- * IMAP + SMTP connection test; identities and signatures are managed on their
- * own pages (linked from here). Replaces the cramped account modal.
- */
-
-Alpine.data('dashboard', dashboard);
-
-/**
- * Explore map (plaintext-relational — pivot). Tracks, photo↔track couplings and
- * coupling tolerances live in relational tables served over /explore/* REST;
- * gallery photos are read from the plaintext gallery index. Leaflet (OSM raster
- * tiles in the browser), uPlot (elevation) and fflate (KMZ unzip) are all
- * lazy-loaded on demand.
- */
-Alpine.data('explore', explore);
 
 Alpine.start();
 

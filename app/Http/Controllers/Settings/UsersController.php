@@ -11,8 +11,6 @@ use App\Models\AppSettings;
 use App\Models\Group;
 use App\Models\User;
 use App\Support\BlobStore;
-use App\Support\FilesUsage;
-use App\Support\GalleryUsage;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,27 +34,8 @@ class UsersController extends Controller
     {
         $users = User::with('memberGroups')->orderBy('id')->get();
 
-        // Per-user storage usage (files + gallery bytes), shown for every user
-        // regardless of whether they have a quota set. One grouped query each.
-        $filesBy = FilesUsage::byUser();
-        $galleryBy = GalleryUsage::byUser();
-
-        $int = static fn (mixed $v): int => is_numeric($v) ? (int) $v : 0;
-        $usage = $users->mapWithKeys(function (User $u) use ($filesBy, $galleryBy, $int): array {
-            $files = $int($filesBy[$u->id] ?? 0);
-            $gallery = $int($galleryBy[$u->id] ?? 0);
-            $quotaMb = $u->effectiveFilesQuotaMb() + $u->effectiveGalleryQuotaMb();
-            $unlimited = $u->effectiveFilesQuotaMb() <= 0 || $u->effectiveGalleryQuotaMb() <= 0;
-
-            return [$u->id => [
-                'used' => $files + $gallery,
-                'quota' => $unlimited ? null : $quotaMb * 1024 * 1024,
-            ]];
-        });
-
         return view('settings.users.index', [
             'users' => $users,
-            'usage' => $usage,
             'groups' => Group::orderBy('name')->get(),
             'settings' => AppSettings::current(),
             'mailEnabled' => (bool) AppSettings::current()->mail_enabled,

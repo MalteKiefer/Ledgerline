@@ -22,12 +22,11 @@ class DesignSmokeRenderTest extends TestCase
     {
         $u = User::factory()->create();
         $routes = [
-            '/dashboard', '/health', '/finance', '/notes', '/todos', '/bookmarks',
-            '/explore', '/gallery', '/files',
+            '/finance',
             '/profile', '/profile/account', '/profile/devices', '/profile/sessions',
             '/profile/security', '/profile/appearance',
             '/profile/export', '/profile/danger',
-            '/settings/files', '/settings/paperless',
+            '/settings/paperless',
         ];
         foreach ($routes as $r) {
             $this->actingAs($u)->get($r)->assertOk();
@@ -39,7 +38,7 @@ class DesignSmokeRenderTest extends TestCase
         $admin = User::factory()->admin()->create();
         $routes = [
             '/settings', '/settings/company', '/settings/security', '/settings/system',
-            '/settings/security-log', '/settings/files/limits', '/settings/notifications',
+            '/settings/security-log', '/settings/notifications',
             '/settings/backup', '/settings/users', '/settings/groups',
         ];
         foreach ($routes as $r) {

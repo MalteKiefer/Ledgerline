@@ -35,7 +35,6 @@
                 ['icon' => 'calendar', 'tint' => '#3fae9f', 'value' => $user->created_at?->translatedFormat('M Y') ?: '—', 'label' => __('account.stat_member_since')],
                 ['icon' => 'device-phone-mobile', 'tint' => '#3b9fd6', 'value' => (string) $deviceCount, 'label' => __('account.stat_devices'), 'sub' => __('account.stat_devices_of', ['n' => $deviceCount, 'max' => $deviceMax])],
                 ['icon' => 'computer-desktop', 'tint' => '#9e70fa', 'value' => (string) $sessionCount, 'label' => __('account.stat_sessions')],
-                ['icon' => 'circle-stack', 'tint' => '#d9a441', 'value' => $hb($storageUsed), 'label' => __('account.stat_storage'), 'sub' => $storageQuota > 0 ? __('account.storage_of', ['quota' => $hb($storageQuota)]) : __('account.storage_unlimited')],
             ];
         @endphp
         @foreach ($tiles as $t)
@@ -60,10 +59,8 @@
         ];
         $personal = [
             ['url' => route('profile.appearance'), 'icon' => 'sun', 'tint' => '#e2915a', 'title' => __('account.nav_appearance'), 'desc' => __('account.nav_appearance_desc')],
-            ['url' => route('settings.files.edit'), 'icon' => 'folder', 'tint' => '#3b9fd6', 'title' => __('settings.files_section'), 'desc' => __('settings.files_desc')],
             ['url' => route('settings.paperless.edit'), 'icon' => 'inbox-arrow-down', 'tint' => '#d9a441', 'title' => __('settings.paperless_section'), 'desc' => __('settings.paperless_desc')],
             ['url' => route('settings.company.edit'), 'icon' => 'identification', 'tint' => '#7066f5', 'title' => __('settings.company_section'), 'desc' => __('settings.company_desc')],
-            ['url' => route('health.index'), 'icon' => 'heart', 'tint' => '#ef4444', 'title' => __('pages.profile.health_title'), 'desc' => __('pages.profile.health_desc')],
         ];
         $data = [
             ['url' => route('profile.export'), 'icon' => 'arrow-down-tray', 'tint' => '#3fae9f', 'title' => __('account.export_heading'), 'desc' => __('account.export_hint')],

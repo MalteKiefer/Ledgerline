@@ -26,26 +26,30 @@ final class ModulePermissionsApiTest extends TestCase
 
     public function test_disabled_module_is_403_on_api_but_enabled_is_ok(): void
     {
-        $user = User::factory()->create(['role' => 'user', 'modules' => ['notes']]);
+        $blocked = User::factory()->create(['role' => 'user', 'modules' => ['reports']]);
+        $this->getJson(route('api.finance.data'), $this->bearer($blocked))->assertForbidden();
 
-        $this->getJson(route('api.finance.data'), $this->bearer($user))->assertForbidden();
-        $this->getJson(route('api.health.entries'), $this->bearer($user))->assertForbidden();
-        $this->getJson(route('api.explore.data'), $this->bearer($user))->assertForbidden();
-
-        $this->getJson(route('api.notes.index'), $this->bearer($user))->assertOk();
+        $this->reauth();
+        $allowed = User::factory()->create(['role' => 'user', 'modules' => ['finance']]);
+        $this->getJson(route('api.finance.data'), $this->bearer($allowed))->assertOk();
     }
 
     public function test_admin_bypasses_the_api_module_gate(): void
     {
-        $admin = User::factory()->create(['role' => 'admin', 'modules' => ['notes']]);
+        $admin = User::factory()->create(['role' => 'admin', 'modules' => ['reports']]);
         $this->getJson(route('api.finance.data'), $this->bearer($admin))->assertOk();
     }
 
     public function test_a_write_to_a_disabled_module_is_403_on_api(): void
     {
-        $user = User::factory()->create(['role' => 'user', 'modules' => ['notes']]);
+        $user = User::factory()->create(['role' => 'user', 'modules' => ['reports']]);
 
         $this->postJson(route('api.finance.partners.store'), ['name' => 'x'], $this->bearer($user))
             ->assertForbidden();
+    }
+
+    private function reauth(): void
+    {
+        $this->app['auth']->forgetGuards();
     }
 }
