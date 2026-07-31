@@ -23,6 +23,7 @@ use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
@@ -55,6 +56,17 @@ Route::prefix('gallery-share/{token}')->name('public.gallery-share.')->group(fun
     Route::post('/unlock', [GalleryController::class, 'shareUnlock'])->middleware('throttle:10,1')->name('unlock');
     Route::get('/manifest', [GalleryController::class, 'shareManifest'])->middleware('throttle:120,1')->name('manifest');
     Route::get('/photo/{photo}/raw', [GalleryController::class, 'sharePhotoRaw'])->whereNumber('photo')->middleware('throttle:3000,1')->name('photo.raw');
+});
+
+// Public, unauthenticated PLAINTEXT Files share links (pivot). A shared file or
+// folder subtree; bytes served plaintext with an optional rate-limited password
+// gate. Owner-scoped by token; a file raw is only streamed for a valid
+// (unexpired, unlocked) share whose subtree contains that file.
+Route::prefix('file-share/{token}')->name('public.file-share.')->group(function (): void {
+    Route::get('/', [PublicFileShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
+    Route::post('/unlock', [PublicFileShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
+    Route::get('/manifest', [PublicFileShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
+    Route::get('/file/{file}/raw', [PublicFileShareController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('file.raw');
 });
 
 // First-party auth (login, registration, password reset, email verification,
@@ -264,6 +276,11 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/files/upload/chunk/part', [FilesController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('files.rel.chunk.part');
         Route::post('/files/upload/chunk/complete', [FilesController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('files.rel.chunk.complete');
         Route::post('/files/upload/chunk/abort', [FilesController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('files.rel.chunk.abort');
+
+        // Public share links (owner side) — plaintext /file-share/{token}.
+        Route::post('/files/rel-shares', [FilesController::class, 'storeShare'])->middleware('throttle:60,1')->name('files.rel.shares.store');
+        Route::put('/files/rel-shares/{share}', [FilesController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('files.rel.shares.update');
+        Route::delete('/files/rel-shares/{share}', [FilesController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('files.rel.shares.destroy');
     });
 
     // Plaintext-relational Notes (pivot Etappe 1). Server-rendered page + JSON CRUD + trash.

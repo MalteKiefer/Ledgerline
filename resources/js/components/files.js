@@ -40,6 +40,17 @@ const normFile = (f) => ({
     trashed: f.deleted_at ?? null,
 });
 
+// Server share row → client shape (never carries the password hash).
+const normShare = (s) => ({
+    id: s.id,
+    token: s.token,
+    kind: s.kind,
+    allowDownload: !! s.allow_download,
+    needsPassword: !! s.needs_password,
+    expiresAt: s.expires_at ?? null,
+    version: s.version ?? 0,
+});
+
 export default (config = {}, labels = {}, initial = {}) => ({
     folders: (initial.folders || []).map(normFolder),
     files: (initial.files || []).map(normFile),
@@ -92,6 +103,10 @@ export default (config = {}, labels = {}, initial = {}) => ({
     dragging: false,
     viewer: { open: false, kind: 'none', src: '', row: null, saving: false, saved: false },
     versions: { open: false, row: null, list: [], loading: false },
+    // Public share link dialog. There is no share list endpoint (like the gallery),
+    // so a link created this session is cached per row-key for update/revoke.
+    share: { open: false, kind: null, id: null, name: '', busy: false, password: '', expiresAt: '', allowDownload: true, link: '', error: '', current: null },
+    _shareCache: {}, // 'file:12' | 'folder:3' -> normShare
     editorView: null,
     editorLang: '',
     langComp: null,
@@ -1004,5 +1019,62 @@ export default (config = {}, labels = {}, initial = {}) => ({
         if (this.viewer.open && this.viewer.row?.id === ctx.rowId) this.closeViewer();
         this._forceDelete({ id: ctx.rowId });
         this.refreshUsage();
+    },
+
+    /* ---- Public share link (plaintext; owner side) ---- */
+    _shareKey(kind, id) { return `${kind}:${id}`; },
+    _shareLink(token) { return `${config.shareBase}/${token}`; },
+    openShare(row) {
+        const cur = this._shareCache[this._shareKey(row.kind, row.id)] || null;
+        this.share = {
+            open: true, kind: row.kind, id: row.id, name: row.name || '', busy: false,
+            password: '', expiresAt: '',
+            allowDownload: cur ? cur.allowDownload : true,
+            link: cur ? this._shareLink(cur.token) : '', error: '', current: cur,
+        };
+    },
+    closeShare() { this.share.open = false; this.share.password = ''; },
+    async copyShareLink() {
+        if (! this.share.link) return;
+        try { await navigator.clipboard.writeText(this.share.link); window.llToast?.(labels.shareCopied || ''); } catch (e) { /* clipboard blocked */ }
+    },
+    async createShare() {
+        if (! this.share.kind || this.share.busy) return;
+        this.share.busy = true; this.share.error = '';
+        try {
+            const body = { kind: this.share.kind, allow_download: this.share.allowDownload };
+            if (this.share.kind === 'folder') body.file_folder_id = this.share.id;
+            else body.file_id = this.share.id;
+            if (this.share.expiresAt) body.expires_at = new Date(this.share.expiresAt).toISOString();
+            if (this.share.password.trim()) body.password = this.share.password.trim();
+            const { share } = await postForm(config.sharesUrl, body);
+            const s = normShare(share);
+            this._shareCache[this._shareKey(this.share.kind, this.share.id)] = s;
+            this.share.current = s;
+            this.share.password = '';
+            this.share.link = this._shareLink(s.token);
+        } catch (e) { this.share.error = labels.shareError || 'Error'; } finally { this.share.busy = false; }
+    },
+    async updateShare() {
+        if (! this.share.current || this.share.busy) return;
+        this.share.busy = true; this.share.error = '';
+        try {
+            const body = { allow_download: this.share.allowDownload, version: this.share.current.version };
+            if (this.share.expiresAt) body.expires_at = new Date(this.share.expiresAt).toISOString();
+            if (this.share.password.trim()) body.password = this.share.password.trim();
+            else if (! this.share.current.needsPassword) body.remove_password = true;
+            const { share } = await postForm(`${config.sharesUrl}/${this.share.current.id}`, body, 'PUT');
+            const s = normShare(share);
+            this._shareCache[this._shareKey(this.share.kind, this.share.id)] = s;
+            this.share.current = s;
+            this.share.password = '';
+        } catch (e) { this.share.error = labels.shareError || 'Error'; } finally { this.share.busy = false; }
+    },
+    async revokeShare() {
+        if (! this.share.current) return;
+        this.share.busy = true;
+        try { await apiRequest('DELETE', `${config.sharesUrl}/${this.share.current.id}`); } catch (e) { /* best effort */ }
+        delete this._shareCache[this._shareKey(this.share.kind, this.share.id)];
+        this.share.current = null; this.share.link = ''; this.share.busy = false;
     },
 });

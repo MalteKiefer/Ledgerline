@@ -296,6 +296,8 @@ class FinanceController extends Controller
         return [
             'type' => [$create ? 'required' : 'sometimes', 'string', Rule::in(['bank', 'card', 'paypal', 'cash', 'other'])],
             'name' => [$create ? 'required' : 'sometimes', 'string', 'max:200'],
+            'holder' => ['nullable', 'string', 'max:200'],
+            'note' => ['nullable', 'string', 'max:20000'],
             'business' => ['sometimes', 'boolean'],
             'url' => ['nullable', 'string', 'max:2000'],
             'icon' => ['nullable', 'string', 'max:200000'],
@@ -316,7 +318,7 @@ class FinanceController extends Controller
     private function paymentMethodPatch(Request $request, bool $create): array
     {
         $patch = [];
-        foreach (['type', 'name', 'url', 'icon', 'iban', 'bic', 'bank', 'account_no', 'card_number', 'card_network', 'card_expiry', 'paypal_email'] as $field) {
+        foreach (['type', 'name', 'holder', 'url', 'icon', 'iban', 'bic', 'bank', 'account_no', 'card_number', 'card_network', 'card_expiry', 'paypal_email', 'note'] as $field) {
             if ($create || $request->has($field)) {
                 $patch[$field] = $request->filled($field) ? $request->string($field)->value() : null;
             }

@@ -87,6 +87,11 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/files/upload/chunk/part', [FilesController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.files.rel.chunk.part');
             Route::post('/files/upload/chunk/complete', [FilesController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.files.rel.chunk.complete');
             Route::post('/files/upload/chunk/abort', [FilesController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.files.rel.chunk.abort');
+
+            // Public share links (owner side) — plaintext /file-share/{token}.
+            Route::post('/files/rel-shares', [FilesController::class, 'storeShare'])->middleware('throttle:60,1')->name('api.files.rel.shares.store');
+            Route::put('/files/rel-shares/{share}', [FilesController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.rel.shares.update');
+            Route::delete('/files/rel-shares/{share}', [FilesController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.rel.shares.destroy');
         });
 
         // Plaintext-relational Notes (pivot Etappe 1) — same controller as web, JSON per-record.
