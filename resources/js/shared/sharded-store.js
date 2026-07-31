@@ -166,6 +166,15 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
             return this._snapshotFrom(this.data);
         },
 
+        // Non-secret per-slice record counts sent with each save, so the server's
+        // root_write trail can flag a version where a record count regressed (a
+        // silently dropped record). Cardinality only — never content.
+        _counts() {
+            const c = { [recordKey]: (this.data?.[recordKey] || []).length };
+            for (const col of collections) c[col.key] = (this.data?.[col.key] || []).length;
+            return c;
+        },
+
         async load() {
             const s = await this._fetchServerState();
             this.version = s.version;
@@ -307,6 +316,7 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
                     ciphertext: window.Vault.sealManifest(root),
                     version: this.version,
                     shards: this.shardRefs(),
+                    counts: this._counts(),
                 });
                 const res = await fetch(prefix + '/store', { method: 'PUT', headers: jsonHeaders(), body });
                 if (res.status === 409) {

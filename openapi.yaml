@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.533.1
+  version: 1.533.2
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -1971,6 +1971,14 @@ paths:
                   type: integer
                   minimum: 0
                   description: Version the client last read (optimistic concurrency token).
+                counts:
+                  type: object
+                  additionalProperties: { type: integer, minimum: 0 }
+                  description: >
+                    Optional non-secret per-slice record counts (cardinality only,
+                    never content) recorded in the root_write forensic trail so
+                    store:anomaly-scan can flag a version where a record count
+                    regressed — the primary silent-data-loss signal.
                 shards:
                   type: array
                   maxItems: 200000
@@ -2055,6 +2063,14 @@ paths:
                   type: integer
                   minimum: 0
                   description: Version the client last read (optimistic concurrency token).
+                counts:
+                  type: object
+                  additionalProperties: { type: integer, minimum: 0 }
+                  description: >
+                    Optional non-secret per-slice record counts (cardinality only,
+                    never content) recorded in the root_write forensic trail so
+                    store:anomaly-scan can flag a version where a record count
+                    regressed — the primary silent-data-loss signal.
                 shards:
                   type: array
                   maxItems: 200000
@@ -2958,6 +2974,14 @@ paths:
                 version:
                   type: integer
                   minimum: 0
+                counts:
+                  type: object
+                  additionalProperties: { type: integer, minimum: 0 }
+                  description: >
+                    Optional non-secret per-slice record counts (cardinality only,
+                    never content) recorded in the root_write forensic trail so
+                    store:anomaly-scan can flag a version where a record count
+                    regressed — the primary silent-data-loss signal.
                 shards:
                   type: array
                   maxItems: 200000
@@ -5595,6 +5619,14 @@ paths:
               properties:
                 ciphertext: { type: string }
                 version: { type: integer, minimum: 0 }
+                counts:
+                  type: object
+                  additionalProperties: { type: integer, minimum: 0 }
+                  description: >
+                    Optional non-secret per-slice record counts (cardinality only,
+                    never content) recorded in the root_write forensic trail so
+                    store:anomaly-scan can flag a version where a record count
+                    regressed — the primary silent-data-loss signal.
                 shards:
                   type: array
                   maxItems: 200000
@@ -5762,6 +5794,14 @@ paths:
               properties:
                 ciphertext: { type: string }
                 version: { type: integer, minimum: 0 }
+                counts:
+                  type: object
+                  additionalProperties: { type: integer, minimum: 0 }
+                  description: >
+                    Optional non-secret per-slice record counts (cardinality only,
+                    never content) recorded in the root_write forensic trail so
+                    store:anomaly-scan can flag a version where a record count
+                    regressed — the primary silent-data-loss signal.
                 shards:
                   type: array
                   maxItems: 200000
@@ -6064,6 +6104,14 @@ paths:
               properties:
                 ciphertext: { type: string }
                 version: { type: integer, minimum: 0 }
+                counts:
+                  type: object
+                  additionalProperties: { type: integer, minimum: 0 }
+                  description: >
+                    Optional non-secret per-slice record counts (cardinality only,
+                    never content) recorded in the root_write forensic trail so
+                    store:anomaly-scan can flag a version where a record count
+                    regressed — the primary silent-data-loss signal.
                 shards:
                   type: array
                   maxItems: 200000

@@ -47,6 +47,10 @@ Schedule::command('ops:snapshot-storage')->dailyAt('00:10')->withoutOverlapping(
 // Enforce retention on the append-only security audit log.
 Schedule::command('audit:prune')->dailyAt('00:20')->withoutOverlapping();
 
+// Scan the root_write trail for record-count regressions (silent data-loss signal)
+// and record them as store.count_regression audit events for review.
+Schedule::command('store:anomaly-scan')->dailyAt('00:40')->withoutOverlapping();
+
 // Enforce the (shorter) retention on the high-volume device access trail.
 Schedule::command('device-access-log:prune')->dailyAt('00:25')->withoutOverlapping();
 
