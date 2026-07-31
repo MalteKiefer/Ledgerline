@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.521.0
+  version: 1.522.0
   license:
     name: Proprietary
   description: >
@@ -655,9 +655,74 @@ components:
         id: { type: integer }
         name: { type: string }
 
+    VatReturn:
+      type: object
+      description: "VAT advance return (Umsatzsteuer-Voranmeldung) figures for a year."
+      required: [year, net, vat, gross, count, byRate, quarters]
+      properties:
+        year: { type: integer }
+        net: { type: number }
+        vat: { type: number }
+        gross: { type: number }
+        count: { type: integer }
+        byRate:
+          type: array
+          items:
+            type: object
+            properties: { rate: { type: number }, net: { type: number }, vat: { type: number } }
+        quarters:
+          type: array
+          items:
+            type: object
+            properties: { q: { type: integer }, net: { type: number }, vat: { type: number } }
+
+    FinanceKpis:
+      type: object
+      description: "Headline revenue KPIs for a year incl. year-over-year net growth."
+      required: [year, net, count, avg, customers, prevNet]
+      properties:
+        year: { type: integer }
+        net: { type: number }
+        count: { type: integer }
+        avg: { type: number }
+        customers: { type: integer }
+        prevNet: { type: number }
+        growthPct: { type: [number, "null"] }
+
+    RevenueByCustomer:
+      type: object
+      description: "Net/gross revenue for one customer in a year."
+      properties:
+        name: { type: string }
+        net: { type: number }
+        gross: { type: number }
+        count: { type: integer }
+
+    AccountVatSummary:
+      type: object
+      description: "VAT summary of one account's transactions: output/input VAT + payable, by rate."
+      required: [income, expense, outputVat, inputVat, payable, privateSum, undecided]
+      properties:
+        income: { type: array, items: { type: object, properties: { rate: { type: string }, net: { type: number }, vat: { type: number } } } }
+        expense: { type: array, items: { type: object, properties: { rate: { type: string }, net: { type: number }, vat: { type: number } } } }
+        outputVat: { type: number }
+        inputVat: { type: number }
+        payable: { type: number }
+        privateSum: { type: number }
+        undecided: { type: integer }
+
+    DuplicateGroup:
+      type: object
+      description: "A suspected-duplicate group (read-only). `ids` are the row ids sharing `key` for `reason`."
+      required: [reason, key, ids]
+      properties:
+        reason: { type: string }
+        key: { type: string }
+        ids: { type: array, items: { type: integer } }
+
     BankTransaction:
       type: object
-      description: "Bank-statement line (relational bank_transactions; counterparty/iban/bic/purpose/booking_text/eref/receipts encrypted at rest). Amount/date/vat_cat plaintext for stats."
+      description: "Bank-statement line (relational bank_transactions). All columns plaintext at rest since v1.516.0. Amount/date/vat_cat drive stats + VAT."
       properties:
         id: { type: integer }
         payment_method_id: { type: integer }
@@ -3129,6 +3194,114 @@ paths:
                   projects: { type: array, items: { $ref: "#/components/schemas/FinanceProject" } }
                   financeCategories: { type: array, items: { $ref: "#/components/schemas/FinanceCategory" } }
                   transactions: { type: array, items: { $ref: "#/components/schemas/BankTransaction" } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+  /finance/reports:
+    get:
+      tags: [Finance]
+      operationId: financeReports
+      summary: Server-side VAT return + revenue statistics for a year (read-only)
+      description: >
+        Authoritative server-computed finance analytics (the client consumes
+        these instead of computing in-browser): VAT advance return, revenue
+        KPIs, revenue by customer, and monthly revenue for the requested year,
+        plus the current-year VAT for the dashboard and the list of years with
+        realized invoices. Read-only; never mutates a finance row.
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: year, in: query, required: false, schema: { type: integer }, description: "Target year (defaults to the current year)." }
+      responses:
+        "200":
+          description: Analytics for the year.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [year, years, currentVat, vat, kpis, customers, months]
+                properties:
+                  year: { type: integer }
+                  years: { type: array, items: { type: integer } }
+                  currentVat: { $ref: "#/components/schemas/VatReturn" }
+                  vat: { $ref: "#/components/schemas/VatReturn" }
+                  kpis: { $ref: "#/components/schemas/FinanceKpis" }
+                  customers: { type: array, items: { $ref: "#/components/schemas/RevenueByCustomer" } }
+                  months:
+                    type: array
+                    items:
+                      type: object
+                      properties: { month: { type: integer }, net: { type: number } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+  /finance/reports/account-vat:
+    get:
+      tags: [Finance]
+      operationId: financeAccountVat
+      summary: VAT summary of one payment account's transactions for a year (read-only)
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: account_id, in: query, required: true, schema: { type: integer }, description: "Payment-method (account) id." }
+        - { name: year, in: query, required: false, schema: { type: integer }, description: "Target year (defaults to the current year)." }
+      responses:
+        "200":
+          description: Account VAT summary (output/input VAT, payable, by rate).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountVatSummary" }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+  /finance/duplicates:
+    get:
+      tags: [Finance]
+      operationId: financeDuplicates
+      summary: Suspected duplicate invoices + transactions (read-only)
+      description: >
+        Read-only duplicate detection. Reports suspect groups only (same
+        number, or same date+amount+customer for invoices; same EREF, or same
+        date+amount+counterparty+purpose for transactions) — never deletes or
+        merges anything.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: Suspect groups.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invoices, transactions]
+                properties:
+                  invoices: { type: array, items: { $ref: "#/components/schemas/DuplicateGroup" } }
+                  transactions: { type: array, items: { $ref: "#/components/schemas/DuplicateGroup" } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+  /finance/category-suggestions:
+    get:
+      tags: [Finance]
+      operationId: financeCategorySuggestions
+      summary: Merchant-based category suggestions for uncategorised transactions (read-only)
+      description: >
+        Read-only merchant->category suggestions derived from the taught
+        category on each business partner (the partner list doubles as the rule
+        store). Suggests only — the client decides whether to apply; the server
+        never writes a category onto a transaction.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: Suggestions for transactions with no category yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [suggestions]
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      type: object
+                      required: [tx_id, merchant, suggested_category]
+                      properties:
+                        tx_id: { type: integer }
+                        merchant: { type: string }
+                        suggested_category: { type: string }
         "401": { description: Unauthenticated. }
         "403": { description: Module disabled for this account. }
   /finance/trash:
