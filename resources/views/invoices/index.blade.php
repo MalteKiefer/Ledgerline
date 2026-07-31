@@ -101,6 +101,7 @@
         txtype_fee: @js(__('invoices.txtype_fee')),
         txtype_transfer: @js(__('invoices.txtype_transfer')),
         txtype_other: @js(__('invoices.txtype_other')),
+        cats_delete_confirm: @js(__('invoices.cats_delete_confirm')),
      }, @js([
         'invoices' => $invoices,
         'partners' => $partners,
@@ -1195,37 +1196,137 @@
           </template>
         </div>
 
-        {{-- ===================== SETTINGS (partners + categories) — iOS grouped lists ===================== --}}
-        <div x-show="section === 'settings'" class="mt-6 mx-auto max-w-2xl">
-          {{-- Categories --}}
-          <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.cats_title') }}</h2>
-          <p class="mb-2 px-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.cats_intro') }}</p>
-          <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
-            {{-- Built-in default categories (not removable) — shown in full, no pagination --}}
-            <template x-for="c in sortedCatSuggestions" :key="'def-'+c">
-              <div class="flex items-center gap-3 px-4 py-2.5">
-                <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #e2915a"><x-icon name="hashtag" class="h-4 w-4" /></span>
-                <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="c"></span>
-                <x-badge variant="gray">{{ __('invoices.cats_default') }}</x-badge>
-              </div>
+        {{-- ===================== CATEGORIES ===================== --}}
+        @php
+            $catIcons = ['hashtag', 'tag', 'banknotes', 'credit-card', 'wallet', 'building-library',
+                'receipt-percent', 'chart-bar', 'arrow-trending-up', 'arrow-trending-down',
+                'globe', 'globe-alt', 'home', 'camera', 'photo', 'film', 'bell', 'bookmark',
+                'star', 'heart', 'calendar', 'clock', 'document', 'document-text',
+                'document-duplicate', 'folder', 'inbox-stack', 'archive-box', 'server', 'key',
+                'lock-closed', 'shield', 'shield-check', 'wifi', 'command-line', 'beaker',
+                'thermometer', 'scale', 'cake', 'sparkles', 'map-pin', 'map', 'route',
+                'paperclip', 'paper-clip', 'envelope', 'printer', 'users', 'user-group',
+                'sun', 'moon'];
+        @endphp
+        <div x-show="section === 'settings'" class="mt-6 mx-auto max-w-3xl">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.cats_title') }}</h2>
+              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.cats_intro') }}</p>
+            </div>
+            <x-button variant="primary" icon="plus" size="sm" @click="openNewCategory()">{{ __('invoices.cats_add') }}</x-button>
+          </div>
+
+          <div class="ll-card !p-0 overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                  <tr>
+                    <th class="px-4 py-2.5">{{ __('invoices.cats_name') }}</th>
+                    <th class="px-4 py-2.5">{{ __('invoices.cat_color') }}</th>
+                    <th class="px-4 py-2.5">{{ __('invoices.cat_icon') }}</th>
+                    <th class="px-4 py-2.5 text-right">{{ __('invoices.col_actions') }}</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
+                  {{-- Built-in default suggestions — read-only rows with a "Standard" badge --}}
+                  <template x-for="c in sortedCatSuggestions" :key="'def-'+c">
+                    <tr>
+                      <td class="px-4 py-2.5">
+                        <div class="flex items-center gap-3">
+                          <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="background:#6b7280"><x-icon name="hashtag" class="h-4 w-4 text-white" /></span>
+                          <span class="min-w-0 truncate text-gray-800 dark:text-gray-200" x-text="c"></span>
+                        </div>
+                      </td>
+                      <td class="px-4 py-2.5"><span class="inline-block h-4 w-4 rounded-full border border-black/10 dark:border-white/20" style="background:#6b7280"></span></td>
+                      <td class="px-4 py-2.5 font-mono text-xs text-gray-400 dark:text-gray-500">hashtag</td>
+                      <td class="px-4 py-2.5 text-right"><x-badge variant="gray">{{ __('invoices.cats_default') }}</x-badge></td>
+                    </tr>
+                  </template>
+                  {{-- Custom categories --}}
+                  <template x-for="c in pagedCategories" :key="c.id">
+                    <tr class="group hover:bg-accent/5">
+                      <td class="px-4 py-2.5">
+                        <div class="flex items-center gap-3">
+                          <span class="ll-chip h-8 w-8 rounded-lg shrink-0" :style="{ background: catColor(c) }">@include('invoices._category_icon', ['expr' => 'catIcon(c)', 'cls' => 'h-4 w-4 text-white'])</span>
+                          <button type="button" @click="editCategory(c)" class="min-w-0 truncate text-left text-gray-800 dark:text-gray-200 hover:text-accent" x-text="c.name"></button>
+                        </div>
+                      </td>
+                      <td class="px-4 py-2.5">
+                        <div class="flex items-center gap-2">
+                          <span class="inline-block h-4 w-4 rounded-full border border-black/10 dark:border-white/20" :style="{ background: catColor(c) }"></span>
+                          <span class="font-mono text-xs text-gray-400 dark:text-gray-500" x-text="catColor(c)"></span>
+                        </div>
+                      </td>
+                      <td class="px-4 py-2.5 font-mono text-xs text-gray-400 dark:text-gray-500" x-text="catIcon(c)"></td>
+                      <td class="px-4 py-2.5">
+                        <div class="flex items-center justify-end gap-1">
+                          <x-icon-button name="pencil" tone="gray" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="editCategory(c)" :aria-label="__('invoices.cat_edit')" />
+                          <x-icon-button name="trash" tone="red" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="removeFinanceCategory(c)" :aria-label="__('common.delete')" />
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <template x-if="! sortedFinanceCategories.length">
+              <x-empty-state icon="hashtag" class="py-8">{{ __('invoices.cats_empty') }}</x-empty-state>
             </template>
-            {{-- Custom categories (removable) --}}
-            <template x-for="c in pagedCategories" :key="c.name">
-              <div class="group flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5">
-                <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #59ad6b"><x-icon name="hashtag" class="h-4 w-4" /></span>
-                <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="c.name"></span>
-                <x-icon-button name="trash" tone="red" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="removeFinanceCategory(c)" :aria-label="__('common.delete')" />
-              </div>
-            </template>
-            {{-- Add row --}}
-            <form @submit.prevent="addFinanceCategory(newCategoryName)" class="flex items-center gap-3 px-4 py-2.5">
-              <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #7066f5"><x-icon name="plus" class="h-4 w-4" /></span>
-              <input type="text" x-model="newCategoryName" placeholder="{{ __('invoices.cats_add_ph') }}" class="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm focus:ring-0">
-              <x-button variant="secondary" size="sm" type="submit" ::disabled="! newCategoryName.trim()">{{ __('invoices.cats_add') }}</x-button>
-            </form>
             <template x-if="(financeCategories || []).length > catPerPage">
               @include('invoices._pagination', ['page' => 'catPage', 'perPage' => 'catPerPage', 'pageCount' => 'catPageCount', 'setPerPage' => 'setCatPerPage', 'goto' => 'catGoto'])
             </template>
+          </div>
+
+          {{-- Category editor (create / edit) --}}
+          <div x-show="catEditing" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelCategory()">
+            <div class="absolute inset-0 bg-gray-900/50" @click="cancelCategory()"></div>
+            <div class="relative flex max-h-[88vh] w-full max-w-md flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <template x-if="catEditing">
+                <div class="flex min-h-0 flex-col">
+                  <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <div class="flex items-center gap-2.5">
+                      <span class="ll-chip h-8 w-8 rounded-xl" :style="{ background: catEditing?.color || '#6b7280' }">@include('invoices._category_icon', ['expr' => 'catEditing?.icon', 'cls' => 'h-4.5 w-4.5 text-white'])</span>
+                      <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="catEditing?.id ? '{{ __('invoices.cat_edit') }}' : '{{ __('invoices.cats_add') }}'"></h3>
+                    </div>
+                    <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelCategory()" :aria-label="__('common.close')" />
+                  </div>
+                  <div class="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4">
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.cats_name') }} <span class="text-red-500">*</span></label>
+                      <input type="text" x-model="catEditing.name" placeholder="{{ __('invoices.cats_add_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm" @keydown.enter.prevent="saveCategory()">
+                    </div>
+                    <div>
+                      <label class="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.cat_color') }}</label>
+                      <div class="flex flex-wrap gap-2">
+                        <template x-for="col in catColorOptions" :key="col">
+                          <button type="button" @click="catEditing.color = col" :style="{ background: col }"
+                            class="h-8 w-8 rounded-full border border-black/10 dark:border-white/20 transition"
+                            :class="catEditing.color === col ? 'ring-2 ring-offset-2 ring-accent dark:ring-offset-[#1c1c1e]' : ''"
+                            :aria-label="col"></button>
+                        </template>
+                      </div>
+                    </div>
+                    <div>
+                      <label class="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.cat_icon') }}</label>
+                      <div class="grid grid-cols-8 gap-1.5">
+                        @foreach ($catIcons as $ic)
+                          <button type="button" @click="catEditing.icon = '{{ $ic }}'" title="{{ $ic }}"
+                            class="flex h-9 items-center justify-center rounded-lg border border-black/[0.06] dark:border-white/10 text-gray-600 dark:text-gray-300 transition hover:bg-accent/5"
+                            :class="catEditing.icon === '{{ $ic }}' ? 'ring-2 ring-accent bg-accent/10 text-accent' : ''">
+                            <x-icon name="{{ $ic }}" class="h-4 w-4" />
+                          </button>
+                        @endforeach
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-end gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+                    <x-button variant="secondary" @click="cancelCategory()">{{ __('common.cancel') }}</x-button>
+                    <x-button variant="primary" @click="saveCategory()" ::disabled="! catEditing.name.trim()">{{ __('common.save') }}</x-button>
+                  </div>
+                </div>
+              </template>
+            </div>
           </div>
 
         </div>

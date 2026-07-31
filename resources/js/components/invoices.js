@@ -137,7 +137,7 @@ const normProject = (row) => ({
     version: row.version ?? 0,
 });
 
-const normCategory = (row) => ({ id: row.id, name: row.name || '' });
+const normCategory = (row) => ({ id: row.id, name: row.name || '', color: row.color ?? null, icon: row.icon ?? null });
 
 export default (config = {}, labels = {}, initial = {}) => ({
     company: config.company || {},
@@ -973,15 +973,61 @@ export default (config = {}, labels = {}, initial = {}) => ({
     },
     get sortedCatSuggestions() { const loc = this._catLocale(); return [...this.receiptCatSuggestions].sort((a, b) => a.localeCompare(b, loc)); },
     get sortedFinanceCategories() { const loc = this._catLocale(); return [...(this.financeCategories || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), loc)); },
-    async addFinanceCategory(name) {
-        const n = String(name || '').trim(); if (! n) return;
+    // ---- Custom category CRUD (name + colour + monochrome icon) ----
+    // Icon names — each exists in components/icon.blade.php (kept in sync with the
+    // controller's CATEGORY_ICONS + _category_icon.blade.php).
+    get catIconOptions() {
+        return ['hashtag', 'tag', 'banknotes', 'credit-card', 'wallet', 'building-library',
+            'receipt-percent', 'chart-bar', 'arrow-trending-up', 'arrow-trending-down',
+            'globe', 'globe-alt', 'home', 'camera', 'photo', 'film', 'bell', 'bookmark',
+            'star', 'heart', 'calendar', 'clock', 'document', 'document-text',
+            'document-duplicate', 'folder', 'inbox-stack', 'archive-box', 'server', 'key',
+            'lock-closed', 'shield', 'shield-check', 'wifi', 'command-line', 'beaker',
+            'thermometer', 'scale', 'cake', 'sparkles', 'map-pin', 'map', 'route',
+            'paperclip', 'paper-clip', 'envelope', 'printer', 'users', 'user-group',
+            'sun', 'moon'];
+    },
+    get catColorOptions() {
+        return ['#7066f5', '#3b9fd6', '#59ad6b', '#e2915a', '#d9a441', '#3fae9f',
+            '#9e70fa', '#6b7280', '#e0567a', '#8b5cf6', '#0ea5e9', '#ef4444'];
+    },
+    catColor(c) { return (c && c.color) || '#6b7280'; },
+    catIcon(c) { return (c && c.icon) || 'hashtag'; },
+    newCategory: { name: '', color: '#7066f5', icon: 'hashtag' },
+    catEditing: null,
+    openNewCategory() { this.newCategory = { name: '', color: this.catColorOptions[0], icon: 'hashtag' }; this.catEditing = { id: null, name: '', color: this.catColorOptions[0], icon: 'hashtag' }; },
+    editCategory(c) { this.catEditing = { id: c.id, name: c.name, color: this.catColor(c), icon: this.catIcon(c) }; },
+    cancelCategory() { this.catEditing = null; },
+    async saveCategory() {
+        const e = this.catEditing; if (! e) return;
+        const n = String(e.name || '').trim(); if (! n) return;
+        const payload = { name: n, color: e.color || null, icon: e.icon || null };
+        if (e.id == null) {
+            const dup = (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase())
+                || this.receiptCatSuggestions.some((c) => c.toLowerCase() === n.toLowerCase());
+            if (! dup) { const row = await this._create('categories', payload, 'category', normCategory); if (row) this.financeCategories.push(row); }
+        } else {
+            const row = await this._update('categories', e.id, payload, 'category', normCategory);
+            if (row) { const i = (this.financeCategories || []).findIndex((c) => c.id === e.id); if (i >= 0) Object.assign(this.financeCategories[i], row); }
+        }
+        this.catEditing = null;
+    },
+    // Kept for the simple add-row / programmatic callers.
+    async addFinanceCategory() {
+        const n = String(this.newCategory.name || '').trim(); if (! n) return;
         const exists = (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase())
             || this.receiptCatSuggestions.some((c) => c.toLowerCase() === n.toLowerCase());
-        if (! exists) { const row = await this._create('categories', { name: n }, 'category', normCategory); if (row) this.financeCategories.push(row); }
-        this.newCategoryName = '';
+        if (! exists) {
+            const row = await this._create('categories', { name: n, color: this.newCategory.color || null, icon: this.newCategory.icon || null }, 'category', normCategory);
+            if (row) this.financeCategories.push(row);
+        }
+        this.newCategory = { name: '', color: this.catColorOptions[0], icon: 'hashtag' };
     },
-    async removeFinanceCategory(c) { await this._destroy('categories', c.id); const i = this.financeCategories.indexOf(c); if (i >= 0) this.financeCategories.splice(i, 1); },
-    newCategoryName: '',
+    async removeFinanceCategory(c) {
+        if (! await this.$store.confirm.ask(labels.cats_delete_confirm || 'Delete this category?')) return;
+        await this._destroy('categories', c.id);
+        const i = this.financeCategories.indexOf(c); if (i >= 0) this.financeCategories.splice(i, 1);
+    },
 
     // ---- Cost projects (nestable): bundle receipts + manual "hand" expenses ----
     projectEditing: null,   // { id?, name, parentId, note, kind } in the create/edit modal

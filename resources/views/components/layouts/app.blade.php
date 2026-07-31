@@ -61,7 +61,11 @@
             </div>
         </header>
 
-        <main class="mx-auto w-full max-w-[1700px] overflow-x-hidden px-4 py-8 sm:w-[92%] sm:px-6">
+        {{-- overflow-x-clip (not -hidden): `overflow-x:hidden` forces the browser to
+             compute overflow-y:auto, turning <main> into a vertical scroll container
+             that clips absolutely-positioned dropdowns (e.g. the payment "Add" menu)
+             below the fold. `clip` prevents horizontal scroll without that side effect. --}}
+        <main class="mx-auto w-full max-w-[1700px] overflow-x-clip px-4 py-8 sm:w-[92%] sm:px-6">
             @if (session('status'))
                 <x-alert variant="success" class="mb-6" role="status">{{ session('status') }}</x-alert>
             @endif
