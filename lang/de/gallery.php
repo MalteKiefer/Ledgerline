@@ -202,4 +202,5 @@ return [
     'find_similar' => 'Ähnliche finden',
     'delete_person' => 'Person löschen',
     'delete_person_confirm' => 'Diese Person löschen? Die Gesichter werden getrennt; die Fotos bleiben in deiner Mediathek.',
+    'photo_alt' => 'Foto',
 ];

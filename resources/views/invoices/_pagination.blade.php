@@ -12,7 +12,7 @@
   </div>
   <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
     <span x-text="'{{ __('invoices.page_of') }}'.replace(':p', {{ $page }}).replace(':n', {{ $pageCount }})"></span>
-    <x-icon-button name="chevron-left" tone="gray" size="sm" ::disabled="{{ $page }} <= 1" @click="{{ $goto }}({{ $page }} - 1)" aria-label="prev" />
-    <x-icon-button name="chevron-right" tone="gray" size="sm" ::disabled="{{ $page }} >= {{ $pageCount }}" @click="{{ $goto }}({{ $page }} + 1)" aria-label="next" />
+    <x-icon-button name="chevron-left" tone="gray" size="sm" ::disabled="{{ $page }} <= 1" @click="{{ $goto }}({{ $page }} - 1)" :aria-label="__('common.back')" />
+    <x-icon-button name="chevron-right" tone="gray" size="sm" ::disabled="{{ $page }} >= {{ $pageCount }}" @click="{{ $goto }}({{ $page }} + 1)" :aria-label="__('common.next')" />
   </div>
 </div>

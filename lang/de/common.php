@@ -16,4 +16,7 @@ return [
     'confirm_title' => 'Sind Sie sicher?',
     'confirm_message' => 'Diese Aktion kann nicht rückgängig gemacht werden.',
     'now' => 'jetzt',
+    'clear' => 'Leeren',
+    'details' => 'Details',
+    'zoom' => 'Zoom',
 ];

@@ -97,7 +97,7 @@
       <div class="min-w-0 flex-1">
         {{-- Bulk-select bar --}}
         <div x-show="selectedCount" x-cloak class="fixed bottom-5 left-1/2 z-40 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-3 overflow-x-auto rounded-full border border-black/[0.06] dark:border-white/10 bg-white/95 dark:bg-[#1c1c1e]/95 px-4 py-2 shadow-xl backdrop-blur">
-          <button type="button" @click="clearSelection()" class="shrink-0 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="x-mark" class="h-5 w-5" /></button>
+          <button type="button" @click="clearSelection()" aria-label="{{ __('common.clear') }}" class="shrink-0 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="x-mark" class="h-5 w-5" /></button>
           <span class="shrink-0 whitespace-nowrap text-sm font-medium text-gray-800 dark:text-gray-200" x-text="@js(__('gallery.selected', ['count' => '{n}'])).replace('{n}', selectedCount)"></span>
           <button type="button" @click="selectAllVisible()" title="{{ __('gallery.select_all') }}" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="check-circle" class="h-5 w-5" /></button>
           <div class="flex shrink-0 items-center gap-2">
@@ -137,7 +137,7 @@
               <input type="search" x-model="query" @input="runSearch()" enterkeyhint="search" placeholder="{{ __('gallery.search_placeholder') }}"
                   class="w-full rounded-lg border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-2 pl-9 pr-16 text-sm shadow-sm focus:border-accent focus:ring-accent">
               <span x-show="semanticBusy" x-cloak class="absolute right-9 top-1/2 -translate-y-1/2"><x-icon name="arrow-path" class="h-4 w-4 animate-spin text-gray-400" /></span>
-              <button type="button" x-show="query" @click="clearSearch()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
+              <button type="button" x-show="query" @click="clearSearch()" aria-label="{{ __('common.clear') }}" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
             </form>
             <div x-show="semanticActive" x-cloak class="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-accent">
               <x-icon name="sparkles" class="h-3.5 w-3.5" /><span>{{ __("gallery.smart_results") }}</span>
@@ -166,9 +166,9 @@
                 <template x-for="p in group.photos" :key="p.id">
                   <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
                        :class="isSelected(p.id) ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-gray-100 ring-offset-white dark:ring-offset-gray-950' : ''">
-                    <button type="button" @click="openViewer(p)" class="block h-full w-full">
+                    <button type="button" @click="openViewer(p)" aria-label="{{ __('gallery.photo_alt') }}" class="block h-full w-full">
                       <template x-if="p.hasThumb">
-                        <img :src="thumbUrl(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
+                        <img alt="" :src="thumbUrl(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
                       </template>
                       <template x-if="! p.hasThumb">
                         <div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"><x-icon name="photo" class="h-5 w-5 text-gray-300 dark:text-gray-600" /></div>
@@ -211,7 +211,7 @@
             <template x-for="p in trashedPhotos" :key="p.id">
               <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
                    :class="isSelected(p.id) ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-gray-100 ring-offset-white dark:ring-offset-gray-950' : ''">
-                <template x-if="p.hasThumb"><img :src="thumbUrl(p)" loading="lazy" class="h-full w-full object-cover opacity-70"></template>
+                <template x-if="p.hasThumb"><img alt="" :src="thumbUrl(p)" loading="lazy" class="h-full w-full object-cover opacity-70"></template>
                 <template x-if="! p.hasThumb"><div class="h-full w-full bg-gray-200 dark:bg-gray-700"></div></template>
                 <label class="absolute left-2 top-2 z-10 cursor-pointer" @click.stop.prevent="clickSelect(p.id, $event)">
                   <input type="checkbox" :checked="isSelected(p.id)" class="pointer-events-none h-4 w-4 rounded border-white/80 bg-black/30 text-gray-900 focus:ring-0 focus:ring-offset-0">
@@ -238,8 +238,8 @@
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
                 <template x-for="p in grp.photos" :key="p.id">
                   <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800">
-                    <button type="button" @click="openViewer(p)" class="block h-full w-full">
-                      <template x-if="p.hasThumb"><img :src="thumbUrl(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"></template>
+                    <button type="button" @click="openViewer(p)" aria-label="{{ __('gallery.photo_alt') }}" class="block h-full w-full">
+                      <template x-if="p.hasThumb"><img alt="" :src="thumbUrl(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"></template>
                       <template x-if="! p.hasThumb"><div class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div></template>
                       <template x-if="p.kind === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
                     </button>
@@ -259,8 +259,8 @@
             <template x-for="p in favoritePhotos" :key="p.id">
               <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
                    :class="isSelected(p.id) ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-gray-100 ring-offset-white dark:ring-offset-gray-950' : ''">
-                <button type="button" @click="openViewer(p)" class="block h-full w-full">
-                  <template x-if="p.hasThumb"><img :src="thumbUrl(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"></template>
+                <button type="button" @click="openViewer(p)" aria-label="{{ __('gallery.photo_alt') }}" class="block h-full w-full">
+                  <template x-if="p.hasThumb"><img alt="" :src="thumbUrl(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"></template>
                   <template x-if="! p.hasThumb"><div class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div></template>
                   <template x-if="p.kind === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
                 </button>
@@ -291,7 +291,7 @@
             <template x-for="al in albumsSorted" :key="al.id">
               <button type="button" @click="openAlbum(al)" class="group text-left focus:outline-none">
                 <div class="relative aspect-square overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-800 transition duration-300 group-hover:shadow-md group-hover:ring-gray-300 dark:group-hover:ring-gray-700">
-                  <template x-if="albumCover(al)"><img :src="thumbUrl(albumCover(al))" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"></template>
+                  <template x-if="albumCover(al)"><img alt="" :src="thumbUrl(albumCover(al))" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"></template>
                   <template x-if="! albumCover(al)"><div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"><x-icon name="folder" class="h-9 w-9 text-gray-300 dark:text-gray-600" /></div></template>
                   <span class="absolute bottom-2 right-2 inline-flex h-5 items-center rounded-full bg-black/55 px-2 text-[11px] font-medium tabular-nums text-white backdrop-blur-sm" x-text="albumCount(al)"></span>
                 </div>
@@ -321,8 +321,8 @@
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
                 <template x-for="p in albumPhotos(currentAlbum)" :key="p.id">
                   <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800">
-                    <button type="button" @click="openViewer(p)" class="block h-full w-full">
-                      <template x-if="p.hasThumb"><img :src="thumbUrl(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"></template>
+                    <button type="button" @click="openViewer(p)" aria-label="{{ __('gallery.photo_alt') }}" class="block h-full w-full">
+                      <template x-if="p.hasThumb"><img alt="" :src="thumbUrl(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"></template>
                       <template x-if="! p.hasThumb"><div class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div></template>
                       <template x-if="p.kind === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
                     </button>
@@ -345,7 +345,7 @@
             <template x-for="person in peopleSorted" :key="person.id">
               <button type="button" @click="openPerson(person)" class="group text-center focus:outline-none">
                 <div class="relative mx-auto aspect-square overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 ring-1 ring-black/[0.06] dark:ring-white/10 transition group-hover:ring-2 group-hover:ring-accent">
-                  <template x-if="person.coverFaceId"><img :src="personCover(person)" loading="lazy" class="h-full w-full object-cover"></template>
+                  <template x-if="person.coverFaceId"><img alt="" :src="personCover(person)" loading="lazy" class="h-full w-full object-cover"></template>
                   <template x-if="! person.coverFaceId"><div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"><x-icon name="user" class="h-8 w-8 text-gray-300 dark:text-gray-600" /></div></template>
                 </div>
                 <p class="mt-2 truncate text-sm font-medium text-gray-800 dark:text-gray-200"><span x-show="person.name" x-text="person.name"></span><span x-show="! person.name" x-cloak>{{ __('gallery.person_unnamed') }}</span></p>
@@ -379,7 +379,7 @@
                   <div class="flex flex-wrap gap-3">
                     <template x-for="face in personFaces" :key="face.id">
                       <div class="group relative">
-                        <img :src="faceCropUrl(face.id)" loading="lazy" class="h-16 w-16 rounded-lg object-cover ring-1 ring-black/[0.06] dark:ring-white/10">
+                        <img alt="" :src="faceCropUrl(face.id)" loading="lazy" class="h-16 w-16 rounded-lg object-cover ring-1 ring-black/[0.06] dark:ring-white/10">
                         <div class="absolute right-0.5 top-0.5 opacity-0 transition group-hover:opacity-100">
                           <x-action-menu :aria-label="__('common.actions')" width="w-52">
                             <x-action-menu-item icon="arrows-right-left" @click="openFaceReassign(face)">{{ __('gallery.reassign') }}</x-action-menu-item>
@@ -398,8 +398,8 @@
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
                 <template x-for="p in personPhotos" :key="p.id">
                   <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800">
-                    <button type="button" @click="openViewer(p, personPhotos)" class="block h-full w-full">
-                      <template x-if="p.hasThumb"><img :src="thumbUrl(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"></template>
+                    <button type="button" @click="openViewer(p, personPhotos)" aria-label="{{ __('gallery.photo_alt') }}" class="block h-full w-full">
+                      <template x-if="p.hasThumb"><img alt="" :src="thumbUrl(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"></template>
                       <template x-if="! p.hasThumb"><div class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div></template>
                       <template x-if="p.kind === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
                     </button>
@@ -417,7 +417,7 @@
         class="fixed bottom-4 right-4 z-[860] w-72 rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-3 shadow-xl">
       <div class="flex items-center justify-between">
         <span class="text-xs font-semibold text-gray-700 dark:text-gray-200">{{ __('gallery.upload') }}</span>
-        <button type="button" @click="dismissUploads()" x-show="! uploading" class="text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
+        <button type="button" @click="dismissUploads()" x-show="! uploading" aria-label="{{ __('common.close') }}" class="text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
       </div>
       <template x-if="uploads.length">
         <div class="mt-2">
@@ -439,13 +439,13 @@
     {{-- Viewer with info panel --}}
     <div x-show="viewer.open" x-cloak @keydown.escape.window="closeViewer()"
         class="fixed inset-0 z-[950] flex bg-black/90" @click.self="closeViewer()">
-      <button type="button" @click="closeViewer()" class="absolute right-4 top-4 z-10 text-white/70 hover:text-white"><x-icon name="x-mark" class="h-7 w-7" /></button>
-      <button type="button" x-show="viewerHasGallery" @click.stop="viewerStep(-1)" class="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white/80 hover:bg-black/60 hover:text-white"><x-icon name="chevron-left" class="h-6 w-6" /></button>
-      <button type="button" x-show="viewerHasGallery" @click.stop="viewerStep(1)" class="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white/80 hover:bg-black/60 hover:text-white"><x-icon name="chevron-right" class="h-6 w-6" /></button>
+      <button type="button" @click="closeViewer()" aria-label="{{ __('common.close') }}" class="absolute right-4 top-4 z-10 text-white/70 hover:text-white"><x-icon name="x-mark" class="h-7 w-7" /></button>
+      <button type="button" x-show="viewerHasGallery" @click.stop="viewerStep(-1)" aria-label="{{ __('common.back') }}" class="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white/80 hover:bg-black/60 hover:text-white"><x-icon name="chevron-left" class="h-6 w-6" /></button>
+      <button type="button" x-show="viewerHasGallery" @click.stop="viewerStep(1)" aria-label="{{ __('common.next') }}" class="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white/80 hover:bg-black/60 hover:text-white"><x-icon name="chevron-right" class="h-6 w-6" /></button>
       <div class="flex flex-1 items-center justify-center p-4" x-ref="vstage" @click.self="closeViewer()">
         <template x-if="viewer.photo && viewer.photo.kind !== 'video'">
           <div class="relative" @click.stop>
-            <img :src="viewerSrc(viewer.photo)" x-show="! viewer.motionOn" class="max-h-[92vh] max-w-full rounded-lg">
+            <img alt="{{ __('gallery.photo_alt') }}" :src="viewerSrc(viewer.photo)" x-show="! viewer.motionOn" class="max-h-[92vh] max-w-full rounded-lg">
             <template x-if="viewer.motionOn">
               <video :src="motionUrl(viewer.photo)" autoplay muted playsinline @ended="stopMotion()" class="max-h-[92vh] max-w-full rounded-lg"></video>
             </template>
@@ -519,8 +519,8 @@
           </template>
           <div x-show="! similar.loading && similar.photos.length" class="mt-3 grid grid-cols-3 gap-1.5">
             <template x-for="sp in similar.photos" :key="sp.id">
-              <button type="button" @click="openSimilar(sp)" class="aspect-square overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
-                <template x-if="sp.hasThumb"><img :src="thumbUrl(sp)" loading="lazy" class="h-full w-full object-cover transition hover:scale-[1.05]"></template>
+              <button type="button" @click="openSimilar(sp)" aria-label="{{ __('gallery.photo_alt') }}" class="aspect-square overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
+                <template x-if="sp.hasThumb"><img alt="" :src="thumbUrl(sp)" loading="lazy" class="h-full w-full object-cover transition hover:scale-[1.05]"></template>
                 <template x-if="! sp.hasThumb"><div class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div></template>
               </button>
             </template>
@@ -530,12 +530,12 @@
     </div>
 
     {{-- Public album share link (plaintext bytes; optional password gate) --}}
-    <div x-show="share.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeShare()">
+    <div x-show="share.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeShare()">
       <div class="absolute inset-0 bg-black/60" @click="closeShare()"></div>
       <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
         <div class="flex items-start justify-between gap-2">
           <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.share_album') }}</h3>
-          <button type="button" @click="closeShare()" class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
+          <button type="button" @click="closeShare()" aria-label="{{ __('common.close') }}" class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
         </div>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.share_intro') }}</p>
 
@@ -577,7 +577,7 @@
     </div>
 
     {{-- Location picker (Leaflet): click the map to set the photo's place --}}
-    <div x-show="loc.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeLocPicker()">
+    <div x-show="loc.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeLocPicker()">
       <div class="absolute inset-0 bg-black/60" @click="closeLocPicker()"></div>
       <div class="relative w-full max-w-2xl rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.edit_location') }}</h3>
@@ -586,7 +586,7 @@
           <form @submit.prevent="geoSearch()" class="flex gap-2">
             <input type="search" x-model="geoQuery" placeholder="{{ __('gallery.search_place') }}"
                 class="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300">
-            <button type="submit" :disabled="geoBusy || ! geoQuery.trim()" class="inline-flex shrink-0 items-center rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"><x-icon name="magnifying-glass" class="h-4 w-4" /></button>
+            <button type="submit" :disabled="geoBusy || ! geoQuery.trim()" aria-label="{{ __('gallery.search_place') }}" class="inline-flex shrink-0 items-center rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"><x-icon name="magnifying-glass" class="h-4 w-4" /></button>
           </form>
           <div x-show="geoResults.length" x-cloak class="absolute z-[1101] mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-1 shadow-lg">
             <template x-for="(r, i) in geoResults" :key="i">
@@ -607,7 +607,7 @@
     </div>
 
     {{-- Bulk date/time picker --}}
-    <div x-show="dateModal" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeBulkDate()">
+    <div x-show="dateModal" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeBulkDate()">
       <div class="absolute inset-0 bg-black/60" @click="closeBulkDate()"></div>
       <div class="relative w-full max-w-sm rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.bulk_date') }}</h3>
@@ -620,7 +620,7 @@
     </div>
 
     {{-- Add the selected photos to an album --}}
-    <div x-show="albumPicker" x-cloak class="fixed inset-0 z-[965] flex items-center justify-center p-4" @keydown.escape.window="albumPicker = false">
+    <div x-show="albumPicker" x-cloak class="fixed inset-0 z-[965] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="albumPicker = false">
       <div class="absolute inset-0 bg-black/60" @click="albumPicker = false"></div>
       <div class="relative w-full max-w-md rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.add_to_album') }}</h3>
@@ -642,7 +642,7 @@
     </div>
 
     {{-- Merge this person into another --}}
-    <div x-show="mergePicker.open" x-cloak class="fixed inset-0 z-[965] flex items-center justify-center p-4" @keydown.escape.window="closeMerge()">
+    <div x-show="mergePicker.open" x-cloak class="fixed inset-0 z-[965] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeMerge()">
       <div class="absolute inset-0 bg-black/60" @click="closeMerge()"></div>
       <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.merge_heading') }}</h3>
@@ -652,7 +652,7 @@
           <template x-for="cand in mergeCandidates" :key="cand.id">
             <button type="button" @click="mergeInto(cand)" class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-800">
               <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                <template x-if="cand.coverFaceId"><img :src="personCover(cand)" class="h-full w-full object-cover"></template>
+                <template x-if="cand.coverFaceId"><img alt="" :src="personCover(cand)" class="h-full w-full object-cover"></template>
                 <template x-if="! cand.coverFaceId"><x-icon name="user" class="h-4 w-4 text-gray-400" /></template>
               </span>
               <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200"><span x-show="cand.name" x-text="cand.name"></span><span x-show="! cand.name" x-cloak>{{ __('gallery.person_unnamed') }}</span></span>
@@ -667,7 +667,7 @@
     </div>
 
     {{-- Move a face to another person --}}
-    <div x-show="facePicker.open" x-cloak class="fixed inset-0 z-[966] flex items-center justify-center p-4" @keydown.escape.window="closeFaceReassign()">
+    <div x-show="facePicker.open" x-cloak class="fixed inset-0 z-[966] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeFaceReassign()">
       <div class="absolute inset-0 bg-black/60" @click="closeFaceReassign()"></div>
       <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.reassign_heading') }}</h3>
@@ -677,7 +677,7 @@
           <template x-for="cand in facePickerCandidates" :key="cand.id">
             <button type="button" @click="reassignFace(cand)" class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-800">
               <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                <template x-if="cand.coverFaceId"><img :src="personCover(cand)" class="h-full w-full object-cover"></template>
+                <template x-if="cand.coverFaceId"><img alt="" :src="personCover(cand)" class="h-full w-full object-cover"></template>
                 <template x-if="! cand.coverFaceId"><x-icon name="user" class="h-4 w-4 text-gray-400" /></template>
               </span>
               <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200"><span x-show="cand.name" x-text="cand.name"></span><span x-show="! cand.name" x-cloak>{{ __('gallery.person_unnamed') }}</span></span>

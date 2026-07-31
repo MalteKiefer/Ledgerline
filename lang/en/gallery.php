@@ -202,4 +202,5 @@ return [
     'find_similar' => 'Find similar',
     'delete_person' => 'Delete person',
     'delete_person_confirm' => 'Delete this person? Their faces are detached; the photos stay in your library.',
+    'photo_alt' => 'Photo',
 ];

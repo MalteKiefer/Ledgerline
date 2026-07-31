@@ -113,13 +113,13 @@
                 <div class="flex items-center gap-3 rounded-2xl bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
                     <span x-text="t.message"></span>
                     <template x-if="t.url"><a :href="t.url" class="font-medium underline" x-text="t.linkLabel"></a></template>
-                    <button type="button" @click="dismiss(t.id)" class="text-gray-400 hover:text-white" aria-label="close"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                    <button type="button" @click="dismiss(t.id)" class="text-gray-400 hover:text-white" aria-label="{{ __('common.close') }}"><x-icon name="x-mark" class="h-4 w-4" /></button>
                 </div>
             </template>
         </div>
 
         {{-- Shared square-crop modal (window.llCrop) — used by contacts + gallery --}}
-        <div x-data="cropModal()" x-show="open" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" @keydown.escape.window="cancel()">
+        <div x-data="cropModal()" x-show="open" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancel()">
             <div class="absolute inset-0 bg-gray-900/60" @click="cancel()"></div>
             <div class="relative w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 p-4 shadow-xl">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('contacts.crop_title') }}</h3>
@@ -130,7 +130,7 @@
                     <img :src="url" :style="'position:absolute;left:0;top:0;max-width:none;'+imgStyle()" draggable="false" alt="">
                     <div class="pointer-events-none absolute inset-0 rounded-full ring-1 ring-black/10"></div>
                 </div>
-                <input type="range" min="1" max="8" step="0.01" :value="scale/minScale" @input="setScale(minScale * $event.target.value)" class="mt-3 w-full">
+                <input type="range" min="1" max="8" step="0.01" :value="scale/minScale" @input="setScale(minScale * $event.target.value)" class="mt-3 w-full" aria-label="{{ __('common.zoom') }}">
                 <div class="mt-3 flex justify-end gap-2">
                     <x-button variant="secondary" type="button" @click="cancel()">{{ __('common.cancel') }}</x-button>
                     <x-button type="button" @click="confirm()">{{ __('common.save') }}</x-button>

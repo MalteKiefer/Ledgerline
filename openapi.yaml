@@ -1,7 +1,9 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.520.0
+  version: 1.521.0
+  license:
+    name: Proprietary
   description: >
     Plaintext-relational personal cloud API for the Ledgerline mobile client.
 
@@ -153,25 +155,25 @@ components:
         on invoices). Non-secret. All fields are optional; on PUT, only the fields sent
         are updated. `has_logo` is read-only (response only).
       properties:
-        company_name: { type: string, nullable: true, maxLength: 200 }
-        company_address: { type: string, nullable: true, maxLength: 1000 }
-        company_email: { type: string, format: email, nullable: true, maxLength: 200 }
-        company_phone: { type: string, nullable: true, maxLength: 100 }
-        company_tax_id: { type: string, nullable: true, maxLength: 100 }
-        company_vat_id: { type: string, nullable: true, maxLength: 100 }
-        company_iban: { type: string, nullable: true, maxLength: 60 }
-        company_bic: { type: string, nullable: true, maxLength: 20 }
-        company_bank_name: { type: string, nullable: true, maxLength: 200 }
-        invoice_number_format: { type: string, nullable: true, maxLength: 40, description: "e.g. YYYY-NNNN. Locked client-side once the current year has invoices (GoBD)." }
-        invoice_next_number: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "Numbering floor; the actual next number is derived per year from the invoices." }
-        invoice_default_vat_rate: { type: number, nullable: true, minimum: 0, maximum: 100 }
-        invoice_payment_terms_days: { type: integer, nullable: true, minimum: 0, maximum: 365 }
-        invoice_footer_text: { type: string, nullable: true, maxLength: 2000 }
-        invoice_accent_color: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
-        invoice_heading_color: { type: string, nullable: true, pattern: "^#[0-9a-fA-F]{6}$" }
-        invoice_template: { type: string, nullable: true, enum: [editorial, modern, elegant, klassisch] }
-        invoice_payment_methods: { type: string, nullable: true, maxLength: 500 }
-        invoice_payment_terms_text: { type: string, nullable: true, maxLength: 1000 }
+        company_name: { type: [string, "null"], maxLength: 200 }
+        company_address: { type: [string, "null"], maxLength: 1000 }
+        company_email: { type: [string, "null"], format: email, maxLength: 200 }
+        company_phone: { type: [string, "null"], maxLength: 100 }
+        company_tax_id: { type: [string, "null"], maxLength: 100 }
+        company_vat_id: { type: [string, "null"], maxLength: 100 }
+        company_iban: { type: [string, "null"], maxLength: 60 }
+        company_bic: { type: [string, "null"], maxLength: 20 }
+        company_bank_name: { type: [string, "null"], maxLength: 200 }
+        invoice_number_format: { type: [string, "null"], maxLength: 40, description: "e.g. YYYY-NNNN. Locked client-side once the current year has invoices (GoBD)." }
+        invoice_next_number: { type: [integer, "null"], minimum: 1, maximum: 100000000, description: "Numbering floor; the actual next number is derived per year from the invoices." }
+        invoice_default_vat_rate: { type: [number, "null"], minimum: 0, maximum: 100 }
+        invoice_payment_terms_days: { type: [integer, "null"], minimum: 0, maximum: 365 }
+        invoice_footer_text: { type: [string, "null"], maxLength: 2000 }
+        invoice_accent_color: { type: [string, "null"], pattern: "^#[0-9a-fA-F]{6}$" }
+        invoice_heading_color: { type: [string, "null"], pattern: "^#[0-9a-fA-F]{6}$" }
+        invoice_template: { type: [string, "null"], enum: [editorial, modern, elegant, klassisch] }
+        invoice_payment_methods: { type: [string, "null"], maxLength: 500 }
+        invoice_payment_terms_text: { type: [string, "null"], maxLength: 1000 }
         has_logo: { type: boolean, readOnly: true, description: "Whether a company logo is stored (GET /company/logo)." }
 
     Group:
@@ -183,13 +185,12 @@ components:
       properties:
         id: { type: integer }
         name: { type: string, maxLength: 100 }
-        files_quota_mb: { type: integer, nullable: true, description: "Files quota in MB (null = no group cap)." }
-        gallery_quota_mb: { type: integer, nullable: true, description: "Gallery quota in MB (null = no group cap)." }
-        max_connected_devices: { type: integer, nullable: true, description: "Device cap (null = no group cap)." }
+        files_quota_mb: { type: [integer, "null"], description: "Files quota in MB (null = no group cap)." }
+        gallery_quota_mb: { type: [integer, "null"], description: "Gallery quota in MB (null = no group cap)." }
+        max_connected_devices: { type: [integer, "null"], description: "Device cap (null = no group cap)." }
         shareable: { type: boolean, description: "Members may offer this group as a share target." }
         modules:
-          type: array
-          nullable: true
+          type: [array, "null"]
           description: >
             Allow-list of enabled module keys for members of this group (null = all
             modules). A member's effective modules are the union across their groups
@@ -313,7 +314,7 @@ components:
             Free-form client-computed aggregates (distanceM, durationS,
             durationMovingS, ascentM, descentM, surfaces, …).
         note: { type: [string, "null"] }
-        blob_path: { type: [string, "null"], description: Disk path of the attached raw track file, if any. }
+        blob_path: { type: [string, "null"], description: "Disk path of the attached raw track file, if any." }
         imported_at: { type: [string, "null"], format: date-time }
         version: { type: integer, description: Optimistic-concurrency counter. }
         created_at: { type: string, format: date-time }
@@ -340,16 +341,6 @@ components:
         id: { type: integer }
         coupling_time_tolerance_s: { type: integer, example: 3600 }
         coupling_distance_tolerance_m: { type: integer, example: 100 }
-
-    IdResponse:
-      type: object
-      description: Response containing the newly created resource id.
-      required: [id]
-      properties:
-        id:
-          type: string
-          description: UUID of the new resource.
-          example: 018f4b2e-1234-7abc-9def-000000000001
 
     OkResponse:
       type: object
@@ -447,100 +438,6 @@ components:
             GET /me `usage.quota`, which uses null for unlimited.
           minimum: 0
           example: 10737418240
-
-    ChunkInitRequest:
-      type: object
-      description: Begin a chunked (S3 multipart) upload.
-      required: [size]
-      properties:
-        size:
-          type: integer
-          minimum: 1
-          maximum: 83886080000
-          description: Total ciphertext size in bytes; checked against the quota before the upload starts.
-
-    ChunkInitResponse:
-      type: object
-      required: [token, id, partSize]
-      properties:
-        token:
-          type: string
-          description: Opaque upload-session token; pass it to every part/complete/abort call.
-        id:
-          type: string
-          format: uuid
-          description: The blob id the completed upload will be stored under.
-        partSize:
-          type: integer
-          description: Byte size each part (except the last) MUST be. Split the file on this boundary.
-          example: 8388608
-
-    ChunkPartResponse:
-      type: object
-      required: [part, etag]
-      properties:
-        part:
-          type: integer
-          description: Echoed 1-based part number.
-        etag:
-          type: string
-          description: S3 ETag for this part; collect all of them and pass them back in the complete call.
-
-    ChunkCompleteRequest:
-      type: object
-      description: Finalise a chunked upload from the collected per-part ETags.
-      required: [token, parts]
-      properties:
-        token:
-          type: string
-        parts:
-          type: array
-          minItems: 1
-          maxItems: 10000
-          items:
-            type: object
-            required: [part, etag]
-            properties:
-              part:
-                type: integer
-                minimum: 1
-              etag:
-                type: string
-
-    ClipEmbedding:
-      type: array
-      nullable: true
-      description: >
-        Raw CLIP embedding as a JSON array of floats (NOT base64). Null when ML was
-        skipped or unavailable. The client re-encrypts it before storing.
-      items:
-        type: number
-
-    VersionResponse:
-      type: object
-      description: New version counter returned after a successful store write.
-      required: [version]
-      properties:
-        version:
-          type: integer
-          description: Updated version counter.
-          example: 43
-
-    ConflictResponse:
-      type: object
-      description: >
-        409 Conflict — another client wrote the store concurrently. Contains
-        the current server state so the caller can re-read and re-apply its changes.
-      required: [version]
-      properties:
-        version:
-          type: integer
-          description: Current server-side version.
-          example: 43
-        ciphertext:
-          type: string
-          nullable: true
-          description: Current sealed ciphertext (module store conflict).
 
     NoteRecord:
       type: object
@@ -951,20 +848,6 @@ components:
         folder_name: { type: [string, "null"] }
         members: { type: array, items: { $ref: "#/components/schemas/FolderShareMember" } }
 
-    # ── Request/response schemas for the batch 1–5 API surface ──
-    VaultWrite:
-      type: object
-      description: "Vault provisioning/rotation body — only wrapped key material + KDF params (never the plaintext vault key)."
-      required: [salt, kdf_ops, kdf_mem, wrapped_vault_key, wrap_nonce]
-      properties:
-        salt: { type: string, maxLength: 255, description: "Argon2id salt (base64)." }
-        kdf_ops: { type: integer, minimum: 3, description: "Argon2id ops (client uses 4 = SENSITIVE)." }
-        kdf_mem: { type: integer, minimum: 67108864, description: "Argon2id memory bytes (client uses 268435456)." }
-        wrapped_vault_key: { type: string, maxLength: 1024, description: "VK wrapped under the passphrase-KEK (base64). Opaque." }
-        wrap_nonce: { type: string, maxLength: 255 }
-        wrapped_vault_key_recovery: { type: string, maxLength: 1024, nullable: true, description: "Recovery wrap of the same VK (required on provision)." }
-        recovery_nonce: { type: string, maxLength: 255, nullable: true }
-
     UserSettings:
       type: object
       description: "Per-user non-display settings (file version cap)."
@@ -980,15 +863,15 @@ components:
         name: { type: string }
         email: { type: string, format: email }
         role: { type: string, enum: [admin, user] }
-        files_quota_mb: { type: integer, nullable: true }
-        gallery_quota_mb: { type: integer, nullable: true }
-        max_connected_devices: { type: integer, nullable: true }
-        modules: { type: array, nullable: true, items: { type: string } }
+        files_quota_mb: { type: [integer, "null"] }
+        gallery_quota_mb: { type: [integer, "null"] }
+        max_connected_devices: { type: [integer, "null"] }
+        modules: { type: [array, "null"], items: { type: string } }
         groups: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
         verified: { type: boolean }
         two_factor: { type: boolean }
-        last_login_at: { type: string, format: date-time, nullable: true }
-        usage: { type: object, required: [used], properties: { used: { type: integer }, quota: { type: integer, nullable: true } } }
+        last_login_at: { type: [string, "null"], format: date-time }
+        usage: { type: object, required: [used], properties: { used: { type: integer }, quota: { type: [integer, "null"] } } }
 
     AdminUserWrite:
       type: object
@@ -998,12 +881,12 @@ components:
         email: { type: string, format: email, maxLength: 255 }
         role: { type: string, enum: [admin, user] }
         password: { type: string, minLength: 12, description: "Create only (prohibited on update); omit to trigger a reset mail." }
-        files_quota_mb: { type: integer, minimum: 0, maximum: 100000000, nullable: true }
-        gallery_quota_mb: { type: integer, minimum: 0, maximum: 100000000, nullable: true }
-        max_connected_devices: { type: integer, minimum: 1, maximum: 50, nullable: true }
-        modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, finance, health, explore] } }
+        files_quota_mb: { type: [integer, "null"], minimum: 0, maximum: 100000000 }
+        gallery_quota_mb: { type: [integer, "null"], minimum: 0, maximum: 100000000 }
+        max_connected_devices: { type: [integer, "null"], minimum: 1, maximum: 50 }
+        modules: { type: [array, "null"], items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, finance, health, explore] } }
         modules_marker: { type: string, enum: ['set'], description: "Send with an (empty) modules[] to set an explicit list rather than 'no change'." }
-        groups: { type: array, nullable: true, items: { type: integer } }
+        groups: { type: [array, "null"], items: { type: integer } }
 
     PaperlessTerm:
       type: object
@@ -1011,19 +894,19 @@ components:
       properties:
         id: { type: integer, description: "Paperless numeric id." }
         name: { type: string }
-        color: { type: string, nullable: true }
+        color: { type: [string, "null"] }
 
     SecurityLogEntry:
       type: object
       description: "One append-only audit entry. Metadata only — never tokens/keys/ciphertext."
       properties:
-        at: { type: string, format: date-time, nullable: true }
-        user_id: { type: integer, nullable: true }
-        actor: { type: string, nullable: true, description: "Display name at query time." }
+        at: { type: [string, "null"], format: date-time }
+        user_id: { type: [integer, "null"] }
+        actor: { type: [string, "null"], description: "Display name at query time." }
         action: { type: string, example: device.evicted, description: "Dot-namespaced event id." }
-        ip: { type: string, nullable: true }
-        user_agent: { type: string, nullable: true }
-        meta: { type: object, nullable: true, additionalProperties: true }
+        ip: { type: [string, "null"] }
+        user_agent: { type: [string, "null"] }
+        meta: { type: [object, "null"], additionalProperties: true }
 
     BackupDestinationSummary:
       type: object
@@ -1067,8 +950,8 @@ components:
         encrypt: { type: boolean }
         notify_channels: { type: array, items: { type: string } }
         enabled: { type: boolean }
-        last_run_at: { type: string, format: date-time, nullable: true }
-        last_status: { type: string, nullable: true }
+        last_run_at: { type: [string, "null"], format: date-time }
+        last_status: { type: [string, "null"] }
         statistics: { type: object, additionalProperties: true }
 
     BackupJobWrite:
@@ -1093,17 +976,17 @@ components:
         id: { type: integer }
         job: { type: string }
         status: { type: string }
-        startedIso: { type: string, format: date-time, nullable: true }
-        finishedIso: { type: string, format: date-time, nullable: true }
-        durationSeconds: { type: number, nullable: true }
-        size: { type: string, nullable: true }
-        filename: { type: string, nullable: true }
+        startedIso: { type: [string, "null"], format: date-time }
+        finishedIso: { type: [string, "null"], format: date-time }
+        durationSeconds: { type: [number, "null"] }
+        size: { type: [string, "null"] }
+        filename: { type: [string, "null"] }
         downloadable: { type: boolean }
         encrypted: { type: boolean }
         cancellable: { type: boolean }
         verifiable: { type: boolean }
         cancelRequested: { type: boolean }
-        error: { type: string, nullable: true }
+        error: { type: [string, "null"] }
 
 paths:
 
@@ -1134,6 +1017,8 @@ paths:
             text/html:
               schema:
                 type: string
+        "429":
+          description: Too Many Requests — a fronting reverse proxy may throttle excessive polling.
         "500":
           description: Application is unhealthy (a health check threw).
 
@@ -1300,8 +1185,7 @@ paths:
                         type: integer
                         description: Total gallery blob bytes used by this account.
                       quota:
-                        type: integer
-                        nullable: true
+                        type: [integer, "null"]
                         description: >
                           Combined storage limit in bytes (effective files quota +
                           gallery quota). Null = unlimited — returned whenever either
@@ -1360,9 +1244,8 @@ paths:
                   enum: [idle, syncing]
                   description: Current sync state of the client.
                 detail:
-                  type: string
+                  type: [string, "null"]
                   maxLength: 160
-                  nullable: true
                   description: Optional human-readable detail string shown in the devices list.
       responses:
         "200":
@@ -2154,8 +2037,7 @@ paths:
                 type: object
                 properties:
                   place:
-                    type: string
-                    nullable: true
+                    type: [string, "null"]
                   address:
                     type: object
                     description: >
@@ -2457,8 +2339,7 @@ paths:
                 type: object
                 properties:
                   geometry:
-                    type: array
-                    nullable: true
+                    type: [array, "null"]
                     description: Ordered [lat, lng] pairs of the snapped route; null on fallback.
                     items:
                       type: array
@@ -2467,16 +2348,13 @@ paths:
                       minItems: 2
                       maxItems: 2
                   distanceM:
-                    type: number
-                    nullable: true
+                    type: [number, "null"]
                     description: Total route distance in metres; null on fallback.
                   durationS:
-                    type: number
-                    nullable: true
+                    type: [number, "null"]
                     description: Estimated route duration in seconds; null on fallback.
                   elevation:
-                    type: array
-                    nullable: true
+                    type: [array, "null"]
                     description: >
                       Elevation profile: cumulative distance (metres) vs elevation
                       (metres above sea level), downsampled to ~256 points. Populated
@@ -2491,18 +2369,15 @@ paths:
                           type: number
                           description: Elevation in metres above sea level.
                   ascentM:
-                    type: number
-                    nullable: true
+                    type: [number, "null"]
                     description: >
                       Total climb in metres (GraphHopper only); null for OSRM/fallback.
                   descentM:
-                    type: number
-                    nullable: true
+                    type: [number, "null"]
                     description: >
                       Total descent in metres (GraphHopper only); null for OSRM/fallback.
                   surfaces:
-                    type: array
-                    nullable: true
+                    type: [array, "null"]
                     description: >
                       OSM surface breakdown — distance per surface value, sorted
                       descending by distance (GraphHopper only); null for OSRM/fallback.
@@ -2555,12 +2430,10 @@ paths:
                 type: object
                 properties:
                   lat:
-                    type: number
-                    nullable: true
+                    type: [number, "null"]
                     description: Latitude, or null when unresolved.
                   lng:
-                    type: number
-                    nullable: true
+                    type: [number, "null"]
                     description: Longitude, or null when unresolved.
         "422":
           description: Missing or invalid url.
@@ -2597,8 +2470,7 @@ paths:
                 type: object
                 properties:
                   icon:
-                    type: string
-                    nullable: true
+                    type: [string, "null"]
                     description: Data URI (e.g. "data:image/png;base64,...") or null if none found.
         "429":
           description: Rate limit exceeded.
@@ -2648,12 +2520,10 @@ paths:
                             Formatted string combining IP address and last-used time
                             (e.g. "192.168.1.1 · last used 3 hours ago").
                         version:
-                          type: string
-                          nullable: true
+                          type: [string, "null"]
                           description: Non-secret app/OS build (e.g. "iOS 18.2 · 1.5.0"), when reported.
                         installId:
-                          type: string
-                          nullable: true
+                          type: [string, "null"]
                           description: >
                             Last 6 chars of the device's non-secret install id — helps the
                             owner distinguish devices. Re-pairing the same install id
@@ -2665,12 +2535,10 @@ paths:
                             True when the device reported syncing state within the last
                             3 minutes.
                         syncDetail:
-                          type: string
-                          nullable: true
+                          type: [string, "null"]
                           description: Short detail string from the last heartbeat (syncing only).
                         syncSeen:
-                          type: string
-                          nullable: true
+                          type: [string, "null"]
                           description: Human-readable time since the last heartbeat was received.
                         wipeRequested:
                           type: boolean
@@ -2791,14 +2659,12 @@ paths:
                         title:
                           type: string
                         body:
-                          type: string
-                          nullable: true
+                          type: [string, "null"]
                         read:
                           type: boolean
                         at:
-                          type: string
+                          type: [string, "null"]
                           format: date-time
-                          nullable: true
         "304":
           description: Not Modified — ETag matched, no payload.
         "401":
@@ -3163,11 +3029,11 @@ paths:
               required: [name]
               properties:
                 name: { type: string, maxLength: 100 }
-                files_quota_mb: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
-                gallery_quota_mb: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
-                max_connected_devices: { type: integer, nullable: true, minimum: 1, maximum: 50 }
+                files_quota_mb: { type: [integer, "null"], minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
+                gallery_quota_mb: { type: [integer, "null"], minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
+                max_connected_devices: { type: [integer, "null"], minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
-                modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, finance, health, explore] }, description: "Enabled module keys (null = all)." }
+                modules: { type: [array, "null"], items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, finance, health, explore] }, description: "Enabled module keys (null = all)." }
                 members:
                   type: array
                   items: { type: integer }
@@ -3206,11 +3072,11 @@ paths:
               required: [name]
               properties:
                 name: { type: string, maxLength: 100 }
-                files_quota_mb: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
-                gallery_quota_mb: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
-                max_connected_devices: { type: integer, nullable: true, minimum: 1, maximum: 50 }
+                files_quota_mb: { type: [integer, "null"], minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
+                gallery_quota_mb: { type: [integer, "null"], minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
+                max_connected_devices: { type: [integer, "null"], minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
-                modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, finance, health, explore] }, description: "Enabled module keys (null = all)." }
+                modules: { type: [array, "null"], items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, finance, health, explore] }, description: "Enabled module keys (null = all)." }
                 members:
                   type: array
                   items: { type: integer }
@@ -4986,6 +4852,7 @@ paths:
                 type: object
                 properties:
                   company: { $ref: "#/components/schemas/CompanyProfile" }
+        "401": { description: Unauthenticated. }
     put:
       tags: [Company]
       operationId: companyUpdate
@@ -5072,7 +4939,7 @@ paths:
       summary: Generate a pairing code + QR (owner)
       description: "The owner (already paired) starts pairing a NEW device: returns a pairing id + QR data-URI carrying a short-lived one-time code (never a token). Throttle 20/min."
       responses:
-        "200": { description: "Pairing started.", content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: string }, qr: { type: string, description: "SVG data-URI." }, expires_at: { type: string, format: date-time, nullable: true } } } } } }
+        "200": { description: "Pairing started.", content: { application/json: { schema: { type: [object, "null"], required: [id], properties: { id: { type: string }, qr: { type: string, description: "SVG data-URI." }, expires_at: { type: string, format: date-time } } } } } }
         "401": { description: Unauthenticated. }
         "429": { description: Rate limit exceeded. }
   /device-pairings/cli:
@@ -5082,7 +4949,7 @@ paths:
       summary: Generate a CLI pairing code (owner)
       description: "Like /device-pairings but returns a copyable text code (60s TTL) for a CLI client. Throttle 20/min."
       responses:
-        "200": { description: "Pairing started.", content: { application/json: { schema: { type: object, required: [id, code], properties: { id: { type: string }, code: { type: string }, expires_at: { type: string, format: date-time, nullable: true } } } } } }
+        "200": { description: "Pairing started.", content: { application/json: { schema: { type: [object, "null"], required: [id, code], properties: { id: { type: string }, code: { type: string }, expires_at: { type: string, format: date-time } } } } } }
         "401": { description: Unauthenticated. }
   /device-pairings/{devicePairing}:
     get:
@@ -5092,7 +4959,7 @@ paths:
       description: "Owner-scoped (foreign pairing → 404). Returns the current status + the claiming device name."
       parameters: [{ name: devicePairing, in: path, required: true, schema: { type: string } }]
       responses:
-        "200": { description: "State.", content: { application/json: { schema: { type: object, properties: { status: { type: string, enum: [pending, pending_approval, approved, rejected, consumed, expired] }, device_name: { type: string, nullable: true } } } } } }
+        "200": { description: "State.", content: { application/json: { schema: { type: [object, "null"], properties: { status: { type: string, enum: [pending, pending_approval, approved, rejected, consumed, expired] }, device_name: { type: string } } } } } }
         "401": { description: Unauthenticated. }
         "404": { description: Not found / not owned by caller. }
   /device-pairings/{devicePairing}/approve:
@@ -5296,7 +5163,7 @@ paths:
       description: "Single-use, time-limited link; the plaintext token appears only in `url` (never stored/logged — only its SHA-256). Optionally emails it. Throttle 20/min."
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ttl_hours], properties: { ttl_hours: { type: integer, enum: [1, 24, 168, 720] }, send: { type: boolean, default: false } } } } } }
       responses:
-        "200": { description: "Link.", content: { application/json: { schema: { type: object, required: [url, sent], properties: { url: { type: string, format: uri }, expires_at: { type: string, format: date-time, nullable: true }, sent: { type: boolean } } } } } }
+        "200": { description: "Link.", content: { application/json: { schema: { type: [object, "null"], required: [url, sent], properties: { url: { type: string, format: uri }, expires_at: { type: string, format: date-time }, sent: { type: boolean } } } } } }
         "403": { description: Not an admin. }
         "422": { description: Validation error. }
         "429": { description: Rate limit exceeded. }
@@ -5433,7 +5300,7 @@ paths:
       description: "Throttle 20/min."
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BackupDestinationWrite" } } } }
       responses:
-        "200": { description: "Result.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, detail: { type: string, nullable: true } } } } } }
+        "200": { description: "Result.", content: { application/json: { schema: { type: [object, "null"], properties: { ok: { type: boolean }, detail: { type: string } } } } } }
         "403": { description: Not an admin. }
   /backup/jobs:
     get:

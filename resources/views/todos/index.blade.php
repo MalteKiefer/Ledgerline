@@ -44,7 +44,7 @@
                         <li class="flex items-start gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-3 shadow-sm">
                             <input type="checkbox" :checked="t.done" @change="toggleDone(t)" class="mt-1 rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
                             <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="priorityClass(t.priority)" :title="t.priority"></span>
-                            <div class="min-w-0 flex-1 cursor-pointer" @click="editTask(t)">
+                            <div class="min-w-0 flex-1 cursor-pointer" role="button" tabindex="0" @click="editTask(t)" @keydown.enter="editTask(t)" @keydown.space.prevent="editTask(t)">
                                 <p class="truncate text-sm font-medium" :class="t.done ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-900 dark:text-gray-100'" x-text="t.title"></p>
                                 <p x-show="t.description" class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="t.description"></p>
                                 <div class="mt-1 flex flex-wrap items-center gap-1.5">
