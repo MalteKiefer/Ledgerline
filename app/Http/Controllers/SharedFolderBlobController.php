@@ -101,6 +101,16 @@ class SharedFolderBlobController extends BlobStoreController
     }
 
     /**
+     * Reconcile (blob prune) on a shared folder is MANAGE-only: a mere editor must
+     * not be able to prune the owner's — and other members' — blobs from a stale or
+     * partial live-set. Uploading/deleting individual blobs stays editor-level.
+     */
+    protected function authorizeReconcile(Request $request): void
+    {
+        $this->vault($request, 'manage');
+    }
+
+    /**
      * Reconcile lock key: the vault owner id, so all editors of the same folder
      * share a lock and concurrent reconciles are serialized correctly. Two different
      * editors would otherwise get different lock keys and race against each other.

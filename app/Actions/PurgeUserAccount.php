@@ -19,17 +19,26 @@ class PurgeUserAccount
 {
     public function handle(User $user): void
     {
-        DB::transaction(function () use ($user): void {
-            $contributors = config('user_data.contributors', []);
-            foreach (is_array($contributors) ? $contributors : [] as $class) {
-                if (! is_string($class)) {
-                    continue;
-                }
-                /** @var UserDataContributor $contributor */
-                $contributor = app($class);
-                $contributor->purge($user);
+        // Contributors delete IRREVERSIBLE disk bytes alongside their ledger rows.
+        // They must NOT run inside a database transaction: a rollback (deadlock /
+        // lock-timeout / a later cascade error) would restore the ledger rows while
+        // the object-store bytes are already gone — permanent 404s, including for an
+        // innocent shared-folder recipient. Run each contributor OUTSIDE a transaction
+        // instead. Purge is idempotent (re-deleting an already-deleted row/byte is a
+        // no-op), so an interrupted purge is safely re-runnable and never leaves a
+        // "row present, bytes destroyed" inconsistency across a rollback.
+        $contributors = config('user_data.contributors', []);
+        foreach (is_array($contributors) ? $contributors : [] as $class) {
+            if (! is_string($class)) {
+                continue;
             }
+            /** @var UserDataContributor $contributor */
+            $contributor = app($class);
+            $contributor->purge($user);
+        }
 
+        // The remaining teardown is pure DB (no disk), so it can be atomic.
+        DB::transaction(function () use ($user): void {
             // Shared per-user infrastructure not owned by any single module.
             DB::table('sessions')->where('user_id', $user->id)->delete();
             // The zero-knowledge vault (wrapped keys) — delete explicitly rather

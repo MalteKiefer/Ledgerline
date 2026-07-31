@@ -105,4 +105,34 @@ class VaultTest extends TestCase
         $this->actingAs($b)->postJson(route('vault.store'), $this->payload())->assertCreated();
         $this->assertSame(2, Vault::query()->count());
     }
+
+    public function test_rotate_without_recovery_fields_preserves_the_existing_recovery_wrap(): void
+    {
+        $u = User::factory()->create();
+        $this->actingAs($u)->postJson(route('vault.store'), $this->payload())->assertCreated();
+        $this->actingAs($u)->getJson(route('vault.show'))->assertJson(['has_recovery' => true]);
+
+        // A native/API client rotating the passphrase WITHOUT resending the recovery
+        // wrap must NOT destroy the stored one (the only offline recovery path).
+        $this->actingAs($u)->putJson(route('vault.rotate'), $this->payload(false))->assertOk();
+
+        $this->actingAs($u)->getJson(route('vault.show'))
+            ->assertOk()
+            ->assertJson(['has_recovery' => true])
+            ->assertJsonPath('wrapped_vault_key_recovery', 'cmVjb3Zlcnk=');
+    }
+
+    public function test_rotate_with_recovery_fields_replaces_the_wrap(): void
+    {
+        $u = User::factory()->create();
+        $this->actingAs($u)->postJson(route('vault.store'), $this->payload())->assertCreated();
+
+        $this->actingAs($u)->putJson(route('vault.rotate'), array_merge($this->payload(true), [
+            'wrapped_vault_key_recovery' => 'bmV3d3JhcA==',
+            'recovery_nonce' => 'bmV3bm9uY2U=',
+        ]))->assertOk();
+
+        $this->actingAs($u)->getJson(route('vault.show'))
+            ->assertJsonPath('wrapped_vault_key_recovery', 'bmV3d3JhcA==');
+    }
 }

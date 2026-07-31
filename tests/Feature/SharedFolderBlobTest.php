@@ -159,7 +159,7 @@ class SharedFolderBlobTest extends TestCase
         $this->assertArrayHasKey('quota', $response->json());
     }
 
-    public function test_editor_can_reconcile(): void
+    public function test_editor_cannot_reconcile_but_manager_can(): void
     {
         $owner = User::factory()->create();
         $editor = User::factory()->create();
@@ -177,9 +177,24 @@ class SharedFolderBlobTest extends TestCase
             'created_at' => now()->subDays(3),
         ]);
 
-        // Editor submits an empty live set → orphan is reaped.
+        // Reconcile is DESTRUCTIVE (prunes the whole vault ledger), so it is
+        // MANAGE-only — an editor must not be able to wipe the owner's + other
+        // members' blobs from a stale live-set. Denied as 404 (existence hidden).
         $this->actingAs($editor)
+            ->postJson(route('vaults.blobs.reconcile', $vault), ['blobs' => [], 'allow_empty' => 1])
+            ->assertStatus(404);
+        $this->assertNotNull(SharedFolderBlob::find($orphan)); // untouched
+
+        // An empty live-set on a non-empty ledger needs the explicit allow_empty
+        // acknowledgement (floor guard against a degraded-index wipe).
+        $this->actingAs($owner)
             ->postJson(route('vaults.blobs.reconcile', $vault), ['blobs' => []])
+            ->assertStatus(422);
+        $this->assertNotNull(SharedFolderBlob::find($orphan));
+
+        // The manager (owner) with allow_empty reaps the orphan.
+        $this->actingAs($owner)
+            ->postJson(route('vaults.blobs.reconcile', $vault), ['blobs' => [], 'allow_empty' => 1])
             ->assertOk()
             ->assertJsonStructure(['used', 'quota']);
 

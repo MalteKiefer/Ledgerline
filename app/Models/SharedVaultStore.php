@@ -52,10 +52,13 @@ class SharedVaultStore extends Model
 
             $nextVersion = $current + 1;
 
-            static::where('vault_id', $vaultId)->update([
-                'sealed_manifest' => $sealedManifest,
-                'version' => $nextVersion,
-            ]);
+            // If no row exists yet (first write to this vault store), a bare update()
+            // matches zero rows and is a silent no-op that still reports success —
+            // losing the manifest. updateOrCreate persists in both cases.
+            static::updateOrCreate(
+                ['vault_id' => $vaultId],
+                ['sealed_manifest' => $sealedManifest, 'version' => $nextVersion],
+            );
 
             return ['conflict' => false, 'version' => $nextVersion];
         });

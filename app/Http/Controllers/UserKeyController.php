@@ -67,9 +67,12 @@ class UserKeyController extends Controller
         // Write-once guard: if the user already has a different public key stored,
         // reject. This prevents silent key rotation that would break all pending
         // vault invitations (wrapped vault keys are sealed to the original pubkey).
+        // BOTH halves of the hybrid identity are guarded — an unchanged X25519 key
+        // with a rotated ML-KEM key would orphan every hybrid-wrapped vault key just
+        // the same, so a change in EITHER is a conflict.
         if (
-            filled($user->x25519_public_key) &&
-            $user->x25519_public_key !== $publicKey
+            (filled($user->x25519_public_key) && $user->x25519_public_key !== $publicKey) ||
+            (filled($user->mlkem_public_key) && $user->mlkem_public_key !== $mlkemPublicKey)
         ) {
             return response()->json(['error' => 'key_conflict'], 409);
         }

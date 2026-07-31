@@ -57,7 +57,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; self.eigenbeleg = null; self._egTx = null; self.showInvTrash = false; self.showReceiptTrash = false; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); self._migrateCategoryIds(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; self.eigenbeleg = null; self._egTx = null; self.showInvTrash = false; self.showReceiptTrash = false; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -735,10 +735,21 @@ export default (config = {}, labels = {}) => ({
         const n = String(name || '').trim(); if (! n) return;
         const exists = (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase())
             || this.receiptCatSuggestions.some((c) => c.toLowerCase() === n.toLowerCase());
-        if (! exists) { this.financeCategories.push({ name: n }); this._save(); }
+        if (! exists) { this.financeCategories.push({ id: window.LLInvoicesStore.newId(), name: n }); this._save(); }
         this.newCategoryName = '';
     },
     async removeFinanceCategory(c) { const i = this.financeCategories.indexOf(c); if (i >= 0) this.financeCategories.splice(i, 1); this._save(); },
+
+    // Backfill stable ids on legacy id-less finance categories so the 409 rebase can
+    // merge them per-record (id-less arrays collapse to last-writer-wins, silently
+    // dropping a category a second client added). Runs once on load.
+    _migrateCategoryIds() {
+        let changed = false;
+        for (const c of (this.financeCategories || [])) {
+            if (c && ! c.id) { c.id = window.LLInvoicesStore.newId(); changed = true; }
+        }
+        if (changed) this._save();
+    },
     newCategoryName: '',
 
     // ---- Cost projects (nestable): bundle receipts + manual "hand" expenses ----
@@ -2034,6 +2045,11 @@ export default (config = {}, labels = {}) => ({
     // live-set is every invoice's pdf blob PLUS the sharded record/collection refs (§11).
     reconcileBlobs() {
         if (! config.reconcileUrl) return;
+        // Never reconcile from a DEGRADED (missing-shard) load: the record set is
+        // incomplete, so its blob live-set is too — reconciling would prune the PDFs
+        // of the records the missing shard held. The store is frozen while degraded;
+        // reconcile resumes after a clean reload.
+        if (window.LLInvoicesStore.degraded) return;
         const blobs = [];
         for (const inv of (this.invoices || [])) {
             if (inv.pdf?.blob) blobs.push(inv.pdf.blob);
@@ -2041,7 +2057,7 @@ export default (config = {}, labels = {}) => ({
         }
         for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) if (r.blob) blobs.push(r.blob);
         for (const ref of window.LLInvoicesStore.shardRefs()) blobs.push(ref);
-        postForm(config.reconcileUrl, { blobs: [...new Set(blobs)] }).catch(() => {});
+        postForm(config.reconcileUrl, { blobs: [...new Set(blobs)], allow_empty: 1 }).catch(() => {});
     },
 
     // Encrypt + upload a file as a sealed blob (ZK). Returns { blob, key, name, mime }

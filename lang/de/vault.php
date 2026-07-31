@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 return [
     'already_configured' => 'Der Tresor ist bereits eingerichtet.',
+    'remove_active_via_rotate' => 'Ein aktives Mitglied muss über eine Schlüsselrotation entfernt werden, damit sein Zugriff kryptografisch widerrufen wird.',
     'change' => 'Passwort ändern',
     'change_current' => 'Aktuelles Passwort',
     'change_hint' => 'Aktuelles und neues Passwort eingeben. Deine Dateien werden nicht neu verschlüsselt; nur das Passwort zum Entsperren ändert sich.',

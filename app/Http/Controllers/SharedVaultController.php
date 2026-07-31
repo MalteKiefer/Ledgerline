@@ -221,9 +221,16 @@ class SharedVaultController extends Controller
                 return ['conflict' => false, 'invalid_member' => true];
             }
 
-            // R4: A manager cannot remove themselves via rotate.
+            // R4: A manager cannot remove themselves via rotate (checked before the
+            // owner guard so the owner removing themselves still reads as self_remove).
             if ((int) $removeMemberRow->user_id === $authUserId) {
                 return ['conflict' => false, 'self_remove' => true];
+            }
+
+            // The vault OWNER can never be rotated out by ANOTHER manager — without
+            // this a co-manager could evict the owner from their own vault.
+            if ((int) $removeMemberRow->user_id === (int) $vault->owner_id) {
+                return ['conflict' => false, 'owner_protected' => true];
             }
 
             // Verify the removed member does not appear in the supplied members list.
@@ -300,6 +307,10 @@ class SharedVaultController extends Controller
             return response()->json(['error' => 'remove_member_id not a member of this vault'], 422);
         }
 
+        if ($result['owner_protected'] ?? false) {
+            return response()->json(['error' => 'The vault owner cannot be removed'], 403);
+        }
+
         if ($result['self_remove'] ?? false) {
             return response()->json(['error' => 'A manager cannot remove themselves via rotate'], 422);
         }
@@ -330,6 +341,9 @@ class SharedVaultController extends Controller
     public function destroy(Request $request, SharedVault $vault): Response
     {
         $this->authorize('manage', $vault);
+        // Destroying the whole vault is OWNER-only — a co-manager must not be able to
+        // delete the owner's vault (and everyone else's access) out from under them.
+        abort_unless((int) $vault->owner_id === (int) $this->requireUser($request)->id, 403);
 
         $vault->delete();
 

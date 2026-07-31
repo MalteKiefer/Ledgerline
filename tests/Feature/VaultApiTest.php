@@ -541,19 +541,48 @@ class VaultApiTest extends TestCase
     // DELETE /vaults/{vault}/members/{member} — remove member
     // -------------------------------------------------------------------------
 
-    public function test_manager_can_delete_member(): void
+    public function test_manager_can_delete_a_pending_member(): void
     {
         $manager = $this->signIn();
         $vault = $this->makeVault($manager);
         $this->addMember($vault, $manager, 'manager');
 
         $other = User::factory()->create();
-        $membership = $this->addMember($vault, $other, 'viewer');
+        // A PENDING invite (never accepted, never given a usable key) may be torn
+        // down standalone — no crypto revocation is needed.
+        $membership = $this->addMember($vault, $other, 'viewer', 'pending');
 
         $response = $this->deleteJson(route('vaults.members.destroy', [$vault, $membership]));
 
         $response->assertOk();
         $this->assertNull($membership->fresh());
+    }
+
+    public function test_active_member_cannot_be_deleted_without_rotation(): void
+    {
+        $manager = $this->signIn();
+        $vault = $this->makeVault($manager);
+        $this->addMember($vault, $manager, 'manager');
+
+        $other = User::factory()->create();
+        // An ACTIVE member holds a wrapped key to the current vault key; standalone
+        // deletion is not cryptographic revocation, so it must go through rotate.
+        $membership = $this->addMember($vault, $other, 'viewer', 'active');
+
+        $this->deleteJson(route('vaults.members.destroy', [$vault, $membership]))
+            ->assertStatus(422);
+        $this->assertNotNull($membership->fresh());
+    }
+
+    public function test_owner_membership_cannot_be_deleted(): void
+    {
+        $owner = $this->signIn();
+        $vault = $this->makeVault($owner);
+        $ownerMember = $this->addMember($vault, $owner, 'manager');
+
+        // Even the owner-manager cannot delete their own (owner) membership row.
+        $this->deleteJson(route('vaults.members.destroy', [$vault, $ownerMember]))
+            ->assertStatus(403);
     }
 
     public function test_non_manager_cannot_delete_member(): void
