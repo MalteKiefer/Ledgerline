@@ -38,6 +38,7 @@ const normInvoice = (row) => {
     const footer = customer.footer ?? '';
     delete customer.lang; delete customer.footer;
     if (customer.partnerId === undefined) customer.partnerId = null;
+    if (customer.invoiceEmail === undefined) customer.invoiceEmail = '';
     return {
         id: row.id,
         number: row.number ?? null,
@@ -85,6 +86,7 @@ const normPartner = (row) => ({
     note: row.note ?? '',
     address: row.address ?? '',
     email: row.email ?? '',
+    invoiceEmail: row.invoice_email ?? '',
     phone: row.phone ?? '',
     vatId: row.vat_id ?? '',
     contacts: Array.isArray(row.contacts) ? row.contacts : [],
@@ -151,6 +153,8 @@ const normCategory = (row) => ({ id: row.id, name: row.name || '', color: row.co
 export default (config = {}, labels = {}, initial = {}) => ({
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
+    // §19 Kleinunternehmer: no VAT is computed/shown on invoices when true.
+    smallBusiness: !! config.smallBusiness,
 
     // ---- Relational collections (active rows), hydrated from the inlined snapshot ----
     invoices: (initial.invoices || []).map(normInvoice),
@@ -165,6 +169,11 @@ export default (config = {}, labels = {}, initial = {}) => ({
     duplicates: { invoices: [], transactions: [] }, // suspected-duplicate groups from GET /finance/duplicates
     catSuggestions: [],  // [{tx_id, merchant, suggested_category}] from GET /finance/category-suggestions
     aging: null,         // { buckets, openCount, openGross } from GET /finance/reports (open-items widget)
+    // Server-authoritative tax figures (combine invoices + bank transactions).
+    vatAdvance: null,    // { outputVat, inputVat, payable, byRate, ... } from GET /finance/reports/vat-advance
+    vatQuarter: '',      // '' = full year | '1'..'4' selected quarter
+    euer: null,          // { income, expenses, profit } from GET /finance/reports/euer
+    euerYear: new Date().getFullYear(),
 
     query: '',           // invoice-list search
     view: 'list',        // 'list' | 'edit' | 'imported'
@@ -212,7 +221,26 @@ export default (config = {}, labels = {}, initial = {}) => ({
         this._loadDuplicates();
         this._loadCatSuggestions();
         this._loadAging();
+        this._loadVatAdvance();
+        this._loadEuer();
+        // Refetch the unified payable when the quarter selector changes.
+        this.$watch('vatQuarter', () => this._loadVatAdvance());
+        this.$watch('euerYear', () => this._loadEuer());
     },
+
+    // Unified USt-Voranmeldung: output − input VAT = Zahllast (server combines both sides).
+    async _loadVatAdvance() {
+        try {
+            const q = this.vatQuarter ? '&quarter=' + this.vatQuarter : '';
+            this.vatAdvance = await getJson('/finance/reports/vat-advance?year=' + new Date().getFullYear() + q);
+        } catch (e) { /* leave null */ }
+    },
+    // Simplified EÜR (income − expenses = profit) for the selected year.
+    async _loadEuer() {
+        try { this.euer = await getJson('/finance/reports/euer?year=' + (this.euerYear || new Date().getFullYear())); }
+        catch (e) { /* leave null */ }
+    },
+    get euerExpensePeak() { return Math.max(1, ...((this.euer?.expenses?.byCategory) || []).map((c) => Math.abs(c.amount))); },
 
     // Open-invoice aging buckets (current / 1-30 / 31-60 / 60+). Read-only display.
     async _loadAging() {
@@ -377,7 +405,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
         return {
             name: p.name || '', category: p.category || null, kind: p.kind || null,
             url: p.url || null, logo: p.logo || null, note: p.note || null,
-            address: p.address || null, email: p.email || null, phone: p.phone || null,
+            address: p.address || null, email: p.email || null, invoice_email: p.invoiceEmail || null, phone: p.phone || null,
             vat_id: p.vatId || null, contacts: Array.isArray(p.contacts) ? p.contacts : [],
         };
     },
@@ -924,7 +952,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
 
     // ---- Business partners (Geschäftspartner) ----
     partnerEditing: null,
-    newPartner() { this.partnerEditing = { name: '', url: '', address: '', email: '', phone: '', vatId: '', category: '', note: '', contacts: [] }; },
+    newPartner() { this.partnerEditing = { name: '', url: '', address: '', email: '', invoiceEmail: '', phone: '', vatId: '', category: '', note: '', contacts: [] }; },
     _newContact() { return { id: this._newId(), name: '', email: '', phone: '', role: '' }; },
     addPartnerContact(p) { if (! p) return; (p.contacts ||= []).push(this._newContact()); },
     removePartnerContact(p, i) { if (p && Array.isArray(p.contacts)) p.contacts.splice(i, 1); },
@@ -943,10 +971,23 @@ export default (config = {}, labels = {}, initial = {}) => ({
             this.partners.push(row); saved = row;
         }
         this.partnerEditing = null;
-        if (saved && saved.url) this._fetchPartnerLogo(saved);
+        if (saved && (saved.url || saved.email || saved.invoiceEmail)) this._fetchPartnerLogo(saved);
+    },
+    // Logo host: prefer the website, else the domain of the invoice/general email.
+    _partnerHost(p) {
+        if (! p) return '';
+        const fromUrl = this._bankHost(p.url);
+        if (fromUrl) return fromUrl;
+        for (const addr of [p.invoiceEmail, p.email]) {
+            const at = String(addr || '').indexOf('@');
+            if (at < 0) continue;
+            const dom = String(addr).slice(at + 1).trim().toLowerCase();
+            if (dom && dom.includes('.') && ! /\s/.test(dom)) return dom;
+        }
+        return '';
     },
     async _fetchPartnerLogo(p) {
-        const host = this._bankHost(p.url);
+        const host = this._partnerHost(p);
         if (! host || ! config.iconUrl) return;
         try {
             const res = await fetch(`${config.iconUrl}?domain=${encodeURIComponent(host)}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
@@ -989,7 +1030,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
         const p = this.openPartnerRec; if (! p || ! String(p.name || '').trim()) return;
         this.partnerEditMode = false;
         await this._persistPartner(p);
-        if (p.url) this._fetchPartnerLogo(p);
+        if (p.url || p.email || p.invoiceEmail) this._fetchPartnerLogo(p);
     },
     invoicesForPartner(id) { return (this.invoices || []).filter((i) => ! i.trashed && i.customer && i.customer.partnerId === id).sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || '')); },
     receiptsForPartner(id) { return this.allReceipts.filter((d) => d.r && d.r.partnerId === id); },
@@ -1011,16 +1052,29 @@ export default (config = {}, labels = {}, initial = {}) => ({
     // ---- Custom category CRUD (name + colour + monochrome icon) ----
     // Icon names — each exists in components/icon.blade.php (kept in sync with the
     // controller's CATEGORY_ICONS + _category_icon.blade.php).
+    // Kept in sync with FinanceController::CATEGORY_ICONS + _category_icon.blade.php.
     get catIconOptions() {
-        return ['hashtag', 'tag', 'banknotes', 'credit-card', 'wallet', 'building-library',
-            'receipt-percent', 'chart-bar', 'arrow-trending-up', 'arrow-trending-down',
-            'globe', 'globe-alt', 'home', 'camera', 'photo', 'film', 'bell', 'bookmark',
-            'star', 'heart', 'calendar', 'clock', 'document', 'document-text',
-            'document-duplicate', 'folder', 'inbox-stack', 'archive-box', 'server', 'key',
-            'lock-closed', 'shield', 'shield-check', 'wifi', 'command-line', 'beaker',
-            'thermometer', 'scale', 'cake', 'sparkles', 'map-pin', 'map', 'route',
-            'paperclip', 'paper-clip', 'envelope', 'printer', 'users', 'user-group',
-            'sun', 'moon'];
+        return [
+            'hashtag', 'tag', 'banknotes', 'credit-card', 'wallet', 'currency-euro', 'currency-dollar', 'currency-pound',
+            'currency-yen', 'currency-rupee', 'receipt-percent', 'receipt-refund', 'calculator', 'building-library', 'building-office', 'building-office-2',
+            'building-storefront', 'briefcase', 'chart-bar', 'chart-bar-square', 'chart-pie', 'presentation-chart-line', 'presentation-chart-bar', 'arrow-trending-up',
+            'arrow-trending-down', 'table-cells', 'list-bullet', 'queue-list', 'document', 'document-text', 'document-check', 'document-duplicate',
+            'document-magnifying-glass', 'document-currency-euro', 'document-currency-dollar', 'document-plus', 'document-minus', 'clipboard-document', 'clipboard-document-check', 'clipboard-document-list',
+            'newspaper', 'book-open', 'folder', 'folder-open', 'archive-box', 'archive-box-arrow-down', 'inbox', 'inbox-stack',
+            'rectangle-stack', 'square-3-stack-3d', 'rectangle-group', 'server', 'server-stack', 'cpu-chip', 'shopping-cart', 'shopping-bag',
+            'gift', 'gift-top', 'truck', 'cube', 'cube-transparent', 'wrench', 'wrench-screwdriver', 'cog-6-tooth',
+            'cog-8-tooth', 'bolt', 'fire', 'light-bulb', 'command-line', 'beaker', 'scale', 'swatch',
+            'paint-brush', 'pencil-square', 'scissors', 'envelope', 'at-symbol', 'phone', 'phone-arrow-up-right', 'chat-bubble-left',
+            'chat-bubble-left-right', 'chat-bubble-oval-left', 'megaphone', 'video-camera', 'microphone', 'musical-note', 'speaker-wave', 'signal',
+            'rss', 'cloud', 'cloud-arrow-up', 'cloud-arrow-down', 'globe', 'globe-alt', 'globe-europe-africa', 'globe-americas',
+            'globe-asia-australia', 'map', 'map-pin', 'route', 'home', 'home-modern', 'camera', 'photo',
+            'film', 'printer', 'device-tablet', 'users', 'user-group', 'academic-cap', 'hand-thumb-up', 'hand-thumb-down',
+            'hand-raised', 'trophy', 'flag', 'ticket', 'bell', 'bell-alert', 'bookmark', 'star',
+            'heart', 'sparkles', 'calendar', 'calendar-days', 'calendar-date-range', 'clock', 'sun', 'moon',
+            'plus-circle', 'minus-circle', 'check-badge', 'exclamation-circle', 'question-mark-circle', 'adjustments-horizontal', 'adjustments-vertical', 'funnel',
+            'bars-arrow-down', 'bars-arrow-up', 'eye-slash', 'key', 'lock-closed', 'shield', 'shield-check', 'wifi',
+            'paper-clip', 'backspace', 'battery-100', 'thermometer', 'cake',
+        ];
     },
     get catColorOptions() {
         return ['#7066f5', '#3b9fd6', '#59ad6b', '#e2915a', '#d9a441', '#3fae9f',
@@ -1691,7 +1745,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
         return new Uint8Array(await blob.arrayBuffer());
     },
     _addDays(iso, days) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + (days || 0)); return d.toISOString().slice(0, 10); },
-    _defaultVat() { const v = parseFloat(this.company.default_vat_rate); return Number.isFinite(v) ? v : 19; },
+    _defaultVat() { if (this.smallBusiness) return 0; const v = parseFloat(this.company.default_vat_rate); return Number.isFinite(v) ? v : 19; },
 
     // ---- CRUD ----
     async newInvoice() {
@@ -1703,7 +1757,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
             dueDate: this._addDays(issue, parseInt(this.company.payment_terms_days, 10) || 14),
             currency: this.company.currency || 'EUR',
             lang: (document.documentElement.lang || 'de').slice(0, 2) === 'en' ? 'en' : 'de',
-            customer: { name: '', attn: '', address: '', email: '', vatId: '', contactId: null, partnerId: null },
+            customer: { name: '', attn: '', address: '', email: '', invoiceEmail: '', vatId: '', contactId: null, partnerId: null },
             lines: [{ desc: '', qty: 1, unit: '', unitPrice: 0, vatRate: this._defaultVat() }],
             note: '',
             footer: this.company.footer_text || '',
@@ -2050,10 +2104,12 @@ export default (config = {}, labels = {}, initial = {}) => ({
                 const net = this._round2(gross - vat);
                 const name = String(draft.recipient?.name || '').trim();
                 let partnerId = null;
+                let partnerInvoiceEmail = '';
                 const attn = String(draft.contactPerson || '').trim();
                 if (name) {
                     const partner = await this._findOrCreatePartner(name);
                     partnerId = partner ? partner.id : null;
+                    partnerInvoiceEmail = (partner && partner.invoiceEmail) || '';
                     if (partner && partner.id) {
                         let dirty = false;
                         if (! partner.address && draft.recipient?.address) { partner.address = draft.recipient.address; dirty = true; }
@@ -2067,7 +2123,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
                     issueDate: draft.issueDate || this._today(),
                     dueDate: draft.dueDate || draft.issueDate || this._today(),
                     currency: draft.currency || 'EUR', lang: 'de',
-                    customer: { name, attn, address: draft.recipient?.address || '', email: '', vatId: draft.recipient?.vatId || '', contactId: null, partnerId },
+                    customer: { name, attn, address: draft.recipient?.address || '', email: '', invoiceEmail: partnerInvoiceEmail, vatId: draft.recipient?.vatId || '', contactId: null, partnerId },
                     lines: [{ desc: name || (labels.importSummaryLabel || 'Rechnung'), qty: 1, unit: '', unitPrice: net, vatRate: rate }],
                     gross, vatRate: rate,
                     note: '', footer: '', imported: true, versions: [],
@@ -2174,7 +2230,8 @@ export default (config = {}, labels = {}, initial = {}) => ({
     },
     currencyOptions: ['EUR', 'USD', 'CHF'],
     get tpl() { const t = this.company.template || 'editorial'; return t === 'schlicht' ? 'elegant' : t; },
-    vatRatesOf(inv) { return Object.keys(this.computeTotals(inv).vatByRate).map(Number).sort((a, b) => a - b); },
+    // §19 KU invoices carry no VAT rows anywhere (editor totals + all print templates).
+    vatRatesOf(inv) { if (this.smallBusiness) return []; return Object.keys(this.computeTotals(inv).vatByRate).map(Number).sort((a, b) => a - b); },
     fmtQty(n, lang) {
         const loc = (lang || this.current?.lang || 'de') === 'en' ? 'en' : 'de';
         try { return new Intl.NumberFormat(loc, { maximumFractionDigits: 2 }).format(parseFloat(n) || 0); }
@@ -2213,6 +2270,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
             attn: org ? person : '',
             address: this._custAddress(c),
             email: (c.emails || [])[0]?.value || '',
+            invoiceEmail: '',
             vatId: c.vatId || '',
             contactId: c.id,
             partnerId: null,
@@ -2220,7 +2278,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
         this.customerPicker = false;
         this.saveSoon();
     },
-    clearCustomer() { this.current.customer = { name: '', attn: '', address: '', email: '', vatId: '', contactId: null, partnerId: null }; this.saveSoon(); },
+    clearCustomer() { this.current.customer = { name: '', attn: '', address: '', email: '', invoiceEmail: '', vatId: '', contactId: null, partnerId: null }; this.saveSoon(); },
 
     // ---- Finalize / status ----
     _formatNumber(fmt, seq, issueDate) {

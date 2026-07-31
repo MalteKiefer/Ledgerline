@@ -28,6 +28,7 @@
             'template' => $s->invoice_template ?: 'editorial',
             'currency' => 'EUR',
         ]),
+        smallBusiness: @js((bool) $s->small_business),
         labelsByLang: @js(['de' => __('invoices', [], 'de'), 'en' => __('invoices', [], 'en')]),
         iconUrl: '{{ url('/passwords/icon') }}',
         fxRates: @js($fxRates),
@@ -200,13 +201,40 @@
 
           {{-- VAT advance return (Umsatzsteuer-Voranmeldung) for the current year --}}
           <div class="ll-card mt-4 !p-0 overflow-hidden">
-            <div class="flex items-center gap-2 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-              <span class="ll-chip h-7 w-7 rounded-lg" style="background:#e2915a"><x-icon name="receipt-percent" class="h-4 w-4 text-white" /></span>
-              <div>
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.vat_title') }}</h3>
-                <p class="text-xs text-gray-400 dark:text-gray-500" x-text="vatReturn.year + ' · ' + vatReturn.count + ' {{ __('invoices.invoice_count') }}'"></p>
+            <div class="flex items-center justify-between gap-2 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+              <div class="flex items-center gap-2">
+                <span class="ll-chip h-7 w-7 rounded-lg" style="background:#e2915a"><x-icon name="receipt-percent" class="h-4 w-4 text-white" /></span>
+                <div>
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.vat_title') }}</h3>
+                  <p class="text-xs text-gray-400 dark:text-gray-500" x-text="vatReturn.year + ' · ' + vatReturn.count + ' {{ __('invoices.invoice_count') }}'"></p>
+                </div>
               </div>
+              {{-- Quarter selector for the unified payable (Zahllast) --}}
+              <select x-model="vatQuarter" class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] px-2 py-1 text-xs">
+                <option value="">{{ __('invoices.vat_full_year') }}</option>
+                <option value="1">Q1</option><option value="2">Q2</option><option value="3">Q3</option><option value="4">Q4</option>
+              </select>
             </div>
+            {{-- Unified Zahllast band: Umsatzsteuer − Vorsteuer = payable (server-computed) --}}
+            <template x-if="vatAdvance">
+              <div class="grid grid-cols-1 divide-y divide-black/[0.06] dark:divide-white/10 border-b border-black/[0.06] dark:border-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0 bg-accent/5">
+                <div class="px-5 py-4">
+                  <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_output') }}</p>
+                  <p class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(vatAdvance.outputVat)"></p>
+                </div>
+                <div class="px-5 py-4">
+                  <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_input') }}</p>
+                  <p class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(vatAdvance.inputVat)"></p>
+                </div>
+                <div class="px-5 py-4">
+                  <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_payable') }}</p>
+                  <p class="mt-1 text-lg font-semibold tabular-nums text-accent" x-text="fmtMoney(vatAdvance.payable)"></p>
+                </div>
+              </div>
+            </template>
+            <template x-if="smallBusiness">
+              <div class="border-b border-black/[0.06] dark:border-white/10 px-5 py-2 text-xs text-gray-500 dark:text-gray-400">{{ __('invoices.vat_kleinunternehmer_note') }}</div>
+            </template>
             {{-- Net / VAT / gross totals --}}
             <div class="grid grid-cols-1 divide-y divide-black/[0.06] dark:divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
               <div class="px-5 py-4">
@@ -990,6 +1018,7 @@
                   <dl class="mt-3 space-y-2 text-sm">
                     <div x-show="openPartnerRec.vatId"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_vat') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.vatId"></dd></div>
                     <div x-show="openPartnerRec.email"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.email" class="text-accent hover:underline" x-text="openPartnerRec.email"></a></dd></div>
+                    <div x-show="openPartnerRec.invoiceEmail"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_invoice_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.invoiceEmail" class="text-accent hover:underline" x-text="openPartnerRec.invoiceEmail"></a></dd></div>
                     <div x-show="openPartnerRec.phone"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_phone') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.phone"></dd></div>
                     <div x-show="openPartnerRec.url"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_url') }}</dt><dd><a :href="openPartnerRec.url" target="_blank" rel="noopener" class="text-accent hover:underline break-all" x-text="openPartnerRec.url"></a></dd></div>
                     <div x-show="openPartnerRec.address"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_address') }}</dt><dd class="whitespace-pre-line text-gray-800 dark:text-gray-200" x-text="openPartnerRec.address"></dd></div>
@@ -1079,6 +1108,11 @@
                       </div>
                     </div>
                     <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_invoice_email') }}</label>
+                      <input type="email" x-model="partnerEditing.invoiceEmail" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{{ __('invoices.partner_invoice_email_hint') }}</p>
+                    </div>
+                    <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_vat') }}</label>
                       <input type="text" x-model="partnerEditing.vatId" placeholder="DE…" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums">
                     </div>
@@ -1134,6 +1168,53 @@
           </template>
           <template x-if="statsKpis.count || statsYear !== {{ (int) date('Y') }} || projects.length">
             <div>
+              {{-- EÜR: simplified cash-basis income − expenses = profit (server-computed) --}}
+              <template x-if="euer">
+                <div class="mb-6">
+                  <div class="mb-2 flex items-center justify-between gap-2 px-1">
+                    <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.euer_title') }}</h2>
+                    <select x-model.number="euerYear" class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] px-2 py-1 text-xs">
+                      <template x-for="y in statsYears" :key="y"><option :value="y" x-text="y"></option></template>
+                    </select>
+                  </div>
+                  <div class="grid grid-cols-3 gap-4">
+                    <div class="ll-card">
+                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.euer_income') }}</p>
+                      <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(euer.income.total)"></p>
+                    </div>
+                    <div class="ll-card">
+                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.euer_expenses') }}</p>
+                      <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(euer.expenses.total)"></p>
+                    </div>
+                    <div class="ll-card">
+                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.euer_profit') }}</p>
+                      <p class="mt-2 text-2xl font-semibold tabular-nums" :class="euer.profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" x-text="fmtMoney(euer.profit)"></p>
+                    </div>
+                  </div>
+                  <template x-if="euer.expenses.byCategory.length">
+                    <div class="ll-card mt-4">
+                      <p class="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.euer_expenses') }} · {{ __('invoices.euer_by_category') }}</p>
+                      <div class="space-y-2">
+                        <template x-for="c in euer.expenses.byCategory" :key="c.name">
+                          <div>
+                            <div class="flex items-baseline justify-between gap-2">
+                              <span class="truncate text-sm text-gray-800 dark:text-gray-200" x-text="c.name" :title="c.name"></span>
+                              <span class="shrink-0 text-sm tabular-nums text-gray-600 dark:text-gray-300" x-text="fmtMoney(c.amount)"></span>
+                            </div>
+                            <div class="mt-1 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                              <div class="h-full ll-accent" :style="{ width: Math.round(Math.abs(c.amount) / euerExpensePeak * 100) + '%' }"></div>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                  <template x-if="! euer.income.total && ! euer.expenses.total">
+                    <p class="px-1 text-sm text-gray-400 dark:text-gray-500">{{ __('invoices.euer_empty') }}</p>
+                  </template>
+                </div>
+              </template>
+
               {{-- Project costs, clearly split business vs private (scope-aware) --}}
               <template x-if="projects.length">
                 <div>
@@ -2469,6 +2550,7 @@
                 <input type="text" x-model="current.customer.attn" placeholder="{{ __('invoices.attn') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                 <textarea x-model="current.customer.address" rows="3" placeholder="{{ __('invoices.customer_address') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
                 <input type="email" x-model="current.customer.email" placeholder="{{ __('invoices.customer_email') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                <input type="email" x-model="current.customer.invoiceEmail" placeholder="{{ __('invoices.customer_invoice_email') }}" title="{{ __('invoices.partner_invoice_email_hint') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                 <input type="text" x-model="current.customer.vatId" placeholder="{{ __('invoices.customer_vat') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
               </div>
             </div>
@@ -2515,6 +2597,7 @@
                 </template>
                 <div class="flex justify-between border-t border-gray-200 dark:border-gray-800 pt-1.5 font-semibold"><dt class="text-gray-900 dark:text-gray-100">{{ __('invoices.gross') }}</dt><dd class="tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(totals.gross)"></dd></div>
               </dl>
+              <p x-show="smallBusiness" class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ __('invoices.vat_kleinunternehmer_note') }}</p>
             </div>
           </div>
 
@@ -2536,7 +2619,7 @@
                     <th class="py-1 px-2 w-20 text-right">{{ __('invoices.line_qty') }}</th>
                     <th class="py-1 px-2 w-24">{{ __('invoices.line_unit') }}</th>
                     <th class="py-1 px-2 w-28 text-right">{{ __('invoices.line_price') }}</th>
-                    <th class="py-1 px-2 w-20 text-right">{{ __('invoices.line_vat') }}</th>
+                    <th class="py-1 px-2 w-20 text-right" x-show="! smallBusiness">{{ __('invoices.line_vat') }}</th>
                     <th class="py-1 px-2 w-28 text-right">{{ __('invoices.net') }}</th>
                     <th class="py-1 pl-2 w-8"></th>
                   </tr>
@@ -2548,7 +2631,7 @@
                       <td class="py-1 px-2 align-top"><input type="number" step="0.01" x-model.number="l.qty" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
                       <td class="py-1 px-2 align-top"><input type="text" x-model="l.unit" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent"></td>
                       <td class="py-1 px-2 align-top"><input type="number" step="0.01" x-model.number="l.unitPrice" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
-                      <td class="py-1 px-2 align-top"><input type="number" step="0.01" x-model.number="l.vatRate" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
+                      <td class="py-1 px-2 align-top" x-show="! smallBusiness"><input type="number" step="0.01" x-model.number="l.vatRate" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
                       <td class="py-1 px-2 text-right tabular-nums text-gray-700 dark:text-gray-300 align-top" x-text="fmtMoney(lineNet(l))"></td>
                       <td class="py-1 pl-2 text-right align-top"><x-icon-button name="x-mark" size="sm" @click="removeLine(i)" title="{{ __('invoices.remove') }}" aria-label="{{ __('invoices.remove') }}" /></td>
                     </tr>
@@ -2708,6 +2791,7 @@
                         <div style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span x-text="pl('vat_at').replace(':rate', rate)"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></span></div>
                       </template>
                       <div style="display:flex; justify-content:space-between; padding:10px 12px; margin-top:6px; color:#fff; border-radius:10px; font-weight:800; font-size:13px;" :style="'background:' + company.accent"><span x-text="pl('gross')"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></span></div>
+                      <div x-show="smallBusiness" style="margin-top:8px; font-size:10px; color:#6b7280;" x-text="pl('vat_kleinunternehmer_note')"></div>
                     </div>
                   </div>
                   <div style="margin-top:20px;" x-show="_printing.note">
@@ -2772,6 +2856,7 @@
                     <tr x-show="hasDiscount(_printing)"><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('discount')"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="'−' + fmtMoney(Math.abs(computeTotals(_printing).discount), _printing.currency, _printing.lang)"></td></tr>
                     <template x-for="rate in vatRatesOf(_printing)" :key="rate"><tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('vat_at').replace(':rate', rate)"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></td></tr></template>
                     <tr style="border-top:1px solid #222;"><td style="padding:7px 6px; letter-spacing:.1em; text-transform:uppercase;" :style="'color:' + company.accent" x-text="pl('gross')"></td><td style="padding:7px 0 7px 6px; text-align:right; font-weight:700; font-size:13px;" :style="'color:' + company.accent" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></td></tr>
+                    <tr x-show="smallBusiness"><td colspan="2" style="padding:6px 6px 0; font-size:10px; color:#6b7280;" x-text="pl('vat_kleinunternehmer_note')"></td></tr>
                   </table>
                 </div>
                 <div style="margin-top:34px; text-align:center; font-style:italic; color:#555; white-space:pre-line;" x-show="_printing.note || _printing.footer || company.footer_text" x-text="_printing.note || _printing.footer || company.footer_text"></div>
@@ -2837,6 +2922,7 @@
                       <div class="ie-sr"><span class="l" x-text="pl('vat_at').replace(':rate', rate)"></span><span class="v num" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></span></div>
                     </template>
                     <div class="ie-grand"><span class="ie-gl" x-text="pl('gross')"></span><span class="ie-gv num" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></span></div>
+                    <div x-show="smallBusiness" style="margin-top:8px; font-size:10px; color:#6b7280;" x-text="pl('vat_kleinunternehmer_note')"></div>
                   </div></div>
                   <div class="ie-notice" x-show="_printing.footer || company.footer_text" x-text="_printing.footer || company.footer_text"></div>
                   <div class="ie-notes-area" x-show="_printing.note">
@@ -2883,6 +2969,7 @@
                     <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid #f0f1f3;"><span style="color:#6b7280;" x-text="pl('invoice_date')"></span><span class="tabular-nums" x-text="_printing.issueDate"></span></div>
                     <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid #f0f1f3;"><span style="color:#6b7280;" x-text="pl('due')"></span><span class="tabular-nums" x-text="_printing.dueDate"></span></div>
                     <div style="display:flex; justify-content:space-between; padding:8px 10px; margin-top:8px; background:#f3f4f6; font-weight:700;"><span x-text="pl('payable') + ' ' + _printing.currency"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></span></div>
+                    <div x-show="smallBusiness" style="margin-top:8px; font-size:10px; color:#6b7280;" x-text="pl('vat_kleinunternehmer_note')"></div>
                   </div>
                 </div>
                 {{-- Line-item table --}}
@@ -2918,6 +3005,7 @@
                       <div style="display:flex; justify-content:space-between; padding:3px 10px; color:#6b7280;"><span x-text="pl('vat_at').replace(':rate', rate)"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></span></div>
                     </template>
                     <div style="display:flex; justify-content:space-between; padding:8px 10px; margin-top:6px; border-top:2px solid #334155; font-weight:800; font-size:13px;"><span x-text="pl('gross')"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></span></div>
+                    <div x-show="smallBusiness" style="margin-top:8px; font-size:10px; color:#6b7280;" x-text="pl('vat_kleinunternehmer_note')"></div>
                   </div>
                 </div>
                 <div style="margin-top:18px;" x-show="_printing.note">

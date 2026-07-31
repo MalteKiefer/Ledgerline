@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Services\Finance;
 
 use App\Models\BankTransaction;
+use App\Models\FinanceProject;
 use App\Models\Invoice;
+use App\Models\UserSetting;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * Server-side finance analytics — the authoritative port of the client's
@@ -35,6 +38,17 @@ class FinanceReports
     private function monthOf(Invoice $inv): int
     {
         return (int) substr((string) $inv->issue_date?->format('Y-m-d'), 5, 2);
+    }
+
+    /**
+     * Whether the current user invoices as a §19 Kleinunternehmer (no VAT shown).
+     * When true, output VAT is zero everywhere (turnover is recorded gross).
+     */
+    public function smallBusiness(): bool
+    {
+        $id = Auth::id();
+
+        return is_int($id) && UserSetting::for($id)->small_business;
     }
 
     /**
@@ -125,6 +139,8 @@ class FinanceReports
      */
     public function vatReturn(int $year): array
     {
+        // A §19 Kleinunternehmer shows no VAT: report turnover (net = gross) only.
+        $small = $this->smallBusiness();
         $list = $this->realizedInvoices()->filter(fn (Invoice $i): bool => $this->yearOf($i) === $year);
         $qNet = [1 => 0.0, 2 => 0.0, 3 => 0.0, 4 => 0.0];
         $qVat = [1 => 0.0, 2 => 0.0, 3 => 0.0, 4 => 0.0];
@@ -134,18 +150,25 @@ class FinanceReports
         $vat = 0.0;
         foreach ($list as $inv) {
             $t = $this->invoiceTotals($inv);
-            $net += $t['net'];
-            $vat += $t['vat'];
-            foreach ($t['vatByRate'] as $r => $v) {
-                $rate = (float) $r;
-                $key = (string) $rate;
-                $byRateVat[$key] = ($byRateVat[$key] ?? 0.0) + (float) $v;
-                $byRateNet[$key] = ($byRateNet[$key] ?? 0.0) + ($rate > 0 ? (float) $v / ($rate / 100) : $t['net']);
+            // KU: turnover is the gross amount, no VAT — everything falls in the 0% bucket.
+            $rowNet = $small ? $t['gross'] : $t['net'];
+            $net += $rowNet;
+            $vat += $small ? 0.0 : $t['vat'];
+            if ($small) {
+                $byRateVat['0'] = $byRateVat['0'] ?? 0.0;
+                $byRateNet['0'] = ($byRateNet['0'] ?? 0.0) + $rowNet;
+            } else {
+                foreach ($t['vatByRate'] as $r => $v) {
+                    $rate = (float) $r;
+                    $key = (string) $rate;
+                    $byRateVat[$key] = ($byRateVat[$key] ?? 0.0) + (float) $v;
+                    $byRateNet[$key] = ($byRateNet[$key] ?? 0.0) + ($rate > 0 ? (float) $v / ($rate / 100) : $t['net']);
+                }
             }
             $q = (int) ceil($this->monthOf($inv) / 3);
             if ($q >= 1 && $q <= 4) {
-                $qNet[$q] += $t['net'];
-                $qVat[$q] += $t['vat'];
+                $qNet[$q] += $rowNet;
+                $qVat[$q] += $small ? 0.0 : $t['vat'];
             }
         }
         $byRateOut = [];
@@ -372,6 +395,222 @@ class FinanceReports
             $out[] = ['rate' => (string) $rate, 'net' => $this->r2($v['net']), 'vat' => $this->r2($v['vat'])];
         }
         usort($out, fn (array $a, array $b): int => (float) $b['rate'] <=> (float) $a['rate']);
+
+        return $out;
+    }
+
+    /**
+     * Unified USt-Voranmeldung for a year (optionally one quarter): output VAT
+     * from realized invoices + input VAT (Vorsteuer) from ALL of the user's bank
+     * transactions, combined into a single Zahllast (payable = output − input).
+     *
+     * §19 Kleinunternehmer: outputVat is zero (turnover reported as net = gross),
+     * so payable = −inputVat (a KU typically has no Vorsteuer claim — the figure
+     * is kept for completeness). Cent-exact; owner-scoped via the global scopes.
+     *
+     * @return array<string, mixed>
+     */
+    public function vatAdvanceReturn(int $year, ?int $quarter = null): array
+    {
+        $q = ($quarter !== null && $quarter >= 1 && $quarter <= 4) ? $quarter : null;
+        $small = $this->smallBusiness();
+        $inQuarter = fn (int $month): bool => $q === null || (int) ceil($month / 3) === $q;
+
+        // ---- Output side: realized invoices (year + optional quarter) ----
+        $outNet = 0.0;
+        $outVat = 0.0;
+        /** @var array<string, array{net: float, vat: float}> $outByRate */
+        $outByRate = [];
+        foreach ($this->realizedInvoices()->filter(fn (Invoice $i): bool => $this->yearOf($i) === $year) as $inv) {
+            if (! $inQuarter($this->monthOf($inv))) {
+                continue;
+            }
+            $t = $this->invoiceTotals($inv);
+            if ($small) {
+                $outNet += $t['gross']; // turnover = gross, no VAT
+                $outByRate['0'] ??= ['net' => 0.0, 'vat' => 0.0];
+                $outByRate['0']['net'] += $t['gross'];
+
+                continue;
+            }
+            $outNet += $t['net'];
+            $outVat += $t['vat'];
+            foreach ($t['vatByRate'] as $r => $v) {
+                $rate = (float) $r;
+                $key = (string) $rate;
+                $outByRate[$key] ??= ['net' => 0.0, 'vat' => 0.0];
+                $outByRate[$key]['vat'] += (float) $v;
+                $outByRate[$key]['net'] += $rate > 0 ? (float) $v / ($rate / 100) : $t['net'];
+            }
+        }
+
+        // ---- Input side: Vorsteuer on expense bank transactions (all accounts) ----
+        $inNet = 0.0;
+        $inVat = 0.0;
+        /** @var array<string, array{net: float, vat: float}> $inByRate */
+        $inByRate = [];
+        foreach ($this->expenseTransactions($year) as $tx) {
+            $month = (int) substr((string) $tx->date?->format('Y-m-d'), 5, 2);
+            if (! $inQuarter($month)) {
+                continue;
+            }
+            $cat = (string) ($tx->vat_cat ?? '');
+            if ($cat === '' || $cat === 'private') {
+                continue; // undecided / owner private movements carry no Vorsteuer
+            }
+            ['net' => $net, 'vat' => $vat] = $this->grossToNetVat(abs((float) $tx->amount), (float) $cat);
+            $inNet += $net;
+            $inVat += $vat;
+            $inByRate[$cat] ??= ['net' => 0.0, 'vat' => 0.0];
+            $inByRate[$cat]['net'] += $net;
+            $inByRate[$cat]['vat'] += $vat;
+        }
+
+        $outVatR = $this->r2($outVat);
+        $inVatR = $this->r2($inVat);
+
+        $rateKeys = array_unique([...array_keys($outByRate), ...array_keys($inByRate)]);
+        $byRate = [];
+        foreach ($rateKeys as $key) {
+            $byRate[] = [
+                'rate' => (float) $key,
+                'outputNet' => $this->r2($outByRate[$key]['net'] ?? 0.0),
+                'outputVat' => $this->r2($outByRate[$key]['vat'] ?? 0.0),
+                'inputNet' => $this->r2($inByRate[$key]['net'] ?? 0.0),
+                'inputVat' => $this->r2($inByRate[$key]['vat'] ?? 0.0),
+            ];
+        }
+        usort($byRate, fn (array $a, array $b): int => $a['rate'] <=> $b['rate']);
+
+        return [
+            'year' => $year,
+            'quarter' => $q,
+            'net' => $this->r2($outNet),
+            'outputVat' => $outVatR,
+            'inputVat' => $inVatR,
+            'payable' => $this->r2($outVatR - $inVatR),
+            'byRate' => $byRate,
+            'small_business' => $small,
+        ];
+    }
+
+    /**
+     * A simplified EÜR (Einnahmenüberschussrechnung): income − expenses = profit
+     * for a year. NOT the full official Anlage-EÜR form.
+     *
+     * Income = realized (sent|paid) invoices by issue_date year, grouped by
+     * customer. We key income on issue_date (not paid_at) because issue_date is
+     * always populated whereas paid_at is not reliably set (imported invoices are
+     * created "paid" without it) — this keeps EÜR income consistent with the
+     * revenue/VAT reporting. Expenses ARE cash-basis: bank transactions
+     * (amount < 0, excluding "private" owner movements) by their booking date,
+     * plus FinanceProject manual expenses, grouped by VAT category / expense
+     * category.
+     *
+     * Amounts: NET (ex-VAT) for a VAT-liable business; GROSS for a §19 KU.
+     *
+     * @return array<string, mixed>
+     */
+    public function euer(int $year): array
+    {
+        $small = $this->smallBusiness();
+
+        // ---- Income: realized invoices by issue_date year, grouped by customer ----
+        /** @var array<string, float> $incomeMap */
+        $incomeMap = [];
+        $incomeTotal = 0.0;
+        foreach ($this->realizedInvoices()->filter(fn (Invoice $i): bool => $this->yearOf($i) === $year) as $inv) {
+            $t = $this->invoiceTotals($inv);
+            $amount = $small ? $t['gross'] : $t['net'];
+            $customer = is_array($inv->customer) ? $inv->customer : [];
+            $name = is_string($customer['name'] ?? null) && $customer['name'] !== '' ? $customer['name'] : '—';
+            $incomeMap[$name] = ($incomeMap[$name] ?? 0.0) + $amount;
+            $incomeTotal += $amount;
+        }
+
+        // ---- Expenses: bank transactions (amount<0) by VAT category ----
+        /** @var array<string, float> $expenseMap */
+        $expenseMap = [];
+        $expenseTotal = 0.0;
+        foreach ($this->expenseTransactions($year) as $tx) {
+            $cat = (string) ($tx->vat_cat ?? '');
+            if ($cat === 'private') {
+                continue; // owner withdrawals are not a business expense
+            }
+            $gross = abs((float) $tx->amount);
+            if ($small || $cat === '' || (float) $cat <= 0) {
+                $amount = $gross;
+            } else {
+                $amount = $this->grossToNetVat($gross, (float) $cat)['net'];
+            }
+            $label = $cat === '' ? '—' : $cat;
+            $expenseMap[$label] = ($expenseMap[$label] ?? 0.0) + $amount;
+            $expenseTotal += $amount;
+        }
+
+        // ---- Plus FinanceProject manual (hand-entered) expenses for the year ----
+        foreach (FinanceProject::query()->get() as $project) {
+            foreach (is_array($project->expenses) ? $project->expenses : [] as $exp) {
+                if (! is_array($exp)) {
+                    continue;
+                }
+                $date = is_string($exp['date'] ?? null) ? $exp['date'] : '';
+                if ((int) substr($date, 0, 4) !== $year) {
+                    continue;
+                }
+                $amount = is_numeric($exp['amount'] ?? null) ? abs((float) $exp['amount']) : 0.0;
+                if ($amount === 0.0) {
+                    continue;
+                }
+                $label = is_string($exp['category'] ?? null) && $exp['category'] !== '' ? $exp['category'] : $project->name;
+                $expenseMap[$label] = ($expenseMap[$label] ?? 0.0) + $amount;
+                $expenseTotal += $amount;
+            }
+        }
+
+        $incomeTotalR = $this->r2($incomeTotal);
+        $expenseTotalR = $this->r2($expenseTotal);
+
+        return [
+            'year' => $year,
+            'income' => [
+                'total' => $incomeTotalR,
+                'byCategory' => $this->categoryRows($incomeMap),
+            ],
+            'expenses' => [
+                'total' => $expenseTotalR,
+                'byCategory' => $this->categoryRows($expenseMap),
+            ],
+            'profit' => $this->r2($incomeTotalR - $expenseTotalR),
+            'small_business' => $small,
+        ];
+    }
+
+    /**
+     * Expense bank transactions (amount < 0) for a year, owner-scoped.
+     *
+     * @return Collection<int, BankTransaction>
+     */
+    private function expenseTransactions(int $year): Collection
+    {
+        return BankTransaction::query()->where('amount', '<', 0)->get()
+            ->filter(fn (BankTransaction $t): bool => (int) substr((string) $t->date?->format('Y-m-d'), 0, 4) === $year)
+            ->values();
+    }
+
+    /**
+     * Sort a {label => amount} map into a descending rows list.
+     *
+     * @param  array<string, float>  $map
+     * @return list<array{name: string, amount: float}>
+     */
+    private function categoryRows(array $map): array
+    {
+        $out = [];
+        foreach ($map as $name => $amount) {
+            $out[] = ['name' => (string) $name, 'amount' => $this->r2($amount)];
+        }
+        usort($out, fn (array $a, array $b): int => $b['amount'] <=> $a['amount']);
 
         return $out;
     }
