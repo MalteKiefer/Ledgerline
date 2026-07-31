@@ -13,6 +13,10 @@ return [
     'forgot' => 'Passwort vergessen?',
     'no_account' => 'Noch kein Konto?',
     'register_link' => 'Konto erstellen',
+    'or_divider' => 'oder',
+    'pocketid_login' => 'Mit Pocket ID anmelden',
+    'pocketid_unavailable' => 'Die Pocket-ID-Anmeldung ist nicht verfügbar.',
+    'pocketid_failed' => 'Anmeldung fehlgeschlagen. Bitte erneut versuchen.',
 
     // Register
     'register_title' => 'Konto erstellen',

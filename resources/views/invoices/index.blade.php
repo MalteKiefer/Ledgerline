@@ -1231,16 +1231,21 @@
                 <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
                   {{-- Built-in default suggestions — read-only rows with a "Standard" badge --}}
                   <template x-for="c in sortedCatSuggestions" :key="'def-'+c">
-                    <tr>
+                    <tr class="group hover:bg-accent/5">
                       <td class="px-4 py-2.5">
                         <div class="flex items-center gap-3">
                           <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="background:#6b7280"><x-icon name="hashtag" class="h-4 w-4 text-white" /></span>
-                          <span class="min-w-0 truncate text-gray-800 dark:text-gray-200" x-text="c"></span>
+                          <button type="button" @click="editDefault(c)" class="min-w-0 truncate text-left text-gray-800 dark:text-gray-200 hover:text-accent" x-text="c"></button>
                         </div>
                       </td>
                       <td class="px-4 py-2.5"><span class="inline-block h-4 w-4 rounded-full border border-black/10 dark:border-white/20" style="background:#6b7280"></span></td>
                       <td class="px-4 py-2.5 font-mono text-xs text-gray-400 dark:text-gray-500">hashtag</td>
-                      <td class="px-4 py-2.5 text-right"><x-badge variant="gray">{{ __('invoices.cats_default') }}</x-badge></td>
+                      <td class="px-4 py-2.5">
+                        <div class="flex items-center justify-end gap-1">
+                          <x-badge variant="gray">{{ __('invoices.cats_default') }}</x-badge>
+                          <x-icon-button name="pencil" tone="gray" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="editDefault(c)" :aria-label="__('invoices.cat_edit')" />
+                        </div>
+                      </td>
                     </tr>
                   </template>
                   {{-- Custom categories --}}
