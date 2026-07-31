@@ -74,6 +74,30 @@ class StoreTest extends TestCase
         $this->assertSame(hash('sha256', 'aaaaaa'), $rows[0]->sha256);
     }
 
+    public function test_root_write_records_client_sent_record_counts(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->putJson(route('module-store.save', 'notes'), [
+            'ciphertext' => 'aaaa', 'version' => 0, 'counts' => ['notes' => 5, 'tags' => 2],
+        ])->assertOk();
+
+        $row = BlobAuditLog::query()->where('module', 'store:notes')->where('action', 'root_write')->firstOrFail();
+        $this->assertSame(['notes' => 5, 'tags' => 2], $row->meta['counts']);
+        $this->assertSame(7, $row->meta['count_total']);
+    }
+
+    public function test_counts_are_optional_for_older_clients(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->putJson(route('module-store.save', 'notes'), ['ciphertext' => 'aaaa', 'version' => 0])->assertOk();
+
+        $row = BlobAuditLog::query()->where('module', 'store:notes')->where('action', 'root_write')->firstOrFail();
+        $this->assertNull($row->meta['counts']);
+        $this->assertNull($row->meta['count_total']);
+    }
+
     public function test_modules_are_isolated_from_each_other(): void
     {
         $user = User::factory()->create();

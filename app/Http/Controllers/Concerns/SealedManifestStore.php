@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -156,6 +157,12 @@ trait SealedManifestStore
             'version' => ['required', 'integer', 'min:0'],
             'shards' => ['sometimes', 'array', 'max:200000'],
             'shards.*' => ['uuid'],
+            // Non-secret per-slice record cardinality (how many notes / invoices /
+            // receipts …), NOT content. Recorded in the root_write trail so a scan can
+            // flag the exact version where a count regressed — the strongest signal for
+            // a silently-dropped record. Optional: older clients omit it.
+            'counts' => ['sometimes', 'array', 'max:64'],
+            'counts.*' => ['integer', 'min:0', 'max:100000000'],
         ]);
 
         $auditModule = $this->manifestAuditModule($request);
@@ -232,6 +239,7 @@ trait SealedManifestStore
         // versions pinpoints the write that added or DROPPED a shard — the single most
         // useful signal when reconstructing a data-loss event.
         if ($auditModule !== null) {
+            $counts = $this->manifestCounts($request);
             BlobAudit::record('root_write', $auditModule, [
                 'user_id' => (int) $this->requireUser($request)->id,
                 'sha256' => BlobAudit::hashString($ciphertext),
@@ -240,10 +248,55 @@ trait SealedManifestStore
                     'bytes' => strlen($ciphertext),
                     'shard_count' => $refs?->count(),
                     'shard_set_sha256' => $refs !== null ? BlobAudit::shardSetHash($refs->all()) : null,
-                ],
+                    // P1: record cardinality per slice + the total, so store:anomaly-scan
+                    // can pinpoint a version where records vanished.
+                    'counts' => $counts,
+                    'count_total' => $counts === null ? null : array_sum($counts),
+                    // P3: which device wrote this version (from the API token, if any),
+                    // so a multiclient loss is attributable to a specific client.
+                ] + $this->clientCorrelation($request),
             ]);
         }
 
         return response()->json(['version' => $next]);
+    }
+
+    /**
+     * The client-sent per-slice record counts (non-secret cardinality), or null when
+     * the client didn't send them (older client).
+     *
+     * @return array<string, int>|null
+     */
+    private function manifestCounts(Request $request): ?array
+    {
+        if (! $request->has('counts') || ! is_array($request->input('counts'))) {
+            return null;
+        }
+        $out = [];
+        foreach ($request->collect('counts') as $k => $v) {
+            if (is_string($k) && is_numeric($v)) {
+                $out[$k] = (int) $v;
+            }
+        }
+
+        return $out === [] ? null : $out;
+    }
+
+    /**
+     * Non-secret client correlation (install id + app version) from the presenting
+     * API token, so a store write is attributable to a specific device. A web-session
+     * write has no personal access token → both null.
+     *
+     * @return array{install_id: ?string, app_version: ?string}
+     */
+    private function clientCorrelation(Request $request): array
+    {
+        $token = $request->user()?->currentAccessToken();
+        $isPat = $token instanceof PersonalAccessToken;
+
+        return [
+            'install_id' => $isPat && is_string($token->install_id) ? $token->install_id : null,
+            'app_version' => $isPat && is_string($token->app_version) ? $token->app_version : null,
+        ];
     }
 }

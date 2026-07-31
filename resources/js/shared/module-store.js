@@ -58,6 +58,20 @@ export function makeStore(module, blankFn) {
         newId() { return newId(); },
         _blank() { return blankFn(); },
 
+        // Non-secret per-slice record counts for the server's root_write trail: array
+        // keys → length, object maps (knownFingerprints/couplings/…) → key count.
+        // Scalars (v, invoiceSeq, flags) are skipped. Cardinality only, never content.
+        _counts(src) {
+            const d = src ?? this.data ?? {};
+            const c = {};
+            for (const k of Object.keys(d)) {
+                const val = d[k];
+                if (Array.isArray(val)) c[k] = val.length;
+                else if (isPlainObj(val)) c[k] = Object.keys(val).length;
+            }
+            return c;
+        },
+
         // Forward-compat: ensure every key of the blank shape exists on a manifest.
         _ensureShape(obj) {
             const blank = this._blank();
@@ -130,7 +144,7 @@ export function makeStore(module, blankFn) {
                     // in the body). Advancing _base past what we actually sent would hide
                     // those mid-flight records from the next 409 delta and drop them.
                     const sent = structuredClone(this.data);
-                    const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(sent), version: this.version });
+                    const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(sent), version: this.version, counts: this._counts(sent) });
                     const res = await fetch('/store/' + module, { method: 'PUT', headers: jsonHeaders(), body });
                     if (res.ok) {
                         this.version = (await res.json()).version ?? this.version + 1;
