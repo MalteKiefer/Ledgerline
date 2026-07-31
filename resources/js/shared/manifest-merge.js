@@ -51,7 +51,22 @@ export function mergeArrayById(base, ours, server) {
         // Only touch records we actually added (no base) or modified.
         if (b !== undefined && ! changed(b, rec)) continue;
         if (indexById.has(rec.id)) {
-            result[indexById.get(rec.id)] = clone(rec);
+            const idx = indexById.get(rec.id);
+            const serverRec = result[idx];
+            // Both writers changed the SAME record (server diverged from base AND so
+            // did we). Taking our whole record here would discard every nested change
+            // the winning writer made to this id — e.g. an invoice version / receipt
+            // the other device appended, whose sealed PDF blob would then be orphaned
+            // and reclaimed. Recursively rebase the record so both survive: nested
+            // id-arrays (versions[]/receipts[]/…) union by id, object fields merge key
+            // by key, scalars take ours-if-we-changed-them.
+            if (b !== undefined && isPlainObject(b) && isPlainObject(rec) && isPlainObject(serverRec) && changed(b, serverRec)) {
+                result[idx] = mergeManifest(b, rec, serverRec);
+            } else {
+                // Only we changed it (the server's copy still equals base), or the
+                // record isn't a mergeable object → ours wins wholesale.
+                result[idx] = clone(rec);
+            }
         } else {
             indexById.set(rec.id, result.length);
             result.push(clone(rec));

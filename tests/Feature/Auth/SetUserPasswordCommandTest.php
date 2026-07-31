@@ -67,4 +67,44 @@ class SetUserPasswordCommandTest extends TestCase
         $this->artisan('user:set-password', ['email' => 'nobody@example.test'])
             ->assertFailed();
     }
+
+    public function test_create_flag_bootstraps_the_first_admin_on_an_empty_database(): void
+    {
+        $this->assertSame(0, User::count());
+
+        $this->artisan('user:set-password', [
+            'email' => 'owner@example.test',
+            '--create' => true,
+            '--admin' => true,
+            '--name' => 'Owner',
+        ])
+            ->expectsQuestion('New password (min 12 chars)', 'a-very-strong-passphrase')
+            ->expectsQuestion('Confirm password', 'a-very-strong-passphrase')
+            ->assertSuccessful();
+
+        $user = User::where('email', 'owner@example.test')->firstOrFail();
+        $this->assertSame('Owner', $user->name);
+        $this->assertSame('admin', $user->role);
+        $this->assertNotNull($user->email_verified_at);
+        $this->assertTrue(Hash::check('a-very-strong-passphrase', (string) $user->password));
+    }
+
+    public function test_create_defaults_the_name_to_the_email_local_part(): void
+    {
+        $this->artisan('user:set-password', ['email' => 'jane@example.test', '--create' => true])
+            ->expectsQuestion('New password (min 12 chars)', 'a-very-strong-passphrase')
+            ->expectsQuestion('Confirm password', 'a-very-strong-passphrase')
+            ->assertSuccessful();
+
+        $user = User::where('email', 'jane@example.test')->firstOrFail();
+        $this->assertSame('jane', $user->name);
+        $this->assertSame('user', $user->role);
+    }
+
+    public function test_without_create_an_unknown_email_still_fails(): void
+    {
+        $this->artisan('user:set-password', ['email' => 'ghost@example.test'])
+            ->assertFailed();
+        $this->assertSame(0, User::count());
+    }
 }

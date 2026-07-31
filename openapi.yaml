@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.506.91
+  version: 1.533.1
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -1505,7 +1505,7 @@ components:
       properties:
         id: { type: integer }
         name: { type: string }
-        source: { type: string, enum: [database, files, gallery] }
+        source: { type: string, enum: [database, files, gallery, notes, passwords, invoices, contacts, explore, shared-folders] }
         mode: { type: string }
         destination_id: { type: integer }
         cron: { type: string }
@@ -1523,7 +1523,7 @@ components:
       description: "source=database requires encrypt=true (422 otherwise). Blank passphrase keeps the stored value on update."
       properties:
         name: { type: string }
-        source: { type: string, enum: [database, files, gallery] }
+        source: { type: string, enum: [database, files, gallery, notes, passwords, invoices, contacts, explore, shared-folders] }
         mode: { type: string }
         backup_destination_id: { type: integer }
         cron: { type: string }

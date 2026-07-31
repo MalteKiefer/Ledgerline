@@ -97,7 +97,11 @@ export function makeStore(module, blankFn) {
                 const merged = mergeManifest(this._base ?? server.data, this.data, server.data);
                 applyInPlace(this.data, merged);
                 this.version = server.version;
-                this._base = structuredClone(this.data);
+                // _base is the last COMMITTED state we merged onto = the server's
+                // manifest, NOT the merged copy. Setting it to the merged copy would
+                // bake our still-un-pushed delta into the base, so the next 409 rebase
+                // would see no delta for those records and silently drop them.
+                this._base = structuredClone(server.data);
             } catch (e) { /* offline / transient — keep the in-memory copy */ }
         },
 
@@ -120,11 +124,17 @@ export function makeStore(module, blankFn) {
             try {
                 let conflicts = 0;
                 while (! ok && conflicts < MAX_CONFLICT_RETRIES) {
-                    const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(this.data), version: this.version });
+                    // Snapshot exactly what we seal into this PUT. On success _base must
+                    // become THIS snapshot — not the live this.data, which a component
+                    // may have mutated during the await (records added mid-flight are not
+                    // in the body). Advancing _base past what we actually sent would hide
+                    // those mid-flight records from the next 409 delta and drop them.
+                    const sent = structuredClone(this.data);
+                    const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(sent), version: this.version });
                     const res = await fetch('/store/' + module, { method: 'PUT', headers: jsonHeaders(), body });
                     if (res.ok) {
                         this.version = (await res.json()).version ?? this.version + 1;
-                        this._base = structuredClone(this.data);
+                        this._base = sent;
                         ok = true;
                     } else if (res.status === 409) {
                         conflicts++;

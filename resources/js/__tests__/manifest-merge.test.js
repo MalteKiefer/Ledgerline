@@ -86,3 +86,43 @@ describe('mergeObjectByKey', () => {
         expect(merged).toEqual({ a: 1, c: 3 }); // b deleted by us, c added by winner
     });
 });
+
+describe('mergeArrayById — same-record concurrent edit (D1/H1 deep-merge)', () => {
+    it('unions nested id-arrays when BOTH writers changed the same record', () => {
+        // Base: invoice X with one version v1.
+        const base = { invoices: [{ id: 'X', versions: [{ id: 'v1' }] }] };
+        // Ours: appended v2B.
+        const ours = { invoices: [{ id: 'X', versions: [{ id: 'v1' }, { id: 'v2B' }] }] };
+        // Server (winner): appended v2A to the SAME invoice.
+        const server = { invoices: [{ id: 'X', versions: [{ id: 'v1' }, { id: 'v2A' }] }] };
+        const merged = mergeManifest(base, ours, server);
+        const vids = merged.invoices[0].versions.map((v) => v.id).sort();
+        // Both nested versions survive — neither writer's PDF-bearing version is dropped.
+        expect(vids).toEqual(['v1', 'v2A', 'v2B']);
+    });
+
+    it('merges nested receipts[] on the same transaction record', () => {
+        const base = { transactions: [{ id: 'T', receipts: [] }] };
+        const ours = { transactions: [{ id: 'T', receipts: [{ id: 'rB', blob: 'bB' }] }] };
+        const server = { transactions: [{ id: 'T', receipts: [{ id: 'rA', blob: 'bA' }] }] };
+        const merged = mergeManifest(base, ours, server);
+        const rids = merged.transactions[0].receipts.map((r) => r.id).sort();
+        expect(rids).toEqual(['rA', 'rB']);
+    });
+
+    it('takes ours wholesale when only WE changed the record (server == base)', () => {
+        const base = { notes: [{ id: 'N', body: 'old' }] };
+        const ours = { notes: [{ id: 'N', body: 'mine' }] };
+        const server = { notes: [{ id: 'N', body: 'old' }] }; // server untouched
+        const merged = mergeManifest(base, ours, server);
+        expect(merged.notes[0].body).toBe('mine');
+    });
+
+    it('merges divergent scalar fields per key (ours-if-changed) on a shared record', () => {
+        const base = { c: [{ id: '1', a: 1, b: 1 }] };
+        const ours = { c: [{ id: '1', a: 2, b: 1 }] };     // we changed a
+        const server = { c: [{ id: '1', a: 1, b: 9 }] };   // winner changed b
+        const merged = mergeManifest(base, ours, server);
+        expect(merged.c[0]).toMatchObject({ a: 2, b: 9 }); // both changes survive
+    });
+});
