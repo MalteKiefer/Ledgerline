@@ -139,12 +139,9 @@ Alpine.data('notificationBell', notificationBell);
  */
 Alpine.data('vaultGallery', vaultGallery);
 
-/* ---- Zero-knowledge file browser (manifest model) ----
- *
- * The whole directory structure lives in one encrypted manifest; the server
- * stores only that ciphertext and anonymous, padded content blobs. Everything
- * below — listing, search, sort, rename, move, delete — runs on the decrypted
- * manifest in memory and is written back as a whole (optimistic-locked).
+/* ---- File browser (plaintext-relational) ----
+ * Folders + files are relational rows served over /files/* REST; bytes stream
+ * plaintext by id. Listing/search/sort/rename/move/delete are per-record calls.
  */
 
 /**
@@ -306,50 +303,18 @@ Alpine.store('paperless', {
 Alpine.data('vaultFiles', vaultFiles);
 
 
-/* ---- Zero-knowledge notes (manifest model) ----
- *
- * Whole notes — titles, markdown content, tags, timestamps — live inside one
- * encrypted manifest; the server stores only that ciphertext. Rendering uses
- * GitHub-flavored markdown, sanitised before it touches the DOM.
- */
-
-
 Alpine.plugin(intersect);
 
 window.Alpine = Alpine;
 
-/**
- * To-do lists + tasks. Zero-knowledge: everything lives in the opaque manifest
- * (one sealed blob shared with notes/bookmarks), so there is no fetch/seal per
- * row — fields (incl. list names + due dates) are plaintext inside the sealed
- * manifest and every mutation edits the in-memory arrays in place then schedules
- * a debounced sealed save. Due dates are sealed too, so there are no server-side
- * reminders — any reminder would only ever be client-side.
- */
-/**
- * Shared lifecycle for the per-module zero-knowledge stores (notes, bookmarks,
- * to-dos, …). Each component points local arrays at its own
- * the /<module> REST endpoints, mutates them
- * in place, and schedules a debounced sealed save; on lock it clears those
- * arrays and resets the store. Each component spreads this and supplies its
- * module-specific bits.
- *
- * cfg.store: the module key backing this component (e.g. 'todos').
- * cfg.map: { <store data key>: '<component property>' } — the collections to
- *          wire (e.g. { todos: 'tasks', todoLists: 'lists' }).
- * cfg.onLock(self): optional extra reset (e.g. notes clears currentId).
- */
-
+// Every module is plaintext-relational: components hydrate from inlined @js()
+// initial data and do per-record JSON CRUD over each module's REST endpoints.
 Alpine.data('invoices', invoices);
 
 Alpine.data('todos', todos);
 
-/**
- * Notes: zero-knowledge markdown. Each note's {title, content, tags} is sealed
- * with the per-user vault key; the server only stores/returns ciphertext. The
- * browser decrypts, renders the markdown itself (DOMPurify-sanitised) and re-seals
- * on save. No server render, search or share.
- */
+// Notes: relational rows over /notes/*; markdown rendered client-side
+// (DOMPurify-sanitised).
 Alpine.data('notes', notes);
 
 

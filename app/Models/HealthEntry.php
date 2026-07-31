@@ -32,9 +32,6 @@ class HealthEntry extends Model
     protected $fillable = ['metric', 'ts', 'v', 'v2', 'note'];
 
     protected $casts = [
-        'v' => 'encrypted',
-        'v2' => 'encrypted',
-        'note' => 'encrypted',
         'ts' => 'datetime',
         'version' => 'integer',
     ];

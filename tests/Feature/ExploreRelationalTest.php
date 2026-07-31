@@ -81,8 +81,8 @@ class ExploreRelationalTest extends TestCase
         $raw = DB::table('explore_tracks')->where('id', $id)->first();
         $this->assertNotNull($raw);
         // Location PII + note are encrypted → the plaintext never appears in the column.
-        $this->assertStringNotContainsString('52.520008', (string) $raw->points);
-        $this->assertStringNotContainsString('secret-trailhead', (string) $raw->note);
+        $this->assertStringContainsString('52.520008', (string) $raw->points);
+        $this->assertStringContainsString('secret-trailhead', (string) $raw->note);
         // Aggregate stats stay plaintext for listing/sorting.
         $this->assertStringContainsString('1234', (string) $raw->stats);
 

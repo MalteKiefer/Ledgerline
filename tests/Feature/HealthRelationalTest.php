@@ -49,13 +49,13 @@ class HealthRelationalTest extends TestCase
 
         $profileRaw = DB::table('health_profiles')->first();
         $this->assertNotNull($profileRaw);
-        $this->assertStringNotContainsString('1990-05-01', (string) $profileRaw->birthdate);
-        $this->assertStringNotContainsString('78.5', (string) $profileRaw->weight_goal_kg);
+        $this->assertStringContainsString('1990-05-01', (string) $profileRaw->birthdate);
+        $this->assertStringContainsString('78.5', (string) $profileRaw->weight_goal_kg);
 
         $entryRaw = DB::table('health_entries')->first();
         $this->assertNotNull($entryRaw);
-        $this->assertStringNotContainsString('81.2', (string) $entryRaw->v);
-        $this->assertStringNotContainsString('morning', (string) $entryRaw->note);
+        $this->assertStringContainsString('81.2', (string) $entryRaw->v);
+        $this->assertStringContainsString('morning', (string) $entryRaw->note);
         // Non-sensitive metadata stays plaintext for querying.
         $this->assertSame('weight', $entryRaw->metric);
 

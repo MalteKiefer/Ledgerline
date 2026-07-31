@@ -31,8 +31,6 @@ class HealthProfile extends Model
     protected $fillable = ['birthdate', 'height_cm', 'sex', 'weight_goal_kg'];
 
     protected $casts = [
-        'birthdate' => 'encrypted',
-        'weight_goal_kg' => 'encrypted',
         'height_cm' => 'integer',
         'version' => 'integer',
     ];

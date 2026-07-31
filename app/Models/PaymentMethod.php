@@ -49,14 +49,6 @@ class PaymentMethod extends Model
 
     protected $casts = [
         'business' => 'boolean',
-        'iban' => 'encrypted',
-        'bic' => 'encrypted',
-        'bank' => 'encrypted',
-        'account_no' => 'encrypted',
-        'card_number' => 'encrypted',
-        'card_network' => 'encrypted',
-        'card_expiry' => 'encrypted',
-        'paypal_email' => 'encrypted',
         'version' => 'integer',
     ];
 
