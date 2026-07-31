@@ -20,7 +20,8 @@ use Illuminate\Support\Str;
  */
 class InviteLink extends Model
 {
-    protected $guarded = [];
+    /** Nothing is mass-assignable: every attribute is set server-side via forceFill. */
+    protected $fillable = [];
 
     protected function casts(): array
     {

@@ -12,9 +12,9 @@ use Illuminate\Support\Carbon;
 
 /**
  * A payment method / account (plaintext-relational pivot). Rows are private per
- * user via OwnsUserData. type/name/business + url/icon are plaintext; the
- * sensitive account identifiers (IBAN/BIC/card number/…) carry an `encrypted`
- * cast.
+ * user via OwnsUserData. All columns — including the account identifiers
+ * (IBAN/BIC/card number/…) — are plaintext at rest (encryption removed in
+ * v1.516.0; confidentiality is an infra concern: LUKS + encrypted backups).
  *
  * @property int $id
  * @property int $user_id

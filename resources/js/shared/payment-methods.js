@@ -1,7 +1,7 @@
 // Payment methods (bank accounts, cards, PayPal, cash, …) for the Finance module.
 // Pure, testable helpers — all rendering/masking logic lives here so the component
-// and its Blade stay thin. Records are sealed client-side (zero-knowledge) in the
-// finance store's `paymentMethods` collection; the server never sees these fields.
+// and its Blade stay thin. Records are plaintext-relational rows served over the
+// /finance/* REST endpoints.
 
 // The supported types, each with its monochrome icon and tint (iOS palette).
 export const PAYMENT_TYPES = [

@@ -1,4 +1,4 @@
-// Client-side document text extraction (ZK — nothing leaves the browser). Shared by the
+// Client-side document text extraction (runs entirely in the browser). Shared by the
 // files module (search index) and the finance receipts (OCR + tag suggestion). PDFs use
 // their embedded text layer when present, otherwise the pages are rendered and OCR'd;
 // images are OCR'd; anything else is decoded as text. pdf.js is lazy-loaded/code-split.

@@ -1,5 +1,5 @@
 // ZUGFeRD / Factur-X invoice XML (UN/CEFACT Cross Industry Invoice, EN 16931 profile).
-// Pure + client-side (zero-knowledge: the invoice never leaves the browser). Produces
+// Pure + client-side (the XML is generated in the browser and downloaded locally). Produces
 // the structured XML payload that is the heart of a ZUGFeRD e-invoice — directly usable
 // as an XRechnung/Factur-X XML and ready to be embedded into a PDF/A-3 later.
 

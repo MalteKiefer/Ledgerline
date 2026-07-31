@@ -14,7 +14,7 @@ use Tests\TestCase;
 
 /**
  * Plaintext-relational Health (pivot): profile upsert, entry CRUD + optimistic
- * version, encryption-at-rest of Art. 9 columns, the DB-enforced single-active-
+ * version, plaintext-at-rest of the Art. 9 columns, the DB-enforced single-active-
  * fast invariant, stop, and per-user isolation.
  */
 class HealthRelationalTest extends TestCase
@@ -40,7 +40,7 @@ class HealthRelationalTest extends TestCase
         $this->getJson(route('health.data'))->assertOk()->assertJsonPath('profile.height_cm', 182);
     }
 
-    public function test_sensitive_columns_encrypted_at_rest(): void
+    public function test_sensitive_columns_stored_plaintext_at_rest(): void
     {
         $this->actingAs(User::factory()->create());
 
@@ -59,7 +59,7 @@ class HealthRelationalTest extends TestCase
         // Non-sensitive metadata stays plaintext for querying.
         $this->assertSame('weight', $entryRaw->metric);
 
-        // Round-trips through the encrypted cast.
+        // Round-trips as plaintext (encryption removed in v1.516.0).
         $this->assertSame('81.2', HealthEntry::query()->first()?->v);
     }
 

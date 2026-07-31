@@ -10,9 +10,10 @@ use Illuminate\Support\Carbon;
 
 /**
  * A single health measurement (plaintext-relational pivot). Rows are private per
- * user via OwnsUserData. metric + ts stay plaintext so the server can
- * sort/filter/group for charts; the readings (v/v2) and note are Art. 9
- * sensitive → `encrypted` cast. Values stored in canonical units as strings.
+ * user via OwnsUserData. metric + ts let the server sort/filter/group for
+ * charts. All columns — including the Art. 9 readings (v/v2) and note — are
+ * plaintext at rest (encryption removed in v1.516.0; confidentiality is an
+ * infra concern). Values stored in canonical units as strings.
  *
  * @property int $id
  * @property int $user_id

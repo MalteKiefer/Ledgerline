@@ -1,7 +1,7 @@
 // Pure, headless-testable helpers for the Explore track-detail view.
 //
-// Zero-knowledge: these operate purely over already-decrypted track data in the
-// browser. No DOM, no network, no Date.now()/random — deterministic functions of
+// These operate purely over the track data already in memory in the browser.
+// No DOM, no network, no Date.now()/random — deterministic functions of
 // their inputs, so Vitest can exercise them in the `node` environment.
 
 import { computeStats } from './track-parse';

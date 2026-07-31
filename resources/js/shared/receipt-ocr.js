@@ -1,4 +1,4 @@
-// Pattern recognition over a receipt's OCR/text (client-side, ZK). Suggests a category
+// Pattern recognition over a receipt's OCR/text (client-side). Suggests a category
 // and tags on upload and extracts the merchant, total and date — pure + testable. The
 // same structured fields can later feed a Paperless push. Heuristic, German-first.
 

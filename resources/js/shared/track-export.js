@@ -1,6 +1,6 @@
-// Serialise an Explore track's decrypted points into GPX 1.1 for download.
-// Pure + client-side (the points come from the already-decrypted explore store,
-// so nothing leaves the zero-knowledge boundary). Mirrors the parse side
+// Serialise an Explore track's points into GPX 1.1 for download.
+// Pure + client-side (the points come from the explore data already in memory,
+// and the GPX is downloaded locally). Mirrors the parse side
 // (shared/track-parse.js): a point is { lat, lng, ele:(number|null), t:(number|null) }.
 
 /** XML-escape a string for use in element text / attribute values. */

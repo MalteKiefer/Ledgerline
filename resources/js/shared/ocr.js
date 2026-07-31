@@ -1,6 +1,6 @@
 // Lazy, singleton OCR worker (tesseract.js). All assets are self-hosted under
 // /tesseract (worker + WASM core + eng/deu data) so nothing is fetched from a
-// CDN — the whole OCR runs in the browser, keeping the ZK boundary intact.
+// CDN — the whole OCR runs in the browser (no external requests).
 let _ocrWorker = null, _ocrInit = null;
 
 async function ocrWorker() {

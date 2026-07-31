@@ -18,7 +18,7 @@ import { healthUnits } from '../shared/prefs';
 import { getJson, apiRequest, jsonHeaders } from '../shared/api';
 
 // --- snake_case (server row) ↔ the shape the component + pure helpers expect ----
-// Entries already use ts/v/v2/note; v/v2 arrive as decrypted STRINGS → coerce to
+// Entries already use ts/v/v2/note; v/v2 may arrive as JSON STRINGS → coerce to
 // Number so the metric helpers (sum/min/max/convert) do arithmetic, not string
 // concatenation. Fasts map start_at→start, end_at→end, target_hours→targetHours
 // so the unchanged health-fasting helpers keep working.
