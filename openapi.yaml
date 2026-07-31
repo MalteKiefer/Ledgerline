@@ -8,17 +8,26 @@ info:
     Plaintext-relational personal cloud API for the Ledgerline mobile client.
 
     **Architecture:** every module is a relational table exposed over per-record
-    REST (soft-delete trash + optimistic-concurrency `version`). Sensitive columns
-    are encrypted at rest server-side (Laravel `encrypted` cast, APP_KEY) and
-    returned decrypted over TLS — the client sends/receives plaintext. Binary files
-    (documents, photos, receipts) are stored as plaintext bytes and streamed by id.
-    (The former zero-knowledge/vault/sealed-store model was fully removed in the
-    v1.5xx pivot.)
+    REST (soft-delete trash + optimistic-concurrency `version`). ALL user content is
+    plaintext at rest since v1.516.0 — confidentiality at rest is an infrastructure
+    concern (LUKS full-disk encryption + encrypted backups). Only OPERATIONAL SECRETS
+    (SMTP / backup / Paperless credentials, backup passphrases) remain encrypted at
+    rest via the Laravel `encrypted` cast (APP_KEY) and are never serialised into any
+    response. The client sends and receives plaintext over TLS. Binary files (invoice
+    PDFs, receipts) are stored as plaintext bytes and streamed by id. (The former
+    zero-knowledge / vault / sealed-store model was fully removed in the v1.5xx pivot.)
 
     **Authentication:** obtain a Sanctum bearer token via the device pairing
     exchange (QR code scan + owner approval in the web UI), then include it as
     `Authorization: Bearer <token>` on every request. All routes except the two
     pairing endpoints require the `device` Sanctum ability.
+
+    **Web-only surfaces (intentionally no /api/v1 twin):** per-user Paperless
+    CONFIGURATION (URL/token/enabled + connection test) and the workspace-admin
+    settings — notification channels (mail/ntfy/webhook) edit/update/test, system
+    settings + error resolution, the `max_connected_devices` security setting, and
+    the self-registration toggle — are managed in the web UI only. (Backup, users,
+    groups, security-log and the company profile ARE mirrored on the API.)
 
 servers:
   - url: /api/v1
@@ -36,12 +45,16 @@ tags:
     description: >
       Plaintext-relational finance (pivot). Invoices, bank transactions, payment
       methods, business partners, cost projects and receipt categories as
-      owner-scoped rows; sensitive PII (IBAN/cards, bank counterparty/purpose,
-      invoice customer/lines, partner contact PII) is encrypted at rest (APP_KEY),
-      while amounts/dates/numbers stay plaintext for stats + GoBD. Invoice numbering
-      is server-authoritative (POST /finance/invoices/{id}/finalize, atomic per-year).
-      PDF + receipt files are plaintext blobs on disk. OCR (/invoices/ocr) and the
-      company profile (/company) are unchanged.
+      owner-scoped rows. ALL finance columns are plaintext at rest since v1.516.0
+      (only operational secrets — SMTP/backup/Paperless credentials — remain
+      encrypted); confidentiality at rest is an infrastructure concern (LUKS +
+      encrypted backups). Amounts/dates/numbers drive stats + GoBD. Invoice numbering
+      is server-authoritative (POST /finance/invoices/{invoice}/finalize, atomic
+      per-year). PDF + receipt files are plaintext blobs on disk. Every mutating
+      route is owner-scoped and gated by the finance module (403 when disabled); the
+      per-record update routes use optimistic `version` concurrency (409 on
+      conflict). OCR (POST /invoices/ocr) and the company profile (/company) sit
+      alongside.
   - name: Devices
     description: Connected device listing, revocation, and remote-wipe management
   - name: Notifications
@@ -55,13 +68,13 @@ tags:
       Admin group management (requires the admin role on top of the device token).
       A group is a reusable limit template (files/gallery quota + device cap) plus a
       shareable flag; membership is many-to-many. Limits and membership are non-secret
-      metadata — zero-knowledge is unaffected.
+      metadata.
   - name: Company
     description: >
       Per-user company profile and invoice defaults (the Finance module's business
       identity + numbering/appearance settings). This is the user's OWN business
       identity that prints on every invoice — non-secret, served in the clear like the
-      avatar (never customer data, which stays zero-knowledge in the invoices store).
+      avatar (it is the business's own identity, never customer data).
       The invoice records, payment methods and imported bank transactions themselves
       live in the relational finance tables (see the Finance tag).
   - name: Status
@@ -84,7 +97,8 @@ tags:
       Admin backup management (admin role + device token). Credential hygiene is
       enforced: destination `config` (cloud credentials) and job `passphrase` are
       NEVER present in any response. A database job with encrypt=false is refused
-      (422) — a DB dump carries wrapped vault keys and must never leave unencrypted.
+      (422) — a DB dump contains all data (plaintext) plus the encrypted operational
+      secrets, and must never leave the box unencrypted.
   - name: SecurityLog
     description: >
       Admin, read-only, metadata-only audit trail (admin role + device token). Rows
@@ -93,9 +107,10 @@ tags:
     description: >
       Per-user Paperless-ngx integration: cached term quick-picks, live term
       creation, cache sync, and document forwarding. `POST /paperless/documents` is
-      a transient-cleartext boundary (like /gallery/process + /invoices/ocr): the
-      client posts decrypted bytes, the server forwards them to the user's own
-      Paperless and stores/logs nothing.
+      a transient-cleartext boundary (like POST /invoices/ocr): the client posts the
+      raw document bytes, the server forwards them to the user's own Paperless
+      instance and stores/logs nothing. Per-user Paperless CONFIGURATION (URL / token
+      / enabled flag) is set in the web UI only — there is no /api/v1 config twin.
 components:
   securitySchemes:
     bearerAuth:
@@ -106,7 +121,81 @@ components:
         First-party Sanctum token with ability `device`. Obtained via the
         pairing exchange. Include as `Authorization: Bearer <token>`.
 
+  responses:
+    Unauthorized:
+      description: Unauthenticated — missing, invalid, or expired bearer token.
+    Forbidden:
+      description: >
+        Forbidden — the Sanctum token lacks the required `device` ability, the
+        Finance module is disabled for this account (module:finance gate), or (on
+        admin routes) the caller is not an admin (manage-global-settings).
+    NotFound:
+      description: Not found, or not owned by the caller (owner-scoped; existence is not leaked).
+    ValidationError:
+      description: Validation failed.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ValidationError" }
+    VersionConflict:
+      description: >
+        Optimistic-concurrency conflict — the stored `version` no longer matches the
+        `version` sent. Re-fetch the row, merge, and retry.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/VersionConflict" }
+    RateLimited:
+      description: Too many requests — the route's per-minute rate limit was exceeded.
+
   schemas:
+    ValidationError:
+      type: object
+      description: >
+        Laravel validation-failure body (HTTP 422). `errors` maps each failed field
+        to its messages.
+      required: [message, errors]
+      properties:
+        message: { type: string }
+        errors:
+          type: object
+          additionalProperties: { type: array, items: { type: string } }
+    VersionConflict:
+      type: object
+      description: >
+        Optimistic-concurrency conflict body. `version` is the current stored
+        version the client should rebase onto.
+      required: [error, version]
+      properties:
+        error: { type: string, enum: [version_conflict] }
+        version: { type: integer }
+    FinanceError:
+      type: object
+      description: "Business-rule rejection body: a machine-readable `error` code (HTTP 422)."
+      required: [error]
+      properties:
+        error: { type: string }
+    FinanceReceipt:
+      type: object
+      description: >
+        A receipt entry embedded in a bank transaction's `receipts[]`. File receipts
+        are created only via POST /finance/transactions/{transaction}/receipts;
+        `blob_path` is the SERVER-owned on-disk path (never accepted from the client).
+        Fileless entries (invoice links / Eigenbeleg metadata) may be added via the
+        transaction PUT.
+      required: [id, name, kind, tags, locked, trashed]
+      properties:
+        id: { type: string, description: "UUID assigned server-side." }
+        blob_path: { type: [string, "null"], description: "Server-owned storage path under invoices/ (read-only; response only)." }
+        name: { type: string }
+        mime: { type: [string, "null"] }
+        kind: { type: string, example: receipt, description: "e.g. receipt | invoice | eigenbeleg." }
+        category: { type: [string, "null"] }
+        tags: { type: array, items: { type: string } }
+        contactId: { type: [string, "null"] }
+        partnerId: { type: [integer, "null"] }
+        vat: { type: [string, "null"] }
+        locked: { type: boolean, description: "A locked receipt (e.g. an auto-linked invoice) cannot be deleted." }
+        trashed: { type: boolean }
+
     CompanyProfile:
       type: object
       description: >
@@ -141,7 +230,7 @@ components:
       description: >
         A user group: a reusable limit template plus a shareable flag. Limits are
         nullable (null = the group sets no cap for that dimension). Non-secret
-        metadata — zero-knowledge is unaffected.
+        metadata.
       properties:
         id: { type: integer }
         name: { type: string, maxLength: 100 }
@@ -170,7 +259,7 @@ components:
       type: object
       description: >
         Global, non-secret DISPLAY preferences — measurement units + 12/24h clock.
-        Presentation only; the underlying data stays zero-knowledge. Returned in
+        Presentation only; the stored data is unchanged (canonical metres/kg/°C/mg-dL). Returned in
         GET /me and set via POST /preferences; the client applies them to its own
         rendering (distances/elevations convert from canonical metres, times honour
         the clock format). Canonical storage is unchanged (metres, kg, °C, mg/dL).
@@ -187,7 +276,7 @@ components:
       description: >
         The authenticated user's profile. Returned as the `user` object by GET /me
         and by POST /auth/pair/collect (when `status: approved`). All fields are
-        non-secret metadata — zero-knowledge vault data is never included.
+        non-secret metadata — no credentials (password hash, 2FA secret) are included.
       required: [id, name, email, locale, groups, modules, has_avatar, preferences]
       properties:
         id: { type: integer }
@@ -234,9 +323,15 @@ components:
 
     Invoice:
       type: object
-      description: "Invoice (relational table invoices; customer/lines/note/versions encrypted at rest). Money + number/date plaintext for stats/GoBD."
+      description: >
+        Invoice (relational table invoices). All columns are plaintext at rest since
+        v1.516.0 (confidentiality is an infra concern: LUKS + encrypted backups).
+        customer/lines/versions are JSON columns; money + number/date drive stats +
+        GoBD numbering. number/seq/year/type=credit_note/cancels_invoice_id/pdf_path/
+        version/version_seq are server-managed and never mass-assigned via CRUD.
       properties:
         id: { type: integer }
+        user_id: { type: integer, description: "Owner (stamped server-side; read-only)." }
         number: { type: [string, "null"] }
         seq: { type: [integer, "null"] }
         year: { type: [integer, "null"] }
@@ -262,10 +357,19 @@ components:
         payment_account: { type: [string, "null"] }
         partner_id: { type: [integer, "null"] }
         pdf_path: { type: [string, "null"] }
-        customer: { type: object, additionalProperties: true, description: "Denormalised customer snapshot. May carry `invoiceEmail` (dedicated Rechnungs-E-Mail, preferred over `email` when emailing/dunning) alongside name/attn/address/email/vatId/partnerId." }
-        lines: { type: array, items: { type: object, additionalProperties: true } }
+        customer: { type: [object, "null"], additionalProperties: true, description: "Denormalised customer snapshot (nullable). May carry `invoiceEmail` (dedicated Rechnungs-E-Mail, preferred over `email` when emailing/dunning) alongside name/attn/address/email/vatId/partnerId." }
+        lines: { type: [array, "null"], items: { type: object, additionalProperties: true } }
         note: { type: [string, "null"] }
-        versions: { type: array, items: { type: object, additionalProperties: true } }
+        versions:
+          type: [array, "null"]
+          description: "GoBD correction trail. Pass a version's `seq` as `version_seq` to the PDF ops to read/attach that version's own PDF."
+          items:
+            type: object
+            properties:
+              seq: { type: integer, description: "Version sequence — pass as version_seq to the PDF ops." }
+              label: { type: [string, "null"] }
+              pdf: { type: [string, "null"], description: "Stored blob path of this version's own PDF (read-only)." }
+            additionalProperties: true
         version_seq: { type: integer }
         version: { type: integer }
         created_at: { type: string, format: date-time }
@@ -274,9 +378,10 @@ components:
 
     FinancePartner:
       type: object
-      description: "Geschäftspartner (relational finance_partners; address/email/phone/vat_id/contacts encrypted at rest)."
+      description: "Geschäftspartner (relational finance_partners). All columns plaintext at rest since v1.516.0."
       properties:
         id: { type: integer }
+        user_id: { type: integer, description: "Owner (stamped server-side; read-only)." }
         name: { type: string }
         category: { type: [string, "null"] }
         kind: { type: [string, "null"] }
@@ -299,6 +404,7 @@ components:
       description: "Payment method (relational payment_methods; all columns plaintext since v1.516.0)."
       properties:
         id: { type: integer }
+        user_id: { type: integer, description: "Owner (stamped server-side; read-only)." }
         type: { type: string, enum: [bank, card, paypal, cash, other] }
         name: { type: string }
         holder: { type: [string, "null"] }
@@ -324,11 +430,12 @@ components:
       description: "Cost project (relational finance_projects, nestable via parent_id)."
       properties:
         id: { type: integer }
+        user_id: { type: integer, description: "Owner (stamped server-side; read-only)." }
         parent_id: { type: [integer, "null"] }
         name: { type: string }
-        kind: { type: string, description: "business | private" }
+        kind: { type: string, enum: [business, private] }
         note: { type: [string, "null"] }
-        expenses: { type: array, items: { type: object, additionalProperties: true } }
+        expenses: { type: [array, "null"], items: { type: object, additionalProperties: true }, description: "Manual hand-entered spend rows (nullable)." }
         version: { type: integer }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -336,12 +443,15 @@ components:
 
     FinanceCategory:
       type: object
-      description: "Receipt category (relational finance_categories). Optional colour + monochrome icon for display."
+      description: "Receipt category (relational finance_categories, unique per user; no soft deletes)."
       properties:
         id: { type: integer }
+        user_id: { type: integer, description: "Owner (stamped server-side; read-only)." }
         name: { type: string }
         color: { type: [string, "null"], description: "Hex colour #RRGGBB, or null.", example: "#7066f5" }
         icon: { type: [string, "null"], description: "Monochrome icon name (heroicons-outline), or null.", example: "hashtag" }
+        created_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: [string, "null"], format: date-time }
 
     VatReturn:
       type: object
@@ -510,6 +620,7 @@ components:
       description: "Bank-statement line (relational bank_transactions). All columns plaintext at rest since v1.516.0. Amount/date/vat_cat drive stats + VAT."
       properties:
         id: { type: integer }
+        user_id: { type: integer, description: "Owner (stamped server-side; read-only)." }
         payment_method_id: { type: integer }
         date: { type: string }
         amount: { type: string }
@@ -524,10 +635,145 @@ components:
         purpose: { type: [string, "null"] }
         booking_text: { type: [string, "null"] }
         eref: { type: [string, "null"] }
-        receipts: { type: array, items: { type: object, additionalProperties: true } }
+        receipts: { type: [array, "null"], items: { $ref: "#/components/schemas/FinanceReceipt" } }
         version: { type: integer }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        deleted_at: { type: [string, "null"], format: date-time }
+
+    InvoiceInput:
+      type: object
+      description: >
+        Invoice create/update body. On create `name` defaults apply
+        (status=draft, type=invoice, currency=EUR); `number` is optional (self-issued
+        invoices are numbered server-side via /finalize). On update every field is
+        optional (send only what changes) and `version` drives optimistic concurrency.
+        Server-managed fields (seq/year/cancels_invoice_id/pdf_path/version) are never
+        accepted here.
+      properties:
+        number: { type: [string, "null"], maxLength: 64 }
+        status: { type: string, enum: [draft, sent, paid] }
+        type: { type: string, enum: [invoice, credit_note] }
+        issue_date: { type: [string, "null"], format: date }
+        due_date: { type: [string, "null"], format: date }
+        currency: { type: string, maxLength: 8 }
+        vat_rate: { type: [number, "null"] }
+        gross: { type: [number, "null"] }
+        net: { type: [number, "null"] }
+        vat: { type: [number, "null"] }
+        discount_type: { type: [string, "null"], enum: [percent, amount, null] }
+        discount_value: { type: [number, "null"], minimum: 0 }
+        skonto_percent: { type: [number, "null"], minimum: 0, maximum: 100 }
+        skonto_days: { type: [integer, "null"], minimum: 0, maximum: 3650 }
+        imported: { type: boolean }
+        paid_at: { type: [string, "null"], format: date }
+        payment_account: { type: [string, "null"], maxLength: 200 }
+        partner_id: { type: [integer, "null"], description: "Must be an existing, owned, non-deleted partner." }
+        customer: { type: [object, "null"], additionalProperties: true }
+        lines: { type: [array, "null"], maxItems: 1000, items: { type: object, additionalProperties: true } }
+        note: { type: [string, "null"], maxLength: 100000 }
+        versions: { type: [array, "null"], maxItems: 1000, items: { type: object, additionalProperties: true } }
+        version: { type: integer, minimum: 0, description: "Update only: expected row version for optimistic concurrency (409 on mismatch)." }
+
+    PartnerInput:
+      type: object
+      description: "Business-partner create/update body. `name` is required on create. `version` (update only) drives optimistic concurrency."
+      properties:
+        name: { type: string, maxLength: 300 }
+        category: { type: [string, "null"], maxLength: 120 }
+        kind: { type: [string, "null"], maxLength: 16 }
+        url: { type: [string, "null"], maxLength: 2000 }
+        logo: { type: [string, "null"], maxLength: 2000 }
+        note: { type: [string, "null"], maxLength: 100000 }
+        address: { type: [string, "null"], maxLength: 2000 }
+        email: { type: [string, "null"], maxLength: 320 }
+        invoice_email: { type: [string, "null"], format: email, maxLength: 320 }
+        phone: { type: [string, "null"], maxLength: 100 }
+        vat_id: { type: [string, "null"], maxLength: 64 }
+        contacts: { type: [array, "null"], maxItems: 200, items: { type: object, additionalProperties: true } }
+        version: { type: integer, minimum: 0, description: "Update only: optimistic concurrency (409 on mismatch)." }
+
+    PaymentMethodInput:
+      type: object
+      description: "Payment-method create/update body. `type` + `name` are required on create. `version` (update only) drives optimistic concurrency."
+      properties:
+        type: { type: string, enum: [bank, card, paypal, cash, other] }
+        name: { type: string, maxLength: 200 }
+        holder: { type: [string, "null"], maxLength: 200 }
+        note: { type: [string, "null"], maxLength: 20000 }
+        business: { type: boolean }
+        url: { type: [string, "null"], maxLength: 2000 }
+        icon: { type: [string, "null"], maxLength: 200000, description: "Data-URI or URL of a small bank/brand icon." }
+        iban: { type: [string, "null"], maxLength: 64 }
+        bic: { type: [string, "null"], maxLength: 32 }
+        bank: { type: [string, "null"], maxLength: 200 }
+        account_no: { type: [string, "null"], maxLength: 64 }
+        card_number: { type: [string, "null"], maxLength: 40 }
+        card_network: { type: [string, "null"], maxLength: 40 }
+        card_expiry: { type: [string, "null"], maxLength: 16 }
+        paypal_email: { type: [string, "null"], maxLength: 320 }
+        version: { type: integer, minimum: 0, description: "Update only: optimistic concurrency (409 on mismatch)." }
+
+    ProjectInput:
+      type: object
+      description: "Cost-project create/update body. `name` is required on create. `version` (update only) drives optimistic concurrency."
+      properties:
+        name: { type: string, maxLength: 300 }
+        parent_id: { type: [integer, "null"], description: "Must be an existing, owned, non-deleted project." }
+        kind: { type: string, enum: [business, private] }
+        note: { type: [string, "null"], maxLength: 100000 }
+        expenses: { type: [array, "null"], maxItems: 5000, items: { type: object, additionalProperties: true } }
+        version: { type: integer, minimum: 0, description: "Update only: optimistic concurrency (409 on mismatch)." }
+
+    CategoryInput:
+      type: object
+      required: [name]
+      description: "Receipt-category create/update body (name/colour/icon — a full replace, not just a rename)."
+      properties:
+        name: { type: string, maxLength: 160, description: "Unique per user (the current category id is ignored on update)." }
+        color: { type: [string, "null"], pattern: "^#[0-9a-fA-F]{6}$", example: "#7066f5" }
+        icon: { type: [string, "null"], maxLength: 40, description: "Monochrome heroicons-outline name from the fixed allowlist (FinanceController::CATEGORY_ICONS), e.g. hashtag/tag/banknotes." }
+
+    TransactionInput:
+      type: object
+      description: "Bank-transaction create/update body. `payment_method_id` + `date` + `amount` are required on create. `version` (update only) drives optimistic concurrency."
+      properties:
+        payment_method_id: { type: integer, description: "Must be an existing, owned, non-deleted payment method." }
+        date: { type: string, format: date }
+        amount: { type: number }
+        vat_cat: { type: [string, "null"], maxLength: 16 }
+        sig: { type: [string, "null"], maxLength: 80, description: "Dedup signature." }
+        invoice_id: { type: [integer, "null"], description: "Must be an existing, owned, non-deleted invoice." }
+        invoice_number: { type: [string, "null"], maxLength: 64 }
+        finance_project_id: { type: [integer, "null"], description: "Must be an existing, owned, non-deleted project." }
+        counterparty: { type: [string, "null"], maxLength: 2000 }
+        counterparty_iban: { type: [string, "null"], maxLength: 64 }
+        bic: { type: [string, "null"], maxLength: 32 }
+        purpose: { type: [string, "null"], maxLength: 4000 }
+        booking_text: { type: [string, "null"], maxLength: 2000 }
+        eref: { type: [string, "null"], maxLength: 200 }
+        receipts:
+          type: [array, "null"]
+          maxItems: 200
+          description: "Metadata + fileless (invoice-link/Eigenbeleg) entries only; a client-supplied blob_path is always dropped — real file receipts are created via the receipts endpoint."
+          items: { type: object, additionalProperties: true }
+        version: { type: integer, minimum: 0, description: "Update only: optimistic concurrency (409 on mismatch)." }
+
+    TransactionBulkRow:
+      type: object
+      required: [date, amount]
+      description: "One parsed bank-statement line for POST /finance/transactions/bulk. Deduplicated by `sig`."
+      properties:
+        date: { type: string, format: date }
+        amount: { type: number }
+        sig: { type: [string, "null"], maxLength: 80 }
+        vat_cat: { type: [string, "null"], maxLength: 16 }
+        counterparty: { type: [string, "null"], maxLength: 2000 }
+        counterparty_iban: { type: [string, "null"], maxLength: 64 }
+        bic: { type: [string, "null"], maxLength: 32 }
+        purpose: { type: [string, "null"], maxLength: 4000 }
+        booking_text: { type: [string, "null"], maxLength: 2000 }
+        eref: { type: [string, "null"], maxLength: 200 }
 
     UserSettings:
       type: object
@@ -599,22 +845,29 @@ components:
     BackupDestinationWrite:
       type: object
       required: [name, driver]
-      description: "Blank secret fields (secret/password/private_key) keep the stored value on update."
+      description: >
+        Create/update body for a backup destination. Only the keys relevant to the
+        chosen `driver` are stored: s3/b2 → bucket/region/key/secret/endpoint/
+        use_path_style/path; sftp → host/port/username/password/host_fingerprint/path;
+        webdav → base_uri/username/password/path. On update, a blank `secret` or
+        `password` keeps the stored value. Credentials are stored encrypted (config
+        cast) and are NEVER returned in any response.
       properties:
-        name: { type: string }
+        name: { type: string, maxLength: 120 }
         driver: { type: string, enum: [s3, b2, sftp, webdav] }
-        bucket: { type: string }
-        region: { type: string }
-        key: { type: string }
-        secret: { type: string }
-        endpoint: { type: string }
-        host: { type: string }
-        port: { type: integer }
-        username: { type: string }
-        password: { type: string }
-        private_key: { type: string }
-        path: { type: string }
-        url: { type: string }
+        bucket: { type: string, maxLength: 255, description: "s3/b2." }
+        region: { type: string, maxLength: 64, description: "s3/b2." }
+        key: { type: string, maxLength: 255, description: "s3/b2 access key id." }
+        secret: { type: string, maxLength: 255, description: "s3/b2 secret (blank on update keeps stored)." }
+        endpoint: { type: string, maxLength: 255, format: uri, description: "s3/b2 custom endpoint. SSRF-guarded (SafeUrl)." }
+        use_path_style: { type: boolean, description: "s3/b2 path-style addressing." }
+        host: { type: string, maxLength: 255, description: "sftp host. SSRF-guarded (SafeHost); link-local/metadata rejected (422)." }
+        port: { type: integer, minimum: 1, maximum: 65535, description: "sftp port." }
+        username: { type: string, maxLength: 255, description: "sftp/webdav." }
+        password: { type: string, maxLength: 255, description: "sftp/webdav (blank on update keeps stored)." }
+        host_fingerprint: { type: string, maxLength: 255, description: "sftp host key fingerprint." }
+        base_uri: { type: string, maxLength: 255, format: uri, description: "webdav base URL. SSRF-guarded (SafeUrl); link-local/metadata rejected (422)." }
+        path: { type: string, maxLength: 255, description: "Optional sub-path prefix at the destination." }
 
     BackupJobSummary:
       type: object
@@ -622,8 +875,8 @@ components:
       properties:
         id: { type: integer }
         name: { type: string }
-        source: { type: string, enum: [database, files, gallery] }
-        mode: { type: string }
+        source: { type: string, enum: [database, invoices], description: "database = full DB dump; invoices = the invoices/ blob prefix (invoice PDFs + receipts, which are not in the DB dump)." }
+        mode: { type: string, enum: [mirror, archive] }
         destination_id: { type: integer }
         cron: { type: string }
         retention: { type: integer }
@@ -639,34 +892,38 @@ components:
       required: [name, source, backup_destination_id, cron, retention]
       description: "source=database requires encrypt=true (422 otherwise). Blank passphrase keeps the stored value on update."
       properties:
-        name: { type: string }
-        source: { type: string, enum: [database, files, gallery] }
-        mode: { type: string }
-        backup_destination_id: { type: integer }
-        cron: { type: string }
-        retention: { type: integer, minimum: 1 }
+        name: { type: string, maxLength: 120 }
+        source: { type: string, enum: [database, invoices], description: "database = full DB dump (requires encrypt=true); invoices = the invoices/ blob prefix (invoice PDFs + receipts)." }
+        mode: { type: string, enum: [mirror, archive] }
+        backup_destination_id: { type: integer, description: "Must reference an existing backup destination." }
+        cron: { type: string, maxLength: 64, description: "A valid cron expression." }
+        retention: { type: integer, minimum: 1, maximum: 9999 }
         encrypt: { type: boolean }
-        passphrase: { type: string }
-        notify_channels: { type: array, items: { type: string } }
+        passphrase: { type: [string, "null"], minLength: 12, maxLength: 255, description: "Encryption passphrase. Required when encrypt=true and no env passphrase is set. Blank on update keeps stored. Never returned." }
+        notify_channels: { type: array, items: { type: string, enum: [desktop, mail, ntfy, webhook] } }
         enabled: { type: boolean }
 
     BackupRunSummary:
       type: object
+      description: "A recent backup run (the exact shape returned by GET /backup/runs)."
       properties:
         id: { type: integer }
-        job: { type: string }
-        status: { type: string }
+        job: { type: [string, "null"], description: "Job name, or null if the job was deleted." }
+        status: { type: string, description: "e.g. running | success | failed | cancelled." }
+        message: { type: [string, "null"] }
+        log: { type: [string, "null"] }
         startedIso: { type: [string, "null"], format: date-time }
-        finishedIso: { type: [string, "null"], format: date-time }
-        durationSeconds: { type: [number, "null"] }
-        size: { type: [string, "null"] }
-        filename: { type: [string, "null"] }
+        startedHuman: { type: [string, "null"], description: "Relative start time (e.g. '3 hours ago')." }
+        size: { type: [string, "null"], description: "Human-readable archive size (e.g. '4.2 MB'), or null." }
         downloadable: { type: boolean }
         encrypted: { type: boolean }
         cancellable: { type: boolean }
+        cancelling: { type: boolean, description: "A graceful cancel has been requested and is pending." }
         verifiable: { type: boolean }
-        cancelRequested: { type: boolean }
-        error: { type: [string, "null"] }
+        needsPassphrase: { type: boolean, description: "The archive is encrypted (.enc) — verify/decrypt need a passphrase." }
+        verifyStatus: { type: [string, "null"] }
+        verifyMessage: { type: [string, "null"] }
+        verifiedHuman: { type: [string, "null"], description: "Relative time of the last verification." }
 
 paths:
 
@@ -858,7 +1115,7 @@ paths:
                     type: boolean
                     description: >
                       Kill switch. If true, the owner has requested a remote wipe of
-                      this token — the client should erase local vault data and log out.
+                      this token — the client should erase its local data and log out.
         "401":
           description: Unauthenticated.
 
@@ -868,8 +1125,8 @@ paths:
       operationId: avatarShow
       summary: Stream the authenticated user's avatar
       description: >
-        Streams the user's stored avatar image. Not zero-knowledge (a non-secret
-        profile image). Returns 404 if no avatar is stored. Throttle: 120 req/min.
+        Streams the user's stored avatar image (a non-secret profile image).
+        Returns 404 if no avatar is stored. Throttle: 120 req/min.
       responses:
         "200":
           description: Avatar image bytes.
@@ -923,14 +1180,14 @@ paths:
                     type: boolean
                     description: >
                       If true the owner has requested a remote wipe of this token.
-                      The client should erase local vault data and log out.
+                      The client should erase its local data and log out.
         "422":
           description: Validation error (state not in allowed enum).
         "429":
           description: Rate limit exceeded.
 
   # --------------------------------------------------------------------------
-  # Vault (KDF material + wrapped vault key)
+  # Site-icon proxy (bank logos / partner favicons for the Finance module)
   # --------------------------------------------------------------------------
 
   /passwords/icon:
@@ -1205,7 +1462,7 @@ paths:
           description: Unauthenticated.
 
   # --------------------------------------------------------------------------
-  # Gallery (additional: geocode + share management)
+  # Account (GDPR export, deletion, web-session revocation)
   # --------------------------------------------------------------------------
 
   /account/export:
@@ -1214,10 +1471,9 @@ paths:
       operationId: accountExport
       summary: GDPR data export (streamed zip)
       description: >
-        Streams a zip file containing the user's data as JSON files (one per module:
-        notes, todos, bookmarks, invoices, account info, etc.). Data only — no
-        blob bytes. The zip is generated on the fly and not stored server-side.
-        Throttle: 6 req/min.
+        Streams a zip file containing the user's data as JSON (finance data + account
+        info + settings). Data only — no blob bytes. The zip is generated on the fly
+        and not stored server-side. Throttle: 6 req/min.
       responses:
         "200":
           description: Zip archive streamed to the client.
@@ -1240,9 +1496,9 @@ paths:
       operationId: accountDestroy
       summary: Permanently delete the account (GDPR erasure)
       description: >
-        Permanently purges the account and all owned data (crypto-shred: vault key
-        is discarded, all blobs deleted, all records deleted). The presented bearer
-        token is revoked after deletion. Requires the user's email as a confirmation
+        Permanently purges the account and all owned data (all rows deleted, all
+        stored files removed). The presented bearer token is revoked after deletion.
+        Requires the user's email as a confirmation
         string to prevent accidental deletion. No per-route throttle.
       requestBody:
         required: true
@@ -1391,7 +1647,7 @@ paths:
       description: >
         Persists the user's non-secret DISPLAY preferences — measurement units and
         12/24h clock. These are presentation choices only (the underlying data stays
-        zero-knowledge); the client applies them to its own rendering. Every field is
+        stored data is unchanged); the client applies them to its own rendering. Every field is
         optional; only the sent fields change. Mirrored in GET /me.preferences. No
         per-route throttle beyond default.
       requestBody:
@@ -1457,8 +1713,8 @@ paths:
                   groups:
                     type: array
                     items: { $ref: "#/components/schemas/Group" }
-        "403":
-          description: Not an admin.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [Groups]
       operationId: groupsStore
@@ -1491,10 +1747,10 @@ paths:
                 type: object
                 properties:
                   group: { $ref: "#/components/schemas/Group" }
-        "403":
-          description: Not an admin.
-        "422":
-          description: Validation error (e.g. duplicate name).
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
 
   /groups/{group}:
     put:
@@ -1533,10 +1789,11 @@ paths:
                 type: object
                 properties:
                   group: { $ref: "#/components/schemas/Group" }
-        "403":
-          description: Not an admin.
-        "422":
-          description: Validation error.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Groups]
       operationId: groupsDestroy
@@ -1550,8 +1807,10 @@ paths:
       responses:
         "204":
           description: Deleted.
-        "403":
-          description: Not an admin.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
 
   /finance/data:
     get:
@@ -1573,8 +1832,8 @@ paths:
                   projects: { type: array, items: { $ref: "#/components/schemas/FinanceProject" } }
                   financeCategories: { type: array, items: { $ref: "#/components/schemas/FinanceCategory" } }
                   transactions: { type: array, items: { $ref: "#/components/schemas/BankTransaction" } }
-        "401": { description: Unauthenticated. }
-        "403": { description: Module disabled for this account. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /finance/reports:
     get:
       tags: [Finance]
@@ -1585,7 +1844,7 @@ paths:
         these instead of computing in-browser): VAT advance return, revenue
         KPIs, revenue by customer, and monthly revenue for the requested year,
         plus the current-year VAT for the dashboard and the list of years with
-        realized invoices. Read-only; never mutates a finance row.
+        realized invoices. Read-only; never mutates a finance row. Throttle 120/min.
       security: [ { bearerAuth: [] } ]
       parameters:
         - { name: year, in: query, required: false, schema: { type: integer }, description: "Target year (defaults to the current year)." }
@@ -1610,13 +1869,18 @@ paths:
                       type: object
                       properties: { month: { type: integer }, net: { type: number } }
                   aging: { $ref: "#/components/schemas/InvoiceAging" }
-        "401": { description: Unauthenticated. }
-        "403": { description: Module disabled for this account. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/reports/account-vat:
     get:
       tags: [Finance]
       operationId: financeAccountVat
       summary: VAT summary of one payment account's transactions for a year (read-only)
+      description: >
+        Summarises output VAT, input VAT (Vorsteuer) and the resulting payable for a
+        single payment account's transactions in a year, broken down by rate.
+        Read-only; never mutates a finance row. Throttle 120/min.
       security: [ { bearerAuth: [] } ]
       parameters:
         - { name: account_id, in: query, required: true, schema: { type: integer }, description: "Payment-method (account) id." }
@@ -1627,8 +1891,9 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AccountVatSummary" }
-        "401": { description: Unauthenticated. }
-        "403": { description: Module disabled for this account. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/reports/vat-advance:
     get:
       tags: [Finance]
@@ -1650,8 +1915,9 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/VatAdvanceReturn" }
-        "401": { description: Unauthenticated. }
-        "403": { description: Module disabled for this account. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/reports/euer:
     get:
       tags: [Finance]
@@ -1671,8 +1937,9 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/EuerReport" }
-        "401": { description: Unauthenticated. }
-        "403": { description: Module disabled for this account. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/duplicates:
     get:
       tags: [Finance]
@@ -1682,7 +1949,7 @@ paths:
         Read-only duplicate detection. Reports suspect groups only (same
         number, or same date+amount+customer for invoices; same EREF, or same
         date+amount+counterparty+purpose for transactions) — never deletes or
-        merges anything.
+        merges anything. Throttle 60/min.
       security: [ { bearerAuth: [] } ]
       responses:
         "200":
@@ -1695,8 +1962,9 @@ paths:
                 properties:
                   invoices: { type: array, items: { $ref: "#/components/schemas/DuplicateGroup" } }
                   transactions: { type: array, items: { $ref: "#/components/schemas/DuplicateGroup" } }
-        "401": { description: Unauthenticated. }
-        "403": { description: Module disabled for this account. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/category-suggestions:
     get:
       tags: [Finance]
@@ -1706,7 +1974,7 @@ paths:
         Read-only merchant->category suggestions derived from the taught
         category on each business partner (the partner list doubles as the rule
         store). Suggests only — the client decides whether to apply; the server
-        never writes a category onto a transaction.
+        never writes a category onto a transaction. Throttle 60/min.
       security: [ { bearerAuth: [] } ]
       responses:
         "200":
@@ -1726,8 +1994,9 @@ paths:
                         tx_id: { type: integer }
                         merchant: { type: string }
                         suggested_category: { type: string }
-        "401": { description: Unauthenticated. }
-        "403": { description: Module disabled for this account. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/trash:
     get:
       tags: [Finance]
@@ -1735,74 +2004,106 @@ paths:
       summary: Trashed finance rows
       security: [ { bearerAuth: [] } ]
       responses:
-        "200": { description: Trashed sets., content: { application/json: { schema: { type: object, additionalProperties: true } } } }
-        "401": { description: Unauthenticated. }
+        "200": { description: "Trashed sets — same keys as /finance/data, each an array of soft-deleted rows.", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /finance/invoices:
     post:
       tags: [Finance]
       operationId: financeInvoiceStore
       summary: Create an invoice
+      description: "Create an owner-scoped invoice row. On create status/type/currency default (draft/invoice/EUR); self-issued invoices are numbered server-side later via /finalize. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/InvoiceInput" } } } }
       responses:
-        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
-        "401": { description: Unauthenticated. }
-        "403": { description: Module disabled. }
-        "422": { description: Validation failed. }
+        "201": { description: Created., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/invoices/{invoice}:
     put:
       tags: [Finance]
       operationId: financeInvoiceUpdate
       summary: Update an invoice (optimistic concurrency)
+      description: "Per-row update; send `version` for optimistic concurrency (409 on mismatch). Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/InvoiceInput" } } } }
       responses:
-        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
-        "401": { description: Unauthenticated. }
-        "404": { description: Not found. }
-        "409": { description: Version conflict., content: { application/json: { schema: { type: object, properties: { error: { type: string }, version: { type: integer } } } } } }
+        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/VersionConflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Finance]
       operationId: financeInvoiceDestroy
       summary: Soft-delete an invoice
+      description: "Move the invoice to trash (soft delete). Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/invoices/{id}/restore:
     post:
       tags: [Finance]
       operationId: financeInvoiceRestore
       summary: Restore a trashed invoice
+      description: "Restore a soft-deleted invoice (404 if no trashed invoice with that id is owned by the caller). Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Restored., content: { application/json: { schema: { type: object, properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/invoices/{id}/force:
     delete:
       tags: [Finance]
       operationId: financeInvoiceForce
       summary: Permanently delete a trashed invoice
+      description: "Permanently delete a trashed invoice and its stored PDF blobs. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/invoices/{invoice}/finalize:
     post:
       tags: [Finance]
       operationId: financeInvoiceFinalize
       summary: Assign the GoBD invoice number (atomic, per-year, idempotent)
+      description: "Server-authoritative GoBD numbering: locks the year's numbered rows, takes max(seq)+1 (never below the configured floor), writes it atomically. Idempotent — an already-numbered invoice is returned unchanged. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Numbered invoice., content: { application/json: { schema: { type: object, properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }, "401": { description: Unauthenticated. }, "404": { description: Not found. } }
+      responses:
+        "200": { description: Numbered invoice., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/invoices/{invoice}/email:
     post:
       tags: [Finance]
       operationId: financeInvoiceEmail
       summary: Email a finalized invoice's stored PDF to the customer
       description: >
-        Sends the invoice's stored PDF (pdf_path) to the customer through the
-        DB-configured SMTP. Only finalized invoices (status sent|paid or already
-        numbered) may be sent. Stamps sent_at (does not bump the optimistic
-        version). Throttled 30/min.
+        Sends the invoice's stored PDF (pdf_path) to the customer over the user's OWN
+        company SMTP (settings.company company_smtp_*), deliberately independent of
+        the workspace notification SMTP. Only finalized invoices (status sent|paid or
+        already numbered) may be sent. Stamps sent_at without bumping the optimistic
+        version. Throttled 30/min.
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
       requestBody:
@@ -1824,9 +2125,21 @@ paths:
                 properties:
                   ok: { type: boolean }
                   sent_at: { type: string, format: date-time }
-        "401": { description: Unauthenticated. }
-        "404": { description: Not found. }
-        "422": { description: "Not finalized / no PDF / no recipient / SMTP not configured (error: not_finalized|no_pdf|no_recipient|no_smtp)." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: >
+            Business rejection with a machine-readable `error` code (one of
+            not_finalized, no_pdf, no_recipient, no_smtp) — OR, for an invalid `to`
+            address, the standard Laravel validation body { message, errors }.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/FinanceError"
+                  - $ref: "#/components/schemas/ValidationError"
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/invoices/{invoice}/storno:
     post:
       tags: [Finance]
@@ -1852,9 +2165,18 @@ paths:
                 required: [invoice]
                 properties:
                   invoice: { $ref: "#/components/schemas/Invoice" }
-        "401": { description: Unauthenticated. }
-        "404": { description: Not found. }
-        "422": { description: "Cannot cancel (error: not_finalized|already_cancelled|already_credit_note)." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "Cannot cancel — `error` is one of not_finalized, already_cancelled, already_credit_note."
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/FinanceError"
+                  - properties: { error: { enum: [not_finalized, already_cancelled, already_credit_note] } }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/invoices/{invoice}/dun:
     post:
       tags: [Finance]
@@ -1889,268 +2211,528 @@ paths:
                   ok: { type: boolean }
                   level: { type: integer, description: "The new dunning level (Mahnstufe)." }
                   reminded_at: { type: string, format: date-time }
-        "401": { description: Unauthenticated. }
-        "404": { description: Not found. }
-        "422": { description: "Not overdue / no PDF / no recipient / SMTP not configured (error: not_overdue|no_pdf|no_recipient|no_smtp)." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: >
+            Business rejection with a machine-readable `error` code (one of
+            not_overdue, no_pdf, no_recipient, no_smtp) — OR, for an invalid `to`
+            address, the standard Laravel validation body { message, errors }.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/FinanceError"
+                  - $ref: "#/components/schemas/ValidationError"
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/invoices/{invoice}/pdf:
     post:
       tags: [Finance]
       operationId: financeInvoicePdfUpload
       summary: Attach/replace the invoice PDF (multipart)
+      description: >
+        Upload a PDF blob (max files.max_upload_mb). Without `version_seq` it becomes
+        the invoice's current pdf_path. With `version_seq` it is attached to that
+        versions[] entry's own PDF (GoBD per-version correction trail) and pdf_path is
+        left untouched; if no such version exists the upload is discarded and the
+        invoice is returned unchanged. Throttle 1200/min.
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary } } } } } }
-      responses: { "200": { description: Updated invoice., content: { application/json: { schema: { type: object, properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }, "401": { description: Unauthenticated. }, "422": { description: Validation failed. } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: "PDF blob (max files.max_upload_mb)." }
+                version_seq: { type: integer, minimum: 1, description: "Attach to this versions[].seq entry instead of the main pdf_path." }
+      responses:
+        "200": { description: Updated invoice., content: { application/json: { schema: { type: object, required: [invoice], properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
     get:
       tags: [Finance]
       operationId: financeInvoicePdf
       summary: Stream the invoice PDF
+      description: >
+        Streams the invoice's PDF inline (sandboxed). With `version_seq` it streams
+        that GoBD version's own stored PDF instead of the current one (404 if that
+        version has no PDF). Throttle 3000/min.
       security: [ { bearerAuth: [] } ]
-      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: PDF bytes., content: { application/pdf: { schema: { type: string, format: binary } } } }, "401": { description: Unauthenticated. }, "404": { description: None. } }
+      parameters:
+        - { name: invoice, in: path, required: true, schema: { type: integer } }
+        - { name: version_seq, in: query, required: false, schema: { type: integer, minimum: 1 }, description: "Stream this versions[].seq entry's own PDF instead of the current invoice PDF." }
+        - { name: download, in: query, required: false, schema: { type: boolean }, description: "true → Content-Disposition: attachment; default inline." }
+      responses:
+        "200": { description: PDF bytes., content: { application/pdf: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/partners:
     post:
       tags: [Finance]
       operationId: financePartnerStore
       summary: Create a business partner
+      description: "`name` is required. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
-      responses: { "201": { description: Created., content: { application/json: { schema: { type: object, properties: { partner: { $ref: "#/components/schemas/FinancePartner" } } } } } }, "401": { description: Unauthenticated. }, "422": { description: Validation failed. } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PartnerInput" } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, required: [partner], properties: { partner: { $ref: "#/components/schemas/FinancePartner" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/partners/{partner}:
     put:
       tags: [Finance]
       operationId: financePartnerUpdate
       summary: Update a partner (optimistic concurrency)
+      description: "Send `version` for optimistic concurrency (409 on mismatch). Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: partner, in: path, required: true, schema: { type: integer } } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
-      responses: { "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { partner: { $ref: "#/components/schemas/FinancePartner" } } } } } }, "401": { description: Unauthenticated. }, "409": { description: Version conflict. } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PartnerInput" } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [partner], properties: { partner: { $ref: "#/components/schemas/FinancePartner" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/VersionConflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Finance]
       operationId: financePartnerDestroy
       summary: Soft-delete a partner
+      description: "Move the partner to trash. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: partner, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/partners/{id}/restore:
     post:
       tags: [Finance]
       operationId: financePartnerRestore
       summary: Restore a partner
+      description: "Restore a soft-deleted partner. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Restored., content: { application/json: { schema: { type: object, properties: { partner: { $ref: "#/components/schemas/FinancePartner" } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, required: [partner], properties: { partner: { $ref: "#/components/schemas/FinancePartner" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/partners/{id}/force:
     delete:
       tags: [Finance]
       operationId: financePartnerForce
       summary: Permanently delete a partner
+      description: "Permanently delete a trashed partner. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/payment-methods:
     post:
       tags: [Finance]
       operationId: financePaymentStore
       summary: Create a payment method
+      description: "`type` + `name` are required. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
-      responses: { "201": { description: Created., content: { application/json: { schema: { type: object, properties: { payment_method: { $ref: "#/components/schemas/PaymentMethod" } } } } } }, "401": { description: Unauthenticated. }, "422": { description: Validation failed. } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PaymentMethodInput" } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, required: [payment_method], properties: { payment_method: { $ref: "#/components/schemas/PaymentMethod" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/payment-methods/{paymentMethod}:
     put:
       tags: [Finance]
       operationId: financePaymentUpdate
       summary: Update a payment method (optimistic concurrency)
+      description: "Send `version` for optimistic concurrency (409 on mismatch). Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: paymentMethod, in: path, required: true, schema: { type: integer } } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
-      responses: { "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { payment_method: { $ref: "#/components/schemas/PaymentMethod" } } } } } }, "401": { description: Unauthenticated. }, "409": { description: Version conflict. } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PaymentMethodInput" } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [payment_method], properties: { payment_method: { $ref: "#/components/schemas/PaymentMethod" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/VersionConflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Finance]
       operationId: financePaymentDestroy
       summary: Soft-delete a payment method
+      description: "Move the payment method to trash. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: paymentMethod, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/payment-methods/{id}/restore:
     post:
       tags: [Finance]
       operationId: financePaymentRestore
       summary: Restore a payment method
+      description: "Restore a soft-deleted payment method. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Restored., content: { application/json: { schema: { type: object, properties: { payment_method: { $ref: "#/components/schemas/PaymentMethod" } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, required: [payment_method], properties: { payment_method: { $ref: "#/components/schemas/PaymentMethod" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/payment-methods/{id}/force:
     delete:
       tags: [Finance]
       operationId: financePaymentForce
       summary: Permanently delete a payment method
+      description: "Permanently delete a trashed payment method. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/projects:
     post:
       tags: [Finance]
       operationId: financeProjectStore
       summary: Create a cost project
+      description: "`name` is required. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
-      responses: { "201": { description: Created., content: { application/json: { schema: { type: object, properties: { project: { $ref: "#/components/schemas/FinanceProject" } } } } } }, "401": { description: Unauthenticated. }, "422": { description: Validation failed. } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectInput" } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, required: [project], properties: { project: { $ref: "#/components/schemas/FinanceProject" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/projects/{project}:
     put:
       tags: [Finance]
       operationId: financeProjectUpdate
       summary: Update a project (optimistic concurrency)
+      description: "Send `version` for optimistic concurrency (409 on mismatch). Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: project, in: path, required: true, schema: { type: integer } } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
-      responses: { "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { project: { $ref: "#/components/schemas/FinanceProject" } } } } } }, "401": { description: Unauthenticated. }, "409": { description: Version conflict. } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectInput" } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [project], properties: { project: { $ref: "#/components/schemas/FinanceProject" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/VersionConflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Finance]
       operationId: financeProjectDestroy
       summary: Soft-delete a project
+      description: "Move the project to trash; its children keep their parent_id (surface as roots). Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: project, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/projects/{id}/restore:
     post:
       tags: [Finance]
       operationId: financeProjectRestore
       summary: Restore a project
+      description: "Restore a soft-deleted project. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Restored., content: { application/json: { schema: { type: object, properties: { project: { $ref: "#/components/schemas/FinanceProject" } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, required: [project], properties: { project: { $ref: "#/components/schemas/FinanceProject" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/projects/{id}/force:
     delete:
       tags: [Finance]
       operationId: financeProjectForce
       summary: Permanently delete a project
+      description: "Permanently delete a trashed project. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/projects/{project}/move:
     post:
       tags: [Finance]
       operationId: financeProjectMove
       summary: Reparent a project (cycle-guarded)
+      description: "Set/clear the project's parent_id. parent_id must be an existing owned, non-deleted project; a move that would create a cycle is rejected 422. Throttle 1200/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: project, in: path, required: true, schema: { type: integer } } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { parent_id: { type: [integer, "null"] } } } } } }
-      responses: { "200": { description: Moved., content: { application/json: { schema: { type: object, properties: { project: { $ref: "#/components/schemas/FinanceProject" } } } } } }, "401": { description: Unauthenticated. }, "422": { description: Would create a cycle. } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { parent_id: { type: [integer, "null"], description: "New parent (null = make it a root)." } } } } } }
+      responses:
+        "200": { description: Moved., content: { application/json: { schema: { type: object, required: [project], properties: { project: { $ref: "#/components/schemas/FinanceProject" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "Validation failed (unknown/unowned parent_id) OR the move would create a cycle (body { error: cycle })."
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ValidationError"
+                  - allOf:
+                      - $ref: "#/components/schemas/FinanceError"
+                      - properties: { error: { enum: [cycle] } }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/categories:
     post:
       tags: [Finance]
       operationId: financeCategoryStore
       summary: Create a receipt category
+      description: "`name` (unique per user) is required; optional `color` + `icon`. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: string } } } } } }
-      responses: { "201": { description: Created., content: { application/json: { schema: { type: object, properties: { category: { $ref: "#/components/schemas/FinanceCategory" } } } } } }, "401": { description: Unauthenticated. }, "422": { description: Validation failed. } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryInput" } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, required: [category], properties: { category: { $ref: "#/components/schemas/FinanceCategory" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/categories/{category}:
     put:
       tags: [Finance]
       operationId: financeCategoryUpdate
-      summary: Rename a category
+      summary: Update a category (name, colour, icon)
+      description: "Full replace of name/colour/icon (not just a rename). Name uniqueness ignores the current id. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: category, in: path, required: true, schema: { type: integer } } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: string } } } } } }
-      responses: { "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { category: { $ref: "#/components/schemas/FinanceCategory" } } } } } }, "401": { description: Unauthenticated. } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryInput" } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [category], properties: { category: { $ref: "#/components/schemas/FinanceCategory" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Finance]
       operationId: financeCategoryDestroy
       summary: Delete a category
+      description: "Hard-delete a receipt category (no soft-delete/trash for categories). Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: category, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/transactions:
     post:
       tags: [Finance]
       operationId: financeTxStore
       summary: Create a bank transaction
+      description: "`payment_method_id` + `date` + `amount` are required. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
-      responses: { "201": { description: Created., content: { application/json: { schema: { type: object, properties: { transaction: { $ref: "#/components/schemas/BankTransaction" } } } } } }, "401": { description: Unauthenticated. }, "422": { description: Validation failed. } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/TransactionInput" } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, required: [transaction], properties: { transaction: { $ref: "#/components/schemas/BankTransaction" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/transactions/bulk:
     post:
       tags: [Finance]
       operationId: financeTxBulk
       summary: Import parsed bank-statement transactions (server dedups by sig)
+      description: "Bulk-inserts parsed statement lines for one account, deduplicating by `sig` (against existing rows AND within the batch). Parsing stays client-side. Throttle 120/min."
       security: [ { bearerAuth: [] } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [payment_method_id, transactions], properties: { payment_method_id: { type: integer }, transactions: { type: array, items: { type: object, additionalProperties: true } } } } } } }
-      responses: { "200": { description: Import result., content: { application/json: { schema: { type: object, properties: { created: { type: integer }, skipped: { type: integer } } } } } }, "401": { description: Unauthenticated. } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payment_method_id, transactions]
+              properties:
+                payment_method_id: { type: integer, description: "Target account (must be an existing, owned, non-deleted payment method)." }
+                transactions: { type: array, maxItems: 5000, items: { $ref: "#/components/schemas/TransactionBulkRow" } }
+      responses:
+        "201": { description: Import result., content: { application/json: { schema: { type: object, required: [created, skipped], properties: { created: { type: integer }, skipped: { type: integer, description: "Rows skipped as duplicates (by sig) or malformed." } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/transactions/{transaction}:
     put:
       tags: [Finance]
       operationId: financeTxUpdate
       summary: Update a bank transaction (optimistic concurrency)
+      description: "Send `version` for optimistic concurrency (409 on mismatch). A client-supplied receipt blob_path is always dropped. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: transaction, in: path, required: true, schema: { type: integer } } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
-      responses: { "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { transaction: { $ref: "#/components/schemas/BankTransaction" } } } } } }, "401": { description: Unauthenticated. }, "409": { description: Version conflict. } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/TransactionInput" } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, required: [transaction], properties: { transaction: { $ref: "#/components/schemas/BankTransaction" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/VersionConflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Finance]
       operationId: financeTxDestroy
       summary: Soft-delete a bank transaction
+      description: "Move the transaction to trash. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: transaction, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/transactions/{id}/restore:
     post:
       tags: [Finance]
       operationId: financeTxRestore
       summary: Restore a bank transaction
+      description: "Restore a soft-deleted transaction. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Restored., content: { application/json: { schema: { type: object, properties: { transaction: { $ref: "#/components/schemas/BankTransaction" } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, required: [transaction], properties: { transaction: { $ref: "#/components/schemas/BankTransaction" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/transactions/{id}/force:
     delete:
       tags: [Finance]
       operationId: financeTxForce
       summary: Permanently delete a bank transaction
+      description: "Permanently delete a trashed transaction and its receipt blobs. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
-      responses: { "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/transactions/{transaction}/receipts:
     post:
       tags: [Finance]
       operationId: financeReceiptAttach
       summary: Attach a receipt file to a transaction (multipart)
+      description: "Upload a receipt file (max files.max_upload_mb) and append it to the transaction's receipts[]. The server assigns id + blob_path. Throttle 1200/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: transaction, in: path, required: true, schema: { type: integer } } ]
-      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary } } } } } }
-      responses: { "200": { description: Updated transaction., content: { application/json: { schema: { type: object, properties: { transaction: { $ref: "#/components/schemas/BankTransaction" } } } } } }, "401": { description: Unauthenticated. }, "422": { description: Validation failed. } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                name: { type: string, maxLength: 500 }
+                kind: { type: string, maxLength: 24, description: "Defaults to 'receipt'." }
+                category: { type: string, maxLength: 160 }
+                tags: { type: array, maxItems: 100, items: { type: string, maxLength: 100 } }
+                contact_id: { type: string, maxLength: 64 }
+                partner_id: { type: integer }
+                vat: { type: string, maxLength: 16 }
+      responses:
+        "201": { description: Receipt attached; returns the updated transaction., content: { application/json: { schema: { type: object, required: [transaction], properties: { transaction: { $ref: "#/components/schemas/BankTransaction" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/transactions/{transaction}/receipts/{receipt}:
     delete:
       tags: [Finance]
       operationId: financeReceiptDelete
       summary: Remove a receipt from a transaction
+      description: "Removes the receipt by id (and deletes its blob). Deleting an unknown receipt id is a no-op that still returns the transaction. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
-      parameters: [ { name: transaction, in: path, required: true, schema: { type: integer } }, { name: receipt, in: path, required: true, schema: { type: string } } ]
-      responses: { "200": { description: Updated transaction., content: { application/json: { schema: { type: object, properties: { transaction: { $ref: "#/components/schemas/BankTransaction" } } } } } }, "401": { description: Unauthenticated. } }
+      parameters: [ { name: transaction, in: path, required: true, schema: { type: integer } }, { name: receipt, in: path, required: true, schema: { type: string, description: "Receipt entry UUID." } } ]
+      responses:
+        "200": { description: Updated transaction., content: { application/json: { schema: { type: object, required: [transaction], properties: { transaction: { $ref: "#/components/schemas/BankTransaction" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/transactions/{transaction}/receipts/{receipt}/raw:
     get:
       tags: [Finance]
       operationId: financeReceiptRaw
       summary: Stream a receipt file
+      description: "Streams the receipt's stored bytes inline (sandboxed). Throttle 3000/min."
       security: [ { bearerAuth: [] } ]
-      parameters: [ { name: transaction, in: path, required: true, schema: { type: integer } }, { name: receipt, in: path, required: true, schema: { type: string } } ]
-      responses: { "200": { description: Receipt bytes., content: { application/octet-stream: { schema: { type: string, format: binary } } } }, "401": { description: Unauthenticated. }, "404": { description: None. } }
+      parameters:
+        - { name: transaction, in: path, required: true, schema: { type: integer } }
+        - { name: receipt, in: path, required: true, schema: { type: string, description: "Receipt entry UUID." } }
+        - { name: download, in: query, required: false, schema: { type: boolean }, description: "true → Content-Disposition: attachment; default inline." }
+      responses:
+        "200": { description: Receipt bytes., content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /invoices/ocr:
     post:
       tags: [Finance]
       operationId: invoicesOcr
       summary: OCR a receipt to line-structured text (transient plaintext)
       description: >
-        **Accepted transient zero-knowledge window** (identical to /gallery/process):
-        the client POSTs the RAW (decrypted) document ONLY for OCR. The server
-        extracts text in a shredded temp file and returns it — it stores NOTHING and
-        logs no content. The document itself lives only as the client-encrypted blob
-        (uploaded separately via /invoices/upload); the returned `text` is analysed
-        and stored CLIENT-side. The server returns ONLY text — it does NOT parse
-        total/merchant/date/VAT (that recognition is client-side and identical across
-        web/iOS/Android). PDFs use the embedded text layer when present (fast path,
-        `source: pdf-text`), otherwise rasterise+OCR (`source: ocr`, ≤30 pages);
-        images are OCR'd directly. `text` preserves visual line breaks (`\n`).
-        Best-effort for the client: a 501/timeout leaves manual entry intact.
+        Transient server-side OCR. The client POSTs the raw document bytes ONLY for
+        text extraction; the server processes them in a shredded temp file, returns
+        line-structured text, and stores/logs NOTHING (Cache-Control: no-store). The
+        receipt file itself is stored separately as a plaintext blob via
+        POST /finance/transactions/{transaction}/receipts (and invoice PDFs via
+        POST /finance/invoices/{invoice}/pdf). The server returns ONLY text — it does
+        NOT parse total/merchant/date/VAT (that recognition stays client-side and is
+        identical across web/iOS/Android). PDFs use the embedded text layer when
+        present (fast path, `source: pdf-text`), otherwise rasterise+OCR
+        (`source: ocr`, ≤30 pages); images are OCR'd directly. `text` preserves visual
+        line breaks (`\n`). Best-effort: a 501/timeout leaves manual entry intact.
         Requires the `finance` module. Throttle: 120 req/min.
       requestBody:
         required: true
@@ -2164,9 +2746,8 @@ paths:
                   type: string
                   format: binary
                   description: >
-                    The RAW cleartext document bytes (NOT the encrypted blob).
-                    Allowed: image/jpeg,png,gif,webp,bmp,tiff,avif or application/pdf.
-                    Max 25 MiB.
+                    The raw document bytes. Allowed: image/jpeg,png,gif,webp,bmp,tiff,avif
+                    or application/pdf. Max 25 MiB.
                 lang:
                   type: string
                   pattern: "^[a-z]{3}(\\+[a-z]{3})*$"
@@ -2196,23 +2777,27 @@ paths:
                   pages:
                     type: integer
                     description: Informational page count.
-        "401":
-          description: Unauthenticated.
-        "403":
-          description: Module disabled for this account.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "413":
           description: File exceeds the 25 MiB OCR size limit.
         "415":
           description: Unsupported document type.
         "422":
-          description: Processed OK but produced no usable text.
+          description: >
+            Either the request failed validation (missing/invalid `file`, a `lang`
+            not matching ^[a-z]{3}(\+[a-z]{3})*$, or a non-boolean `force_ocr`) →
+            standard Laravel body { message, errors }; OR OCR ran but produced no
+            usable text → { error: "no_text" }.
           content:
             application/json:
               schema:
-                type: object
-                required: [error]
-                properties:
-                  error: { type: string, enum: [no_text] }
+                oneOf:
+                  - $ref: "#/components/schemas/ValidationError"
+                  - type: object
+                    required: [error]
+                    properties:
+                      error: { type: string, enum: [no_text] }
         "429":
           description: Rate limit exceeded (Retry-After header).
         "501":
@@ -2237,7 +2822,7 @@ paths:
                 type: object
                 properties:
                   company: { $ref: "#/components/schemas/CompanyProfile" }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
     put:
       tags: [Company]
       operationId: companyUpdate
@@ -2268,7 +2853,7 @@ paths:
                 type: object
                 properties:
                   company: { $ref: "#/components/schemas/CompanyProfile" }
-        "422": { description: Validation error. }
+        "422": { $ref: "#/components/responses/ValidationError" }
         "429": { description: Rate limit exceeded. }
 
   /company/logo:
@@ -2287,8 +2872,7 @@ paths:
               schema: { type: string, format: binary }
         "404": { description: No logo stored. }
 
-  # ── Vault lifecycle (native provisioning + passphrase rotation) ──
-  # ── Per-user non-display settings (contact notify channels + file version cap) ──
+  # ── Per-user non-display settings (notify channels + file version cap) ──
   /settings:
     get:
       tags: [Preferences]
@@ -2299,7 +2883,7 @@ paths:
         the birthday/anniversary notification channels and the personal file version cap.
       responses:
         "200": { description: "Settings.", content: { application/json: { schema: { $ref: "#/components/schemas/UserSettings" } } } }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
     put:
       tags: [Preferences]
       operationId: settingsUpdate
@@ -2312,8 +2896,8 @@ paths:
             schema: { $ref: "#/components/schemas/UserSettings" }
       responses:
         "200": { description: "Updated settings.", content: { application/json: { schema: { $ref: "#/components/schemas/UserSettings" } } } }
-        "401": { description: Unauthenticated. }
-        "422": { description: Validation error. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
         "429": { description: Rate limit exceeded. }
 
   # ── Owner-side device pairing ──
@@ -2324,8 +2908,8 @@ paths:
       summary: Generate a pairing code + QR (owner)
       description: "The owner (already paired) starts pairing a NEW device: returns a pairing id + QR data-URI carrying a short-lived one-time code (never a token). Throttle 20/min."
       responses:
-        "200": { description: "Pairing started.", content: { application/json: { schema: { type: [object, "null"], required: [id], properties: { id: { type: string }, qr: { type: string, description: "SVG data-URI." }, expires_at: { type: string, format: date-time } } } } } }
-        "401": { description: Unauthenticated. }
+        "200": { description: "Pairing started.", content: { application/json: { schema: { type: [object, "null"], required: [id], properties: { id: { type: integer, format: int64 }, qr: { type: string, description: "SVG data-URI." }, expires_at: { type: string, format: date-time } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { description: Rate limit exceeded. }
   /device-pairings/cli:
     post:
@@ -2334,30 +2918,31 @@ paths:
       summary: Generate a CLI pairing code (owner)
       description: "Like /device-pairings but returns a copyable text code (60s TTL) for a CLI client. Throttle 20/min."
       responses:
-        "200": { description: "Pairing started.", content: { application/json: { schema: { type: [object, "null"], required: [id, code], properties: { id: { type: string }, code: { type: string }, expires_at: { type: string, format: date-time } } } } } }
-        "401": { description: Unauthenticated. }
+        "200": { description: "Pairing started.", content: { application/json: { schema: { type: [object, "null"], required: [id, code], properties: { id: { type: integer, format: int64 }, code: { type: string }, expires_at: { type: string, format: date-time } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { description: Rate limit exceeded. }
   /device-pairings/{devicePairing}:
     get:
       tags: [DevicePairings]
       operationId: devicePairingShow
       summary: Poll a pairing's state (owner)
       description: "Owner-scoped (foreign pairing → 404). Returns the current status + the claiming device name."
-      parameters: [{ name: devicePairing, in: path, required: true, schema: { type: string } }]
+      parameters: [{ name: devicePairing, in: path, required: true, schema: { type: integer, format: int64 } }]
       responses:
         "200": { description: "State.", content: { application/json: { schema: { type: [object, "null"], properties: { status: { type: string, enum: [pending, pending_approval, approved, rejected, consumed, expired] }, device_name: { type: string } } } } } }
-        "401": { description: Unauthenticated. }
-        "404": { description: Not found / not owned by caller. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /device-pairings/{devicePairing}/approve:
     post:
       tags: [DevicePairings]
       operationId: devicePairingApprove
       summary: Approve the claimed device (owner)
       description: "Owner-scoped. After approval the new device's POST /auth/pair/collect returns its token. Throttle 20/min."
-      parameters: [{ name: devicePairing, in: path, required: true, schema: { type: string } }]
+      parameters: [{ name: devicePairing, in: path, required: true, schema: { type: integer, format: int64 } }]
       responses:
         "200": { description: "Approved.", content: { application/json: { schema: { type: object, properties: { status: { type: string } } } } } }
-        "401": { description: Unauthenticated. }
-        "404": { description: Not found / not owned by caller. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429": { description: Rate limit exceeded. }
   /device-pairings/{devicePairing}/reject:
     post:
@@ -2365,11 +2950,11 @@ paths:
       operationId: devicePairingReject
       summary: Reject the claimed device (owner)
       description: "Owner-scoped. Throttle 20/min."
-      parameters: [{ name: devicePairing, in: path, required: true, schema: { type: string } }]
+      parameters: [{ name: devicePairing, in: path, required: true, schema: { type: integer, format: int64 } }]
       responses:
         "200": { description: "Rejected.", content: { application/json: { schema: { type: object, properties: { status: { type: string } } } } } }
-        "401": { description: Unauthenticated. }
-        "404": { description: Not found / not owned by caller. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   # ── 2FA + app password (self-service) ──
   /user/two-factor/enable:
@@ -2380,7 +2965,7 @@ paths:
       description: "Generates a new TOTP secret + recovery codes (stored encrypted). NOT yet active — call /confirm with a live code. Idempotent. Throttle 10/min."
       responses:
         "200": { description: "Secret generated.", content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean, enum: [true] } } } } } }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { description: Rate limit exceeded. }
   /user/two-factor/qr:
     get:
@@ -2390,7 +2975,7 @@ paths:
       description: "For the window between enable and confirm. 404 if 2FA not enabled. Throttle 30/min."
       responses:
         "200": { description: "QR data.", content: { application/json: { schema: { type: object, required: [svg, secret, uri], properties: { svg: { type: string }, secret: { type: string }, uri: { type: string } } } } } }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: 2FA not enabled. }
   /user/two-factor/confirm:
     post:
@@ -2401,7 +2986,7 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [code], properties: { code: { type: string } } } } } }
       responses:
         "200": { description: "Confirmed.", content: { application/json: { schema: { type: object, properties: { confirmed: { type: boolean, enum: [true] } } } } } }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "422": { description: Invalid/expired code. }
         "429": { description: Rate limit exceeded. }
   /user/two-factor/recovery-codes:
@@ -2412,7 +2997,7 @@ paths:
       description: "Only after 2FA is confirmed (else 404). Throttle 30/min."
       responses:
         "200": { description: "Codes.", content: { application/json: { schema: { type: object, required: [recovery_codes], properties: { recovery_codes: { type: array, items: { type: string } } } } } } }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: 2FA not active. }
   /user/two-factor/recovery-codes/regenerate:
     post:
@@ -2422,7 +3007,7 @@ paths:
       description: "Invalidates the old set and returns a fresh one. Throttle 10/min."
       responses:
         "200": { description: "New codes.", content: { application/json: { schema: { type: object, required: [recovery_codes], properties: { recovery_codes: { type: array, items: { type: string } } } } } } }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { description: Rate limit exceeded. }
   /user/two-factor:
     delete:
@@ -2432,7 +3017,7 @@ paths:
       description: "Clears the TOTP secret, recovery codes, and confirmed flag. Idempotent. Throttle 10/min."
       responses:
         "200": { description: "Disabled.", content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean, enum: [false] } } } } } }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /user/password:
     put:
       tags: [TwoFactor]
@@ -2441,7 +3026,7 @@ paths:
       description: >
         Validates `current_password` (guard-agnostic Hash::check — Fortify's
         current_password:web rule would fail for a bearer token) and sets a new
-        password (min 12, confirmed). Orthogonal to the ZK vault passphrase.
+        password (min 12, confirmed).
         Throttle 10/min.
       requestBody:
         required: true
@@ -2450,7 +3035,7 @@ paths:
             schema: { type: object, required: [current_password, password, password_confirmation], properties: { current_password: { type: string }, password: { type: string, minLength: 12 }, password_confirmation: { type: string } } }
       responses:
         "200": { description: "Changed.", content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "422": { description: Wrong current password or invalid new password. }
         "429": { description: Rate limit exceeded. }
   /user/email/verify/resend:
@@ -2461,7 +3046,7 @@ paths:
       description: "No-op (ok:true) when already verified. Needs SMTP configured. Throttle 6/min."
       responses:
         "200": { description: "Queued (or already verified).", content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { description: Rate limit exceeded. }
 
   # ── Admin: users ──
@@ -2473,8 +3058,8 @@ paths:
       description: "All users with effective limits, groups, 2FA/verified state, and last login. No credentials. Admin-gated (403 otherwise)."
       responses:
         "200": { description: "Users.", content: { application/json: { schema: { type: object, required: [users], properties: { users: { type: array, items: { $ref: "#/components/schemas/AdminUser" } } } } } } }
-        "401": { description: Unauthenticated. }
-        "403": { description: Not an admin. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [Users]
       operationId: usersStore
@@ -2483,8 +3068,9 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AdminUserWrite" } } } }
       responses:
         "201": { description: "Created.", content: { application/json: { schema: { type: object, properties: { user: { $ref: "#/components/schemas/AdminUser" } } } } } }
-        "403": { description: Not an admin. }
-        "422": { description: Validation error. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
         "429": { description: Rate limit exceeded. }
   /users/{user}:
     parameters: [{ name: user, in: path, required: true, schema: { type: integer } }]
@@ -2496,17 +3082,23 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AdminUserWrite" } } } }
       responses:
         "200": { description: "Updated.", content: { application/json: { schema: { type: object, properties: { user: { $ref: "#/components/schemas/AdminUser" } } } } } }
-        "403": { description: Not an admin. }
-        "422": { description: Validation / last-admin guard. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Validation failed, or the last-admin guard tripped." }
+        "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Users]
       operationId: usersDestroy
       summary: Delete a user (admin, GDPR crypto-shred)
       description: "Purges the user + all owned data. Cannot delete self or the last admin. Throttle 10/min."
       responses:
-        "204": { description: Deleted. }
-        "403": { description: Not an admin. }
-        "422": { description: Self-delete / last-admin guard. }
+        "204": { description: Deleted (no content). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Self-delete or last-admin guard." }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /users/{user}/reset-password:
     parameters: [{ name: user, in: path, required: true, schema: { type: integer } }]
     post:
@@ -2516,8 +3108,11 @@ paths:
       description: "422 when SMTP is not configured (use invite-link instead). Throttle 10/min."
       responses:
         "200": { description: "Sent.", content: { application/json: { schema: { type: object, properties: { message: { type: string } } } } } }
-        "403": { description: Not an admin. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "422": { description: SMTP not configured. }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /users/{user}/reset-2fa:
     parameters: [{ name: user, in: path, required: true, schema: { type: integer } }]
     post:
@@ -2527,7 +3122,10 @@ paths:
       description: "Nulls the TOTP secret/codes/confirmed flag. Throttle 10/min."
       responses:
         "200": { description: "Cleared.", content: { application/json: { schema: { type: object, properties: { message: { type: string } } } } } }
-        "403": { description: Not an admin. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /users/{user}/avatar:
     parameters: [{ name: user, in: path, required: true, schema: { type: integer } }]
     get:
@@ -2537,8 +3135,9 @@ paths:
       description: "Non-secret. 404 if none stored."
       responses:
         "200": { description: "Image.", content: { image/*: { schema: { type: string, format: binary } } } }
-        "403": { description: Not an admin. }
-        "404": { description: No avatar. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: No avatar stored (or user not found). }
   /users/{user}/invite-link:
     parameters: [{ name: user, in: path, required: true, schema: { type: integer } }]
     post:
@@ -2549,8 +3148,10 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ttl_hours], properties: { ttl_hours: { type: integer, enum: [1, 24, 168, 720] }, send: { type: boolean, default: false } } } } } }
       responses:
         "200": { description: "Link.", content: { application/json: { schema: { type: [object, "null"], required: [url, sent], properties: { url: { type: string, format: uri }, expires_at: { type: string, format: date-time }, sent: { type: boolean } } } } } }
-        "403": { description: Not an admin. }
-        "422": { description: Validation error. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
         "429": { description: Rate limit exceeded. }
 
   # ── Admin: security log ──
@@ -2568,7 +3169,9 @@ paths:
         - { name: per_page, in: query, schema: { type: integer, default: 50, maximum: 100 } }
       responses:
         "200": { description: "Entries.", content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/SecurityLogEntry" } }, meta: { type: object, properties: { total: { type: integer }, per_page: { type: integer }, current_page: { type: integer }, last_page: { type: integer } } } } } } } }
-        "403": { description: Not an admin. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /security-log/export:
     get:
       tags: [SecurityLog]
@@ -2583,7 +3186,9 @@ paths:
         - { name: since, in: query, schema: { type: string } }
       responses:
         "200": { description: "Stream.", content: { text/csv: { schema: { type: string, format: binary } }, application/x-ndjson: { schema: { type: string, format: binary } } } }
-        "403": { description: Not an admin. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
 
   # ── Per-user Paperless ──
   /paperless/terms:
@@ -2594,7 +3199,7 @@ paths:
       description: "{configured, tags, document_types, correspondents} from the local cache (no live call). Throttle 60/min."
       responses:
         "200": { description: "Terms.", content: { application/json: { schema: { type: object, required: [configured, tags, document_types, correspondents], properties: { configured: { type: boolean }, tags: { type: array, items: { $ref: "#/components/schemas/PaperlessTerm" } }, document_types: { type: array, items: { $ref: "#/components/schemas/PaperlessTerm" } }, correspondents: { type: array, items: { $ref: "#/components/schemas/PaperlessTerm" } } } } } } }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Paperless]
       operationId: paperlessCreateTerm
@@ -2603,7 +3208,7 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [kind, name], properties: { kind: { type: string, enum: [tag, document_type, correspondent] }, name: { type: string, maxLength: 255 } } } } } }
       responses:
         "200": { description: "Created/found.", content: { application/json: { schema: { type: object, required: [ok, id, name], properties: { ok: { type: boolean }, id: { type: integer }, name: { type: string } } } } } }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "422": { description: Not configured / validation / Paperless error. }
   /paperless/documents:
     post:
@@ -2611,7 +3216,7 @@ paths:
       operationId: paperlessSubmit
       summary: Forward a decrypted document to Paperless (transient cleartext)
       description: >
-        **Transient-cleartext boundary** (like /gallery/process + /invoices/ocr):
+        **Transient-cleartext boundary** (like POST /invoices/ocr):
         the client posts the already-decrypted bytes; the server forwards them to
         the user's own Paperless and stores/logs nothing (`Cache-Control: no-store`).
         Returns the Paperless async task id. Throttle 20/min.
@@ -2622,7 +3227,7 @@ paths:
             schema: { type: object, required: [file], properties: { file: { type: string, format: binary, description: "Decrypted PDF/image, max 50 MB." }, title: { type: string, maxLength: 255 }, created: { type: string, format: date }, correspondent: { type: integer }, document_type: { type: integer }, tags: { type: array, items: { type: integer } } } }
       responses:
         "200": { description: "Accepted.", content: { application/json: { schema: { type: object, required: [ok, task], properties: { ok: { type: boolean }, task: { type: string } } } } } }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "413": { description: File exceeds 50 MB. }
         "422": { description: Not configured / validation / Paperless error. }
   /paperless/sync:
@@ -2633,7 +3238,7 @@ paths:
       description: "Pulls all tags/document types/correspondents into the cache. {ok, counts}. Empty counts when unconfigured (no error). Throttle 20/min."
       responses:
         "200": { description: "Synced.", content: { application/json: { schema: { type: object, required: [ok, counts], properties: { ok: { type: boolean }, counts: { type: object, properties: { tag: { type: integer }, document_type: { type: integer }, correspondent: { type: integer } } } } } } } }
-        "401": { description: Unauthenticated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "422": { description: Paperless error. }
 
   # ── Admin: backup ──
@@ -2645,7 +3250,8 @@ paths:
       description: "Credentials (`config`) are NEVER returned — only {id, name, driver}."
       responses:
         "200": { description: "Destinations.", content: { application/json: { schema: { type: object, properties: { destinations: { type: array, items: { $ref: "#/components/schemas/BackupDestinationSummary" } } } } } } }
-        "403": { description: Not an admin. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [Backup]
       operationId: backupDestinationsStore
@@ -2654,39 +3260,49 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BackupDestinationWrite" } } } }
       responses:
         "201": { description: "Created.", content: { application/json: { schema: { type: object, properties: { destination: { $ref: "#/components/schemas/BackupDestinationSummary" } } } } } }
-        "403": { description: Not an admin. }
-        "422": { description: Validation / unreachable. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { description: "Validation failed, or the destination is unreachable (the reachability gate surfaces as a 422 on `name`)." }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /backup/destinations/{destination}:
     parameters: [{ name: destination, in: path, required: true, schema: { type: integer } }]
     put:
       tags: [Backup]
       operationId: backupDestinationsUpdate
       summary: Update a backup destination (admin)
-      description: "Blank secret fields keep the stored value. Throttle 20/min."
+      description: "Blank secret/password fields keep the stored value. Runs the reachability gate. Throttle 20/min."
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BackupDestinationWrite" } } } }
       responses:
         "200": { description: "Updated.", content: { application/json: { schema: { type: object, properties: { destination: { $ref: "#/components/schemas/BackupDestinationSummary" } } } } } }
-        "403": { description: Not an admin. }
-        "404": { description: Not found. }
-        "422": { description: Validation error. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Validation failed, or the destination is unreachable." }
+        "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Backup]
       operationId: backupDestinationsDestroy
       summary: Delete a backup destination (admin)
+      description: "Throttle 20/min."
       responses:
-        "204": { description: Deleted. }
-        "403": { description: Not an admin. }
-        "404": { description: Not found. }
+        "204": { description: Deleted (no content). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /backup/destinations/test:
     post:
       tags: [Backup]
       operationId: backupDestinationsTest
       summary: Test destination reachability (admin)
-      description: "Throttle 20/min."
+      description: "Tests a config (from the body, or an existing destination via destination_id) without saving. Throttle 20/min."
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BackupDestinationWrite" } } } }
       responses:
-        "200": { description: "Result.", content: { application/json: { schema: { type: [object, "null"], properties: { ok: { type: boolean }, detail: { type: string } } } } } }
-        "403": { description: Not an admin. }
+        "200": { description: "Result — {ok:true} or {ok:false, detail:<error chain>}.", content: { application/json: { schema: { type: [object, "null"], properties: { ok: { type: boolean }, detail: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /backup/jobs:
     get:
       tags: [Backup]
@@ -2695,17 +3311,20 @@ paths:
       description: "`passphrase` is NEVER returned."
       responses:
         "200": { description: "Jobs.", content: { application/json: { schema: { type: object, properties: { jobs: { type: array, items: { $ref: "#/components/schemas/BackupJobSummary" } } } } } } }
-        "403": { description: Not an admin. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [Backup]
       operationId: backupJobsStore
       summary: Create a backup job (admin)
-      description: "Invariant: source=database + encrypt=false → 422 (a DB dump carries wrapped vault keys). Throttle 20/min."
+      description: "Invariant: source=database + encrypt=false → 422 (a DB dump contains all data plaintext + operational secrets). Throttle 20/min."
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BackupJobWrite" } } } }
       responses:
         "201": { description: "Created.", content: { application/json: { schema: { type: object, properties: { job: { $ref: "#/components/schemas/BackupJobSummary" } } } } } }
-        "403": { description: Not an admin. }
-        "422": { description: Validation / db-must-encrypt. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { description: "Validation failed, or source=database with encrypt=false (a DB dump must be encrypted)." }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /backup/jobs/{job}:
     parameters: [{ name: job, in: path, required: true, schema: { type: integer } }]
     put:
@@ -2716,36 +3335,45 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BackupJobWrite" } } } }
       responses:
         "200": { description: "Updated.", content: { application/json: { schema: { type: object, properties: { job: { $ref: "#/components/schemas/BackupJobSummary" } } } } } }
-        "403": { description: Not an admin. }
-        "404": { description: Not found. }
-        "422": { description: Validation error. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Validation failed, or source=database with encrypt=false." }
+        "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Backup]
       operationId: backupJobsDestroy
       summary: Delete a backup job (admin)
+      description: "Throttle 20/min."
       responses:
-        "204": { description: Deleted. }
-        "403": { description: Not an admin. }
-        "404": { description: Not found. }
+        "204": { description: Deleted (no content). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /backup/jobs/{job}/run:
     parameters: [{ name: job, in: path, required: true, schema: { type: integer } }]
     post:
       tags: [Backup]
       operationId: backupJobsRun
       summary: Trigger a backup run now (admin)
-      description: "Throttle 10/min."
+      description: "Dispatches the job to the queue. Throttle 10/min."
       responses:
         "200": { description: "Dispatched.", content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
-        "403": { description: Not an admin. }
-        "404": { description: Not found. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /backup/runs:
     get:
       tags: [Backup]
       operationId: backupRunsIndex
       summary: List recent backup runs (admin)
+      description: "The 20 most recent runs (reaps stale running rows first)."
       responses:
         "200": { description: "Runs.", content: { application/json: { schema: { type: object, properties: { runs: { type: array, items: { $ref: "#/components/schemas/BackupRunSummary" } } } } } } }
-        "403": { description: Not an admin. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /backup/runs/{run}/download:
     parameters: [{ name: run, in: path, required: true, schema: { type: integer } }]
     get:
@@ -2755,39 +3383,49 @@ paths:
       description: "Streams the raw archive bytes (may be encrypted)."
       responses:
         "200": { description: "Archive bytes.", content: { application/octet-stream: { schema: { type: string, format: binary } } } }
-        "403": { description: Not an admin. }
-        "404": { description: Not found / not downloadable. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Not found — run missing, not successful, not downloadable, or the destination/file is gone." }
   /backup/runs/{run}/verify:
     parameters: [{ name: run, in: path, required: true, schema: { type: integer } }]
     post:
       tags: [Backup]
       operationId: backupRunsVerify
       summary: Verify archive integrity (admin)
-      description: "Throttle 10/min."
-      requestBody: { content: { application/json: { schema: { type: object, properties: { passphrase: { type: string, description: "Required for encrypted archives." } } } } } }
+      description: "Read-only integrity check. Throttle 10/min."
+      requestBody: { content: { application/json: { schema: { type: object, properties: { passphrase: { type: [string, "null"], maxLength: 255, description: "Required for encrypted (.enc) archives." } } } } } }
       responses:
-        "200": { description: "Result.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, message: { type: string }, verifiedHuman: { type: string } } } } } }
-        "403": { description: Not an admin. }
+        "200": { description: "Result.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, message: { type: string }, verifiedHuman: { type: [string, "null"] } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Run missing or not a successful archive." }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /backup/runs/{run}/cancel:
     parameters: [{ name: run, in: path, required: true, schema: { type: integer } }]
     post:
       tags: [Backup]
       operationId: backupRunsCancel
       summary: Cancel a running backup (admin)
-      description: "First call requests cancel; a second force-finalises. Throttle 20/min."
+      description: "First call requests a graceful cancel; a second (while pending) force-finalises. Throttle 20/min."
       responses:
         "200": { description: "Result.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, forced: { type: boolean } } } } } }
-        "403": { description: Not an admin. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /backup/runs/{run}/decrypt:
     parameters: [{ name: run, in: path, required: true, schema: { type: integer } }]
     post:
       tags: [Backup]
       operationId: backupRunsDecrypt
       summary: Stream a decrypted archive (admin/CLI)
-      description: "Streams the plaintext archive (for a headless/desktop admin). Throttle 10/min."
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [passphrase], properties: { passphrase: { type: string } } } } } }
+      description: "Fetches an encrypted (.enc) archive, decrypts it with the passphrase, and streams the plaintext archive. Nothing is written to live data. Throttle 10/min."
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [passphrase], properties: { passphrase: { type: string, maxLength: 255 } } } } } }
       responses:
         "200": { description: "Decrypted bytes.", content: { application/octet-stream: { schema: { type: string, format: binary } } } }
-        "403": { description: Not an admin. }
-        "422": { description: Wrong passphrase / not encrypted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Run missing, not a successful .enc archive, or the file is gone." }
+        "422": { description: "Wrong passphrase or corrupt archive, or a missing `passphrase` (validation)." }
+        "429": { $ref: "#/components/responses/RateLimited" }
 
