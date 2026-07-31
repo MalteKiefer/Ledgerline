@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Mail\InvoiceMail;
-use App\Models\AppSettings;
 use App\Models\Invoice;
 use App\Models\User;
+use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -33,10 +33,14 @@ class InvoiceEmailTest extends TestCase
 
     private function configureSmtp(): void
     {
-        AppSettings::current()->update([
-            'mail_enabled' => true,
-            'smtp_host' => 'smtp.example.com',
-            'smtp_from_address' => 'me@example.com',
+        // Invoices send over the acting user's OWN company SMTP, not the
+        // workspace notification SMTP.
+        UserSetting::for((int) auth()->id())->update([
+            'company_smtp_enabled' => true,
+            'company_smtp_host' => 'smtp.example.com',
+            'company_smtp_from_address' => 'me@example.com',
+            'company_smtp_port' => 587,
+            'company_smtp_encryption' => 'tls',
         ]);
     }
 

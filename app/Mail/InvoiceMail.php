@@ -7,6 +7,7 @@ namespace App\Mail;
 use App\Models\Invoice;
 use App\Models\UserSetting;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
@@ -15,9 +16,10 @@ use Illuminate\Mail\Mailables\Envelope;
  * The invoice a customer receives by email: a short lang-driven body plus the
  * stored invoice PDF attached. The recipient is set by the caller
  * (Mail::to($to)->send(...)); the PDF path is server-owned (Invoice::pdf_path),
- * never client-supplied. Sent synchronously through the DB-configured SMTP
- * (AppServiceProvider::applyMailSettings bridges the AppSettings SMTP creds onto
- * config/mail), the same transport Fortify's notifications use.
+ * never client-supplied. Sent over the user's OWN company SMTP (the caller
+ * selects the `company_smtp` runtime mailer); the From address is set here from
+ * the company SMTP settings so it never falls back to the workspace
+ * notification sender.
  */
 class InvoiceMail extends Mailable
 {
@@ -25,7 +27,16 @@ class InvoiceMail extends Mailable
 
     public function envelope(): Envelope
     {
+        $s = UserSetting::for((int) $this->invoice->user_id);
+        $from = is_string($s->company_smtp_from_address) && trim($s->company_smtp_from_address) !== ''
+            ? trim($s->company_smtp_from_address)
+            : null;
+        $fromName = is_string($s->company_smtp_from_name) && $s->company_smtp_from_name !== ''
+            ? $s->company_smtp_from_name
+            : $this->companyName();
+
         return new Envelope(
+            from: $from !== null ? new Address($from, $fromName) : null,
             subject: __('invoices.email_subject', ['number' => $this->number()]),
         );
     }

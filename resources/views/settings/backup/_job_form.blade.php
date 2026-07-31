@@ -8,7 +8,7 @@
         source: @js(old('source', $j->source ?? 'database')),
         mode: @js(old('mode', $j->mode ?? 'mirror')),
         get canChooseMode() { return this.source === 'files' || this.source === 'gallery'; },
-        get isArchive() { return this.source === 'database' || (this.canChooseMode && this.mode === 'archive'); },
+        get isArchive() { return this.source === 'database' || this.source === 'invoices' || (this.canChooseMode && this.mode === 'archive'); },
     }" class="space-y-3">
     @csrf
     @if ($j) @method('PUT') @endif

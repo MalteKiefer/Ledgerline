@@ -138,6 +138,46 @@
             </div>
         </div>
 
+        {{-- Company SMTP (invoice sending) — separate from the notification SMTP --}}
+        <div class="ll-card" x-data="{ on: {{ old('company_smtp_enabled', $s->company_smtp_enabled) ? 'true' : 'false' }} }">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_smtp_heading') }}</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.company_smtp_hint') }}</p>
+            <label class="mt-3 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <input type="checkbox" name="company_smtp_enabled" value="1" x-model="on" class="rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
+                {{ __('settings.company_smtp_enabled') }}
+            </label>
+            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2" x-show="on" x-cloak>
+                <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.company_smtp_host') }}
+                    <input type="text" name="company_smtp_host" value="{{ old('company_smtp_host', $s->company_smtp_host) }}" placeholder="smtp.example.com" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                    @error('company_smtp_host')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_smtp_port') }}
+                    <input type="number" name="company_smtp_port" value="{{ old('company_smtp_port', $s->company_smtp_port ?: 587) }}" min="1" max="65535" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_smtp_encryption') }}
+                    <select name="company_smtp_encryption" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        @php $enc = old('company_smtp_encryption', $s->company_smtp_encryption); @endphp
+                        <option value="tls" @selected($enc === 'tls' || $enc === null || $enc === '')>TLS (STARTTLS)</option>
+                        <option value="ssl" @selected($enc === 'ssl')>SSL</option>
+                    </select>
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_smtp_username') }}
+                    <input type="text" name="company_smtp_username" value="{{ old('company_smtp_username', $s->company_smtp_username) }}" autocomplete="off" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_smtp_password') }}
+                    <input type="password" name="company_smtp_password" value="" autocomplete="new-password" placeholder="{{ $s->company_smtp_password ? '••••••••' : '' }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                    <span class="mt-1 block text-xs text-gray-400 dark:text-gray-500">{{ __('settings.company_smtp_password_hint') }}</span>
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_smtp_from_address') }}
+                    <input type="email" name="company_smtp_from_address" value="{{ old('company_smtp_from_address', $s->company_smtp_from_address) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                    @error('company_smtp_from_address')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_smtp_from_name') }}
+                    <input type="text" name="company_smtp_from_name" value="{{ old('company_smtp_from_name', $s->company_smtp_from_name) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                </label>
+            </div>
+        </div>
+
         {{-- Logo --}}
         <div class="ll-card">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_logo_heading') }}</h2>
