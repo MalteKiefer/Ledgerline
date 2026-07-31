@@ -18,7 +18,7 @@ class GlobalSettingsAccessTest extends TestCase
 
         $this->get(route('settings.system.edit'))->assertForbidden();
         // Personal settings stay open.
-        $this->get(route('settings.files.edit'))->assertOk();
+        $this->get(route('settings.paperless.edit'))->assertOk();
     }
 
     public function test_admin_can_open_infra_settings(): void

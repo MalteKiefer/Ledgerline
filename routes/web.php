@@ -4,32 +4,19 @@ declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AvatarController;
-use App\Http\Controllers\BookmarksController;
-use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DevicePairingController;
-use App\Http\Controllers\ExploreController;
-use App\Http\Controllers\FilesController;
-use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
-use App\Http\Controllers\GalleryController;
-use App\Http\Controllers\GalleryProcessController;
-use App\Http\Controllers\HealthController;
 use App\Http\Controllers\InviteLinkController;
 use App\Http\Controllers\LocaleController;
-use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
-use App\Http\Controllers\NotesController;
-use App\Http\Controllers\NoteSearchController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
-use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
 use App\Http\Controllers\Settings\GroupsController as SettingsGroupsController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
@@ -38,42 +25,16 @@ use App\Http\Controllers\Settings\SecurityLogController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
 use App\Http\Controllers\Settings\UsersController as SettingsUsersController;
-use App\Http\Controllers\SharedFolderController;
-use App\Http\Controllers\SharedWithMeController;
 use App\Http\Controllers\ThemeController;
-use App\Http\Controllers\TodosController;
-use App\Http\Controllers\TodoSearchController;
 use Illuminate\Support\Facades\Route;
 
-// The root simply forwards to the dashboard; unauthenticated visitors are then
-// redirected to the login page by the "auth" middleware.
-Route::get('/', static fn () => redirect()->route('dashboard'));
+// The root forwards to Finance (the app is finance-only); unauthenticated
+// visitors are then redirected to the login page by the "auth" middleware.
+Route::get('/', static fn () => redirect()->route('finance.index'));
 
 // Prometheus metrics for external scraping — no session; guarded by its own
 // token (OPS_METRICS_TOKEN) and disabled when unset. Rate-limited.
 Route::get('/metrics', [MetricsController::class, 'index'])->middleware('throttle:60,1')->name('metrics');
-
-// Public, unauthenticated PLAINTEXT gallery share links (pivot). Bytes are served
-// in the clear (no fragment key) with an optional rate-limited password gate.
-// Owner-scoped by
-// token; a photo raw is only streamed for a valid (unexpired, unlocked) share.
-Route::prefix('gallery-share/{token}')->name('public.gallery-share.')->group(function (): void {
-    Route::get('/', [GalleryController::class, 'shareMeta'])->middleware('throttle:120,1')->name('meta');
-    Route::post('/unlock', [GalleryController::class, 'shareUnlock'])->middleware('throttle:10,1')->name('unlock');
-    Route::get('/manifest', [GalleryController::class, 'shareManifest'])->middleware('throttle:120,1')->name('manifest');
-    Route::get('/photo/{photo}/raw', [GalleryController::class, 'sharePhotoRaw'])->whereNumber('photo')->middleware('throttle:3000,1')->name('photo.raw');
-});
-
-// Public, unauthenticated PLAINTEXT Files share links (pivot). A shared file or
-// folder subtree; bytes served plaintext with an optional rate-limited password
-// gate. Owner-scoped by token; a file raw is only streamed for a valid
-// (unexpired, unlocked) share whose subtree contains that file.
-Route::prefix('file-share/{token}')->name('public.file-share.')->group(function (): void {
-    Route::get('/', [PublicFileShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
-    Route::post('/unlock', [PublicFileShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
-    Route::get('/manifest', [PublicFileShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
-    Route::get('/file/{file}/raw', [PublicFileShareController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('file.raw');
-});
 
 // First-party auth (login, registration, password reset, email verification,
 // two-factor) is owned by Laravel Fortify — see FortifyServiceProvider.
@@ -86,7 +47,6 @@ Route::post('/invite/{invite}/{token}', [InviteLinkController::class, 'store'])-
 
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {
-    Route::get('/dashboard', DashboardController::class)->middleware('module:dashboard')->name('dashboard');
     Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
     Route::post('/theme', [ThemeController::class, 'update'])->name('theme.update');
     Route::post('/preferences', [PreferencesController::class, 'update'])->name('preferences.update');
@@ -125,10 +85,6 @@ Route::middleware('auth')->group(function (): void {
     // Settings.
     Route::get('/settings', SettingsController::class)->name('settings');
 
-    // Per-user Files preferences (version-history depth).
-    Route::get('/settings/files', [SettingsFilesController::class, 'edit'])->name('settings.files.edit');
-    Route::put('/settings/files', [SettingsFilesController::class, 'update'])->name('settings.files.update');
-
     // Paperless-ngx: per-user integration (each user's own instance URL + token).
     Route::get('/settings/paperless', [SettingsPaperlessController::class, 'edit'])->name('settings.paperless.edit');
     Route::put('/settings/paperless', [SettingsPaperlessController::class, 'update'])->name('settings.paperless.update');
@@ -138,11 +94,6 @@ Route::middleware('auth')->group(function (): void {
     // Non-personal, workspace-wide settings — restricted to users with the admin
     // role (see User::managesGlobalSettings / the manage-global-settings gate).
     Route::middleware('can:manage-global-settings')->group(function (): void {
-        // Workspace-wide file limits (quota, max upload, orphan grace). The
-        // per-user version-keep count stays on settings.files.edit (profile hub).
-        Route::get('/settings/files/limits', [SettingsFilesController::class, 'limits'])->name('settings.files.limits');
-        Route::put('/settings/files/limits', [SettingsFilesController::class, 'limitsUpdate'])->name('settings.files.limits.update');
-
         Route::get('/settings/system', [SystemController::class, 'edit'])->name('settings.system.edit');
         Route::post('/settings/system/errors/{error}/resolve', [SystemController::class, 'resolveError'])->name('settings.system.errors.resolve');
 
@@ -194,202 +145,14 @@ Route::middleware('auth')->group(function (): void {
 
     // POST /logout is owned by Fortify (AuthenticatedSessionController@destroy).
 
-    // Gallery: photos + albums are plaintext-relational now (pivot). The page
-    // hydrates photos + albums + usage inline; all CRUD is the relational core
-    // below. The legacy ZK routes (/gallery/store, /gallery/raw/{blob}, …) are
-    // kept for now and never collide (relational uses /gallery/photos*,
-    // /gallery/albums*, /gallery/data, /gallery/photos/chunk/*).
-    Route::get('/gallery', [GalleryController::class, 'page'])->middleware('module:gallery')->name('gallery.index');
-
-    // Plaintext-relational Gallery core (pivot): photos + albums as rows, bytes
-    // (original + server renditions) plaintext on the file disk.
-    Route::middleware('module:gallery')->group(function (): void {
-        Route::get('/gallery/data', [GalleryController::class, 'data'])->name('gallery.rel.data');
-        Route::get('/gallery/trash', [GalleryController::class, 'trashed'])->name('gallery.rel.trash');
-        Route::post('/gallery/photos', [GalleryController::class, 'upload'])->middleware('throttle:1200,1')->name('gallery.rel.upload');
-        Route::post('/gallery/photos/trash/empty', [GalleryController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('gallery.rel.empty');
-        Route::put('/gallery/photos/{photo}', [GalleryController::class, 'update'])->whereNumber('photo')->middleware('throttle:600,1')->name('gallery.rel.update');
-        Route::post('/gallery/photos/{photo}/toggle', [GalleryController::class, 'toggle'])->whereNumber('photo')->middleware('throttle:1200,1')->name('gallery.rel.toggle');
-        Route::delete('/gallery/photos/{photo}', [GalleryController::class, 'destroy'])->whereNumber('photo')->middleware('throttle:600,1')->name('gallery.rel.destroy');
-        Route::get('/gallery/photos/{photo}/raw', [GalleryController::class, 'raw'])->whereNumber('photo')->middleware('throttle:3000,1')->name('gallery.rel.raw');
-        Route::get('/gallery/photos/{photo}/thumb', [GalleryController::class, 'thumb'])->whereNumber('photo')->middleware('throttle:6000,1')->name('gallery.rel.thumb');
-        Route::get('/gallery/photos/{photo}/medium', [GalleryController::class, 'medium'])->whereNumber('photo')->middleware('throttle:6000,1')->name('gallery.rel.medium');
-        Route::get('/gallery/photos/{photo}/motion', [GalleryController::class, 'motion'])->whereNumber('photo')->middleware('throttle:3000,1')->name('gallery.rel.motion');
-        Route::post('/gallery/photos/{id}/restore', [GalleryController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('gallery.rel.restore');
-        Route::delete('/gallery/photos/{id}/force', [GalleryController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('gallery.rel.force');
-
-        Route::post('/gallery/photos/chunk/init', [GalleryController::class, 'chunkInit'])->middleware('throttle:600,1')->name('gallery.rel.chunk.init');
-        Route::post('/gallery/photos/chunk/part', [GalleryController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('gallery.rel.chunk.part');
-        Route::post('/gallery/photos/chunk/complete', [GalleryController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('gallery.rel.chunk.complete');
-        Route::post('/gallery/photos/chunk/abort', [GalleryController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('gallery.rel.chunk.abort');
-
-        Route::get('/gallery/albums', [GalleryController::class, 'albums'])->name('gallery.rel.albums');
-        Route::post('/gallery/albums', [GalleryController::class, 'storeAlbum'])->middleware('throttle:600,1')->name('gallery.rel.albums.store');
-        Route::put('/gallery/albums/{album}', [GalleryController::class, 'updateAlbum'])->whereNumber('album')->middleware('throttle:600,1')->name('gallery.rel.albums.update');
-        Route::delete('/gallery/albums/{album}', [GalleryController::class, 'destroyAlbum'])->whereNumber('album')->middleware('throttle:600,1')->name('gallery.rel.albums.destroy');
-        Route::post('/gallery/albums/{album}/photos', [GalleryController::class, 'addPhotos'])->whereNumber('album')->middleware('throttle:600,1')->name('gallery.rel.albums.photos.add');
-        Route::delete('/gallery/albums/{album}/photos/{photo}', [GalleryController::class, 'removePhoto'])->whereNumber(['album', 'photo'])->middleware('throttle:600,1')->name('gallery.rel.albums.photos.remove');
-        Route::post('/gallery/albums/{album}/cover', [GalleryController::class, 'setCover'])->whereNumber('album')->middleware('throttle:600,1')->name('gallery.rel.albums.cover');
-
-        Route::post('/gallery/rel-shares', [GalleryController::class, 'storeShare'])->middleware('throttle:60,1')->name('gallery.rel.shares.store');
-        Route::put('/gallery/rel-shares/{share}', [GalleryController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('gallery.rel.shares.update');
-        Route::delete('/gallery/rel-shares/{share}', [GalleryController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('gallery.rel.shares.destroy');
-
-        // ML: CLIP semantic search + face/people recognition (pgvector-backed;
-        // empty/degraded when ML is off or the vector extension is absent).
-        Route::get('/gallery/search', [GalleryController::class, 'search'])->middleware('throttle:120,1')->name('gallery.rel.search');
-        Route::get('/gallery/photos/{photo}/similar', [GalleryController::class, 'similar'])->whereNumber('photo')->middleware('throttle:120,1')->name('gallery.rel.similar');
-        Route::post('/gallery/photos/{photo}/reprocess', [GalleryController::class, 'reprocess'])->whereNumber('photo')->middleware('throttle:120,1')->name('gallery.rel.reprocess');
-        Route::get('/gallery/people', [GalleryController::class, 'people'])->name('gallery.rel.people');
-        Route::get('/gallery/people/{person}', [GalleryController::class, 'person'])->whereNumber('person')->name('gallery.rel.people.show');
-        Route::put('/gallery/people/{person}', [GalleryController::class, 'updatePerson'])->whereNumber('person')->middleware('throttle:600,1')->name('gallery.rel.people.update');
-        Route::delete('/gallery/people/{person}', [GalleryController::class, 'destroyPerson'])->whereNumber('person')->middleware('throttle:600,1')->name('gallery.rel.people.destroy');
-        Route::post('/gallery/people/merge', [GalleryController::class, 'mergePeople'])->middleware('throttle:600,1')->name('gallery.rel.people.merge');
-        Route::post('/gallery/faces/{face}/assign', [GalleryController::class, 'assignFace'])->whereNumber('face')->middleware('throttle:600,1')->name('gallery.rel.faces.assign');
-        Route::post('/gallery/faces/{face}/hide', [GalleryController::class, 'hideFace'])->whereNumber('face')->middleware('throttle:600,1')->name('gallery.rel.faces.hide');
-        Route::get('/gallery/faces/{face}/crop', [GalleryController::class, 'faceCrop'])->whereNumber('face')->middleware('throttle:6000,1')->name('gallery.rel.faces.crop');
-    });
-
-    // Files: the whole directory tree + bytes are plaintext-relational now (pivot).
-    // The page hydrates folders + files inline; all CRUD is the relational core below.
-    Route::get('/files', [FilesController::class, 'page'])->middleware('module:files')->name('files.index');
-
-    // Plaintext-relational Files core (pivot): personal files + folders as rows,
-    // bytes plaintext on the file disk.
-    Route::middleware('module:files')->group(function (): void {
-        Route::get('/files/trash', [FilesController::class, 'trashed'])->name('files.rel.trash');
-        Route::get('/files/entries', [FilesController::class, 'index'])->name('files.rel.index');
-        Route::get('/files/search', [FileSearchController::class, 'search'])->middleware('throttle:120,1')->name('files.rel.search');
-        Route::post('/files/entries', [FilesController::class, 'upload'])->middleware('throttle:1200,1')->name('files.rel.upload');
-        Route::post('/files/entries/trash/empty', [FilesController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('files.rel.empty');
-        Route::put('/files/entries/{file}', [FilesController::class, 'update'])->whereNumber('file')->middleware('throttle:600,1')->name('files.rel.update');
-        Route::delete('/files/entries/{file}', [FilesController::class, 'destroy'])->whereNumber('file')->middleware('throttle:600,1')->name('files.rel.destroy');
-        Route::get('/files/entries/{file}/raw', [FilesController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('files.rel.raw');
-        Route::post('/files/entries/{file}/content', [FilesController::class, 'replaceContent'])->whereNumber('file')->middleware('throttle:1200,1')->name('files.rel.content');
-        Route::post('/files/entries/{file}/toggle', [FilesController::class, 'toggle'])->whereNumber('file')->middleware('throttle:1200,1')->name('files.rel.toggle');
-        Route::get('/files/entries/{file}/versions', [FilesController::class, 'versions'])->whereNumber('file')->name('files.rel.versions');
-        Route::get('/files/entries/{file}/versions/{version}/raw', [FilesController::class, 'versionRaw'])->whereNumber(['file', 'version'])->middleware('throttle:3000,1')->name('files.rel.version.raw');
-        Route::post('/files/entries/{file}/versions/{version}/restore', [FilesController::class, 'restoreVersion'])->whereNumber(['file', 'version'])->middleware('throttle:600,1')->name('files.rel.version.restore');
-        Route::post('/files/entries/{id}/restore', [FilesController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('files.rel.restore');
-        Route::delete('/files/entries/{id}/force', [FilesController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('files.rel.force');
-
-        Route::get('/files/folders', [FilesController::class, 'folders'])->name('files.rel.folders');
-        Route::post('/files/folders', [FilesController::class, 'storeFolder'])->middleware('throttle:600,1')->name('files.rel.folders.store');
-        Route::put('/files/folders/{folder}', [FilesController::class, 'renameFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('files.rel.folders.update');
-        Route::post('/files/folders/{folder}/move', [FilesController::class, 'moveFolder'])->whereNumber('folder')->middleware('throttle:1200,1')->name('files.rel.folders.move');
-        Route::delete('/files/folders/{folder}', [FilesController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('files.rel.folders.destroy');
-
-        Route::post('/files/upload/chunk/init', [FilesController::class, 'chunkInit'])->middleware('throttle:600,1')->name('files.rel.chunk.init');
-        Route::post('/files/upload/chunk/part', [FilesController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('files.rel.chunk.part');
-        Route::post('/files/upload/chunk/complete', [FilesController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('files.rel.chunk.complete');
-        Route::post('/files/upload/chunk/abort', [FilesController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('files.rel.chunk.abort');
-
-        // Public share links (owner side) — plaintext /file-share/{token}.
-        Route::post('/files/rel-shares', [FilesController::class, 'storeShare'])->middleware('throttle:60,1')->name('files.rel.shares.store');
-        Route::put('/files/rel-shares/{share}', [FilesController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('files.rel.shares.update');
-        Route::delete('/files/rel-shares/{share}', [FilesController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('files.rel.shares.destroy');
-
-        // Cross-user plaintext folder sharing (pivot). Owner side: grant/list/manage
-        // shares of one's own folders. Member side (/shared-with-me): browse the
-        // shared subtree, download, and — as an editor — upload/rename/delete.
-        Route::get('/files/folder-shares', [SharedFolderController::class, 'index'])->name('files.folder-shares.index');
-        Route::post('/files/folder-shares', [SharedFolderController::class, 'store'])->middleware('throttle:60,1')->name('files.folder-shares.store');
-        Route::put('/files/folder-shares/{share}/members', [SharedFolderController::class, 'updateMember'])->whereNumber('share')->middleware('throttle:60,1')->name('files.folder-shares.members.update');
-        Route::delete('/files/folder-shares/{share}/members', [SharedFolderController::class, 'removeMember'])->whereNumber('share')->middleware('throttle:60,1')->name('files.folder-shares.members.remove');
-        Route::delete('/files/folder-shares/{share}', [SharedFolderController::class, 'destroy'])->whereNumber('share')->middleware('throttle:60,1')->name('files.folder-shares.destroy');
-        Route::get('/shared-with-me', [SharedWithMeController::class, 'index'])->name('shared-with-me.index');
-        Route::get('/shared-with-me/{share}', [SharedWithMeController::class, 'browse'])->whereNumber('share')->name('shared-with-me.browse');
-        Route::get('/shared-with-me/{share}/files/{file}/raw', [SharedWithMeController::class, 'raw'])->whereNumber(['share', 'file'])->middleware('throttle:3000,1')->name('shared-with-me.raw');
-        Route::post('/shared-with-me/{share}/upload', [SharedWithMeController::class, 'upload'])->whereNumber('share')->middleware('throttle:1200,1')->name('shared-with-me.upload');
-        Route::put('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'rename'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('shared-with-me.rename');
-        Route::delete('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'destroy'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('shared-with-me.destroy');
-    });
-
-    // Plaintext-relational Notes (pivot Etappe 1). Server-rendered page + JSON CRUD + trash.
-    Route::middleware('module:notes')->group(function (): void {
-        Route::get('/notes/list', [NotesController::class, 'index'])->name('notes.list');
-        Route::post('/notes', [NotesController::class, 'store'])->middleware('throttle:600,1')->name('notes.rel.store');
-        Route::put('/notes/{note}', [NotesController::class, 'update'])->whereNumber('note')->middleware('throttle:600,1')->name('notes.rel.update');
-        Route::delete('/notes/{note}', [NotesController::class, 'destroy'])->whereNumber('note')->middleware('throttle:600,1')->name('notes.rel.destroy');
-        Route::get('/notes/trash', [NotesController::class, 'trashed'])->name('notes.trash');
-        Route::post('/notes/{id}/restore', [NotesController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('notes.rel.restore');
-        Route::delete('/notes/{id}/force', [NotesController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('notes.rel.force');
-        Route::post('/notes/trash/empty', [NotesController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('notes.rel.empty');
-    });
-
-    // Gallery geocoding (kept): forward-geocode a place query for the bulk
-    // location picker. Passes through the server only (client CSP forbids
-    // third-party calls) and is never persisted.
-    Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('throttle:60,1')->name('gallery.geocode');
-
-    // Notes live entirely in the zero-knowledge store now; only the page shell
-    // remains here (all data flows through GET/PUT /store).
-    Route::get('/notes', [NotesController::class, 'page'])->middleware('module:notes')->name('notes.index');
-    Route::get('/notes/search', [NoteSearchController::class, 'search'])->middleware(['module:notes', 'throttle:120,1'])->name('notes.search');
-    Route::get('/notes/tags', [NoteSearchController::class, 'tags'])->middleware(['module:notes', 'throttle:120,1'])->name('notes.tags');
-    // To-dos: zero-knowledge, living entirely in the opaque store manifest.
-    // Plaintext-relational Todos (pivot Etappe 1).
-    Route::middleware('module:todos')->group(function (): void {
-        Route::get('/todos', [TodosController::class, 'page'])->name('todos.index');
-        Route::get('/todos/search', [TodoSearchController::class, 'search'])->middleware('throttle:600,1')->name('todos.search');
-        Route::get('/todos/list', [TodosController::class, 'index'])->name('todos.list');
-        Route::get('/todos/trash', [TodosController::class, 'trashed'])->name('todos.trash');
-        Route::post('/todos', [TodosController::class, 'store'])->middleware('throttle:600,1')->name('todos.store');
-        Route::put('/todos/{todo}', [TodosController::class, 'update'])->whereNumber('todo')->middleware('throttle:600,1')->name('todos.update');
-        Route::post('/todos/{todo}/toggle', [TodosController::class, 'toggle'])->whereNumber('todo')->middleware('throttle:1200,1')->name('todos.toggle');
-        Route::delete('/todos/{todo}', [TodosController::class, 'destroy'])->whereNumber('todo')->middleware('throttle:600,1')->name('todos.destroy');
-        Route::post('/todos/{id}/restore', [TodosController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('todos.restore');
-        Route::delete('/todos/{id}/force', [TodosController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('todos.force');
-        Route::post('/todos/trash/empty', [TodosController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('todos.empty');
-        Route::get('/todo-lists', [TodosController::class, 'lists'])->name('todos.lists');
-        Route::post('/todo-lists', [TodosController::class, 'storeList'])->middleware('throttle:600,1')->name('todos.lists.store');
-        Route::put('/todo-lists/{list}', [TodosController::class, 'renameList'])->whereNumber('list')->middleware('throttle:600,1')->name('todos.lists.rename');
-        Route::delete('/todo-lists/{list}', [TodosController::class, 'destroyList'])->whereNumber('list')->middleware('throttle:600,1')->name('todos.lists.destroy');
-    });
-    // Bookmarks: zero-knowledge, driven client-side from the opaque manifest.
-    // Plaintext-relational Bookmarks (pivot Etappe 1).
-    Route::middleware('module:bookmarks')->group(function (): void {
-        Route::get('/bookmarks', [BookmarksController::class, 'page'])->name('bookmarks.index');
-        Route::get('/bookmarks/list', [BookmarksController::class, 'index'])->name('bookmarks.list');
-        Route::get('/bookmarks/trash', [BookmarksController::class, 'trashed'])->name('bookmarks.trash');
-        Route::post('/bookmarks', [BookmarksController::class, 'store'])->middleware('throttle:600,1')->name('bookmarks.store');
-        Route::put('/bookmarks/{bookmark}', [BookmarksController::class, 'update'])->whereNumber('bookmark')->middleware('throttle:600,1')->name('bookmarks.update');
-        Route::post('/bookmarks/{bookmark}/toggle', [BookmarksController::class, 'toggle'])->whereNumber('bookmark')->middleware('throttle:1200,1')->name('bookmarks.toggle');
-        Route::post('/bookmarks/{bookmark}/move', [BookmarksController::class, 'move'])->whereNumber('bookmark')->middleware('throttle:1200,1')->name('bookmarks.move');
-        Route::delete('/bookmarks/{bookmark}', [BookmarksController::class, 'destroy'])->whereNumber('bookmark')->middleware('throttle:600,1')->name('bookmarks.destroy');
-        Route::post('/bookmarks/{id}/restore', [BookmarksController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('bookmarks.restore');
-        Route::delete('/bookmarks/{id}/force', [BookmarksController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('bookmarks.force');
-        Route::post('/bookmarks/trash/empty', [BookmarksController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('bookmarks.empty');
-        Route::get('/bookmark-folders', [BookmarksController::class, 'folders'])->name('bookmarks.folders');
-        Route::post('/bookmark-folders', [BookmarksController::class, 'storeFolder'])->middleware('throttle:600,1')->name('bookmarks.folders.store');
-        Route::put('/bookmark-folders/{folder}', [BookmarksController::class, 'updateFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('bookmarks.folders.update');
-        Route::post('/bookmark-folders/{folder}/move', [BookmarksController::class, 'moveFolder'])->whereNumber('folder')->middleware('throttle:1200,1')->name('bookmarks.folders.move');
-        Route::delete('/bookmark-folders/{folder}', [BookmarksController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('bookmarks.folders.destroy');
-    });
     // Login/bank site-icon (BIMI/favicon) proxy: domain sent transiently, never
     // stored; SSRF-guarded. Retained for the Finance module (bank logos / partner
-    // favicons); the password manager that first used it has been removed.
+    // favicons).
     Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:1200,1')->name('passwords.icon');
-    // Plaintext-relational Health (pivot). Server-rendered page + JSON per-record
-    // CRUD (profile / entries / fasts). Sensitive columns are `encrypted`-cast.
-    Route::get('/health', [HealthController::class, 'page'])->middleware('module:health')->name('health.index');
-    Route::middleware('module:health')->group(function (): void {
-        Route::get('/health/data', [HealthController::class, 'index'])->name('health.data');
-        Route::put('/health/profile', [HealthController::class, 'saveProfile'])->middleware('throttle:600,1')->name('health.profile.save');
-        Route::get('/health/entries', [HealthController::class, 'entries'])->name('health.entries');
-        Route::post('/health/entries', [HealthController::class, 'storeEntry'])->middleware('throttle:600,1')->name('health.entries.store');
-        Route::put('/health/entries/{entry}', [HealthController::class, 'updateEntry'])->whereNumber('entry')->middleware('throttle:600,1')->name('health.entries.update');
-        Route::delete('/health/entries/{entry}', [HealthController::class, 'destroyEntry'])->whereNumber('entry')->middleware('throttle:600,1')->name('health.entries.destroy');
-        Route::get('/health/fasts', [HealthController::class, 'fasts'])->name('health.fasts');
-        Route::get('/health/fasts/active', [HealthController::class, 'activeFast'])->name('health.fasts.active');
-        Route::post('/health/fasts', [HealthController::class, 'startFast'])->middleware('throttle:600,1')->name('health.fasts.start');
-        Route::post('/health/fasts/{fast}/stop', [HealthController::class, 'stopFast'])->whereNumber('fast')->middleware('throttle:600,1')->name('health.fasts.stop');
-        Route::put('/health/fasts/{fast}', [HealthController::class, 'updateFast'])->whereNumber('fast')->middleware('throttle:600,1')->name('health.fasts.update');
-        Route::delete('/health/fasts/{fast}', [HealthController::class, 'destroyFast'])->whereNumber('fast')->middleware('throttle:600,1')->name('health.fasts.destroy');
-    });
-    // Plaintext-relational Finance (pivot): invoices + partners + payment methods
-    // + bank transactions + projects + categories as owner-scoped rows. The
-    // per-user company profile (printed on invoices) stays in the user's settings.
+
+    // Plaintext-relational Finance: invoices + partners + payment methods + bank
+    // transactions + projects + categories as owner-scoped rows. The per-user
+    // company profile (printed on invoices) stays in the user's settings.
     Route::middleware('module:finance')->group(function (): void {
         Route::get('/finance', [FinanceController::class, 'page'])->name('finance.index');
         Route::get('/finance/data', [FinanceController::class, 'index'])->name('finance.data');
@@ -449,41 +212,14 @@ Route::middleware('auth')->group(function (): void {
         Route::delete('/finance/transactions/{transaction}/receipts/{receipt}', [FinanceController::class, 'destroyReceipt'])->whereNumber('transaction')->middleware('throttle:600,1')->name('finance.transactions.receipts.destroy');
     });
     Route::redirect('/invoices', '/finance'); // old bookmarks
+
+    // Per-user company profile + invoice defaults (printed on every invoice).
     Route::get('/settings/company', [SettingsCompanyController::class, 'edit'])->name('settings.company.edit');
     Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
     Route::get('/settings/company/logo', [SettingsCompanyController::class, 'logo'])->name('settings.company.logo');
-    // Explore (map/GPS): the records (tracks, couplings, tolerances) live in the
-    // opaque `explore` module store (GET/PUT /store/explore); only the optional
-    // raw track files are opaque content blobs (explore/{blob}). Same
-    // controller-reuse, owner-scoped, zero-knowledge as the contacts blobs.
-    Route::get('/explore', [ExploreController::class, 'page'])->middleware('module:explore')->name('explore');
-    // Plaintext-relational Explore (pivot): tracks + photo couplings + tolerances.
-    // Track point lists are location PII → `encrypted`-cast. Same controller as api.
-    Route::middleware('module:explore')->group(function (): void {
-        Route::get('/explore/data', [ExploreController::class, 'index'])->name('explore.data');
-        Route::get('/explore/trash', [ExploreController::class, 'trash'])->name('explore.trash');
-        Route::post('/explore/tracks', [ExploreController::class, 'storeTrack'])->middleware('throttle:600,1')->name('explore.tracks.store');
-        Route::put('/explore/tracks/{track}', [ExploreController::class, 'updateTrack'])->whereNumber('track')->middleware('throttle:600,1')->name('explore.tracks.update');
-        Route::delete('/explore/tracks/{track}', [ExploreController::class, 'destroyTrack'])->whereNumber('track')->middleware('throttle:600,1')->name('explore.tracks.destroy');
-        Route::post('/explore/tracks/{track}/restore', [ExploreController::class, 'restoreTrack'])->whereNumber('track')->middleware('throttle:600,1')->name('explore.tracks.restore');
-        Route::delete('/explore/tracks/{track}/force', [ExploreController::class, 'forceDeleteTrack'])->whereNumber('track')->middleware('throttle:600,1')->name('explore.tracks.force');
-        Route::post('/explore/tracks/{track}/file', [ExploreController::class, 'uploadTrackFile'])->whereNumber('track')->middleware('throttle:600,1')->name('explore.tracks.file.upload');
-        Route::get('/explore/tracks/{track}/file', [ExploreController::class, 'trackFile'])->whereNumber('track')->middleware('throttle:600,1')->name('explore.tracks.file');
-        Route::post('/explore/couplings', [ExploreController::class, 'setCoupling'])->middleware('throttle:600,1')->name('explore.couplings.set');
-        Route::delete('/explore/couplings', [ExploreController::class, 'deleteCoupling'])->middleware('throttle:600,1')->name('explore.couplings.destroy');
-        Route::put('/explore/settings', [ExploreController::class, 'saveSettings'])->middleware('throttle:600,1')->name('explore.settings.save');
-    });
-    // Legacy ZK explore blob endpoints (frontend switch + teardown is a later step).
-    // Explore tour-planner auto-routing: snap clicked waypoints to real paths via
-    // an OSRM-compatible upstream (SSRF-guarded, coordinates never logged/persisted,
-    // clean {geometry:null} when the upstream is unset/unreachable). User-initiated,
-    // opt-in egress — same class as the gallery place-picker geocoding.
-    Route::get('/maps/route', [MapController::class, 'route'])->middleware('throttle:180,1')->name('maps.route');
-    // Resolve a Google-Maps short link (maps.app.goo.gl/…) to coordinates for the
-    // Explore search. Google-hosts-only egress, link never logged; same opt-in class.
-    Route::get('/maps/resolve', [MapController::class, 'resolve'])->middleware('throttle:30,1')->name('maps.resolve');
+
     // Paperless transfer modal: cached quick-pick terms, term creation and
-    // document upload (shared by mail attachments and the file browser).
+    // document upload (used from the Finance receipt browser).
     Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');
     Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->name('paperless.terms.create');
     Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->name('paperless.documents');

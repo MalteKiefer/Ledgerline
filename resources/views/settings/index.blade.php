@@ -7,7 +7,6 @@
         $admin = [
             ['url' => route('settings.users'), 'title' => __('settings.users_section'), 'desc' => __('settings.users_desc'), 'icon' => 'user', 'tint' => '#7066f5'],
             ['url' => route('settings.groups'), 'title' => __('settings.groups_section'), 'desc' => __('settings.groups_desc'), 'icon' => 'user-group', 'tint' => '#3fae9f'],
-            ['url' => route('settings.files.limits'), 'title' => __('settings.files_limits_heading'), 'desc' => __('settings.files_limits_hint'), 'icon' => 'folder', 'tint' => '#3b9fd6'],
             ['url' => route('settings.notifications.edit'), 'title' => __('settings.notifications_section'), 'desc' => __('settings.notifications_desc'), 'icon' => 'bell', 'tint' => '#d9a441'],
             ['url' => route('settings.backup.index'), 'title' => __('settings.backup_section'), 'desc' => __('settings.backup_desc'), 'icon' => 'archive-box', 'tint' => '#3fae9f'],
             ['url' => route('settings.security.edit'), 'title' => __('settings.security_section'), 'desc' => __('settings.security_desc'), 'icon' => 'shield-check', 'tint' => '#9e70fa'],

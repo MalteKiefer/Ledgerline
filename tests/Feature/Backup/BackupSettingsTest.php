@@ -91,26 +91,13 @@ class BackupSettingsTest extends TestCase
         $this->assertSame(['desktop', 'mail'], $job->notify_channels);
     }
 
-    public function test_a_files_job_can_choose_full_archive_mode(): void
-    {
-        $this->signInAdmin();
-        $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
-
-        $this->post(route('settings.backup.jobs.store'), [
-            'name' => 'Files full', 'source' => 'files', 'mode' => 'archive',
-            'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 4,
-        ])->assertRedirect();
-
-        $this->assertSame('archive', BackupJob::firstWhere('name', 'Files full')->mode);
-    }
-
     public function test_an_invalid_backup_mode_is_rejected(): void
     {
         $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
         $this->post(route('settings.backup.jobs.store'), [
-            'name' => 'Bad mode', 'source' => 'files', 'mode' => 'wat',
+            'name' => 'Bad mode', 'source' => 'database', 'mode' => 'wat',
             'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 3,
         ])->assertSessionHasErrors('mode');
     }
@@ -121,7 +108,7 @@ class BackupSettingsTest extends TestCase
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
         $this->post(route('settings.backup.jobs.store'), [
-            'name' => 'Bad', 'source' => 'files', 'backup_destination_id' => $dest->id,
+            'name' => 'Bad', 'source' => 'database', 'backup_destination_id' => $dest->id,
             'cron' => 'not a cron', 'retention' => 3,
         ])->assertSessionHasErrors('cron');
     }
@@ -132,7 +119,7 @@ class BackupSettingsTest extends TestCase
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
         $this->post(route('settings.backup.jobs.store'), [
-            'name' => 'Enc', 'source' => 'files', 'backup_destination_id' => $dest->id,
+            'name' => 'Enc', 'source' => 'database', 'backup_destination_id' => $dest->id,
             'cron' => '0 3 * * *', 'retention' => 3,
             'encrypt' => '1', 'passphrase' => '',
         ])->assertSessionHasErrors('passphrase');

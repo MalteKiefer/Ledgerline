@@ -7,7 +7,7 @@
             ->filter(fn ($i) => ! isset($i['module']) || (auth()->user()?->canModule($i['module']) ?? true))
             ->map(fn ($i) => [
                 'label' => __($i['label']),
-                'url' => route($i['route']),
+                'url' => route($i['route']).($i['fragment'] ?? ''),
                 'active' => request()->routeIs($i['pattern']),
                 'icon' => $i['icon'],
             ]);

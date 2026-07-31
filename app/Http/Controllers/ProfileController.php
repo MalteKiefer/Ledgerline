@@ -7,8 +7,6 @@ namespace App\Http\Controllers;
 use App\Models\AppSettings;
 use App\Models\User;
 use App\Models\UserSetting;
-use App\Support\FilesUsage;
-use App\Support\GalleryUsage;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -32,8 +30,6 @@ class ProfileController extends Controller
             'sessionCount' => $this->sessionsFor($user)->count(),
             'deviceCount' => $user->tokens()->count(),
             'deviceMax' => $this->deviceMax($user),
-            'storageUsed' => $this->storageUsedBytes($user),
-            'storageQuota' => $this->storageQuotaBytes($user),
         ]);
     }
 
@@ -145,29 +141,5 @@ class ProfileController extends Controller
         return $user->max_connected_devices
             ?: (AppSettings::current()->max_connected_devices
                 ?: (is_numeric($configured) ? (int) $configured : 3));
-    }
-
-    /**
-     * Storage the account occupies: the user's OWN file bytes (files + versions,
-     * plaintext-relational) plus gallery blob bytes. Same figures the quota check
-     * + usage endpoints use.
-     */
-    private function storageUsedBytes(User $user): int
-    {
-        return FilesUsage::forUser((int) $user->id)
-            + GalleryUsage::forUser((int) $user->id);
-    }
-
-    /** Combined files+gallery quota in bytes, or 0 when either module is unlimited. */
-    private function storageQuotaBytes(User $user): int
-    {
-        $filesQuota = $user->files_quota_mb ?: config('files.quota_mb', 0);
-        $galleryQuota = $user->gallery_quota_mb ?: config('gallery.quota_mb', 0);
-        $filesQuotaMb = is_numeric($filesQuota) ? (int) $filesQuota : 0;
-        $galleryQuotaMb = is_numeric($galleryQuota) ? (int) $galleryQuota : 0;
-
-        return ($filesQuotaMb > 0 && $galleryQuotaMb > 0)
-            ? ($filesQuotaMb + $galleryQuotaMb) * 1024 * 1024
-            : 0;
     }
 }

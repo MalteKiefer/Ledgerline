@@ -13,14 +13,6 @@ declare(strict_types=1);
 
 return [
     'list' => [
-        'dashboard' => ['label' => 'messages.nav.dashboard', 'route' => 'dashboard'],
-        'files' => ['label' => 'messages.nav.files', 'route' => 'files.index'],
-        'gallery' => ['label' => 'messages.nav.gallery', 'route' => 'gallery.index'],
-        'notes' => ['label' => 'messages.nav.notes', 'route' => 'notes.index'],
-        'todos' => ['label' => 'messages.nav.todos', 'route' => 'todos.index'],
-        'bookmarks' => ['label' => 'messages.nav.bookmarks', 'route' => 'bookmarks.index'],
         'finance' => ['label' => 'messages.nav.finance', 'route' => 'finance.index'],
-        'health' => ['label' => 'messages.nav.health', 'route' => 'health.index'],
-        'explore' => ['label' => 'messages.nav.explore', 'route' => 'explore'],
     ],
 ];

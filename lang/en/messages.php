@@ -4,16 +4,8 @@ declare(strict_types=1);
 
 return [
     'nav' => [
-        'dashboard' => 'Dashboard',
-        'notes' => 'Notes',
-        'bookmarks' => 'Bookmarks',
         'invoices' => 'Invoices',
         'finance' => 'Finance',
-        'files' => 'Files',
-        'gallery' => 'Gallery',
-        'todos' => 'To-dos',
-        'health' => 'Health',
-        'explore' => 'Explore',
         'more' => 'More',
     ],
     'menu' => [

@@ -15,9 +15,9 @@ use Illuminate\Http\UploadedFile;
  * Server-side receipt OCR (transient plaintext). The client POSTs the RAW
  * (decrypted) document ONLY to extract text; the server processes it in a
  * shredded temp file, returns line-structured text, and stores/logs nothing —
- * the same accepted transient-cleartext window as GalleryProcessController. The
- * document itself lives only as the client-encrypted blob (uploaded separately
- * via /invoices/upload); the returned text is analysed + stored client-side.
+ * an accepted transient-cleartext window. The document itself lives only as the
+ * stored receipt blob (uploaded separately); the returned text is analysed and
+ * stored client-side.
  *
  * The server returns ONLY text — no total/merchant/date parsing (that lives in
  * the shared client recogniser). Best-effort for the client: a 501/timeout just

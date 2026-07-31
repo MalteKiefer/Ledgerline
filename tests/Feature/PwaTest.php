@@ -15,7 +15,7 @@ class PwaTest extends TestCase
     {
         $this->signIn();
 
-        $this->get(route('dashboard'))->assertOk()
+        $this->get(route('finance.index'))->assertOk()
             ->assertSee('manifest.webmanifest', false)
             ->assertSee('theme-color', false)
             ->assertSee('apple-touch-icon', false);

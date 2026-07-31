@@ -8,8 +8,6 @@ use App\Models\BackupJob;
 use App\Models\BackupRun;
 use App\Services\Backup\Sources\BackupSource;
 use App\Services\Backup\Sources\DatabaseSource;
-use App\Services\Backup\Sources\FilesSource;
-use App\Services\Backup\Sources\GallerySource;
 use App\Services\Backup\Sources\MirrorableSource;
 use App\Support\Bytes;
 use App\Support\Redactor;
@@ -250,8 +248,6 @@ final class BackupManager
     {
         return match ($source) {
             'database' => app(DatabaseSource::class),
-            'files' => app(FilesSource::class),
-            'gallery' => app(GallerySource::class),
             default => throw new RuntimeException("Unknown backup source: {$source}"),
         };
     }

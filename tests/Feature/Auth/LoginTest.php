@@ -22,7 +22,7 @@ class LoginTest extends TestCase
         $user = User::factory()->create(['email' => 'me@example.com', 'password' => 'super-secret-123']);
 
         $this->post('/login', ['email' => 'me@example.com', 'password' => 'super-secret-123'])
-            ->assertRedirect('/dashboard');
+            ->assertRedirect('/finance');
         $this->assertAuthenticatedAs($user);
     }
 

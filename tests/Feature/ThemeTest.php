@@ -18,11 +18,11 @@ class ThemeTest extends TestCase
         $user = $this->signIn();
 
         // Default: system.
-        $this->get(route('dashboard'))->assertOk()->assertSee('data-theme="system"', false);
+        $this->get(route('finance.index'))->assertOk()->assertSee('data-theme="system"', false);
 
         $this->post(route('theme.update'), ['theme' => 'dark'])->assertRedirect();
         $this->assertSame('dark', UserSetting::for($user->id)->theme);
-        $this->get(route('dashboard'))->assertOk()->assertSee('data-theme="dark"', false);
+        $this->get(route('finance.index'))->assertOk()->assertSee('data-theme="dark"', false);
 
         $this->post(route('theme.update'), ['theme' => 'bogus'])->assertSessionHasErrors('theme');
     }
@@ -30,7 +30,7 @@ class ThemeTest extends TestCase
     public function test_the_bootstrap_script_is_emitted_and_csp_hash_matches(): void
     {
         $this->signIn();
-        $response = $this->get(route('dashboard'))->assertOk();
+        $response = $this->get(route('finance.index'))->assertOk();
 
         // The inline script must be byte-identical to the hashed constant.
         $response->assertSee('<script>'.ThemeBootstrap::SCRIPT.'</script>', false);

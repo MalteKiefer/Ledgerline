@@ -9,8 +9,6 @@ use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Auth\Pairing;
 use App\Support\DeviceAudit;
-use App\Support\FilesUsage;
-use App\Support\GalleryUsage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -64,40 +62,16 @@ class AuthController extends Controller
         ]);
     }
 
-    /** The authenticated user + storage usage (bearer). */
+    /** The authenticated user (bearer). */
     public function me(Request $request): JsonResponse
     {
         $user = $this->requireUser($request);
 
         return response()->json([
             'user' => $this->userPayload($user),
-            'usage' => [
-                'files' => FilesUsage::forUser((int) $user->id),
-                'gallery' => GalleryUsage::forUser((int) $user->id),
-                // Combined storage limit in bytes (files + gallery), or null when
-                // unlimited. Null if EITHER dimension is unlimited (0) — the pool has
-                // no finite cap then. Lets a client render a used/limit ring.
-                'quota' => $this->combinedQuotaBytes($user),
-            ],
             // Kill switch: the owner asked to wipe this client from the web.
             'wipe' => $this->wipeRequested($request),
         ]);
-    }
-
-    /**
-     * The user's total storage limit in bytes (effective files quota + gallery
-     * quota), or null when unlimited. If either dimension is unlimited (0), the
-     * combined pool is unbounded → null.
-     */
-    private function combinedQuotaBytes(User $user): ?int
-    {
-        $files = $user->effectiveFilesQuotaMb();
-        $gallery = $user->effectiveGalleryQuotaMb();
-        if ($files <= 0 || $gallery <= 0) {
-            return null;
-        }
-
-        return ($files + $gallery) * 1024 * 1024;
     }
 
     /** Whether the presented token has been flagged for a remote wipe. */

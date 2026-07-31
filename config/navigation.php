@@ -1,29 +1,30 @@
 <?php
 
 // Single source of truth for the app navigation, consumed by both the desktop
-// top bar (x-nav) and the mobile bottom tab bar (x-mobile-nav). Each item is a
-// static definition; the components resolve url/label/active at render time.
+// top bar (x-nav) and the mobile bottom tab bar (x-mobile-nav). The app is
+// finance-only: every destination is a section of the Finance SPA, opened via a
+// URL fragment (#<section>) that the invoices Alpine component restores on load.
 //
-//   label   — translation key
-//   route   — route name for route()
-//   pattern — routeIs() pattern for the active state
-//   icon    — x-icon name (monochrome set)
+//   label    — translation key
+//   route    — route name for route() (always finance.index)
+//   fragment — URL hash selecting the Finance section
+//   pattern  — routeIs() pattern for the active state
+//   icon     — x-icon name (monochrome set)
+//   module   — module gate key
 
 return [
-    // The most-used destinations: direct links on desktop, the primary slots
-    // of the mobile navigation drawer.
+    // The most-used Finance sections: direct links on desktop, the primary slots
+    // of the mobile bottom-tab bar.
     'primary' => [
-        ['label' => 'messages.nav.dashboard', 'route' => 'dashboard', 'pattern' => 'dashboard', 'icon' => 'home', 'module' => 'dashboard'],
-        ['label' => 'messages.nav.files', 'route' => 'files.index', 'pattern' => 'files.*', 'icon' => 'files', 'module' => 'files'],
-        ['label' => 'messages.nav.gallery', 'route' => 'gallery.index', 'pattern' => 'gallery.*', 'icon' => 'photo', 'module' => 'gallery'],
+        ['label' => 'invoices.tab_dashboard', 'route' => 'finance.index', 'fragment' => '#dashboard', 'pattern' => 'finance.*', 'icon' => 'home', 'module' => 'finance'],
+        ['label' => 'invoices.tab_invoices', 'route' => 'finance.index', 'fragment' => '#invoices', 'pattern' => 'finance.*', 'icon' => 'document-text', 'module' => 'finance'],
+        ['label' => 'invoices.tab_payments', 'route' => 'finance.index', 'fragment' => '#payments', 'pattern' => 'finance.*', 'icon' => 'credit-card', 'module' => 'finance'],
+        ['label' => 'invoices.tab_receipts', 'route' => 'finance.index', 'fragment' => '#receipts', 'pattern' => 'finance.*', 'icon' => 'receipt-percent', 'module' => 'finance'],
     ],
     // The rest: a "More" dropdown on desktop, the "More" sheet on mobile.
     'more' => [
-        ['label' => 'messages.nav.notes', 'route' => 'notes.index', 'pattern' => 'notes.*', 'icon' => 'pencil', 'module' => 'notes'],
-        ['label' => 'messages.nav.todos', 'route' => 'todos.index', 'pattern' => 'todos.*', 'icon' => 'todos', 'module' => 'todos'],
-        ['label' => 'messages.nav.bookmarks', 'route' => 'bookmarks.index', 'pattern' => 'bookmarks.*', 'icon' => 'bookmark', 'module' => 'bookmarks'],
-        ['label' => 'messages.nav.finance', 'route' => 'finance.index', 'pattern' => 'finance.*', 'icon' => 'banknotes', 'module' => 'finance'],
-        ['label' => 'messages.nav.health', 'route' => 'health.index', 'pattern' => 'health.*', 'icon' => 'heart', 'module' => 'health'],
-        ['label' => 'messages.nav.explore', 'route' => 'explore', 'pattern' => 'explore', 'icon' => 'map', 'module' => 'explore'],
+        ['label' => 'invoices.tab_projects', 'route' => 'finance.index', 'fragment' => '#projects', 'pattern' => 'finance.*', 'icon' => 'folder', 'module' => 'finance'],
+        ['label' => 'invoices.tab_partners', 'route' => 'finance.index', 'fragment' => '#partners', 'pattern' => 'finance.*', 'icon' => 'user-group', 'module' => 'finance'],
+        ['label' => 'invoices.tab_stats', 'route' => 'finance.index', 'fragment' => '#stats', 'pattern' => 'finance.*', 'icon' => 'chart-bar', 'module' => 'finance'],
     ],
 ];

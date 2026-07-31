@@ -8,8 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * Marker for backup sources whose blobs can be mirrored object-by-object
- * (already-encrypted ciphertext) rather than archived into a tarball.
- * Implemented by FilesSource and GallerySource.
+ * rather than archived into a tarball.
  */
 interface MirrorableSource extends BackupSource
 {
@@ -27,10 +26,9 @@ interface MirrorableSource extends BackupSource
     /**
      * Whether the ledger model is a single-column blob ledger whose primary key
      * (queried as `blob`) maps 1:1 to a disk object under diskPrefix(). Sources
-     * where that holds can use the fast incremental delta. The plaintext-relational
-     * cores (Files + Gallery), whose bytes live at row storage_paths (and extra
-     * rendition paths) rather than a single `blob` column, return false and are
-     * always mirrored by a full prefix reconcile.
+     * where that holds can use the fast incremental delta. Sources whose bytes
+     * live at row storage_paths rather than a single `blob` column return false
+     * and are always mirrored by a full prefix reconcile.
      */
     public function supportsLedgerDelta(): bool;
 }

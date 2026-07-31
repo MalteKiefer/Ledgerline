@@ -7,8 +7,6 @@ namespace App\Services\Ops;
 use App\Models\BackupRun;
 use App\Models\ErrorEvent;
 use App\Providers\AppServiceProvider;
-use App\Support\FilesUsage;
-use App\Support\GalleryUsage;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Cache;
@@ -35,8 +33,11 @@ class SystemStatus
      */
     public function snapshot(): array
     {
-        $files = FilesUsage::total();
-        $gallery = GalleryUsage::total();
+        // Files + Gallery modules were removed (finance-only app); their storage
+        // dimensions are retained at 0 so the snapshot shape (and the
+        // storage_snapshots columns) stay stable.
+        $files = 0;
+        $gallery = 0;
         $database = $this->databaseBytes();
 
         $lastError = ErrorEvent::whereNull('resolved_at')->max('last_seen_at');
@@ -55,7 +56,7 @@ class SystemStatus
                 'files' => $files,
                 'gallery' => $gallery,
                 'database' => $database,
-                'total' => $files + $gallery + $database,
+                'total' => $database,
             ],
             'errors' => [
                 'unresolved' => ErrorEvent::whereNull('resolved_at')->count(),
