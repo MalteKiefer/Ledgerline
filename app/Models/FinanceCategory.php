@@ -15,6 +15,8 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $user_id
  * @property string $name
+ * @property string|null $color
+ * @property string|null $icon
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -22,5 +24,5 @@ class FinanceCategory extends Model
 {
     use OwnsUserData;
 
-    protected $fillable = ['name'];
+    protected $fillable = ['name', 'color', 'icon'];
 }

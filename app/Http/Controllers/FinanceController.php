@@ -443,13 +443,30 @@ class FinanceController extends Controller
 
     // ---- Categories (hard-deleted lookup list) ----
 
+    /**
+     * Monochrome icon names a custom category may carry — each exists in
+     * resources/views/components/icon.blade.php (a blank name would render invisible).
+     * Kept in sync with `catIconOptions` (invoices.js) and `_category_icon.blade.php`.
+     *
+     * @var list<string>
+     */
+    private const CATEGORY_ICONS = [
+        'hashtag', 'tag', 'banknotes', 'credit-card', 'wallet', 'building-library',
+        'receipt-percent', 'chart-bar', 'arrow-trending-up', 'arrow-trending-down',
+        'globe', 'globe-alt', 'home', 'camera', 'photo', 'film', 'bell', 'bookmark',
+        'star', 'heart', 'calendar', 'clock', 'document', 'document-text',
+        'document-duplicate', 'folder', 'inbox-stack', 'archive-box', 'server', 'key',
+        'lock-closed', 'shield', 'shield-check', 'wifi', 'command-line', 'beaker',
+        'thermometer', 'scale', 'cake', 'sparkles', 'map-pin', 'map', 'route',
+        'paperclip', 'paper-clip', 'envelope', 'printer', 'users', 'user-group',
+        'sun', 'moon',
+    ];
+
     public function storeCategory(Request $request): JsonResponse
     {
         $uid = (int) $this->requireUser($request)->id;
-        $request->validate([
-            'name' => ['required', 'string', 'max:160', Rule::unique('finance_categories', 'name')->where('user_id', $uid)],
-        ]);
-        $category = DB::transaction(fn (): FinanceCategory => FinanceCategory::create(['name' => $request->string('name')->value()]));
+        $request->validate($this->categoryRules($request, $uid, null));
+        $category = DB::transaction(fn (): FinanceCategory => FinanceCategory::create($this->categoryPatch($request)));
 
         return response()->json(['category' => $category], 201);
     }
@@ -457,12 +474,39 @@ class FinanceController extends Controller
     public function updateCategory(Request $request, FinanceCategory $category): JsonResponse
     {
         $uid = (int) $this->requireUser($request)->id;
-        $request->validate([
-            'name' => ['required', 'string', 'max:160', Rule::unique('finance_categories', 'name')->where('user_id', $uid)->ignore($category->id)],
-        ]);
-        $category->update(['name' => $request->string('name')->value()]);
+        $request->validate($this->categoryRules($request, $uid, $category->id));
+        $category->update($this->categoryPatch($request));
 
         return response()->json(['category' => $category]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function categoryRules(Request $request, int $uid, ?int $ignoreId): array
+    {
+        $unique = Rule::unique('finance_categories', 'name')->where('user_id', $uid);
+        if ($ignoreId !== null) {
+            $unique = $unique->ignore($ignoreId);
+        }
+
+        return [
+            'name' => ['required', 'string', 'max:160', $unique],
+            'color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'icon' => ['nullable', 'string', 'max:40', Rule::in(self::CATEGORY_ICONS)],
+        ];
+    }
+
+    /**
+     * @return array<string, string|null>
+     */
+    private function categoryPatch(Request $request): array
+    {
+        return [
+            'name' => $request->string('name')->value(),
+            'color' => $request->filled('color') ? $request->string('color')->value() : null,
+            'icon' => $request->filled('icon') ? $request->string('icon')->value() : null,
+        ];
     }
 
     public function destroyCategory(FinanceCategory $category): JsonResponse

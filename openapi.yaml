@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.526.1
+  version: 1.527.0
   license:
     name: Proprietary
   description: >
@@ -325,10 +325,12 @@ components:
 
     FinanceCategory:
       type: object
-      description: "Receipt category (relational finance_categories)."
+      description: "Receipt category (relational finance_categories). Optional colour + monochrome icon for display."
       properties:
         id: { type: integer }
         name: { type: string }
+        color: { type: [string, "null"], description: "Hex colour #RRGGBB, or null.", example: "#7066f5" }
+        icon: { type: [string, "null"], description: "Monochrome icon name (heroicons-outline), or null.", example: "hashtag" }
 
     VatReturn:
       type: object
