@@ -638,7 +638,7 @@ export default (config = {}, labels = {}) => ({
         _contactsReconAt = Date.now();
         const blobs = [];
         for (const c of this.contacts) if (c.avatarRef) blobs.push(c.avatarRef);
-        postForm(config.reconcileUrl, { blobs: [...new Set(blobs)] }).catch(() => {});
+        postForm(config.reconcileUrl, { blobs: [...new Set(blobs)], allow_empty: 1 }).catch(() => {});
     },
 
     /* ---- vCard import / export (client-side, ZK) ---- */

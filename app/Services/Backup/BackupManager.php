@@ -126,8 +126,15 @@ final class BackupManager
                     $summary = sprintf('%s → %s (%s, %d uploaded, %d removed, full reconcile)', $job->source, $prefix, Bytes::format($bytes), $r['uploaded'], $r['removed']);
                 } else {
                     $step('Incremental mirror of '.$job->source.' → '.$prefix.'…');
+                    // Use >= not >: gallery/file blobs stamp created_at to the START OF
+                    // THE HOUR, so many blobs share one timestamp. A strict > cursor
+                    // (= max(created_at)) would skip every blob added later in the same
+                    // hour as the previous run — silently omitting them from the mirror.
+                    // delta() is idempotent (it skips objects already at the destination),
+                    // so re-considering the boundary hour only re-uploads what's genuinely
+                    // missing.
                     $newBlobs = $ledger::query()
-                        ->when($job->mirror_cursor !== null, fn ($q) => $q->where('created_at', '>', $job->mirror_cursor))
+                        ->when($job->mirror_cursor !== null, fn ($q) => $q->where('created_at', '>=', $job->mirror_cursor))
                         ->orderBy('created_at')
                         ->pluck('blob')
                         ->map(static fn (mixed $b): string => is_scalar($b) ? (string) $b : '')
@@ -135,7 +142,7 @@ final class BackupManager
                     $r = $this->mirror->delta($fs, $diskPrefix, $prefix, $newBlobs, $step, $checkCancel);
                     // Advance the cursor to the newest blob we considered.
                     $cursor = $ledger::query()
-                        ->when($job->mirror_cursor !== null, fn ($q) => $q->where('created_at', '>', $job->mirror_cursor))
+                        ->when($job->mirror_cursor !== null, fn ($q) => $q->where('created_at', '>=', $job->mirror_cursor))
                         ->max('created_at') ?? $job->mirror_cursor;
                     if ($cursor !== null) {
                         $job->forceFill(['mirror_cursor' => $cursor])->save();

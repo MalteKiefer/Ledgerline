@@ -510,7 +510,7 @@ export const Vault = {
         const recoveryKey = sodium.crypto_generichash(sodium.crypto_secretbox_KEYBYTES, recoveryBytes);
         const wrappedRecovery = seal(vk, recoveryKey);
 
-        await api('POST', {
+        const resp = await api('POST', {
             salt: b64(salt),
             kdf_ops: ops,
             kdf_mem: mem,
@@ -519,6 +519,16 @@ export const Vault = {
             wrapped_vault_key_recovery: wrappedRecovery.cipher,
             recovery_nonce: wrappedRecovery.nonce,
         });
+
+        // The server refuses to overwrite an existing vault (409). api() deliberately
+        // does NOT throw on 409, so guard here: if a vault was already configured (e.g.
+        // a second device raced first-time setup), we must NOT adopt this freshly-minted,
+        // never-persisted vault key — sealing data under a phantom key the server never
+        // stored makes it permanently unrecoverable and hands the user a worthless
+        // recovery code. Surface it so the caller unlocks the real vault instead.
+        if (! resp || resp.configured !== true) {
+            throw new Error('vault already configured');
+        }
 
         this.vk = vk;
         await this._apply(remember);

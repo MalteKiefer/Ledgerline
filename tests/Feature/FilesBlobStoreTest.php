@@ -169,4 +169,24 @@ class FilesBlobStoreTest extends TestCase
         $this->assertNotNull(FileBlob::find($theirs));
         Storage::disk(config('files.disk'))->assertExists('files/'.$theirs);
     }
+
+    public function test_empty_live_set_on_a_non_empty_ledger_is_refused_without_allow_empty(): void
+    {
+        $user = $this->signIn();
+        $disk = Storage::disk(config('files.disk'));
+        $aged = (string) Str::uuid();
+        $disk->put('files/'.$aged, 'ciphertext');
+        FileBlob::create(['blob' => $aged, 'user_id' => $user->id, 'size' => 10, 'created_at' => now()->subDays(3)]);
+
+        // A degraded/failed index that produced no refs must NOT wipe the library:
+        // an empty live-set against a non-empty ledger is refused (422) — the blob stays.
+        $this->postJson(route('files.blobs.reconcile'), ['blobs' => []])->assertStatus(422);
+        $this->assertNotNull(FileBlob::find($aged));
+        $disk->assertExists('files/'.$aged);
+
+        // A healthy client that genuinely emptied its store confirms with allow_empty.
+        $this->postJson(route('files.blobs.reconcile'), ['blobs' => [], 'allow_empty' => 1])->assertOk();
+        $this->assertNull(FileBlob::find($aged));
+        $disk->assertMissing('files/'.$aged);
+    }
 }

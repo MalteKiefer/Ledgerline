@@ -289,7 +289,7 @@ export default (config = {}, labels = {}) => ({
             const res = await fetch(config.reconcileUrl, {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ blobs: [...new Set(blobs)] }),
+                body: JSON.stringify({ blobs: [...new Set(blobs)], allow_empty: 1 }),
             });
             if (res.ok) this.usage = await res.json();
         } catch (e) { /* best effort */ }
@@ -311,7 +311,7 @@ export default (config = {}, labels = {}) => ({
             await fetch(`/vaults/${vaultId}/blobs/reconcile`, {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ blobs: [...new Set(blobs)] }),
+                body: JSON.stringify({ blobs: [...new Set(blobs)], allow_empty: 1 }),
             });
         } catch (_e) { /* best effort */ }
     },
@@ -2456,14 +2456,38 @@ export default (config = {}, labels = {}) => ({
             return;
         }
 
+        // Snapshot the personal manifest so we can roll back if the durable write fails.
+        const prevFolders = this.manifest.folders;
+        const prevFiles = this.manifest.files;
+
         // Commit to the personal manifest.
-        window.LLFilesStore.data.fileFolders = [...this.manifest.folders, newRoot, ...newFolders];
-        window.LLFilesStore.data.files = [...this.manifest.files, ...newFiles];
+        window.LLFilesStore.data.fileFolders = [...prevFolders, newRoot, ...newFolders];
+        window.LLFilesStore.data.files = [...prevFiles, ...newFiles];
         this.manifest.folders = window.LLFilesStore.data.fileFolders;
         this.manifest.files = window.LLFilesStore.data.files;
-        window.LLFilesStore.touch();
 
-        // Delete the shared vault (cascades members + shared blobs) + clean local state.
+        // The shared vault is the ONLY durable copy of these files. Persist the
+        // personal manifest DURABLY (await flush, not a fire-and-forget debounced
+        // touch) and confirm success BEFORE deleting the vault — otherwise a tab
+        // close or failed PUT between the two would destroy the folder permanently.
+        let saveOk = true;
+        const prevOnError = window.LLFilesStore._onError;
+        window.LLFilesStore._onError = () => { saveOk = false; };
+        try { await window.LLFilesStore.flush(); } finally { window.LLFilesStore._onError = prevOnError; }
+        if (! saveOk || window.LLFilesStore.degraded) {
+            // Personal write did not land — restore the manifest and free the personal
+            // blobs; the shared vault (and its files) stays intact.
+            window.LLFilesStore.data.fileFolders = prevFolders;
+            window.LLFilesStore.data.files = prevFiles;
+            this.manifest.folders = prevFolders;
+            this.manifest.files = prevFiles;
+            try { this._freeBlobs(uploaded); } catch (_) {}
+            this.error = labels.convertFailed || 'Could not save — the shared folder was kept.';
+            return;
+        }
+
+        // Personal copy is durable — now safe to delete the shared vault (cascades
+        // members + shared blobs) + clean local state.
         try { await apiRequest('DELETE', '/vaults/' + vaultId); } catch (_) {}
         this.sharedFolders = this.sharedFolders.filter((f) => f.vaultId !== vaultId);
         delete this.sharedTree[vaultId];

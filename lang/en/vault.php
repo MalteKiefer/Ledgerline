@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 return [
     'already_configured' => 'The vault is already set up.',
+    'remove_active_via_rotate' => 'An active member must be removed via a key rotation so their access is cryptographically revoked.',
     'change' => 'Change passphrase',
     'change_current' => 'Current passphrase',
     'change_hint' => 'Enter your current passphrase and a new one. Your files are not re-encrypted; only the passphrase that unlocks them changes.',

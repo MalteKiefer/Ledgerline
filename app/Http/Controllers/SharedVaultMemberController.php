@@ -122,6 +122,10 @@ class SharedVaultMemberController extends Controller
         // Cross-vault isolation.
         $this->ensureMemberOfVault($member, $vault);
 
+        // The owner's role is fixed at manager — a co-manager must not be able to
+        // demote the owner (which would strip their control of their own vault).
+        abort_if((int) $member->user_id === (int) $vault->owner_id, 403);
+
         $role = $request->validated()['role'];
         $member->role = VaultRole::from(is_string($role) ? $role : '');
         $member->save();
@@ -146,6 +150,17 @@ class SharedVaultMemberController extends Controller
 
         // Cross-vault isolation.
         $this->ensureMemberOfVault($member, $vault);
+
+        // The owner can never be removed from their own vault.
+        abort_if((int) $member->user_id === (int) $vault->owner_id, 403);
+
+        // An ACTIVE member holds a wrapped key to the CURRENT vault key, so deleting
+        // just the row is NOT cryptographic revocation — they could still decrypt any
+        // content they cached. Active removal must go through POST /vaults/{vault}/rotate,
+        // which re-keys the vault so the removed member cannot read future content.
+        // Only a PENDING invite (never accepted, never handed a usable key) may be
+        // torn down standalone here.
+        abort_unless($member->status === 'pending', 422, __('vault.remove_active_via_rotate'));
 
         $memberId = (int) $member->id;
         $member->delete();

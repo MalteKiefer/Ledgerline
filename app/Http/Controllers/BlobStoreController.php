@@ -137,6 +137,16 @@ abstract class BlobStoreController extends Controller
     protected function authorizeMutation(Request $request): void {}
 
     /**
+     * Authorize the DESTRUCTIVE reconcile (blob prune) specifically. Defaults to the
+     * same gate as any mutation; a shared scope raises it (e.g. manage-only) so a
+     * lesser role cannot prune a ledger it doesn't own.
+     */
+    protected function authorizeReconcile(Request $request): void
+    {
+        $this->authorizeMutation($request);
+    }
+
+    /**
      * Lock id used to serialize concurrent reconcile calls. The default uses
      * the acting user id, preserving personal-blob behavior exactly. Subclasses
      * that attribute blobs to a shared owner (e.g. a vault owner) override this
@@ -201,15 +211,38 @@ abstract class BlobStoreController extends Controller
      */
     public function reconcile(Request $request): JsonResponse
     {
-        $this->authorizeMutation($request);
+        // Reconcile is DESTRUCTIVE (it frees blobs). Its authorization is separate
+        // from a plain upload/delete: a shared folder requires MANAGE here (not just
+        // editor) so a single editor cannot prune the owner's whole ledger.
+        $this->authorizeReconcile($request);
 
         $request->validate([
             'blobs' => ['present', 'array', 'max:100000'],
             'blobs.*' => ['uuid'],
+            // Explicit acknowledgement that an EMPTY live-set (prune everything) is
+            // intended. A client with a degraded/failed index must never send this;
+            // the guard below refuses an empty-set prune of a non-empty ledger without it.
+            'allow_empty' => ['sometimes', 'boolean'],
         ]);
 
         $lockId = $this->reconcileLockId($request);
         $live = array_flip($request->collect('blobs')->map(static fn ($b): string => is_scalar($b) ? (string) $b : '')->all());
+
+        // Floor guard against a catastrophic wipe: if the caller's live-set is EMPTY
+        // but its ledger still holds blobs, that is almost always a bug (a failed/
+        // degraded index that produced no refs), and reconciling would delete the
+        // whole library after the grace window. Refuse unless the client explicitly
+        // confirms an intentional full prune with allow_empty.
+        if ($live === [] && ! $request->boolean('allow_empty') && $this->scopeLedger($request)->exists()) {
+            BlobAudit::record('reconcile_refused', $this->module(), [
+                'user_id' => $this->reconcileLockId($request),
+                'result' => 'refused',
+                'reason' => 'empty_live_set',
+            ]);
+
+            return response()->json(['error' => 'empty_live_set', 'message' => 'refusing to prune a non-empty ledger with an empty live-set'], 422);
+        }
+
         $grace = Carbon::now()->subHours($this->configInt($this->module().'.blob_orphan_grace_hours', 24));
         $disk = $this->disk();
         $prefix = $this->module();

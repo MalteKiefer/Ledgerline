@@ -80,6 +80,15 @@ class VaultController extends Controller
 
         $data = $this->rules($request, withRecovery: $request->filled('wrapped_vault_key_recovery'));
 
+        // Never DESTROY an existing recovery wrap: if the client omits the recovery
+        // fields on rotate, PRESERVE the stored ciphertext rather than forceFill-ing
+        // it to null. Nulling it would silently brick the only offline recovery path
+        // (the web client always resends it, but a native/API client that rotates the
+        // passphrase without a fresh recovery wrap must not lose the existing one).
+        if (! $request->filled('wrapped_vault_key_recovery')) {
+            unset($data['wrapped_vault_key_recovery'], $data['recovery_nonce']);
+        }
+
         // Optimistic concurrency (store merge-safety spec §6.3): if the client sends
         // expected_version, reject a stale rotate (409) rather than clobbering a
         // concurrent passphrase change on another device. Older clients omit it and

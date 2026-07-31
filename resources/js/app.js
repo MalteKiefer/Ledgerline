@@ -212,7 +212,27 @@ document.addEventListener('alpine:init', () => {
         async recover(code, remember = true) { await window.Vault.recover(code, remember); this._unlockedAt++; },
         async changePassphrase(a, b) { const code = await window.Vault.changePassphrase(a, b); this._unlockedAt++; return code; },
         async setPassphrase(b) { const code = await window.Vault.setPassphrase(b); this._unlockedAt++; return code; },
-        lock() { window.Vault.lock(); this._unlockedAt++; },
+        // Flush any store with a pending debounced save BEFORE the vault key is
+        // cleared — otherwise an edit made within the 800ms debounce window right
+        // before an idle/manual lock is silently dropped (the lock watcher's reset()
+        // cancels the timer, and after lock the VK is gone so it can't be sealed).
+        // Only stores with a live timer are flushed, so a lock never causes a
+        // spurious PUT.
+        async _flushPending() {
+            const stores = [];
+            const reg = window.LLModuleStore;
+            if (reg) for (const k of Object.keys(reg)) stores.push(reg[k]);
+            for (const name of ['LLFilesStore', 'LLGalleryStore', 'LLNotesStore', 'LLPasswordsStore', 'LLInvoicesStore']) {
+                if (window[name]) stores.push(window[name]);
+            }
+            await Promise.all(stores.map(async (s) => {
+                if (s && s._timer && typeof s.flush === 'function') {
+                    clearTimeout(s._timer); s._timer = null;
+                    try { await s.flush(); } catch (_) { /* best effort */ }
+                }
+            }));
+        },
+        async lock() { try { await this._flushPending(); } catch (_) { /* ignore */ } window.Vault.lock(); this._unlockedAt++; },
     });
     Alpine.store('vault').init();
 });

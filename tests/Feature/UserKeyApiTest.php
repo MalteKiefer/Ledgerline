@@ -91,6 +91,31 @@ class UserKeyApiTest extends TestCase
         $this->assertSame('pubkey-original', $fresh->x25519_public_key);
     }
 
+    public function test_rotating_only_the_mlkem_key_returns_409(): void
+    {
+        $user = $this->signIn();
+
+        $user->forceFill([
+            'x25519_public_key' => 'pubkey-original',
+            'wrapped_x25519_secret_key' => 'wrapped-sk',
+            'public_key_fingerprint' => 'fp-original',
+            'mlkem_public_key' => 'mlkem-original',
+            'wrapped_mlkem_secret_key' => 'wrapped-mlkem',
+        ])->save();
+
+        // Same X25519 key but a DIFFERENT ML-KEM key must still conflict — a rotated
+        // ML-KEM public key would orphan every hybrid-wrapped vault key just the same.
+        $this->putJson(route('user.keys.store'), [
+            'public_key' => 'pubkey-original',
+            'wrapped_secret_key' => 'wrapped-sk',
+            'fingerprint' => 'fp-original',
+            'mlkem_public_key' => 'mlkem-DIFFERENT',
+            'wrapped_mlkem_secret_key' => 'wrapped-mlkem-2',
+        ])->assertStatus(409);
+
+        $this->assertSame('mlkem-original', $user->fresh()->mlkem_public_key);
+    }
+
     public function test_publishing_key_requires_authentication(): void
     {
         // Web routes redirect unauthenticated requests to login (302) rather

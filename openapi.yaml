@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.533.3
+  version: 1.534.0
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -2407,6 +2407,14 @@ paths:
               type: object
               required: [blobs]
               properties:
+                allow_empty:
+                  type: boolean
+                  description: >
+                    Explicit acknowledgement that an EMPTY blobs list (prune
+                    everything) is intended. A client with a degraded/failed index
+                    must NOT send it; without it the server refuses (422) to prune a
+                    non-empty ledger from an empty live-set. For a shared folder,
+                    reconcile additionally requires the manage role.
                 blobs:
                   type: array
                   items:
@@ -2415,6 +2423,8 @@ paths:
                   maxItems: 100000
                   description: Full list of blob UUIDs the sealed index currently references.
       responses:
+        "422":
+          description: Refused — empty live-set against a non-empty ledger without allow_empty.
         "200":
           description: Reconcile complete; updated usage.
           content:
@@ -2895,6 +2905,14 @@ paths:
               type: object
               required: [blobs]
               properties:
+                allow_empty:
+                  type: boolean
+                  description: >
+                    Explicit acknowledgement that an EMPTY blobs list (prune
+                    everything) is intended. A client with a degraded/failed index
+                    must NOT send it; without it the server refuses (422) to prune a
+                    non-empty ledger from an empty live-set. For a shared folder,
+                    reconcile additionally requires the manage role.
                 blobs:
                   type: array
                   items:
@@ -2902,6 +2920,8 @@ paths:
                     format: uuid
                   maxItems: 100000
       responses:
+        "422":
+          description: Refused — empty live-set against a non-empty ledger without allow_empty.
         "200":
           description: Reconciled; updated usage.
           content:
@@ -3287,6 +3307,14 @@ paths:
               type: object
               required: [blobs]
               properties:
+                allow_empty:
+                  type: boolean
+                  description: >
+                    Explicit acknowledgement that an EMPTY blobs list (prune
+                    everything) is intended. A client with a degraded/failed index
+                    must NOT send it; without it the server refuses (422) to prune a
+                    non-empty ledger from an empty live-set. For a shared folder,
+                    reconcile additionally requires the manage role.
                 blobs:
                   type: array
                   items:
@@ -3294,6 +3322,8 @@ paths:
                     format: uuid
                   maxItems: 100000
       responses:
+        "422":
+          description: Refused — empty live-set against a non-empty ledger without allow_empty.
         "200":
           description: Reconciled; updated usage.
           content:
@@ -3650,6 +3680,14 @@ paths:
               type: object
               required: [blobs]
               properties:
+                allow_empty:
+                  type: boolean
+                  description: >
+                    Explicit acknowledgement that an EMPTY blobs list (prune
+                    everything) is intended. A client with a degraded/failed index
+                    must NOT send it; without it the server refuses (422) to prune a
+                    non-empty ledger from an empty live-set. For a shared folder,
+                    reconcile additionally requires the manage role.
                 blobs:
                   type: array
                   items:
@@ -3657,6 +3695,8 @@ paths:
                     format: uuid
                   maxItems: 100000
       responses:
+        "422":
+          description: Refused — empty live-set against a non-empty ledger without allow_empty.
         "200":
           description: Reconciled; updated usage.
           content:
@@ -3781,6 +3821,14 @@ paths:
               type: object
               required: [blobs]
               properties:
+                allow_empty:
+                  type: boolean
+                  description: >
+                    Explicit acknowledgement that an EMPTY blobs list (prune
+                    everything) is intended. A client with a degraded/failed index
+                    must NOT send it; without it the server refuses (422) to prune a
+                    non-empty ledger from an empty live-set. For a shared folder,
+                    reconcile additionally requires the manage role.
                 blobs:
                   type: array
                   items:
@@ -3788,6 +3836,8 @@ paths:
                     format: uuid
                   maxItems: 100000
       responses:
+        "422":
+          description: Refused — empty live-set against a non-empty ledger without allow_empty.
         "200":
           description: Reconciled; updated usage.
           content:
@@ -4284,6 +4334,8 @@ paths:
       responses:
         "204":
           description: Vault deleted. No response body.
+        "403":
+          description: Only the vault owner may delete the vault.
         "404":
           description: Vault not found or caller is not a manager.
         "429":
@@ -4608,6 +4660,8 @@ paths:
       responses:
         "200":
           description: Role updated.
+        "403":
+          description: The vault owner's role cannot be changed.
           content:
             application/json:
               schema:
@@ -4620,11 +4674,13 @@ paths:
     delete:
       tags: [Vaults]
       operationId: vaultsMembersDestroy
-      summary: Remove a member from the vault (triggers key rotation)
+      summary: Remove a PENDING member (active members must be rotated out)
       description: >
-        Removes a member. Manager-gated. The client must immediately follow this
-        call with POST /vaults/{vault}/rotate to cryptographically revoke access
-        (re-key the vault for remaining members). No per-route throttle.
+        Removes a member row. Manager-gated. Only a PENDING invite may be torn down
+        here. An ACTIVE member holds a wrapped key to the current vault key, so
+        removing the row alone is NOT cryptographic revocation — active removal must
+        go through POST /vaults/{vault}/rotate (which re-keys the vault) and returns
+        422 here. The vault OWNER can never be removed (403). No per-route throttle.
       parameters:
         - name: vault
           in: path
@@ -4639,11 +4695,15 @@ paths:
             type: string
       responses:
         "200":
-          description: Member removed.
+          description: Pending member removed.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OkResponse"
+        "403":
+          description: The vault owner cannot be removed.
+        "422":
+          description: Member is active — remove via POST /vaults/{vault}/rotate instead.
         "404":
           description: Vault or member not found, or caller is not a manager.
 
@@ -4718,6 +4778,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ConflictResponse"
+        "403":
+          description: The vault owner cannot be rotated out.
         "422":
           description: >
             Business-rule error — remove_member_id is not a member of this vault,
@@ -5726,11 +5788,21 @@ paths:
               type: object
               required: [blobs]
               properties:
+                allow_empty:
+                  type: boolean
+                  description: >
+                    Explicit acknowledgement that an EMPTY blobs list (prune
+                    everything) is intended. A client with a degraded/failed index
+                    must NOT send it; without it the server refuses (422) to prune a
+                    non-empty ledger from an empty live-set. For a shared folder,
+                    reconcile additionally requires the manage role.
                 blobs:
                   type: array
                   maxItems: 100000
                   items: { type: string, format: uuid }
       responses:
+        "422":
+          description: Refused — empty live-set against a non-empty ledger without allow_empty.
         "200":
           description: Reconciled; returns updated usage.
           content:
@@ -5985,11 +6057,21 @@ paths:
               type: object
               required: [blobs]
               properties:
+                allow_empty:
+                  type: boolean
+                  description: >
+                    Explicit acknowledgement that an EMPTY blobs list (prune
+                    everything) is intended. A client with a degraded/failed index
+                    must NOT send it; without it the server refuses (422) to prune a
+                    non-empty ledger from an empty live-set. For a shared folder,
+                    reconcile additionally requires the manage role.
                 blobs:
                   type: array
                   maxItems: 100000
                   items: { type: string, format: uuid }
       responses:
+        "422":
+          description: Refused — empty live-set against a non-empty ledger without allow_empty.
         "200":
           description: Reconciled; returns updated usage.
           content:
@@ -6211,11 +6293,21 @@ paths:
               type: object
               required: [blobs]
               properties:
+                allow_empty:
+                  type: boolean
+                  description: >
+                    Explicit acknowledgement that an EMPTY blobs list (prune
+                    everything) is intended. A client with a degraded/failed index
+                    must NOT send it; without it the server refuses (422) to prune a
+                    non-empty ledger from an empty live-set. For a shared folder,
+                    reconcile additionally requires the manage role.
                 blobs:
                   type: array
                   maxItems: 100000
                   items: { type: string, format: uuid }
       responses:
+        "422":
+          description: Refused — empty live-set against a non-empty ledger without allow_empty.
         "200":
           description: Reconciled; returns updated usage.
           content:

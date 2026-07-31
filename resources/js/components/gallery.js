@@ -1033,13 +1033,18 @@ return {
             // on a real change. All fields stay in the sealed manifest (ZK).
             let healed = false;
             const entry = this.index.photos.find((x) => x.id === p.id);
-            if (m.exif?.taken_at && p.taken_at !== m.exif.taken_at) {
+            // Never heal a field the USER manually edited (exifEdited/geoEdited): the
+            // cold meta blob still holds the ORIGINAL EXIF, so healing from it would
+            // silently revert the user's capture-date edit or cleared location.
+            if (! p.exifEdited && m.exif?.taken_at && p.taken_at !== m.exif.taken_at) {
                 p.taken_at = m.exif.taken_at;
                 if (entry) entry.taken_at = m.exif.taken_at;
                 healed = true;
             }
             // Coords: meta carries raw numbers; the hot record stores dec-6 strings.
-            if (p.lat == null && m.exif?.lat != null && m.exif?.lon != null) {
+            // geoEdited (set on any user set/clear) blocks re-filling a deliberately
+            // cleared location; an unedited mobile-upload with empty hot coords still heals.
+            if (! p.geoEdited && p.lat == null && m.exif?.lat != null && m.exif?.lon != null) {
                 const dlat = dec6(m.exif.lat), dlng = dec6(m.exif.lon);
                 if (dlat != null && dlng != null) {
                     p.lat = dlat; p.lng = dlng; p.geoChecked = true;
@@ -1129,6 +1134,7 @@ return {
         const d = new Date(value);
         if (isNaN(d.getTime())) return;
         p.taken_at = d.toISOString();
+        p.exifEdited = true; // user-set date: viewer self-heal must not revert it
         if (this.viewer.meta?.exif) this.viewer.meta.exif.taken_at = p.taken_at;
         this._save();
     },
@@ -1179,7 +1185,7 @@ return {
         if (this.loc.lat != null) {
             if (this.loc.bulk) {
                 const dlat = dec6(this.loc.lat); const dlng = dec6(this.loc.lng);
-                this._eachSelected((p) => { p.lat = dlat; p.lng = dlng; });
+                this._eachSelected((p) => { p.lat = dlat; p.lng = dlng; p.geoEdited = true; p.geoChecked = true; });
                 this.selected = [];
                 this._save();
             } else if (this.loc.target) {
@@ -1187,6 +1193,7 @@ return {
                 // Hot record stores dec-strings; the cold meta blob keeps raw
                 // numbers (never hashed for dirty-detection, §5.2).
                 p.lat = dec6(this.loc.lat); p.lng = dec6(this.loc.lng);
+                p.geoEdited = true; p.geoChecked = true; // user-set location: don't self-heal over it
                 if (this.viewer.meta?.exif) { this.viewer.meta.exif.lat = this.loc.lat; this.viewer.meta.exif.lon = this.loc.lng; }
                 this._renderMiniMap(this.loc.lat, this.loc.lng);
                 this._save();
@@ -1196,11 +1203,12 @@ return {
     },
     clearLoc() {
         if (this.loc.bulk) {
-            this._eachSelected((p) => { p.lat = null; p.lng = null; });
+            this._eachSelected((p) => { p.lat = null; p.lng = null; p.geoEdited = true; p.geoChecked = true; });
             this.selected = [];
         } else if (this.loc.target) {
             const p = this.loc.target;
             p.lat = null; p.lng = null;
+            p.geoEdited = true; p.geoChecked = true; // user cleared location: don't self-heal it back
             if (this.viewer.meta?.exif) { this.viewer.meta.exif.lat = null; this.viewer.meta.exif.lon = null; }
             if (this._miniMap) { this._miniMap.remove(); this._miniMap = null; }
         }
@@ -1283,7 +1291,7 @@ return {
         const d = new Date(this.bulkDate);
         if (isNaN(d.getTime())) return;
         const iso = d.toISOString();
-        this._eachSelected((p) => { p.taken_at = iso; });
+        this._eachSelected((p) => { p.taken_at = iso; p.exifEdited = true; });
         this.bulkDate = '';
         this.dateModal = false;
         this.selected = [];
@@ -2429,7 +2437,7 @@ return {
         // The shard blobs hold the photo records themselves — keep them too, or the
         // sweep would treat the whole library index as orphaned.
         for (const ref of window.LLGalleryStore.shardRefs()) blobs.push(ref);
-        postForm(config.reconcileUrl, { blobs: [...new Set(blobs)] })
+        postForm(config.reconcileUrl, { blobs: [...new Set(blobs)], allow_empty: 1 })
             .then((u) => { if (u) this.usage = u; }).catch(() => {});
     },
 
