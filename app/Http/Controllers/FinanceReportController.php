@@ -35,6 +35,7 @@ class FinanceReportController extends Controller
             'kpis' => $reports->yearKpis($year),
             'customers' => $reports->revenueByCustomer($year),
             'months' => $reports->monthlyRevenue($year),
+            'aging' => $reports->aging(),
         ]);
     }
 

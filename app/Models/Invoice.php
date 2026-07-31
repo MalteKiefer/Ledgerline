@@ -34,6 +34,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $vat
  * @property bool $imported
  * @property Carbon|null $paid_at
+ * @property Carbon|null $sent_at
+ * @property Carbon|null $reminded_at
+ * @property int $reminder_count
  * @property string|null $payment_account
  * @property int|null $partner_id
  * @property string|null $pdf_path
@@ -62,6 +65,10 @@ class Invoice extends Model
         'issue_date' => 'date',
         'due_date' => 'date',
         'paid_at' => 'datetime',
+        // Lifecycle columns — server-set via forceFill (NOT fillable).
+        'sent_at' => 'datetime',
+        'reminded_at' => 'datetime',
+        'reminder_count' => 'integer',
         'vat_rate' => 'decimal:2',
         'gross' => 'decimal:2',
         'net' => 'decimal:2',

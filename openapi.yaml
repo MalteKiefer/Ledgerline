@@ -375,6 +375,42 @@ components:
         gross: { type: number }
         count: { type: integer }
 
+    InvoiceAging:
+      type: object
+      description: >
+        Aging of OPEN invoices (status='sent', not trashed) bucketed by days past
+        the due date vs today: current (not yet due / no due date), 1-30, 31-60,
+        60+. Read-only; each bucket carries count + gross sum + the invoice list.
+      required: [buckets, openCount, openGross]
+      properties:
+        openCount: { type: integer }
+        openGross: { type: number }
+        buckets:
+          type: object
+          properties:
+            current: { $ref: "#/components/schemas/AgingBucket" }
+            "1_30": { $ref: "#/components/schemas/AgingBucket" }
+            "31_60": { $ref: "#/components/schemas/AgingBucket" }
+            "60_plus": { $ref: "#/components/schemas/AgingBucket" }
+
+    AgingBucket:
+      type: object
+      required: [count, gross, invoices]
+      properties:
+        count: { type: integer }
+        gross: { type: number }
+        invoices:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              number: { type: [string, "null"] }
+              customer: { type: string }
+              gross: { type: number }
+              due_date: { type: [string, "null"] }
+              days_overdue: { type: integer }
+
     AccountVatSummary:
       type: object
       description: "VAT summary of one account's transactions: output/input VAT + payable, by rate."
@@ -1488,7 +1524,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [year, years, currentVat, vat, kpis, customers, months]
+                required: [year, years, currentVat, vat, kpis, customers, months, aging]
                 properties:
                   year: { type: integer }
                   years: { type: array, items: { type: integer } }
@@ -1501,6 +1537,7 @@ paths:
                     items:
                       type: object
                       properties: { month: { type: integer }, net: { type: number } }
+                  aging: { $ref: "#/components/schemas/InvoiceAging" }
         "401": { description: Unauthenticated. }
         "403": { description: Module disabled for this account. }
   /finance/reports/account-vat:
@@ -1640,6 +1677,40 @@ paths:
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
       responses: { "200": { description: Numbered invoice., content: { application/json: { schema: { type: object, properties: { invoice: { $ref: "#/components/schemas/Invoice" } } } } } }, "401": { description: Unauthenticated. }, "404": { description: Not found. } }
+  /finance/invoices/{invoice}/email:
+    post:
+      tags: [Finance]
+      operationId: financeInvoiceEmail
+      summary: Email a finalized invoice's stored PDF to the customer
+      description: >
+        Sends the invoice's stored PDF (pdf_path) to the customer through the
+        DB-configured SMTP. Only finalized invoices (status sent|paid or already
+        numbered) may be sent. Stamps sent_at (does not bump the optimistic
+        version). Throttled 30/min.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                to: { type: string, format: email, description: "Recipient email; falls back to the customer snapshot email." }
+      responses:
+        "200":
+          description: Sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, sent_at]
+                properties:
+                  ok: { type: boolean }
+                  sent_at: { type: string, format: date-time }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
+        "422": { description: "Not finalized / no PDF / no recipient / SMTP not configured (error: not_finalized|no_pdf|no_recipient|no_smtp)." }
   /finance/invoices/{invoice}/pdf:
     post:
       tags: [Finance]
