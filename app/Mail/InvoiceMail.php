@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace App\Mail;
 
+use App\Mail\Concerns\BuildsInvoiceMail;
 use App\Models\Invoice;
-use App\Models\UserSetting;
 use Illuminate\Mail\Mailable;
-use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
@@ -23,29 +22,23 @@ use Illuminate\Mail\Mailables\Envelope;
  */
 class InvoiceMail extends Mailable
 {
+    use BuildsInvoiceMail;
+
     public function __construct(public Invoice $invoice) {}
 
     public function envelope(): Envelope
     {
-        $s = UserSetting::for((int) $this->invoice->user_id);
-        $from = is_string($s->company_smtp_from_address) && trim($s->company_smtp_from_address) !== ''
-            ? trim($s->company_smtp_from_address)
-            : null;
-        $fromName = is_string($s->company_smtp_from_name) && $s->company_smtp_from_name !== ''
-            ? $s->company_smtp_from_name
-            : $this->companyName();
-
         return new Envelope(
-            from: $from !== null ? new Address($from, $fromName) : null,
-            subject: __('invoices.email_subject', ['number' => $this->number()]),
+            from: $this->companyFrom($this->invoice),
+            subject: __('invoices.email_subject', ['number' => $this->invoiceNumber($this->invoice)]),
         );
     }
 
     public function content(): Content
     {
         return new Content(text: 'emails.invoice', with: [
-            'number' => $this->number(),
-            'company' => $this->companyName(),
+            'number' => $this->invoiceNumber($this->invoice),
+            'company' => $this->companyName($this->invoice),
         ]);
     }
 
@@ -54,35 +47,8 @@ class InvoiceMail extends Mailable
      */
     public function attachments(): array
     {
-        $path = $this->invoice->pdf_path;
-        if (! is_string($path) || $path === '') {
-            return [];
-        }
-        $disk = config('files.disk');
+        $attachment = $this->invoicePdfAttachment($this->invoice);
 
-        return [
-            Attachment::fromStorageDisk(is_string($disk) ? $disk : 'files', $path)
-                ->as($this->number().'.pdf')
-                ->withMime('application/pdf'),
-        ];
-    }
-
-    private function number(): string
-    {
-        return is_string($this->invoice->number) && $this->invoice->number !== ''
-            ? $this->invoice->number
-            : (string) $this->invoice->id;
-    }
-
-    /** The owner's company name (printed on the invoice) for a friendly sign-off. */
-    private function companyName(): string
-    {
-        $name = UserSetting::for((int) $this->invoice->user_id)->company_name;
-        if (is_string($name) && $name !== '') {
-            return $name;
-        }
-        $app = config('app.name', 'Ledgerline');
-
-        return is_string($app) && $app !== '' ? $app : 'Ledgerline';
+        return $attachment !== null ? [$attachment] : [];
     }
 }

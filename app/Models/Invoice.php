@@ -25,6 +25,12 @@ use Illuminate\Support\Carbon;
  * @property int|null $seq
  * @property int|null $year
  * @property string $status
+ * @property string $type
+ * @property int|null $cancels_invoice_id
+ * @property string|null $discount_type
+ * @property string|null $discount_value
+ * @property string|null $skonto_percent
+ * @property int|null $skonto_days
  * @property Carbon|null $issue_date
  * @property Carbon|null $due_date
  * @property string $currency
@@ -59,6 +65,9 @@ class Invoice extends Model
         'number', 'seq', 'year', 'status', 'issue_date', 'due_date', 'currency',
         'vat_rate', 'gross', 'net', 'vat', 'imported', 'paid_at', 'payment_account',
         'partner_id', 'customer', 'lines', 'note', 'versions',
+        // Slice B: document kind + global discount + Skonto terms are user-editable.
+        // cancels_invoice_id stays NON-fillable (server-set on the Storno action only).
+        'type', 'discount_type', 'discount_value', 'skonto_percent', 'skonto_days',
     ];
 
     protected $casts = [
@@ -81,6 +90,11 @@ class Invoice extends Model
         'year' => 'integer',
         'version' => 'integer',
         'version_seq' => 'integer',
+        // Slice B: credit notes + discount + Skonto (money as decimal:2 for parity).
+        'cancels_invoice_id' => 'integer',
+        'discount_value' => 'decimal:2',
+        'skonto_percent' => 'decimal:2',
+        'skonto_days' => 'integer',
     ];
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Mail\InvoiceMail;
+use App\Mail\InvoiceReminderMail;
 use App\Models\AppSettings;
 use App\Models\AuditLog;
 use App\Models\BankTransaction;
@@ -587,6 +588,101 @@ class FinanceController extends Controller
     }
 
     /**
+     * Cancel a finalized invoice with a credit note (Storno / Gutschrift). Creates
+     * a NEW invoice with type='credit_note', cancels_invoice_id=original, the same
+     * customer/partner, the original lines with NEGATED amounts and the same
+     * discount terms — so it exactly reverses the original's net/VAT/gross. The
+     * credit note is a real numbered document: it runs the SAME GoBD numbering path
+     * (locked per-year max(seq)+1) so it takes its own slot in the sequence.
+     *
+     * The original invoice is NEVER edited or deleted (GoBD immutability); its
+     * "cancelled" state is DERIVED (a credit note referencing it exists). Only a
+     * finalized (sent|paid or numbered), non-credit-note, not-already-cancelled
+     * invoice can be cancelled. Owner-scoped via the route-model binding + gate;
+     * type/cancels_invoice_id/number/seq/year are server-set via forceFill.
+     */
+    public function stornoInvoice(Request $request, Invoice $invoice): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+
+        if ($invoice->type === 'credit_note') {
+            return response()->json(['error' => 'already_credit_note'], 422);
+        }
+        $finalized = in_array($invoice->status, ['sent', 'paid'], true)
+            || (is_string($invoice->number) && $invoice->number !== '');
+        if (! $finalized) {
+            return response()->json(['error' => 'not_finalized'], 422);
+        }
+        if (Invoice::query()->where('cancels_invoice_id', $invoice->id)->exists()) {
+            return response()->json(['error' => 'already_cancelled'], 422);
+        }
+
+        // Negate the line amounts (net = qty * unitPrice → flip unitPrice sign).
+        $lines = [];
+        foreach (is_array($invoice->lines) ? $invoice->lines : [] as $l) {
+            if (! is_array($l)) {
+                continue;
+            }
+            $up = is_numeric($l['unitPrice'] ?? null) ? -(float) $l['unitPrice'] : 0.0;
+            $lines[] = array_merge($l, ['unitPrice' => $up]);
+        }
+
+        $settings = UserSetting::for($uid);
+        $fmt = is_string($settings->invoice_number_format) ? $settings->invoice_number_format : null;
+        $floor = max(1, (int) $settings->invoice_next_number);
+        $issueDate = Carbon::today();
+
+        $credit = DB::transaction(function () use ($invoice, $lines, $fmt, $floor, $issueDate): Invoice {
+            $year = (int) $issueDate->format('Y');
+
+            // Lock the user's numbered rows for this year to serialise concurrent numbering.
+            $seqs = Invoice::query()->where('year', $year)->whereNotNull('seq')->lockForUpdate()->pluck('seq');
+            $maxSeq = 0;
+            foreach ($seqs as $s) {
+                if (is_numeric($s)) {
+                    $maxSeq = max($maxSeq, (int) $s);
+                }
+            }
+            $seq = max($floor, $maxSeq + 1);
+
+            $credit = Invoice::create([
+                'status' => 'sent',
+                'issue_date' => $issueDate,
+                'currency' => $invoice->currency,
+                'imported' => false,
+                'customer' => is_array($invoice->customer) ? $invoice->customer : null,
+                'partner_id' => $invoice->partner_id,
+                'lines' => $lines,
+                'note' => $invoice->note,
+                // A credit note reverses the original including its discount, so it
+                // carries the same discount terms over the negated lines.
+                'discount_type' => $invoice->discount_type,
+                'discount_value' => $invoice->discount_value,
+            ]);
+
+            // Money columns = the exact reverse of the original (already discounted).
+            $credit->forceFill([
+                'type' => 'credit_note',
+                'cancels_invoice_id' => $invoice->id,
+                'number' => $this->formatNumber($fmt, $seq, $issueDate),
+                'seq' => $seq,
+                'year' => $year,
+                'gross' => is_numeric($invoice->gross) ? -(float) $invoice->gross : null,
+                'net' => is_numeric($invoice->net) ? -(float) $invoice->net : null,
+                'vat' => is_numeric($invoice->vat) ? -(float) $invoice->vat : null,
+            ]);
+            $credit->version = $credit->version + 1;
+            $credit->save();
+
+            return $credit;
+        });
+
+        AuditLog::record('invoice.storno', $credit, ['cancels' => $invoice->id]);
+
+        return response()->json(['invoice' => $credit], 201);
+    }
+
+    /**
      * Email a finalized invoice's stored PDF to the customer. Owner-scoped (route
      * model binding sits behind the owner global scope + module:finance gate).
      *
@@ -633,6 +729,54 @@ class FinanceController extends Controller
         AuditLog::record('invoice.emailed', $invoice, ['to_domain' => Str::after($to, '@')]);
 
         return response()->json(['ok' => true, 'sent_at' => $sentAt->toIso8601String()]);
+    }
+
+    /**
+     * Send a customer-facing payment reminder (Mahnung) for an OVERDUE invoice.
+     * Distinct from the owner-facing `invoices:remind` command — this is a manual,
+     * customer-directed dunning email over the user's OWN company SMTP.
+     *
+     * Only overdue invoices (status='sent' AND due_date < today) with a recipient +
+     * stored PDF may be dunned. The reminder level (Mahnstufe) reuses reminder_count
+     * (incremented) and reminded_at is stamped via forceFill/saveQuietly so it does
+     * NOT bump the optimistic `version`. 422 codes mirror emailInvoice
+     * (not_overdue / no_pdf / no_recipient / no_smtp). Writes a secret-free audit row.
+     */
+    public function dunInvoice(Request $request, Invoice $invoice): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate(['to' => ['nullable', 'email:rfc']]);
+
+        $overdue = $invoice->status === 'sent'
+            && $invoice->due_date instanceof Carbon
+            && $invoice->due_date->lt(Carbon::today());
+        if (! $overdue) {
+            return response()->json(['error' => 'not_overdue'], 422);
+        }
+
+        $path = $this->safeBlobPath($invoice->pdf_path);
+        if ($path === null || ! $this->fs()->exists($path)) {
+            return response()->json(['error' => 'no_pdf'], 422);
+        }
+
+        $to = $request->filled('to') ? $request->string('to')->value() : $this->customerEmail($invoice);
+        if ($to === null || $to === '') {
+            return response()->json(['error' => 'no_recipient'], 422);
+        }
+
+        $mailer = $this->companyMailer($uid);
+        if ($mailer === null) {
+            return response()->json(['error' => 'no_smtp'], 422);
+        }
+
+        $level = (int) $invoice->reminder_count + 1;
+        Mail::mailer($mailer)->to($to)->send(new InvoiceReminderMail($invoice, $level));
+
+        $now = Carbon::now();
+        $invoice->forceFill(['reminded_at' => $now, 'reminder_count' => $level])->saveQuietly();
+        AuditLog::record('invoice.dunned', $invoice, ['to_domain' => Str::after($to, '@'), 'level' => $level]);
+
+        return response()->json(['ok' => true, 'level' => $level, 'reminded_at' => $now->toIso8601String()]);
     }
 
     /** The customer snapshot's email, if a valid-looking address is present. */
@@ -734,6 +878,7 @@ class FinanceController extends Controller
         return [
             'number' => ['nullable', 'string', 'max:64'],
             'status' => ['sometimes', 'string', Rule::in(['draft', 'sent', 'paid'])],
+            'type' => ['sometimes', 'string', Rule::in(['invoice', 'credit_note'])],
             'issue_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date'],
             'currency' => ['sometimes', 'string', 'max:8'],
@@ -741,6 +886,10 @@ class FinanceController extends Controller
             'gross' => ['nullable', 'numeric'],
             'net' => ['nullable', 'numeric'],
             'vat' => ['nullable', 'numeric'],
+            'discount_type' => ['nullable', 'string', Rule::in(['percent', 'amount'])],
+            'discount_value' => ['nullable', 'numeric', 'min:0'],
+            'skonto_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'skonto_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
             'imported' => ['sometimes', 'boolean'],
             'paid_at' => ['nullable', 'date'],
             'payment_account' => ['nullable', 'string', 'max:200'],
@@ -765,6 +914,21 @@ class FinanceController extends Controller
         }
         if ($create || $request->has('status')) {
             $patch['status'] = $request->filled('status') ? $request->string('status')->value() : 'draft';
+        }
+        if ($create || $request->has('type')) {
+            // cancels_invoice_id is never mass-assigned; the Storno action sets both.
+            $patch['type'] = $request->filled('type') ? $request->string('type')->value() : 'invoice';
+        }
+        if ($create || $request->has('discount_type')) {
+            $patch['discount_type'] = $request->filled('discount_type') ? $request->string('discount_type')->value() : null;
+        }
+        foreach (['discount_value', 'skonto_percent'] as $field) {
+            if ($create || $request->has($field)) {
+                $patch[$field] = $request->filled($field) ? $request->float($field) : null;
+            }
+        }
+        if ($create || $request->has('skonto_days')) {
+            $patch['skonto_days'] = $request->filled('skonto_days') ? $request->integer('skonto_days') : null;
         }
         if ($create || $request->has('currency')) {
             $patch['currency'] = $request->filled('currency') ? $request->string('currency')->value() : 'EUR';

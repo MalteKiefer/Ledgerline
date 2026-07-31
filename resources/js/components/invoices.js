@@ -15,7 +15,7 @@ import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
 import { fileSig } from '../shared/file-sig';
 import { autoPick, suggestBookings } from '../shared/receipt-match';
 import { projectTree as buildProjectTree, rolledTotal as projectRolled, ownTotal as projectOwn, projectReceipts as receiptsForProject } from '../shared/finance-projects';
-import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary } from '../shared/finance-stats';
+import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary, discountAmount } from '../shared/finance-stats';
 import { matchInvoice } from '../shared/invoice-match';
 import { extractDocText } from '../shared/doc-text';
 import { analyzeReceiptText } from '../shared/receipt-ocr';
@@ -44,6 +44,12 @@ const normInvoice = (row) => {
         seq: row.seq ?? null,
         year: row.year ?? null,
         status: row.status || 'draft',
+        type: row.type || 'invoice',
+        cancelsInvoiceId: row.cancels_invoice_id ?? null,
+        discountType: row.discount_type ?? null,
+        discountValue: num(row.discount_value),
+        skontoPercent: num(row.skonto_percent),
+        skontoDays: row.skonto_days ?? null,
         issueDate: iso10(row.issue_date),
         dueDate: iso10(row.due_date),
         currency: row.currency || 'EUR',
@@ -52,6 +58,8 @@ const normInvoice = (row) => {
         imported: !! row.imported,
         paidAt: iso10(row.paid_at) || null,
         sentAt: row.sent_at ?? null,
+        remindedAt: row.reminded_at ?? null,
+        reminderCount: row.reminder_count ?? 0,
         paymentAccount: row.payment_account ?? null,
         customer,
         lang,
@@ -343,6 +351,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
         return {
             number: inv.number ?? null,
             status: inv.status || 'draft',
+            type: inv.type || 'invoice',
             issue_date: inv.issueDate || null,
             due_date: inv.dueDate || null,
             currency: inv.currency || 'EUR',
@@ -350,6 +359,10 @@ export default (config = {}, labels = {}, initial = {}) => ({
             gross: Number.isFinite(t.gross) ? t.gross : null,
             net: Number.isFinite(t.net) ? t.net : null,
             vat: Number.isFinite(t.vat) ? t.vat : null,
+            discount_type: inv.discountType || null,
+            discount_value: (inv.discountType && Number.isFinite(Number(inv.discountValue))) ? Number(inv.discountValue) : null,
+            skonto_percent: Number.isFinite(Number(inv.skontoPercent)) && Number(inv.skontoPercent) > 0 ? Number(inv.skontoPercent) : null,
+            skonto_days: (inv.skontoDays != null && inv.skontoDays !== '') ? parseInt(inv.skontoDays, 10) : null,
             imported: !! inv.imported,
             paid_at: inv.paidAt || null,
             payment_account: inv.paymentAccount ?? null,
@@ -1695,6 +1708,9 @@ export default (config = {}, labels = {}, initial = {}) => ({
             note: '',
             footer: this.company.footer_text || '',
             imported: false,
+            type: 'invoice',
+            discountType: null, discountValue: 0,
+            skontoPercent: 0, skontoDays: 0,
             versions: [],
         };
         const row = await this._create('invoices', this._toServerInvoice(draft), 'invoice', normInvoice);
@@ -1705,6 +1721,11 @@ export default (config = {}, labels = {}, initial = {}) => ({
     open(inv) {
         inv.lang ??= 'de';
         inv.currency ??= (this.company.currency || 'EUR');
+        inv.type ??= 'invoice';
+        inv.discountType ??= null;
+        inv.discountValue ??= 0;
+        inv.skontoPercent ??= 0;
+        inv.skontoDays ??= 0;
         inv.customer ??= { name: '', attn: '', address: '', email: '', vatId: '', contactId: null };
         inv.customer.attn ??= '';
         inv.customer.partnerId ??= null;
@@ -1782,6 +1803,8 @@ export default (config = {}, labels = {}, initial = {}) => ({
             number: inv.number, status: inv.status, issueDate: inv.issueDate, dueDate: inv.dueDate,
             currency: inv.currency, lang: inv.lang, customer: inv.customer, lines: inv.lines,
             note: inv.note, footer: inv.footer,
+            discountType: inv.discountType, discountValue: inv.discountValue,
+            skontoPercent: inv.skontoPercent, skontoDays: inv.skontoDays,
         };
     },
 
@@ -2103,17 +2126,41 @@ export default (config = {}, labels = {}, initial = {}) => ({
             t.vatByRate[rate] = t.vat;
             return t;
         }
+        // Raw net per rate, then apply the global discount proportionally (mirrors
+        // finance-stats.js invoiceTotals — the discount reduces the net taxable base).
+        const rawByRate = {}; let grossNet = 0;
         for (const l of inv.lines || []) {
             const net = this.lineNet(l);
             const rate = parseFloat(l.vatRate) || 0;
-            t.net += net;
-            const v = net * rate / 100;
-            t.vatByRate[rate] = (t.vatByRate[rate] || 0) + v;
+            grossNet += net;
+            rawByRate[rate] = (rawByRate[rate] || 0) + net;
+        }
+        const discount = discountAmount(inv, grossNet);
+        const factor = grossNet !== 0 ? (grossNet - discount) / grossNet : 1;
+        for (const r of Object.keys(rawByRate)) {
+            const netR = rawByRate[r] * factor;
+            const v = netR * Number(r) / 100;
+            t.vatByRate[r] = v;
             t.vat += v;
         }
+        t.net = grossNet - discount;
+        t.discount = discount;
+        t.grossNet = grossNet;
         t.gross = t.net + t.vat;
         return t;
     },
+    // The signed discount amount for the current/given invoice (for the totals panel + print).
+    discountFor(inv) { const i = inv || this.current; return discountAmount(i, this.computeTotals(i).grossNet ?? 0); },
+    hasDiscount(inv) { const i = inv || this.current; return !! (i && i.discountType && Number(i.discountValue) > 0); },
+    // Skonto "pay by" date = issue date + skonto days (for the printed early-payment note).
+    skontoDate(inv) {
+        const i = inv || this.current;
+        if (! i || ! i.skontoDays || ! (Number(i.skontoPercent) > 0)) return '';
+        try { return this._addDays(i.issueDate || this._today(), parseInt(i.skontoDays, 10) || 0); } catch (e) { return ''; }
+    },
+    isCreditNote(inv) { const i = inv || this.current; return !! i && i.type === 'credit_note'; },
+    // Derived cancelled state: an ACTIVE credit note references this invoice.
+    isCancelled(inv) { const i = inv || this.current; return !! i && (this.invoices || []).some((x) => x.cancelsInvoiceId === i.id); },
     fmtMoney(n, currency, lang) {
         const cur = currency || this.current?.currency || this.company.currency || 'EUR';
         const loc = (lang || this.current?.lang || 'de') === 'en' ? 'en' : 'de';
@@ -2264,6 +2311,66 @@ export default (config = {}, labels = {}, initial = {}) => ({
                         : labels.email_failed;
             window.llToast?.(msg || labels.email_failed || 'Could not send the email.');
         } catch (e) { window.llToast?.(labels.email_failed || 'Could not send the email.'); }
+    },
+    // Cancel a finalized invoice with a credit note (Storno / Gutschrift). Server-created
+    // (negated lines + own GoBD number); the original is never touched. Opens the credit note.
+    canStorno(inv) {
+        const i = inv || this.current;
+        if (! i || i.type === 'credit_note') return false;
+        const finalized = !! (i.status === 'sent' || i.status === 'paid' || i.number);
+        return finalized && ! this.isCancelled(i);
+    },
+    async storno(inv) {
+        const i = inv || this.current;
+        if (! i || ! this.canStorno(i)) return;
+        if (! await this.$store.confirm.ask(labels.storno_confirm || 'Cancel this invoice with a credit note?')) return;
+        try {
+            const r = await this._req('POST', `/finance/invoices/${i.id}/storno`);
+            if (r.ok && r.data.invoice) {
+                const credit = normInvoice(r.data.invoice);
+                this.invoices.unshift(credit);
+                window.llToast?.((labels.storno_created || 'Credit note :n created.').replace(':n', credit.number || ''));
+                this.open(credit);
+                return;
+            }
+            const code = r.data && r.data.error;
+            const msg = code === 'not_finalized' ? labels.storno_not_finalized
+                : code === 'already_cancelled' ? labels.storno_already
+                    : code === 'already_credit_note' ? labels.storno_is_credit
+                        : labels.storno_failed;
+            window.llToast?.(msg || labels.storno_failed || 'Could not create the credit note.');
+        } catch (e) { window.llToast?.(labels.storno_failed || 'Could not create the credit note.'); }
+    },
+    // A payment reminder (Mahnung) is available for overdue invoices with a PDF + recipient email.
+    canDun(inv) {
+        const i = inv || this.current;
+        return this.isOverdue(i) && !! i.pdfPath && !! (i.customer && i.customer.email);
+    },
+    async dun(inv) {
+        const i = inv || this.current;
+        if (! i) return;
+        if (! i.pdfPath) { window.llToast?.(labels.email_no_pdf || 'No PDF to send.'); return; }
+        const prefill = (i.customer && i.customer.email) || '';
+        const to = await this.$store.confirm.prompt(labels.email_to || 'Recipient email', { value: prefill, placeholder: prefill });
+        if (to === null) return;
+        const addr = String(to).trim() || prefill;
+        if (! addr) { window.llToast?.(labels.email_no_recipient || 'No recipient email.'); return; }
+        try {
+            const r = await this._req('POST', `/finance/invoices/${i.id}/dun`, { to: addr });
+            if (r.ok && r.data.ok) {
+                i.remindedAt = r.data.reminded_at || new Date().toISOString();
+                i.reminderCount = r.data.level || ((i.reminderCount || 0) + 1);
+                window.llToast?.((labels.dun_sent || 'Reminder :n sent.').replace(':n', String(i.reminderCount)));
+                return;
+            }
+            const code = r.data && r.data.error;
+            const msg = code === 'not_overdue' ? labels.dun_not_overdue
+                : code === 'no_pdf' ? labels.email_no_pdf
+                    : code === 'no_recipient' ? labels.email_no_recipient
+                        : code === 'no_smtp' ? labels.email_no_smtp
+                            : labels.dun_failed;
+            window.llToast?.(msg || labels.dun_failed || 'Could not send the reminder.');
+        } catch (e) { window.llToast?.(labels.dun_failed || 'Could not send the reminder.'); }
     },
     async finalize(inv) {
         let i = inv || this.current;
