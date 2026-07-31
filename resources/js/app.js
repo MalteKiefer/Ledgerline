@@ -3,6 +3,7 @@ import intersect from '@alpinejs/intersect';
 import { csrfToken, getJson } from './shared/api';
 import health from './components/health';
 import vaultFiles from './components/files';
+import sharedFolders from './components/shared-folders';
 import vaultGallery from './components/gallery';
 import invoices from './components/invoices';
 import todos from './components/todos';
@@ -300,6 +301,7 @@ Alpine.store('paperless', {
 
 
 Alpine.data('vaultFiles', vaultFiles);
+Alpine.data('sharedFolders', sharedFolders);
 
 
 Alpine.plugin(intersect);

@@ -3,6 +3,16 @@
       $typeLabels = collect(\App\Enums\FileType::cases())
           ->mapWithKeys(fn (\App\Enums\FileType $c): array => [$c->value => $c->label()]);
   @endphp
+  <div x-data="{ filesTab: 'files' }">
+  {{-- Tab bar: personal files vs cross-user shared folders --}}
+  <div class="mb-4 inline-flex rounded-xl bg-black/[0.04] dark:bg-white/10 p-0.5">
+      <button type="button" @click="filesTab = 'files'" :class="filesTab === 'files' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'" class="rounded-lg px-3 py-1.5 text-sm font-medium">{{ __('files.sf_tab_files') }}</button>
+      <button type="button" @click="filesTab = 'shared'" :class="filesTab === 'shared' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'" class="rounded-lg px-3 py-1.5 text-sm font-medium">{{ __('files.sf_tab') }}</button>
+  </div>
+  <div x-show="filesTab === 'shared'" x-cloak>
+      @include('files._shared_partial')
+  </div>
+  <div x-show="filesTab === 'files'">
   <div x-data="vaultFiles({
         token: '{{ csrf_token() }}',
         sharesUrl: '{{ url('/files/rel-shares') }}',
@@ -721,5 +731,7 @@
     </template>
 
     @include('_paperless_modal')
-  </div>
+  </div>{{-- /vaultFiles --}}
+  </div>{{-- /filesTab: files --}}
+  </div>{{-- /filesTab wrapper --}}
 </x-layouts.app>
