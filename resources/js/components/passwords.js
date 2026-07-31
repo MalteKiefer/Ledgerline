@@ -57,7 +57,7 @@ export const TYPES = {
 };
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'passwords', instance: () => window.LLPasswordsStore, afterLoad: (self, ms) => migratePasswordsFromMonolith(ms), map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; self._sharedBase = {}; if (self._strengthTimer) { clearTimeout(self._strengthTimer); self._strengthTimer = null; } } }),
+    ...zkModule({ store: 'passwords', instance: () => window.LLPasswordsStore, afterLoad: (self, ms) => { migratePasswordsFromMonolith(ms); ms._afterRebase = () => { if (self.current && ! self.current.vaultId && self.current.id) { const live = (self.items || []).find((i) => i.id === self.current.id); if (live) self.current = live; } }; }, map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; self._sharedBase = {}; if (self._strengthTimer) { clearTimeout(self._strengthTimer); self._strengthTimer = null; } } }),
 
     items: [],
     folders: [],
@@ -337,6 +337,11 @@ export default (config = {}, labels = {}) => ({
                 this.sharedItems = { ...this.sharedItems, [vaultId]: items };
                 vault.name = merged.name ?? vault.name;
                 this._sharedVersion[vaultId] = data.version;
+                // Advance the rebase base to the SERVER state we merged onto — otherwise a
+                // second consecutive 409 rebases against the original load base while `ours`
+                // already contains the first merge's server items, re-adding an item a later
+                // concurrent writer deleted (resurrection). (#25)
+                this._sharedBase[vaultId] = structuredClone(server);
                 // Re-point this.current so it tracks the merged array element.
                 if (this.current && this.current.vaultId === vaultId) {
                     this.current = items.find((i) => i.id === this.current.id) || null;
@@ -1284,6 +1289,10 @@ export default (config = {}, labels = {}) => ({
             const version = (res && typeof res.version === 'number') ? res.version : 1;
             this._sharedKeys[id] = vkBytes;
             this._sharedVersion[id] = version;
+            // Seed the rebase base with the just-written manifest. Without it the first
+            // 409 would fall back to base=server, and mergeManifest would treat every
+            // record the other writer already added as "deleted by us" and drop it (#15).
+            this._sharedBase[id] = structuredClone(manifest);
             this.sharedVaults.push({ id, name, role: 'manage', shared: true, version, vaultId: id });
             this.sharedItems[id] = [];
         } catch (e) {

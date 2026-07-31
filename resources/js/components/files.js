@@ -451,8 +451,19 @@ export default (config = {}, labels = {}) => ({
                     : { name: entry.name, folders: [], files: [] };
                 const server = { name: serverManifest.name ?? entry.name, folders: serverManifest.folders || [], files: serverManifest.files || [] };
                 const merged = mergeManifest(this._folderBase[vaultId] || server, ours, server);
-                this.sharedTree = { ...this.sharedTree, [vaultId]: { folders: merged.folders || [], files: merged.files || [] } };
+                // Merge IN PLACE — splice the tree's existing folders/files arrays rather
+                // than reassigning this.sharedTree with new arrays. An in-flight upload
+                // batch captured references to these exact arrays (uploadItems' activeFiles/
+                // activeFolders); replacing them would orphan every row pushed after this
+                // rebase. (Mirrors the personal sharded-store in-place merge.)
+                const t = this.sharedTree[vaultId] || (this.sharedTree[vaultId] = { folders: [], files: [] });
+                (t.folders || (t.folders = [])).splice(0, t.folders.length, ...(merged.folders || []));
+                (t.files || (t.files = [])).splice(0, t.files.length, ...(merged.files || []));
                 entry.name = merged.name ?? entry.name;
+                // Advance the rebase base to the SERVER state we merged onto, so a second
+                // consecutive 409 derives our delta afresh and cannot resurrect a record a
+                // concurrent writer deleted between retries.
+                this._folderBase[vaultId] = structuredClone(server);
                 this._folderVersion[vaultId] = data.version;
             } else {
                 throw new Error('Save shared folder failed: ' + res.status);
@@ -883,12 +894,27 @@ export default (config = {}, labels = {}) => ({
             while (! this.$store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
             if (! this.$store.vault.unlocked) return false;
             if (! ns.loaded) await ns.load();
-            ns.data.notes.unshift({
+            const rec = {
                 id: ns.newId(),
                 title: note.title || '', content: note.content || '',
                 tags: [], pinned: false, trashed: false, updated: new Date().toISOString(),
-            });
-            ns.touch();
+            };
+            ns.data.notes.unshift(rec);
+            // DURABLY persist the note before the caller deletes the source file +
+            // frees its blobs. A fire-and-forget touch() would let a frozen (degraded)
+            // notes store or a tab close within the debounce window silently drop the
+            // note while the source is already gone — permanent document loss. Await the
+            // flush and confirm it landed (mirrors convertSharedToPersonal).
+            let ok = true;
+            const prevOnError = ns._onError;
+            ns._onError = () => { ok = false; };
+            try { await ns.flush(); } finally { ns._onError = prevOnError; }
+            if (! ok || ns.degraded) {
+                // Roll the note back out so we don't leave a half-migrated ghost.
+                const i = ns.data.notes.findIndex((n) => n.id === rec.id);
+                if (i >= 0) ns.data.notes.splice(i, 1);
+                return false;
+            }
             return true;
         } catch (e) {
             return false;
@@ -2347,6 +2373,9 @@ export default (config = {}, labels = {}) => ({
             const version = (res && typeof res.version === 'number') ? res.version : 1;
             this._folderKeys[id] = vkBytes;
             this._folderVersion[id] = version;
+            // Seed the rebase base so the first 409 doesn't fall back to base=server
+            // (which drops a concurrent member's records as phantom deletions, #15).
+            this._folderBase[id] = structuredClone(manifest);
             this.sharedTree[id] = { folders: [], files: [] };
             this.sharedFolders.push({ id, vaultId: id, name: folderName, role: 'manage', version });
         } catch (e) {
@@ -2393,6 +2422,7 @@ export default (config = {}, labels = {}) => ({
             const res = await apiRequest('PUT', '/vaults/' + vaultId + '/store', { sealed_manifest: sealed, expected_version: 0 });
             this._folderKeys[vaultId] = vkBytes;
             this._folderVersion[vaultId] = (res && typeof res.version === 'number') ? res.version : 1;
+            this._folderBase[vaultId] = structuredClone(manifest); // #15 rebase base
             this.sharedTree[vaultId] = { folders: subFolders, files: newFiles };
             this.sharedFolders.push({ id: vaultId, vaultId, name: root.name, role: 'manage', version: this._folderVersion[vaultId] });
         } catch (e) {
@@ -2402,15 +2432,35 @@ export default (config = {}, labels = {}) => ({
             throw e;
         }
 
-        // 4. Remove the migrated subtree from the personal manifest + free old blobs (only after success).
+        // 4. Remove the migrated subtree from the personal manifest, then DURABLY persist
+        // before freeing the old personal blobs. Freeing on a fire-and-forget touch()
+        // would leave a reloaded (un-persisted) personal manifest referencing blobs that
+        // were already reclaimed — 404s. Await the flush and confirm it landed first
+        // (mirrors convertSharedToPersonal).
         const keepFolderIds = new Set(subFolders.map((f) => f.id));
         const oldBlobs = subFiles.flatMap((f) => [f.blob, f.textRef, f.embRef, ...(f.versions ?? []).map((v) => v.blob)].filter(Boolean));
-        window.LLFilesStore.data.fileFolders = this.manifest.folders.filter((f) => ! keepFolderIds.has(f.id));
-        window.LLFilesStore.data.files = this.manifest.files.filter((f) => ! keepFolderIds.has(f.folder ?? null));
+        const prevFolders = this.manifest.folders;
+        const prevFiles = this.manifest.files;
+        window.LLFilesStore.data.fileFolders = prevFolders.filter((f) => ! keepFolderIds.has(f.id));
+        window.LLFilesStore.data.files = prevFiles.filter((f) => ! keepFolderIds.has(f.folder ?? null));
         this.manifest.folders = window.LLFilesStore.data.fileFolders;
         this.manifest.files = window.LLFilesStore.data.files;
-        window.LLFilesStore.touch();
-        this._freeBlobs(oldBlobs); // existing personal blob-free queue
+
+        let saveOk = true;
+        const prevOnError = window.LLFilesStore._onError;
+        window.LLFilesStore._onError = () => { saveOk = false; };
+        try { await window.LLFilesStore.flush(); } finally { window.LLFilesStore._onError = prevOnError; }
+        if (! saveOk || window.LLFilesStore.degraded) {
+            // Personal write didn't land — restore the subtree and DO NOT free its blobs.
+            // The shared vault already holds re-uploaded copies, so the files are safe; the
+            // personal side simply stays as it was until the next attempt.
+            window.LLFilesStore.data.fileFolders = prevFolders;
+            window.LLFilesStore.data.files = prevFiles;
+            this.manifest.folders = prevFolders;
+            this.manifest.files = prevFiles;
+        } else {
+            this._freeBlobs(oldBlobs); // safe: personal manifest durably no longer references them
+        }
 
         return vaultId;
     },

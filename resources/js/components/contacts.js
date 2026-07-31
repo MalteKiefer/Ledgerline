@@ -467,7 +467,11 @@ export default (config = {}, labels = {}) => ({
     async emptyTrash() {
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
         for (const c of this.contacts.filter((x) => x.trashed)) if (c.avatarRef) this._freeAvatar(c.avatarRef);
-        this.contacts = this.contacts.filter((x) => ! x.trashed);
+        // Splice in place — NEVER reassign this.contacts. It is bound by reference to
+        // window.LLModuleStore.contacts.data.contacts (zkModule._bootAssign); a fresh
+        // filtered array would detach the component from the sealed store, so every
+        // later create/import would seal the stale store array and be lost.
+        for (let i = this.contacts.length - 1; i >= 0; i--) if (this.contacts[i].trashed) this.contacts.splice(i, 1);
         this._save();
     },
 

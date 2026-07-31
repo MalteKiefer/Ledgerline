@@ -74,9 +74,13 @@ describe('mergeManifest — the module-store 409 rebase', () => {
 });
 
 describe('mergeArrayById', () => {
-    it('falls back to ours-if-changed when records lack ids', () => {
+    it('set-unions scalar arrays (both writers additions survive)', () => {
         const merged = mergeArrayById(['a'], ['a', 'b'], ['a', 'c']);
-        expect(merged).toEqual(['a', 'b']); // no ids → cannot merge, our change wins
+        expect(merged.sort()).toEqual(['a', 'b', 'c']); // scalar union, not LWW
+    });
+    it('falls back to ours-if-changed only for genuinely unkeyable object arrays', () => {
+        const merged = mergeArrayById([{ x: 1 }], [{ x: 1 }, { x: 2 }], [{ x: 1 }, { x: 3 }]);
+        expect(merged).toEqual([{ x: 1 }, { x: 2 }]); // no id/cred/seq/photoId → LWW
     });
 });
 
@@ -139,5 +143,54 @@ describe('mergeObjectByKey — recursive nested merge (fields.passkeys etc.)', (
     it('still drops a key we removed from the object', () => {
         const merged = mergeObjectByKey({ a: 1, b: 2 }, { a: 1 }, { a: 1, b: 2, c: 3 });
         expect(merged).toEqual({ a: 1, c: 3 });
+    });
+});
+
+describe('mergeArrayById — generalized keys + scalar set-union (audit v1.535.0)', () => {
+    it('unions a scalar string array (fields.urls / album.photoIds)', () => {
+        // base [a], ours added b, server added c → both additions survive
+        const merged = mergeManifest(
+            { s: [{ id: 'X', fields: { urls: ['a'] } }] },
+            { s: [{ id: 'X', fields: { urls: ['a', 'b'] } }] },
+            { s: [{ id: 'X', fields: { urls: ['a', 'c'] } }] },
+        );
+        expect(merged.s[0].fields.urls.sort()).toEqual(['a', 'b', 'c']);
+    });
+
+    it('honors a scalar deletion while unioning the other side addition', () => {
+        const merged = mergeManifest(
+            { al: [{ id: 'Z', photoIds: ['1', '2'] }] },
+            { al: [{ id: 'Z', photoIds: ['2'] }] },        // we removed 1
+            { al: [{ id: 'Z', photoIds: ['1', '2', '3'] }] }, // server added 3
+        );
+        expect(merged.al[0].photoIds.sort()).toEqual(['2', '3']); // 1 stays deleted, 3 kept
+    });
+
+    it('unions passkeys keyed by credentialId (no id field)', () => {
+        const merged = mergeManifest(
+            { s: [{ id: 'L', fields: { passkeys: [{ credentialId: 'c1' }] } }] },
+            { s: [{ id: 'L', fields: { passkeys: [{ credentialId: 'c1' }, { credentialId: 'cB' }] } }] },
+            { s: [{ id: 'L', fields: { passkeys: [{ credentialId: 'c1' }, { credentialId: 'cA' }] } }] },
+        );
+        expect(merged.s[0].fields.passkeys.map((p) => p.credentialId).sort()).toEqual(['c1', 'cA', 'cB']);
+    });
+
+    it('unions invoice versions keyed by seq (no id field)', () => {
+        const merged = mergeManifest(
+            { inv: [{ id: 'I', versions: [{ seq: 1 }] }] },
+            { inv: [{ id: 'I', versions: [{ seq: 1 }, { seq: 2 }] }] },
+            { inv: [{ id: 'I', versions: [{ seq: 1 }, { seq: 3 }] }] },
+        );
+        expect(merged.inv[0].versions.map((v) => v.seq).sort()).toEqual([1, 2, 3]);
+    });
+
+    it('unions person.faces keyed by (photoId, idx)', () => {
+        const merged = mergeManifest(
+            { people: [{ id: 'P', faces: [{ photoId: 'p1', idx: 0 }] }] },
+            { people: [{ id: 'P', faces: [{ photoId: 'p1', idx: 0 }, { photoId: 'p2', idx: 1, manual: true }] }] },
+            { people: [{ id: 'P', faces: [{ photoId: 'p1', idx: 0 }, { photoId: 'p3', idx: 0 }] }] },
+        );
+        const keys = merged.people[0].faces.map((f) => f.photoId + ':' + f.idx).sort();
+        expect(keys).toEqual(['p1:0', 'p2:1', 'p3:0']); // manual tag p2 survives
     });
 });

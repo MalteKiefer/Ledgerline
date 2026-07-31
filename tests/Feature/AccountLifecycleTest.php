@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Actions\PurgeUserAccount;
+use App\Models\ContactBlob;
 use App\Models\ModuleStore;
 use App\Models\SharedFolderBlob;
 use App\Models\SharedVault;
@@ -116,5 +117,31 @@ class AccountLifecycleTest extends TestCase
         $disk->assertExists('shared-folders/'.$otherBlob);
         $this->assertNotNull(SharedFolderBlob::query()->where('blob', $otherBlob)->first());
         $this->assertNotNull(SharedVault::query()->where('id', $otherVault->id)->first());
+    }
+
+    public function test_purge_removes_contact_avatar_blob_bytes_and_row(): void
+    {
+        Storage::fake(config('files.disk'));
+        $disk = Storage::disk(config('files.disk'));
+
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+
+        $blob = (string) Str::uuid();
+        $disk->put('contacts/'.$blob, 'avatar-ciphertext');
+        ContactBlob::create(['blob' => $blob, 'user_id' => $owner->id, 'size' => 17, 'created_at' => now()]);
+
+        $otherBlob = (string) Str::uuid();
+        $disk->put('contacts/'.$otherBlob, 'keep');
+        ContactBlob::create(['blob' => $otherBlob, 'user_id' => $other->id, 'size' => 4, 'created_at' => now()]);
+
+        app(PurgeUserAccount::class)->handle($owner);
+
+        // The ContactsData contributor deletes the bytes promptly, not just the FK row.
+        $disk->assertMissing('contacts/'.$blob);
+        $this->assertNull(ContactBlob::query()->where('blob', $blob)->first());
+        // Another user's contact avatar is untouched.
+        $disk->assertExists('contacts/'.$otherBlob);
+        $this->assertNotNull(ContactBlob::query()->where('blob', $otherBlob)->first());
     }
 }

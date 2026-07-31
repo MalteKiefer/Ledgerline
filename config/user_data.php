@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\UserData\ContactsData;
 use App\Support\UserData\ExploreData;
 use App\Support\UserData\FilesData;
 use App\Support\UserData\GalleryData;
@@ -22,6 +23,7 @@ return [
         PasswordsData::class,
         InvoicesData::class,
         ExploreData::class,
+        ContactsData::class,
         SharedData::class,
         PaperlessData::class,
         SettingsData::class,
