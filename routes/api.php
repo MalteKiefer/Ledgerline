@@ -99,6 +99,21 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->middleware('module')->name('api.module-store.show');
         Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware(['throttle:240,1', 'module'])->name('api.module-store.save');
 
+        // Sealed-root history (recovery net): list retained versions + fetch one to
+        // re-merge a dropped record. Read-only, owner-scoped, same module gate.
+        Route::get('/store/{module}/history', [ModuleStoreController::class, 'history'])->whereAlpha('module')->middleware('module')->name('api.module-store.history');
+        Route::get('/store/{module}/history/{version}', [ModuleStoreController::class, 'historyVersion'])->whereAlpha('module')->whereNumber('version')->middleware('module')->name('api.module-store.history.version');
+        Route::get('/files/store/history', [FilesStoreController::class, 'history'])->middleware('module:files')->name('api.files.store.history');
+        Route::get('/files/store/history/{version}', [FilesStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:files')->name('api.files.store.history.version');
+        Route::get('/gallery/store/history', [GalleryStoreController::class, 'history'])->middleware('module:gallery')->name('api.gallery.store.history');
+        Route::get('/gallery/store/history/{version}', [GalleryStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:gallery')->name('api.gallery.store.history.version');
+        Route::get('/notes/store/history', [NotesStoreController::class, 'history'])->middleware('module:notes')->name('api.notes.store.history');
+        Route::get('/notes/store/history/{version}', [NotesStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:notes')->name('api.notes.store.history.version');
+        Route::get('/passwords/store/history', [PasswordsStoreController::class, 'history'])->middleware('module:passwords')->name('api.passwords.store.history');
+        Route::get('/passwords/store/history/{version}', [PasswordsStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:passwords')->name('api.passwords.store.history.version');
+        Route::get('/invoices/store/history', [InvoicesStoreController::class, 'history'])->middleware('module:finance')->name('api.invoices.store.history');
+        Route::get('/invoices/store/history/{version}', [InvoicesStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:finance')->name('api.invoices.store.history.version');
+
         // Files: opaque content blobs + quota ledger.
         Route::get('/files/usage', [FileController::class, 'usage'])->name('api.files.usage');
         // Store v3 (§4.2/A10b): sealed files index (own sharded store, out of the monolith).
