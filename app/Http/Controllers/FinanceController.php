@@ -599,7 +599,7 @@ class FinanceController extends Controller
      */
     public function emailInvoice(Request $request, Invoice $invoice): JsonResponse
     {
-        $this->requireUser($request);
+        $uid = (int) $this->requireUser($request)->id;
         $request->validate(['to' => ['nullable', 'email:rfc']]);
 
         $finalized = in_array($invoice->status, ['sent', 'paid'], true)
@@ -618,12 +618,14 @@ class FinanceController extends Controller
             return response()->json(['error' => 'no_recipient'], 422);
         }
 
-        $s = AppSettings::current();
-        if (! $s->mail_enabled || ! filled($s->smtp_host) || ! filled($s->smtp_from_address)) {
+        // Invoices go out over the user's OWN company SMTP (settings.company),
+        // deliberately independent of the workspace notification SMTP.
+        $mailer = $this->companyMailer($uid);
+        if ($mailer === null) {
             return response()->json(['error' => 'no_smtp'], 422);
         }
 
-        Mail::to($to)->send(new InvoiceMail($invoice));
+        Mail::mailer($mailer)->to($to)->send(new InvoiceMail($invoice));
 
         $sentAt = Carbon::now();
         $invoice->forceFill(['sent_at' => $sentAt])->saveQuietly();
@@ -640,6 +642,43 @@ class FinanceController extends Controller
         $email = $customer['email'] ?? null;
 
         return is_string($email) && str_contains($email, '@') && trim($email) !== '' ? trim($email) : null;
+    }
+
+    /**
+     * Configure a runtime SMTP mailer from the user's OWN company SMTP settings
+     * and return its name, or null if company SMTP isn't fully configured.
+     * Deliberately separate from the AppSettings notification SMTP so invoices go
+     * out under the business's own mail identity.
+     */
+    private function companyMailer(int $userId): ?string
+    {
+        $s = UserSetting::for($userId);
+        $host = is_string($s->company_smtp_host) ? trim($s->company_smtp_host) : '';
+        $from = is_string($s->company_smtp_from_address) ? trim($s->company_smtp_from_address) : '';
+        if (! $s->company_smtp_enabled || $host === '' || $from === '') {
+            return null;
+        }
+
+        $enc = is_string($s->company_smtp_encryption) && $s->company_smtp_encryption !== ''
+            ? $s->company_smtp_encryption
+            : null;
+        config([
+            'mail.mailers.company_smtp' => [
+                'transport' => 'smtp',
+                'host' => $host,
+                'port' => $s->company_smtp_port ?: 587,
+                'encryption' => $enc,
+                'username' => is_string($s->company_smtp_username) && $s->company_smtp_username !== '' ? $s->company_smtp_username : null,
+                'password' => is_string($s->company_smtp_password) && $s->company_smtp_password !== '' ? $s->company_smtp_password : null,
+                'timeout' => 15,
+            ],
+            'mail.from.company_smtp' => [
+                'address' => $from,
+                'name' => is_string($s->company_smtp_from_name) && $s->company_smtp_from_name !== '' ? $s->company_smtp_from_name : ($s->company_name ?: $from),
+            ],
+        ]);
+
+        return 'company_smtp';
     }
 
     /** Render a number template (YYYY/YY/MM/DD + a run of N's → zero-padded seq). */

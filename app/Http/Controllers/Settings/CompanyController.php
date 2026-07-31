@@ -8,6 +8,7 @@ use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\UserSetting;
 use App\Support\BlobStore;
+use App\Support\KeepBlankSecrets;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -54,6 +55,16 @@ class CompanyController extends Controller
             'invoice_template' => ['nullable', 'string', 'in:editorial,modern,elegant,klassisch'],
             'invoice_payment_methods' => ['nullable', 'string', 'max:500'],
             'invoice_payment_terms_text' => ['nullable', 'string', 'max:1000'],
+            // Per-user company SMTP (invoice sending), separate from the workspace
+            // notification SMTP. Password is preserved when left blank (below).
+            'company_smtp_enabled' => ['nullable', 'boolean'],
+            'company_smtp_host' => ['nullable', 'string', 'max:200'],
+            'company_smtp_port' => ['nullable', 'integer', 'min:1', 'max:65535'],
+            'company_smtp_encryption' => ['nullable', 'string', 'in:tls,ssl'],
+            'company_smtp_username' => ['nullable', 'string', 'max:200'],
+            'company_smtp_password' => ['nullable', 'string', 'max:500'],
+            'company_smtp_from_address' => ['nullable', 'email', 'max:200'],
+            'company_smtp_from_name' => ['nullable', 'string', 'max:200'],
             // Raster only — SVG served inline on the app origin is a stored-XSS
             // vector (embedded <script>). Logos rarely need vector.
             'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,gif,webp', 'max:2048'],
@@ -69,6 +80,9 @@ class CompanyController extends Controller
             'invoice_default_vat_rate', 'invoice_payment_terms_days', 'invoice_footer_text',
             'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
             'invoice_payment_methods', 'invoice_payment_terms_text',
+            'company_smtp_enabled', 'company_smtp_host', 'company_smtp_port',
+            'company_smtp_encryption', 'company_smtp_username', 'company_smtp_password',
+            'company_smtp_from_address', 'company_smtp_from_name',
         ];
 
         $data = [];
@@ -76,6 +90,12 @@ class CompanyController extends Controller
             if ($request->has($field)) {
                 $data[$field] = $request->input($field);
             }
+        }
+        // A blank password field means "keep the stored one" — never overwrite the
+        // encrypted secret with an empty string.
+        $data = KeepBlankSecrets::preserve($data, ['company_smtp_password']);
+        if (array_key_exists('company_smtp_enabled', $data)) {
+            $data['company_smtp_enabled'] = $request->boolean('company_smtp_enabled');
         }
 
         $settings = UserSetting::for($this->requireUser($request)->id);

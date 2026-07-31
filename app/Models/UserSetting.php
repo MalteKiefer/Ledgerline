@@ -34,6 +34,14 @@ use Illuminate\Database\Eloquent\Model;
  * @property ?string $invoice_template
  * @property ?string $invoice_payment_methods
  * @property ?string $invoice_payment_terms_text
+ * @property bool $company_smtp_enabled
+ * @property ?string $company_smtp_host
+ * @property ?int $company_smtp_port
+ * @property ?string $company_smtp_encryption
+ * @property ?string $company_smtp_username
+ * @property ?string $company_smtp_password
+ * @property ?string $company_smtp_from_address
+ * @property ?string $company_smtp_from_name
  */
 #[Fillable([
     'user_id',
@@ -57,6 +65,11 @@ use Illuminate\Database\Eloquent\Model;
     'invoice_default_vat_rate', 'invoice_payment_terms_days', 'invoice_footer_text',
     'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
     'invoice_payment_methods', 'invoice_payment_terms_text',
+    // Per-user COMPANY SMTP — a dedicated transport for sending invoices,
+    // separate from the workspace notification SMTP (AppSettings). Password is
+    // an operational secret (encrypted cast); never a fillable plaintext leak.
+    'company_smtp_enabled', 'company_smtp_host', 'company_smtp_port', 'company_smtp_encryption',
+    'company_smtp_username', 'company_smtp_password', 'company_smtp_from_address', 'company_smtp_from_name',
 ])]
 class UserSetting extends Model
 {
@@ -103,6 +116,9 @@ class UserSetting extends Model
             'paperless_url' => 'encrypted',
             'paperless_token' => 'encrypted',
             'paperless_synced_at' => 'datetime',
+            'company_smtp_enabled' => 'boolean',
+            'company_smtp_port' => 'integer',
+            'company_smtp_password' => 'encrypted',
             'gallery_columns' => 'integer',
             'file_max_versions' => 'integer',
             'invoice_number_padding' => 'integer',
