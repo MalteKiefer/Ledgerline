@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.519.0
+  version: 1.520.0
   description: >
     Plaintext-relational personal cloud API for the Ledgerline mobile client.
 
@@ -924,6 +924,32 @@ components:
         allow_download: { type: boolean }
         expires_at: { type: [string, "null"], format: date-time }
         version: { type: integer }
+
+    FolderShareMember:
+      type: object
+      description: A recipient of a cross-user folder share, at a role.
+      required: [id, user_id, role]
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        name: { type: [string, "null"] }
+        email: { type: [string, "null"] }
+        role: { type: string, enum: [viewer, editor] }
+    FolderShare:
+      type: object
+      description: >
+        A cross-user plaintext folder share (owner side). The owner grants other
+        registered users access to one of their own folders (and its whole subtree)
+        at a role held on the members roster. Plaintext-relational (folder_shares);
+        confidentiality-at-rest is infra (LUKS + encrypted backups). Recipients are
+        resolved by exact email only — unified 422 for "no such user" and self-share
+        (no directory enumeration).
+      required: [id, file_folder_id, members]
+      properties:
+        id: { type: integer }
+        file_folder_id: { type: integer }
+        folder_name: { type: [string, "null"] }
+        members: { type: array, items: { $ref: "#/components/schemas/FolderShareMember" } }
 
     # ── Request/response schemas for the batch 1–5 API surface ──
     VaultWrite:
@@ -2062,6 +2088,32 @@ paths:
   /files/rel-shares/{share}:
     put: { tags: [Files], operationId: fileShareUpdate, summary: Update a share (password/expiry/download; optimistic version), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }, responses: { "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { share: { $ref: "#/components/schemas/FileShare" } } } } } }, "401": { description: Unauthenticated. }, "404": { description: Not found. }, "409": { description: Version conflict., content: { application/json: { schema: { type: object, properties: { error: { type: string }, version: { type: integer } } } } } } } }
     delete: { tags: [Files], operationId: fileShareDestroy, summary: Revoke a share, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Revoked., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }, "401": { description: Unauthenticated. } } }
+
+  # --------------------------------------------------------------------------
+  # Cross-user folder sharing (plaintext folder_shares + members). Owner side
+  # (/files/folder-shares) grants/lists/manages; member side (/shared-with-me)
+  # browses the shared subtree, downloads, and — as an editor — mutates it.
+  # --------------------------------------------------------------------------
+
+  /files/folder-shares:
+    get: { tags: [Files], operationId: folderShareIndex, summary: List folder shares I created, description: "All shares the authenticated owner created, with their member roster.", security: [ { bearerAuth: [] } ], responses: { "200": { description: Owner shares., content: { application/json: { schema: { type: object, required: [shares], properties: { shares: { type: array, items: { $ref: "#/components/schemas/FolderShare" } } } } } } }, "401": { description: Unauthenticated. }, "403": { description: Module disabled for this account. } } }
+    post: { tags: [Files], operationId: folderShareStore, summary: Share a folder with a registered user, description: "Throttle 60/min. Recipient resolved by exact email; unified 422 for unknown user and self-share (no directory enumeration). Idempotent per folder — adds/updates the recipient.", security: [ { bearerAuth: [] } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [file_folder_id, email, role], properties: { file_folder_id: { type: integer }, email: { type: string, format: email }, role: { type: string, enum: [viewer, editor] } } } } } }, responses: { "201": { description: Created., content: { application/json: { schema: { type: object, properties: { share: { $ref: "#/components/schemas/FolderShare" } } } } } }, "401": { description: Unauthenticated. }, "403": { description: Module disabled for this account. }, "422": { description: "Unknown recipient or self-share.", content: { application/json: { schema: { type: object, properties: { error: { type: string } } } } } } } }
+  /files/folder-shares/{share}/members:
+    put: { tags: [Files], operationId: folderShareMemberUpdate, summary: Change a member's role, description: "Throttle 60/min. Owner only.", security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [user_id, role], properties: { user_id: { type: integer }, role: { type: string, enum: [viewer, editor] } } } } } }, responses: { "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { share: { $ref: "#/components/schemas/FolderShare" } } } } } }, "401": { description: Unauthenticated. }, "404": { description: Not found (or not the owner). } } }
+    delete: { tags: [Files], operationId: folderShareMemberRemove, summary: Revoke a member's access, description: "Throttle 60/min. Owner only; other members untouched.", security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [user_id], properties: { user_id: { type: integer } } } } } }, responses: { "200": { description: Removed., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }, "401": { description: Unauthenticated. }, "404": { description: Not found (or not the owner). } } }
+  /files/folder-shares/{share}:
+    delete: { tags: [Files], operationId: folderShareDestroy, summary: Delete a share, description: "Throttle 60/min. Owner only; cascades member grants, files untouched.", security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }, "401": { description: Unauthenticated. }, "404": { description: Not found (or not the owner). } } }
+  /shared-with-me:
+    get: { tags: [Files], operationId: sharedWithMeIndex, summary: List folders shared with me, security: [ { bearerAuth: [] } ], responses: { "200": { description: Grants., content: { application/json: { schema: { type: object, required: [shares], properties: { shares: { type: array, items: { type: object, properties: { id: { type: integer }, folder_name: { type: string }, role: { type: string, enum: [viewer, editor] }, owner: { type: object, properties: { id: { type: integer }, name: { type: [string, "null"] }, email: { type: [string, "null"] } } } } } } } } } } }, "401": { description: Unauthenticated. } } }
+  /shared-with-me/{share}:
+    get: { tags: [Files], operationId: sharedWithMeBrowse, summary: Browse the shared folder subtree, description: "Folders + files in the shared folder's whole subtree, owner-scoped. Non-member → 404.", security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Subtree., content: { application/json: { schema: { type: object, required: [share_id, role, root_id, folders, files], properties: { share_id: { type: integer }, role: { type: string, enum: [viewer, editor, owner] }, root_id: { type: integer }, folders: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string }, parent_id: { type: [integer, "null"] } } } }, files: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string }, mime: { type: [string, "null"] }, size: { type: integer }, file_folder_id: { type: [integer, "null"] }, updated_at: { type: [string, "null"], format: date-time } } } } } } } } }, "401": { description: Unauthenticated. }, "404": { description: Not a member / share gone. } } }
+  /shared-with-me/{share}/files/{file}/raw:
+    get: { tags: [Files], operationId: sharedWithMeRaw, summary: Stream a shared file's bytes, description: "Throttle 3000/min. Viewer + editor. Sandboxed, nosniff. ?download=1 forces attachment; outside the subtree → 404.", security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } }, { name: download, in: query, required: false, schema: { type: boolean } } ], responses: { "200": { description: File bytes., content: { application/octet-stream: { schema: { type: string, format: binary } } } }, "401": { description: Unauthenticated. }, "404": { description: Not found / outside the subtree. } } }
+  /shared-with-me/{share}/upload:
+    post: { tags: [Files], operationId: sharedWithMeUpload, summary: Upload a file into the shared subtree (editor), description: "Throttle 1200/min. Editor only (403 for a viewer). The file is owned by the SHARE OWNER; quota hits the owner (413 when exceeded).", security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary }, file_folder_id: { type: [integer, "null"] }, name: { type: [string, "null"] } } } } } }, responses: { "201": { description: Uploaded., content: { application/json: { schema: { type: object, properties: { file: { type: object, additionalProperties: true } } } } } }, "401": { description: Unauthenticated. }, "403": { description: Not an editor. }, "404": { description: Target folder outside the subtree. }, "413": { description: "Owner quota exceeded.", content: { application/json: { schema: { type: object, properties: { error: { type: string } } } } } } } }
+  /shared-with-me/{share}/files/{file}:
+    put: { tags: [Files], operationId: sharedWithMeRename, summary: Rename a shared file (editor), description: "Throttle 600/min. Editor only.", security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 500 } } } } } }, responses: { "200": { description: Renamed., content: { application/json: { schema: { type: object, properties: { file: { type: object, additionalProperties: true } } } } } }, "401": { description: Unauthenticated. }, "403": { description: Not an editor. }, "404": { description: Not found / outside the subtree. } } }
+    delete: { tags: [Files], operationId: sharedWithMeDestroy, summary: Delete a shared file (editor), description: "Throttle 600/min. Editor only; soft-delete.", security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }, "401": { description: Unauthenticated. }, "403": { description: Not an editor. }, "404": { description: Not found / outside the subtree. } } }
 
   # --------------------------------------------------------------------------
   # Gallery

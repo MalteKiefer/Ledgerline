@@ -209,7 +209,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
     /* ---- Render URLs (plaintext bytes, used directly) ---- */
     thumbUrl(p) { return config.photoBase + '/' + p.id + '/thumb'; },
     mediumUrl(p) { return config.photoBase + '/' + p.id + '/medium'; },
-    rawUrl(p) { return config.photoBase + '/' + p.id + '/raw'; },
+    rawUrl(p) { return p ? config.photoBase + '/' + p.id + '/raw' : '#'; },
     motionUrl(p) { return config.photoBase + '/' + p.id + '/motion'; },
     viewerSrc(p) { return p && p.hasMedium ? this.mediumUrl(p) : this.rawUrl(p); },
 
