@@ -41,7 +41,7 @@ return [
     'contacts_ch_webhook' => 'Webhook',
     'contacts_zk_note' => 'Contacts stay zero-knowledge: your app detects the date and relays a one-off message on the day — the server never stores who or when. Alerts fire while the app has been opened around the date.',
     'security_section' => 'Security',
-    'security_desc' => 'Vault lock policy for the whole workspace.',
+    'security_desc' => 'How many paired devices each user may connect.',
     'security_saved' => 'Security settings saved.',
     'security_lock_heading' => 'Vault lock',
     'security_lock_hint' => 'How long a device stays unlocked after entering the vault passphrase.',

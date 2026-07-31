@@ -41,7 +41,7 @@ return [
     'contacts_ch_webhook' => 'Webhook',
     'contacts_zk_note' => 'Kontakte bleiben zero-knowledge: die App erkennt das Datum und schickt am Tag eine einmalige Nachricht — der Server speichert nie, wer oder wann. Auslösung, während die App rund um das Datum geöffnet war.',
     'security_section' => 'Sicherheit',
-    'security_desc' => 'Tresor-Sperrverhalten für den ganzen Workspace.',
+    'security_desc' => 'Wie viele gekoppelte Geräte jeder Nutzer verbinden darf.',
     'security_saved' => 'Sicherheits-Einstellungen gespeichert.',
     'security_lock_heading' => 'Tresor-Sperre',
     'security_lock_hint' => 'Wie lange ein Gerät nach Eingabe der Tresor-Passphrase entsperrt bleibt.',

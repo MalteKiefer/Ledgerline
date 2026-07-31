@@ -100,7 +100,7 @@ return [
     'devices_wipe_pending' => 'Löschung ausstehend',
 
     'export_heading' => 'Meine Daten exportieren',
-    'export_hint' => 'Lade eine Kopie deiner Daten herunter (eine JSON-Datei pro Modul).',
+    'export_hint' => 'Lade eine Kopie deiner Daten als JSON herunter.',
     'export_button' => 'Meine Daten herunterladen',
 
     'delete_heading' => 'Konto löschen',

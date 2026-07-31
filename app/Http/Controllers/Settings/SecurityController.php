@@ -13,8 +13,9 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 /**
- * Workspace vault lock policy (admin): how long a trusted device stays unlocked
- * across browser restarts, and the idle timeout for a public-computer unlock.
+ * Workspace device policy (admin): the maximum number of paired mobile/CLI
+ * devices per user. (The old zero-knowledge vault-lock settings were removed
+ * with the ZK pivot — the app has no client vault to keep unlocked anymore.)
  */
 class SecurityController extends Controller
 {
@@ -26,8 +27,6 @@ class SecurityController extends Controller
         $defaultMax = config('devices.max', 3);
 
         return view('settings.security.edit', [
-            'rememberDays' => $s->vault_remember_days ?: 7,
-            'idleMinutes' => $s->vault_public_idle_minutes ?: 10,
             'maxDevices' => $s->max_connected_devices ?: (is_numeric($defaultMax) ? (int) $defaultMax : 3),
         ]);
     }
@@ -35,22 +34,12 @@ class SecurityController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $request->validate([
-            'vault_remember_days' => ['required', 'integer', 'min:1', 'max:365'],
-            'vault_public_idle_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
             'max_connected_devices' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
         $settings = AppSettings::current();
-        $before = [
-            'vault_remember_days' => $settings->vault_remember_days,
-            'vault_public_idle_minutes' => $settings->vault_public_idle_minutes,
-            'max_connected_devices' => $settings->max_connected_devices,
-        ];
-        $after = [
-            'vault_remember_days' => $request->integer('vault_remember_days'),
-            'vault_public_idle_minutes' => $request->integer('vault_public_idle_minutes'),
-            'max_connected_devices' => $request->integer('max_connected_devices'),
-        ];
+        $before = ['max_connected_devices' => $settings->max_connected_devices];
+        $after = ['max_connected_devices' => $request->integer('max_connected_devices')];
         $settings->update($after);
 
         // Audit the exact security-policy diff (values, never secrets) so a change
