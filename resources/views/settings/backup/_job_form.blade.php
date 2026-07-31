@@ -18,7 +18,7 @@
             @error('name')<p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>@enderror</div>
         <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.backup_source') }}</label>
             <select name="source" x-model="source" class="{{ $input }}">
-                @foreach (['database', 'files', 'gallery'] as $src)
+                @foreach (\App\Models\BackupJob::SOURCES as $src)
                     <option value="{{ $src }}" @selected(old('source', $j->source ?? '') === $src)>{{ __('settings.backup_source_'.$src) }}</option>
                 @endforeach
             </select>

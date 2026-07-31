@@ -37,4 +37,19 @@ return [
 
     'passphrase' => env('BACKUP_PASSPHRASE'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | SFTP transfer tuning
+    |--------------------------------------------------------------------------
+    |
+    | A backup archive can be large and is staged from remote storage before the
+    | upload, so the transfer runs long. phpseclib's default 10s timeout drops a
+    | slow/large SFTP write mid-stream ("Connection closed prematurely"). Give the
+    | session generous time + a couple of extra connect tries.
+    |
+    */
+
+    'sftp_timeout' => (int) env('BACKUP_SFTP_TIMEOUT', 300),
+    'sftp_max_tries' => (int) env('BACKUP_SFTP_MAX_TRIES', 5),
+
 ];
