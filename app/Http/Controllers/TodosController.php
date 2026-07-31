@@ -9,6 +9,7 @@ use App\Models\TodoList;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -78,6 +79,7 @@ class TodosController extends Controller
             'tags' => ['nullable', 'array', 'max:100'],
             'tags.*' => ['string', 'max:100'],
             'due' => ['nullable', 'date'],
+            'recurrence' => ['nullable', Rule::in(['none', ...Todo::RECURRENCES])],
         ];
     }
 
@@ -104,6 +106,9 @@ class TodosController extends Controller
             'done' => $request->boolean('done'),
             'tags' => $request->has('tags') ? ($tags !== [] ? $tags : null) : null,
             'due' => $request->filled('due') ? $request->string('due')->value() : null,
+            'recurrence' => $request->filled('recurrence') && $request->string('recurrence')->value() !== 'none'
+                ? $request->string('recurrence')->value()
+                : null,
         ];
     }
 
@@ -139,9 +144,14 @@ class TodosController extends Controller
             if ($expected !== null && $fresh->version !== $expected) {
                 return false;
             }
+            $wasDone = $fresh->done;
             $fresh->fill($payload);
             $fresh->version = $fresh->version + 1;
             $fresh->save();
+            // Recurrence: spawn the next occurrence only on a false->true done flip.
+            if (! $wasDone && $fresh->done) {
+                $this->spawnNextOccurrence($fresh);
+            }
 
             return $fresh;
         });
@@ -163,9 +173,56 @@ class TodosController extends Controller
     {
         $request->validate(['field' => [Rule::in(['done', 'marked'])], 'value' => ['required', 'boolean']]);
         $field = $request->string('field')->value();
-        $todo->update([$field => $request->boolean('value')]);
+        $value = $request->boolean('value');
+        $wasDone = $todo->done;
+        $todo->update([$field => $value]);
+        // Recurrence: completing a recurring task spawns its next occurrence
+        // (only on the false->true done flip, so a re-toggle never double-spawns).
+        if ($field === 'done' && $value && ! $wasDone) {
+            $this->spawnNextOccurrence($todo);
+        }
 
         return response()->json(['todo' => $todo]);
+    }
+
+    /**
+     * Copy a just-completed recurring task into its next occurrence: same fields,
+     * not done/marked, `due` advanced by the cadence (from the old due, or now if
+     * unset). The completed original stays as history but its recurrence is
+     * cleared — the successor carries the cadence forward — so re-completing it
+     * (done → undone → done) never double-spawns. No-op for one-off tasks. The
+     * new row is created through the normal owner-scoped path (user_id stamped).
+     */
+    private function spawnNextOccurrence(Todo $todo): void
+    {
+        $cadence = (string) ($todo->recurrence ?? '');
+        if (! in_array($cadence, Todo::RECURRENCES, true)) {
+            return;
+        }
+
+        $base = $todo->due ?? Carbon::now();
+        $next = match ($cadence) {
+            'daily' => $base->copy()->addDay(),
+            'weekly' => $base->copy()->addWeek(),
+            'monthly' => $base->copy()->addMonthNoOverflow(),
+            default => $base->copy()->addYear(), // 'yearly' (the only remaining cadence)
+        };
+
+        Todo::create([
+            'todo_list_id' => $todo->todo_list_id,
+            'title' => $todo->title,
+            'description' => $todo->description,
+            'url' => $todo->url,
+            'priority' => $todo->priority,
+            'tags' => $todo->tags,
+            'recurrence' => $cadence,
+            'due' => $next,
+            'marked' => false,
+            'done' => false,
+        ]);
+
+        $todo->recurrence = null;
+        $todo->saveQuietly();
     }
 
     public function destroy(Todo $todo): JsonResponse

@@ -20,6 +20,7 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\NotesController;
+use App\Http\Controllers\NoteSearchController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PasswordIconController;
@@ -41,6 +42,7 @@ use App\Http\Controllers\SharedFolderController;
 use App\Http\Controllers\SharedWithMeController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TodosController;
+use App\Http\Controllers\TodoSearchController;
 use Illuminate\Support\Facades\Route;
 
 // The root simply forwards to the dashboard; unauthenticated visitors are then
@@ -323,10 +325,13 @@ Route::middleware('auth')->group(function (): void {
     // Notes live entirely in the zero-knowledge store now; only the page shell
     // remains here (all data flows through GET/PUT /store).
     Route::get('/notes', [NotesController::class, 'page'])->middleware('module:notes')->name('notes.index');
+    Route::get('/notes/search', [NoteSearchController::class, 'search'])->middleware(['module:notes', 'throttle:120,1'])->name('notes.search');
+    Route::get('/notes/tags', [NoteSearchController::class, 'tags'])->middleware(['module:notes', 'throttle:120,1'])->name('notes.tags');
     // To-dos: zero-knowledge, living entirely in the opaque store manifest.
     // Plaintext-relational Todos (pivot Etappe 1).
     Route::middleware('module:todos')->group(function (): void {
         Route::get('/todos', [TodosController::class, 'page'])->name('todos.index');
+        Route::get('/todos/search', [TodoSearchController::class, 'search'])->middleware('throttle:600,1')->name('todos.search');
         Route::get('/todos/list', [TodosController::class, 'index'])->name('todos.list');
         Route::get('/todos/trash', [TodosController::class, 'trashed'])->name('todos.trash');
         Route::post('/todos', [TodosController::class, 'store'])->middleware('throttle:600,1')->name('todos.store');

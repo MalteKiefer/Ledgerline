@@ -16,6 +16,10 @@ Schedule::command('backups:run-due')->everyMinute()->withoutOverlapping();
 // the transfer modal always has an up-to-date quick-pick list.
 Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
 
+// Notify owners about due/overdue to-dos over their configured channels
+// (reminded_at makes reruns idempotent; a moved due date re-arms).
+Schedule::command('todos:remind')->hourly()->withoutOverlapping();
+
 // Refresh EUR exchange rates once a day for the finance amount suggestions (no user data).
 Schedule::command('finance:fetch-fx')->dailyAt('03:15')->withoutOverlapping();
 

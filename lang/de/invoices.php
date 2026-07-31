@@ -476,6 +476,11 @@ return [
     'duplicates_hint' => 'Bitte prüfe diese Datensätze — es wird nichts automatisch gelöscht.',
     'duplicates_invoices' => 'Rechnungen:',
     'duplicates_transactions' => 'Umsätze:',
+    'dupe_same_number' => 'Gleiche Rechnungsnummer',
+    'dupe_same_date_amount_customer' => 'Gleiches Datum, Betrag & Kunde',
+    'dupe_same_eref' => 'Gleiche Referenz (EREF)',
+    'dupe_same_booking' => 'Gleiche Buchung (Datum/Betrag/Gegenkonto)',
+    'no_number' => '(ohne Nummer)',
     'suggestion_label' => 'Vorschlag:',
     'apply_suggestion' => 'Vorschlag übernehmen',
 ];

@@ -220,8 +220,23 @@ export default (config = {}, labels = {}, initial = {}) => ({
             this.catSuggestions = Array.isArray(d?.suggestions) ? d.suggestions : [];
         } catch (e) { /* leave empty */ }
     },
-    get hasDuplicates() { return !! ((this.duplicates?.invoices?.length) || (this.duplicates?.transactions?.length)); },
-    get duplicateCount() { return (this.duplicates?.invoices?.length || 0) + (this.duplicates?.transactions?.length || 0); },
+    _findInvoice(id) { return (this.invoices || []).find((i) => i.id === id) || null; },
+    _findTx(id) { return (this.transactions || []).find((t) => t.id === id) || null; },
+    // Resolve each suspect group's row ids to the actual records for a readable
+    // banner (invoice number/customer/date/gross; tx date/amount/counterparty).
+    // Only keep groups where >1 record still resolves (a since-deleted row drops out).
+    get dupeInvoiceGroups() {
+        return (this.duplicates?.invoices || [])
+            .map((g) => ({ reason: g.reason, items: (g.ids || []).map((id) => this._findInvoice(id)).filter(Boolean) }))
+            .filter((g) => g.items.length > 1);
+    },
+    get dupeTxGroups() {
+        return (this.duplicates?.transactions || [])
+            .map((g) => ({ reason: g.reason, items: (g.ids || []).map((id) => this._findTx(id)).filter(Boolean) }))
+            .filter((g) => g.items.length > 1);
+    },
+    get hasDuplicates() { return this.duplicateCount > 0; },
+    get duplicateCount() { return this.dupeInvoiceGroups.length + this.dupeTxGroups.length; },
     // The suggestion for a still-uncategorised tx (hides itself once a category is set).
     suggestionFor(tx) {
         if (! tx || tx.vatCat) return null;

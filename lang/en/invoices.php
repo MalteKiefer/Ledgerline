@@ -476,6 +476,11 @@ return [
     'duplicates_hint' => 'Please review these records — nothing is deleted automatically.',
     'duplicates_invoices' => 'Invoices:',
     'duplicates_transactions' => 'Transactions:',
+    'dupe_same_number' => 'Same invoice number',
+    'dupe_same_date_amount_customer' => 'Same date, amount & customer',
+    'dupe_same_eref' => 'Same reference (EREF)',
+    'dupe_same_booking' => 'Same booking (date/amount/counterparty)',
+    'no_number' => '(no number)',
     'suggestion_label' => 'Suggestion:',
     'apply_suggestion' => 'Apply suggestion',
 ];

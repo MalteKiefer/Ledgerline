@@ -49,6 +49,9 @@
                                 <p x-show="t.description" class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="t.description"></p>
                                 <div class="mt-1 flex flex-wrap items-center gap-1.5">
                                     <span x-show="t.due" class="rounded px-1.5 py-0.5 text-[11px]" :class="isOverdue(t) ? 'bg-red-100 text-red-700 dark:text-red-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'" x-text="dueLabel(t)"></span>
+                                    <span x-show="isRecurring(t)" class="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent" title="{{ __('todos.recurring_badge') }}">
+                                        <x-icon name="arrow-path" class="h-3 w-3" />{{ __('todos.recurring_badge') }}
+                                    </span>
                                     <template x-for="g in (t.tags ?? [])" :key="g"><span class="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-600 dark:text-gray-400" x-text="g"></span></template>
                                 </div>
                             </div>
@@ -109,9 +112,21 @@
                             </select>
                         </div>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('todos.due') }}</label>
-                        <input type="datetime-local" x-model="editing.due" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('todos.due') }}</label>
+                            <input type="datetime-local" x-model="editing.due" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('todos.recurrence') }}</label>
+                            <select x-model="editing.recurrence" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                                <option value="none">{{ __('todos.recur_none') }}</option>
+                                <option value="daily">{{ __('todos.recur_daily') }}</option>
+                                <option value="weekly">{{ __('todos.recur_weekly') }}</option>
+                                <option value="monthly">{{ __('todos.recur_monthly') }}</option>
+                                <option value="yearly">{{ __('todos.recur_yearly') }}</option>
+                            </select>
+                        </div>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('todos.tags') }}</label>

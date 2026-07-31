@@ -24,6 +24,7 @@ const normTask = (t) => ({
     done: !! t.done,
     tags: Array.isArray(t.tags) ? t.tags : [],
     due: toLocalInput(t.due),
+    recurrence: t.recurrence ?? 'none',
     version: t.version ?? 0,
     updated_at: t.updated_at ?? null,
 });
@@ -117,7 +118,7 @@ export default (labels = {}, initialLists = [], initialTasks = []) => ({
 
     newTask() {
         const listId = (this.view !== 'all' && this.view !== 'marked' && this.view !== 'trash') ? this.view : null;
-        this.editing = { id: null, listId, title: '', description: '', url: '', priority: 'normal', marked: false, tags: [], due: '', done: false };
+        this.editing = { id: null, listId, title: '', description: '', url: '', priority: 'normal', marked: false, tags: [], due: '', recurrence: 'none', done: false };
         this.tagsValue = '';
         this.editorOpen = true;
     },
@@ -141,6 +142,7 @@ export default (labels = {}, initialLists = [], initialTasks = []) => ({
             done: !! e.done,
             tags: e.tags,
             due: e.due || null,
+            recurrence: e.recurrence && e.recurrence !== 'none' ? e.recurrence : 'none',
         };
     },
     async saveTask() {
@@ -199,6 +201,7 @@ export default (labels = {}, initialLists = [], initialTasks = []) => ({
         catch (e) { window.llToast?.(labels.saveFailed); }
     },
 
+    isRecurring(t) { return !! t.recurrence && t.recurrence !== 'none'; },
     priorityClass(p) { return p === 'high' ? 'bg-red-500' : (p === 'low' ? 'bg-gray-300' : 'bg-amber-400'); },
     dueLabel(t) { if (! t.due) return ''; try { return new Date(t.due).toLocaleString(); } catch (e) { return t.due; } },
     isOverdue(t) { return t.due && ! t.done && new Date(t.due).getTime() < Date.now(); },

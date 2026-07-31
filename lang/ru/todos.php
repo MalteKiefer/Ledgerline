@@ -37,6 +37,17 @@ return [
     'tags' => 'Теги',
     'tags_placeholder' => 'Добавить тег…',
 
+    'recurrence' => 'Повтор',
+    'recur_none' => 'Без повтора',
+    'recur_daily' => 'Ежедневно',
+    'recur_weekly' => 'Еженедельно',
+    'recur_monthly' => 'Ежемесячно',
+    'recur_yearly' => 'Ежегодно',
+    'recurring_badge' => 'Повторяющаяся',
+
+    'reminder_title' => 'Задача к сроку',
+    'reminder_body' => 'Срок задачи: :title',
+
     'save' => 'Сохранить',
     'cancel' => 'Отмена',
     'delete' => 'Удалить',
