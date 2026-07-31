@@ -40,10 +40,6 @@ final class SecurityHeaders
         // Isolate this browsing context group from cross-origin openers/popups
         // (mitigates cross-window attacks; harmless for a same-origin SPA).
         $response->headers->set('Cross-Origin-Opener-Policy', 'same-origin');
-        // No resource of this single-origin app is meant to be embedded/read by
-        // another origin. Blocks cross-site hotlinking/embedding of the now-
-        // plaintext user blobs (photos/files/PDFs) that COOP does not cover.
-        $response->headers->set('Cross-Origin-Resource-Policy', 'same-origin');
         // Deny access to powerful browser features the app never uses.
         $response->headers->set(
             'Permissions-Policy',
@@ -58,14 +54,7 @@ final class SecurityHeaders
             $response->headers->set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
         }
 
-        // A route that streams untrusted bytes (file/blob downloads) sets its own
-        // strict `default-src 'none'; sandbox` CSP — never clobber that with the
-        // app-shell policy, or a plaintext user-uploaded HTML served inline would
-        // execute same-origin. Only apply the shell policy when the response has
-        // not already opted into the sandbox.
-        $existing = (string) $response->headers->get('Content-Security-Policy', '');
-        $isSandboxed = str_contains($existing, 'sandbox');
-        if (! app()->environment('local') && ! $isSandboxed) {
+        if (! app()->environment('local')) {
             $response->headers->set(
                 'Content-Security-Policy',
                 implode('; ', $this->appPolicy())

@@ -18,7 +18,6 @@
         "league/flysystem-webdav": "^3.31",
         "predis/predis": "^3.5",
         "sabre/dav": "^4.7",
-        "socialiteproviders/pocketid": "^5.1",
         "spatie/db-dumper": "^4.1"
     },
     "require-dev": {

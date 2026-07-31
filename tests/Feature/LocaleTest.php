@@ -18,7 +18,7 @@ class LocaleTest extends TestCase
         // The dashboard body is client-rendered (Alpine, after vault unlock), so the
         // server-side locale is asserted on the <html lang> attribute the layout sets.
         $this->withHeaders(['Accept-Language' => 'de-DE,de;q=0.9'])
-            ->get(route('finance.index'))
+            ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('lang="de"', false);
     }
@@ -28,7 +28,7 @@ class LocaleTest extends TestCase
         $this->signIn();
 
         $this->withHeaders(['Accept-Language' => 'fr-FR,fr;q=0.9'])
-            ->get(route('finance.index'))
+            ->get(route('dashboard'))
             ->assertOk()
             ->assertSee('lang="en"', false);
     }
@@ -40,7 +40,7 @@ class LocaleTest extends TestCase
         $this->post(route('locale.update'), ['locale' => 'de'])->assertRedirect();
 
         $this->assertSame('de', $user->fresh()->locale);
-        $this->get(route('finance.index'))->assertSee('lang="de"', false);
+        $this->get(route('dashboard'))->assertSee('lang="de"', false);
     }
 
     public function test_switching_rejects_an_unsupported_locale(): void

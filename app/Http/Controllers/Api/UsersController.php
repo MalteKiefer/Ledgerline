@@ -9,6 +9,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Settings\GroupsController;
 use App\Models\AppSettings;
 use App\Models\AuditLog;
+use App\Models\FileBlob;
+use App\Models\GalleryBlob;
 use App\Models\Group;
 use App\Models\InviteLink;
 use App\Models\User;
@@ -42,9 +44,25 @@ class UsersController extends Controller
     {
         $users = User::with('memberGroups')->orderBy('id')->get();
 
+        // Per-user storage (files + gallery bytes), one grouped query each.
+        $filesBy = FileBlob::query()
+            ->groupBy('user_id')
+            ->selectRaw('user_id, SUM(size) AS bytes')
+            ->pluck('bytes', 'user_id');
+        $galleryBy = GalleryBlob::query()
+            ->groupBy('user_id')
+            ->selectRaw('user_id, SUM(size) AS bytes')
+            ->pluck('bytes', 'user_id');
+
+        $int = static fn (mixed $v): int => is_numeric($v) ? (int) $v : 0;
+
         /** @var list<array<string, mixed>> $rows */
         $rows = [];
         foreach ($users as $u) {
+            $files = $int($filesBy[$u->id] ?? 0);
+            $gallery = $int($galleryBy[$u->id] ?? 0);
+            $quotaMb = $u->effectiveFilesQuotaMb() + $u->effectiveGalleryQuotaMb();
+            $unlimited = $u->effectiveFilesQuotaMb() <= 0 || $u->effectiveGalleryQuotaMb() <= 0;
             $loginAt = $u->last_login_at;
 
             /** @var list<array{id: int, name: string}> $groups */
@@ -66,6 +84,10 @@ class UsersController extends Controller
                 'verified' => $u->email_verified_at !== null,
                 'two_factor' => $u->two_factor_confirmed_at !== null,
                 'last_login_at' => $loginAt instanceof Carbon ? $loginAt->toIso8601String() : null,
+                'usage' => [
+                    'used' => $files + $gallery,
+                    'quota' => $unlimited ? null : $quotaMb * 1024 * 1024,
+                ],
             ];
         }
 

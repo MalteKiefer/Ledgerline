@@ -16,30 +16,17 @@
 @props(['align' => 'right', 'icon' => 'ellipsis', 'width' => 'w-52'])
 <div class="shrink-0"
      x-data="{ open: false, _x: 0, _y: 0,
-        _place() {
-            const r = $refs.amTrigger.getBoundingClientRect();
-            this._x = {{ $align === 'left' ? 'r.left' : 'r.right' }};
-            this._y = r.bottom + 4;
-            // Flip the panel above the trigger when it would overflow the viewport
-            // bottom (e.g. the last rows of a scrollable table) so it never lands
-            // behind the scrollbar; otherwise clamp it into view.
-            this.$nextTick(() => {
-                const h = $refs.amPanel?.offsetHeight || 0;
-                if (r.bottom + 4 + h > window.innerHeight - 8) {
-                    this._y = r.top - h - 4 > 8 ? r.top - h - 4 : Math.max(8, window.innerHeight - 8 - h);
-                }
-            });
-        },
+        _place() { const r = $refs.amTrigger.getBoundingClientRect(); this._y = r.bottom + 4; this._x = {{ $align === 'left' ? 'r.left' : 'r.right' }}; },
         _toggle() { this.open = ! this.open; if (this.open) this.$nextTick(() => this._place()); } }"
      @keydown.escape.stop="open = false">
     <x-icon-button x-ref="amTrigger" :name="$icon" tone="gray" size="sm" @click="_toggle()" ::aria-expanded="open"
         {{ $attributes->only('aria-label') }} />
     <template x-teleport="body">
-        <div x-show="open" x-cloak x-ref="amPanel"
+        <div x-show="open" x-cloak
              @click.outside="if (! $refs.amTrigger?.contains($event.target)) open = false"
              @click="open = false"
              @scroll.window="open = false"
-             class="fixed z-[1600] {{ $width }} max-h-[80vh] overflow-y-auto rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-xl"
+             class="fixed z-[1600] {{ $width }} overflow-hidden rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-xl"
              :style="`top: ${_y}px; left: ${_x}px;{{ $align === 'left' ? '' : ' transform: translateX(-100%);' }}`">
             {{ $slot }}
         </div>

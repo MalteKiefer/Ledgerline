@@ -61,12 +61,6 @@ class FortifyServiceProvider extends ServiceProvider
 
             return Limit::perMinute(5)->by(is_scalar($id) ? (string) $id : (string) $request->ip());
         });
-
-        // Blanket per-IP limit on the whole Fortify route group (register /
-        // forgot-password / reset-password / verification-notification). Stacks
-        // with the tighter login/two-factor buckets above; stops reset-email
-        // bombing + enumeration on the otherwise-unthrottled public auth POSTs.
-        RateLimiter::for('fortify', fn (Request $request): Limit => Limit::perMinute(20)->by((string) $request->ip()));
     }
 
     /** Whether self-service registration is currently enabled workspace-wide. */

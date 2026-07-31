@@ -1,4 +1,4 @@
-// Merchant→category learning (client-side). The user's manual category choices are
+// Merchant→category learning (client-side, ZK). The user's manual category choices are
 // remembered on the merchant's business partner (the partner list doubles as the rule
 // store — no new collection, so the cross-client store shape is unchanged). Pure +
 // testable: the invoices component wires these into upload/recognition + the settings UI.

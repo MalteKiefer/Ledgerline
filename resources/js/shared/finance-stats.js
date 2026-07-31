@@ -1,6 +1,6 @@
-// Pure finance analytics over the invoice records. All client-side, computed from the
-// records already in memory. Used by the Finance dashboard (VAT advance return) and
-// the Statistics tab (revenue by customer, growth).
+// Pure finance analytics over the (already-decrypted) invoice records. All client-side
+// and zero-knowledge — the server never sees invoice contents. Used by the Finance
+// dashboard (VAT advance return) and the Statistics tab (revenue by customer, growth).
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const yearOf = (inv) => parseInt(String(inv.issueDate || '').slice(0, 4), 10);
@@ -19,43 +19,15 @@ export function invoiceTotals(inv) {
         const net = round2(gross - vat);
         return { net, vat, gross, vatByRate: { [rate]: vat } };
     }
-    // Accumulate raw net per VAT rate, then apply a global invoice-level discount
-    // proportionally across the rate buckets. MUST stay cent-identical to the PHP
-    // FinanceReports::invoiceTotals().
-    const rawByRate = {}; let grossNet = 0;
+    let net = 0; const vatByRate = {};
     for (const l of (inv.lines || [])) {
         const lineNet = (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);
-        grossNet += lineNet;
+        net += lineNet;
         const r = Number(l.vatRate) || 0;
-        rawByRate[r] = (rawByRate[r] || 0) + lineNet;
+        vatByRate[r] = (vatByRate[r] || 0) + lineNet * r / 100;
     }
-    const discount = discountAmount(inv, grossNet);
-    const factor = grossNet !== 0 ? (grossNet - discount) / grossNet : 1;
-    const vatByRate = {};
-    for (const r of Object.keys(rawByRate)) {
-        const netR = rawByRate[r] * factor;
-        vatByRate[r] = netR * Number(r) / 100;
-    }
-    const net = grossNet - discount;
     const vat = Object.values(vatByRate).reduce((a, b) => a + b, 0);
     return { net: round2(net), vat: round2(vat), gross: round2(net + vat), vatByRate };
-}
-
-/**
- * The signed global-discount amount on the net taxable base. Positive on a normal
- * invoice (reduces net); on a credit note the base is negative, so the discount is
- * negated to keep the credit an exact reverse. `discountType` = 'percent'|'amount',
- * `discountValue` the percentage / absolute amount. Cent-identical to the PHP
- * FinanceReports::discountAmount().
- */
-export function discountAmount(inv, grossNet) {
-    const type = inv && inv.discountType;
-    const val = Number(inv && inv.discountValue) || 0;
-    if (! type || val <= 0 || ! grossNet) return 0;
-    let d = type === 'percent' ? grossNet * val / 100 : (grossNet < 0 ? -val : val);
-    // Never exceed the base in magnitude, never flip the base's sign.
-    if (Math.abs(d) > Math.abs(grossNet)) d = grossNet;
-    return d;
 }
 
 /** Invoices that count as revenue: issued (sent or paid) and not trashed. */

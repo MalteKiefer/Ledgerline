@@ -1,7 +1,7 @@
 // The markdown stack (marked + DOMPurify + highlight.js + its CSS) is only ever
 // needed to preview a note, so it is code-split out of the initial bundle and
 // loaded on first use. Returns a memoised { render(md) } that highlights fenced
-// code (client-side) and DOMPurify-sanitises output.
+// code (client-side — notes are zero-knowledge) and DOMPurify-sanitises output.
 let _markdown = null;
 export async function loadMarkdown() {
     if (_markdown) return _markdown;
@@ -17,7 +17,7 @@ export async function loadMarkdown() {
     ]);
     const hl = hljs.default;
     // marked v18: a per-instance Marked with GFM + hard line breaks and the
-    // highlight extension (client-side highlighting).
+    // highlight extension (client-side highlighting — notes are zero-knowledge).
     const marked = new Marked(
         { gfm: true, breaks: true },
         markedHighlight({

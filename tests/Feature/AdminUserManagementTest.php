@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\AppSettings;
+use App\Models\FileBlob;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class AdminUserManagementTest extends TestCase
@@ -104,10 +106,11 @@ class AdminUserManagementTest extends TestCase
         $this->post(route('settings.users.reset2fa', $target))->assertForbidden();
     }
 
-    public function test_the_index_lists_users(): void
+    public function test_the_index_lists_per_user_storage_usage(): void
     {
         $this->actingAs(User::factory()->admin()->create());
-        User::factory()->create(['name' => 'Heavy User']);
+        $target = User::factory()->create(['name' => 'Heavy User']);
+        FileBlob::create(['blob' => (string) Str::uuid(), 'user_id' => $target->id, 'size' => 3 * 1024 * 1024, 'created_at' => now()]);
 
         $this->get(route('settings.users'))->assertOk()->assertSee('Heavy User');
     }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { formatDate } from '../shared/dom';
+import { SECRET_FIELDS } from '../components/passwords';
 
 // formatDate tests
 describe('formatDate', () => {
@@ -19,5 +20,24 @@ describe('formatDate', () => {
     it('accepts custom options override', () => {
         const result = formatDate('2024-01-15T10:30:00Z', { year: 'numeric', month: 'long', day: 'numeric' });
         expect(result).not.toBe('');
+    });
+});
+
+// SECRET_FIELDS tests
+describe('SECRET_FIELDS', () => {
+    it('contains the 6 base secret field keys', () => {
+        expect(SECRET_FIELDS).toHaveLength(6);
+        expect(SECRET_FIELDS).toContain('password');
+        expect(SECRET_FIELDS).toContain('totp');
+        expect(SECRET_FIELDS).toContain('cvv');
+        expect(SECRET_FIELDS).toContain('pin');
+        expect(SECRET_FIELDS).toContain('licensekey');
+        expect(SECRET_FIELDS).toContain('privateKey');
+    });
+    it('versionDiff secret set is [...SECRET_FIELDS, passkeys, publicKey]', () => {
+        const versionDiffSecret = [...SECRET_FIELDS, 'passkeys', 'publicKey'];
+        expect(versionDiffSecret).toContain('passkeys');
+        expect(versionDiffSecret).toContain('publicKey');
+        expect(versionDiffSecret.length).toBe(SECRET_FIELDS.length + 2);
     });
 });

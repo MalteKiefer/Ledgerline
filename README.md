@@ -1,26 +1,17 @@
 # Ledgerline
 
-Ledgerline is a **self-hosted, plaintext-relational personal cloud**. Photos,
-files, notes, todos, bookmarks, invoices, health data and GPS tracks live on your
-own server as ordinary relational rows — one Eloquent table per module — so
-everything is queryable, joinable, searchable and fast, and the server renders
-your data directly.
-
-Ledgerline is **not** zero-knowledge (it was, historically — that architecture
-was deliberately retired). User content is stored **in the clear at rest**;
-confidentiality at rest is an infrastructure concern you own (run on a
-**LUKS full-disk-encrypted** host and take **encrypted backups**). What the app
-guarantees instead is a hardened application and transport layer: **TLS 1.3 +
-HSTS**, **mandatory e-mail + password + TOTP two-factor** (Laravel Fortify),
-per-user owner-scoping and policies on every controller, a strict CSP, SSRF-guarded
-outbound calls, and rate limits. **Operational secrets** — SMTP credentials,
-backup-destination credentials, the backup passphrase, Paperless tokens — are the
-exception: they are still Laravel-`encrypted` at rest (AES-256-GCM under `APP_KEY`,
-which is never part of a database dump).
+Ledgerline is a **self-hosted, zero-knowledge personal cloud**. Photos, files,
+notes, todos, bookmarks, contacts, invoices, health data and passwords live on
+your own server, but the server only ever holds **ciphertext** — everything is
+encrypted and decrypted in your browser (or in the native apps / browser
+extension). Even the person operating the server cannot read your data, and a
+full copy of the database and object store yields nothing but opaque blobs.
 
 Authentication is **first-party** (Laravel Fortify): e-mail + password with
-optional TOTP two-factor. All assets are bundled and served locally — no external
-CDNs, fonts, or trackers.
+optional TOTP two-factor. The app login is deliberately **separate** from the
+zero-knowledge vault passphrase — signing in never gives the server the keys to
+your data. All assets are bundled and served locally — no external CDNs, fonts,
+or trackers.
 
 > **New to the codebase?** `CLAUDE.md` is the working context + security decision
 > log. This README is the maintained feature + security description. The
@@ -37,18 +28,21 @@ CDNs, fonts, or trackers.
 - [Reverse proxy configuration](#reverse-proxy-configuration)
 - [Configuration reference](#configuration-reference-environment-variables)
 - [**Security — the full breakdown**](#security--the-full-breakdown)
-  - [Threat model: what this design protects and what it does not](#threat-model-what-this-design-protects-and-what-it-does-not)
-  - [Authentication & two-factor](#authentication--two-factor)
-  - [Authorization & tenant isolation](#authorization--tenant-isolation)
-  - [Encrypted operational secrets](#encrypted-operational-secrets)
-  - [Device tokens (mobile / CLI)](#device-tokens-mobile--cli)
-  - [Transport, headers, CSP](#transport-headers-csp)
-  - [Upload handling & untrusted content](#upload-handling--untrusted-content)
-  - [SSRF-guarded outbound calls](#ssrf-guarded-outbound-calls)
-  - [Rate limiting](#rate-limiting)
+  - [Threat model: what the server can and cannot see](#threat-model-what-the-server-can-and-cannot-see)
+  - [The key model (how keys are made and used)](#the-key-model-how-keys-are-made-and-used)
+  - [How data is sealed at rest (Store v3)](#how-data-is-sealed-at-rest-store-v3)
+  - [Crypto contract: suite envelope, canonical JSON, Padmé](#crypto-contract-suite-envelope-canonical-json-padmé)
+  - [Post-quantum hybrid KEM (sharing + identity)](#post-quantum-hybrid-kem-sharing--identity)
+  - [Cross-user sharing (vaults & folders)](#cross-user-sharing-vaults--folders)
+  - [Public share links](#public-share-links)
+  - [Passkeys / WebAuthn](#passkeys--webauthn)
+  - [Browser extension](#browser-extension)
+  - [Authentication & device tokens](#authentication--device-tokens)
   - [Audit logging](#audit-logging)
   - [Backups](#backups)
-  - [Deletion](#deletion)
+  - [Deletion & crypto-shred](#deletion--crypto-shred)
+  - [Transport, headers, SSRF](#transport-headers-ssrf)
+  - [Residual metadata leakage (honest)](#residual-metadata-leakage-honest)
   - [Supply chain & static analysis](#supply-chain--static-analysis)
 - [API](#api)
 - [Development workflow](#development-workflow)
@@ -58,53 +52,53 @@ CDNs, fonts, or trackers.
 
 ## Modules
 
-Every module is a set of relational tables exposed over per-record REST (with a
-soft-delete trash and optimistic `version` + 409 conflict handling). Pages use
-**hybrid rendering**: the server renders the Blade shell and inlines the initial
-data via `@js()`; all mutations go through JSON endpoints shared by the web
-session and the `/api/v1` device API.
-
-- **Dashboard** — a start page aggregating widgets (upcoming todos, health values
-  + quick-add, an "on this day" photo strip, storage usage, counters, recent
-  notes, an active-fast banner). Reads directly from the module endpoints.
-- **Gallery** — photos & videos with albums, a map view, and a timeline. Uploads
-  are stored as plaintext binaries on disk; the server generates thumbnail /
-  medium / motion renditions and extracts EXIF, perceptual hash, dimensions,
-  taken-at, GPS and camera server-side, so timeline/map/stats query directly.
-  Renditions are served by id through sandboxed routes. **CLIP semantic search +
-  face recognition are being re-added** (the ML services remain; they are
-  returning behind the immich-ml sidecar).
-- **Files** — a nestable folder browser with whole + chunked upload, versioning,
-  per-user quota, and streamed download. Files are stored as plaintext binaries
-  on disk; previews render from the raw URL.
-- **Notes / Todos / Bookmarks** — relational records rendered client-side (Notes
-  Markdown via marked + DOMPurify).
-- **Finance** — a finance hub. **Invoices** with print/PDF templates, **server-
-  authoritative GoBD-safe numbering** (atomic per-year sequence on finalize), and
-  ZUGFeRD/Factur-X (EN 16931) XML export + e-invoice / PDF import. **Payment
-  methods** (bank accounts / cards / PayPal). **Bank-statement import** (MT940 +
-  CSV with a column-mapping step, parsed client-side, server-side signature dedup)
-  with auto-matching of incoming payments to invoices. **Receipts** — drag-and-drop
-  upload, client-side OCR + heuristic pattern recognition (merchant, total, date,
-  invoice number, category, VAT rate) with a **server-side OCR fallback**
-  (`/api/v1/invoices/ocr`, transient), content-hash duplicate detection, a
-  per-merchant category-learning helper, inline document preview, and a ZIP export
-  for the accountant. **Business partners**, **cost projects**, **receipt
-  categories**, **statistics** + a **VAT return** overview.
-- **Explore** — a map-centric view unifying gallery photo pins with self-recorded
-  / imported **GPS tracks** (GPX/KML/KMZ/TCX/FIT, parsed client-side) and
-  automatic photo-to-track coupling. The map renders with Leaflet + OpenStreetMap
-  raster tiles loaded directly in the browser. Optional opt-in tour auto-routing
-  (self-hosted GraphHopper or public OSRM).
-- **Health** — health tracking (weight, blood pressure, pulse, SpO₂, temperature,
-  glucose) plus **intermittent fasting**, charts (uPlot), and a doctor-export.
+- **Dashboard** — a client-side start page aggregating widgets (upcoming todos,
+  birthdays/anniversaries, health values + quick-add, "on this day" photos,
+  storage usage, counters, password-health snapshot, recent notes). Built purely
+  from the already-decrypted stores; no server-side aggregation.
+- **Gallery** — photos & videos, HEIC/AVIF + Apple Live Photos, albums, a map
+  view, timeline, duplicate detection (pHash + CLIP), and **People** (in-browser
+  face clustering + manual tagging). Thumbnails/mediums are derived on-device
+  (canvas + WebP) where the browser can decode; ML runs over
+  decrypted-in-memory renditions; blobs at rest stay sealed.
+- **Files** — a nestable folder browser with versioning, per-user quota, WebDAV
+  access, and unified sharing (internal folder shares + public links).
+- **Notes / Todos / Bookmarks** — sealed records rendered client-side (Markdown
+  via marked + DOMPurify).
+- **Passwords** — a full password manager: 9 item types (login, password, card,
+  wifi, license, server, passkey, identity, secure note), per-item version
+  history, client-side TOTP, password generator, strength (zxcvbn-ts), breach
+  check (HIBP k-anonymity), 2FA-directory hints, WiFi-QR, favicon/BIMI, import
+  (Bitwarden/LastPass/KeePass/1Password), client-side export, and **shareable
+  vaults**.
+- **Contacts** — zero-knowledge vCard 4.0 contacts (no CardDAV), encrypted
+  avatars, address mini-maps, bidirectional link to gallery People.
+- **Finance** — a zero-knowledge finance hub. **Invoices** with print/PDF
+  templates, per-year GoBD-safe numbering, and ZUGFeRD/Factur-X (EN 16931) XML
+  export + e-invoice import. **Payment methods** (bank accounts / cards / PayPal,
+  IBAN & card numbers sealed). **Bank-statement import** (MT940 + CSV with a
+  column-mapping step, parsed client-side, signature dedup) with auto-matching of
+  incoming payments to invoices. **Receipts** — drag-and-drop upload, client-side
+  OCR + heuristic pattern recognition (merchant, total, date, invoice number,
+  category, VAT rate), content-hash (SHA-256) duplicate detection, a per-merchant
+  category learning component, an inline document preview beside the metadata, and
+  a ZIP export for the accountant. **Statistics** + a **VAT return** overview, all
+  computed client-side from the decrypted records. No server-side aggregation, no
+  plaintext columns.
+- **Explore** — a map-centric view unifying gallery photo/video pins with
+  self-recorded/imported **GPS tracks** (GPX/KML/KMZ/TCX/FIT, parsed client-side)
+  and automatic photo-to-track coupling. Track points, couplings and tolerances
+  live sealed in the `explore` store. The map renders with Leaflet + OpenStreetMap
+  raster tiles loaded directly in the browser (same as the gallery location
+  picker; allowed by the existing `img-src *.tile.openstreetmap.org` CSP) — no
+  tile server, relay or `.mbtiles` needed. (Offline vector maps are a later
+  iOS-client addition.)
+- **Health** — zero-knowledge health tracking (weight, blood pressure, pulse,
+  SpO₂, temperature, glucose), charts (uPlot), and a doctor-export.
 - **Backup** — encrypted, incremental backups to S3/B2/SFTP/WebDAV.
 - **Paperless** — per-user Paperless-ngx integration.
-
-> **Deprecated:** the Chromium browser extension in `extension/` was built for the
-> old zero-knowledge password manager and is **orphaned** by the pivot (it targets
-> routes that no longer exist). It is slated for removal and is not part of the
-> served application.
+- **Browser extension** (Chromium, MV3) — zero-knowledge password autofill,
+  bookmarks CRUD, and a **WebAuthn authenticator** (passkeys).
 
 ---
 
@@ -113,21 +107,17 @@ session and the `/api/v1` device API.
 | Component     | Version        | Notes                                                   |
 | ------------- | -------------- | ------------------------------------------------------- |
 | PHP           | 8.5            | `declare(strict_types=1)`, full type hints, PHPStan L10 |
-| Laravel       | 13.x           | Framework                                               |
-| PostgreSQL    | 18 (pgvector)  | `vector` extension for CLIP/face similarity (returning) |
+| Laravel       | 13.x           | Framework (`composer.json` requires `^13.8`)            |
+| PostgreSQL    | 17 (pgvector)  | `vector` extension for CLIP/face similarity             |
 | Valkey        | 8.x            | Cache, session, queue (Redis-compatible, `predis`)      |
-| Node.js       | 24 LTS / Vite 8 / Tailwind 4 | Asset build                               |
+| Node.js       | 22 LTS / Vite 8 / Tailwind 4 | Asset build                               |
 | Alpine.js     | 3.x (modular)  | `resources/js/app.js` + `shared/*` + `components/*`     |
+| libsodium     | wrappers-sumo  | Symmetric client crypto (`resources/js/vault.js`)       |
+| @noble/post-quantum + @noble/hashes | pinned | ML-KEM-768 + HKDF (PQ-hybrid KEM)          |
 | Laravel Fortify | 1.x          | First-party auth (email+password, TOTP 2FA, reset/verify) |
-| Laravel Sanctum | 4.x          | Bearer tokens for the mobile / CLI `/api/v1`            |
+| Laravel Sanctum | 4.x          | Bearer tokens for the mobile/CLI/extension API          |
 | sabre/dav     | 4.x            | WebDAV (files-over-WebDAV + a backup destination)       |
-| immich-machine-learning | optional | Face detection + CLIP embeddings (profile-gated, returning) |
-
-Client-side runtime libraries (bundled locally, no CDN): **pdfjs-dist** +
-**tesseract.js** (client PDF/receipt text), **leaflet** (+ markercluster),
-**uplot** (charts), **html2canvas** + **jspdf** (invoice/receipt PDF rendering),
-**fflate** (KMZ unzip + receipt ZIP export), **marked** + **dompurify** (Notes
-Markdown), **codemirror**, **qrcode**.
+| immich-machine-learning | optional | Face detection + CLIP embeddings (profile-gated)      |
 
 ---
 
@@ -138,19 +128,18 @@ Ledgerline is designed to run as a Docker Compose stack. To operate it you need:
 | Requirement | Version / notes |
 | --- | --- |
 | **Docker + Docker Compose** | Compose v2 (the `docker compose` plugin). The production image is built locally from the repo `Dockerfile`. |
-| **PostgreSQL 18 with pgvector** | Provided by the bundled `db` service (`pgvector/pgvector:pg18`). The `vector` extension backs CLIP / face-similarity duplicate detection (returning). |
+| **PostgreSQL 17 with pgvector** | Provided by the bundled `db` service (`pgvector/pgvector:pg17`). The `vector` extension backs CLIP / face-similarity duplicate detection. |
 | **Valkey 8** | Provided by the bundled `valkey` service. Redis-protocol compatible; used for cache, session and queue via the pure-PHP `predis` client (no `phpredis` extension needed). |
 | **(No external identity provider)** | Authentication is first-party (Laravel Fortify): e-mail + password with optional TOTP 2FA. The first user is bootstrapped with `php artisan user:set-password` (mail-independent). An SMTP server is optional (configured in-app; used for password reset / verification / invite links) — without it, `user:set-password` and admin-generated invite links are the account-provisioning paths. |
 | **Object storage (optional but recommended)** | An S3-compatible bucket (Amazon S3, Cloudflare R2, Backblaze B2, Hetzner Object Storage, MinIO, …) for the private `files` blob disk. If omitted, blobs are stored on the local `app-storage` volume. |
 | **A TLS-terminating reverse proxy** | Production expects **Caddy on the host** (or any equivalent) in front of the app, which binds to `127.0.0.1:${APP_PORT}` only. The proxy terminates TLS 1.3 and forwards `X-Forwarded-*`. Secure cookies + HSTS are emitted when `SESSION_SECURE_COOKIE=true`. |
-| **A LUKS full-disk-encrypted host (recommended)** | User content is stored in the clear at rest, so confidentiality against disk/backup theft is an infra concern. Run on encrypted storage and take encrypted backups. |
-| **Node.js 24 LTS** | Only for local (non-Docker) development / building assets. In the Docker build, assets are compiled in a Node stage automatically. |
+| **Node.js 22 LTS** | Only for local (non-Docker) development / building assets. In the Docker build, assets are compiled in a Node 22 stage automatically. |
 
 Optional, profile-gated sidecars (all self-hosted, all off by default):
 
 | Service | Compose profile | Purpose |
 | --- | --- | --- |
-| `ml` (immich-machine-learning) | `ml` | CLIP object/scene tagging + smart search and facial recognition (returning). Reached over the internal network at `http://ml:3003`. |
+| `ml` (immich-machine-learning) | `ml` | CLIP object/scene tagging + smart search and facial recognition. Reached over the internal network at `http://ml:3003`. |
 | `photon` (Photon geocoder) | `geocode` | Self-hosted reverse geocoding so photo coordinates for the imported region never leave the host (falls back to public Nominatim on a miss). |
 | `graphhopper` (GraphHopper router) | `maps` | Self-hosted Explore tour auto-routing with elevation + OSM surface data (alternative to the default public OSRM). |
 
@@ -180,9 +169,8 @@ docker compose run --rm app php artisan key:generate --show
 ```
 
 Copy the printed `base64:…` value into `APP_KEY` in `.env`. This key encrypts
-sessions and the `encrypted`-cast operational secrets (SMTP / backup / Paperless
-credentials); it is never part of a database dump, so those secrets survive a
-dump exfiltration. User content itself is stored in the clear.
+sessions and a few non-content server-side values; **it never encrypts the user
+vault** (that is derived client-side from the vault passphrase).
 
 ### 3. Set the required secrets
 
@@ -207,23 +195,23 @@ docker compose exec app php artisan user:set-password owner@example.com --admin
 
 The lowest-id user is the workspace admin (`users.role = admin`, a non-fillable
 privilege boundary); admins manage other users, per-user quota/device caps,
-groups, per-module access, and workspace settings in the UI. Additional users are
-created by an admin (temporary password or a copy-/mail-able invite link with a
-chosen expiry). **Optional self-registration** is off by default
-(`allow_registration`); when enabled, new users are always `role = user` and go
-through e-mail verification. SMTP is configured **in-app** (Notifications
-settings) and, when present, powers password reset / verification / invite mails;
-the `MAIL_MAILER=log` default is fine for a mail-less install.
+groups, and workspace settings in the UI. Additional users are created by an
+admin (temporary password or a copy-/mail-able invite link with a chosen expiry).
+**Optional self-registration** is off by default (`allow_registration`); when
+enabled, new users are always `role = user` and go through e-mail verification.
+SMTP is configured **in-app** (Notifications settings) and, when present, powers
+password reset / verification / invite mails via the same transport as the other
+notifications; the `MAIL_MAILER=log` default is fine for a mail-less install.
 
 ### 5. Choose your blob storage
 
 - **Local (default):** leave `FILES_DISK=local` — uploads land in the
   `app-storage` volume. Simplest, no external dependency.
-- **S3-compatible:** set `FILES_DISK=files` and fill the `FILES_S3_*` block
-  (`FILES_S3_KEY`, `FILES_S3_SECRET`, `FILES_S3_BUCKET`, `FILES_S3_REGION`,
-  `FILES_S3_ENDPOINT`, `FILES_S3_USE_PATH_STYLE`). Keep the bucket **private**; the
-  app streams every byte behind auth (stored bytes are plaintext — protect the
-  bucket accordingly).
+- **S3-compatible:** set `FILES_DISK=files` (Docker) / `FILES_DISK=files` and fill
+  the `FILES_S3_*` block (`FILES_S3_KEY`, `FILES_S3_SECRET`, `FILES_S3_BUCKET`,
+  `FILES_S3_REGION`, `FILES_S3_ENDPOINT`, `FILES_S3_USE_PATH_STYLE`). The bucket is
+  private; the app streams every byte behind auth. All stored bytes are already
+  client-side ciphertext.
 
 ### 6. Build and start the stack
 
@@ -241,7 +229,7 @@ start (isolated behind a lock so `worker`/`scheduler` skip it). No manual
 - **`worker`** — `queue:work` for photo/video processing, backups, etc. Scale it:
   `docker compose up -d --scale worker=10`.
 - **`scheduler`** — `schedule:work` (orphan sweeps, token pruning, backups).
-- **`db`** — PostgreSQL 18 + pgvector.
+- **`db`** — PostgreSQL 17 + pgvector.
 - **`valkey`** — cache / session / queue.
 
 ### 7. (Optional) enable sidecars
@@ -273,8 +261,9 @@ docker compose ps                              # every service healthy
 curl -fsS https://cloud.example.com/up         # → 200
 ```
 
-Then open `APP_URL` and sign in with the e-mail + password you set in step 4
-(and enrol TOTP 2FA in your profile).
+Then open `APP_URL`, sign in with the e-mail + password you set in step 4, and
+create your vault passphrase (store the one-time recovery key safely). The vault
+passphrase is separate from your login and never leaves your browser.
 
 ### Local development (without Docker)
 
@@ -284,7 +273,7 @@ cp .env.example .env && php artisan key:generate
 # configure DB_*, REDIS_*, and the "files" S3 disk (MinIO locally)
 php artisan migrate
 php artisan user:set-password you@example.com --admin   # first user
-npm run dev            # or: npm run build
+npm run dev            # or: npm run build   (+ npm run build:ext for the extension)
 php artisan serve
 ```
 
@@ -528,11 +517,13 @@ flags are derived directly from `config/*.php` (`env('NAME', default)`) and the
 `.env.example` / `.env.docker.example` files. Where a value is **required**, the
 stack will not function without it; everything else has a working default.
 
-> **Note — not everything is an env var.** A few settings are **admin-configurable
-> in the database** (workspace Settings UI), *not* through the environment: the
-> maximum connected devices per user (overrides `PAIRING_MAX_DEVICES` at runtime),
-> per-user / per-group quotas and module access. They are listed here for
-> completeness but are set in the UI, not `.env`.
+> **Note — not everything is an env var.** A few security-relevant settings are
+> **admin-configurable in the database** (workspace Settings UI), *not* through
+> the environment: trusted-device vault-remember days (default **7**),
+> public-computer idle-lock minutes (default **10**), and the maximum connected
+> devices per user (overrides `PAIRING_MAX_DEVICES` at runtime; default falls back
+> to `PAIRING_MAX_DEVICES`). They are listed here for completeness but are set in
+> the UI, not `.env`.
 
 ### Application
 
@@ -540,10 +531,10 @@ stack will not function without it; everything else has a working default.
 | --- | --- | --- | --- |
 | `APP_NAME` | Display name of the instance. | `Laravel` (`.env` ships `Ledgerline`) | no |
 | `APP_ENV` | Environment. Use `production` in prod, `local` for dev. | `production` | no |
-| `APP_KEY` | Laravel app key (`php artisan key:generate --show`). Encrypts sessions + the `encrypted`-cast operational secrets; never part of a DB dump. | — | **yes** |
+| `APP_KEY` | Laravel app key (`php artisan key:generate --show`). Encrypts sessions + a few server-side non-content values; **never** the user vault. | — | **yes** |
 | `APP_DEBUG` | Debug pages (leak stack traces, env, config). Keep `false` in prod. | `false` | no |
 | `APP_URL` | Public URL; must be HTTPS in production. | `http://localhost` | **yes** (prod) |
-| `APP_VERSION` | Reported app version. | `1.515.1` (repo value) | no |
+| `APP_VERSION` | Reported app version. | `1.506.73` (repo value) | no |
 | `APP_LOCALE` | Default UI locale (`en`, `de`, `ru`). | `en` | no |
 | `APP_FALLBACK_LOCALE` | Locale used when a key is missing. | `en` | no |
 | `APP_FAKER_LOCALE` | Faker locale (dev/tests only). | `en_US` | no |
@@ -601,8 +592,8 @@ stack will not function without it; everything else has a working default.
 
 Authentication is first-party; there are **no auth env vars to set**. Accounts are
 provisioned with `php artisan user:set-password {email} [--admin]` and managed in
-the UI (roles, per-user quota/device caps, groups, per-module access).
-Self-registration and the password floor are workspace/framework settings, not env:
+the UI (roles, per-user quota/device caps, groups). Self-registration and the
+password floor are workspace/framework settings, not env:
 
 | Setting | Purpose | Default |
 | --- | --- | --- |
@@ -616,7 +607,7 @@ Self-registration and the password floor are workspace/framework settings, not e
 | --- | --- | --- | --- |
 | `TRUSTED_PROXIES` | Private range(s) the host reverse-proxy uses. **Never `*`** in production — it lets a remote client forge `X-Forwarded-For` and spoof its source IP. | none | recommended |
 
-### Device tokens (mobile / CLI)
+### Device tokens (mobile / CLI / extension)
 
 | Variable | Purpose | Default | Required |
 | --- | --- | --- | --- |
@@ -626,7 +617,7 @@ Self-registration and the password floor are workspace/framework settings, not e
 | `PAIRING_MAX_DEVICES` | Max paired devices per user (oldest revoked past the cap). Runtime override: the admin `max_connected_devices` setting. | `3` | no |
 | `SANCTUM_TOKEN_PREFIX` | Optional token prefix (for secret-scanner detection). | `''` | no |
 
-### Machine learning (image recognition — returning)
+### Machine learning (image recognition)
 
 | Variable | Purpose | Default | Required |
 | --- | --- | --- | --- |
@@ -638,7 +629,7 @@ Self-registration and the password floor are workspace/framework settings, not e
 | `GALLERY_FACE_MIN_SCORE` | Minimum face-detection confidence. | `0.7` | no |
 | `FILES_SEMANTIC_SEARCH` | Enable semantic file search. | `true` | no |
 
-### Gallery, files, explore (quotas & limits)
+### Gallery, files, contacts, explore (quotas & limits)
 
 | Variable | Purpose | Default | Required |
 | --- | --- | --- | --- |
@@ -650,12 +641,17 @@ Self-registration and the password floor are workspace/framework settings, not e
 | `GALLERY_BLOB_ORPHAN_GRACE_HOURS` | Grace before an unreferenced gallery blob is swept. | `24` | no |
 | `GALLERY_SHARE_MAX_MANIFEST_BYTES` | Max public-share manifest size. | `16777216` | no |
 | `GALLERY_SHARE_MAX_BLOBS` | Max blobs in a public share. | `16000` | no |
-| `FILES_MAX_UPLOAD_MB` | Max file upload size. | `512` (`.env.example`: `2048`) | no |
+| `FILES_MAX_UPLOAD_MB` | Max file upload size. | `512` (`.env.example`: `FILES_MAX_UPLOAD_MB=2048`) | no |
 | `FILES_QUOTA_MB` | Files per-user quota MB (0 = unlimited). | `0` | no |
+| `FILES_VAULT_IDLE_MINUTES` | Fallback idle-lock minutes for the vault. | `10` | no |
 | `FILES_BLOB_ORPHAN_GRACE_HOURS` | Grace before an unreferenced file blob is swept. | `24` | no |
+| `CONTACTS_QUOTA_MB` | Contacts avatar quota MB (0 = unlimited). | `0` | no |
+| `CONTACTS_MAX_UPLOAD_MB` | Max contact-avatar upload size. | `16` | no |
+| `CONTACTS_BLOB_ORPHAN_GRACE_HOURS` | Grace before an unreferenced contact blob is swept. | `24` | no |
 | `EXPLORE_QUOTA_MB` | Explore track-blob quota MB (0 = unlimited). | `0` | no |
 | `EXPLORE_MAX_UPLOAD_MB` | Max explore track-file upload size. | `64` | no |
 | `EXPLORE_BLOB_ORPHAN_GRACE_HOURS` | Grace before an unreferenced explore blob is swept. | `24` | no |
+| `VAULT_MANIFEST_MAX_BYTES` | Max sealed-manifest size accepted server-side. | `16000000` | no |
 
 ### Geocoding (photo GPS → place name)
 
@@ -682,13 +678,13 @@ Self-registration and the password floor are workspace/framework settings, not e
 
 | Variable | Purpose | Default | Required |
 | --- | --- | --- | --- |
-| `BACKUP_PASSPHRASE` | Passphrase for the always-encrypted DB dump. Stored `encrypted`; prefer a mounted secret. | — | recommended |
+| `BACKUP_PASSPHRASE` | Passphrase for the always-encrypted DB dump (keeps the key out of the DB that gets dumped). Prefer a mounted secret. | — | recommended |
 | `BACKUP_RECONCILE_HOURS` | Full list-and-prune vs. fast incremental delta cadence. | `24` | no |
 
 ### Server-side hashing (Argon2id)
 
-The Fortify login password (and the optional public-share password gate) are
-hashed server-side with Argon2id.
+Only the optional public-share password gate is hashed server-side — never the
+encryption root.
 
 | Variable | Purpose | Default | Required |
 | --- | --- | --- | --- |
@@ -736,154 +732,310 @@ copy-ready templates.
 
 # Security — the full breakdown
 
-Ledgerline stores user content **in the clear at rest** — it is a plaintext-
-relational app, not zero-knowledge. Confidentiality against someone who steals the
-disk, the database, or a backup is an **infrastructure** responsibility: run on a
-LUKS full-disk-encrypted host and take encrypted backups. What the application
-itself provides is a hardened **application + transport layer** — strong auth,
-strict tenant isolation, encrypted operational secrets, and defence against the
-usual web-app attack classes. This section states honestly what is protected and
-what is not.
+Ledgerline's core promise: **the server is a zero-knowledge relay.** It stores
+and returns ciphertext, enforces ownership and rate limits, and serves opaque
+bytes. It never has the keys to read anything. This section spells out exactly
+how that works — the key model, how each thing is sealed, and where the honest
+residual leaks are.
 
-## Threat model: what this design protects and what it does not
+## Threat model: what the server can and cannot see
 
-**Protected (application/transport):**
+**Assumptions.** The source code is public (no secrets in it). The database and
+object store may be exfiltrated in full. Backups may be exfiltrated. The hosting
+provider is untrusted for confidentiality. The network is hostile and recorded.
+Logs may be read by people who should not see user data. A privileged internal
+account may be compromised or coerced. For the extension, the browser and any
+web page it runs in are hostile to the extension's secrets.
 
-- **Remote attackers** — brute force, credential stuffing, session hijacking,
-  CSRF, XSS, clickjacking, IDOR / horizontal privilege escalation, SSRF, and
-  unauthenticated access are defended (auth + 2FA, owner-scope + policies, CSP,
-  security headers, SSRF guard, rate limits — below).
-- **DB / backup theft of operational secrets** — SMTP, backup-destination and
-  Paperless credentials + the backup passphrase are `encrypted` under `APP_KEY`,
-  which is not in a DB dump, so a leaked dump does not expose them.
-- **Network eavesdroppers** — TLS 1.3 + HSTS everywhere.
+**The server CAN see:** ciphertext blobs, an opaque sealed "root"
+(ciphertext + version + timestamp), a blob-size ledger (padded sizes), approximate
+item counts (≈ blob count), and coarse upload timing (snapped to the hour).
 
-**Not protected by the app (your infrastructure must):**
+**The server CANNOT see:** any plaintext content or metadata — file names, note
+bodies, passwords, photo pixels, contact fields, health values, folder
+structure, tags, search terms. None of it exists server-side in the clear, ever.
+A compelled operator produces only ciphertext.
 
-- **An attacker with the disk, database, or an unencrypted backup** can read all
-  user content — file/photo bytes, notes, invoices, GPS tracks. This is the
-  deliberate trade of the plaintext-relational model (chosen for queryability,
-  server rendering, and to eliminate the client-crypto data-loss class). Mitigate
-  with **LUKS full-disk encryption** + **encrypted backups**.
-- **A compromised or coerced server operator** can read user content directly.
-  Only operational secrets are encrypted at rest; user content (including health
-  values) is plaintext in the database.
+A concise **STRIDE + LINDDUN** model is maintained in `CLAUDE.md`
+(section *Threat Model*), versioned with the architecture.
 
-## Authentication & two-factor
+## The key model (how keys are made and used)
 
-- **First-party** (Laravel Fortify): e-mail + password, hashed with **Argon2id**
-  (`Password::min(12)`), with optional **TOTP 2FA** + recovery codes (confirm
-  flow). Login is throttled per e-mail + IP, the 2FA challenge is throttled, and
-  the session id is regenerated on login. The "public computer" option ends the
-  session on browser close.
-- **`users.role`** (`admin`/`user`) is a **non-fillable privilege boundary** — set
-  only via `forceFill` / the admin controller / the `user:set-password --admin`
-  command, never mass-assigned. It drives the workspace-admin gate.
-- **Self-registration** is off by default; when enabled, new users are always
-  `role = user` and pass e-mail verification.
-- **Mail-independent bootstrap/reset:** `php artisan user:set-password` and
-  admin-generated **invite links** (single-use, hashed at rest, expiring,
-  constant-time compare) provision or reset accounts without SMTP.
+Everything hangs off one secret you know — the **vault passphrase** — which never
+leaves your device.
 
-## Authorization & tenant isolation
+```
+passphrase ──Argon2id(ops=4, mem=256 MiB)──► KEK
+                                              │ unwraps
+                                              ▼
+                                        Vault Key (VK, 32 bytes)   ← never leaves the client
+                                        │                 │
+                     wraps (secretbox)  │                 │  wraps (secretbox)
+                                        ▼                 ▼
+                          per-blob content keys     module/manifest seals
+                          (one per file/photo)      (per-module + sharded stores)
+```
 
-- Single-tenant deployment, **multi-user isolated in code**. The `OwnsUserData`
-  trait applies a global owner scope on every read; `AssignsOwner` stamps the
-  owner from the authenticated user on create (owner column non-fillable, so it
-  cannot be forged). Bulk / destructive / export paths are explicitly owner-scoped.
-- Every controller resolves the authenticated user fail-closed
-  (`Controller::requireUser`), and per-record endpoints authorize ownership before
-  acting — no IDOR across users.
-- Admin endpoints (users, backup, security log, groups, per-module access) sit
-  behind a **double gate**: `can:manage-global-settings` on top of the normal auth
-  middleware, on web **and** `/api/v1`.
+Step by step:
 
-## Encrypted operational secrets
+1. **Passphrase → KEK.** In the browser, `libsodium` runs **Argon2id** with
+   `ops = 4`, `mem = 256 MiB` over your passphrase to derive a Key-Encryption-Key.
+   *(These parameters are deliberately fixed at a value that must run in a browser
+   — including WASM — and interoperate with mobile clients under their memory
+   ceilings. Raising them would break the weakest client, not add real security.)*
+2. **KEK → Vault Key (VK).** The KEK unwraps your **per-user Vault Key** — a random
+   32-byte key. The VK is the root symmetric secret. **It never leaves the client**
+   and is never sent to the server.
+3. **VK seals everything symmetric.** Manifests/module stores are sealed with
+   **XChaCha20-Poly1305 secretbox** under the VK. Each file/photo gets its own
+   random **content key**; the bytes are sealed with XChaCha20-Poly1305
+   **secretstream**, and the content key is `secretbox`-wrapped under the VK. So
+   one leaked wrapped content key exposes exactly one blob — never the VK, never
+   the library.
+4. **Recovery key.** At setup a second wrap of the VK is produced under a random
+   32-byte **recovery key** (shown once), so you can regain access if you forget
+   the passphrase.
+5. **Trusted-device persistence.** On a device you mark "trusted", the VK is
+   wrapped with a **non-extractable AES-256-GCM key** held in IndexedDB (WebCrypto,
+   fresh IV per wrap, bound to your user id) and kept for `VAULT_REMEMBER_DAYS`.
+   On a "public computer" the VK is session-only with a short idle lock. Logout
+   clears both.
+6. **Identity keypair (for sharing).** Separately, each user has an asymmetric
+   **hybrid identity keypair** (X25519 + ML-KEM-768) used *only* to wrap keys to
+   other users — see [Post-quantum hybrid KEM](#post-quantum-hybrid-kem-sharing--identity).
+   Its secret halves are sealed under the VK; the public halves are published.
 
-Operational secrets never appear in the clear at rest or in responses:
+The heavy per-photo/-file decryption runs in a bounded **Web Worker pool**, so the
+UI thread never holds the whole library and workers only ever receive a
+single unwrapped content key — never the VK.
 
-- SMTP credentials, backup-destination credentials (S3/B2/SFTP/WebDAV), the backup
-  passphrase, and the Paperless token are stored with Laravel's **`encrypted`
-  cast** (AES-256-GCM under `APP_KEY`). `APP_KEY` is not part of a DB dump.
-- Backup destination `config` and the job `passphrase` are **never serialized**
-  into API responses; a database-target backup without encryption is rejected
-  (422) so a DB dump never leaves the host unencrypted.
+## How data is sealed at rest (Store v3)
 
-## Device tokens (mobile / CLI)
+There is **no monolith**. Each module owns its own opaque sealed store, so a write
+to one module never re-seals the others.
 
-The mobile app / CLI pair via a QR / short-code exchange and receive a **Sanctum
-bearer** (`abilities:device`). Tokens are **capped per user** (LRU eviction past
-the cap), have an absolute expiry, idle-expire, carry per-device abilities, and
-can be **remotely wiped** (enforced, not advisory — hard-revoked after a grace).
-Every token-destroying path writes a reason-tagged audit entry; a throttled
-device access-trail records access (route group only, never full paths).
+- **Per-module stores** (`module_stores`, one row per `(user, module)`): notes,
+  todos, bookmarks, contacts, invoices, passwords, health, sharing. Endpoint
+  `GET/PUT /store/{module}` — read the sealed blob, decrypt + mutate client-side,
+  write it back with optimistic-concurrency (version + ETag/304, 409 on conflict).
+  An allow-list rejects unknown modules with 404.
+- **Files** and **Gallery** use a **sharded** profile (`files_store`,
+  `gallery_store`): a small sealed root pointer table + **content-addressed,
+  id-bucketed shard blobs** holding the records + per-record media blobs. A record
+  edit re-seals exactly one shard bucket + the tiny root — no cascade, and all
+  clients agree on a record's bucket regardless of insert order.
+- **Blobs** (photo/file/contact-avatar/shared-folder bytes) are separate opaque
+  ciphertext objects on the `files` disk, tracked by a size ledger for quota +
+  garbage collection. The server streams them raw.
 
-## Transport, headers, CSP
+The server code paths (`ModuleStoreController`, `FilesStoreController`,
+`GalleryStoreController`, `BlobStoreController`) never decode or inspect the
+ciphertext.
 
-- **TLS 1.3 + HSTS** (preload) via the host reverse proxy; plain HTTP only
-  redirects. Secure / HttpOnly / SameSite session cookies; sessions encrypted.
-- **Strict CSP** — `script-src 'self'` (no `unsafe-inline` scripts; a single
-  hashed theme-bootstrap; `unsafe-eval` only for Alpine, never over untrusted
-  data), `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, COOP
-  `same-origin`, tight `Permissions-Policy`, `security.txt`. Emitted by
-  `SecurityHeaders` on **both** web and API responses.
+## Crypto contract: suite envelope, canonical JSON, Padmé
 
-## Upload handling & untrusted content
+These three rules make the ciphertext both crypto-agile and cross-client-stable
+(the same manifest is byte-reproducible from a web, iOS, Go-CLI, or Android
+client, gated by shared conformance fixtures/KATs in the repo).
 
-- Uploaded file/photo bytes are stored as plaintext on the private blob disk and
-  streamed back through **sandboxed** routes: an inline user-supplied file is
-  served under a `default-src 'none'; sandbox` CSP (which `SecurityHeaders` does
-  not override), so hostile HTML can't execute same-origin — no stored XSS via
-  uploads. Rendered types get `nosniff` + immutable cache headers.
-- Server-side image processing (renditions, EXIF, pHash) uses ImageMagick with a
-  restrictive `policy.xml`; the OCR toolchain (`tesseract` + `poppler-utils`) is
-  invoked only via **array-argv** (`Support\BinaryProcess`, no shell string), on
-  transient temp files (`Support\DiskTempFile`, RAII-unlinked), with size / MIME /
-  page caps, and nothing persisted or logged.
+- **Suite envelope.** Every sealed manifest carries a `suite` tag (`suite = 1` is
+  the current baseline). An unknown suite **fails closed** on the client — the code
+  never guesses the crypto stack.
+- **Canonical JSON.** Anything sealed or hashed is serialized with keys sorted by
+  Unicode scalar, compact separators, **no Unicode normalization** (the only truly
+  byte-stable rule across languages), integers only in "hot" records, and decimals
+  as fixed 6-dp strings. This makes shard hashes reproducible everywhere.
+- **Padmé padding.** Blobs are padded to Padmé buckets and manifests to a Padmé
+  bucket with a 4 KiB floor, so stored ciphertext sizes leak only `O(log log n)`
+  bits about content size instead of the exact length. Padmé is applied on **every**
+  seal path, including the browser extension.
 
-## SSRF-guarded outbound calls
+## Post-quantum hybrid KEM (sharing + identity)
 
-Every outbound HTTP call goes through `App\Support\OutboundUrl`: link-local /
-metadata blocking, IP pinning against DNS rebinding, and no redirect following.
-This covers geocoding, the ML sidecar, backup destinations, favicon/BIMI fetches,
-Paperless, the maps router / link resolver, and ntfy / webhooks / SMTP. Photo
-geocoding is grid-snapped and opt-in; keep the ML sidecar internal and self-host
-Photon to keep those lookups in-boundary.
+The **symmetric core** (VK, blob/manifest sealing) is already safe against a
+quantum adversary — it's XChaCha20-Poly1305 with a 256-bit key. The only place
+classical asymmetric crypto would matter is **wrapping a key to another user**, so
+that path is post-quantum **hybrid**:
 
-## Rate limiting
+- **Algorithm.** X25519 (classical) **+** ML-KEM-768 (FIPS 203, post-quantum),
+  combined with **HKDF-SHA-256** over `ss_ec ‖ ss_pq` with info
+  `"ledgerline/kem/v1" ‖ context`. Confidentiality holds unless **both** primitives
+  fall (a PQXDH-style hybrid). Libraries: `@noble/post-quantum` + `@noble/hashes`
+  on web and extension; the native clients use their platform FIPS-203 libs.
+- **Envelope.** `{ suite: 1, epk, kem_ct, c, n }` — an ephemeral X25519 public key,
+  the ML-KEM ciphertext, and the wrapped payload. Fail-closed on `suite ≠ 1` or an
+  authentication failure.
+- **Identity secret = 64-byte seed.** The published `wrapped_mlkem_secret_key`
+  stores the **64-byte FIPS-203 seed** (sealed under the VK), not the expanded
+  decapsulation key. The seed is the portable canonical secret: `keygen(seed)` on
+  every platform reproduces the identical keypair, so iOS
+  (`PrivateKey(seedRepresentation:)`), web/noble, Go and Android interoperate. The
+  dk is regenerated from the seed at decapsulate time.
+- **Generated once, never regenerated.** Regenerating an identity would orphan
+  every vault key already wrapped to it. This protects shared key material against
+  *harvest-now-decrypt-later*.
 
-Rate limits span auth, 2FA, device pairing, invite-link consume, geocoding, the
-maps router, receipt OCR, store writes, blob uploads, backups, and admin writes —
-per-principal and per-IP — plus array / body / upload size caps.
+Passkeys stay classical (P-256 / ES256) — WebAuthn relying parties don't yet
+accept post-quantum COSE signature algorithms. This is an accepted, documented
+deviation; it affects only the signature scheme, not confidentiality.
+
+## Cross-user sharing (vaults & folders)
+
+Sharing a password vault or a file folder with another registered user is fully
+zero-knowledge:
+
+- Each shared vault/folder has its own **VK_vault / VK_folder**. On invite, that
+  key is **hybrid-wrapped** (above) to the recipient's published identity and
+  stored as `wrapped_vault_key` ciphertext. The server never sees it in the clear.
+- **TOFU fingerprint verification.** The inviter's client recomputes the
+  recipient's key fingerprint and compares it to the trusted value stored in the
+  sealed `sharing` store; a changed fingerprint **blocks** the share (key-swap /
+  malicious-server defence).
+- **Accept** unwraps the vault key with the invitee's own hybrid identity —
+  success proves the key was sealed to the real recipient.
+- **Rotate-on-removal.** Removing a member triggers a full **re-key** (fresh
+  VK_vault, manifest re-sealed, all remaining members re-wrapped) in one atomic
+  server transaction. This is real cryptographic revocation of *future* access —
+  not just an ACL flip. (Inherent caveat: a removed member who cached the old
+  plaintext keeps that snapshot; they get no new bytes.)
+- **Authorization** is fail-closed: `SharedVaultPolicy` has no owner/admin bypass,
+  role checks require an active membership, and every denial is a **404** (hides
+  existence). Shared-folder blobs count against the *folder owner's* quota, with
+  the owner id stamped server-side (never the uploader).
+
+## Public share links
+
+`/s/{token}` links (a gallery album, a single file, or a folder) are a separate,
+deliberately **symmetric** format:
+
+- A fresh random 32-byte **share key lives only in the URL fragment** (`#…`), which
+  browsers never send to the server. The manifest + referenced blobs are sealed
+  under that key. The server only serves the sealed manifest and the owner's
+  allow-listed blob refs.
+- Optional **password gate** (Argon2id, hard rate-limited, constant-time compare,
+  no oracle), optional expiry, optional download flag.
+- Blobs are served with immutable, sandboxed, `nosniff` headers; unknown/expired
+  tokens 404 uniformly (no existence oracle).
+
+There is no asymmetric key exchange here — the fragment key is the only key — so
+the post-quantum KEM does not apply to public links.
+
+## Passkeys / WebAuthn
+
+The browser extension is a full **WebAuthn authenticator**. Passkeys (standalone
+`passkey` items or embedded in `login` items) are ES256 (P-256) credentials whose
+private JWK is **sealed in the vault** and only ever exists transiently in the
+extension's background service worker during a create/get — never on disk, never
+logged, never sent to the server. Origin binding is set from the trusted
+content-script context (`rpIdAllowed`, dot-boundary + bare-TLD rejection);
+`none`-attestation with a zero AAGUID (no fingerprinting); user-verification =
+vault-unlock.
+
+## Browser extension
+
+Manifest V3, all code shipped in-package (no remote code, strict extension CSP,
+no `eval`). It **reuses the exact same crypto** as the web client (shared
+canonical JSON, suite envelope, Padmé, and the hybrid-KEM unwrap) — not a second
+implementation — and is gated by the same conformance fixtures.
+
+- The VK is derived **in the extension**, kept only in `chrome.storage.session`,
+  and never written to `chrome.storage.local` in plaintext (that holds only
+  ciphertext + non-secret state). The MV3 service worker is non-persistent, so no
+  plaintext or VK survives a restart — it is re-derived behind unlock.
+- Server/data access is exclusively via `/api/v1` (Sanctum device token). Broad
+  host permissions exist only for autofill DOM access on login pages, not for data.
+- Shared vaults are **read-only** in the extension (it unwraps with the hybrid
+  seed but never wraps). Content scripts hold no secrets; the page is treated as
+  hostile; messages are origin/sender-validated.
+
+## Authentication & device tokens
+
+- **Sign-in** is first-party (Laravel Fortify): e-mail + password (Argon2id,
+  12-char minimum) with optional **TOTP 2FA** + recovery codes. Login is throttled
+  per e-mail+IP, the session id is regenerated on login, and the "public computer"
+  option ends the session on browser close. The `users.role` admin flag (a
+  non-fillable privilege boundary) drives the workspace-admin gate — fail-closed,
+  no owner/admin bypass on vault policies. Self-registration is off by default.
+- **Vault unlock** is separate from sign-in (Proton-style): signing in never
+  yields the vault keys — you enter your vault passphrase once (trusted-device
+  persistence vs. public-computer idle lock as above). Login and the ZK vault are
+  independent secrets.
+- **Mobile / CLI / extension pairing.** A signed-in owner authorises a new device
+  by approving a QR (app) or a short-lived code (CLI/extension); the device
+  collects a one-time Sanctum bearer. Tokens are **capped per user, expire,
+  idle-expire, carry per-device abilities, and can be remotely wiped** (enforced,
+  not advisory — after a self-erase grace the token is hard-revoked).
 
 ## Audit logging
 
-Security-relevant events are recorded in a **tamper-evident, hash-chained** audit
-log: authentication success/failure, authorization denials, device
-pairing/revocation/wipe/eviction (reason-tagged), settings changes (with a
-before/after diff), invite-link create/consume, and account export/deletion. Meta
-is ids / roles / counts / booleans only — never tokens or secret values. An
-admin **Security Log** UI + CSV/JSON export (CSV-injection-neutralised) and the
-`audit:show` CLI read it.
+Security-relevant events are recorded in a **tamper-evident** audit log
+(hash-chained entries): authentication success/failure, authorization denial,
+device pairing/revocation/wipe, account export/deletion, settings changes, and —
+crucially — **all sharing and key events**: vault create/delete, member
+invite/remove/accept/role-change, **rotate (revocation)**, identity key publish,
+public-share create, and the destructive `store:reset-v3` clean-slate command.
+The log records ids/roles/counts only — **never** tokens, ciphertext bodies, keys,
+or any decrypted value.
 
 ## Backups
 
-- **Files / gallery** blobs are mirrored to the destination (incremental with a
-  periodic full list-and-prune reconcile).
-- **The database dump is always encrypted** (Argon2id SENSITIVE, versioned
-  container, minimum passphrase length) before it leaves the host — with the
-  passphrase held separately from the backup storage. A database target without
-  encryption is refused (422).
+Backups are zero-knowledge-aware and incremental.
+
+- **Files / gallery** are mirrored blob-by-blob. Blobs are already client-side
+  ciphertext, so they are copied as-is; routine runs upload only blobs added since
+  the last high-water mark, with a full list-and-prune reconcile every
+  `BACKUP_RECONCILE_HOURS`.
+- **The database dump** carries sealed rows + wrapped vault-key material and is
+  therefore **always encrypted** (Argon2id SENSITIVE, versioned container,
+  minimum passphrase length) before it leaves the host — with keys held separately
+  from the backup storage.
 - **Destinations:** S3 / Backblaze B2 / SFTP / WebDAV; credentials stored
-  `encrypted`; every connection passes the SSRF guard. Restore is **verified**, not
-  assumed (dry-run verifier + `php artisan backups:decrypt`).
+  encrypted; every connection passes the SSRF guard.
+- **Restore** is verified, not assumed: a dry-run verifier checks integrity + the
+  passphrase; `php artisan backups:decrypt` decrypts an archive on the CLI.
 
-## Deletion
+## Deletion & crypto-shred
 
-Records use a soft-delete trash; emptying trash and account deletion remove the
-rows and delete the associated disk blobs. GDPR account erasure purges the user's
-rows (FK-cascade) and their disk bytes, and streams a ciphertext-free content
-inventory on export. Orphaned blobs are swept daily.
+Deletion is **key destruction**: dropping a record + deleting its blobs leaves
+inert ciphertext. GDPR erasure is a full crypto-shred — it deletes module stores,
+blob ledgers, disk blobs (including shared-folder bytes, synchronously), shared
+vaults/members, public shares, and the user's wrapped keys, so nothing recoverable
+remains via any access path. Orphaned blobs are swept daily. The
+`store:reset-v3` command is the ops-gated bulk clean-slate (audited + alerted).
+
+## Transport, headers, SSRF
+
+- **TLS 1.3 + HSTS** (preload) via Caddy on the host; plain HTTP only redirects.
+- **Strict CSP** (no `unsafe-inline` scripts; a single hashed theme-bootstrap),
+  `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, COOP `same-origin`,
+  tight `Permissions-Policy`, `security.txt`. Untrusted blobs served under
+  `default-src 'none'; sandbox`.
+- **SSRF guard** (`App\Support\OutboundUrl`) on **every** outbound call — geocoding,
+  the ML sidecar, backup destinations, favicon/BIMI, HIBP, 2fa.directory, ntfy /
+  webhooks / SMTP — with link-local/metadata blocking, IP pinning against DNS
+  rebinding, and no redirects.
+- **Rate limiting** across auth, pairing, recipient lookup, geocoding, ML, store
+  writes, blob uploads, backups and public-share unlock; per-principal and per-IP;
+  array/manifest size caps and streaming caps.
+
+Deliberate, user-initiated, SSRF-guarded boundary crossings (never automatic):
+the optional **ML sidecar** (transiently-decrypted photo bytes for faces / CLIP,
+RAII-unlinked in-request) and **geocoding** (grid-snapped lookups). Keep the ML
+sidecar internal and self-host Photon/Nominatim to keep these in-boundary.
+
+## Residual metadata leakage (honest)
+
+Zero-knowledge hides *content*; some *metadata* is inherent to any blob store and
+is mitigated, not eliminated:
+
+- **Item count ≈ blob count** — visible to the server. Inherent.
+- **Blob sizes** → mitigated by client-side **Padmé** padding.
+- **Upload timing** → mitigated by snapping `created_at` to the hour.
+- **Access pattern** → mitigated by immutable content-addressed caching + uniform
+  404-hiding.
+
+New features are reviewed against a metadata-leakage table (in `CLAUDE.md`) so
+they don't add a new observable.
 
 ## Supply chain & static analysis
 
@@ -898,30 +1050,32 @@ inventory on export. Orphaned blobs are swept daily.
 
 ## API
 
-The mobile app / CLI authenticate via a **QR device pairing exchange**: scan the
-pairing QR from the web profile page (`POST /api/v1/auth/pair`), poll for owner
-approval (`POST /api/v1/auth/pair/collect`), and receive a Sanctum bearer token
-sent as `Authorization: Bearer <token>` on every subsequent request. All endpoints
-are under `/api/v1` (Sanctum, `abilities:device`).
+The mobile app / CLI / extension authenticate via a **QR device pairing exchange**:
+scan the pairing QR from the web profile page (`POST /api/v1/auth/pair`), poll for
+owner approval (`POST /api/v1/auth/pair/collect`), and receive a Sanctum bearer
+token sent as `Authorization: Bearer <token>` on every subsequent request. All
+endpoints are under `/api/v1`.
 
-The API is **plaintext REST** — each module is read and written through per-record
-JSON endpoints (create/update/delete with optimistic `version` + 409, soft-delete
-trash), the exact same controllers the web session uses. There are no sealed-store
-/ vault / opaque-blob endpoints; the server reads and renders the data.
+**Zero-knowledge:** every content payload — `ciphertext`, `sealed_manifest`, blob
+upload bodies, `wrapped_vault_key` (a hybrid envelope), `wrapped_mlkem_secret_key`
+(a sealed seed) — is opaque ciphertext the server stores and returns without
+reading. Module records are read/written via `GET/PUT /store/{module}`; the files
+index via `GET/PUT /files/store`; gallery via `GET/PUT /gallery/store`. There is
+**no per-record endpoint** (that would break zero-knowledge).
 
 See [`openapi.yaml`](openapi.yaml) for the complete machine-readable reference
-(OpenAPI 3.1, 221 operations, verified 1:1 against the route table).
+(OpenAPI 3.1, 120 operations, verified 1:1 against the route table).
 
 ---
 
 ## Development workflow
 
 - **Git Flow.** `develop` is the working branch; every `main` commit is a tagged
-  `vX.Y.Z` release. Merge with `--no-ff`.
+  `vX.Y.Z` release (app + extension carry the same version). Merge with `--no-ff`.
 - **Gates (all green before a release):** Pint, PHPStan level 10, ESLint, Vitest,
-  the full PHP test suite, EN/DE/RU language parity, `openapi.yaml` in sync with
-  the route table, and `CLAUDE.md` + the security register updated in the same
-  commit.
+  the full PHP test suite, EN/DE/RU language parity, a zero-knowledge scan (no new
+  plaintext columns / server render paths), `openapi.yaml` in sync, and `CLAUDE.md`
+  + the security register updated in the same commit.
 - **Tests:** `php artisan test --teamcity`. Run `PhotoEditTest` in a filtered chunk
   — it can segfault under imagick/GD and mask later tests.
 - **Conventions:** monochrome icons via `<x-icon>` only; EN/DE/RU parity for every

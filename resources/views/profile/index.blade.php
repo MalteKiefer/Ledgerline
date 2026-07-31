@@ -35,6 +35,7 @@
                 ['icon' => 'calendar', 'tint' => '#3fae9f', 'value' => $user->created_at?->translatedFormat('M Y') ?: '—', 'label' => __('account.stat_member_since')],
                 ['icon' => 'device-phone-mobile', 'tint' => '#3b9fd6', 'value' => (string) $deviceCount, 'label' => __('account.stat_devices'), 'sub' => __('account.stat_devices_of', ['n' => $deviceCount, 'max' => $deviceMax])],
                 ['icon' => 'computer-desktop', 'tint' => '#9e70fa', 'value' => (string) $sessionCount, 'label' => __('account.stat_sessions')],
+                ['icon' => 'circle-stack', 'tint' => '#d9a441', 'value' => $hb($storageUsed), 'label' => __('account.stat_storage'), 'sub' => $storageQuota > 0 ? __('account.storage_of', ['quota' => $hb($storageQuota)]) : __('account.storage_unlimited')],
             ];
         @endphp
         @foreach ($tiles as $t)
@@ -55,15 +56,20 @@
             ['url' => route('profile.account'), 'icon' => 'user', 'tint' => '#7066f5', 'title' => __('account.nav_account'), 'desc' => __('account.nav_account_desc')],
             ['url' => route('profile.devices'), 'icon' => 'device-phone-mobile', 'tint' => '#3b9fd6', 'title' => __('account.nav_devices'), 'desc' => __('account.nav_devices_desc'), 'badge' => __('account.stat_devices_of', ['n' => $deviceCount, 'max' => $deviceMax])],
             ['url' => route('profile.sessions'), 'icon' => 'computer-desktop', 'tint' => '#9e70fa', 'title' => __('account.nav_sessions'), 'desc' => __('account.nav_sessions_desc'), 'badge' => (string) $sessionCount],
+            ['url' => route('profile.encryption'), 'icon' => 'lock-closed', 'tint' => '#59ad6b', 'title' => __('account.nav_encryption'), 'desc' => __('account.nav_encryption_desc')],
             ['url' => route('profile.security'), 'icon' => 'shield-check', 'tint' => '#e2915a', 'title' => __('account.nav_security'), 'desc' => __('account.nav_security_desc')],
         ];
         $personal = [
             ['url' => route('profile.appearance'), 'icon' => 'sun', 'tint' => '#e2915a', 'title' => __('account.nav_appearance'), 'desc' => __('account.nav_appearance_desc')],
+            ['url' => route('settings.files.edit'), 'icon' => 'folder', 'tint' => '#3b9fd6', 'title' => __('settings.files_section'), 'desc' => __('settings.files_desc')],
+            ['url' => route('settings.contacts.edit'), 'icon' => 'contacts', 'tint' => '#59ad6b', 'title' => __('settings.contacts_section'), 'desc' => __('settings.contacts_desc')],
             ['url' => route('settings.paperless.edit'), 'icon' => 'inbox-arrow-down', 'tint' => '#d9a441', 'title' => __('settings.paperless_section'), 'desc' => __('settings.paperless_desc')],
             ['url' => route('settings.company.edit'), 'icon' => 'identification', 'tint' => '#7066f5', 'title' => __('settings.company_section'), 'desc' => __('settings.company_desc')],
+            ['url' => route('health.index'), 'icon' => 'heart', 'tint' => '#ef4444', 'title' => __('pages.profile.health_title'), 'desc' => __('pages.profile.health_desc')],
         ];
         $data = [
             ['url' => route('profile.export'), 'icon' => 'arrow-down-tray', 'tint' => '#3fae9f', 'title' => __('account.export_heading'), 'desc' => __('account.export_hint')],
+            ['url' => route('passwords.index').'?reset=1', 'icon' => 'key', 'tint' => '#ef4444', 'title' => __('passwords.reset'), 'desc' => __('settings.passwords_reset_desc'), 'danger' => true],
             ['url' => route('profile.danger'), 'icon' => 'exclamation-triangle', 'tint' => '#ef4444', 'title' => __('account.delete_heading'), 'desc' => __('account.delete_hint'), 'danger' => true],
         ];
     @endphp

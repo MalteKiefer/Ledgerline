@@ -13,10 +13,6 @@ return [
     'forgot' => 'Forgot your password?',
     'no_account' => 'No account yet?',
     'register_link' => 'Create one',
-    'or_divider' => 'or',
-    'pocketid_login' => 'Sign in with Pocket ID',
-    'pocketid_unavailable' => 'Pocket ID sign-in is not available.',
-    'pocketid_failed' => 'Authentication failed. Please try again.',
 
     // Register
     'register_title' => 'Create account',

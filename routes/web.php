@@ -3,21 +3,43 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
-use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
+use App\Http\Controllers\ContactBlobController;
+use App\Http\Controllers\ContactNotifyController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DevicePairingController;
-use App\Http\Controllers\FinanceController;
-use App\Http\Controllers\FinanceReportController;
+use App\Http\Controllers\ExploreBlobController;
+use App\Http\Controllers\ExploreController;
+use App\Http\Controllers\FileController;
+use App\Http\Controllers\FileShareController;
+use App\Http\Controllers\FilesStoreController;
+use App\Http\Controllers\GalleryBlobController;
+use App\Http\Controllers\GalleryController;
+use App\Http\Controllers\GalleryProcessController;
+use App\Http\Controllers\GalleryShareController;
+use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\InviteLinkController;
+use App\Http\Controllers\InvoiceBlobController;
+use App\Http\Controllers\InvoicesStoreController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
+use App\Http\Controllers\ModuleStoreController;
+use App\Http\Controllers\NoteBlobController;
+use App\Http\Controllers\NotesStoreController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
+use App\Http\Controllers\PasswordBlobController;
+use App\Http\Controllers\PasswordBreachController;
 use App\Http\Controllers\PasswordIconController;
+use App\Http\Controllers\PasswordsStoreController;
 use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PublicShareController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
+use App\Http\Controllers\Settings\ContactsController as SettingsContactsController;
+use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
 use App\Http\Controllers\Settings\GroupsController as SettingsGroupsController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
@@ -26,28 +48,39 @@ use App\Http\Controllers\Settings\SecurityLogController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
 use App\Http\Controllers\Settings\UsersController as SettingsUsersController;
+use App\Http\Controllers\SharedFolderBlobController;
+use App\Http\Controllers\SharedVaultController;
+use App\Http\Controllers\SharedVaultMemberController;
+use App\Http\Controllers\SharedVaultStoreController;
 use App\Http\Controllers\ThemeController;
+use App\Http\Controllers\TwoFactorDirectoryController;
+use App\Http\Controllers\UserKeyController;
+use App\Http\Controllers\VaultController;
 use Illuminate\Support\Facades\Route;
 
-// The root forwards to Finance (the app is finance-only); unauthenticated
-// visitors are then redirected to the login page by the "auth" middleware.
-Route::get('/', static fn () => redirect()->route('finance.index'));
+// The root simply forwards to the dashboard; unauthenticated visitors are then
+// redirected to the login page by the "auth" middleware.
+Route::get('/', static fn () => redirect()->route('dashboard'));
 
 // Prometheus metrics for external scraping — no session; guarded by its own
 // token (OPS_METRICS_TOKEN) and disabled when unset. Rate-limited.
 Route::get('/metrics', [MetricsController::class, 'index'])->middleware('throttle:60,1')->name('metrics');
 
+// Public, unauthenticated gallery-album share links. Zero-knowledge: the server
+// only serves the sealed manifest + opaque ciphertext blobs on the owner's
+// allow-list; the decryption key rides in the URL fragment and never arrives
+// here. The optional password gate is hard-throttled; blob/manifest reads are
+// generous (a shared album loads many thumbnails).
+Route::prefix('s/{token}')->name('public.share.')->group(function (): void {
+    Route::get('/', [PublicShareController::class, 'show'])->middleware('throttle:120,1')->name('show');
+    Route::get('/meta', [PublicShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
+    Route::post('/unlock', [PublicShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
+    Route::get('/manifest', [PublicShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
+    Route::get('/blob/{ref}', [PublicShareController::class, 'blob'])->middleware('throttle:3000,1')->name('blob');
+});
+
 // First-party auth (login, registration, password reset, email verification,
 // two-factor) is owned by Laravel Fortify — see FortifyServiceProvider.
-
-// Optional Pocket-ID (OIDC) sign-in — an ADDITIONAL login option alongside the
-// first-party auth. Guest-only + throttled; the controller gates itself off
-// (redirects to /login) when POCKETID_* is unconfigured, and the login view
-// hides the button. GET /login + POST /login|/logout stay owned by Fortify.
-Route::middleware('guest')->group(function (): void {
-    Route::get('/auth/redirect', [PocketIdController::class, 'redirect'])->middleware('throttle:30,1')->name('auth.pocketid.redirect');
-    Route::get('/auth/callback', [PocketIdController::class, 'callback'])->middleware('throttle:30,1')->name('auth.pocketid.callback');
-});
 
 // Mail-independent invite / password-reset links: public consumption. The token
 // is a hashed, single-use, expiring secret in the URL; the route is throttled and
@@ -57,6 +90,7 @@ Route::post('/invite/{invite}/{token}', [InviteLinkController::class, 'store'])-
 
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {
+    Route::get('/dashboard', DashboardController::class)->middleware('module:dashboard')->name('dashboard');
     Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
     Route::post('/theme', [ThemeController::class, 'update'])->name('theme.update');
     Route::post('/preferences', [PreferencesController::class, 'update'])->name('preferences.update');
@@ -65,6 +99,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/profile/account', [ProfileController::class, 'account'])->name('profile.account');
     Route::get('/profile/devices', [ProfileController::class, 'devices'])->name('profile.devices');
     Route::get('/profile/sessions', [ProfileController::class, 'sessions'])->name('profile.sessions');
+    Route::get('/profile/encryption', [ProfileController::class, 'encryption'])->name('profile.encryption');
     Route::get('/profile/security', [ProfileController::class, 'security'])->name('profile.security');
     Route::get('/profile/appearance', [ProfileController::class, 'appearance'])->name('profile.appearance');
     Route::get('/profile/export', [ProfileController::class, 'exportPage'])->name('profile.export');
@@ -95,6 +130,12 @@ Route::middleware('auth')->group(function (): void {
     // Settings.
     Route::get('/settings', SettingsController::class)->name('settings');
 
+    // Per-user Files preferences (version-history depth).
+    Route::get('/settings/contacts', [SettingsContactsController::class, 'edit'])->name('settings.contacts.edit');
+    Route::put('/settings/contacts', [SettingsContactsController::class, 'update'])->name('settings.contacts.update');
+    Route::get('/settings/files', [SettingsFilesController::class, 'edit'])->name('settings.files.edit');
+    Route::put('/settings/files', [SettingsFilesController::class, 'update'])->name('settings.files.update');
+
     // Paperless-ngx: per-user integration (each user's own instance URL + token).
     Route::get('/settings/paperless', [SettingsPaperlessController::class, 'edit'])->name('settings.paperless.edit');
     Route::put('/settings/paperless', [SettingsPaperlessController::class, 'update'])->name('settings.paperless.update');
@@ -104,6 +145,11 @@ Route::middleware('auth')->group(function (): void {
     // Non-personal, workspace-wide settings — restricted to users with the admin
     // role (see User::managesGlobalSettings / the manage-global-settings gate).
     Route::middleware('can:manage-global-settings')->group(function (): void {
+        // Workspace-wide file limits (quota, max upload, orphan grace). The
+        // per-user version-keep count stays on settings.files.edit (profile hub).
+        Route::get('/settings/files/limits', [SettingsFilesController::class, 'limits'])->name('settings.files.limits');
+        Route::put('/settings/files/limits', [SettingsFilesController::class, 'limitsUpdate'])->name('settings.files.limits.update');
+
         Route::get('/settings/system', [SystemController::class, 'edit'])->name('settings.system.edit');
         Route::post('/settings/system/errors/{error}/resolve', [SystemController::class, 'resolveError'])->name('settings.system.errors.resolve');
 
@@ -155,87 +201,255 @@ Route::middleware('auth')->group(function (): void {
 
     // POST /logout is owned by Fortify (AuthenticatedSessionController@destroy).
 
-    // Login/bank site-icon (BIMI/favicon) proxy: domain sent transiently, never
-    // stored; SSRF-guarded. Retained for the Finance module (bank logos / partner
-    // favicons).
+    // Zero-knowledge gallery: the client holds all keys and renders entirely
+    // from the sealed index + decrypted blobs. The server ships only the shell
+    // here; upload/process/blob/store live in the dedicated routes below.
+    Route::get('/gallery', [GalleryController::class, 'index'])->middleware('module:gallery')->name('gallery.index');
+
+    // Zero-knowledge encryption vault (Files): the server only stores ciphertext
+    // and KDF params — never the passphrase, recovery code or vault key.
+    Route::get('/vault', [VaultController::class, 'show'])->name('vault.show');
+    Route::post('/vault', [VaultController::class, 'store'])->middleware('throttle:10,1')->name('vault.store');
+    Route::put('/vault', [VaultController::class, 'rotate'])->middleware('throttle:10,1')->name('vault.rotate');
+
+    // Files: the whole directory tree (names, folders, tags, notes, trash flags,
+    // version history) lives in the sealed opaque store; the server only handles
+    // the opaque content blobs below (store/stream ciphertext + a quota ledger).
+    Route::get('/files', [FileController::class, 'index'])->middleware('module:files')->name('files.index');
+    Route::get('/files/usage', [FileController::class, 'usage'])->name('files.usage');
+    // Store v3 (§4.2/A10b): sealed files index (own sharded store, out of the monolith).
+    Route::get('/files/store', [FilesStoreController::class, 'show'])->middleware('module:files')->name('files.store.show');
+    Route::put('/files/store', [FilesStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:files'])->name('files.store.save');
+    // Reclaim blobs the (sealed) manifest no longer references — the client sends
+    // its live blob set; owner-scoped, grace-gated pruning of the quota ledger.
+    Route::post('/files/blobs/reconcile', [FileController::class, 'reconcile'])->middleware('throttle:120,1')->name('files.blobs.reconcile');
+    // Throttled to blunt a large-body upload flood (disk-fill / worker-hold),
+    // while staying generous enough for a normal batch upload.
+    Route::post('/files/upload', [FileController::class, 'upload'])
+        ->middleware('throttle:1200,1')->name('files.upload');
+    Route::post('/files/upload/init', [FileController::class, 'chunkInit'])->middleware('throttle:600,1')->name('files.upload.init');
+    Route::post('/files/upload/part', [FileController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('files.upload.part');
+    Route::post('/files/upload/complete', [FileController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('files.upload.complete');
+    Route::post('/files/upload/abort', [FileController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('files.upload.abort');
+    // Encrypted bytes stream back verbatim; the browser decrypts them. Version
+    // history is manifest-side, so a version download is just a raw blob fetch.
+    Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:3000,1')->name('files.raw');
+    Route::post('/files/raw-batch', [FileController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('files.raw-batch');
+
+    // Notes sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
+    Route::get('/notes/store', [NotesStoreController::class, 'show'])->middleware('module:notes')->name('notes.store.show');
+    Route::put('/notes/store', [NotesStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:notes'])->name('notes.store.save');
+    Route::post('/notes/upload', [NoteBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('notes.upload');
+    Route::get('/notes/raw/{blob}', [NoteBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('notes.raw');
+    Route::post('/notes/raw-batch', [NoteBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('notes.raw-batch');
+    Route::post('/notes/blobs/reconcile', [NoteBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('notes.blobs.reconcile');
+
+    Route::get('/invoices/store', [InvoicesStoreController::class, 'show'])->middleware('module:finance')->name('invoices.store.show');
+    Route::put('/invoices/store', [InvoicesStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:finance'])->name('invoices.store.save');
+    Route::post('/invoices/upload', [InvoiceBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('invoices.upload');
+    Route::get('/invoices/raw/{blob}', [InvoiceBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('invoices.raw');
+    Route::post('/invoices/raw-batch', [InvoiceBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('invoices.raw-batch');
+    Route::post('/invoices/blobs/reconcile', [InvoiceBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('invoices.blobs.reconcile');
+
+    // Passwords sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
+    Route::get('/passwords/store', [PasswordsStoreController::class, 'show'])->middleware('module:passwords')->name('passwords.store.show');
+    Route::put('/passwords/store', [PasswordsStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:passwords'])->name('passwords.store.save');
+    Route::post('/passwords/upload', [PasswordBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('passwords.upload');
+    Route::get('/passwords/raw/{blob}', [PasswordBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('passwords.raw');
+    Route::post('/passwords/raw-batch', [PasswordBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('passwords.raw-batch');
+    Route::post('/passwords/blobs/reconcile', [PasswordBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('passwords.blobs.reconcile');
+    // Generous limit: emptying a large trash frees hundreds of blobs at once, and
+    // each delete is owner-scoped, idempotent and cheap (unlink + ledger row).
+    Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('files.blob.destroy');
+
+    // Public share links for a file or a whole folder subtree. Like the gallery
+    // shares, the client seals the manifest (file list + per-blob keys re-wrapped
+    // under the link's fragment key) before it arrives — ciphertext + access
+    // controls only. Served publicly via the shared /s/{token} routes.
+    Route::post('/files/shares', [FileShareController::class, 'store'])->middleware('throttle:60,1')->name('files.shares.store');
+    Route::put('/files/shares/{token}', [FileShareController::class, 'update'])->middleware('throttle:60,1')->name('files.shares.update');
+    Route::delete('/files/shares/{token}', [FileShareController::class, 'destroy'])->middleware('throttle:60,1')->name('files.shares.destroy');
+
+    // Per-module sealed stores (Store v3 split): one opaque row per module.
+    Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->middleware('module')->name('module-store.show');
+    Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware('throttle:1200,1')->middleware('module')->name('module-store.save');
+
+    // Opaque zero-knowledge gallery index (photo/album/people structure sealed).
+    Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->middleware('module:gallery')->name('gallery.store.show');
+    Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:gallery'])->name('gallery.store.save');
+    // Public share links for an album: the client seals the share manifest (photo
+    // list + per-blob keys re-wrapped under the link's fragment key) before it
+    // arrives, so these only ever carry ciphertext + coarse access controls.
+    Route::post('/gallery/shares', [GalleryShareController::class, 'store'])->middleware('throttle:60,1')->name('gallery.shares.store');
+    Route::put('/gallery/shares/{token}', [GalleryShareController::class, 'update'])->middleware('throttle:60,1')->name('gallery.shares.update');
+    Route::delete('/gallery/shares/{token}', [GalleryShareController::class, 'destroy'])->middleware('throttle:60,1')->name('gallery.shares.destroy');
+    // Zero-knowledge transform: the browser POSTs one photo's PLAINTEXT, we return
+    // its derived data (renditions/exif/embedding/faces/place) and discard the
+    // bytes — nothing is persisted server-side. embed-text embeds a search query.
+    Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('throttle:600,1')->name('gallery.process');
+    Route::post('/gallery/analyze', [GalleryProcessController::class, 'analyze'])->middleware('throttle:600,1')->name('gallery.analyze');
+    Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('throttle:300,1')->name('gallery.embed-text');
+    Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('throttle:60,1')->name('gallery.geocode');
+
+    // Opaque zero-knowledge gallery content blobs (ciphertext bytes only).
+    Route::get('/gallery/usage', [GalleryBlobController::class, 'usage'])->name('gallery.usage');
+    Route::post('/gallery/blobs/reconcile', [GalleryBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('gallery.blobs.reconcile');
+    Route::post('/gallery/upload', [GalleryBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('gallery.upload');
+    Route::post('/gallery/upload/init', [GalleryBlobController::class, 'chunkInit'])->middleware('throttle:600,1')->name('gallery.upload.init');
+    Route::post('/gallery/upload/part', [GalleryBlobController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('gallery.upload.part');
+    Route::post('/gallery/upload/complete', [GalleryBlobController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('gallery.upload.complete');
+    Route::post('/gallery/upload/abort', [GalleryBlobController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('gallery.upload.abort');
+    Route::get('/gallery/raw/{blob}', [GalleryBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('gallery.raw');
+    Route::post('/gallery/raw-batch', [GalleryBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('gallery.raw-batch');
+    // Generous limit: emptying a large trash frees hundreds of blobs at once, and
+    // each delete is owner-scoped, idempotent and cheap (unlink + ledger row).
+    Route::delete('/gallery/blob/{blob}', [GalleryBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('gallery.blob.destroy');
+
+    // Notes live entirely in the zero-knowledge store now; only the page shell
+    // remains here (all data flows through GET/PUT /store).
+    Route::view('/notes', 'notes.index')->middleware('module:notes')->name('notes.index');
+    // To-dos: zero-knowledge, living entirely in the opaque store manifest.
+    Route::view('/todos', 'todos.index')->middleware('module:todos')->name('todos.index');
+    // Bookmarks: zero-knowledge, driven client-side from the opaque manifest.
+    Route::view('/bookmarks', 'bookmarks.index')->middleware('module:bookmarks')->name('bookmarks.index');
+    // Passwords: zero-knowledge password manager, records in the opaque /store
+    // manifest (six item types, per-item version history, client-side TOTP/QR).
+    Route::view('/passwords', 'passwords.index')->middleware('module:passwords')->name('passwords.index');
+    // Login site-icon (BIMI/favicon) proxy: domain sent transiently, never
+    // stored; SSRF-guarded; result cached client-side in the sealed item.
     Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:1200,1')->name('passwords.icon');
-
-    // Plaintext-relational Finance: invoices + partners + payment methods + bank
-    // transactions + projects + categories as owner-scoped rows. The per-user
-    // company profile (printed on invoices) stays in the user's settings.
-    Route::middleware('module:finance')->group(function (): void {
-        Route::get('/finance', [FinanceController::class, 'page'])->name('finance.index');
-        Route::get('/finance/data', [FinanceController::class, 'index'])->name('finance.data');
-        // Read-only server-side analytics (source of truth for the stats UI).
-        Route::get('/finance/reports', [FinanceReportController::class, 'reports'])->middleware('throttle:120,1')->name('finance.reports');
-        Route::get('/finance/reports/account-vat', [FinanceReportController::class, 'accountVat'])->middleware('throttle:120,1')->name('finance.reports.account-vat');
-        Route::get('/finance/reports/vat-advance', [FinanceReportController::class, 'vatAdvance'])->middleware('throttle:120,1')->name('finance.reports.vat-advance');
-        Route::get('/finance/reports/euer', [FinanceReportController::class, 'euer'])->middleware('throttle:120,1')->name('finance.reports.euer');
-        Route::get('/finance/duplicates', [FinanceReportController::class, 'duplicates'])->middleware('throttle:60,1')->name('finance.duplicates');
-        Route::get('/finance/category-suggestions', [FinanceReportController::class, 'categorySuggestions'])->middleware('throttle:60,1')->name('finance.category-suggestions');
-        Route::get('/finance/trash', [FinanceController::class, 'trash'])->name('finance.trash');
-
-        // Partners
-        Route::post('/finance/partners', [FinanceController::class, 'storePartner'])->middleware('throttle:600,1')->name('finance.partners.store');
-        Route::put('/finance/partners/{partner}', [FinanceController::class, 'updatePartner'])->whereNumber('partner')->middleware('throttle:600,1')->name('finance.partners.update');
-        Route::delete('/finance/partners/{partner}', [FinanceController::class, 'destroyPartner'])->whereNumber('partner')->middleware('throttle:600,1')->name('finance.partners.destroy');
-        Route::post('/finance/partners/{id}/restore', [FinanceController::class, 'restorePartner'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.partners.restore');
-        Route::delete('/finance/partners/{id}/force', [FinanceController::class, 'forceDeletePartner'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.partners.force');
-
-        // Payment methods
-        Route::post('/finance/payment-methods', [FinanceController::class, 'storePaymentMethod'])->middleware('throttle:600,1')->name('finance.payment-methods.store');
-        Route::put('/finance/payment-methods/{paymentMethod}', [FinanceController::class, 'updatePaymentMethod'])->whereNumber('paymentMethod')->middleware('throttle:600,1')->name('finance.payment-methods.update');
-        Route::delete('/finance/payment-methods/{paymentMethod}', [FinanceController::class, 'destroyPaymentMethod'])->whereNumber('paymentMethod')->middleware('throttle:600,1')->name('finance.payment-methods.destroy');
-        Route::post('/finance/payment-methods/{id}/restore', [FinanceController::class, 'restorePaymentMethod'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.payment-methods.restore');
-        Route::delete('/finance/payment-methods/{id}/force', [FinanceController::class, 'forceDeletePaymentMethod'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.payment-methods.force');
-
-        // Projects
-        Route::post('/finance/projects', [FinanceController::class, 'storeProject'])->middleware('throttle:600,1')->name('finance.projects.store');
-        Route::put('/finance/projects/{project}', [FinanceController::class, 'updateProject'])->whereNumber('project')->middleware('throttle:600,1')->name('finance.projects.update');
-        Route::post('/finance/projects/{project}/move', [FinanceController::class, 'moveProject'])->whereNumber('project')->middleware('throttle:1200,1')->name('finance.projects.move');
-        Route::delete('/finance/projects/{project}', [FinanceController::class, 'destroyProject'])->whereNumber('project')->middleware('throttle:600,1')->name('finance.projects.destroy');
-        Route::post('/finance/projects/{id}/restore', [FinanceController::class, 'restoreProject'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.projects.restore');
-        Route::delete('/finance/projects/{id}/force', [FinanceController::class, 'forceDeleteProject'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.projects.force');
-
-        // Categories (hard-deleted lookup list)
-        Route::post('/finance/categories', [FinanceController::class, 'storeCategory'])->middleware('throttle:600,1')->name('finance.categories.store');
-        Route::put('/finance/categories/{category}', [FinanceController::class, 'updateCategory'])->whereNumber('category')->middleware('throttle:600,1')->name('finance.categories.update');
-        Route::delete('/finance/categories/{category}', [FinanceController::class, 'destroyCategory'])->whereNumber('category')->middleware('throttle:600,1')->name('finance.categories.destroy');
-
-        // Invoices
-        Route::post('/finance/invoices', [FinanceController::class, 'storeInvoice'])->middleware('throttle:600,1')->name('finance.invoices.store');
-        Route::put('/finance/invoices/{invoice}', [FinanceController::class, 'updateInvoice'])->whereNumber('invoice')->middleware('throttle:600,1')->name('finance.invoices.update');
-        Route::post('/finance/invoices/{invoice}/finalize', [FinanceController::class, 'finalizeInvoice'])->whereNumber('invoice')->middleware('throttle:600,1')->name('finance.invoices.finalize');
-        Route::post('/finance/invoices/{invoice}/email', [FinanceController::class, 'emailInvoice'])->whereNumber('invoice')->middleware('throttle:30,1')->name('finance.invoices.email');
-        Route::post('/finance/invoices/{invoice}/storno', [FinanceController::class, 'stornoInvoice'])->whereNumber('invoice')->middleware('throttle:30,1')->name('finance.invoices.storno');
-        Route::post('/finance/invoices/{invoice}/dun', [FinanceController::class, 'dunInvoice'])->whereNumber('invoice')->middleware('throttle:30,1')->name('finance.invoices.dun');
-        Route::delete('/finance/invoices/{invoice}', [FinanceController::class, 'destroyInvoice'])->whereNumber('invoice')->middleware('throttle:600,1')->name('finance.invoices.destroy');
-        Route::post('/finance/invoices/{id}/restore', [FinanceController::class, 'restoreInvoice'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.invoices.restore');
-        Route::delete('/finance/invoices/{id}/force', [FinanceController::class, 'forceDeleteInvoice'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.invoices.force');
-        Route::post('/finance/invoices/{invoice}/pdf', [FinanceController::class, 'uploadInvoicePdf'])->whereNumber('invoice')->middleware('throttle:1200,1')->name('finance.invoices.pdf.upload');
-        Route::get('/finance/invoices/{invoice}/pdf', [FinanceController::class, 'invoicePdf'])->whereNumber('invoice')->middleware('throttle:3000,1')->name('finance.invoices.pdf');
-
-        // Bank transactions
-        Route::post('/finance/transactions', [FinanceController::class, 'storeTransaction'])->middleware('throttle:600,1')->name('finance.transactions.store');
-        Route::post('/finance/transactions/bulk', [FinanceController::class, 'bulkTransactions'])->middleware('throttle:120,1')->name('finance.transactions.bulk');
-        Route::put('/finance/transactions/{transaction}', [FinanceController::class, 'updateTransaction'])->whereNumber('transaction')->middleware('throttle:600,1')->name('finance.transactions.update');
-        Route::delete('/finance/transactions/{transaction}', [FinanceController::class, 'destroyTransaction'])->whereNumber('transaction')->middleware('throttle:600,1')->name('finance.transactions.destroy');
-        Route::post('/finance/transactions/{id}/restore', [FinanceController::class, 'restoreTransaction'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.transactions.restore');
-        Route::delete('/finance/transactions/{id}/force', [FinanceController::class, 'forceDeleteTransaction'])->whereNumber('id')->middleware('throttle:600,1')->name('finance.transactions.force');
-        Route::post('/finance/transactions/{transaction}/receipts', [FinanceController::class, 'attachReceipt'])->whereNumber('transaction')->middleware('throttle:1200,1')->name('finance.transactions.receipts.store');
-        Route::get('/finance/transactions/{transaction}/receipts/{receipt}/raw', [FinanceController::class, 'receiptRaw'])->whereNumber('transaction')->middleware('throttle:3000,1')->name('finance.transactions.receipts.raw');
-        Route::delete('/finance/transactions/{transaction}/receipts/{receipt}', [FinanceController::class, 'destroyReceipt'])->whereNumber('transaction')->middleware('throttle:600,1')->name('finance.transactions.receipts.destroy');
-    });
+    // Have I Been Pwned k-anonymity range proxy (only a 5-char SHA-1 prefix is
+    // ever sent; SSRF-guarded; nothing stored).
+    Route::get('/passwords/breach', [PasswordBreachController::class, 'range'])->middleware('throttle:300,1')->name('passwords.breach');
+    // Public 2fa.directory dataset (server-cached; leaks nothing about the vault):
+    // domains that support app 2FA, so the client can hint where to add a code.
+    Route::get('/passwords/tfa-directory', [TwoFactorDirectoryController::class, 'index'])->middleware('throttle:120,1')->name('passwords.tfa');
+    // Health: zero-knowledge, records (measurements + profile) in the opaque /store manifest.
+    Route::view('/health', 'health.index')->middleware('module:health')->name('health.index');
+    // Invoices: zero-knowledge, records in the opaque /store manifest. The per-user
+    // company profile (printed on invoices) is plaintext in the user's settings.
+    Route::view('/finance', 'invoices.index')->middleware('module:finance')->name('finance.index');
     Route::redirect('/invoices', '/finance'); // old bookmarks
-
-    // Per-user company profile + invoice defaults (printed on every invoice).
     Route::get('/settings/company', [SettingsCompanyController::class, 'edit'])->name('settings.company.edit');
     Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
     Route::get('/settings/company/logo', [SettingsCompanyController::class, 'logo'])->name('settings.company.logo');
-
+    // Contacts: zero-knowledge, records in the opaque /store manifest; only the
+    // optional avatar images are opaque content blobs (contacts/{blob}).
+    Route::view('/contacts', 'contacts.index')->middleware('module:contacts')->name('contacts.index');
+    Route::get('/contacts/usage', [ContactBlobController::class, 'usage'])->name('contacts.usage');
+    Route::post('/contacts/blobs/reconcile', [ContactBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('contacts.blobs.reconcile');
+    Route::post('/contacts/upload', [ContactBlobController::class, 'upload'])->middleware('throttle:600,1')->name('contacts.upload');
+    Route::get('/contacts/raw/{blob}', [ContactBlobController::class, 'raw'])->middleware('throttle:600,1')->name('contacts.raw');
+    Route::delete('/contacts/blob/{blob}', [ContactBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('contacts.blob.destroy');
+    // Client-relayed birthday/anniversary alert (ZK: the client detects the due
+    // date; the server only forwards to the user's chosen channels).
+    Route::post('/contacts/notify', [ContactNotifyController::class, 'send'])->middleware('throttle:60,1')->name('contacts.notify');
+    // Explore (map/GPS): the records (tracks, couplings, tolerances) live in the
+    // opaque `explore` module store (GET/PUT /store/explore); only the optional
+    // raw track files are opaque content blobs (explore/{blob}). Same
+    // controller-reuse, owner-scoped, zero-knowledge as the contacts blobs.
+    Route::get('/explore', ExploreController::class)->middleware('module:explore')->name('explore');
+    Route::get('/explore/usage', [ExploreBlobController::class, 'usage'])->name('explore.usage');
+    Route::post('/explore/blobs/reconcile', [ExploreBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('explore.blobs.reconcile');
+    Route::post('/explore/upload', [ExploreBlobController::class, 'upload'])->middleware('throttle:600,1')->name('explore.upload');
+    Route::get('/explore/raw/{blob}', [ExploreBlobController::class, 'raw'])->middleware('throttle:600,1')->name('explore.raw');
+    Route::delete('/explore/blob/{blob}', [ExploreBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('explore.blob.destroy');
+    // Explore tour-planner auto-routing: snap clicked waypoints to real paths via
+    // an OSRM-compatible upstream (SSRF-guarded, coordinates never logged/persisted,
+    // clean {geometry:null} when the upstream is unset/unreachable). User-initiated,
+    // opt-in egress — same class as the gallery place-picker geocoding.
+    Route::get('/maps/route', [MapController::class, 'route'])->middleware('throttle:180,1')->name('maps.route');
+    // Resolve a Google-Maps short link (maps.app.goo.gl/…) to coordinates for the
+    // Explore search. Google-hosts-only egress, link never logged; same opt-in class.
+    Route::get('/maps/resolve', [MapController::class, 'resolve'])->middleware('throttle:30,1')->name('maps.resolve');
     // Paperless transfer modal: cached quick-pick terms, term creation and
-    // document upload (used from the Finance receipt browser).
+    // document upload (shared by mail attachments and the file browser).
     Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');
     Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->name('paperless.terms.create');
     Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->name('paperless.documents');
+
+    // -----------------------------------------------------------------------
+    // Shared password-Tresor API (zero-knowledge vault sharing).
+    //
+    // Identity keypair: write-once publish so the owner can later receive
+    // wrapped vault keys from vault managers. The server only stores the public
+    // half + the client-wrapped secret key (ciphertext at rest).
+    //
+    // Vault lifecycle: create → sealed store at v0 + active manager membership;
+    // resolve-recipient → manage-gated public-key lookup (rate-limited);
+    // members: pending invite → accept → active; manager can update role or
+    // remove member.
+    //
+    // The vault store uses the same optimistic-concurrency protocol as the
+    // personal store (GET/PUT returns {sealed_manifest, version}).
+    // -----------------------------------------------------------------------
+
+    // Identity keypair (write-once, idempotent re-publish of same key).
+    Route::get('/vaults/keys', [UserKeyController::class, 'show'])
+        ->middleware('throttle:240,1')
+        ->name('user.keys.show');
+    Route::put('/vaults/keys', [UserKeyController::class, 'store'])
+        ->middleware('throttle:30,1')
+        ->name('user.keys.store');
+
+    // Vault container management.
+    Route::get('/vaults', [SharedVaultController::class, 'index'])->name('vaults.index');
+    Route::post('/vaults', [SharedVaultController::class, 'store'])
+        ->middleware('throttle:60,1')
+        ->name('vaults.store');
+
+    // Per-vault sealed manifest store (optimistic-lock read/write).
+    Route::get('/vaults/{vault}/store', [SharedVaultStoreController::class, 'show'])
+        ->name('vaults.storeShow');
+    Route::put('/vaults/{vault}/store', [SharedVaultStoreController::class, 'save'])
+        ->middleware('throttle:600,1')
+        ->name('vaults.storeSave');
+
+    // Manage-gated recipient key lookup (rate-limited per-user).
+    Route::post('/vaults/{vault}/resolve-recipient', [SharedVaultController::class, 'resolveRecipient'])
+        ->middleware('throttle:pubkey-lookup')
+        ->name('vaults.resolveRecipient');
+
+    // Membership management.
+    Route::post('/vaults/{vault}/members', [SharedVaultMemberController::class, 'store'])
+        ->middleware('throttle:30,1')
+        ->name('vaults.members.store');
+    Route::post('/vaults/{vault}/members/{member}/accept', [SharedVaultMemberController::class, 'accept'])
+        ->middleware('throttle:30,1')
+        ->name('vaults.members.accept');
+    Route::patch('/vaults/{vault}/members/{member}', [SharedVaultMemberController::class, 'update'])
+        ->middleware('throttle:30,1')
+        ->name('vaults.members.update');
+    Route::delete('/vaults/{vault}/members/{member}', [SharedVaultMemberController::class, 'destroy'])
+        ->middleware('throttle:60,1')
+        ->name('vaults.members.destroy');
+
+    // Vault member list (manage-gated).
+    Route::get('/vaults/{vault}/members', [SharedVaultMemberController::class, 'index'])
+        ->middleware('throttle:60,1')
+        ->name('vaults.members.index');
+
+    // Cryptographic key rotation (atomic member removal + manifest re-seal).
+    Route::post('/vaults/{vault}/rotate', [SharedVaultController::class, 'rotate'])
+        ->middleware('throttle:30,1')
+        ->name('vaults.rotate');
+
+    // Vault deletion (manager only; cascades members + store).
+    Route::delete('/vaults/{vault}', [SharedVaultController::class, 'destroy'])
+        ->middleware('throttle:30,1')
+        ->name('vaults.destroy');
+
+    // Shared-folder blob store: member-scoped upload/download/delete/reconcile.
+    // Read (view) requires viewer+; mutations (upload/delete/reconcile) require editor+.
+    Route::prefix('vaults/{vault}/blobs')->name('vaults.blobs.')->group(function (): void {
+        Route::get('/usage', [SharedFolderBlobController::class, 'usage'])->name('usage');
+        Route::post('/reconcile', [SharedFolderBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('reconcile');
+        Route::post('/upload', [SharedFolderBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('upload');
+        Route::post('/upload/init', [SharedFolderBlobController::class, 'chunkInit'])->middleware('throttle:600,1')->name('upload.init');
+        Route::post('/upload/part', [SharedFolderBlobController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('upload.part');
+        Route::post('/upload/complete', [SharedFolderBlobController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('upload.complete');
+        Route::post('/upload/abort', [SharedFolderBlobController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('upload.abort');
+        Route::get('/raw/{blob}', [SharedFolderBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('raw');
+        Route::delete('/{blob}', [SharedFolderBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('destroy');
+    });
 });

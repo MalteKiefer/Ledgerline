@@ -100,7 +100,7 @@ return [
     'devices_wipe_pending' => 'wipe pending',
 
     'export_heading' => 'Export my data',
-    'export_hint' => 'Download a copy of your data as JSON.',
+    'export_hint' => 'Download a copy of your data (one JSON file per module).',
     'export_button' => 'Download my data',
 
     'delete_heading' => 'Delete account',

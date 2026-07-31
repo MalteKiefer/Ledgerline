@@ -1,5 +1,5 @@
 // Bank-statement parsing for the Finance module. Pure + testable — all statement
-// parsing runs client-side; the parsed transactions are then persisted over REST.
+// parsing runs client-side (zero-knowledge); the server never sees the transactions.
 // Hybrid strategy: auto-detect the well-known formats (MT940, and CSVs whose header we
 // recognise), and fall back to a user-driven column mapping for any other CSV.
 //

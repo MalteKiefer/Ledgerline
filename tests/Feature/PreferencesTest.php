@@ -42,7 +42,7 @@ class PreferencesTest extends TestCase
     {
         $user = $this->signIn();
         UserSetting::for($user->id)->update(['unit_elevation' => 'ft']);
-        $this->get(route('finance.index'))->assertOk()->assertSee('name="ll-prefs"', false)->assertSee('&quot;elevation&quot;:&quot;ft&quot;', false);
+        $this->get(route('dashboard'))->assertOk()->assertSee('name="ll-prefs"', false)->assertSee('&quot;elevation&quot;:&quot;ft&quot;', false);
     }
 
     public function test_me_endpoint_carries_preferences(): void

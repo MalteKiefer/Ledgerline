@@ -5,7 +5,7 @@
         ->filter(fn ($i) => ! isset($i['module']) || (auth()->user()?->canModule($i['module']) ?? true))
         ->map(fn ($i) => [
             'label' => __($i['label']),
-            'url' => route($i['route']).($i['fragment'] ?? ''),
+            'url' => route($i['route']),
             'active' => request()->routeIs($i['pattern']),
             'icon' => $i['icon'],
         ]);
@@ -16,9 +16,8 @@
 @endphp
 <nav class="mx-auto hidden w-full max-w-[1700px] items-center justify-between px-4 py-3 sm:flex sm:w-[92%] sm:px-6">
     <div class="flex items-center gap-8">
-        <a href="{{ route('finance.index') }}" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Ledgerline</a>
+        <a href="{{ route('dashboard') }}" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Ledgerline</a>
         @auth
-            @if ($primary->isNotEmpty() || $more->isNotEmpty())
             <div class="flex items-center gap-1">
                 @foreach ($primary as $item)
                     <a href="{{ $item['url'] }}"
@@ -31,7 +30,6 @@
                         {{ $item['label'] }}
                     </a>
                 @endforeach
-                @if ($more->isNotEmpty())
                 <div class="relative" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
                     <button type="button" @click="open = ! open"
                         @class([
@@ -57,9 +55,7 @@
                         @endforeach
                     </div>
                 </div>
-                @endif
             </div>
-            @endif
         @endauth
     </div>
 
@@ -73,6 +69,16 @@
                 </button>
                 <x-notification-panel />
             </div>
+
+            {{-- Vault lock toggle (system-wide): unlocked = click to lock; locked = click to open vault panel --}}
+            <button type="button"
+                @click="$store.vault.unlocked ? $store.vault.lock() : $dispatch('vault-panel')"
+                :title="$store.vault.unlocked ? @js(__('vault.unlocked')) : @js(__('vault.unlock'))"
+                :aria-label="$store.vault.unlocked ? @js(__('vault.unlocked')) : @js(__('vault.unlock'))"
+                class="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-600 dark:text-gray-400 hover:bg-accent/5">
+                <span x-show="$store.vault.unlocked"><x-icon name="lock-open" class="h-5 w-5" /></span>
+                <span x-show="! $store.vault.unlocked"><x-icon name="lock-closed" class="h-5 w-5" /></span>
+            </button>
 
             <div class="relative" x-data="{ open: false }">
                 <button type="button" @click="open = ! open" @keydown.escape="open = false"
@@ -98,7 +104,8 @@
                         @endif
                     </div>
                     {{-- Theme + language live on the profile Appearance sub-page now. --}}
-                    <form method="POST" action="{{ route('logout') }}" class="border-t border-black/[0.06] dark:border-white/10 py-1">
+                    {{-- Drop the cached zero-knowledge vault key at logout time. --}}
+                    <form method="POST" action="{{ route('logout') }}" @submit="window.Vault && window.Vault.lock()" class="border-t border-black/[0.06] dark:border-white/10 py-1">
                         @csrf
                         <button type="submit" class="flex w-full items-center gap-2.5 px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 transition hover:bg-red-500/10"><x-icon name="arrow-uturn-left" class="h-4 w-4" />{{ __('messages.menu.logout') }}</button>
                     </form>

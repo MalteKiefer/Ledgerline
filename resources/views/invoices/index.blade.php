@@ -5,6 +5,7 @@
 @endphp
 <x-layouts.app :title="__('messages.nav.finance')">
   <div x-data="invoices({
+        token: '{{ csrf_token() }}',
         company: @js([
             'name' => $s->company_name,
             'address' => $s->company_address,
@@ -28,8 +29,10 @@
             'template' => $s->invoice_template ?: 'editorial',
             'currency' => 'EUR',
         ]),
-        smallBusiness: @js((bool) $s->small_business),
         labelsByLang: @js(['de' => __('invoices', [], 'de'), 'en' => __('invoices', [], 'en')]),
+        uploadUrl: '{{ url('/invoices/upload') }}',
+        rawBase: '{{ url('/invoices/raw') }}',
+        reconcileUrl: '{{ url('/invoices/blobs/reconcile') }}',
         iconUrl: '{{ url('/passwords/icon') }}',
         fxRates: @js($fxRates),
      }, {
@@ -52,7 +55,6 @@
         version_paid: @js(__('invoices.version_paid')),
         version_sent: @js(__('invoices.version_sent')),
         trashConfirm: @js(__('invoices.trash_confirm')),
-        delete_failed: @js(__('invoices.delete_failed')),
         paperlessWarn: @js(__('files.paperless_decrypt_warn')),
         pay_invalid: @js(__('invoices.pay_invalid')),
         pay_delete_confirm: @js(__('invoices.pay_delete_confirm')),
@@ -102,36 +104,31 @@
         txtype_fee: @js(__('invoices.txtype_fee')),
         txtype_transfer: @js(__('invoices.txtype_transfer')),
         txtype_other: @js(__('invoices.txtype_other')),
-        cats_delete_confirm: @js(__('invoices.cats_delete_confirm')),
-        email_send: @js(__('invoices.email_send')),
-        email_sent: @js(__('invoices.email_sent')),
-        email_failed: @js(__('invoices.email_failed')),
-        email_no_pdf: @js(__('invoices.email_no_pdf')),
-        email_no_recipient: @js(__('invoices.email_no_recipient')),
-        email_no_smtp: @js(__('invoices.email_no_smtp')),
-        email_to: @js(__('invoices.email_to')),
-        storno_confirm: @js(__('invoices.storno_confirm')),
-        storno_created: @js(__('invoices.storno_created')),
-        storno_failed: @js(__('invoices.storno_failed')),
-        storno_not_finalized: @js(__('invoices.storno_not_finalized')),
-        storno_already: @js(__('invoices.storno_already')),
-        storno_is_credit: @js(__('invoices.storno_is_credit')),
-        dun_sent: @js(__('invoices.dun_sent')),
-        dun_failed: @js(__('invoices.dun_failed')),
-        dun_not_overdue: @js(__('invoices.dun_not_overdue')),
-     }, @js([
-        'invoices' => $invoices,
-        'partners' => $partners,
-        'paymentMethods' => $paymentMethods,
-        'projects' => $projects,
-        'financeCategories' => $financeCategories,
-        'transactions' => $transactions,
-     ]))">
+     })">
+
+    {{-- Zero-knowledge gate: invoices decrypt with the vault key. --}}
+    @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
 
     {{-- Shared Paperless transfer modal (send a receipt to Paperless) --}}
     @include('_paperless_modal')
 
-    <div>
+    <template x-if="state === 'locked'">
+      <div class="mx-auto mt-16 max-w-md ll-card !p-8 text-center">
+        <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
+        <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
+           x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
+        <x-button variant="primary" class="mt-5" icon="lock-open" @click="$dispatch('vault-panel')">
+          <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
+        </x-button>
+      </div>
+    </template>
+
+    <template x-if="state === 'error'">
+      <p class="mx-auto mt-16 max-w-md rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-6 text-center text-sm text-red-700 dark:text-red-300">{{ __('invoices.save_failed') }}</p>
+    </template>
+
+    <template x-if="state === 'ready'">
+      <div>
         {{-- ===================== FINANCE HUB (tabs) ===================== --}}
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('messages.nav.finance') }}</h1>
@@ -201,40 +198,13 @@
 
           {{-- VAT advance return (Umsatzsteuer-Voranmeldung) for the current year --}}
           <div class="ll-card mt-4 !p-0 overflow-hidden">
-            <div class="flex items-center justify-between gap-2 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-              <div class="flex items-center gap-2">
-                <span class="ll-chip h-7 w-7 rounded-lg" style="background:#e2915a"><x-icon name="receipt-percent" class="h-4 w-4 text-white" /></span>
-                <div>
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.vat_title') }}</h3>
-                  <p class="text-xs text-gray-400 dark:text-gray-500" x-text="vatReturn.year + ' · ' + vatReturn.count + ' {{ __('invoices.invoice_count') }}'"></p>
-                </div>
+            <div class="flex items-center gap-2 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+              <span class="ll-chip h-7 w-7 rounded-lg" style="background:#e2915a"><x-icon name="receipt-percent" class="h-4 w-4 text-white" /></span>
+              <div>
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.vat_title') }}</h3>
+                <p class="text-xs text-gray-400 dark:text-gray-500" x-text="vatReturn.year + ' · ' + vatReturn.count + ' {{ __('invoices.invoice_count') }}'"></p>
               </div>
-              {{-- Quarter selector for the unified payable (Zahllast) --}}
-              <select x-model="vatQuarter" class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] px-2 py-1 text-xs">
-                <option value="">{{ __('invoices.vat_full_year') }}</option>
-                <option value="1">Q1</option><option value="2">Q2</option><option value="3">Q3</option><option value="4">Q4</option>
-              </select>
             </div>
-            {{-- Unified Zahllast band: Umsatzsteuer − Vorsteuer = payable (server-computed) --}}
-            <template x-if="vatAdvance">
-              <div class="grid grid-cols-1 divide-y divide-black/[0.06] dark:divide-white/10 border-b border-black/[0.06] dark:border-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0 bg-accent/5">
-                <div class="px-5 py-4">
-                  <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_output') }}</p>
-                  <p class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(vatAdvance.outputVat)"></p>
-                </div>
-                <div class="px-5 py-4">
-                  <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_input') }}</p>
-                  <p class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(vatAdvance.inputVat)"></p>
-                </div>
-                <div class="px-5 py-4">
-                  <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_payable') }}</p>
-                  <p class="mt-1 text-lg font-semibold tabular-nums text-accent" x-text="fmtMoney(vatAdvance.payable)"></p>
-                </div>
-              </div>
-            </template>
-            <template x-if="smallBusiness">
-              <div class="border-b border-black/[0.06] dark:border-white/10 px-5 py-2 text-xs text-gray-500 dark:text-gray-400">{{ __('invoices.vat_kleinunternehmer_note') }}</div>
-            </template>
             {{-- Net / VAT / gross totals --}}
             <div class="grid grid-cols-1 divide-y divide-black/[0.06] dark:divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
               <div class="px-5 py-4">
@@ -284,37 +254,6 @@
               </div>
             </div>
           </div>
-
-          {{-- Open-items aging (server-computed, best-effort) --}}
-          <template x-if="aging">
-            <div class="ll-card mt-4 !p-0 overflow-hidden">
-              <div class="flex items-center justify-between gap-2 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-                <div class="flex items-center gap-2">
-                  <span class="ll-chip h-7 w-7 rounded-lg" style="background:#d9a441"><x-icon name="clock" class="h-4 w-4 text-white" /></span>
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.aging_title') }}</h3>
-                </div>
-                <p class="text-xs text-gray-400 dark:text-gray-500">
-                  <span>{{ __('invoices.aging_open_total') }}:</span>
-                  <span class="font-semibold tabular-nums text-gray-700 dark:text-gray-300" x-text="fmtMoney(aging.openGross)"></span>
-                  <span x-text="'(' + aging.openCount + ')'"></span>
-                </p>
-              </div>
-              <div class="grid grid-cols-2 divide-y divide-black/[0.06] dark:divide-white/10 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
-                <template x-for="b in [
-                  { key: 'current', label: @js(__('invoices.aging_current')) },
-                  { key: '1_30', label: @js(__('invoices.aging_1_30')) },
-                  { key: '31_60', label: @js(__('invoices.aging_31_60')) },
-                  { key: '60_plus', label: @js(__('invoices.aging_60plus')) },
-                ]" :key="b.key">
-                  <div class="px-5 py-4">
-                    <p class="text-xs text-gray-400 dark:text-gray-500" x-text="b.label"></p>
-                    <p class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney((aging.buckets[b.key] || {}).gross || 0)"></p>
-                    <p class="text-[11px] text-gray-400 dark:text-gray-500" x-text="((aging.buckets[b.key] || {}).count || 0) + ' {{ __('invoices.invoice_count') }}'"></p>
-                  </div>
-                </template>
-              </div>
-            </div>
-          </template>
         </div>
 
         {{-- ===================== RECEIPTS (document manager) ===================== --}}
@@ -504,7 +443,7 @@
                             <x-icon name="arrow-path" class="h-4 w-4" />{{ __('invoices.receipt_reanalyze') }}
                           </button>
                         </template>
-                        <template x-if="receiptDoc.r.blob_path && $store.paperless.configured">
+                        <template x-if="receiptDoc.r.blob && $store.paperless.configured">
                           <button type="button" @click="menu = false; sendReceiptToPaperless(receiptDoc)" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5 hover:text-accent">
                             <x-icon name="share" class="h-4 w-4" />{{ __('paperless.send_to_paperless') }}
                           </button>
@@ -526,8 +465,8 @@
                         <template x-if="docPreview && docPreviewIsImage"><div class="flex h-full w-full items-center justify-center p-2"><img :src="docPreview.url" class="max-h-full max-w-full object-contain" alt="preview"></div></template>
                         <template x-if="! docPreview">
                           <div class="flex h-full w-full items-center justify-center p-4 text-center text-xs text-gray-400">
-                            <span x-show="receiptDoc?.r?.blob_path">{{ __('invoices.assign_preview_loading') }}</span>
-                            <span x-show="! receiptDoc?.r?.blob_path" x-cloak>{{ __('invoices.receipt_no_preview') }}</span>
+                            <span x-show="receiptDoc?.r?.blob">{{ __('invoices.assign_preview_loading') }}</span>
+                            <span x-show="! receiptDoc?.r?.blob" x-cloak>{{ __('invoices.receipt_no_preview') }}</span>
                           </div>
                         </template>
                       </div>
@@ -567,7 +506,7 @@
                     {{-- Tax rate (VAT) — stored on the linked booking; the receipt's detected rate is shown as a hint --}}
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_vat_label') }}</label>
-                      <select x-model="receiptDoc.tx.vatCat" @change="_persistTx(receiptDoc.tx)" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <select x-model="receiptDoc.tx.vatCat" @change="_save()" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
                         <option value="">{{ __('invoices.vatcat_none') }}</option>
                         <option value="19">{{ __('invoices.vatcat_19') }}</option>
                         <option value="16">{{ __('invoices.vatcat_16') }}</option>
@@ -1018,7 +957,6 @@
                   <dl class="mt-3 space-y-2 text-sm">
                     <div x-show="openPartnerRec.vatId"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_vat') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.vatId"></dd></div>
                     <div x-show="openPartnerRec.email"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.email" class="text-accent hover:underline" x-text="openPartnerRec.email"></a></dd></div>
-                    <div x-show="openPartnerRec.invoiceEmail"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_invoice_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.invoiceEmail" class="text-accent hover:underline" x-text="openPartnerRec.invoiceEmail"></a></dd></div>
                     <div x-show="openPartnerRec.phone"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_phone') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.phone"></dd></div>
                     <div x-show="openPartnerRec.url"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_url') }}</dt><dd><a :href="openPartnerRec.url" target="_blank" rel="noopener" class="text-accent hover:underline break-all" x-text="openPartnerRec.url"></a></dd></div>
                     <div x-show="openPartnerRec.address"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_address') }}</dt><dd class="whitespace-pre-line text-gray-800 dark:text-gray-200" x-text="openPartnerRec.address"></dd></div>
@@ -1108,11 +1046,6 @@
                       </div>
                     </div>
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_invoice_email') }}</label>
-                      <input type="email" x-model="partnerEditing.invoiceEmail" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                      <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{{ __('invoices.partner_invoice_email_hint') }}</p>
-                    </div>
-                    <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_vat') }}</label>
                       <input type="text" x-model="partnerEditing.vatId" placeholder="DE…" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums">
                     </div>
@@ -1168,53 +1101,6 @@
           </template>
           <template x-if="statsKpis.count || statsYear !== {{ (int) date('Y') }} || projects.length">
             <div>
-              {{-- EÜR: simplified cash-basis income − expenses = profit (server-computed) --}}
-              <template x-if="euer">
-                <div class="mb-6">
-                  <div class="mb-2 flex items-center justify-between gap-2 px-1">
-                    <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.euer_title') }}</h2>
-                    <select x-model.number="euerYear" class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] px-2 py-1 text-xs">
-                      <template x-for="y in statsYears" :key="y"><option :value="y" x-text="y"></option></template>
-                    </select>
-                  </div>
-                  <div class="grid grid-cols-3 gap-4">
-                    <div class="ll-card">
-                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.euer_income') }}</p>
-                      <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(euer.income.total)"></p>
-                    </div>
-                    <div class="ll-card">
-                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.euer_expenses') }}</p>
-                      <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(euer.expenses.total)"></p>
-                    </div>
-                    <div class="ll-card">
-                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.euer_profit') }}</p>
-                      <p class="mt-2 text-2xl font-semibold tabular-nums" :class="euer.profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" x-text="fmtMoney(euer.profit)"></p>
-                    </div>
-                  </div>
-                  <template x-if="euer.expenses.byCategory.length">
-                    <div class="ll-card mt-4">
-                      <p class="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.euer_expenses') }} · {{ __('invoices.euer_by_category') }}</p>
-                      <div class="space-y-2">
-                        <template x-for="c in euer.expenses.byCategory" :key="c.name">
-                          <div>
-                            <div class="flex items-baseline justify-between gap-2">
-                              <span class="truncate text-sm text-gray-800 dark:text-gray-200" x-text="c.name" :title="c.name"></span>
-                              <span class="shrink-0 text-sm tabular-nums text-gray-600 dark:text-gray-300" x-text="fmtMoney(c.amount)"></span>
-                            </div>
-                            <div class="mt-1 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                              <div class="h-full ll-accent" :style="{ width: Math.round(Math.abs(c.amount) / euerExpensePeak * 100) + '%' }"></div>
-                            </div>
-                          </div>
-                        </template>
-                      </div>
-                    </div>
-                  </template>
-                  <template x-if="! euer.income.total && ! euer.expenses.total">
-                    <p class="px-1 text-sm text-gray-400 dark:text-gray-500">{{ __('invoices.euer_empty') }}</p>
-                  </template>
-                </div>
-              </template>
-
               {{-- Project costs, clearly split business vs private (scope-aware) --}}
               <template x-if="projects.length">
                 <div>
@@ -1324,142 +1210,37 @@
           </template>
         </div>
 
-        {{-- ===================== CATEGORIES ===================== --}}
-        @php
-            $catIcons = ['hashtag', 'tag', 'banknotes', 'credit-card', 'wallet', 'building-library',
-                'receipt-percent', 'chart-bar', 'arrow-trending-up', 'arrow-trending-down',
-                'globe', 'globe-alt', 'home', 'camera', 'photo', 'film', 'bell', 'bookmark',
-                'star', 'heart', 'calendar', 'clock', 'document', 'document-text',
-                'document-duplicate', 'folder', 'inbox-stack', 'archive-box', 'server', 'key',
-                'lock-closed', 'shield', 'shield-check', 'wifi', 'command-line', 'beaker',
-                'thermometer', 'scale', 'cake', 'sparkles', 'map-pin', 'map', 'route',
-                'paperclip', 'paper-clip', 'envelope', 'printer', 'users', 'user-group',
-                'sun', 'moon'];
-        @endphp
-        <div x-show="section === 'settings'" class="mt-6 mx-auto max-w-3xl">
-          <div class="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.cats_title') }}</h2>
-              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.cats_intro') }}</p>
-            </div>
-            <x-button variant="primary" icon="plus" size="sm" @click="openNewCategory()">{{ __('invoices.cats_add') }}</x-button>
-          </div>
-
-          <div class="ll-card !p-0 overflow-hidden">
-            <div class="overflow-x-auto">
-              <table class="w-full text-sm">
-                <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                  <tr>
-                    <th class="px-4 py-2.5">{{ __('invoices.cats_name') }}</th>
-                    <th class="px-4 py-2.5">{{ __('invoices.cat_color') }}</th>
-                    <th class="px-4 py-2.5">{{ __('invoices.cat_icon') }}</th>
-                    <th class="px-4 py-2.5 text-right">{{ __('invoices.col_actions') }}</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
-                  {{-- Built-in default suggestions — read-only rows with a "Standard" badge --}}
-                  <template x-for="c in sortedCatSuggestions" :key="'def-'+c">
-                    <tr class="group hover:bg-accent/5">
-                      <td class="px-4 py-2.5">
-                        <div class="flex items-center gap-3">
-                          <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="background:#6b7280"><x-icon name="hashtag" class="h-4 w-4 text-white" /></span>
-                          <button type="button" @click="editDefault(c)" class="min-w-0 truncate text-left text-gray-800 dark:text-gray-200 hover:text-accent" x-text="c"></button>
-                        </div>
-                      </td>
-                      <td class="px-4 py-2.5"><span class="inline-block h-4 w-4 rounded-full border border-black/10 dark:border-white/20" style="background:#6b7280"></span></td>
-                      <td class="px-4 py-2.5 font-mono text-xs text-gray-400 dark:text-gray-500">hashtag</td>
-                      <td class="px-4 py-2.5">
-                        <div class="flex items-center justify-end gap-1">
-                          <x-badge variant="gray">{{ __('invoices.cats_default') }}</x-badge>
-                          <x-icon-button name="pencil" tone="gray" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="editDefault(c)" :aria-label="__('invoices.cat_edit')" />
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                  {{-- Custom categories --}}
-                  <template x-for="c in pagedCategories" :key="c.id">
-                    <tr class="group hover:bg-accent/5">
-                      <td class="px-4 py-2.5">
-                        <div class="flex items-center gap-3">
-                          <span class="ll-chip h-8 w-8 rounded-lg shrink-0" :style="{ background: catColor(c) }">@include('invoices._category_icon', ['expr' => 'catIcon(c)', 'cls' => 'h-4 w-4 text-white'])</span>
-                          <button type="button" @click="editCategory(c)" class="min-w-0 truncate text-left text-gray-800 dark:text-gray-200 hover:text-accent" x-text="c.name"></button>
-                        </div>
-                      </td>
-                      <td class="px-4 py-2.5">
-                        <div class="flex items-center gap-2">
-                          <span class="inline-block h-4 w-4 rounded-full border border-black/10 dark:border-white/20" :style="{ background: catColor(c) }"></span>
-                          <span class="font-mono text-xs text-gray-400 dark:text-gray-500" x-text="catColor(c)"></span>
-                        </div>
-                      </td>
-                      <td class="px-4 py-2.5 font-mono text-xs text-gray-400 dark:text-gray-500" x-text="catIcon(c)"></td>
-                      <td class="px-4 py-2.5">
-                        <div class="flex items-center justify-end gap-1">
-                          <x-icon-button name="pencil" tone="gray" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="editCategory(c)" :aria-label="__('invoices.cat_edit')" />
-                          <x-icon-button name="trash" tone="red" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="removeFinanceCategory(c)" :aria-label="__('common.delete')" />
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-            <template x-if="! sortedFinanceCategories.length">
-              <x-empty-state icon="hashtag" class="py-8">{{ __('invoices.cats_empty') }}</x-empty-state>
+        {{-- ===================== SETTINGS (partners + categories) — iOS grouped lists ===================== --}}
+        <div x-show="section === 'settings'" class="mt-6 mx-auto max-w-2xl">
+          {{-- Categories --}}
+          <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.cats_title') }}</h2>
+          <p class="mb-2 px-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.cats_intro') }}</p>
+          <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
+            {{-- Built-in default categories (not removable) — shown in full, no pagination --}}
+            <template x-for="c in sortedCatSuggestions" :key="'def-'+c">
+              <div class="flex items-center gap-3 px-4 py-2.5">
+                <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #e2915a"><x-icon name="hashtag" class="h-4 w-4" /></span>
+                <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="c"></span>
+                <x-badge variant="gray">{{ __('invoices.cats_default') }}</x-badge>
+              </div>
             </template>
+            {{-- Custom categories (removable) --}}
+            <template x-for="c in pagedCategories" :key="c.name">
+              <div class="group flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5">
+                <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #59ad6b"><x-icon name="hashtag" class="h-4 w-4" /></span>
+                <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="c.name"></span>
+                <x-icon-button name="trash" tone="red" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="removeFinanceCategory(c)" :aria-label="__('common.delete')" />
+              </div>
+            </template>
+            {{-- Add row --}}
+            <form @submit.prevent="addFinanceCategory(newCategoryName)" class="flex items-center gap-3 px-4 py-2.5">
+              <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #7066f5"><x-icon name="plus" class="h-4 w-4" /></span>
+              <input type="text" x-model="newCategoryName" placeholder="{{ __('invoices.cats_add_ph') }}" class="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm focus:ring-0">
+              <x-button variant="secondary" size="sm" type="submit" ::disabled="! newCategoryName.trim()">{{ __('invoices.cats_add') }}</x-button>
+            </form>
             <template x-if="(financeCategories || []).length > catPerPage">
               @include('invoices._pagination', ['page' => 'catPage', 'perPage' => 'catPerPage', 'pageCount' => 'catPageCount', 'setPerPage' => 'setCatPerPage', 'goto' => 'catGoto'])
             </template>
-          </div>
-
-          {{-- Category editor (create / edit) --}}
-          <div x-show="catEditing" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelCategory()">
-            <div class="absolute inset-0 bg-gray-900/50" @click="cancelCategory()"></div>
-            <div class="relative flex max-h-[88vh] w-full max-w-md flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
-              <template x-if="catEditing">
-                <div class="flex min-h-0 flex-col">
-                  <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <div class="flex items-center gap-2.5">
-                      <span class="ll-chip h-8 w-8 rounded-xl" :style="{ background: catEditing?.color || '#6b7280' }">@include('invoices._category_icon', ['expr' => 'catEditing?.icon', 'cls' => 'h-4.5 w-4.5 text-white'])</span>
-                      <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="catEditing?.id ? '{{ __('invoices.cat_edit') }}' : '{{ __('invoices.cats_add') }}'"></h3>
-                    </div>
-                    <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelCategory()" :aria-label="__('common.close')" />
-                  </div>
-                  <div class="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4">
-                    <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.cats_name') }} <span class="text-red-500">*</span></label>
-                      <input type="text" x-model="catEditing.name" placeholder="{{ __('invoices.cats_add_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm" @keydown.enter.prevent="saveCategory()">
-                    </div>
-                    <div>
-                      <label class="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.cat_color') }}</label>
-                      <div class="flex flex-wrap gap-2">
-                        <template x-for="col in catColorOptions" :key="col">
-                          <button type="button" @click="catEditing.color = col" :style="{ background: col }"
-                            class="h-8 w-8 rounded-full border border-black/10 dark:border-white/20 transition"
-                            :class="catEditing.color === col ? 'ring-2 ring-offset-2 ring-accent dark:ring-offset-[#1c1c1e]' : ''"
-                            :aria-label="col"></button>
-                        </template>
-                      </div>
-                    </div>
-                    <div>
-                      <label class="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.cat_icon') }}</label>
-                      <div class="grid grid-cols-8 gap-1.5">
-                        @foreach ($catIcons as $ic)
-                          <button type="button" @click="catEditing.icon = '{{ $ic }}'" title="{{ $ic }}"
-                            class="flex h-9 items-center justify-center rounded-lg border border-black/[0.06] dark:border-white/10 text-gray-600 dark:text-gray-300 transition hover:bg-accent/5"
-                            :class="catEditing.icon === '{{ $ic }}' ? 'ring-2 ring-accent bg-accent/10 text-accent' : ''">
-                            <x-icon name="{{ $ic }}" class="h-4 w-4" />
-                          </button>
-                        @endforeach
-                      </div>
-                    </div>
-                  </div>
-                  <div class="flex items-center justify-end gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <x-button variant="secondary" @click="cancelCategory()">{{ __('common.cancel') }}</x-button>
-                    <x-button variant="primary" @click="saveCategory()" ::disabled="! catEditing.name.trim()">{{ __('common.save') }}</x-button>
-                  </div>
-                </div>
-              </template>
-            </div>
           </div>
 
         </div>
@@ -1496,8 +1277,7 @@
                 <template x-for="pm in scopedPayments" :key="pm.id">
                   <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5"
                        :class="pm.type === 'bank' && 'cursor-pointer'"
-                       :role="pm.type === 'bank' ? 'button' : null" :tabindex="pm.type === 'bank' ? '0' : null"
-                       @click="pm.type === 'bank' && openAccount(pm)" @keydown.enter="pm.type === 'bank' && openAccount(pm)">
+                       @click="pm.type === 'bank' && openAccount(pm)">
                     <template x-if="payIconSrc(pm)"><img :src="payIconSrc(pm)" alt="" class="h-9 w-9 shrink-0 rounded-xl bg-white object-contain p-0.5 ring-1 ring-black/[0.06] dark:ring-white/10"></template>
                     <template x-if="! payIconSrc(pm)"><span class="ll-chip h-9 w-9 rounded-xl shrink-0" :style="{ background: payTint(pm.type) }">@include('invoices._payment_icon', ['expr' => 'pm.type', 'cls' => 'h-4.5 w-4.5 text-white'])</span></template>
                     <div class="min-w-0 flex-1">
@@ -1693,15 +1473,6 @@
                                     <span class="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-[11px] font-medium text-green-600 dark:text-green-400"><x-icon name="check" class="h-3 w-3" />{{ __('invoices.eg_present') }}</span>
                                   </template>
                                 </div>
-                              </template>
-                              {{-- Read-only server insight: merchant->category suggestion for an uncategorised tx; one-click apply via the existing save path. --}}
-                              <template x-if="suggestionFor(tx)">
-                                <button type="button" @click="applySuggestion(tx, suggestionFor(tx)?.suggested_category)"
-                                  class="mt-0.5 inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/20"
-                                  :title="'{{ __('invoices.apply_suggestion') }}'">
-                                  <x-icon name="sparkles" class="h-3 w-3" />
-                                  <span x-text="'{{ __('invoices.suggestion_label') }} ' + (suggestionFor(tx)?.suggested_category || '')"></span>
-                                </button>
                               </template>
                               <p x-show="tx.iban && ! tx.invoiceId" class="truncate text-xs text-gray-400 dark:text-gray-500 tabular-nums" x-text="tx.iban"></p>
                               <button type="button" x-show="tx.invoiceId" @click="openInvoiceById(tx.invoiceId, tx.invoiceNumber)" class="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline">
@@ -2239,42 +2010,6 @@
             </x-alert>
           </template>
 
-          {{-- Read-only server insight: suspected duplicate invoices/transactions. Display only — no auto-delete. --}}
-          <template x-if="hasDuplicates">
-            <x-alert variant="warning" class="mt-4">
-              <p class="font-semibold" x-text="'{{ __('invoices.duplicates_warn') }}'.replace(':n', duplicateCount)"></p>
-              <p class="mt-0.5 text-xs">{{ __('invoices.duplicates_hint') }}</p>
-              <div class="mt-2 space-y-2 text-xs">
-                {{-- Invoice duplicate groups: resolve ids to real invoices (number · customer · date · gross), each clickable. --}}
-                <template x-for="(g, gi) in dupeInvoiceGroups" :key="'i' + gi">
-                  <div>
-                    <p class="font-medium" x-text="({ same_number: @js(__('invoices.dupe_same_number')), same_date_amount_customer: @js(__('invoices.dupe_same_date_amount_customer')) })[g.reason] || g.reason"></p>
-                    <ul class="mt-0.5 space-y-0.5 pl-1">
-                      <template x-for="inv in g.items" :key="inv.id">
-                        <li>
-                          <button type="button" class="text-left underline decoration-dotted hover:text-accent"
-                                  @click="openInvoiceById(inv.id, inv.number)"
-                                  x-text="(inv.number ? ('Nr. ' + inv.number) : @js(__('invoices.no_number'))) + ' · ' + ((inv.customer && inv.customer.name) || '—') + ' · ' + (inv.issueDate || '—') + ' · ' + (Number(inv.gross)||0).toFixed(2) + ' ' + (inv.currency || 'EUR')"></button>
-                        </li>
-                      </template>
-                    </ul>
-                  </div>
-                </template>
-                {{-- Transaction duplicate groups: date · amount · counterparty (read-only). --}}
-                <template x-for="(g, gi) in dupeTxGroups" :key="'t' + gi">
-                  <div>
-                    <p class="font-medium" x-text="({ same_eref: @js(__('invoices.dupe_same_eref')), same_date_amount_counterparty_purpose: @js(__('invoices.dupe_same_booking')) })[g.reason] || g.reason"></p>
-                    <ul class="mt-0.5 space-y-0.5 pl-1">
-                      <template x-for="tx in g.items" :key="tx.id">
-                        <li x-text="(tx.date || '—') + ' · ' + (Number(tx.amount)||0).toFixed(2) + ' € · ' + (tx.counterparty || '—')"></li>
-                      </template>
-                    </ul>
-                  </div>
-                </template>
-              </div>
-            </x-alert>
-          </template>
-
           @unless ($s->company_name)
             <p class="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
               {{ __('invoices.company_missing') }} <a href="{{ route('settings.company.edit') }}" class="font-medium underline">{{ __('settings.company_section') }}</a>
@@ -2398,9 +2133,6 @@
                         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                           :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
                           x-text="statusLabel(inv.status)"></span>
-                        <template x-if="isOverdue(inv)"><x-badge variant="error"><span x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(inv))"></span></x-badge></template>
-                        <template x-if="isCreditNote(inv)"><x-badge variant="warning">{{ __('invoices.credit_note_badge') }}</x-badge></template>
-                        <template x-if="isCancelled(inv)"><x-badge variant="gray">{{ __('invoices.cancelled_badge') }}</x-badge></template>
                         <template x-if="isInvoiceLinked(inv)">
                           <span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'">
                             <x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}
@@ -2413,8 +2145,6 @@
                         <x-action-menu :aria-label="__('invoices.col_actions')">
                           <x-action-menu-item icon="pencil" @click="open(inv)">{{ __('common.edit') }}</x-action-menu-item>
                           <x-action-menu-item icon="printer" @click="printInvoice(inv)">{{ __('invoices.print') }}</x-action-menu-item>
-                          <x-action-menu-item icon="envelope" x-show="canDun(inv)" @click="dun(inv)">{{ __('invoices.dun_send') }}</x-action-menu-item>
-                          <x-action-menu-item icon="arrow-uturn-left" x-show="canStorno(inv)" @click="storno(inv)">{{ __('invoices.storno') }}</x-action-menu-item>
                           <x-action-menu-item icon="trash" danger @click="trash(inv)">{{ __('invoices.trash') }}</x-action-menu-item>
                         </x-action-menu>
                       </div>
@@ -2436,13 +2166,10 @@
               <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
               <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
               <span class="inline-flex items-center rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400" x-text="statusLabel(current?.status)"></span>
-              <template x-if="isCancelled(current)"><x-badge variant="gray">{{ __('invoices.cancelled_badge') }}</x-badge></template>
               <template x-if="isInvoiceLinked(current)"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
             </div>
             <x-action-menu :aria-label="__('invoices.col_actions')">
               <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
-              <x-action-menu-item icon="envelope" x-show="canDun(current)" @click="dun(current)">{{ __('invoices.dun_send') }}</x-action-menu-item>
-              <x-action-menu-item icon="arrow-uturn-left" x-show="canStorno(current)" @click="storno(current)">{{ __('invoices.storno') }}</x-action-menu-item>
               <x-action-menu-item icon="trash" danger @click="trash(current)">{{ __('common.delete') }}</x-action-menu-item>
             </x-action-menu>
           </div>
@@ -2501,9 +2228,6 @@
               <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                 :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
                 x-text="statusLabel(current?.status)"></span>
-              <template x-if="isOverdue(current)"><x-badge variant="error"><span x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(current))"></span></x-badge></template>
-              <template x-if="isCreditNote(current)"><x-badge variant="warning">{{ __('invoices.credit_note_badge') }}</x-badge></template>
-              <template x-if="isCancelled(current)"><x-badge variant="gray">{{ __('invoices.cancelled_badge') }}</x-badge></template>
               <template x-if="isInvoiceLinked(current)"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
             </div>
             <div class="flex flex-wrap items-center gap-2">
@@ -2519,10 +2243,6 @@
                 <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
                 <x-action-menu-item icon="check" x-show="! current?.imported && current?.status === 'draft'" @click="finalize(current)">{{ __('invoices.finalize') }}</x-action-menu-item>
                 <x-action-menu-item icon="check-circle" x-show="! current?.imported && current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-action-menu-item>
-                <x-action-menu-item icon="envelope" x-show="canEmail(current)" @click="emailInvoice(current)">{{ __('invoices.email_send') }}</x-action-menu-item>
-                <x-action-menu-item icon="envelope" x-show="! canEmail(current)" disabled class="opacity-50 cursor-not-allowed" title="{{ __('invoices.email_disabled_hint') }}">{{ __('invoices.email_send') }}</x-action-menu-item>
-                <x-action-menu-item icon="envelope" x-show="canDun(current)" @click="dun(current)">{{ __('invoices.dun_send') }}</x-action-menu-item>
-                <x-action-menu-item icon="arrow-uturn-left" x-show="canStorno(current)" @click="storno(current)">{{ __('invoices.storno') }}</x-action-menu-item>
               </x-action-menu>
             </div>
           </div>
@@ -2550,7 +2270,6 @@
                 <input type="text" x-model="current.customer.attn" placeholder="{{ __('invoices.attn') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                 <textarea x-model="current.customer.address" rows="3" placeholder="{{ __('invoices.customer_address') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
                 <input type="email" x-model="current.customer.email" placeholder="{{ __('invoices.customer_email') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                <input type="email" x-model="current.customer.invoiceEmail" placeholder="{{ __('invoices.customer_invoice_email') }}" title="{{ __('invoices.partner_invoice_email_hint') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                 <input type="text" x-model="current.customer.vatId" placeholder="{{ __('invoices.customer_vat') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
               </div>
             </div>
@@ -2585,19 +2304,12 @@
             <div class="ll-card">
               <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.gross') }}</h2>
               <dl class="mt-3 space-y-1.5 text-sm">
-                <template x-if="hasDiscount(current)">
-                  <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">{{ __('invoices.subtotal') }}</dt><dd class="tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(totals.grossNet)"></dd></div>
-                </template>
-                <template x-if="hasDiscount(current)">
-                  <div class="flex justify-between text-accent"><dt>{{ __('invoices.discount') }}</dt><dd class="tabular-nums" x-text="'−' + fmtMoney(Math.abs(totals.discount))"></dd></div>
-                </template>
                 <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">{{ __('invoices.net') }}</dt><dd class="tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(totals.net)"></dd></div>
                 <template x-for="rate in vatRatesOf(current)" :key="rate">
                   <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400" x-text="@js(__('invoices.vat_at')).replace(':rate', rate)"></dt><dd class="tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(totals.vatByRate[rate])"></dd></div>
                 </template>
                 <div class="flex justify-between border-t border-gray-200 dark:border-gray-800 pt-1.5 font-semibold"><dt class="text-gray-900 dark:text-gray-100">{{ __('invoices.gross') }}</dt><dd class="tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(totals.gross)"></dd></div>
               </dl>
-              <p x-show="smallBusiness" class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ __('invoices.vat_kleinunternehmer_note') }}</p>
             </div>
           </div>
 
@@ -2619,7 +2331,7 @@
                     <th class="py-1 px-2 w-20 text-right">{{ __('invoices.line_qty') }}</th>
                     <th class="py-1 px-2 w-24">{{ __('invoices.line_unit') }}</th>
                     <th class="py-1 px-2 w-28 text-right">{{ __('invoices.line_price') }}</th>
-                    <th class="py-1 px-2 w-20 text-right" x-show="! smallBusiness">{{ __('invoices.line_vat') }}</th>
+                    <th class="py-1 px-2 w-20 text-right">{{ __('invoices.line_vat') }}</th>
                     <th class="py-1 px-2 w-28 text-right">{{ __('invoices.net') }}</th>
                     <th class="py-1 pl-2 w-8"></th>
                   </tr>
@@ -2631,44 +2343,13 @@
                       <td class="py-1 px-2 align-top"><input type="number" step="0.01" x-model.number="l.qty" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
                       <td class="py-1 px-2 align-top"><input type="text" x-model="l.unit" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent"></td>
                       <td class="py-1 px-2 align-top"><input type="number" step="0.01" x-model.number="l.unitPrice" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
-                      <td class="py-1 px-2 align-top" x-show="! smallBusiness"><input type="number" step="0.01" x-model.number="l.vatRate" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
+                      <td class="py-1 px-2 align-top"><input type="number" step="0.01" x-model.number="l.vatRate" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
                       <td class="py-1 px-2 text-right tabular-nums text-gray-700 dark:text-gray-300 align-top" x-text="fmtMoney(lineNet(l))"></td>
                       <td class="py-1 pl-2 text-right align-top"><x-icon-button name="x-mark" size="sm" @click="removeLine(i)" title="{{ __('invoices.remove') }}" aria-label="{{ __('invoices.remove') }}" /></td>
                     </tr>
                   </template>
                 </tbody>
               </table>
-            </div>
-          </div>
-
-          {{-- Discount (Rabatt) + Skonto terms --}}
-          <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <div class="ll-card">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.discount') }}</h2>
-              <div class="mt-3 grid grid-cols-2 gap-3">
-                <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.discount') }}
-                  <select x-model="current.discountType" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                    <option :value="null">{{ __('invoices.discount_none') }}</option>
-                    <option value="percent">{{ __('invoices.discount_percent') }}</option>
-                    <option value="amount">{{ __('invoices.discount_amount') }}</option>
-                  </select>
-                </label>
-                <label class="block text-sm text-gray-700 dark:text-gray-300" x-show="current.discountType">{{ __('invoices.discount_value') }}
-                  <input type="number" step="0.01" min="0" x-model.number="current.discountValue" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent">
-                </label>
-              </div>
-            </div>
-            <div class="ll-card">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.skonto') }}</h2>
-              <div class="mt-3 grid grid-cols-2 gap-3">
-                <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.skonto_percent') }}
-                  <input type="number" step="0.01" min="0" max="100" x-model.number="current.skontoPercent" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent">
-                </label>
-                <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.skonto_days') }}
-                  <input type="number" step="1" min="0" x-model.number="current.skontoDays" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent">
-                </label>
-              </div>
-              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400" x-show="skontoDate(current)" x-text="'{{ __('invoices.skonto_note') }}'.replace(':percent', current.skontoPercent).replace(':date', skontoDate(current))"></p>
             </div>
           </div>
 
@@ -2713,7 +2394,7 @@
         </div>{{-- /section invoices --}}
 
         {{-- ===================== CUSTOMER PICKER ===================== --}}
-        <div x-show="customerPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeCustomerPicker()">
+        <div x-show="customerPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeCustomerPicker()">
           <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" @click="closeCustomerPicker()"></div>
           <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
             <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.picker_title') }}</h2>
@@ -2785,13 +2466,11 @@
                   </table>
                   <div style="display:flex; justify-content:flex-end; margin-top:18px;">
                     <div style="width:250px;">
-                      <div style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span x-text="pl('subtotal')"></span><span class="tabular-nums" x-text="fmtMoney(hasDiscount(_printing) ? computeTotals(_printing).grossNet : computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
-                      <div x-show="hasDiscount(_printing)" style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span x-text="pl('discount')"></span><span class="tabular-nums" x-text="'−' + fmtMoney(Math.abs(computeTotals(_printing).discount), _printing.currency, _printing.lang)"></span></div>
+                      <div style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span x-text="pl('subtotal')"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
                       <template x-for="rate in vatRatesOf(_printing)" :key="rate">
                         <div style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span x-text="pl('vat_at').replace(':rate', rate)"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></span></div>
                       </template>
                       <div style="display:flex; justify-content:space-between; padding:10px 12px; margin-top:6px; color:#fff; border-radius:10px; font-weight:800; font-size:13px;" :style="'background:' + company.accent"><span x-text="pl('gross')"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></span></div>
-                      <div x-show="smallBusiness" style="margin-top:8px; font-size:10px; color:#6b7280;" x-text="pl('vat_kleinunternehmer_note')"></div>
                     </div>
                   </div>
                   <div style="margin-top:20px;" x-show="_printing.note">
@@ -2800,7 +2479,6 @@
                   </div>
                   <div style="margin-top:28px; padding-top:12px; border-top:1px solid #eef0f4; display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; font-size:9px; color:#4b5563;">
                     <div x-show="company.payment_terms_text"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + company.heading" x-text="pl('payment_terms_heading')"></div><div style="white-space:pre-line;" x-text="company.payment_terms_text"></div></div>
-                    <div x-show="skontoDate(_printing)" style="margin-top:4px; font-weight:600;" x-text="pl('skonto_note').replace(':percent', _printing.skontoPercent).replace(':date', skontoDate(_printing))"></div>
                     <div x-show="company.payment_methods"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + company.heading" x-text="pl('payment_methods_heading')"></div><div style="white-space:pre-line;" x-text="company.payment_methods"></div></div>
                     <div x-show="company.bank_name || company.iban"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + company.heading" x-text="pl('bank_details')"></div><div x-text="[company.bank_name, company.iban ? 'IBAN ' + company.iban : '', company.bic ? 'BIC ' + company.bic : ''].filter(Boolean).join(' · ')"></div></div>
                   </div>
@@ -2852,11 +2530,9 @@
                 </table>
                 <div style="display:flex; justify-content:flex-end; margin-top:18px;">
                   <table style="min-width:250px; border-collapse:collapse;">
-                    <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('subtotal')"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="fmtMoney(hasDiscount(_printing) ? computeTotals(_printing).grossNet : computeTotals(_printing).net, _printing.currency, _printing.lang)"></td></tr>
-                    <tr x-show="hasDiscount(_printing)"><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('discount')"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="'−' + fmtMoney(Math.abs(computeTotals(_printing).discount), _printing.currency, _printing.lang)"></td></tr>
+                    <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('subtotal')"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></td></tr>
                     <template x-for="rate in vatRatesOf(_printing)" :key="rate"><tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('vat_at').replace(':rate', rate)"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></td></tr></template>
                     <tr style="border-top:1px solid #222;"><td style="padding:7px 6px; letter-spacing:.1em; text-transform:uppercase;" :style="'color:' + company.accent" x-text="pl('gross')"></td><td style="padding:7px 0 7px 6px; text-align:right; font-weight:700; font-size:13px;" :style="'color:' + company.accent" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></td></tr>
-                    <tr x-show="smallBusiness"><td colspan="2" style="padding:6px 6px 0; font-size:10px; color:#6b7280;" x-text="pl('vat_kleinunternehmer_note')"></td></tr>
                   </table>
                 </div>
                 <div style="margin-top:34px; text-align:center; font-style:italic; color:#555; white-space:pre-line;" x-show="_printing.note || _printing.footer || company.footer_text" x-text="_printing.note || _printing.footer || company.footer_text"></div>
@@ -2916,13 +2592,11 @@
                     </table>
                   </div>
                   <div class="ie-sum-area"><div class="ie-sum">
-                    <div class="ie-sr"><span class="l" x-text="pl('subtotal')"></span><span class="v num" x-text="fmtMoney(hasDiscount(_printing) ? computeTotals(_printing).grossNet : computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
-                    <div class="ie-sr" x-show="hasDiscount(_printing)"><span class="l" x-text="pl('discount')"></span><span class="v num" x-text="'−' + fmtMoney(Math.abs(computeTotals(_printing).discount), _printing.currency, _printing.lang)"></span></div>
+                    <div class="ie-sr"><span class="l" x-text="pl('subtotal')"></span><span class="v num" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
                     <template x-for="rate in vatRatesOf(_printing)" :key="rate">
                       <div class="ie-sr"><span class="l" x-text="pl('vat_at').replace(':rate', rate)"></span><span class="v num" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></span></div>
                     </template>
                     <div class="ie-grand"><span class="ie-gl" x-text="pl('gross')"></span><span class="ie-gv num" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></span></div>
-                    <div x-show="smallBusiness" style="margin-top:8px; font-size:10px; color:#6b7280;" x-text="pl('vat_kleinunternehmer_note')"></div>
                   </div></div>
                   <div class="ie-notice" x-show="_printing.footer || company.footer_text" x-text="_printing.footer || company.footer_text"></div>
                   <div class="ie-notes-area" x-show="_printing.note">
@@ -2932,7 +2606,6 @@
                   <div class="ie-pay-area" x-show="company.payment_terms_text || company.payment_methods || company.bank_name || company.iban">
                     <div class="ie-pay-grid">
                       <div x-show="company.payment_terms_text"><div class="ie-pc-lbl" x-text="pl('payment_terms_heading')"></div><div class="ie-pc-val" x-text="company.payment_terms_text"></div></div>
-                      <div x-show="skontoDate(_printing)" class="ie-pc-val" style="font-weight:600;" x-text="pl('skonto_note').replace(':percent', _printing.skontoPercent).replace(':date', skontoDate(_printing))"></div>
                       <div x-show="company.payment_methods"><div class="ie-pc-lbl" x-text="pl('payment_methods_heading')"></div><div class="ie-pc-val" x-text="company.payment_methods"></div></div>
                       <div x-show="company.bank_name || company.iban"><div class="ie-pc-lbl" x-text="pl('bank_details')"></div><div class="ie-pc-val"><span x-text="company.bank_name"></span><template x-if="company.iban"><span><br x-show="company.bank_name">IBAN: <span x-text="company.iban"></span></span></template><template x-if="company.bic"><span><br>BIC: <span x-text="company.bic"></span></span></template></div></div>
                     </div>
@@ -2969,7 +2642,6 @@
                     <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid #f0f1f3;"><span style="color:#6b7280;" x-text="pl('invoice_date')"></span><span class="tabular-nums" x-text="_printing.issueDate"></span></div>
                     <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid #f0f1f3;"><span style="color:#6b7280;" x-text="pl('due')"></span><span class="tabular-nums" x-text="_printing.dueDate"></span></div>
                     <div style="display:flex; justify-content:space-between; padding:8px 10px; margin-top:8px; background:#f3f4f6; font-weight:700;"><span x-text="pl('payable') + ' ' + _printing.currency"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></span></div>
-                    <div x-show="smallBusiness" style="margin-top:8px; font-size:10px; color:#6b7280;" x-text="pl('vat_kleinunternehmer_note')"></div>
                   </div>
                 </div>
                 {{-- Line-item table --}}
@@ -2999,13 +2671,11 @@
                 {{-- Totals --}}
                 <div style="display:flex; justify-content:flex-end; margin-top:16px;">
                   <div style="width:260px;">
-                    <div style="display:flex; justify-content:space-between; padding:3px 10px; color:#6b7280;"><span x-text="pl('subtotal')"></span><span class="tabular-nums" x-text="fmtMoney(hasDiscount(_printing) ? computeTotals(_printing).grossNet : computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
-                    <div x-show="hasDiscount(_printing)" style="display:flex; justify-content:space-between; padding:3px 10px; color:#6b7280;"><span x-text="pl('discount')"></span><span class="tabular-nums" x-text="'−' + fmtMoney(Math.abs(computeTotals(_printing).discount), _printing.currency, _printing.lang)"></span></div>
+                    <div style="display:flex; justify-content:space-between; padding:3px 10px; color:#6b7280;"><span x-text="pl('subtotal')"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
                     <template x-for="rate in vatRatesOf(_printing)" :key="rate">
                       <div style="display:flex; justify-content:space-between; padding:3px 10px; color:#6b7280;"><span x-text="pl('vat_at').replace(':rate', rate)"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></span></div>
                     </template>
                     <div style="display:flex; justify-content:space-between; padding:8px 10px; margin-top:6px; border-top:2px solid #334155; font-weight:800; font-size:13px;"><span x-text="pl('gross')"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></span></div>
-                    <div x-show="smallBusiness" style="margin-top:8px; font-size:10px; color:#6b7280;" x-text="pl('vat_kleinunternehmer_note')"></div>
                   </div>
                 </div>
                 <div style="margin-top:18px;" x-show="_printing.note">
@@ -3015,7 +2685,6 @@
                 <div style="margin-top:14px; text-align:center; color:#4b5563; white-space:pre-line;" x-show="_printing.footer || company.footer_text" x-text="_printing.footer || company.footer_text"></div>
                 <div style="margin-top:24px; padding-top:10px; border-top:1px solid #e5e7eb; display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; font-size:8.5px; color:#6b7280;">
                   <div x-show="company.payment_terms_text"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.05em;" x-text="pl('payment_terms_heading')"></div><div style="white-space:pre-line;" x-text="company.payment_terms_text"></div></div>
-                  <div x-show="skontoDate(_printing)" style="margin-top:4px; font-weight:600;" x-text="pl('skonto_note').replace(':percent', _printing.skontoPercent).replace(':date', skontoDate(_printing))"></div>
                   <div x-show="company.payment_methods"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.05em;" x-text="pl('payment_methods_heading')"></div><div style="white-space:pre-line;" x-text="company.payment_methods"></div></div>
                   <div x-show="company.bank_name || company.iban"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.05em;" x-text="pl('bank_details')"></div><div x-text="[company.bank_name, company.iban ? 'IBAN ' + company.iban : '', company.bic ? 'BIC ' + company.bic : ''].filter(Boolean).join(' · ')"></div></div>
                 </div>
@@ -3165,6 +2834,7 @@
           </template>
         </div>
       </div>
+    </template>
   </div>
 
   {{-- Editorial template styles (scoped; only render in print). --}}

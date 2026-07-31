@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\PublicShare;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -16,11 +17,20 @@ Schedule::command('backups:run-due')->everyMinute()->withoutOverlapping();
 // the transfer modal always has an up-to-date quick-pick list.
 Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
 
+// Reclaim stored file/gallery bytes on disk with no ownership record (leaked/
+// aborted uploads, or bytes orphaned by an interrupted erasure). The client
+// reconciles manifest-unreferenced blobs on its own; this is the crash net.
+Schedule::command('files:sweep-orphans')->daily()->withoutOverlapping();
+Schedule::command('notes:sweep-orphans')->daily()->withoutOverlapping();
+Schedule::command('passwords:sweep-orphans')->daily()->withoutOverlapping();
+Schedule::command('invoices:sweep-orphans')->daily()->withoutOverlapping();
+Schedule::command('gallery:sweep-orphans')->daily()->withoutOverlapping();
+Schedule::command('contacts:sweep-orphans')->daily()->withoutOverlapping();
+Schedule::command('explore:sweep-orphans')->daily()->withoutOverlapping();
+Schedule::command('shared-folders:sweep-orphans')->daily()->withoutOverlapping();
+
 // Refresh EUR exchange rates once a day for the finance amount suggestions (no user data).
 Schedule::command('finance:fetch-fx')->dailyAt('03:15')->withoutOverlapping();
-
-// Remind the owner about unpaid, overdue invoices (throttled per invoice).
-Schedule::command('invoices:remind')->dailyAt('08:00')->withoutOverlapping();
 
 // Drop expired/consumed QR device-pairing rows (short-lived, single-use).
 Schedule::command('device-pairings:prune')->hourly()->withoutOverlapping();
@@ -40,5 +50,15 @@ Schedule::command('audit:prune')->dailyAt('00:20')->withoutOverlapping();
 // Enforce the (shorter) retention on the high-volume device access trail.
 Schedule::command('device-access-log:prune')->dailyAt('00:25')->withoutOverlapping();
 
+// Enforce retention on the blob/shard forensic trail (data-loss post-mortem record).
+Schedule::command('blob-audit:prune')->dailyAt('00:28')->withoutOverlapping();
+
 // Verify the latest successful backup restores, and alert on staleness/failure.
 Schedule::command('backups:verify')->dailyAt('04:30')->withoutOverlapping();
+
+// Drop expired public share links (the sealed manifest + blob allow-list) so an
+// expired link stops resolving and stops pinning its rows. The blobs themselves
+// stay owned by the user; only the share record is removed.
+Schedule::call(function (): void {
+    PublicShare::whereNotNull('expires_at')->where('expires_at', '<', now())->delete();
+})->hourly()->name('prune-expired-shares')->withoutOverlapping();
