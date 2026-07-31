@@ -51,6 +51,7 @@
         version_paid: @js(__('invoices.version_paid')),
         version_sent: @js(__('invoices.version_sent')),
         trashConfirm: @js(__('invoices.trash_confirm')),
+        delete_failed: @js(__('invoices.delete_failed')),
         paperlessWarn: @js(__('files.paperless_decrypt_warn')),
         pay_invalid: @js(__('invoices.pay_invalid')),
         pay_delete_confirm: @js(__('invoices.pay_delete_confirm')),

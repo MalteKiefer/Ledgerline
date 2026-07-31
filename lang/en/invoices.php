@@ -90,6 +90,7 @@ return [
     'trash_empty_confirm' => 'Permanently delete everything in the trash? This cannot be undone.',
     'restore_dupe' => 'An active invoice with number :n already exists.',
     'delete_confirm' => 'Delete this invoice permanently?',
+    'delete_failed' => 'Could not delete — please try again.',
 
     'company_missing' => 'Set up your company profile in Settings to number and brand invoices.',
 
