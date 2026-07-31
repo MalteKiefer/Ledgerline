@@ -141,12 +141,6 @@ class BackupDestinationFactory
                 password: $password !== '' ? $password : null,
                 privateKey: $privateKey !== '' ? $privateKey : null,
                 port: is_numeric($c['port'] ?? null) ? (int) $c['port'] : 22,
-                // A backup archive can be large and staged from remote storage first,
-                // so the transfer runs long. phpseclib's default 10s timeout drops a
-                // slow/large SFTP write mid-stream ("Connection closed prematurely").
-                // Give the session generous time + a couple of extra connect tries.
-                timeout: is_numeric($t = config('backup.sftp_timeout', 300)) ? (int) $t : 300,
-                maxTries: is_numeric($mt = config('backup.sftp_max_tries', 5)) ? (int) $mt : 5,
                 hostFingerprint: $fingerprint !== '' ? $fingerprint : null,
             ),
             $root,

@@ -26,7 +26,7 @@ use Illuminate\Support\Carbon;
 ])]
 class BackupJob extends Model
 {
-    public const SOURCES = ['database', 'invoices'];
+    public const SOURCES = ['database', 'files', 'gallery'];
 
     /** Backup mode for the file-based sources (database is always a full dump). */
     public const MODES = ['mirror', 'archive'];

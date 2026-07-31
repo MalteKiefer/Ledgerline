@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\AppSettings;
+use App\Models\FileBlob;
+use App\Models\GalleryBlob;
 use App\Models\User;
 use App\Models\UserSetting;
 use Illuminate\Contracts\View\View;
@@ -30,6 +32,8 @@ class ProfileController extends Controller
             'sessionCount' => $this->sessionsFor($user)->count(),
             'deviceCount' => $user->tokens()->count(),
             'deviceMax' => $this->deviceMax($user),
+            'storageUsed' => $this->storageUsedBytes($user),
+            'storageQuota' => $this->storageQuotaBytes($user),
         ]);
     }
 
@@ -54,6 +58,14 @@ class ProfileController extends Controller
             'user' => $user,
             'sessions' => $this->sessionsFor($user)->all(),
         ]);
+    }
+
+    /** Zero-knowledge vault: change passphrase / reset via recovery code. */
+    public function encryption(Request $request): View
+    {
+        $this->requireUser($request);
+
+        return view('profile.encryption');
     }
 
     /** Login security: two-factor authentication (TOTP) via Fortify. */
@@ -141,5 +153,29 @@ class ProfileController extends Controller
         return $user->max_connected_devices
             ?: (AppSettings::current()->max_connected_devices
                 ?: (is_numeric($configured) ? (int) $configured : 3));
+    }
+
+    /**
+     * Storage the account occupies: the user's OWN sealed blob bytes (files +
+     * gallery). The server sees only ciphertext sizes — non-secret, the same
+     * figures the quota check + usage endpoints use.
+     */
+    private function storageUsedBytes(User $user): int
+    {
+        return (int) FileBlob::query()->where('user_id', $user->id)->sum('size')
+            + (int) GalleryBlob::query()->where('user_id', $user->id)->sum('size');
+    }
+
+    /** Combined files+gallery quota in bytes, or 0 when either module is unlimited. */
+    private function storageQuotaBytes(User $user): int
+    {
+        $filesQuota = $user->files_quota_mb ?: config('files.quota_mb', 0);
+        $galleryQuota = $user->gallery_quota_mb ?: config('gallery.quota_mb', 0);
+        $filesQuotaMb = is_numeric($filesQuota) ? (int) $filesQuota : 0;
+        $galleryQuotaMb = is_numeric($galleryQuota) ? (int) $galleryQuota : 0;
+
+        return ($filesQuotaMb > 0 && $galleryQuotaMb > 0)
+            ? ($filesQuotaMb + $galleryQuotaMb) * 1024 * 1024
+            : 0;
     }
 }

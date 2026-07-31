@@ -1,0 +1,147 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Models\Vault;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Stores a user's zero-knowledge encryption vault. Every value handled here is
+ * opaque ciphertext or a public KDF parameter — the passphrase, recovery code
+ * and vault key exist only in the browser and are never sent to the server.
+ * Scoped per user: a caller only ever sees or writes their own vault row.
+ */
+class VaultController extends Controller
+{
+    /**
+     * Whether the caller's vault is set up, and the material the browser needs
+     * to derive and unwrap the vault key after the user types the passphrase.
+     */
+    public function show(): JsonResponse
+    {
+        $vault = Vault::current();
+
+        if ($vault === null) {
+            return response()->json(['configured' => false]);
+        }
+
+        return response()->json([
+            'configured' => true,
+            // Optimistic-concurrency version — the client echoes it as
+            // expected_version on rotate so a stale passphrase change is rejected.
+            'version' => (int) $vault->version,
+            'salt' => $vault->salt,
+            'kdf_ops' => $vault->kdf_ops,
+            'kdf_mem' => $vault->kdf_mem,
+            'wrapped_vault_key' => $vault->wrapped_vault_key,
+            'wrap_nonce' => $vault->wrap_nonce,
+            'has_recovery' => $vault->wrapped_vault_key_recovery !== null,
+            // Ciphertext of the recovery wrap — safe to expose; only the offline
+            // recovery code can open it.
+            'wrapped_vault_key_recovery' => $vault->wrapped_vault_key_recovery,
+            'recovery_nonce' => $vault->recovery_nonce,
+        ]);
+    }
+
+    /**
+     * First-time setup: persist the wrapped vault key and KDF parameters for the
+     * caller. Refuses to overwrite an existing vault (that is a passphrase change
+     * → rotate).
+     */
+    public function store(Request $request): JsonResponse
+    {
+        if (Vault::current() !== null) {
+            return response()->json(['message' => __('vault.already_configured')], 409);
+        }
+
+        $vault = new Vault($this->rules($request, withRecovery: true));
+        $vault->user_id = (int) $this->requireUser($request)->id; // stamped server-side, unfakeable
+        $vault->save();
+
+        return response()->json(['configured' => true], 201);
+    }
+
+    /**
+     * Passphrase (or recovery) change: re-wrap the same vault key under a new
+     * passphrase-derived key. The vault key itself is unchanged, so files need
+     * no re-encryption.
+     */
+    public function rotate(Request $request): JsonResponse
+    {
+        $vault = Vault::current();
+
+        if ($vault === null) {
+            return response()->json(['message' => __('vault.not_configured')], 404);
+        }
+
+        $data = $this->rules($request, withRecovery: $request->filled('wrapped_vault_key_recovery'));
+
+        // Optimistic concurrency (store merge-safety spec §6.3): if the client sends
+        // expected_version, reject a stale rotate (409) rather than clobbering a
+        // concurrent passphrase change on another device. Older clients omit it and
+        // keep today's blind-but-version-bumping behaviour.
+        if ($request->has('expected_version')) {
+            $expected = $request->integer('expected_version');
+            $next = DB::transaction(function () use ($vault, $data, $expected): ?int {
+                $row = Vault::query()->whereKey($vault->getKey())->lockForUpdate()->first();
+                $current = (int) ($row?->version ?? 0);
+                if ($row === null || $current !== $expected) {
+                    return null;
+                }
+                $row->forceFill($data + ['version' => $current + 1])->save();
+
+                return $current + 1;
+            });
+            if ($next === null) {
+                return response()->json(['error' => 'version_conflict', 'version' => (int) ($vault->fresh()?->version ?? 0)], 409);
+            }
+
+            return response()->json(['configured' => true, 'version' => $next]);
+        }
+
+        $vault->forceFill($data + ['version' => (int) $vault->version + 1])->save();
+
+        return response()->json(['configured' => true, 'version' => (int) $vault->version]);
+    }
+
+    /**
+     * @return array<string, string|int|null>
+     */
+    private function rules(Request $request, bool $withRecovery): array
+    {
+        $request->validate([
+            'salt' => ['required', 'string', 'max:255'],
+            // Enforce a real Argon2id cost floor so a tampered/downgraded row can't
+            // leave the passphrase near-unstretched for an offline attacker. The
+            // legit client uses OPSLIMIT_SENSITIVE (4) + MEMLIMIT_MODERATE (256 MiB),
+            // so this floor (3 ops, 64 MiB) never rejects a genuine setup.
+            'kdf_ops' => ['required', 'integer', 'min:3'],
+            'kdf_mem' => ['required', 'integer', 'min:67108864'],
+            'wrapped_vault_key' => ['required', 'string', 'max:1024'],
+            'wrap_nonce' => ['required', 'string', 'max:255'],
+            'wrapped_vault_key_recovery' => [$withRecovery ? 'required' : 'nullable', 'string', 'max:1024'],
+            'recovery_nonce' => [$withRecovery ? 'required' : 'nullable', 'string', 'max:255'],
+        ]);
+
+        // The rules above guarantee runtime types; read each field through a typed
+        // accessor. Recovery fields are nullable when $withRecovery is false, so
+        // preserve null (rather than the empty-string coercion of string()->value()).
+        return [
+            'salt' => $request->string('salt')->value(),
+            'kdf_ops' => $request->integer('kdf_ops'),
+            'kdf_mem' => $request->integer('kdf_mem'),
+            'wrapped_vault_key' => $request->string('wrapped_vault_key')->value(),
+            'wrap_nonce' => $request->string('wrap_nonce')->value(),
+            'wrapped_vault_key_recovery' => $request->filled('wrapped_vault_key_recovery')
+                ? $request->string('wrapped_vault_key_recovery')->value()
+                : null,
+            'recovery_nonce' => $request->filled('recovery_nonce')
+                ? $request->string('recovery_nonce')->value()
+                : null,
+        ];
+    }
+}

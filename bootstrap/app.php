@@ -24,10 +24,6 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [SetLocale::class, SecurityHeaders::class]);
-        // Security headers on the token API too (nosniff / referrer / permissions /
-        // HSTS). Sensitive-byte routes set their own sandbox CSP, which the
-        // middleware preserves.
-        $middleware->api(append: [SecurityHeaders::class]);
 
         // Sanctum ability guards for the token-scoped mobile/CLI API.
         $middleware->alias([

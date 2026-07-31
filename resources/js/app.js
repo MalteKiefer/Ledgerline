@@ -1,12 +1,28 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
+import { Vault, ShareCrypto } from './vault';
 import { csrfToken, getJson } from './shared/api';
+import { buildModuleStores } from './shared/module-store';
+import { makeShardedStore } from './shared/sharded-store';
+import contacts from './components/contacts';
+import health from './components/health';
+import passwords from './components/passwords';
+import vaultFiles from './components/files';
+import vaultGallery from './components/gallery';
+import publicShare from './components/public-share';
+import fileShare from './components/file-share';
 import invoices from './components/invoices';
+import todos from './components/todos';
+import notes from './components/notes';
+import bookmarks from './components/bookmarks';
 import toastHub from './components/toast-hub';
+import cropModal from './components/crop-modal';
 import backupRuns from './components/backup-runs';
 import devicePairing from './components/device-pairing';
 import paperlessSettings from './components/paperless-settings';
 import notificationBell from './components/notification-bell';
+import dashboard from './components/dashboard';
+import explore from './components/explore';
 import pwStrength from './components/pw-strength';
 import tagSelect from './components/tag-select';
 
@@ -24,12 +40,92 @@ window.addEventListener('vite:preloadError', () => {
 });
 
 
-// Zero-knowledge removed (pivot complete): all modules are plaintext-relational
-// and served over REST. No client-side vault/crypto remains.
+// Zero-knowledge encryption vault (client-side crypto for the Files module).
+// Exposed globally so the vault UI + files component can lock/unlock/encrypt.
+// The reactive Alpine.store('vault') boots it (restores the cached key) on init.
+window.Vault = Vault;
+window.ShareCrypto = ShareCrypto;
 
-// All modules are plaintext-relational now (pivot complete) — served over REST.
-// No sealed per-module stores, no gallery/invoices sharded stores, no client crypto.
+/**
+ * Per-module opaque zero-knowledge store registry (Store v3 split). Each module
+ * (notes/todos/bookmarks/contacts/invoices/passwords/health/sharing) has its OWN
+ * sealed row at /store/<module>, so a write to one never re-seals the others; the
+ * server only stores/returns ciphertext + a version. Each store loads + decrypts
+ * once, holds it in memory, and saves (debounced, sealed, optimistic version) on
+ * change. Files + gallery have their own sharded stores (below); binary content
+ * stays as separate opaque blobs.
+ */
+window.LLModuleStore = buildModuleStores();
 
+// Separate sealed store for the gallery index (photos/albums/people), kept apart
+// from the module stores so gallery churn never re-seals notes/todos.
+// Store v3 (spec §4.1/§5.1): a small sealed pointer-table root + content-addressed
+// id-bucketed photo shards + albums/people collection blobs. Same sharded engine
+// as Files (shared/sharded-store.js) — see there for the full mechanics.
+window.LLGalleryStore = makeShardedStore({
+    prefix: '/gallery',
+    recordKey: 'photos',
+    collections: [
+        { key: 'albums', rootRef: 'albumsRef', rootKey: 'albumsKey', rootHash: 'albumsHash' },
+        { key: 'people', rootRef: 'peopleRef', rootKey: 'peopleKey', rootHash: 'peopleHash' },
+    ],
+});
+
+// Files sharded store (Store v3 §4.2/A10b): Files graduates out of the monolith
+// into its own sharded sealed store, identical engine to the gallery — root
+// pointer table + content-addressed id-bucketed record shards + a fileFolders
+// collection blob. File CONTENT stays as separate opaque blobs (the files ledger).
+window.LLFilesStore = makeShardedStore({
+    prefix: '/files',
+    recordKey: 'files',
+    collections: [
+        { key: 'fileFolders', rootRef: 'foldersRef', rootKey: 'foldersKey', rootHash: 'foldersHash' },
+    ],
+});
+
+// Notes graduated to a sharded store (merge-safety spec §3b) — id-bucket shards so
+// concurrent edits to different notes never conflict. No collection blobs.
+window.LLNotesStore = makeShardedStore({
+    prefix: '/notes',
+    recordKey: 'notes',
+    collections: [],
+});
+
+// Passwords graduated to a sharded store too (spec §3b) — the extension mirrors it.
+// secrets = shard records; secretFolders = one collection blob (like files/folders).
+window.LLPasswordsStore = makeShardedStore({
+    prefix: '/passwords',
+    recordKey: 'secrets',
+    collections: [
+        { key: 'secretFolders', rootRef: 'foldersRef', rootKey: 'foldersKey', rootHash: 'foldersHash' },
+    ],
+});
+
+// Invoices graduated to a sharded store too (spec §3b) — they grow with sending/import
+// and must stay loss-safe for tax records. Each invoice is one shard record; numbering
+// safety is derived client-side from the invoices, not a store scalar (see invoices.js).
+window.LLInvoicesStore = makeShardedStore({
+    prefix: '/invoices',
+    recordKey: 'invoices',
+    // Payment methods (bank accounts, cards, …) and imported bank transactions live
+    // sealed in the finance store as collection blobs — sensitive (IBAN/statements), so
+    // zero-knowledge like invoices. Transactions are re-sealed only when they change.
+    // NOTE (cross-client invariant): every client MUST declare EVERY collection here, or
+    // its save() drops the undeclared collection's root refs → data loss. iOS/Go/Android
+    // must mirror this list (passthrough is fine — load + preserve, no UI needed).
+    collections: [
+        { key: 'paymentMethods', rootRef: 'payRef', rootKey: 'payKey', rootHash: 'payHash' },
+        { key: 'transactions', rootRef: 'txRef', rootKey: 'txKey', rootHash: 'txHash' },
+        { key: 'partners', rootRef: 'partRef', rootKey: 'partKey', rootHash: 'partHash' },
+        { key: 'financeCategories', rootRef: 'catRef', rootKey: 'catKey', rootHash: 'catHash' },
+        // Cost projects (nestable) bundling receipts + manual "hand" expenses. Each project:
+        // { id, name, parentId|null, note, expenses:[{id, amount, date, note}], created }.
+        { key: 'projects', rootRef: 'projRef', rootKey: 'projKey', rootHash: 'projHash' },
+    ],
+});
+
+
+// Wait for the vault, then load the sealed gallery index once.
 // App-wide confirm modal store (replaces native window.confirm everywhere).
 // Usage in Alpine components: `if (! await this.$store.confirm.ask(msg)) return;`
 document.addEventListener('alpine:init', () => {
@@ -69,6 +165,56 @@ document.addEventListener('alpine:init', () => {
         closeAll() { this.navOpen = false; this.sidebarOpen = false; },
     });
 
+    // Reactive wrapper around the zero-knowledge Vault crypto module. Tracks
+    // whether the user's vault is configured (server) and unlocked (this login),
+    // so the Files UI can gate on it. All crypto stays in window.Vault; nothing
+    // secret is held here.
+    Alpine.store('vault', {
+        configured: false,
+        ready: false, // true once the cached key has been restored (or not) at load
+        _unlockedAt: 0, // reactive nonce bumped on lock/unlock so getters re-run
+        get unlocked() { this._unlockedAt; return window.Vault.unlocked(); },
+        async init() {
+            // Restore the cached key (it survives navigation between modules)
+            // BEFORE anything reads `unlocked`, and bump the reactive nonce so the
+            // getter reflects the restored state — otherwise leaving + returning to
+            // Files would wrongly show the vault as locked.
+            try { await window.Vault.boot(); } catch (e) { /* stays locked */ }
+            this._unlockedAt++;
+            this.ready = true;
+            try { this.configured = (await window.Vault.status()).configured; } catch (e) { /* leave false */ }
+            // Idle watchdog: auto-lock once the cached key's idle window passes,
+            // and extend that window on real user activity. Runs in-page (the
+            // previous check only ran at page load).
+            const bump = () => { if (window.Vault.unlocked()) window.Vault.touch(); };
+            let last = 0;
+            const onActivity = () => { const t = Date.now(); if (t - last > 15000) { last = t; bump(); } };
+            ['pointerdown', 'keydown', 'scroll'].forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
+            setInterval(() => {
+                if (window.Vault.unlocked() && window.Vault.expiresAt() > 0 && Date.now() > window.Vault.expiresAt()) {
+                    this.lock();
+                }
+            }, 15000);
+            // NB: do NOT lock on `pagehide` — it fires on every same-tab navigation
+            // and reload, which would drop the cached key on each page change and
+            // force re-entry of the passphrase everywhere. The key is held in
+            // sessionStorage (already cleared by the browser when the tab closes),
+            // bound to the current login (vault-owner), and auto-locked by the idle
+            // watchdog above — so it correctly survives navigation but not a real
+            // tab close, logout or idle timeout.
+        },
+        async setup(passphrase, remember = true) {
+            const code = await window.Vault.setup(passphrase, remember);
+            this.configured = true; this._unlockedAt++;
+            return code;
+        },
+        async unlock(passphrase, remember = true) { await window.Vault.unlock(passphrase, remember); this._unlockedAt++; },
+        async recover(code, remember = true) { await window.Vault.recover(code, remember); this._unlockedAt++; },
+        async changePassphrase(a, b) { const code = await window.Vault.changePassphrase(a, b); this._unlockedAt++; return code; },
+        async setPassphrase(b) { const code = await window.Vault.setPassphrase(b); this._unlockedAt++; return code; },
+        lock() { window.Vault.lock(); this._unlockedAt++; },
+    });
+    Alpine.store('vault').init();
 });
 
 // CSP-safe replacement for inline `onsubmit="return confirm(...)"`: any form
@@ -106,6 +252,7 @@ window.llToast = toast;
 
 // Component registrations (definitions live in ./components/*).
 Alpine.data('toastHub', toastHub);
+Alpine.data('cropModal', cropModal);
 Alpine.data('devicePairing', devicePairing);
 Alpine.data('pwStrength', pwStrength);
 Alpine.data('tagSelect', tagSelect);
@@ -114,9 +261,47 @@ Alpine.data('paperlessSettings', paperlessSettings);
 Alpine.data('notificationBell', notificationBell);
 
 /**
+ * File explorer: multiselect, a shared "move to folder" modal (for a single row
+ * or the whole selection), inline rename, and a bulk-delete modal.
+ *
+ * @param {number[]} allIds  Ids of the files currently listed.
+ */
+/* ---- Zero-knowledge gallery (client-driven) ----
+ *
+ * The whole library lives in a sealed index (LLGalleryStore); photo bytes +
+ * renditions + a per-photo metadata blob are opaque blobs. Nothing is server-
+ * readable. On unlock the client processes any un-processed uploads through the
+ * transient /gallery/process endpoint (plaintext in, derived out, discarded),
+ * re-seals the derived data, and renders the grid from decrypted thumbnails.
+ */
+/**
+ * Public album share viewer (/s/{token}). Runs WITHOUT a vault: the share key
+ * comes from the URL fragment and unwraps each blob's per-file key from the
+ * sealed manifest. No key or plaintext ever goes to the server.
+ */
+Alpine.data('publicShare', publicShare);
+
+/**
+ * Public file/folder share viewer (/s/{token}). Like publicShare but lists files
+ * (a single file or a folder subtree) with preview + download; the share key from
+ * the fragment unwraps each blob's per-file key. No key/plaintext hits the server.
+ */
+Alpine.data('fileShare', fileShare);
+
+Alpine.data('vaultGallery', vaultGallery);
+
+/* ---- Zero-knowledge file browser (manifest model) ----
+ *
+ * The whole directory structure lives in one encrypted manifest; the server
+ * stores only that ciphertext and anonymous, padded content blobs. Everything
+ * below — listing, search, sort, rename, move, delete — runs on the decrypted
+ * manifest in memory and is written back as a whole (optimistic-locked).
+ */
+
+/**
  * Shared Paperless transfer state. One store drives a single modal reused by
- * the Finance receipt browser: it holds the cached quick-pick terms, the
- * document being sent, and the metadata form.
+ * both the mail attachment list and the file browser: it holds the cached
+ * quick-pick terms, the document being sent, and the metadata form.
  */
 Alpine.store('paperless', {
     configured: false,
@@ -126,7 +311,7 @@ Alpine.store('paperless', {
 
     open: false,
     submitting: false,
-    preparing: false, // fetching the document while the modal is open
+    preparing: false, // fetching/decrypting the document while the modal is open
     error: '',
     file: null, filename: '',
     // Autocomplete query text per picker (also the name used when the typed
@@ -204,9 +389,9 @@ Alpine.store('paperless', {
         this.preparing = false;
     },
 
-    // Open the modal right away while the document is still being fetched over
-    // REST (a large file can take a moment); setFile() fills it in when ready,
-    // so the UI never blocks.
+    // Open the modal right away while the document is still being fetched /
+    // decrypted (IMAP round-trip or client-side decryption can take seconds);
+    // setFile() fills it in when ready, so the UI never blocks.
     begin(filename, defaults = {}, opts = {}) {
         this._reset(filename, defaults, opts);
         this.file = null;
@@ -269,13 +454,110 @@ Alpine.store('paperless', {
 });
 
 
+Alpine.data('vaultFiles', vaultFiles);
+
+
+/* ---- Zero-knowledge notes (manifest model) ----
+ *
+ * Whole notes — titles, markdown content, tags, timestamps — live inside one
+ * encrypted manifest; the server stores only that ciphertext. Rendering uses
+ * GitHub-flavored markdown, sanitised before it touches the DOM.
+ */
+
+
 Alpine.plugin(intersect);
 
 window.Alpine = Alpine;
 
-// Finance is plaintext-relational: the component hydrates from inlined @js()
-// initial data and does per-record JSON CRUD over the /finance/* REST endpoints.
+/**
+ * To-do lists + tasks. Zero-knowledge: everything lives in the opaque manifest
+ * (one sealed blob shared with notes/bookmarks), so there is no fetch/seal per
+ * row — fields (incl. list names + due dates) are plaintext inside the sealed
+ * manifest and every mutation edits the in-memory arrays in place then schedules
+ * a debounced sealed save. Due dates are sealed too, so there are no server-side
+ * reminders — any reminder would only ever be client-side.
+ */
+/**
+ * Shared lifecycle for the per-module zero-knowledge stores (notes, bookmarks,
+ * to-dos, …). Each component points local arrays at its own
+ * window.LLModuleStore.<module>.data.* once the vault is unlocked, mutates them
+ * in place, and schedules a debounced sealed save; on lock it clears those
+ * arrays and resets the store. Each component spreads this and supplies its
+ * module-specific bits.
+ *
+ * cfg.store: the module key backing this component (e.g. 'todos').
+ * cfg.map: { <store data key>: '<component property>' } — the collections to
+ *          wire (e.g. { todos: 'tasks', todoLists: 'lists' }).
+ * cfg.onLock(self): optional extra reset (e.g. notes clears currentId).
+ */
+
 Alpine.data('invoices', invoices);
+
+Alpine.data('todos', todos);
+
+/**
+ * Notes: zero-knowledge markdown. Each note's {title, content, tags} is sealed
+ * with the per-user vault key; the server only stores/returns ciphertext. The
+ * browser decrypts, renders the markdown itself (DOMPurify-sanitised) and re-seals
+ * on save. No server render, search or share.
+ */
+Alpine.data('notes', notes);
+
+
+/**
+ * Contacts. Zero-knowledge: every record lives in the opaque /store manifest
+ * (shared with notes/todos) — plaintext inside the sealed blob, so CRUD just
+ * edits the in-memory array and schedules a debounced sealed save. The only
+ * per-record blob is the optional avatar (kept OUT of the manifest so it stays
+ * small): encrypted + uploaded to the contacts blob store, referenced by
+ * avatarRef/avatarKey. vCard mapping + gallery-person linking build on this.
+ */
+Alpine.data('contacts', contacts);
+
+Alpine.data('health', health);
+
+
+/**
+ * Bookmarks + folders. Zero-knowledge: everything lives in the opaque manifest
+ * (one sealed blob shared with notes/todos), so there is no fetch/seal per row —
+ * fields are plaintext inside the sealed manifest and every mutation edits the
+ * in-memory arrays in place then schedules a debounced sealed save.
+ */
+Alpine.data('bookmarks', bookmarks);
+
+/**
+ * Mail signatures management page: list + rich-text editor for reusable HTML
+ * signatures (unlimited, one default).
+ */
+
+/**
+ * Mail identities management page: all identities grouped by account, each
+ * editable with an optional linked signature. At least one identity per account.
+ */
+
+/**
+ * Dedicated mail account settings page (add/edit). Clean sectioned form with an
+ * IMAP + SMTP connection test; identities and signatures are managed on their
+ * own pages (linked from here). Replaces the cramped account modal.
+ */
+
+/**
+ * Password manager ("passwords"). Zero-knowledge like the other opaque-store
+ * modules: every secret lives as a record in the sealed passwords store
+ * (LLModuleStore.passwords.data.secrets), unlocked with the vault key. Six item types (login, password,
+ * card, wifi, license, server); per-item version history on every field change;
+ * client-side TOTP, password generator, Wi-Fi QR, and copy-with-auto-clear.
+ */
+Alpine.data('passwords', passwords);
+Alpine.data('dashboard', dashboard);
+
+/**
+ * Explore: zero-knowledge map. Tracks, photo↔track couplings and coupling
+ * tolerances live in the sealed `explore` module store; gallery photos are read
+ * from the decrypted gallery index. Leaflet (OSM raster tiles in the browser),
+ * uPlot (elevation) and fflate (KMZ unzip) are all lazy-loaded on demand.
+ */
+Alpine.data('explore', explore);
 
 Alpine.start();
 

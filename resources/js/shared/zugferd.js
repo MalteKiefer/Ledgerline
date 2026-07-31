@@ -1,5 +1,5 @@
 // ZUGFeRD / Factur-X invoice XML (UN/CEFACT Cross Industry Invoice, EN 16931 profile).
-// Pure + client-side (the XML is generated in the browser and downloaded locally). Produces
+// Pure + client-side (zero-knowledge: the invoice never leaves the browser). Produces
 // the structured XML payload that is the heart of a ZUGFeRD e-invoice — directly usable
 // as an XRechnung/Factur-X XML and ready to be embedded into a PDF/A-3 later.
 
@@ -53,10 +53,6 @@ ${email ? `        <ram:URIUniversalCommunication><ram:URIID schemeID="EM">${esc
 export function buildZugferdXml(inv, company, totals) {
     const cur = inv.currency || 'EUR';
     const t = totals || { net: 0, vat: 0, gross: 0, vatByRate: {} };
-    // Line total is the raw (pre-discount) net; a global discount is a document-level
-    // allowance, so TaxBasisTotal = LineTotal − allowance = t.net (the discounted net).
-    const rawNet = Number.isFinite(t.grossNet) ? t.grossNet : t.net;
-    const discount = Number(t.discount) || 0;
 
     // One line item per invoice line.
     const lines = (inv.lines || []).map((l, i) => {
@@ -91,16 +87,6 @@ export function buildZugferdXml(inv, company, totals) {
       </ram:ApplicableTradeTax>`;
     }).join('\n') || `      <ram:ApplicableTradeTax><ram:CalculatedAmount>0.00</ram:CalculatedAmount><ram:TypeCode>VAT</ram:TypeCode><ram:BasisAmount>${dec(t.net)}</ram:BasisAmount><ram:CategoryCode>E</ram:CategoryCode><ram:RateApplicablePercent>0.00</ram:RateApplicablePercent></ram:ApplicableTradeTax>`;
 
-    // Document-level discount (BG-20 allowance). ChargeIndicator=false → allowance.
-    const rateKeys = Object.keys(t.vatByRate || {}).map(Number);
-    const allowRate = rateKeys.length ? Math.max(...rateKeys) : 0;
-    const allowanceXml = discount ? `      <ram:SpecifiedTradeAllowanceCharge>
-        <ram:ChargeIndicator><udt:Indicator>false</udt:Indicator></ram:ChargeIndicator>
-        <ram:ActualAmount>${dec(Math.abs(discount))}</ram:ActualAmount>
-        <ram:Reason>${esc(inv.discountType === 'percent' ? 'Rabatt ' + dec(inv.discountValue) + ' %' : 'Rabatt')}</ram:Reason>
-        <ram:CategoryTradeTax><ram:TypeCode>VAT</ram:TypeCode><ram:CategoryCode>${allowRate > 0 ? 'S' : 'E'}</ram:CategoryCode><ram:RateApplicablePercent>${dec(allowRate)}</ram:RateApplicablePercent></ram:CategoryTradeTax>
-      </ram:SpecifiedTradeAllowanceCharge>\n` : '';
-
     return `<?xml version="1.0" encoding="UTF-8"?>
 <rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100">
   <rsm:ExchangedDocumentContext>
@@ -123,9 +109,9 @@ ${partyXml('Buyer', inv.customer?.name, inv.customer?.address, inv.customer?.vat
     <ram:ApplicableHeaderTradeSettlement>
       <ram:InvoiceCurrencyCode>${esc(cur)}</ram:InvoiceCurrencyCode>
 ${company.iban ? `      <ram:SpecifiedTradeSettlementPaymentMeans><ram:TypeCode>58</ram:TypeCode><ram:PayeePartyCreditorFinancialAccount><ram:IBANID>${esc(company.iban.replace(/\s+/g, ''))}</ram:IBANID></ram:PayeePartyCreditorFinancialAccount></ram:SpecifiedTradeSettlementPaymentMeans>\n` : ''}${taxes}
-${allowanceXml}${inv.dueDate ? `      <ram:SpecifiedTradePaymentTerms><ram:DueDateDateTime><udt:DateTimeString format="102">${ciiDate(inv.dueDate)}</udt:DateTimeString></ram:DueDateDateTime></ram:SpecifiedTradePaymentTerms>\n` : ''}      <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
-        <ram:LineTotalAmount>${dec(rawNet)}</ram:LineTotalAmount>
-${discount ? `        <ram:AllowanceTotalAmount>${dec(Math.abs(discount))}</ram:AllowanceTotalAmount>\n` : ''}        <ram:TaxBasisTotalAmount>${dec(t.net)}</ram:TaxBasisTotalAmount>
+${inv.dueDate ? `      <ram:SpecifiedTradePaymentTerms><ram:DueDateDateTime><udt:DateTimeString format="102">${ciiDate(inv.dueDate)}</udt:DateTimeString></ram:DueDateDateTime></ram:SpecifiedTradePaymentTerms>\n` : ''}      <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
+        <ram:LineTotalAmount>${dec(t.net)}</ram:LineTotalAmount>
+        <ram:TaxBasisTotalAmount>${dec(t.net)}</ram:TaxBasisTotalAmount>
         <ram:TaxTotalAmount currencyID="${esc(cur)}">${dec(t.vat)}</ram:TaxTotalAmount>
         <ram:GrandTotalAmount>${dec(t.gross)}</ram:GrandTotalAmount>
         <ram:DuePayableAmount>${dec(t.gross)}</ram:DuePayableAmount>

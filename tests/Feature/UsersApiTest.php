@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\AppSettings;
+use App\Models\FileBlob;
 use App\Models\Group;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -53,8 +55,33 @@ class UsersApiTest extends TestCase
 
         $this->getJson('/api/v1/users', $this->auth($token))
             ->assertOk()
-            ->assertJsonStructure(['users' => [['id', 'name', 'email', 'role', 'verified', 'two_factor']]])
+            ->assertJsonStructure(['users' => [['id', 'name', 'email', 'role', 'verified', 'two_factor', 'usage']]])
             ->assertJsonFragment(['name' => 'Alice']);
+    }
+
+    public function test_index_includes_storage_usage(): void
+    {
+        $token = $this->adminToken();
+        $target = User::factory()->create();
+        FileBlob::create(['blob' => (string) Str::uuid(), 'user_id' => $target->id, 'size' => 5 * 1024 * 1024, 'created_at' => now()]);
+
+        $resp = $this->getJson('/api/v1/users', $this->auth($token))->assertOk();
+
+        // Find the target user's entry in the response.
+        /** @var list<array<string, mixed>> $users */
+        $users = $resp->json('users');
+        $entry = null;
+        foreach ($users as $u) {
+            if (isset($u['id']) && $u['id'] === $target->id) {
+                $entry = $u;
+                break;
+            }
+        }
+        $this->assertIsArray($entry);
+        /** @var array<string, mixed> $usage */
+        $usage = $entry['usage'];
+        $this->assertIsInt($usage['used']);
+        $this->assertSame(5 * 1024 * 1024, $usage['used']);
     }
 
     public function test_index_includes_group_membership(): void

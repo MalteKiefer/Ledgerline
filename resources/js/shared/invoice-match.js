@@ -1,4 +1,4 @@
-// Match an incoming bank transaction to an issued invoice (client-side). Used to
+// Match an incoming bank transaction to an issued invoice (client-side, ZK). Used to
 // auto-mark invoices paid and attach the invoice to the transaction as a locked receipt.
 // Pure + testable.
 

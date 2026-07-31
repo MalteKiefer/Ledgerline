@@ -9,13 +9,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Sanctum bearer-token (device ability) tests for the site-icon proxy endpoint
- * mirrored to /api/v1 for mobile parity (retained for the Finance module; the
- * password manager that first used it — and its breach/2fa-directory helpers —
- * has been removed).
+ * Sanctum bearer-token (device ability) tests for the password enrichment
+ * endpoints mirrored to /api/v1 for mobile parity.
  *
- * Exercises the same controller used by the web route (PasswordIconController)
- * via Sanctum bearer auth, confirming it is guard-agnostic.
+ * These exercise the same controllers used by the web routes (PasswordIconController,
+ * PasswordBreachController, TwoFactorDirectoryController) via Sanctum bearer auth,
+ * confirming the controllers are guard-agnostic.
  *
  * Uses real tokens (createToken) rather than Sanctum::actingAs because the
  * UpdateTokenIp middleware needs a persisted PersonalAccessToken row.
@@ -82,5 +81,78 @@ class PasswordApiEnrichmentTest extends TestCase
 
         $response->assertOk();
         $response->assertJson(['icon' => null]);
+    }
+
+    // =========================================================================
+    // GET /api/v1/passwords/breach  (PasswordBreachController@range)
+    // =========================================================================
+
+    public function test_breach_unauthenticated_returns_401(): void
+    {
+        $response = $this->getJson('/api/v1/passwords/breach');
+
+        $response->assertUnauthorized();
+    }
+
+    public function test_breach_wrong_ability_returns_403(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->getJson('/api/v1/passwords/breach', $this->bearerWithAbility($user, 'read-only'));
+
+        $response->assertForbidden();
+    }
+
+    public function test_breach_missing_prefix_returns_422(): void
+    {
+        // No 'prefix' param → empty string fails /^[0-9A-F]{5}$/ → abort(422) (no egress).
+        $user = User::factory()->create();
+
+        $response = $this->getJson('/api/v1/passwords/breach', $this->bearer($user));
+
+        $response->assertUnprocessable();
+    }
+
+    public function test_breach_invalid_prefix_returns_422(): void
+    {
+        // Too short / invalid chars → abort(422) (no egress).
+        $user = User::factory()->create();
+
+        $response = $this->getJson('/api/v1/passwords/breach?prefix=XYZ', $this->bearer($user));
+
+        $response->assertUnprocessable();
+    }
+
+    // =========================================================================
+    // GET /api/v1/passwords/tfa-directory  (TwoFactorDirectoryController@index)
+    // =========================================================================
+
+    public function test_tfa_directory_unauthenticated_returns_401(): void
+    {
+        $response = $this->getJson('/api/v1/passwords/tfa-directory');
+
+        $response->assertUnauthorized();
+    }
+
+    public function test_tfa_directory_wrong_ability_returns_403(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->getJson('/api/v1/passwords/tfa-directory', $this->bearerWithAbility($user, 'read-only'));
+
+        $response->assertForbidden();
+    }
+
+    public function test_tfa_directory_returns_entries_shape(): void
+    {
+        // The controller wraps its result in a 24h server-side cache. On first call
+        // in test the upstream fetch fails (no network) → Cache::remember returns []
+        // → {entries: {}} is still a valid 200 with the expected JSON key.
+        $user = User::factory()->create();
+
+        $response = $this->getJson('/api/v1/passwords/tfa-directory', $this->bearer($user));
+
+        $response->assertOk();
+        $response->assertJsonStructure(['entries']);
     }
 }

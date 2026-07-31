@@ -13,6 +13,8 @@
     {{-- Trusted-device binding: userId-only so a persisted key survives a session
          refresh (7-day stay-unlocked), but never a different login on the browser. --}}
     <meta name="vault-user" content="{{ auth()->id() ? sha1('vault-user|'.auth()->id()) : '' }}">
+    <meta name="vault-idle-minutes" content="{{ (int) (\App\Models\AppSettings::current()->vault_public_idle_minutes ?: config('files.vault_idle_minutes', 10)) }}">
+    <meta name="vault-remember-days" content="{{ (int) (\App\Models\AppSettings::current()->vault_remember_days ?: 7) }}">
     <meta name="gallery-columns" content="{{ (int) ($llCal->gallery_columns ?? 6) }}">
     <meta name="ll-prefs" content="{{ json_encode($llCal->displayPrefs()) }}">
     <title>{{ $title }} — Ledgerline</title>
@@ -44,7 +46,7 @@
                             <x-icon name="bars-3" class="h-6 w-6" />
                         </button>
                     @endauth
-                    <a href="{{ route('finance.index') }}" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Ledgerline</a>
+                    <a href="{{ route('dashboard') }}" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Ledgerline</a>
                 </div>
                 @auth
                     <div class="flex items-center gap-1">
@@ -61,11 +63,7 @@
             </div>
         </header>
 
-        {{-- overflow-x-clip (not -hidden): `overflow-x:hidden` forces the browser to
-             compute overflow-y:auto, turning <main> into a vertical scroll container
-             that clips absolutely-positioned dropdowns (e.g. the payment "Add" menu)
-             below the fold. `clip` prevents horizontal scroll without that side effect. --}}
-        <main class="mx-auto w-full max-w-[1700px] overflow-x-clip px-4 py-8 sm:w-[92%] sm:px-6">
+        <main class="mx-auto w-full max-w-[1700px] overflow-x-hidden px-4 py-8 sm:w-[92%] sm:px-6">
             @if (session('status'))
                 <x-alert variant="success" class="mb-6" role="status">{{ session('status') }}</x-alert>
             @endif
@@ -86,7 +84,7 @@
     <x-mobile-nav />
 
     {{-- App-wide confirm/prompt modal (replaces window.confirm & window.prompt) --}}
-    <div x-data x-show="$store.confirm.open" x-cloak class="fixed inset-0 z-[1700] flex items-center justify-center overflow-y-auto p-4"
+    <div x-data x-show="$store.confirm.open" x-cloak class="fixed inset-0 z-[1600] flex items-center justify-center overflow-y-auto p-4"
         role="dialog" aria-modal="true" @keydown.escape.window="$store.confirm.no()">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="$store.confirm.no()"></div>
         <div class="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl ring-1 ring-black/[0.06] dark:bg-[#1c1c1e] dark:ring-white/10"
@@ -116,11 +114,30 @@
                 <div class="flex items-center gap-3 rounded-2xl bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
                     <span x-text="t.message"></span>
                     <template x-if="t.url"><a :href="t.url" class="font-medium underline" x-text="t.linkLabel"></a></template>
-                    <button type="button" @click="dismiss(t.id)" class="text-gray-400 hover:text-white" aria-label="{{ __('common.close') }}"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                    <button type="button" @click="dismiss(t.id)" class="text-gray-400 hover:text-white" aria-label="close"><x-icon name="x-mark" class="h-4 w-4" /></button>
                 </div>
             </template>
         </div>
 
+        {{-- Shared square-crop modal (window.llCrop) — used by contacts + gallery --}}
+        <div x-data="cropModal()" x-show="open" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" @keydown.escape.window="cancel()">
+            <div class="absolute inset-0 bg-gray-900/60" @click="cancel()"></div>
+            <div class="relative w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 p-4 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('contacts.crop_title') }}</h3>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('contacts.crop_hint') }}</p>
+                <div class="mx-auto mt-3 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 select-none touch-none"
+                     style="width:300px;height:300px;position:relative;cursor:grab"
+                     @pointerdown="startDrag($event); $event.target.setPointerCapture?.($event.pointerId)" @pointermove="onDrag($event)" @pointerup="endDrag()" @pointercancel="endDrag()">
+                    <img :src="url" :style="'position:absolute;left:0;top:0;max-width:none;'+imgStyle()" draggable="false" alt="">
+                    <div class="pointer-events-none absolute inset-0 rounded-full ring-1 ring-black/10"></div>
+                </div>
+                <input type="range" min="1" max="8" step="0.01" :value="scale/minScale" @input="setScale(minScale * $event.target.value)" class="mt-3 w-full">
+                <div class="mt-3 flex justify-end gap-2">
+                    <x-button variant="secondary" type="button" @click="cancel()">{{ __('common.cancel') }}</x-button>
+                    <x-button type="button" @click="confirm()">{{ __('common.save') }}</x-button>
+                </div>
+            </div>
+        </div>
     @endauth
 </body>
 </html>

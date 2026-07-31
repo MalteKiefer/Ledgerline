@@ -8,7 +8,8 @@ use App\Models\BackupJob;
 use App\Models\BackupRun;
 use App\Services\Backup\Sources\BackupSource;
 use App\Services\Backup\Sources\DatabaseSource;
-use App\Services\Backup\Sources\InvoiceBlobSource;
+use App\Services\Backup\Sources\FilesSource;
+use App\Services\Backup\Sources\GallerySource;
 use App\Services\Backup\Sources\MirrorableSource;
 use App\Support\Bytes;
 use App\Support\Redactor;
@@ -108,8 +109,7 @@ final class BackupManager
                 // run is a fast delta of just the blobs added since the cursor.
                 $reconcileHoursCfg = config('backup.reconcile_hours', 24);
                 $reconcileHours = max(0, is_numeric($reconcileHoursCfg) ? (int) $reconcileHoursCfg : 24);
-                $needFull = ! $sourceObj->supportsLedgerDelta()
-                    || $reconcileHours === 0
+                $needFull = $reconcileHours === 0
                     || $job->last_full_mirror_at === null
                     || $job->last_full_mirror_at->lt(Carbon::now()->subHours($reconcileHours));
 
@@ -249,7 +249,8 @@ final class BackupManager
     {
         return match ($source) {
             'database' => app(DatabaseSource::class),
-            'invoices' => app(InvoiceBlobSource::class),
+            'files' => app(FilesSource::class),
+            'gallery' => app(GallerySource::class),
             default => throw new RuntimeException("Unknown backup source: {$source}"),
         };
     }

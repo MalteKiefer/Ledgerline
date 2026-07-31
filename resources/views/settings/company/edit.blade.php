@@ -53,18 +53,19 @@
         <div class="ll-card">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_invoice_heading') }}</h2>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.company_invoice_hint') }}</p>
-            {{-- Numbering format + start are LOCKED once the current year has numbered
-                 invoices (GoBD: the running sequence must not change mid-year). Checked
-                 against the relational finance data. --}}
+            {{-- Numbering format + start are LOCKED once the current year has invoices
+                 (GoBD: the running sequence must not change mid-year). The check reads the
+                 zero-knowledge invoice store client-side after the vault unlocks. --}}
             <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2"
                  x-data="{ locked: false, async check() {
                      try {
-                         const d = await fetch('/finance/data', { headers: { Accept: 'application/json' } }).then((r) => r.json());
+                         if (! this.$store.vault?.unlocked || ! window.LLInvoicesStore) { this.locked = false; return; }
+                         if (! window.LLInvoicesStore.loaded) await window.LLInvoicesStore.load();
                          const y = String(new Date().getFullYear());
-                         this.locked = (d.invoices || []).some((i) => ! i.deleted_at && i.number && String(i.issue_date || '').slice(0, 4) === y);
+                         this.locked = (window.LLInvoicesStore.data.invoices || []).some((i) => ! i.trashed && String(i.issueDate || '').slice(0, 4) === y);
                      } catch (e) { this.locked = false; }
                  } }"
-                 x-init="check()">
+                 x-init="check(); $watch('$store.vault.unlocked', () => check())">
                 <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_number_format') }}
                     <input type="text" name="invoice_number_format" value="{{ old('invoice_number_format', $s->invoice_number_format ?: 'YYYY-NNNN') }}" placeholder="YYYY-NNNN" :readonly="locked" :class="locked && 'opacity-60 cursor-not-allowed'" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     <span class="mt-1 block text-xs text-gray-400 dark:text-gray-500">{{ __('settings.invoice_number_format_hint') }}</span>
@@ -82,14 +83,6 @@
                     <input type="number" step="0.01" name="invoice_default_vat_rate" value="{{ old('invoice_default_vat_rate', $s->invoice_default_vat_rate ?: '19.00') }}" min="0" max="100" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     @error('invoice_default_vat_rate')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
                 </label>
-                <div class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">
-                    <span class="block font-medium">{{ __('settings.invoice_small_business') }}</span>
-                    <label class="mt-1 flex items-start gap-2">
-                        <input type="checkbox" name="small_business" value="1" @checked(old('small_business', $s->small_business)) class="mt-0.5 rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
-                        <span>{{ __('settings.invoice_small_business_label') }}</span>
-                    </label>
-                    <span class="mt-1 block text-xs text-gray-400 dark:text-gray-500">{{ __('settings.invoice_small_business_hint') }}</span>
-                </div>
                 <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_payment_terms_days') }}
                     <input type="number" name="invoice_payment_terms_days" value="{{ old('invoice_payment_terms_days', $s->invoice_payment_terms_days ?: 14) }}" min="0" max="365" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     @error('invoice_payment_terms_days')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
@@ -142,46 +135,6 @@
                         <input type="text" value="{{ old('invoice_heading_color', $s->invoice_heading_color ?: '#6b7280') }}" oninput="this.previousElementSibling.value=this.value" class="block w-28 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     </span>
                     @error('invoice_heading_color')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
-                </label>
-            </div>
-        </div>
-
-        {{-- Company SMTP (invoice sending) — separate from the notification SMTP --}}
-        <div class="ll-card" x-data="{ on: {{ old('company_smtp_enabled', $s->company_smtp_enabled) ? 'true' : 'false' }} }">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_smtp_heading') }}</h2>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.company_smtp_hint') }}</p>
-            <label class="mt-3 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                <input type="checkbox" name="company_smtp_enabled" value="1" x-model="on" class="rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
-                {{ __('settings.company_smtp_enabled') }}
-            </label>
-            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2" x-show="on" x-cloak>
-                <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.company_smtp_host') }}
-                    <input type="text" name="company_smtp_host" value="{{ old('company_smtp_host', $s->company_smtp_host) }}" placeholder="smtp.example.com" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                    @error('company_smtp_host')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
-                </label>
-                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_smtp_port') }}
-                    <input type="number" name="company_smtp_port" value="{{ old('company_smtp_port', $s->company_smtp_port ?: 587) }}" min="1" max="65535" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                </label>
-                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_smtp_encryption') }}
-                    <select name="company_smtp_encryption" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                        @php $enc = old('company_smtp_encryption', $s->company_smtp_encryption); @endphp
-                        <option value="tls" @selected($enc === 'tls' || $enc === null || $enc === '')>TLS (STARTTLS)</option>
-                        <option value="ssl" @selected($enc === 'ssl')>SSL</option>
-                    </select>
-                </label>
-                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_smtp_username') }}
-                    <input type="text" name="company_smtp_username" value="{{ old('company_smtp_username', $s->company_smtp_username) }}" autocomplete="off" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                </label>
-                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_smtp_password') }}
-                    <input type="password" name="company_smtp_password" value="" autocomplete="new-password" placeholder="{{ $s->company_smtp_password ? '••••••••' : '' }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                    <span class="mt-1 block text-xs text-gray-400 dark:text-gray-500">{{ __('settings.company_smtp_password_hint') }}</span>
-                </label>
-                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_smtp_from_address') }}
-                    <input type="email" name="company_smtp_from_address" value="{{ old('company_smtp_from_address', $s->company_smtp_from_address) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                    @error('company_smtp_from_address')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
-                </label>
-                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_smtp_from_name') }}
-                    <input type="text" name="company_smtp_from_name" value="{{ old('company_smtp_from_name', $s->company_smtp_from_name) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                 </label>
             </div>
         </div>

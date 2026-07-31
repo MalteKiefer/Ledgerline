@@ -1,6 +1,6 @@
 // Pure heuristics for importing historical invoice PDFs into invoice records.
-// This runs entirely client-side (pdf.js extracts the text; these functions turn it
-// into a draft, then the invoice is created over REST). The filename carries the most reliable
+// Invoices are zero-knowledge, so this runs entirely client-side (pdf.js extracts the
+// text; these functions turn it into a draft). The filename carries the most reliable
 // signal (date + number + customer); the PDF text supplies the money (net/VAT/gross).
 // Two layout families are handled: the older "Rechnungsnr./Rechnungsdatum/Zu zahlen EUR"
 // sheet and the newer "R-xxxx / Datum: / Nettobetrag/Gesamtbetrag" sheet. Line items

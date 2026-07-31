@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -17,11 +18,9 @@ use Laravel\Sanctum\HasApiTokens;
 
 /**
  * An authenticated user. Identity is first-party (email + password, optional TOTP
- * two-factor via Fortify), with optional Pocket-ID (OIDC) sign-in bound to the
- * `oidc_sub` column. Privilege is a first-party `role` (admin|user) and is never
- * derived from OIDC claims. App login is independent of any vault passphrase.
- *
- * @property ?string $oidc_sub Stable Pocket-ID subject identifier (set server-side only)
+ * two-factor via Fortify); the legacy OIDC `oidc_sub` column is retained (nullable)
+ * for provenance only. Privilege is a first-party `role` (admin|user). App login is
+ * fully independent of the zero-knowledge vault passphrase.
  */
 // `role` and `groups` are deliberately NOT fillable — `role` is the privilege
 // boundary (drives the admin gate), so it is only ever set server-side, never
@@ -182,6 +181,17 @@ class User extends Authenticatable implements MustVerifyEmail
     public function effectiveGroups(): array
     {
         return $this->isAdmin() ? ['admin'] : [];
+    }
+
+    /**
+     * All shared-vault memberships this user holds (as a member, not necessarily
+     * as owner). Includes pending, active and revoked rows so callers can filter
+     * by status themselves.
+     */
+    /** @return HasMany<SharedVaultMember, $this> */
+    public function vaultMemberships(): HasMany
+    {
+        return $this->hasMany(SharedVaultMember::class);
     }
 
     /**

@@ -1,4 +1,4 @@
-// Ranked booking suggestions for a receipt (client-side). A charge often posts a few
+// Ranked booking suggestions for a receipt (client-side, ZK). A charge often posts a few
 // days after the receipt date and may be in another currency, so matching is fuzzy: prefer
 // an exact-cent amount, else an approximate amount (rough FX conversion or a few percent
 // off), and rank matches nearest the receipt date first. Pure + testable.

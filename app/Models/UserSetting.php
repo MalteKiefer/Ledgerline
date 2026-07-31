@@ -27,7 +27,6 @@ use Illuminate\Database\Eloquent\Model;
  * @property ?string $invoice_number_format
  * @property int $invoice_next_number
  * @property ?string $invoice_default_vat_rate
- * @property bool $small_business
  * @property int $invoice_payment_terms_days
  * @property ?string $invoice_footer_text
  * @property ?string $invoice_accent_color
@@ -35,14 +34,6 @@ use Illuminate\Database\Eloquent\Model;
  * @property ?string $invoice_template
  * @property ?string $invoice_payment_methods
  * @property ?string $invoice_payment_terms_text
- * @property bool $company_smtp_enabled
- * @property ?string $company_smtp_host
- * @property ?int $company_smtp_port
- * @property ?string $company_smtp_encryption
- * @property ?string $company_smtp_username
- * @property ?string $company_smtp_password
- * @property ?string $company_smtp_from_address
- * @property ?string $company_smtp_from_name
  */
 #[Fillable([
     'user_id',
@@ -53,6 +44,8 @@ use Illuminate\Database\Eloquent\Model;
     'gallery_columns',
     'file_max_versions',
     'theme',
+    'contact_birthday_channels',
+    'contact_anniversary_channels',
     'unit_distance',
     'unit_elevation',
     'unit_weight',
@@ -63,14 +56,9 @@ use Illuminate\Database\Eloquent\Model;
     'company_name', 'company_address', 'company_email', 'company_phone', 'company_tax_id',
     'company_vat_id', 'company_iban', 'company_bic', 'company_bank_name', 'company_logo_path',
     'invoice_number_prefix', 'invoice_number_padding', 'invoice_number_format', 'invoice_next_number',
-    'invoice_default_vat_rate', 'small_business', 'invoice_payment_terms_days', 'invoice_footer_text',
+    'invoice_default_vat_rate', 'invoice_payment_terms_days', 'invoice_footer_text',
     'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
     'invoice_payment_methods', 'invoice_payment_terms_text',
-    // Per-user COMPANY SMTP — a dedicated transport for sending invoices,
-    // separate from the workspace notification SMTP (AppSettings). Password is
-    // an operational secret (encrypted cast); never a fillable plaintext leak.
-    'company_smtp_enabled', 'company_smtp_host', 'company_smtp_port', 'company_smtp_encryption',
-    'company_smtp_username', 'company_smtp_password', 'company_smtp_from_address', 'company_smtp_from_name',
 ])]
 class UserSetting extends Model
 {
@@ -81,7 +69,6 @@ class UserSetting extends Model
     /** In-memory defaults so a freshly-created row reads correctly without a reload. */
     protected $attributes = [
         'paperless_enabled' => false,
-        'small_business' => false,
         'gallery_columns' => 6,
         'file_max_versions' => 10,
         'theme' => 'system',
@@ -118,16 +105,14 @@ class UserSetting extends Model
             'paperless_url' => 'encrypted',
             'paperless_token' => 'encrypted',
             'paperless_synced_at' => 'datetime',
-            'company_smtp_enabled' => 'boolean',
-            'company_smtp_port' => 'integer',
-            'company_smtp_password' => 'encrypted',
             'gallery_columns' => 'integer',
             'file_max_versions' => 'integer',
+            'contact_birthday_channels' => 'array',
+            'contact_anniversary_channels' => 'array',
             'invoice_number_padding' => 'integer',
             'invoice_next_number' => 'integer',
             'invoice_payment_terms_days' => 'integer',
             'invoice_default_vat_rate' => 'decimal:2',
-            'small_business' => 'boolean',
         ];
     }
 
