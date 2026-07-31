@@ -472,4 +472,10 @@ return [
     'trash_confirm' => 'Diese Rechnung in den Papierkorb verschieben?',
     'open_original' => 'Original-PDF öffnen',
     'imported_readonly' => 'Importierte Rechnung — schreibgeschützt (unverändert für die Steuer). Das Original-PDF ist hinterlegt.',
+    'duplicates_warn' => ':n mögliche Dublette(n) gefunden',
+    'duplicates_hint' => 'Bitte prüfe diese Datensätze — es wird nichts automatisch gelöscht.',
+    'duplicates_invoices' => 'Rechnungen:',
+    'duplicates_transactions' => 'Umsätze:',
+    'suggestion_label' => 'Vorschlag:',
+    'apply_suggestion' => 'Vorschlag übernehmen',
 ];

@@ -472,4 +472,10 @@ return [
     'trash_confirm' => 'Move this invoice to the trash?',
     'open_original' => 'Open original PDF',
     'imported_readonly' => 'Imported invoice — read-only (kept unchanged for tax compliance). Its original PDF is stored.',
+    'duplicates_warn' => ':n possible duplicate(s) detected',
+    'duplicates_hint' => 'Please review these records — nothing is deleted automatically.',
+    'duplicates_invoices' => 'Invoices:',
+    'duplicates_transactions' => 'Transactions:',
+    'suggestion_label' => 'Suggestion:',
+    'apply_suggestion' => 'Apply suggestion',
 ];

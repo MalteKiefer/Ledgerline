@@ -152,6 +152,10 @@ export default (config = {}, labels = {}, initial = {}) => ({
     financeCategories: (initial.financeCategories || []).map(normCategory),
     invTrash: [], // trashed invoices (loaded on demand from /finance/trash)
 
+    // Read-only server insights (additive; best-effort, never block the page).
+    duplicates: { invoices: [], transactions: [] }, // suspected-duplicate groups from GET /finance/duplicates
+    catSuggestions: [],  // [{tx_id, merchant, suggested_category}] from GET /finance/category-suggestions
+
     query: '',           // invoice-list search
     view: 'list',        // 'list' | 'edit' | 'imported'
     current: null,       // the invoice being edited
@@ -194,7 +198,38 @@ export default (config = {}, labels = {}, initial = {}) => ({
         // Load the invoice trash lazily the first time the bin is opened.
         this.$watch('showInvTrash', (v) => { if (v) this._loadInvTrash(); });
         this._restoreDeepLink(sec, deepId);
+        // Read-only server insights, best-effort — must never break the page.
+        this._loadDuplicates();
+        this._loadCatSuggestions();
     },
+
+    // Suspected-duplicate groups (invoices + transactions). Read-only display.
+    async _loadDuplicates() {
+        try {
+            const d = await getJson('/finance/duplicates');
+            this.duplicates = {
+                invoices: Array.isArray(d?.invoices) ? d.invoices : [],
+                transactions: Array.isArray(d?.transactions) ? d.transactions : [],
+            };
+        } catch (e) { /* leave empty */ }
+    },
+    // merchant->category suggestions for uncategorised transactions.
+    async _loadCatSuggestions() {
+        try {
+            const d = await getJson('/finance/category-suggestions');
+            this.catSuggestions = Array.isArray(d?.suggestions) ? d.suggestions : [];
+        } catch (e) { /* leave empty */ }
+    },
+    get hasDuplicates() { return !! ((this.duplicates?.invoices?.length) || (this.duplicates?.transactions?.length)); },
+    get duplicateCount() { return (this.duplicates?.invoices?.length || 0) + (this.duplicates?.transactions?.length || 0); },
+    // The suggestion for a still-uncategorised tx (hides itself once a category is set).
+    suggestionFor(tx) {
+        if (! tx || tx.vatCat) return null;
+        return (this.catSuggestions || []).find((s) => s.tx_id === tx.id) || null;
+    },
+    // Apply a suggested category through the EXISTING per-transaction save path
+    // (the same one used when the owner picks a category manually in the list).
+    async applySuggestion(tx, category) { if (tx && category) await this.setVatCat(tx, category); },
 
     // Build #section/<id> from the current open detail and replace it into the URL.
     _writeHash() {
