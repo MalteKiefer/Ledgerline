@@ -109,6 +109,15 @@
         email_no_recipient: @js(__('invoices.email_no_recipient')),
         email_no_smtp: @js(__('invoices.email_no_smtp')),
         email_to: @js(__('invoices.email_to')),
+        storno_confirm: @js(__('invoices.storno_confirm')),
+        storno_created: @js(__('invoices.storno_created')),
+        storno_failed: @js(__('invoices.storno_failed')),
+        storno_not_finalized: @js(__('invoices.storno_not_finalized')),
+        storno_already: @js(__('invoices.storno_already')),
+        storno_is_credit: @js(__('invoices.storno_is_credit')),
+        dun_sent: @js(__('invoices.dun_sent')),
+        dun_failed: @js(__('invoices.dun_failed')),
+        dun_not_overdue: @js(__('invoices.dun_not_overdue')),
      }, @js([
         'invoices' => $invoices,
         'partners' => $partners,
@@ -2309,6 +2318,8 @@
                           :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
                           x-text="statusLabel(inv.status)"></span>
                         <template x-if="isOverdue(inv)"><x-badge variant="error"><span x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(inv))"></span></x-badge></template>
+                        <template x-if="isCreditNote(inv)"><x-badge variant="warning">{{ __('invoices.credit_note_badge') }}</x-badge></template>
+                        <template x-if="isCancelled(inv)"><x-badge variant="gray">{{ __('invoices.cancelled_badge') }}</x-badge></template>
                         <template x-if="isInvoiceLinked(inv)">
                           <span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'">
                             <x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}
@@ -2321,6 +2332,8 @@
                         <x-action-menu :aria-label="__('invoices.col_actions')">
                           <x-action-menu-item icon="pencil" @click="open(inv)">{{ __('common.edit') }}</x-action-menu-item>
                           <x-action-menu-item icon="printer" @click="printInvoice(inv)">{{ __('invoices.print') }}</x-action-menu-item>
+                          <x-action-menu-item icon="envelope" x-show="canDun(inv)" @click="dun(inv)">{{ __('invoices.dun_send') }}</x-action-menu-item>
+                          <x-action-menu-item icon="arrow-uturn-left" x-show="canStorno(inv)" @click="storno(inv)">{{ __('invoices.storno') }}</x-action-menu-item>
                           <x-action-menu-item icon="trash" danger @click="trash(inv)">{{ __('invoices.trash') }}</x-action-menu-item>
                         </x-action-menu>
                       </div>
@@ -2342,10 +2355,13 @@
               <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
               <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
               <span class="inline-flex items-center rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400" x-text="statusLabel(current?.status)"></span>
+              <template x-if="isCancelled(current)"><x-badge variant="gray">{{ __('invoices.cancelled_badge') }}</x-badge></template>
               <template x-if="isInvoiceLinked(current)"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
             </div>
             <x-action-menu :aria-label="__('invoices.col_actions')">
               <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
+              <x-action-menu-item icon="envelope" x-show="canDun(current)" @click="dun(current)">{{ __('invoices.dun_send') }}</x-action-menu-item>
+              <x-action-menu-item icon="arrow-uturn-left" x-show="canStorno(current)" @click="storno(current)">{{ __('invoices.storno') }}</x-action-menu-item>
               <x-action-menu-item icon="trash" danger @click="trash(current)">{{ __('common.delete') }}</x-action-menu-item>
             </x-action-menu>
           </div>
@@ -2405,6 +2421,8 @@
                 :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
                 x-text="statusLabel(current?.status)"></span>
               <template x-if="isOverdue(current)"><x-badge variant="error"><span x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(current))"></span></x-badge></template>
+              <template x-if="isCreditNote(current)"><x-badge variant="warning">{{ __('invoices.credit_note_badge') }}</x-badge></template>
+              <template x-if="isCancelled(current)"><x-badge variant="gray">{{ __('invoices.cancelled_badge') }}</x-badge></template>
               <template x-if="isInvoiceLinked(current)"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
             </div>
             <div class="flex flex-wrap items-center gap-2">
@@ -2422,6 +2440,8 @@
                 <x-action-menu-item icon="check-circle" x-show="! current?.imported && current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-action-menu-item>
                 <x-action-menu-item icon="envelope" x-show="canEmail(current)" @click="emailInvoice(current)">{{ __('invoices.email_send') }}</x-action-menu-item>
                 <x-action-menu-item icon="envelope" x-show="! canEmail(current)" disabled class="opacity-50 cursor-not-allowed" title="{{ __('invoices.email_disabled_hint') }}">{{ __('invoices.email_send') }}</x-action-menu-item>
+                <x-action-menu-item icon="envelope" x-show="canDun(current)" @click="dun(current)">{{ __('invoices.dun_send') }}</x-action-menu-item>
+                <x-action-menu-item icon="arrow-uturn-left" x-show="canStorno(current)" @click="storno(current)">{{ __('invoices.storno') }}</x-action-menu-item>
               </x-action-menu>
             </div>
           </div>
@@ -2483,6 +2503,12 @@
             <div class="ll-card">
               <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.gross') }}</h2>
               <dl class="mt-3 space-y-1.5 text-sm">
+                <template x-if="hasDiscount(current)">
+                  <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">{{ __('invoices.subtotal') }}</dt><dd class="tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(totals.grossNet)"></dd></div>
+                </template>
+                <template x-if="hasDiscount(current)">
+                  <div class="flex justify-between text-accent"><dt>{{ __('invoices.discount') }}</dt><dd class="tabular-nums" x-text="'−' + fmtMoney(Math.abs(totals.discount))"></dd></div>
+                </template>
                 <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">{{ __('invoices.net') }}</dt><dd class="tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(totals.net)"></dd></div>
                 <template x-for="rate in vatRatesOf(current)" :key="rate">
                   <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400" x-text="@js(__('invoices.vat_at')).replace(':rate', rate)"></dt><dd class="tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(totals.vatByRate[rate])"></dd></div>
@@ -2529,6 +2555,37 @@
                   </template>
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {{-- Discount (Rabatt) + Skonto terms --}}
+          <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <div class="ll-card">
+              <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.discount') }}</h2>
+              <div class="mt-3 grid grid-cols-2 gap-3">
+                <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.discount') }}
+                  <select x-model="current.discountType" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                    <option :value="null">{{ __('invoices.discount_none') }}</option>
+                    <option value="percent">{{ __('invoices.discount_percent') }}</option>
+                    <option value="amount">{{ __('invoices.discount_amount') }}</option>
+                  </select>
+                </label>
+                <label class="block text-sm text-gray-700 dark:text-gray-300" x-show="current.discountType">{{ __('invoices.discount_value') }}
+                  <input type="number" step="0.01" min="0" x-model.number="current.discountValue" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent">
+                </label>
+              </div>
+            </div>
+            <div class="ll-card">
+              <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.skonto') }}</h2>
+              <div class="mt-3 grid grid-cols-2 gap-3">
+                <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.skonto_percent') }}
+                  <input type="number" step="0.01" min="0" max="100" x-model.number="current.skontoPercent" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent">
+                </label>
+                <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.skonto_days') }}
+                  <input type="number" step="1" min="0" x-model.number="current.skontoDays" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent">
+                </label>
+              </div>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400" x-show="skontoDate(current)" x-text="'{{ __('invoices.skonto_note') }}'.replace(':percent', current.skontoPercent).replace(':date', skontoDate(current))"></p>
             </div>
           </div>
 
@@ -2645,7 +2702,8 @@
                   </table>
                   <div style="display:flex; justify-content:flex-end; margin-top:18px;">
                     <div style="width:250px;">
-                      <div style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span x-text="pl('subtotal')"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
+                      <div style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span x-text="pl('subtotal')"></span><span class="tabular-nums" x-text="fmtMoney(hasDiscount(_printing) ? computeTotals(_printing).grossNet : computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
+                      <div x-show="hasDiscount(_printing)" style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span x-text="pl('discount')"></span><span class="tabular-nums" x-text="'−' + fmtMoney(Math.abs(computeTotals(_printing).discount), _printing.currency, _printing.lang)"></span></div>
                       <template x-for="rate in vatRatesOf(_printing)" :key="rate">
                         <div style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span x-text="pl('vat_at').replace(':rate', rate)"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></span></div>
                       </template>
@@ -2658,6 +2716,7 @@
                   </div>
                   <div style="margin-top:28px; padding-top:12px; border-top:1px solid #eef0f4; display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; font-size:9px; color:#4b5563;">
                     <div x-show="company.payment_terms_text"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + company.heading" x-text="pl('payment_terms_heading')"></div><div style="white-space:pre-line;" x-text="company.payment_terms_text"></div></div>
+                    <div x-show="skontoDate(_printing)" style="margin-top:4px; font-weight:600;" x-text="pl('skonto_note').replace(':percent', _printing.skontoPercent).replace(':date', skontoDate(_printing))"></div>
                     <div x-show="company.payment_methods"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + company.heading" x-text="pl('payment_methods_heading')"></div><div style="white-space:pre-line;" x-text="company.payment_methods"></div></div>
                     <div x-show="company.bank_name || company.iban"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + company.heading" x-text="pl('bank_details')"></div><div x-text="[company.bank_name, company.iban ? 'IBAN ' + company.iban : '', company.bic ? 'BIC ' + company.bic : ''].filter(Boolean).join(' · ')"></div></div>
                   </div>
@@ -2709,7 +2768,8 @@
                 </table>
                 <div style="display:flex; justify-content:flex-end; margin-top:18px;">
                   <table style="min-width:250px; border-collapse:collapse;">
-                    <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('subtotal')"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></td></tr>
+                    <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('subtotal')"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="fmtMoney(hasDiscount(_printing) ? computeTotals(_printing).grossNet : computeTotals(_printing).net, _printing.currency, _printing.lang)"></td></tr>
+                    <tr x-show="hasDiscount(_printing)"><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('discount')"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="'−' + fmtMoney(Math.abs(computeTotals(_printing).discount), _printing.currency, _printing.lang)"></td></tr>
                     <template x-for="rate in vatRatesOf(_printing)" :key="rate"><tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('vat_at').replace(':rate', rate)"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></td></tr></template>
                     <tr style="border-top:1px solid #222;"><td style="padding:7px 6px; letter-spacing:.1em; text-transform:uppercase;" :style="'color:' + company.accent" x-text="pl('gross')"></td><td style="padding:7px 0 7px 6px; text-align:right; font-weight:700; font-size:13px;" :style="'color:' + company.accent" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></td></tr>
                   </table>
@@ -2771,7 +2831,8 @@
                     </table>
                   </div>
                   <div class="ie-sum-area"><div class="ie-sum">
-                    <div class="ie-sr"><span class="l" x-text="pl('subtotal')"></span><span class="v num" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
+                    <div class="ie-sr"><span class="l" x-text="pl('subtotal')"></span><span class="v num" x-text="fmtMoney(hasDiscount(_printing) ? computeTotals(_printing).grossNet : computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
+                    <div class="ie-sr" x-show="hasDiscount(_printing)"><span class="l" x-text="pl('discount')"></span><span class="v num" x-text="'−' + fmtMoney(Math.abs(computeTotals(_printing).discount), _printing.currency, _printing.lang)"></span></div>
                     <template x-for="rate in vatRatesOf(_printing)" :key="rate">
                       <div class="ie-sr"><span class="l" x-text="pl('vat_at').replace(':rate', rate)"></span><span class="v num" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></span></div>
                     </template>
@@ -2785,6 +2846,7 @@
                   <div class="ie-pay-area" x-show="company.payment_terms_text || company.payment_methods || company.bank_name || company.iban">
                     <div class="ie-pay-grid">
                       <div x-show="company.payment_terms_text"><div class="ie-pc-lbl" x-text="pl('payment_terms_heading')"></div><div class="ie-pc-val" x-text="company.payment_terms_text"></div></div>
+                      <div x-show="skontoDate(_printing)" class="ie-pc-val" style="font-weight:600;" x-text="pl('skonto_note').replace(':percent', _printing.skontoPercent).replace(':date', skontoDate(_printing))"></div>
                       <div x-show="company.payment_methods"><div class="ie-pc-lbl" x-text="pl('payment_methods_heading')"></div><div class="ie-pc-val" x-text="company.payment_methods"></div></div>
                       <div x-show="company.bank_name || company.iban"><div class="ie-pc-lbl" x-text="pl('bank_details')"></div><div class="ie-pc-val"><span x-text="company.bank_name"></span><template x-if="company.iban"><span><br x-show="company.bank_name">IBAN: <span x-text="company.iban"></span></span></template><template x-if="company.bic"><span><br>BIC: <span x-text="company.bic"></span></span></template></div></div>
                     </div>
@@ -2850,7 +2912,8 @@
                 {{-- Totals --}}
                 <div style="display:flex; justify-content:flex-end; margin-top:16px;">
                   <div style="width:260px;">
-                    <div style="display:flex; justify-content:space-between; padding:3px 10px; color:#6b7280;"><span x-text="pl('subtotal')"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
+                    <div style="display:flex; justify-content:space-between; padding:3px 10px; color:#6b7280;"><span x-text="pl('subtotal')"></span><span class="tabular-nums" x-text="fmtMoney(hasDiscount(_printing) ? computeTotals(_printing).grossNet : computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
+                    <div x-show="hasDiscount(_printing)" style="display:flex; justify-content:space-between; padding:3px 10px; color:#6b7280;"><span x-text="pl('discount')"></span><span class="tabular-nums" x-text="'−' + fmtMoney(Math.abs(computeTotals(_printing).discount), _printing.currency, _printing.lang)"></span></div>
                     <template x-for="rate in vatRatesOf(_printing)" :key="rate">
                       <div style="display:flex; justify-content:space-between; padding:3px 10px; color:#6b7280;"><span x-text="pl('vat_at').replace(':rate', rate)"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></span></div>
                     </template>
@@ -2864,6 +2927,7 @@
                 <div style="margin-top:14px; text-align:center; color:#4b5563; white-space:pre-line;" x-show="_printing.footer || company.footer_text" x-text="_printing.footer || company.footer_text"></div>
                 <div style="margin-top:24px; padding-top:10px; border-top:1px solid #e5e7eb; display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; font-size:8.5px; color:#6b7280;">
                   <div x-show="company.payment_terms_text"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.05em;" x-text="pl('payment_terms_heading')"></div><div style="white-space:pre-line;" x-text="company.payment_terms_text"></div></div>
+                  <div x-show="skontoDate(_printing)" style="margin-top:4px; font-weight:600;" x-text="pl('skonto_note').replace(':percent', _printing.skontoPercent).replace(':date', skontoDate(_printing))"></div>
                   <div x-show="company.payment_methods"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.05em;" x-text="pl('payment_methods_heading')"></div><div style="white-space:pre-line;" x-text="company.payment_methods"></div></div>
                   <div x-show="company.bank_name || company.iban"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.05em;" x-text="pl('bank_details')"></div><div x-text="[company.bank_name, company.iban ? 'IBAN ' + company.iban : '', company.bic ? 'BIC ' + company.bic : ''].filter(Boolean).join(' · ')"></div></div>
                 </div>

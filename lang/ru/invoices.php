@@ -511,4 +511,34 @@ return [
     'aging_open_total' => 'Всего открыто',
     'invoice_reminder_subject' => 'Счёт :number просрочен',
     'invoice_reminder_body' => 'Счёт :number для :customer просрочен на :days дн. (:gross).',
+
+    // Slice B: кредит-нота (сторно) + скидка + Skonto + напоминание клиенту.
+    'storno' => 'Аннулировать (кредит-нота)',
+    'storno_confirm' => 'Аннулировать этот счёт кредит-нотой? Кредит-нота получит собственный номер; оригинал останется без изменений.',
+    'storno_created' => 'Кредит-нота :n создана.',
+    'storno_failed' => 'Не удалось создать кредит-ноту.',
+    'storno_not_finalized' => 'Аннулировать можно только окончательно оформленный счёт.',
+    'storno_already' => 'Этот счёт уже аннулирован.',
+    'storno_is_credit' => 'Кредит-ноту нельзя аннулировать.',
+    'credit_note_badge' => 'Кредит-нота',
+    'cancelled_badge' => 'Аннулирован',
+
+    'discount' => 'Скидка',
+    'discount_none' => 'Без скидки',
+    'discount_percent' => 'Процент (%)',
+    'discount_amount' => 'Сумма',
+    'discount_value' => 'Значение',
+
+    'skonto' => 'Skonto (за раннюю оплату)',
+    'skonto_percent' => 'Skonto %',
+    'skonto_days' => 'в течение (дней)',
+    'skonto_note' => 'Скидка :percent % при оплате до :date.',
+
+    'dun_send' => 'Отправить напоминание',
+    'dun_sent' => 'Напоминание :n отправлено.',
+    'dun_failed' => 'Не удалось отправить напоминание.',
+    'dun_not_overdue' => 'Этот счёт не просрочен.',
+    'dun_level' => 'Напоминание :n',
+    'dun_subject' => 'Напоминание об оплате :level — счёт :number',
+    'dun_body' => "Уважаемый клиент,\n\nСчёт :number (:gross) подлежал оплате :due и теперь просрочен на :days дн.\n\nЭто напоминание № :level. Пожалуйста, оплатите приложенный счёт как можно скорее.\n\nС уважением,\n:company",
 ];

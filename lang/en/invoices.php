@@ -511,4 +511,34 @@ return [
     'aging_open_total' => 'Total open',
     'invoice_reminder_subject' => 'Invoice :number is overdue',
     'invoice_reminder_body' => 'Invoice :number for :customer is :days days overdue (:gross).',
+
+    // Slice B: credit notes (Storno / Gutschrift) + discount (Rabatt) + Skonto + customer dunning.
+    'storno' => 'Cancel (credit note)',
+    'storno_confirm' => 'Cancel this invoice with a credit note? The credit note gets its own number; the original stays unchanged.',
+    'storno_created' => 'Credit note :n created.',
+    'storno_failed' => 'Could not create the credit note.',
+    'storno_not_finalized' => 'Only a finalized invoice can be cancelled.',
+    'storno_already' => 'This invoice has already been cancelled.',
+    'storno_is_credit' => 'A credit note cannot itself be cancelled.',
+    'credit_note_badge' => 'Credit note',
+    'cancelled_badge' => 'Cancelled',
+
+    'discount' => 'Discount',
+    'discount_none' => 'No discount',
+    'discount_percent' => 'Percent (%)',
+    'discount_amount' => 'Amount',
+    'discount_value' => 'Value',
+
+    'skonto' => 'Skonto (early payment)',
+    'skonto_percent' => 'Skonto %',
+    'skonto_days' => 'within (days)',
+    'skonto_note' => ':percent% discount for payment by :date.',
+
+    'dun_send' => 'Send reminder (dunning)',
+    'dun_sent' => 'Reminder :n sent.',
+    'dun_failed' => 'Could not send the reminder.',
+    'dun_not_overdue' => 'This invoice is not overdue.',
+    'dun_level' => 'Reminder :n',
+    'dun_subject' => 'Payment reminder :level — invoice :number',
+    'dun_body' => "Dear customer,\n\nInvoice :number (:gross) was due on :due and is now :days days overdue.\n\nThis is reminder no. :level. Please settle the attached invoice as soon as possible.\n\nKind regards,\n:company",
 ];

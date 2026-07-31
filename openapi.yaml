@@ -240,6 +240,8 @@ components:
         seq: { type: [integer, "null"] }
         year: { type: [integer, "null"] }
         status: { type: string, enum: [draft, sent, paid] }
+        type: { type: string, enum: [invoice, credit_note], description: "Document kind. A credit note (Storno/Gutschrift) reverses a finalized invoice and carries its own GoBD number." }
+        cancels_invoice_id: { type: [integer, "null"], description: "For a credit note, the id of the invoice it cancels (server-set, never mass-assigned)." }
         issue_date: { type: [string, "null"] }
         due_date: { type: [string, "null"] }
         currency: { type: string }
@@ -247,8 +249,15 @@ components:
         gross: { type: [string, "null"] }
         net: { type: [string, "null"] }
         vat: { type: [string, "null"] }
+        discount_type: { type: [string, "null"], enum: [percent, amount, null], description: "Global invoice-level discount kind (Rabatt) on the net taxable base." }
+        discount_value: { type: [string, "null"], description: "Discount value: a percentage when discount_type=percent, else an absolute amount." }
+        skonto_percent: { type: [string, "null"], description: "Early-payment Skonto percentage printed on the invoice." }
+        skonto_days: { type: [integer, "null"], description: "Early-payment Skonto window in days from the issue date." }
         imported: { type: boolean }
         paid_at: { type: [string, "null"], format: date-time }
+        sent_at: { type: [string, "null"], format: date-time, description: "When the invoice PDF was emailed to the customer." }
+        reminded_at: { type: [string, "null"], format: date-time, description: "When a payment reminder (dunning) was last sent." }
+        reminder_count: { type: integer, description: "Dunning level (Mahnstufe) — how many customer reminders have gone out." }
         payment_account: { type: [string, "null"] }
         partner_id: { type: [integer, "null"] }
         pdf_path: { type: [string, "null"] }
@@ -1711,6 +1720,71 @@ paths:
         "401": { description: Unauthenticated. }
         "404": { description: Not found. }
         "422": { description: "Not finalized / no PDF / no recipient / SMTP not configured (error: not_finalized|no_pdf|no_recipient|no_smtp)." }
+  /finance/invoices/{invoice}/storno:
+    post:
+      tags: [Finance]
+      operationId: financeInvoiceStorno
+      summary: Cancel a finalized invoice with a credit note (Storno / Gutschrift)
+      description: >
+        Creates a NEW invoice with type=credit_note, cancels_invoice_id set to the
+        original, the same customer/partner, the original lines with NEGATED
+        amounts and the same discount terms — so it exactly reverses the original's
+        net/VAT/gross. The credit note runs the same GoBD numbering path (its own
+        number). The original invoice is never edited or deleted (its cancelled
+        state is derived). Only a finalized (sent|paid or numbered), non-credit-note,
+        not-already-cancelled invoice can be cancelled. Throttled 30/min.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "201":
+          description: The created credit note.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invoice]
+                properties:
+                  invoice: { $ref: "#/components/schemas/Invoice" }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
+        "422": { description: "Cannot cancel (error: not_finalized|already_cancelled|already_credit_note)." }
+  /finance/invoices/{invoice}/dun:
+    post:
+      tags: [Finance]
+      operationId: financeInvoiceDun
+      summary: Send the customer a payment reminder (Mahnung) for an overdue invoice
+      description: >
+        Sends a dunning email (with the stored PDF attached) to the customer over
+        the user's OWN company SMTP. Only overdue invoices (status=sent AND
+        due_date < today) with a recipient + PDF may be dunned. Increments the
+        dunning level (reminder_count) and stamps reminded_at (does not bump the
+        optimistic version). Distinct from the owner-facing invoices:remind command.
+        Throttled 30/min.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                to: { type: string, format: email, description: "Recipient email; falls back to the customer snapshot email." }
+      responses:
+        "200":
+          description: Reminder sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, level, reminded_at]
+                properties:
+                  ok: { type: boolean }
+                  level: { type: integer, description: "The new dunning level (Mahnstufe)." }
+                  reminded_at: { type: string, format: date-time }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
+        "422": { description: "Not overdue / no PDF / no recipient / SMTP not configured (error: not_overdue|no_pdf|no_recipient|no_smtp)." }
   /finance/invoices/{invoice}/pdf:
     post:
       tags: [Finance]

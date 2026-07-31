@@ -511,4 +511,34 @@ return [
     'aging_open_total' => 'Offen gesamt',
     'invoice_reminder_subject' => 'Rechnung :number ist überfällig',
     'invoice_reminder_body' => 'Rechnung :number für :customer ist :days Tage überfällig (:gross).',
+
+    // Slice B: Stornorechnung / Gutschrift + Rabatt + Skonto + Kunden-Mahnung.
+    'storno' => 'Stornieren (Gutschrift)',
+    'storno_confirm' => 'Diese Rechnung mit einer Gutschrift stornieren? Die Gutschrift erhält eine eigene Nummer; das Original bleibt unverändert.',
+    'storno_created' => 'Gutschrift :n erstellt.',
+    'storno_failed' => 'Gutschrift konnte nicht erstellt werden.',
+    'storno_not_finalized' => 'Nur eine festgeschriebene Rechnung kann storniert werden.',
+    'storno_already' => 'Diese Rechnung wurde bereits storniert.',
+    'storno_is_credit' => 'Eine Gutschrift kann nicht selbst storniert werden.',
+    'credit_note_badge' => 'Gutschrift',
+    'cancelled_badge' => 'Storniert',
+
+    'discount' => 'Rabatt',
+    'discount_none' => 'Kein Rabatt',
+    'discount_percent' => 'Prozent (%)',
+    'discount_amount' => 'Betrag',
+    'discount_value' => 'Wert',
+
+    'skonto' => 'Skonto (bei früher Zahlung)',
+    'skonto_percent' => 'Skonto %',
+    'skonto_days' => 'innerhalb (Tage)',
+    'skonto_note' => ':percent % Skonto bei Zahlung bis :date.',
+
+    'dun_send' => 'Mahnung senden',
+    'dun_sent' => 'Mahnung :n gesendet.',
+    'dun_failed' => 'Mahnung konnte nicht gesendet werden.',
+    'dun_not_overdue' => 'Diese Rechnung ist nicht überfällig.',
+    'dun_level' => 'Mahnstufe :n',
+    'dun_subject' => 'Zahlungserinnerung :level — Rechnung :number',
+    'dun_body' => "Sehr geehrte Damen und Herren,\n\nRechnung :number (:gross) war am :due fällig und ist nun :days Tage überfällig.\n\nDies ist Mahnung Nr. :level. Bitte begleichen Sie die angehängte Rechnung schnellstmöglich.\n\nMit freundlichen Grüßen,\n:company",
 ];

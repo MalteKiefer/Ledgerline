@@ -54,8 +54,11 @@ class FinanceReports
             return ['net' => $net, 'vat' => $vat, 'gross' => $gross, 'vatByRate' => [(string) $rate => $vat]];
         }
 
-        $net = 0.0;
-        $vatByRate = [];
+        // Accumulate the raw net per VAT rate, then apply a global invoice-level
+        // discount proportionally across the rate buckets (net taxable base). This
+        // MUST stay cent-identical to finance-stats.js invoiceTotals().
+        $grossNet = 0.0;
+        $rawByRate = [];
         $lines = is_array($inv->lines) ? $inv->lines : [];
         foreach ($lines as $l) {
             if (! is_array($l)) {
@@ -65,13 +68,43 @@ class FinanceReports
             $unit = is_numeric($l['unitPrice'] ?? null) ? (float) $l['unitPrice'] : 0.0;
             $rv = is_numeric($l['vatRate'] ?? null) ? (float) $l['vatRate'] : 0.0;
             $lineNet = $qty * $unit;
-            $net += $lineNet;
+            $grossNet += $lineNet;
             $r = (string) $rv;
-            $vatByRate[$r] = ($vatByRate[$r] ?? 0.0) + $lineNet * $rv / 100;
+            $rawByRate[$r] = ($rawByRate[$r] ?? 0.0) + $lineNet;
         }
+        $discount = $this->discountAmount($inv, $grossNet);
+        $factor = $grossNet != 0.0 ? ($grossNet - $discount) / $grossNet : 1.0;
+        $vatByRate = [];
+        foreach ($rawByRate as $r => $rawNet) {
+            $netR = $rawNet * $factor;
+            $vatByRate[$r] = $netR * (float) $r / 100;
+        }
+        $net = $grossNet - $discount;
         $vat = array_sum($vatByRate);
 
         return ['net' => $this->r2($net), 'vat' => $this->r2($vat), 'gross' => $this->r2($net + $vat), 'vatByRate' => $vatByRate];
+    }
+
+    /**
+     * The signed global-discount amount on the net taxable base. Positive on a
+     * normal invoice (reduces net); on a credit note the base is negative, so the
+     * discount is negated to keep the credit an exact reverse of the original.
+     * Cent-identical to finance-stats.js discountAmount().
+     */
+    private function discountAmount(Invoice $inv, float $grossNet): float
+    {
+        $type = is_string($inv->discount_type) ? $inv->discount_type : null;
+        $val = is_numeric($inv->discount_value) ? (float) $inv->discount_value : 0.0;
+        if ($type === null || $val <= 0.0 || $grossNet == 0.0) {
+            return 0.0;
+        }
+        $d = $type === 'percent' ? $grossNet * $val / 100 : ($grossNet < 0 ? -$val : $val);
+        // Never exceed the base in magnitude, never flip the base's sign.
+        if (abs($d) > abs($grossNet)) {
+            $d = $grossNet;
+        }
+
+        return $d;
     }
 
     /**

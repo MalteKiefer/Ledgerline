@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { invoiceTotals, realizedInvoices, vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, grossToNetVat, accountVatSummary } from '../shared/finance-stats.js';
+import { invoiceTotals, realizedInvoices, vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, grossToNetVat, accountVatSummary, discountAmount } from '../shared/finance-stats.js';
 
 const inv = (o) => ({ status: 'paid', trashed: false, lines: [], ...o });
 const line = (qty, price, rate = 19) => ({ qty, unitPrice: price, vatRate: rate });
@@ -88,5 +88,57 @@ describe('finance stats', () => {
         expect(s.undecided).toBe(1);
         expect(s.income).toEqual([{ rate: '19', net: 1000, vat: 190 }]);
         expect(s.expense.map((r) => r.rate)).toEqual(['19', '7']);
+    });
+});
+
+describe('invoice discount + credit notes', () => {
+    const line = (qty, price, rate = 19) => ({ qty, unitPrice: price, vatRate: rate });
+
+    it('discountAmount: percent / amount / clamps to base', () => {
+        expect(discountAmount({ discountType: 'percent', discountValue: 10 }, 100)).toBe(10);
+        expect(discountAmount({ discountType: 'amount', discountValue: 20 }, 100)).toBe(20);
+        expect(discountAmount({}, 100)).toBe(0);
+        // never exceeds the base in magnitude
+        expect(discountAmount({ discountType: 'amount', discountValue: 500 }, 100)).toBe(100);
+        // credit note (negative base): the discount is negated so it reverses exactly
+        expect(discountAmount({ discountType: 'amount', discountValue: 20 }, -100)).toBe(-20);
+    });
+
+    it('percent discount reduces net + VAT proportionally', () => {
+        const inv = { status: 'sent', lines: [line(1, 100, 19)], discountType: 'percent', discountValue: 10 };
+        const t = invoiceTotals(inv);
+        expect(t.net).toBe(90);      // 100 − 10%
+        expect(t.vat).toBe(17.1);    // 90 × 19%
+        expect(t.gross).toBe(107.1);
+    });
+
+    it('amount discount spread across mixed VAT rates by net share', () => {
+        // net: 100 @19% + 100 @7% = 200; a 20 amount discount → factor 0.9.
+        const inv = { status: 'sent', lines: [line(1, 100, 19), line(1, 100, 7)], discountType: 'amount', discountValue: 20 };
+        const t = invoiceTotals(inv);
+        expect(t.net).toBe(180);
+        expect(t.vat).toBe(23.4);    // 90×19% + 90×7% = 17.1 + 6.3
+        expect(t.gross).toBe(203.4);
+    });
+
+    it('a credit note (negated lines + same discount) exactly reverses the original', () => {
+        const orig = { status: 'sent', lines: [line(2, 50, 19)], discountType: 'percent', discountValue: 10 };
+        const credit = { status: 'sent', lines: [line(2, -50, 19)], discountType: 'percent', discountValue: 10 };
+        const o = invoiceTotals(orig);
+        const c = invoiceTotals(credit);
+        expect(c.net).toBe(-o.net);
+        expect(c.vat).toBe(-o.vat);
+        expect(c.gross).toBe(-o.gross);
+    });
+
+    it('a credit note reduces revenue + output VAT in the VAT return', () => {
+        const data = [
+            { number: '1', status: 'sent', trashed: false, issueDate: '2026-02-01', customer: { name: 'ACME' }, lines: [line(1, 100, 19)] },
+            { number: '2', status: 'sent', trashed: false, issueDate: '2026-03-01', type: 'credit_note', customer: { name: 'ACME' }, lines: [line(1, -100, 19)] },
+        ];
+        const r = vatReturn(data, 2026);
+        expect(r.net).toBe(0);
+        expect(r.vat).toBe(0);
+        expect(r.count).toBe(2);
     });
 });
