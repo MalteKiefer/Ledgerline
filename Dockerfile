@@ -38,9 +38,10 @@ RUN apk add --no-cache \
       ffmpeg \
       # rich media metadata (EXIF/XMP, Motion-Photo + Live-Photo detection)
       exiftool \
-      # database backups shell out to pg_dump + gzip; it must match the PG17
-      # server (an older pg_dump refuses a newer server). Alpine ships pg17.
-      postgresql17-client \
+      # database backups shell out to pg_dump + gzip; the client MAJOR must be
+      # >= the server (pg_dump refuses a newer server). Prod runs PostgreSQL 18
+      # (pgvector pg18) since v1.506.85, so pin the pg18 client (Alpine 3.24 ships it).
+      postgresql18-client \
       # Server-side receipt OCR (POST /api/v1/invoices/ocr): tesseract (eng+deu)
       # OCRs raster receipts; poppler-utils' pdftotext extracts a PDF text layer
       # (fast path) and pdftoppm rasterises scanned PDFs. Deliberate scope: ONLY

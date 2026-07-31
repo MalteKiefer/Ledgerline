@@ -1,14 +1,17 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.515.0
+  version: 1.515.1
   description: >
-    Zero-knowledge personal cloud API for the Ledgerline mobile client.
+    Plaintext-relational personal cloud API for the Ledgerline mobile client.
 
-    **Zero-knowledge architecture:** all content payloads (ciphertext fields,
-    sealed manifests, blob bodies) are opaque to the server — the server stores
-    and returns ciphertext only and never reads or derives plaintext content.
-    The vault key and all decryption happen exclusively in the client.
+    **Architecture:** every module is a relational table exposed over per-record
+    REST (soft-delete trash + optimistic-concurrency `version`). Sensitive columns
+    are encrypted at rest server-side (Laravel `encrypted` cast, APP_KEY) and
+    returned decrypted over TLS — the client sends/receives plaintext. Binary files
+    (documents, photos, receipts) are stored as plaintext bytes and streamed by id.
+    (The former zero-knowledge/vault/sealed-store model was fully removed in the
+    v1.5xx pivot.)
 
     **Authentication:** obtain a Sanctum bearer token via the device pairing
     exchange (QR code scan + owner approval in the web UI), then include it as
@@ -99,7 +102,7 @@ tags:
       identity that prints on every invoice — non-secret, served in the clear like the
       avatar (never customer data, which stays zero-knowledge in the invoices store).
       The invoice records, payment methods and imported bank transactions themselves
-      live sealed in the sharded invoices store (GET/PUT /invoices/store, tag Store).
+      live in the relational finance tables (see the Finance tag).
   - name: Status
     description: Application availability / health check (the site-root /up up-check).
   - name: TwoFactor
@@ -132,12 +135,6 @@ tags:
       a transient-cleartext boundary (like /gallery/process + /invoices/ocr): the
       client posts decrypted bytes, the server forwards them to the user's own
       Paperless and stores/logs nothing.
-  - name: PublicShare
-    description: >
-      Public consumption of a `/s/{token}` share link (unauthenticated — the share
-      key lives only in the URL fragment, never sent to the server). Password-gated
-      shares issue a short-lived stateless HMAC grant on /unlock.
-
 components:
   securitySchemes:
     bearerAuth:
@@ -198,7 +195,7 @@ components:
             modules). A member's effective modules are the union across their groups
             (a group with null grants all); a per-user allow-list overrides. Enforced
             server-side and surfaced at /me as user.modules.
-          items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, contacts, finance, health, explore] }
+          items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, finance, health, explore] }
         members:
           type: array
           items:
@@ -252,7 +249,7 @@ components:
             toggles). A native client should hide the tabs for modules NOT listed
             here; the API also enforces it — a disabled module's store endpoints
             return 403.
-          items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, contacts, finance, health, explore] }
+          items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, finance, health, explore] }
         has_avatar:
           type: boolean
           description: "Whether a non-secret avatar is stored. True → fetch it via GET /api/v1/avatar (Bearer)."
@@ -451,21 +448,6 @@ components:
           minimum: 0
           example: 10737418240
 
-    ShareVersionConflict:
-      type: object
-      description: >
-        409 Conflict on a public-share update — the share record was modified
-        concurrently. Carries the current version so the caller can retry with a
-        fresh expected_version.
-      required: [error, version]
-      properties:
-        error:
-          type: string
-          enum: [version_conflict]
-        version:
-          type: integer
-          description: Current server-side share version.
-
     ChunkInitRequest:
       type: object
       description: Begin a chunked (S3 multipart) upload.
@@ -534,44 +516,6 @@ components:
       items:
         type: number
 
-    FaceItem:
-      type: object
-      description: One detected face.
-      required: [score, box]
-      properties:
-        score:
-          type: number
-          description: Detection confidence.
-        box:
-          type: array
-          minItems: 4
-          maxItems: 4
-          description: Bounding box [x, y, w, h].
-          items:
-            type: number
-        embedding:
-          allOf:
-            - $ref: "#/components/schemas/ClipEmbedding"
-          description: Raw face embedding (JSON float array, not base64).
-        crop:
-          type: string
-          nullable: true
-          description: Base64-encoded face crop image.
-
-    PlaceInfo:
-      type: object
-      description: >
-        Reverse-geocoded place. Always an object (possibly empty `{}` when geocoding
-        did not run); never a bare string.
-      properties:
-        display:
-          type: string
-          nullable: true
-          description: Human-readable place label.
-        address:
-          type: object
-          description: Structured address components (key→value strings).
-
     VersionResponse:
       type: object
       description: New version counter returned after a successful store write.
@@ -597,21 +541,6 @@ components:
           type: string
           nullable: true
           description: Current sealed ciphertext (module store conflict).
-
-    TokenResponse:
-      type: object
-      description: Public share link token.
-      required: [token, version]
-      properties:
-        token:
-          type: string
-          description: URL-safe token that identifies the share link.
-          example: a1b2c3d4e5f6
-        version:
-          type: integer
-          description: >
-            Optimistic-concurrency version of the share record. Echo it as
-            expected_version on the next update to avoid clobbering a concurrent edit.
 
     NoteRecord:
       type: object
@@ -997,7 +926,7 @@ components:
         files_quota_mb: { type: integer, minimum: 0, maximum: 100000000, nullable: true }
         gallery_quota_mb: { type: integer, minimum: 0, maximum: 100000000, nullable: true }
         max_connected_devices: { type: integer, minimum: 1, maximum: 50, nullable: true }
-        modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, contacts, finance, health, explore] } }
+        modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, finance, health, explore] } }
         modules_marker: { type: string, enum: ['set'], description: "Send with an (empty) modules[] to set an explicit list rather than 'no change'." }
         groups: { type: array, nullable: true, items: { type: integer } }
 
@@ -3101,7 +3030,7 @@ paths:
                 gallery_quota_mb: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
                 max_connected_devices: { type: integer, nullable: true, minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
-                modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, contacts, finance, health, explore] }, description: "Enabled module keys (null = all)." }
+                modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, finance, health, explore] }, description: "Enabled module keys (null = all)." }
                 members:
                   type: array
                   items: { type: integer }
@@ -3144,7 +3073,7 @@ paths:
                 gallery_quota_mb: { type: integer, nullable: true, minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
                 max_connected_devices: { type: integer, nullable: true, minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
-                modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, contacts, finance, health, explore] }, description: "Enabled module keys (null = all)." }
+                modules: { type: array, nullable: true, items: { type: string, enum: [dashboard, files, gallery, notes, todos, bookmarks, finance, health, explore] }, description: "Enabled module keys (null = all)." }
                 members:
                   type: array
                   items: { type: integer }
@@ -4799,7 +4728,7 @@ paths:
 
   /invoices/ocr:
     post:
-      tags: [Store]
+      tags: [Finance]
       operationId: invoicesOcr
       summary: OCR a receipt to line-structured text (transient plaintext)
       description: >

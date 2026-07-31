@@ -155,16 +155,11 @@ export default (config = {}, labels = {}, initial = {}) => ({
 
     init() {
         this.$nextTick(() => this._initMap());
-        // Tracks/couplings/settings are plaintext — refresh them straight away.
+        // Everything is plaintext-relational now — load tracks + best-effort
+        // gallery photos (for map pins) + the calorie health profile straight away.
         this.refresh();
-        // Photos + the calorie health profile are best-effort and (photos) still
-        // vault-gated, so (re)load them now and whenever the vault unlocks/locks.
         this._loadGallery();
         this._loadHealth();
-        this.$watch('$store.vault.unlocked', (on) => {
-            if (on) { this._loadGallery(); this._loadHealth(); }
-            else { this.photos = []; this._revokeThumbs(); this._mut++; this._renderView(); }
-        });
         // Re-render map contents when the view flips or the data mutates.
         this.$watch('view', () => {
             if (this.view !== 'tracks' && this.planning) this._exitPlan();

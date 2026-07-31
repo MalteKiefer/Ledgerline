@@ -25,7 +25,9 @@ class FileVersion extends Model
 {
     public $timestamps = false;
 
-    protected $fillable = ['storage_path', 'size', 'mime', 'sha256', 'created_at'];
+    // All columns are server-set via forceFill() in FilesController (a version row
+    // captures the prior bytes' path/size/hash) — nothing here is client-writable.
+    protected $fillable = [];
 
     protected $casts = [
         'size' => 'integer',
