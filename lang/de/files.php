@@ -175,4 +175,23 @@ return [
     'convert_confirm' => 'Diesen Ordner mit anderen teilen? Der Inhalt wird in einen geteilten Ordner verschoben — bei großen Ordnern kann das einen Moment dauern.',
     'share_enable' => 'Teilen aktivieren',
     'tags_placeholder' => 'Tag hinzufügen…',
+
+    // Public plaintext share links (file or folder)
+    'share_public' => 'Freigabelink',
+    'share_dialog_title' => 'Öffentlicher Freigabelink',
+    'share_intro' => 'Erstelle einen öffentlichen Link. Jeder mit dem Link kann die freigegebene Datei oder den Ordner ansehen. Optional mit Passwort schützen und ein Ablaufdatum setzen.',
+    'share_link_label' => 'Öffentlicher Link',
+    'share_active_hint' => 'Jeder mit diesem Link kann die freigegebenen Inhalte öffnen, bis du ihn widerrufst.',
+    'share_allow_download' => 'Herunterladen von Dateien erlauben',
+    'share_password' => 'Passwort (optional)',
+    'share_password_hint' => 'Kein Passwort',
+    'share_password_set' => 'Passwort gesetzt — neues eingeben zum Ändern',
+    'share_expiry' => 'Läuft ab (optional)',
+    'share_create_link' => 'Link erstellen',
+    'share_update' => 'Aktualisieren',
+    'share_revoke' => 'Widerrufen',
+    'share_close' => 'Schließen',
+    'share_copy' => 'Link kopieren',
+    'share_copied' => 'Link kopiert',
+    'share_error' => 'Der Freigabelink konnte nicht erstellt werden.',
 ];

@@ -100,7 +100,7 @@ const normPayment = (row) => ({
     cardNetwork: row.card_network ?? 'visa',
     cardExpiry: row.card_expiry ?? '',
     email: row.paypal_email ?? '',
-    holder: '', note: '', // no server columns (see report) — client-only, not persisted
+    holder: row.holder ?? '', note: row.note ?? '',
     version: row.version ?? 0,
     trashed: row.deleted_at ? true : false,
 });
@@ -304,12 +304,12 @@ export default (config = {}, labels = {}, initial = {}) => ({
     },
     _toServerPayment(pm) {
         return {
-            type: pm.type, name: pm.label || '', business: !! pm.business,
+            type: pm.type, name: pm.label || '', holder: pm.holder || null, business: !! pm.business,
             url: pm.url || null, icon: pm.icon || null,
             iban: pm.iban || null, bic: pm.bic || null, bank: pm.bankName || null,
             account_no: pm.accountNumber || null, card_number: pm.cardNumber || null,
             card_network: pm.cardNetwork || null, card_expiry: pm.cardExpiry || null,
-            paypal_email: pm.email || null,
+            paypal_email: pm.email || null, note: pm.note || null,
         };
     },
     _toServerProject(p) {

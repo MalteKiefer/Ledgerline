@@ -42,9 +42,9 @@ class PaymentMethod extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'type', 'name', 'business', 'url', 'icon',
+        'type', 'name', 'holder', 'business', 'url', 'icon',
         'iban', 'bic', 'bank', 'account_no',
-        'card_number', 'card_network', 'card_expiry', 'paypal_email',
+        'card_number', 'card_network', 'card_expiry', 'paypal_email', 'note',
     ];
 
     protected $casts = [

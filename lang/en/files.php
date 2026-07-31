@@ -175,4 +175,23 @@ return [
     'convert_confirm' => 'Share this folder with others? Its contents will be moved into a shared folder — this may take a moment for large folders.',
     'share_enable' => 'Enable sharing',
     'tags_placeholder' => 'Add a tag…',
+
+    // Public plaintext share links (file or folder)
+    'share_public' => 'Share link',
+    'share_dialog_title' => 'Public share link',
+    'share_intro' => 'Create a public link. Anyone with the link can view the shared file or folder. Optionally protect it with a password and set an expiry.',
+    'share_link_label' => 'Public link',
+    'share_active_hint' => 'Anyone with this link can open the shared contents until you revoke it.',
+    'share_allow_download' => 'Allow downloading files',
+    'share_password' => 'Password (optional)',
+    'share_password_hint' => 'No password',
+    'share_password_set' => 'Password set — type a new one to change it',
+    'share_expiry' => 'Expires (optional)',
+    'share_create_link' => 'Create link',
+    'share_update' => 'Update',
+    'share_revoke' => 'Revoke',
+    'share_close' => 'Close',
+    'share_copy' => 'Copy link',
+    'share_copied' => 'Link copied',
+    'share_error' => 'Could not create the share link.',
 ];

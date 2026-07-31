@@ -5,8 +5,12 @@
   @endphp
   <div x-data="vaultFiles({
         token: '{{ csrf_token() }}',
+        sharesUrl: '{{ url('/files/rel-shares') }}',
+        shareBase: '{{ url('/file-share') }}',
      }, {
         folderLabel: @js(__('files.folder')),
+        shareError: @js(__('files.share_error')),
+        shareCopied: @js(__('files.share_copied')),
         filetypeLabels: @js(collect(trans('filetype'))->all()),
         uploadUnreadable: @js(__('files.upload_unreadable')),
         types: @js($typeLabels),
@@ -248,6 +252,7 @@
                                             <button type="button" @click="startRename(row); menu = false" class="{{ $c }}"><x-icon name="pencil" />{{ __('files.rename') }}</button>
                                             <button type="button" @click="openMove(row); menu = false" class="{{ $c }}"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
                                             <button type="button" @click="openTags(row); menu = false" class="{{ $c }}"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
+                                            <button type="button" @click="openShare(row); menu = false" class="{{ $c }}"><x-icon name="link" />{{ __('files.share_public') }}</button>
                                             <button type="button" x-show="row.kind !== 'folder'" @click="openVersions(row); menu = false" class="{{ $c }}"><x-icon name="arrow-path" />{{ __('files.versions') }}</button>
                                             <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="{{ $c }}"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
                                             <button type="button" x-show="isPdf(row) && $store.paperless.configured" @click="openPaperless(row); menu = false" class="{{ $c }}"><x-icon name="share" />{{ __('paperless.send_to_paperless') }}</button>
@@ -358,6 +363,7 @@
                                             <button type="button" @click="startRename(row); menu = false" class="{{ $c }}"><x-icon name="pencil" />{{ __('files.rename') }}</button>
                                             <button type="button" @click="openMove(row); menu = false" class="{{ $c }}"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
                                             <button type="button" @click="openTags(row); menu = false" class="{{ $c }}"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
+                                            <button type="button" @click="openShare(row); menu = false" class="{{ $c }}"><x-icon name="link" />{{ __('files.share_public') }}</button>
                                             <button type="button" x-show="row.kind !== 'folder'" @click="openVersions(row); menu = false" class="{{ $c }}"><x-icon name="arrow-path" />{{ __('files.versions') }}</button>
                                             <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="{{ $c }}"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
                                             <button type="button" x-show="isPdf(row) && $store.paperless.configured" @click="openPaperless(row); menu = false" class="{{ $c }}"><x-icon name="share" />{{ __('paperless.send_to_paperless') }}</button>
@@ -515,6 +521,56 @@
                 <div class="mt-5 flex justify-end gap-3">
                     <x-button variant="secondary" @click="tagsOpen = false">{{ __('common.cancel') }}</x-button>
                     <x-button variant="primary" @click="applyTags()">{{ __('files.save') }}</x-button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Public share link modal (plaintext bytes; optional password gate) --}}
+    <template x-teleport="body">
+        <div x-show="share.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeShare()">
+            <div class="absolute inset-0 bg-gray-900/40" @click="closeShare()"></div>
+            <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
+                <div class="flex items-start justify-between gap-2">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.share_dialog_title') }}</h3>
+                    <x-icon-button name="x-mark" @click="closeShare()" aria-label="{{ __('files.share_close') }}" />
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('files.share_intro') }}</p>
+                <p class="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300 truncate" x-text="share.name"></p>
+
+                <div x-show="share.link" x-cloak class="mt-4 rounded-xl border border-gray-200 dark:border-gray-800 p-3">
+                    <label class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('files.share_link_label') }}</label>
+                    <div class="mt-1 flex items-center gap-2">
+                        <input type="text" readonly :value="share.link" @focus="$event.target.select()" class="w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-xs text-gray-700 dark:text-gray-300">
+                        <x-icon-button name="clipboard" @click="copyShareLink()" title="{{ __('files.share_copy') }}" aria-label="{{ __('files.share_copy') }}" />
+                    </div>
+                    <p class="mt-2 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">{{ __('files.share_active_hint') }}</p>
+                </div>
+
+                <div class="mt-4 space-y-3">
+                    <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <input type="checkbox" x-model="share.allowDownload" class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-0">
+                        {{ __('files.share_allow_download') }}
+                    </label>
+                    <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('files.share_password') }}
+                        <input type="password" x-model="share.password" autocomplete="new-password" :placeholder="share.current?.needsPassword ? '{{ __('files.share_password_set') }}' : '{{ __('files.share_password_hint') }}'"
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                    </label>
+                    <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('files.share_expiry') }}
+                        <input type="datetime-local" x-model="share.expiresAt"
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                    </label>
+                </div>
+
+                <p x-show="share.error" x-cloak class="mt-3 text-sm text-red-600 dark:text-red-400" x-text="share.error"></p>
+
+                <div class="mt-5 flex items-center justify-between gap-2">
+                    <x-button variant="danger" x-show="share.current" x-cloak @click="revokeShare()" ::disabled="share.busy">{{ __('files.share_revoke') }}</x-button>
+                    <div class="ml-auto flex gap-2">
+                        <x-button variant="secondary" @click="closeShare()">{{ __('files.share_close') }}</x-button>
+                        <x-button variant="primary" x-show="! share.current" @click="createShare()" ::disabled="share.busy"><x-icon name="link" class="h-4 w-4" />{{ __('files.share_create_link') }}</x-button>
+                        <x-button variant="primary" x-show="share.current" x-cloak @click="updateShare()" ::disabled="share.busy">{{ __('files.share_update') }}</x-button>
+                    </div>
                 </div>
             </div>
         </div>
