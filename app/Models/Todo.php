@@ -24,6 +24,8 @@ use Illuminate\Support\Carbon;
  * @property bool $done
  * @property array<int, string>|null $tags
  * @property Carbon|null $due
+ * @property string|null $recurrence
+ * @property Carbon|null $reminded_at
  * @property int $version
  * @property Carbon|null $deleted_at
  */
@@ -32,13 +34,18 @@ class Todo extends Model
     use OwnsUserData;
     use SoftDeletes;
 
-    protected $fillable = ['todo_list_id', 'title', 'description', 'url', 'priority', 'marked', 'done', 'tags', 'due'];
+    /** Recurring cadences a completed task can respawn on (null/none = one-off). */
+    public const RECURRENCES = ['daily', 'weekly', 'monthly', 'yearly'];
+
+    // `reminded_at` is server-only (set via forceFill/saveQuietly), never mass-assignable.
+    protected $fillable = ['todo_list_id', 'title', 'description', 'url', 'priority', 'marked', 'done', 'tags', 'due', 'recurrence'];
 
     protected $casts = [
         'tags' => 'array',
         'marked' => 'boolean',
         'done' => 'boolean',
         'due' => 'datetime',
+        'reminded_at' => 'datetime',
         'version' => 'integer',
     ];
 }

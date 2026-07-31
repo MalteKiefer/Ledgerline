@@ -476,6 +476,11 @@ return [
     'duplicates_hint' => 'Проверьте эти записи — ничего не удаляется автоматически.',
     'duplicates_invoices' => 'Счета:',
     'duplicates_transactions' => 'Операции:',
+    'dupe_same_number' => 'Одинаковый номер счёта',
+    'dupe_same_date_amount_customer' => 'Одинаковые дата, сумма и клиент',
+    'dupe_same_eref' => 'Одинаковая ссылка (EREF)',
+    'dupe_same_booking' => 'Одинаковая операция (дата/сумма/контрагент)',
+    'no_number' => '(без номера)',
     'suggestion_label' => 'Предложение:',
     'apply_suggestion' => 'Применить предложение',
 ];

@@ -37,6 +37,17 @@ return [
     'tags' => 'Tags',
     'tags_placeholder' => 'Add a tag…',
 
+    'recurrence' => 'Repeat',
+    'recur_none' => 'Does not repeat',
+    'recur_daily' => 'Daily',
+    'recur_weekly' => 'Weekly',
+    'recur_monthly' => 'Monthly',
+    'recur_yearly' => 'Yearly',
+    'recurring_badge' => 'Recurring',
+
+    'reminder_title' => 'To-do due',
+    'reminder_body' => 'Todo due: :title',
+
     'save' => 'Save',
     'cancel' => 'Cancel',
     'delete' => 'Delete',

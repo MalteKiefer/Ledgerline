@@ -2009,14 +2009,34 @@
             <x-alert variant="warning" class="mt-4">
               <p class="font-semibold" x-text="'{{ __('invoices.duplicates_warn') }}'.replace(':n', duplicateCount)"></p>
               <p class="mt-0.5 text-xs">{{ __('invoices.duplicates_hint') }}</p>
-              <ul class="mt-1.5 space-y-0.5 text-xs">
-                <template x-for="g in (duplicates.invoices || [])" :key="'i' + g.key">
-                  <li><span class="font-medium">{{ __('invoices.duplicates_invoices') }}</span> <span x-text="(g.key || g.reason) + ' — #' + (g.ids || []).join(', #')"></span></li>
+              <div class="mt-2 space-y-2 text-xs">
+                {{-- Invoice duplicate groups: resolve ids to real invoices (number · customer · date · gross), each clickable. --}}
+                <template x-for="(g, gi) in dupeInvoiceGroups" :key="'i' + gi">
+                  <div>
+                    <p class="font-medium" x-text="({ same_number: @js(__('invoices.dupe_same_number')), same_date_amount_customer: @js(__('invoices.dupe_same_date_amount_customer')) })[g.reason] || g.reason"></p>
+                    <ul class="mt-0.5 space-y-0.5 pl-1">
+                      <template x-for="inv in g.items" :key="inv.id">
+                        <li>
+                          <button type="button" class="text-left underline decoration-dotted hover:text-accent"
+                                  @click="openInvoiceById(inv.id, inv.number)"
+                                  x-text="(inv.number ? ('Nr. ' + inv.number) : @js(__('invoices.no_number'))) + ' · ' + ((inv.customer && inv.customer.name) || '—') + ' · ' + (inv.issueDate || '—') + ' · ' + (Number(inv.gross)||0).toFixed(2) + ' ' + (inv.currency || 'EUR')"></button>
+                        </li>
+                      </template>
+                    </ul>
+                  </div>
                 </template>
-                <template x-for="g in (duplicates.transactions || [])" :key="'t' + g.key">
-                  <li><span class="font-medium">{{ __('invoices.duplicates_transactions') }}</span> <span x-text="(g.key || g.reason) + ' — #' + (g.ids || []).join(', #')"></span></li>
+                {{-- Transaction duplicate groups: date · amount · counterparty (read-only). --}}
+                <template x-for="(g, gi) in dupeTxGroups" :key="'t' + gi">
+                  <div>
+                    <p class="font-medium" x-text="({ same_eref: @js(__('invoices.dupe_same_eref')), same_date_amount_counterparty_purpose: @js(__('invoices.dupe_same_booking')) })[g.reason] || g.reason"></p>
+                    <ul class="mt-0.5 space-y-0.5 pl-1">
+                      <template x-for="tx in g.items" :key="tx.id">
+                        <li x-text="(tx.date || '—') + ' · ' + (Number(tx.amount)||0).toFixed(2) + ' € · ' + (tx.counterparty || '—')"></li>
+                      </template>
+                    </ul>
+                  </div>
                 </template>
-              </ul>
+              </div>
             </x-alert>
           </template>
 

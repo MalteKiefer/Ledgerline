@@ -37,6 +37,17 @@ return [
     'tags' => 'Tags',
     'tags_placeholder' => 'Tag hinzufügen…',
 
+    'recurrence' => 'Wiederholen',
+    'recur_none' => 'Keine Wiederholung',
+    'recur_daily' => 'Täglich',
+    'recur_weekly' => 'Wöchentlich',
+    'recur_monthly' => 'Monatlich',
+    'recur_yearly' => 'Jährlich',
+    'recurring_badge' => 'Wiederkehrend',
+
+    'reminder_title' => 'Aufgabe fällig',
+    'reminder_body' => 'Aufgabe fällig: :title',
+
     'save' => 'Speichern',
     'cancel' => 'Abbrechen',
     'delete' => 'Löschen',

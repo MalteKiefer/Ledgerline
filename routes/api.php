@@ -28,6 +28,7 @@ use App\Http\Controllers\HealthController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\NotesController;
+use App\Http\Controllers\NoteSearchController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
@@ -35,6 +36,7 @@ use App\Http\Controllers\SharedFolderController;
 use App\Http\Controllers\SharedWithMeController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TodosController;
+use App\Http\Controllers\TodoSearchController;
 use App\Http\Middleware\UpdateTokenIp;
 use Illuminate\Support\Facades\Route;
 
@@ -116,6 +118,8 @@ Route::prefix('v1')->group(function (): void {
 
         // Plaintext-relational Notes (pivot Etappe 1) — same controller as web, JSON per-record.
         Route::get('/notes', [NotesController::class, 'index'])->middleware('module:notes')->name('api.notes.index');
+        Route::get('/notes/search', [NoteSearchController::class, 'search'])->middleware(['module:notes', 'throttle:120,1'])->name('api.notes.search');
+        Route::get('/notes/tags', [NoteSearchController::class, 'tags'])->middleware(['module:notes', 'throttle:120,1'])->name('api.notes.tags');
         Route::post('/notes', [NotesController::class, 'store'])->middleware(['throttle:600,1', 'module:notes'])->name('api.notes.store');
         Route::put('/notes/{note}', [NotesController::class, 'update'])->whereNumber('note')->middleware(['throttle:600,1', 'module:notes'])->name('api.notes.update');
         Route::delete('/notes/{note}', [NotesController::class, 'destroy'])->whereNumber('note')->middleware(['throttle:600,1', 'module:notes'])->name('api.notes.destroy');
@@ -126,6 +130,7 @@ Route::prefix('v1')->group(function (): void {
         // Plaintext-relational Todos (pivot Etappe 1).
         Route::middleware('module:todos')->group(function (): void {
             Route::get('/todos', [TodosController::class, 'index'])->name('api.todos.index');
+            Route::get('/todos/search', [TodoSearchController::class, 'search'])->middleware('throttle:600,1')->name('api.todos.search');
             Route::get('/todos/trash', [TodosController::class, 'trashed'])->name('api.todos.trash');
             Route::post('/todos', [TodosController::class, 'store'])->middleware('throttle:600,1')->name('api.todos.store');
             Route::put('/todos/{todo}', [TodosController::class, 'update'])->whereNumber('todo')->middleware('throttle:600,1')->name('api.todos.update');

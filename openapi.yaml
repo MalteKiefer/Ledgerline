@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.523.0
+  version: 1.524.0
   license:
     name: Proprietary
   description: >
@@ -457,6 +457,14 @@ components:
         updated_at: { type: [string, "null"], format: date-time }
         deleted_at: { type: [string, "null"], format: date-time, description: "Non-null = trashed (soft-deleted)." }
 
+    NoteTagCount:
+      type: object
+      description: "A distinct note tag with its usage count (GET /notes/tags)."
+      required: [tag, count]
+      properties:
+        tag: { type: string }
+        count: { type: integer }
+
     TodoList:
       type: object
       description: >
@@ -480,11 +488,14 @@ components:
         id: { type: integer }
         todo_list_id: { type: [integer, "null"], description: "Owning TodoList.id, or null = inbox." }
         title: { type: string }
+        description: { type: [string, "null"] }
         priority: { type: [string, "null"], description: "e.g. high/normal/low." }
         marked: { type: boolean, description: "Starred/flagged." }
         done: { type: boolean }
         tags: { type: [array, "null"], items: { type: string } }
         due: { type: [string, "null"], format: date-time }
+        recurrence: { type: [string, "null"], enum: [daily, weekly, monthly, yearly, null], description: "Repeat cadence; null = one-off. Completing a recurring task spawns the next occurrence (due advanced by the cadence). Accept none|daily|weekly|monthly|yearly on create/update (none maps to null)." }
+        reminded_at: { type: [string, "null"], format: date-time, readOnly: true, description: "Server-set dedup marker for the due-reminder job." }
         url: { type: [string, "null"], description: "http(s) only (sanitised server-side; non-http(s) dropped)." }
         version: { type: integer }
         created_at: { type: [string, "null"], format: date-time }
@@ -3937,6 +3948,50 @@ paths:
         "200": { description: Stopped fast., content: { application/json: { schema: { type: object, properties: { fast: { $ref: "#/components/schemas/HealthFast" } } } } } }
         "401": { description: Unauthenticated. }
         "404": { description: Not found. }
+  /notes/search:
+    get:
+      tags: [Notes]
+      operationId: notesSearch
+      summary: Full-text search the caller's notes (read-only)
+      description: >
+        Server-side full-text search over the owner's notes (title + body; a
+        tag substring also matches). PostgreSQL uses a GIN to_tsvector index;
+        owner-scoped, max 100, newest first. Empty q returns an empty list.
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Matching notes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [notes]
+                properties:
+                  notes: { type: array, items: { $ref: "#/components/schemas/NoteRecord" } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+  /notes/tags:
+    get:
+      tags: [Notes]
+      operationId: notesTags
+      summary: Distinct note tags with counts (read-only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Tags with usage counts, most-used first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tags]
+                properties:
+                  tags: { type: array, items: { $ref: "#/components/schemas/NoteTagCount" } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
   /notes:
     get:
       tags: [Notes]
@@ -4243,6 +4298,31 @@ paths:
         "403": { description: Module disabled for this account. }
         "404": { description: Not found or not owned by caller. }
 
+  /todos/search:
+    get:
+      tags: [Todos]
+      operationId: todosSearch
+      summary: Full-text search the caller's to-dos (read-only)
+      description: >
+        Server-side search over the owner's to-dos (title + description + url;
+        a tag substring also matches). Owner-scoped, max 100. Empty q returns an
+        empty list.
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Matching to-dos (same shape as GET /todos).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [todos]
+                properties:
+                  todos: { type: array, items: { $ref: "#/components/schemas/TodoRecord" } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
   /todos:
     get:
       tags: [Todos]
