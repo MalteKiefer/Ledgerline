@@ -21,6 +21,7 @@ use App\Http\Controllers\ExploreController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
+use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\HealthController;
@@ -182,6 +183,10 @@ Route::prefix('v1')->group(function (): void {
         // methods + bank transactions + projects + categories as owner-scoped rows.
         Route::middleware('module:finance')->group(function (): void {
             Route::get('/finance/data', [FinanceController::class, 'index'])->name('api.finance.data');
+            Route::get('/finance/reports', [FinanceReportController::class, 'reports'])->middleware('throttle:120,1')->name('api.finance.reports');
+            Route::get('/finance/reports/account-vat', [FinanceReportController::class, 'accountVat'])->middleware('throttle:120,1')->name('api.finance.reports.account-vat');
+            Route::get('/finance/duplicates', [FinanceReportController::class, 'duplicates'])->middleware('throttle:60,1')->name('api.finance.duplicates');
+            Route::get('/finance/category-suggestions', [FinanceReportController::class, 'categorySuggestions'])->middleware('throttle:60,1')->name('api.finance.category-suggestions');
             Route::get('/finance/trash', [FinanceController::class, 'trash'])->name('api.finance.trash');
 
             Route::post('/finance/partners', [FinanceController::class, 'storePartner'])->middleware('throttle:600,1')->name('api.finance.partners.store');

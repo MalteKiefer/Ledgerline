@@ -11,6 +11,7 @@ use App\Http\Controllers\ExploreController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
+use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\HealthController;
@@ -387,6 +388,11 @@ Route::middleware('auth')->group(function (): void {
     Route::middleware('module:finance')->group(function (): void {
         Route::get('/finance', [FinanceController::class, 'page'])->name('finance.index');
         Route::get('/finance/data', [FinanceController::class, 'index'])->name('finance.data');
+        // Read-only server-side analytics (source of truth for the stats UI).
+        Route::get('/finance/reports', [FinanceReportController::class, 'reports'])->middleware('throttle:120,1')->name('finance.reports');
+        Route::get('/finance/reports/account-vat', [FinanceReportController::class, 'accountVat'])->middleware('throttle:120,1')->name('finance.reports.account-vat');
+        Route::get('/finance/duplicates', [FinanceReportController::class, 'duplicates'])->middleware('throttle:60,1')->name('finance.duplicates');
+        Route::get('/finance/category-suggestions', [FinanceReportController::class, 'categorySuggestions'])->middleware('throttle:60,1')->name('finance.category-suggestions');
         Route::get('/finance/trash', [FinanceController::class, 'trash'])->name('finance.trash');
 
         // Partners
