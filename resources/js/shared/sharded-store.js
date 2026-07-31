@@ -39,6 +39,7 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
         _chain: null,
         _queued: false,
         _onError: null,
+        _afterRebase: null,
         _shardBits: 0,
         _shards: [], // [{ ref, key, hash, count, bucket }] descriptors from the last load/save
         _collDesc: {}, // { <collection.key>: { ref, key, hash } | null } for each collection blob
@@ -218,6 +219,7 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
             // baking our still-un-pushed delta into _base would hide it from the next
             // 409 rebase and drop it.
             this._base = this._snapshotFrom(s.data);
+            if (this._afterRebase) this._afterRebase();
         },
 
         touch() {
@@ -341,6 +343,10 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
                     this._shards = server.shards;
                     this._shardBits = server.shardBits;
                     this._collDesc = server.collDesc;
+                    // The in-place splice replaced every record object with a fresh clone;
+                    // let a component re-resolve any element it holds by reference (e.g. an
+                    // open editor's this.current) so edits after the rebase aren't lost.
+                    if (this._afterRebase) this._afterRebase();
                     if (retry < 8) { await new Promise((r) => setTimeout(r, Math.min(120 * 2 ** retry, 2000))); return this._doFlush(retry + 1); }
                     throw new Error('store save conflict');
                 } else if (res.status === 429 && retry < 8) {

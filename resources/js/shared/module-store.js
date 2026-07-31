@@ -50,6 +50,7 @@ export function makeStore(module, blankFn) {
         _saving: false,
         _again: false,
         _onError: null,
+        _afterRebase: null,
         // The manifest we last loaded / committed. Our delta is derived against this
         // so a 409 can rebase (apply only our changes) onto the winning copy instead
         // of blindly overwriting it — otherwise a concurrent writer's records vanish.
@@ -110,6 +111,7 @@ export function makeStore(module, blankFn) {
                 const server = await this._fetchManifest();
                 const merged = mergeManifest(this._base ?? server.data, this.data, server.data);
                 applyInPlace(this.data, merged);
+                if (this._afterRebase) this._afterRebase();
                 this.version = server.version;
                 // _base is the last COMMITTED state we merged onto = the server's
                 // manifest, NOT the merged copy. Setting it to the merged copy would
@@ -157,6 +159,7 @@ export function makeStore(module, blankFn) {
                         // the winning version. Apply in place so bound refs stay live.
                         const merged = mergeManifest(this._base ?? server.data, this.data, server.data);
                         applyInPlace(this.data, merged);
+                        if (this._afterRebase) this._afterRebase();
                         this.version = server.version;
                     } else if (res.status === 429) {
                         const ra = parseInt(res.headers.get('Retry-After') || '', 10);

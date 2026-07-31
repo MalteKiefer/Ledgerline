@@ -14,6 +14,27 @@ import * as api from './api.js';
 
 const clone = (v) => (v == null ? v : structuredClone(v));
 
+// Fetch a shard/collection blob, retrying a transient 404 a few times with backoff.
+// Object storage (B2) is eventually consistent: a shard the winning root just wrote
+// can 404 for a moment. The web engine retries before treating it as missing; without
+// this the extension throws on a race and drops the in-progress edit. Fail-closed: if
+// the blob is still gone after the retries, the error propagates and mutateSharded
+// aborts WITHOUT persisting a partial root (the server 422 ref-guard also holds).
+async function rawShardRetry(base, token, prefix, ref) {
+    for (let attempt = 0; ; attempt++) {
+        try {
+            return await api.rawShardBlob(base, token, prefix, ref);
+        } catch (e) {
+            const status = e && (e.status ?? e.statusCode);
+            if (status === 404 && attempt < 3) {
+                await new Promise((r) => setTimeout(r, 150 * 2 ** attempt));
+                continue;
+            }
+            throw e;
+        }
+    }
+}
+
 // Fetch + decrypt the current server root into { version, data, shards, shardBits,
 // collDesc }. `collections` = [{ key, rootRef, rootKey, rootHash }].
 async function fetchState(base, token, prefix, recordKey, collections, vk) {
@@ -26,7 +47,7 @@ async function fetchState(base, token, prefix, recordKey, collections, vk) {
     if (! (root.v === 3 && Array.isArray(root.shards))) return state;
     state.shardBits = root.shardBits ?? 0;
     const parts = await Promise.all(root.shards.map(async (s) => {
-        const bytes = await api.rawShardBlob(base, token, prefix, s.ref);
+        const bytes = await rawShardRetry(base, token, prefix, s.ref);
         const plain = await decryptContent(bytes, s.key, vk);
         const arr = JSON.parse(new TextDecoder().decode(plain));
         return Array.isArray(arr) ? arr : [];
@@ -36,7 +57,7 @@ async function fetchState(base, token, prefix, recordKey, collections, vk) {
     state.data[recordKey] = records;
     for (const c of collections) {
         if (root[c.rootRef]) {
-            const bytes = await api.rawShardBlob(base, token, prefix, root[c.rootRef]);
+            const bytes = await rawShardRetry(base, token, prefix, root[c.rootRef]);
             const plain = await decryptContent(bytes, root[c.rootKey], vk);
             const arr = JSON.parse(new TextDecoder().decode(plain));
             state.data[c.key] = Array.isArray(arr) ? arr : [];
@@ -131,8 +152,12 @@ export async function mutateSharded(base, token, prefix, recordKey, collections,
             state.shards = server.shards;
             state.shardBits = server.shardBits;
             state.collDesc = server.collDesc;
-            base0 = { [recordKey]: clone(state.data[recordKey]) };
-            for (const c of collections) base0[c.key] = clone(state.data[c.key]);
+            // The rebase base is the SERVER's committed state (what we merged onto),
+            // NOT the merged working copy. Setting it to the merged copy would bake our
+            // still-un-pushed delta into the base, so a second consecutive 409 would
+            // derive an empty delta and drop our change (the web _base-timing fix).
+            base0 = { [recordKey]: clone(server.data[recordKey]) };
+            for (const c of collections) base0[c.key] = clone(server.data[c.key]);
             continue;
         }
         throw new Error('sharded save failed: ' + res.status);

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.534.1
+  version: 1.535.0
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -532,8 +532,27 @@ components:
       type: object
       description: >
         409 Conflict from a sealed manifest store (files/gallery/notes/passwords/
-        invoices and the generic /store/{module}). The client must re-read the
-        store, rebase its delta, and retry — it must NEVER blindly re-PUT stale data.
+        invoices, /store/{module}, and the shared-vault store PUT /vaults/{vault}/store).
+        The server is blind last-writer-wins on the opaque blob and CANNOT merge
+        ciphertext, so avoiding data loss is 100% the client's responsibility:
+
+        MANDATORY REBASE-MERGE — on 409 the client MUST (1) fetch the winning manifest,
+        (2) compute ITS OWN delta between the base it loaded and its current copy, and
+        (3) replay ONLY that delta onto the winner, then retry at the winner's version.
+        It must NEVER re-PUT its whole stale copy — doing so silently drops every record
+        the other writer (another tab / device / user of a shared vault) added, and
+        orphans those records' sealed blobs (reclaimed after the grace window).
+
+        SAME-RECORD DEEP-MERGE — records are keyed collections (by id; embedded passkeys
+        by credentialId; invoice versions by seq; gallery faces by photoId+idx). For a
+        record BOTH sides changed since the base, merge it FIELD BY FIELD and union its
+        nested arrays (fields.passkeys[], fields.urls[], invoice versions[]/receipts[],
+        album photoIds[], person faces[]) — do NOT replace the whole record with your
+        copy, which drops the other side's concurrent change to the same record. Scalar
+        arrays (urls, photoIds, tags) merge as a set-union honouring deletions.
+
+        RECOVERY — if a record is nonetheless lost, GET /{store}/history to pull an
+        earlier sealed root and re-merge it (see the history endpoints).
       required: [error]
       properties:
         error:
@@ -584,7 +603,13 @@ components:
       properties:
         token:
           type: string
-          description: Opaque upload-session token; pass it to every part/complete/abort call.
+          description: >
+            Opaque upload-session token; pass it to every part/complete/abort call.
+            The session lives in an evictable cache and EXPIRES ~12h after init (and may
+            be evicted earlier). A part/complete/abort call for an unknown/expired session
+            returns 404 — the client must then DISCARD this token and restart from
+            /upload/init (already-uploaded parts are orphaned + grace-reclaimed). Complete
+            promptly; do not span the upload across >12h.
         id:
           type: string
           format: uuid
@@ -607,7 +632,15 @@ components:
 
     ChunkCompleteRequest:
       type: object
-      description: Finalise a chunked upload from the collected per-part ETags.
+      description: >
+        Finalise a chunked upload from the collected per-part ETags. `parts` MUST cover
+        the FULL contiguous range 1..N with the exact ETag returned by every /upload/part
+        call. The server does NOT validate completeness against the init `size` — an
+        omitted or duplicated part yields a shorter, SILENTLY CORRUPT blob that fails to
+        decrypt on download (permanent, undetectable loss). complete is idempotent + safe
+        to retry with the same token+parts (e.g. after a lost response); do NOT call
+        /upload/abort to "clean up" after a possibly-succeeded complete — abort is a no-op
+        once the session is gone and does NOT remove an already-registered blob.
       required: [token, parts]
       properties:
         token:
@@ -1063,6 +1096,14 @@ components:
         versioned correction to `versions[]` (see InvoiceVersion) with `versionSeq` counting
         up — clients MUST carry `versions[]`/`versionSeq` through unchanged (ZK passthrough)
         or history is lost.
+
+        NUMBERING IS A CROSS-CLIENT INVARIANT (GoBD unique + gapless): before assigning a
+        number on finalize/mark-sent/import, the client MUST first re-read (refresh+merge)
+        the store to observe invoices numbered on another device, then take
+        next = max(seq for that year) + 1 (>= the company floor). The server cannot enforce
+        this on the sealed store, and the id-keyed 409 rebase keeps BOTH invoices when two
+        devices mint the same number — so the client MUST also surface a warning if a
+        duplicate per-year number ever results (it cannot be silently deduped).
       required: [id, status]
       properties:
         id: { type: string, format: uuid }
@@ -1073,7 +1114,7 @@ components:
         dueDate: { type: string }
         currency: { type: string }
         lang: { type: string }
-        customer: { type: object, properties: { name: { type: string }, attn: { type: string }, address: { type: string }, email: { type: string }, vatId: { type: string }, contactId: { type: string, format: uuid } } }
+        customer: { type: object, description: "May carry additional passthrough keys — preserve unknown keys on write.", properties: { name: { type: string }, attn: { type: string }, address: { type: string }, email: { type: string }, vatId: { type: string }, contactId: { type: string, format: uuid }, partnerId: { type: [string, "null"], format: uuid, description: "Linked FinancePartner.id — preserve it or the invoice loses its business-partner link." } } }
         lines: { type: array, items: { type: object, properties: { desc: { type: string }, qty: { type: number }, unit: { type: string }, unitPrice: { type: number }, vatRate: { type: number } } } }
         note: { type: string }
         footer: { type: string }
@@ -1281,6 +1322,9 @@ components:
         lat: { type: [string, "null"], description: "dec6 decimal string." }
         lng: { type: [string, "null"] }
         camera: { type: [string, "null"] }
+        exifEdited: { type: boolean, description: "MANDATORY write-side guard. A client that lets the user change the capture date MUST set this true when writing taken_at. Otherwise another client's viewer self-heal re-reads the original date from the sealed EXIF meta blob and silently reverts the user's edit." }
+        geoEdited: { type: boolean, description: "MANDATORY write-side guard. A client that sets OR clears the location MUST set this true. Otherwise the viewer self-heal re-fills the deliberately-cleared coordinates from the EXIF meta blob and reverts the edit." }
+        geoChecked: { type: boolean, description: "Coordinates have been resolved (or known-absent); passthrough hot field." }
         caption: { type: string, description: "Free-text caption." }
         media_type: { type: string }
         width: { type: [integer, "null"] }
@@ -1868,7 +1912,16 @@ paths:
       responses:
         "201": { description: "Vault provisioned.", content: { application/json: { schema: { type: object, properties: { configured: { type: boolean, enum: [true] } } } } } }
         "401": { description: Unauthenticated. }
-        "409": { description: A vault already exists (use PUT /vault to rotate). }
+        "409":
+          description: >
+            A vault already exists — this is a passphrase change, use PUT /vault.
+            CRITICAL: on 409 the client MUST DISCARD the vault key it just generated for
+            this failed provision (the server never stored it) and instead GET /vault +
+            unwrap the EXISTING wrapped_vault_key with the passphrase. Adopting the
+            freshly-generated key would seal all subsequent data under a phantom key no
+            stored passphrase/recovery wrap can reproduce — permanently undecryptable.
+            RECOMMENDED: GET /vault first (configured true/false) to choose unlock vs
+            provision, avoiding this race entirely.
         "422": { description: Validation error. }
         "429": { description: Rate limit exceeded. }
     put:
@@ -1877,10 +1930,20 @@ paths:
       summary: Rotate the vault passphrase
       description: >
         Re-wraps the SAME vault key under a new passphrase-derived key (fresh salt +
-        nonce) and mints a new recovery wrap. The vault key is unchanged, so no blob
-        re-encryption is needed. Optimistic concurrency: send `expected_version`
-        (from GET /vault) to reject a stale rotate (409) instead of clobbering a
-        concurrent change on another device. Throttle 10/min.
+        nonce). The vault key is unchanged, so no blob re-encryption is needed.
+
+        RECOVERY WRAP: the server is zero-knowledge and does NOT mint recovery material.
+        If the request OMITS wrapped_vault_key_recovery / recovery_nonce, the server
+        PRESERVES the existing stored recovery wrap (so a client can rotate the
+        passphrase even without the offline recovery code to hand). To refresh recovery,
+        send a fresh wrap of the SAME (unchanged) vault key. Never send an empty/blank
+        string expecting deletion.
+
+        CONCURRENCY: send `expected_version` (from GET /vault). OMITTING it performs a
+        BLIND last-writer-wins rotate that can silently overwrite a concurrent passphrase
+        change from another device — leaving that device's new passphrase non-functional
+        with no error. Native clients SHOULD always echo the version and handle the 409.
+        Throttle 10/min.
       requestBody:
         required: true
         content:
@@ -2418,7 +2481,9 @@ paths:
                     Explicit acknowledgement that an EMPTY blobs list (prune
                     everything) is intended. A client with a degraded/failed index
                     must NOT send it; without it the server refuses (422) to prune a
-                    non-empty ledger from an empty live-set. For a shared folder,
+                    non-empty ledger from an empty live-set. DEGRADED/PARTIAL INDEX: a client whose store load was degraded or incomplete (any record
+                    shard failed to load / 404'd) MUST NOT reconcile at all — a non-empty but PARTIAL live-set bypasses this empty-set guard and permanently
+                    prunes the missing records' blobs after the grace window. Freeze reconcile until a clean full load. For a shared folder,
                     reconcile additionally requires the manage role.
                 blobs:
                   type: array
@@ -2892,9 +2957,11 @@ paths:
       operationId: vaultBlobsReconcile
       summary: Reclaim unreferenced blobs from a shared folder vault
       description: >
-        Same orphan-reclaim protocol as the personal files reconcile. Requires
-        editor or manager role (it deletes blobs); serialised per vault owner.
-        Throttle: 120 req/min.
+        Same orphan-reclaim protocol as the personal files reconcile. Requires the
+        MANAGER role — reconcile is destructive (it prunes the whole vault ledger), so
+        an editor is denied (404). Serialised per vault owner. Send the COMPLETE live
+        ref set (record-shard + collection + content blobs); a partial set prunes live
+        blobs after the grace window. Throttle: 120 req/min.
       parameters:
         - name: vault
           in: path
@@ -2916,7 +2983,9 @@ paths:
                     Explicit acknowledgement that an EMPTY blobs list (prune
                     everything) is intended. A client with a degraded/failed index
                     must NOT send it; without it the server refuses (422) to prune a
-                    non-empty ledger from an empty live-set. For a shared folder,
+                    non-empty ledger from an empty live-set. DEGRADED/PARTIAL INDEX: a client whose store load was degraded or incomplete (any record
+                    shard failed to load / 404'd) MUST NOT reconcile at all — a non-empty but PARTIAL live-set bypasses this empty-set guard and permanently
+                    prunes the missing records' blobs after the grace window. Freeze reconcile until a clean full load. For a shared folder,
                     reconcile additionally requires the manage role.
                 blobs:
                   type: array
@@ -3320,7 +3389,9 @@ paths:
                     Explicit acknowledgement that an EMPTY blobs list (prune
                     everything) is intended. A client with a degraded/failed index
                     must NOT send it; without it the server refuses (422) to prune a
-                    non-empty ledger from an empty live-set. For a shared folder,
+                    non-empty ledger from an empty live-set. DEGRADED/PARTIAL INDEX: a client whose store load was degraded or incomplete (any record
+                    shard failed to load / 404'd) MUST NOT reconcile at all — a non-empty but PARTIAL live-set bypasses this empty-set guard and permanently
+                    prunes the missing records' blobs after the grace window. Freeze reconcile until a clean full load. For a shared folder,
                     reconcile additionally requires the manage role.
                 blobs:
                   type: array
@@ -3693,7 +3764,9 @@ paths:
                     Explicit acknowledgement that an EMPTY blobs list (prune
                     everything) is intended. A client with a degraded/failed index
                     must NOT send it; without it the server refuses (422) to prune a
-                    non-empty ledger from an empty live-set. For a shared folder,
+                    non-empty ledger from an empty live-set. DEGRADED/PARTIAL INDEX: a client whose store load was degraded or incomplete (any record
+                    shard failed to load / 404'd) MUST NOT reconcile at all — a non-empty but PARTIAL live-set bypasses this empty-set guard and permanently
+                    prunes the missing records' blobs after the grace window. Freeze reconcile until a clean full load. For a shared folder,
                     reconcile additionally requires the manage role.
                 blobs:
                   type: array
@@ -3834,7 +3907,9 @@ paths:
                     Explicit acknowledgement that an EMPTY blobs list (prune
                     everything) is intended. A client with a degraded/failed index
                     must NOT send it; without it the server refuses (422) to prune a
-                    non-empty ledger from an empty live-set. For a shared folder,
+                    non-empty ledger from an empty live-set. DEGRADED/PARTIAL INDEX: a client whose store load was degraded or incomplete (any record
+                    shard failed to load / 404'd) MUST NOT reconcile at all — a non-empty but PARTIAL live-set bypasses this empty-set guard and permanently
+                    prunes the missing records' blobs after the grace window. Freeze reconcile until a clean full load. For a shared folder,
                     reconcile additionally requires the manage role.
                 blobs:
                   type: array
@@ -4204,7 +4279,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/OkResponse"
         "409":
-          description: Different public key already stored (key conflict).
+          description: >
+            Key conflict — identity keys are write-once. Returned when EITHER the
+            X25519 public key OR the ML-KEM public key differs from what is already
+            stored (both halves of the hybrid identity are guarded; a rotated ML-KEM
+            key with an unchanged X25519 key still conflicts). Re-publishing the exact
+            same pair is idempotent (200). A client must NEVER regenerate identity keys
+            for an account that already published them — it would orphan every
+            wrapped_vault_key sealed to the old keys.
           content:
             application/json:
               schema:
@@ -4451,7 +4533,7 @@ paths:
               properties:
                 identifier:
                   type: string
-                  description: Email address or username of the user to invite.
+                  description: Email address of the user to invite (email only — username/OIDC matching was removed; a non-email identifier returns the uniform enumeration-resistant 422).
       responses:
         "200":
           description: Recipient's public key data.
@@ -4606,6 +4688,13 @@ paths:
       description: >
         Transitions the caller's own pending membership to active. Only the invited
         user may accept their own invitation. Throttle: 30 requests/minute.
+
+        LIVENESS CAVEAT: acceptance uses the wrapped_vault_key stored at INVITE time. If
+        a key rotation raced between invite and accept, that wrap references the previous
+        vault key while the store manifest is now under the new key — a 200 accept does
+        NOT guarantee the key opens the current manifest. The client MUST detect an
+        unopenable manifest after accepting and request re-invitation (the manager
+        re-invites/rotates); do not treat 200 as guaranteed access.
       parameters:
         - name: vault
           in: path
@@ -4760,6 +4849,14 @@ paths:
                     Updated wrapped_vault_key for each REMAINING active member
                     (the removed member must NOT appear here), each hybrid-wrapped
                     (X25519+ML-KEM-768 suite envelope) to their identity keys.
+                    COMPLETENESS IS THE CLIENT'S RESPONSIBILITY AND IS NOT ENFORCED:
+                    the client MUST include EVERY remaining active member (all active
+                    members except remove_member_id). Any member omitted here keeps
+                    their OLD wrapped_vault_key referencing the pre-rotation vault key
+                    while the manifest is re-sealed under the new key — a PERMANENT,
+                    silent lockout for that member (the server still returns 200). Load
+                    the full member list (GET /vaults/{vault}/members, all pages) before
+                    rotating.
                   items:
                     type: object
                     required: [user_id, wrapped_vault_key]
@@ -5807,7 +5904,9 @@ paths:
                     Explicit acknowledgement that an EMPTY blobs list (prune
                     everything) is intended. A client with a degraded/failed index
                     must NOT send it; without it the server refuses (422) to prune a
-                    non-empty ledger from an empty live-set. For a shared folder,
+                    non-empty ledger from an empty live-set. DEGRADED/PARTIAL INDEX: a client whose store load was degraded or incomplete (any record
+                    shard failed to load / 404'd) MUST NOT reconcile at all — a non-empty but PARTIAL live-set bypasses this empty-set guard and permanently
+                    prunes the missing records' blobs after the grace window. Freeze reconcile until a clean full load. For a shared folder,
                     reconcile additionally requires the manage role.
                 blobs:
                   type: array
@@ -6082,7 +6181,9 @@ paths:
                     Explicit acknowledgement that an EMPTY blobs list (prune
                     everything) is intended. A client with a degraded/failed index
                     must NOT send it; without it the server refuses (422) to prune a
-                    non-empty ledger from an empty live-set. For a shared folder,
+                    non-empty ledger from an empty live-set. DEGRADED/PARTIAL INDEX: a client whose store load was degraded or incomplete (any record
+                    shard failed to load / 404'd) MUST NOT reconcile at all — a non-empty but PARTIAL live-set bypasses this empty-set guard and permanently
+                    prunes the missing records' blobs after the grace window. Freeze reconcile until a clean full load. For a shared folder,
                     reconcile additionally requires the manage role.
                 blobs:
                   type: array
@@ -6324,7 +6425,9 @@ paths:
                     Explicit acknowledgement that an EMPTY blobs list (prune
                     everything) is intended. A client with a degraded/failed index
                     must NOT send it; without it the server refuses (422) to prune a
-                    non-empty ledger from an empty live-set. For a shared folder,
+                    non-empty ledger from an empty live-set. DEGRADED/PARTIAL INDEX: a client whose store load was degraded or incomplete (any record
+                    shard failed to load / 404'd) MUST NOT reconcile at all — a non-empty but PARTIAL live-set bypasses this empty-set guard and permanently
+                    prunes the missing records' blobs after the grace window. Freeze reconcile until a clean full load. For a shared folder,
                     reconcile additionally requires the manage role.
                 blobs:
                   type: array
@@ -6909,8 +7012,10 @@ paths:
       description: >
         Newest-first index of retained previous sealed roots (version + byte size +
         timestamp, NO ciphertext) so the client can pick a version to recover a
-        dropped record from. Owner-scoped, read-only; retention is the last N per
-        store. Zero-knowledge: the stored roots are opaque ciphertext.
+        dropped record from. Owner-scoped, read-only; retention is the last 20
+        versions (STORE_HISTORY_VERSIONS), pruned PER SAVE (not time-based) — an
+        active multiclient store can exhaust the window in minutes, so recover
+        promptly. Zero-knowledge: the stored roots are opaque ciphertext.
       parameters:
         - { name: module, in: path, required: true, schema: { type: string } }
       responses:
@@ -6940,7 +7045,13 @@ paths:
       description: >
         Returns a single retained sealed root ciphertext by version. The client
         decrypts it and re-merges the dropped record(s). Owner-scoped; 404 if that
-        version is no longer retained.
+        version is no longer retained. For the SINGLE-BLOB module store the whole
+        content is in the root, so recovery is complete. For a SHARDED store
+        (files/gallery/notes/passwords/invoices) the root is only a shard-pointer
+        table: recovery is best-effort and time-bounded by the ~24h blob orphan
+        grace, because a dropped record's shard is reclaimed after the grace — a
+        shard-blob 404 during reconstruction means THAT record is unrecoverable,
+        not a full-recovery failure. Recover within ~24h of the drop.
       parameters:
         - { name: module, in: path, required: true, schema: { type: string } }
         - { name: version, in: path, required: true, schema: { type: integer } }
@@ -6966,8 +7077,10 @@ paths:
       description: >
         Newest-first index of retained previous sealed roots (version + byte size +
         timestamp, NO ciphertext) so the client can pick a version to recover a
-        dropped record from. Owner-scoped, read-only; retention is the last N per
-        store. Zero-knowledge: the stored roots are opaque ciphertext.
+        dropped record from. Owner-scoped, read-only; retention is the last 20
+        versions (STORE_HISTORY_VERSIONS), pruned PER SAVE (not time-based) — an
+        active multiclient store can exhaust the window in minutes, so recover
+        promptly. Zero-knowledge: the stored roots are opaque ciphertext.
       parameters:
       responses:
         "200":
@@ -6996,7 +7109,13 @@ paths:
       description: >
         Returns a single retained sealed root ciphertext by version. The client
         decrypts it and re-merges the dropped record(s). Owner-scoped; 404 if that
-        version is no longer retained.
+        version is no longer retained. For the SINGLE-BLOB module store the whole
+        content is in the root, so recovery is complete. For a SHARDED store
+        (files/gallery/notes/passwords/invoices) the root is only a shard-pointer
+        table: recovery is best-effort and time-bounded by the ~24h blob orphan
+        grace, because a dropped record's shard is reclaimed after the grace — a
+        shard-blob 404 during reconstruction means THAT record is unrecoverable,
+        not a full-recovery failure. Recover within ~24h of the drop.
       parameters:
         - { name: version, in: path, required: true, schema: { type: integer } }
       responses:
@@ -7021,8 +7140,10 @@ paths:
       description: >
         Newest-first index of retained previous sealed roots (version + byte size +
         timestamp, NO ciphertext) so the client can pick a version to recover a
-        dropped record from. Owner-scoped, read-only; retention is the last N per
-        store. Zero-knowledge: the stored roots are opaque ciphertext.
+        dropped record from. Owner-scoped, read-only; retention is the last 20
+        versions (STORE_HISTORY_VERSIONS), pruned PER SAVE (not time-based) — an
+        active multiclient store can exhaust the window in minutes, so recover
+        promptly. Zero-knowledge: the stored roots are opaque ciphertext.
       parameters:
       responses:
         "200":
@@ -7051,7 +7172,13 @@ paths:
       description: >
         Returns a single retained sealed root ciphertext by version. The client
         decrypts it and re-merges the dropped record(s). Owner-scoped; 404 if that
-        version is no longer retained.
+        version is no longer retained. For the SINGLE-BLOB module store the whole
+        content is in the root, so recovery is complete. For a SHARDED store
+        (files/gallery/notes/passwords/invoices) the root is only a shard-pointer
+        table: recovery is best-effort and time-bounded by the ~24h blob orphan
+        grace, because a dropped record's shard is reclaimed after the grace — a
+        shard-blob 404 during reconstruction means THAT record is unrecoverable,
+        not a full-recovery failure. Recover within ~24h of the drop.
       parameters:
         - { name: version, in: path, required: true, schema: { type: integer } }
       responses:
@@ -7076,8 +7203,10 @@ paths:
       description: >
         Newest-first index of retained previous sealed roots (version + byte size +
         timestamp, NO ciphertext) so the client can pick a version to recover a
-        dropped record from. Owner-scoped, read-only; retention is the last N per
-        store. Zero-knowledge: the stored roots are opaque ciphertext.
+        dropped record from. Owner-scoped, read-only; retention is the last 20
+        versions (STORE_HISTORY_VERSIONS), pruned PER SAVE (not time-based) — an
+        active multiclient store can exhaust the window in minutes, so recover
+        promptly. Zero-knowledge: the stored roots are opaque ciphertext.
       parameters:
       responses:
         "200":
@@ -7106,7 +7235,13 @@ paths:
       description: >
         Returns a single retained sealed root ciphertext by version. The client
         decrypts it and re-merges the dropped record(s). Owner-scoped; 404 if that
-        version is no longer retained.
+        version is no longer retained. For the SINGLE-BLOB module store the whole
+        content is in the root, so recovery is complete. For a SHARDED store
+        (files/gallery/notes/passwords/invoices) the root is only a shard-pointer
+        table: recovery is best-effort and time-bounded by the ~24h blob orphan
+        grace, because a dropped record's shard is reclaimed after the grace — a
+        shard-blob 404 during reconstruction means THAT record is unrecoverable,
+        not a full-recovery failure. Recover within ~24h of the drop.
       parameters:
         - { name: version, in: path, required: true, schema: { type: integer } }
       responses:
@@ -7131,8 +7266,10 @@ paths:
       description: >
         Newest-first index of retained previous sealed roots (version + byte size +
         timestamp, NO ciphertext) so the client can pick a version to recover a
-        dropped record from. Owner-scoped, read-only; retention is the last N per
-        store. Zero-knowledge: the stored roots are opaque ciphertext.
+        dropped record from. Owner-scoped, read-only; retention is the last 20
+        versions (STORE_HISTORY_VERSIONS), pruned PER SAVE (not time-based) — an
+        active multiclient store can exhaust the window in minutes, so recover
+        promptly. Zero-knowledge: the stored roots are opaque ciphertext.
       parameters:
       responses:
         "200":
@@ -7161,7 +7298,13 @@ paths:
       description: >
         Returns a single retained sealed root ciphertext by version. The client
         decrypts it and re-merges the dropped record(s). Owner-scoped; 404 if that
-        version is no longer retained.
+        version is no longer retained. For the SINGLE-BLOB module store the whole
+        content is in the root, so recovery is complete. For a SHARDED store
+        (files/gallery/notes/passwords/invoices) the root is only a shard-pointer
+        table: recovery is best-effort and time-bounded by the ~24h blob orphan
+        grace, because a dropped record's shard is reclaimed after the grace — a
+        shard-blob 404 during reconstruction means THAT record is unrecoverable,
+        not a full-recovery failure. Recover within ~24h of the drop.
       parameters:
         - { name: version, in: path, required: true, schema: { type: integer } }
       responses:
@@ -7186,8 +7329,10 @@ paths:
       description: >
         Newest-first index of retained previous sealed roots (version + byte size +
         timestamp, NO ciphertext) so the client can pick a version to recover a
-        dropped record from. Owner-scoped, read-only; retention is the last N per
-        store. Zero-knowledge: the stored roots are opaque ciphertext.
+        dropped record from. Owner-scoped, read-only; retention is the last 20
+        versions (STORE_HISTORY_VERSIONS), pruned PER SAVE (not time-based) — an
+        active multiclient store can exhaust the window in minutes, so recover
+        promptly. Zero-knowledge: the stored roots are opaque ciphertext.
       parameters:
       responses:
         "200":
@@ -7216,7 +7361,13 @@ paths:
       description: >
         Returns a single retained sealed root ciphertext by version. The client
         decrypts it and re-merges the dropped record(s). Owner-scoped; 404 if that
-        version is no longer retained.
+        version is no longer retained. For the SINGLE-BLOB module store the whole
+        content is in the root, so recovery is complete. For a SHARDED store
+        (files/gallery/notes/passwords/invoices) the root is only a shard-pointer
+        table: recovery is best-effort and time-bounded by the ~24h blob orphan
+        grace, because a dropped record's shard is reclaimed after the grace — a
+        shard-blob 404 during reconstruction means THAT record is unrecoverable,
+        not a full-recovery failure. Recover within ~24h of the drop.
       parameters:
         - { name: version, in: path, required: true, schema: { type: integer } }
       responses:

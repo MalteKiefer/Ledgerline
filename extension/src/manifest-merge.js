@@ -25,46 +25,83 @@ function changed(a, b) {
 }
 
 /**
- * Merge an array of id-keyed records: start from the server's list, drop records we
- * deleted (in base, absent from ours), then upsert records we added or modified.
- * Foreign records the server has that we never saw are preserved.
+ * Stable merge key for a record (id / credentialId / seq), namespaced so key kinds
+ * never collide, or undefined when unkeyable. Mirrors web shared/manifest-merge.js.
+ */
+function keyOf(rec) {
+    if (! isPlainObject(rec)) return undefined;
+    if (rec.id != null) return 'id\0' + rec.id;
+    if (rec.credentialId != null) return 'cred\0' + rec.credentialId;
+    if (rec.seq != null) return 'seq\0' + rec.seq;
+    if (rec.photoId != null && rec.idx != null) return 'pf\0' + rec.photoId + '\0' + rec.idx;
+    return undefined;
+}
+
+function keyable(arr) {
+    if (! Array.isArray(arr)) return false;
+    const seen = new Set();
+    for (const r of arr) {
+        const k = keyOf(r);
+        if (k === undefined || seen.has(k)) return false;
+        seen.add(k);
+    }
+    return true;
+}
+
+function scalarArray(arr) {
+    return Array.isArray(arr) && arr.every((v) => v === null || typeof v !== 'object');
+}
+
+/** Set-union merge for scalar arrays (fields.urls[] strings): both writers' additions survive. */
+function mergeScalarSet(base, ours, server) {
+    const baseSet = new Set(base);
+    const ourSet = new Set(ours);
+    const deleted = new Set([...baseSet].filter((v) => ! ourSet.has(v)));
+    const result = server.filter((v) => ! deleted.has(v));
+    const have = new Set(result);
+    for (const v of ours) {
+        if (! baseSet.has(v) && ! have.has(v)) { result.push(v); have.add(v); }
+    }
+    return result.map(clone);
+}
+
+/**
+ * Merge an array of keyed records: drop records we deleted, upsert ours, deep-merge a
+ * record changed on both sides. Records key by keyOf() (id/credentialId/seq); scalar
+ * arrays merge as a set-union. Mirrors web shared/manifest-merge.js.
  */
 export function mergeArrayById(base, ours, server) {
-    const hasId = (arr) => arr.every((r) => isPlainObject(r) && 'id' in r);
-    // If either side isn't a clean id-keyed record list, we cannot merge safely by
-    // id — fall back to "ours if we changed it, else the server's".
-    if (! hasId(ours) || ! hasId(server) || ! hasId(base)) {
+    if (scalarArray(ours) && scalarArray(server) && scalarArray(base)) {
+        return mergeScalarSet(base, ours, server);
+    }
+    if (! keyable(ours) || ! keyable(server) || ! keyable(base)) {
         return changed(base, ours) ? clone(ours) : clone(server);
     }
 
-    const baseIds = new Set(base.map((r) => r.id));
-    const ourIds = new Set(ours.map((r) => r.id));
-    const deleted = new Set([...baseIds].filter((id) => ! ourIds.has(id)));
-    const baseById = new Map(base.map((r) => [r.id, r]));
+    const baseKeys = new Set(base.map(keyOf));
+    const ourKeys = new Set(ours.map(keyOf));
+    const deleted = new Set([...baseKeys].filter((k) => ! ourKeys.has(k)));
+    const baseByKey = new Map(base.map((r) => [keyOf(r), r]));
 
-    // Server list minus anything we deleted, preserving server order.
-    const result = server.filter((r) => ! deleted.has(r.id)).map(clone);
-    const indexById = new Map(result.map((r, i) => [r.id, i]));
+    const result = server.filter((r) => ! deleted.has(keyOf(r))).map(clone);
+    const indexByKey = new Map(result.map((r, i) => [keyOf(r), i]));
 
     for (const rec of ours) {
-        const b = baseById.get(rec.id);
-        // Only touch records we actually added (no base) or modified.
+        const k = keyOf(rec);
+        const b = baseByKey.get(k);
         if (b !== undefined && ! changed(b, rec)) continue;
-        if (indexById.has(rec.id)) {
-            const idx = indexById.get(rec.id);
+        if (indexByKey.has(k)) {
+            const idx = indexByKey.get(k);
             const serverRec = result[idx];
-            // Both writers changed the SAME record (server diverged from base AND so did
-            // we). Taking our whole record here would discard the winner's nested changes
-            // to this id — e.g. a login item's embedded passkeys[] or a password item's
-            // fields edited concurrently on the web app. Deep-merge instead so both survive
-            // (mirrors the web shared/manifest-merge.js fix).
+            // Both sides changed this record — deep-merge so a concurrently-added
+            // embedded passkey / nested field survives (mirrors the web fix).
             if (b !== undefined && isPlainObject(b) && isPlainObject(rec) && isPlainObject(serverRec) && changed(b, serverRec)) {
                 result[idx] = mergeManifest(b, rec, serverRec);
             } else {
                 result[idx] = clone(rec);
             }
         } else {
-            indexById.set(rec.id, result.length);
+            indexByKey.set(k, result.length);
             result.push(clone(rec));
         }
     }

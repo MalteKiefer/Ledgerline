@@ -25,8 +25,17 @@ async function migratePasswordsMonolith(base, token, vk) {
     const folders = Array.isArray(old.secretFolders) ? old.secretFolders : [];
     if (secrets.length === 0 && folders.length === 0) return;
     await mutateSharded(base, token, PASSWORDS.prefix, PASSWORDS.recordKey, PASSWORDS.collections, vk, (m) => {
-        m.secrets = secrets;
-        m.secretFolders = folders;
+        // UPSERT the monolith records into the freshly-fetched sharded state — do NOT
+        // wholesale-assign. mutateSharded read the CURRENT server records into `m`; a
+        // wholesale `m.secrets = secrets` would discard any password the web app just
+        // created (and, if the monolith-clear once failed, resurrect deleted ones).
+        // Skip ids already present so we never clobber a live record.
+        m.secrets = Array.isArray(m.secrets) ? m.secrets : [];
+        m.secretFolders = Array.isArray(m.secretFolders) ? m.secretFolders : [];
+        const haveSecret = new Set(m.secrets.map((s) => s && s.id));
+        for (const s of secrets) if (s && ! haveSecret.has(s.id)) m.secrets.push(s);
+        const haveFolder = new Set(m.secretFolders.map((f) => f && f.id));
+        for (const f of folders) if (f && ! haveFolder.has(f.id)) m.secretFolders.push(f);
     });
     try {
         const empty = await sealManifest({ v: 3, secrets: [], secretFolders: [], pwVaultMigrated: true }, vk);

@@ -39,3 +39,22 @@ describe('extension mergeArrayById — same-record concurrent edit deep-merges',
         expect(merged[0]).toMatchObject({ a: 2, b: 9 });
     });
 });
+
+describe('extension mergeArrayById — generalized keys + scalar union', () => {
+    it('unions scalar url arrays', () => {
+        const merged = mergeManifest(
+            { s: [{ id: 'L', fields: { urls: ['a'] } }] },
+            { s: [{ id: 'L', fields: { urls: ['a', 'b'] } }] },
+            { s: [{ id: 'L', fields: { urls: ['a', 'c'] } }] },
+        );
+        expect(merged.s[0].fields.urls.sort()).toEqual(['a', 'b', 'c']);
+    });
+    it('unions passkeys by credentialId', () => {
+        const merged = mergeArrayById(
+            [{ credentialId: 'c1' }],
+            [{ credentialId: 'c1' }, { credentialId: 'cB' }],
+            [{ credentialId: 'c1' }, { credentialId: 'cA' }],
+        );
+        expect(merged.map((p) => p.credentialId).sort()).toEqual(['c1', 'cA', 'cB']);
+    });
+});

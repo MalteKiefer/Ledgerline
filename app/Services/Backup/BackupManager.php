@@ -117,8 +117,15 @@ final class BackupManager
 
                 if ($needFull) {
                     $step('Full reconcile of '.$job->source.' → '.$prefix.'…');
-                    $r = $this->mirror->mirror($fs, $diskPrefix, $prefix, $step, $checkCancel);
+                    // Capture the cursor BEFORE the mirror snapshot, not after. mirror()
+                    // snapshots the source at its START; a blob written during the (long)
+                    // mirror gets a created_at below the post-mirror max(), so a cursor
+                    // taken AFTER would exclude it from every later incremental delta —
+                    // it would only reappear at the next full reconcile (up to 24h),
+                    // absent from the backup meanwhile. delta() is idempotent, so a cursor
+                    // taken before the mirror only re-considers (never double-uploads).
                     $cursor = $ledger::query()->max('created_at');
+                    $r = $this->mirror->mirror($fs, $diskPrefix, $prefix, $step, $checkCancel);
                     $job->forceFill([
                         'last_full_mirror_at' => Carbon::now(),
                         'mirror_cursor' => $cursor,
@@ -276,12 +283,29 @@ final class BackupManager
             return 0;
         }
         $files = [];
+        $anyMtime = false;
         foreach ($fs->listContents($prefix, false) as $item) {
             if ($item->isFile()) {
-                // Sort by the object's actual mtime (newest first), not by the
-                // filename — robust even if the naming scheme changes.
-                $files[] = ['path' => $item->path(), 'ts' => (int) $item->lastModified()];
+                // Prefer the object's mtime, but SFTP/WebDAV (and some S3 listings)
+                // return null → (int) null === 0 for every item, which would make usort
+                // arbitrary and could prune the just-uploaded newest archive. Fall back
+                // to the timestamp encoded in the filename (Y-m-d_His) so ordering stays
+                // correct even when the adapter omits mtimes.
+                $mtime = $item->lastModified();
+                $ts = is_int($mtime) && $mtime > 0 ? $mtime : 0;
+                if ($ts > 0) {
+                    $anyMtime = true;
+                } elseif (preg_match('/(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})(\d{2})/', basename($item->path()), $m) === 1) {
+                    $ts = (int) sprintf('%s%s%s%s%s%s', $m[1], $m[2], $m[3], $m[4], $m[5], $m[6]);
+                    $anyMtime = true;
+                }
+                $files[] = ['path' => $item->path(), 'ts' => $ts];
             }
+        }
+        // If NO object yielded a usable timestamp (neither mtime nor a parseable name),
+        // refuse to prune rather than delete an arbitrary — possibly the newest — archive.
+        if (! $anyMtime && count($files) > $retention) {
+            return 0;
         }
         usort($files, fn (array $a, array $b): int => $b['ts'] <=> $a['ts']);
         $old = array_slice($files, $retention);

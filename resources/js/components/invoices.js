@@ -57,7 +57,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); self._migrateCategoryIds(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; self.eigenbeleg = null; self._egTx = null; self.showInvTrash = false; self.showReceiptTrash = false; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); self._migrateCategoryIds(); ms._afterRebase = () => self._reresolveOpenRefs(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; self.eigenbeleg = null; self._egTx = null; self.showInvTrash = false; self.showReceiptTrash = false; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -791,7 +791,10 @@ export default (config = {}, labels = {}) => ({
         walk(p.id);
         // Un-assign every receipt bundled to a removed project (the receipts themselves stay).
         for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) if (ids.has(r.projectId)) r.projectId = null;
-        this.projects = this.projects.filter((x) => ! ids.has(x.id));
+        // Splice in place — reassigning would detach this.projects from the sealed
+        // store collection (LLInvoicesStore.data.projects), so later writes would seal
+        // the stale array and lose the deletion / subsequent edits.
+        for (let i = this.projects.length - 1; i >= 0; i--) if (ids.has(this.projects[i].id)) this.projects.splice(i, 1);
         if (ids.has(this.openProjectId)) this.openProjectId = null;
         this._save();
     },
@@ -944,6 +947,29 @@ export default (config = {}, labels = {}) => ({
         r.partnerId = partner.id; r.partnerName = partner.name;
     },
     openReceipts(tx) { this.receiptTx = tx; },
+
+    // After a background 409 rebase, the store replaced every record object with a
+    // fresh clone (array identity preserved, element identity not). Re-point the
+    // long-lived references an open editor holds, by id, so edits made after the
+    // rebase land on the LIVE record that gets sealed — not a detached ghost (F2).
+    _reresolveOpenRefs() {
+        if (this.current && this.current.id) {
+            const live = (this.invoices || []).find((i) => i.id === this.current.id);
+            if (live) this.current = live;
+        }
+        if (this.receiptTx && this.receiptTx.id) {
+            const t = (this.transactions || []).find((x) => x.id === this.receiptTx.id);
+            if (t) this.receiptTx = t;
+        }
+        if (this.receiptDoc && this.receiptDoc.tx && this.receiptDoc.r) {
+            const t = (this.transactions || []).find((x) => x.id === this.receiptDoc.tx.id);
+            if (t) {
+                this.receiptDoc.tx = t;
+                const r = (t.receipts || []).find((x) => x.id && x.id === this.receiptDoc.r.id);
+                if (r) this.receiptDoc.r = r;
+            }
+        }
+    },
     closeReceipts() { this.receiptTx = null; },
     async uploadReceipts(fileList) {
         const tx = this.receiptTx;
@@ -1136,7 +1162,7 @@ export default (config = {}, labels = {}) => ({
         inv.paymentTxId = tx.id;
         tx.receipts = tx.receipts || [];
         if (! tx.receipts.some((r) => r.kind === 'invoice' && r.invoiceId === inv.id)) {
-            const rec = { kind: 'invoice', invoiceId: inv.id, invoiceNumber: inv.number, name: (labels.invoice_word || 'Invoice') + ' ' + inv.number, locked: true };
+            const rec = { id: window.LLInvoicesStore.newId(), kind: 'invoice', invoiceId: inv.id, invoiceNumber: inv.number, name: (labels.invoice_word || 'Invoice') + ' ' + inv.number, locked: true };
             if (inv.pdf?.blob) { rec.blob = inv.pdf.blob; rec.key = inv.pdf.key; rec.mime = inv.pdf.mime || 'application/pdf'; }
             tx.receipts.push(rec);
         }
@@ -1290,7 +1316,8 @@ export default (config = {}, labels = {}) => ({
     async emptyInvoiceTrash() {
         if (! this.trashedInvoices.length) return;
         if (! await this.$store.confirm.ask(labels.trash_empty_confirm || 'Permanently delete all invoices in the trash?')) return;
-        this.invoices = (this.invoices || []).filter((i) => ! i.trashed);
+        // Splice in place (do not reassign — that detaches from the sealed store).
+        for (let i = this.invoices.length - 1; i >= 0; i--) if (this.invoices[i].trashed) this.invoices.splice(i, 1);
         this._save(); this.reconcileBlobs();
     },
     // Invoice-list filters (on top of search + status).

@@ -1310,6 +1310,7 @@ return {
     async bulkPurge() {
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || labels.purgeConfirm || '')) return;
         this._eachSelected((p) => this._purgeOne(p)); this.selected = []; await this._persist();
+        this.reconcileBlobs();
     },
 
     /* ---- Search (metadata + CLIP content, all client-side) ---- */
@@ -2385,12 +2386,14 @@ return {
         if (! await this.$store.confirm.ask(labels.purgeConfirm || labels.deleteConfirm || '')) return;
         this._purgeOne(p);
         await this._persist();
+        this.reconcileBlobs(); // grace-gated reclaim of the now-unreferenced blobs
     },
     async emptyTrash() {
         if (! this.trashCount()) return;
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || '')) return;
         for (const p of this.index.photos.filter((x) => x.trashed)) this._purgeOne(p);
         await this._persist();
+        this.reconcileBlobs();
     },
     // Persist the index immediately. Destructive ops can't wait for the debounce —
     // a reload right after emptying the trash would otherwise bring photos back.
@@ -2400,7 +2403,6 @@ return {
         try { await window.LLGalleryStore.flush(); } catch (e) { /* backstop fires later */ }
     },
     _purgeOne(p) {
-        const refs = [p.originalRef, p.thumbRef, p.mediumRef, p.motionRef, p.metaRef, ...(p.faceCropRefs || [])];
         const i = this.index.photos.findIndex((x) => x.id === p.id);
         if (i >= 0) this.index.photos.splice(i, 1);
         // Drop dangling references from albums and face clusters.
@@ -2413,7 +2415,12 @@ return {
         this.index.people = (this.index.people || []).filter((pp) => (pp.faces || []).length >= 2);
         delete metaCache[p.id]; delete searchEmb[p.id];
         if (this.thumbs[p.id]) { URL.revokeObjectURL(this.thumbs[p.id]); delete this.thumbs[p.id]; }
-        this._freeBlobs(refs);
+        // Do NOT eager-delete the per-photo blobs here. If a concurrent device restored
+        // this photo, the durable flush that follows 409-rebases and the reconcile
+        // below recomputes the live-set from the merged truth — so the bytes survive
+        // within the grace window instead of leaving a 404 zombie (record back, bytes
+        // gone). The grace-gated reconcile reclaims them only once they are durably
+        // unreferenced and aged, exactly like the record-shard blobs.
     },
     _freeBlobs(refs) {
         const uniq = [...new Set(refs.filter(Boolean))];

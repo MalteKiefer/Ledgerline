@@ -627,6 +627,12 @@ export default (config = {}, labels = {}) => ({
     async matchPhotos(silent = false) {
         if (! this.tracks.length || ! this.photos.length) return;
         if (! silent) this.busy = true;
+        // Observe manual couplings pinned on ANOTHER device before we auto-(re)match:
+        // matchPhotos deletes/rewrites non-manual couplings, and the module-store merge
+        // is delete-wins — so without a refresh a stale auto-coupling here would 409-drop
+        // a concurrent manual pin. refresh() merges the server state in place (couplings
+        // object identity preserved), so line "source === 'manual'" then skips it. (#30)
+        try { await window.LLModuleStore.explore.refresh(); } catch (e) { /* offline — keep local */ }
         try {
             const matchTracks = this.tracks.map((t) => ({ id: t.id, points: t.points || [] }));
             const opts = { timeToleranceS: this.settings.couplingTimeToleranceS, distanceToleranceM: this.settings.couplingDistanceToleranceM };
