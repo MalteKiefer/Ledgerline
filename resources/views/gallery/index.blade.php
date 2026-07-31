@@ -10,6 +10,9 @@
         sharesUrl: '{{ url('/gallery/rel-shares') }}',
         shareBase: '{{ url('/gallery-share') }}',
         geocodeUrl: '{{ url('/gallery/geocode') }}',
+        searchUrl: '{{ url('/gallery/search') }}',
+        peopleBase: '{{ url('/gallery/people') }}',
+        facesBase: '{{ url('/gallery/faces') }}',
         token: '{{ csrf_token() }}',
      }, {
         loadFailed: @js(__('gallery.load_failed')),
@@ -27,6 +30,10 @@
         uploadErrGeneric: @js(__('gallery.upload_err_generic')),
         shareError: @js(__('gallery.share_error')),
         shareCopied: @js(__('gallery.share_copied')),
+        personName: @js(__('gallery.person_name')),
+        save: @js(__('gallery.save')),
+        deletePersonConfirm: @js(__('gallery.delete_person_confirm')),
+        reprocessing: @js('Re-running detection…'),
      }, @js([
         'photos' => $photos ?? [],
         'albums' => $albums ?? [],
@@ -74,6 +81,11 @@
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#3b9fd6"><x-icon name="folder" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.albums') }}</span><span x-show="albums.length" class="text-xs tabular-nums text-gray-400" x-text="albums.length"></span>
           </button>
+          <button type="button" @click="view = 'people'"
+              :class="view === 'people' || view === 'person' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
+              class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#3fae9f"><x-icon name="user-group" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.people') }}</span><span x-show="peopleLoaded && peopleCount()" x-cloak class="text-xs tabular-nums text-gray-400" x-text="peopleCount()"></span>
+          </button>
           <button type="button" @click="view = 'trash'"
               :class="view === 'trash' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
@@ -113,16 +125,23 @@
           <button type="button" x-show="memoryCount()" x-cloak @click="view = 'memories'; clearSelection()" :class="view === 'memories' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.memories') }}</button>
           <button type="button" @click="view = 'favorites'; clearSelection()" :class="view === 'favorites' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.favorites') }}</button>
           <button type="button" @click="view = 'albums'; clearSelection()" :class="view === 'albums' || view === 'album' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.albums') }}</button>
+          <button type="button" @click="view = 'people'; clearSelection()" :class="view === 'people' || view === 'person' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.people') }}</button>
           <button type="button" @click="view = 'trash'; clearSelection()" :class="view === 'trash' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.trash') }} <span x-show="trashCount()" x-text="'('+trashCount()+')'"></span></button>
         </div>
 
         {{-- LIBRARY --}}
         <div x-show="view === 'library'">
-          <div class="relative mb-4" x-show="libraryPhotos.length || isSearching">
-            <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input type="search" x-model="query" @input="runSearch()" placeholder="{{ __('gallery.search_placeholder') }}"
-                class="w-full rounded-lg border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-2 pl-9 pr-9 text-sm shadow-sm focus:border-accent focus:ring-accent">
-            <button type="button" x-show="query" @click="clearSearch()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
+          <div class="mb-4" x-show="libraryPhotos.length || isSearching">
+            <form @submit.prevent="submitSearch()" class="relative">
+              <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input type="search" x-model="query" @input="runSearch()" enterkeyhint="search" placeholder="{{ __('gallery.search_placeholder') }}"
+                  class="w-full rounded-lg border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-2 pl-9 pr-16 text-sm shadow-sm focus:border-accent focus:ring-accent">
+              <span x-show="semanticBusy" x-cloak class="absolute right-9 top-1/2 -translate-y-1/2"><x-icon name="arrow-path" class="h-4 w-4 animate-spin text-gray-400" /></span>
+              <button type="button" x-show="query" @click="clearSearch()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
+            </form>
+            <div x-show="semanticActive" x-cloak class="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-accent">
+              <x-icon name="sparkles" class="h-3.5 w-3.5" /><span>{{ __("gallery.smart_results") }}</span>
+            </div>
           </div>
 
           <template x-if="isSearching && ! displayGroups.length">
@@ -317,6 +336,79 @@
             </div>
           </template>
         </div>
+
+        {{-- PEOPLE (face clusters) --}}
+        <div x-show="view === 'people'">
+          <h2 class="mb-4 text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.people') }} <span x-show="peopleCount()" class="ml-1 text-sm font-normal tabular-nums text-gray-400" x-text="peopleCount()"></span></h2>
+          <template x-if="peopleLoaded && ! peopleCount()"><x-empty-state icon="user-group" class="mt-10">{{ __('gallery.no_people') }}</x-empty-state></template>
+          <div class="grid grid-cols-3 gap-4 sm:grid-cols-4 lg:grid-cols-6">
+            <template x-for="person in peopleSorted" :key="person.id">
+              <button type="button" @click="openPerson(person)" class="group text-center focus:outline-none">
+                <div class="relative mx-auto aspect-square overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 ring-1 ring-black/[0.06] dark:ring-white/10 transition group-hover:ring-2 group-hover:ring-accent">
+                  <template x-if="person.coverFaceId"><img :src="personCover(person)" loading="lazy" class="h-full w-full object-cover"></template>
+                  <template x-if="! person.coverFaceId"><div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"><x-icon name="user" class="h-8 w-8 text-gray-300 dark:text-gray-600" /></div></template>
+                </div>
+                <p class="mt-2 truncate text-sm font-medium text-gray-800 dark:text-gray-200"><span x-show="person.name" x-text="person.name"></span><span x-show="! person.name" x-cloak>{{ __('gallery.person_unnamed') }}</span></p>
+                <p class="text-xs tabular-nums text-gray-400" x-text="person.faceCount"></p>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        {{-- PERSON (single: faces + photos they appear in) --}}
+        <div x-show="view === 'person'">
+          <template x-if="currentPerson">
+            <div>
+              <div class="mb-4 flex items-center gap-3">
+                <button type="button" @click="backToPeople()" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"><x-icon name="arrow-uturn-left" class="h-4 w-4" />{{ __('gallery.people') }}</button>
+                <h2 class="min-w-0 flex-1 truncate text-lg font-semibold text-gray-900 dark:text-gray-100"><span x-show="currentPerson?.name" x-text="currentPerson?.name"></span><span x-show="! currentPerson?.name" x-cloak>{{ __('gallery.person_unnamed') }}</span></h2>
+                <span class="shrink-0 text-xs tabular-nums text-gray-400" x-text="currentPerson?.faceCount"></span>
+                <div class="shrink-0">
+                  <x-action-menu :aria-label="__('common.actions')">
+                    <x-action-menu-item icon="pencil" @click="renamePerson(currentPerson)">{{ __('gallery.rename') }}</x-action-menu-item>
+                    <x-action-menu-item icon="arrows-right-left" @click="openMerge(currentPerson)">{{ __('gallery.merge') }}</x-action-menu-item>
+                    <x-action-menu-item icon="trash" danger @click="deletePerson(currentPerson)">{{ __("gallery.delete_person") }}</x-action-menu-item>
+                  </x-action-menu>
+                </div>
+              </div>
+
+              {{-- This person's face crops (reassign / not-this-person / hide) --}}
+              <template x-if="personFaces.length">
+                <div class="mb-6">
+                  <h3 class="mb-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300">{{ __('gallery.faces_found') }}</h3>
+                  <div class="flex flex-wrap gap-3">
+                    <template x-for="face in personFaces" :key="face.id">
+                      <div class="group relative">
+                        <img :src="faceCropUrl(face.id)" loading="lazy" class="h-16 w-16 rounded-lg object-cover ring-1 ring-black/[0.06] dark:ring-white/10">
+                        <div class="absolute right-0.5 top-0.5 opacity-0 transition group-hover:opacity-100">
+                          <x-action-menu :aria-label="__('common.actions')" width="w-52">
+                            <x-action-menu-item icon="arrows-right-left" @click="openFaceReassign(face)">{{ __('gallery.reassign') }}</x-action-menu-item>
+                            <x-action-menu-item icon="x-mark" @click="detachFace(face)">{{ __('gallery.not_this_person') }}</x-action-menu-item>
+                            <x-action-menu-item icon="eye" danger @click="hideFace(face)">{{ __('gallery.hide') }}</x-action-menu-item>
+                          </x-action-menu>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+
+              {{-- Photos this person appears in (viewer pool = these photos) --}}
+              <template x-if="! personPhotos.length"><x-empty-state class="mt-10">{{ __('gallery.no_results') }}</x-empty-state></template>
+              <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
+                <template x-for="p in personPhotos" :key="p.id">
+                  <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800">
+                    <button type="button" @click="openViewer(p, personPhotos)" class="block h-full w-full">
+                      <template x-if="p.hasThumb"><img :src="thumbUrl(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"></template>
+                      <template x-if="! p.hasThumb"><div class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div></template>
+                      <template x-if="p.kind === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
       </div>
     </div>
 
@@ -376,6 +468,8 @@
               <x-icon x-show="! viewer.photo?.favorite" name="star" class="h-4 w-4" />
             </button>
             <a :href="rawUrl(viewer.photo) + '?download=1'" title="{{ __('gallery.share_download') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200"><x-icon name="arrow-down-tray" class="h-4 w-4" /></a>
+            <button type="button" x-show="viewer.photo?.kind !== 'video'" @click="findSimilar()" title="{{ __("gallery.find_similar") }}" :class="similarOpen ? 'text-accent' : ''" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200"><x-icon name="squares-2x2" class="h-4 w-4" /></button>
+            <button type="button" @click="reprocess()" title="{{ __('gallery.rescan') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200"><x-icon name="arrow-path" class="h-4 w-4" /></button>
           </div>
         </div>
         <div x-show="view !== 'trash'" class="mt-4">
@@ -415,6 +509,23 @@
           <button type="button" @click="openLocPicker(viewer.photo)" class="mt-3 inline-flex items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="map-pin" class="h-4 w-4" />{{ __('gallery.edit_location') }}</button>
         </div>
         <div x-ref="minimap" x-show="viewer.photo?.lat != null" class="mt-5 h-40 w-full overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800"></div>
+
+        {{-- Find-similar strip (server ML) --}}
+        <div x-show="similarOpen" x-cloak class="mt-5 border-t border-gray-100 dark:border-gray-800 pt-4">
+          <div class="flex items-center gap-1.5 text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500"><x-icon name="squares-2x2" class="h-3.5 w-3.5" />{{ __("gallery.find_similar") }}</div>
+          <div x-show="similar.loading" class="mt-3 flex justify-center py-4"><x-icon name="arrow-path" class="h-5 w-5 animate-spin text-gray-400" /></div>
+          <template x-if="! similar.loading && ! similar.photos.length">
+            <p class="mt-2 text-xs text-gray-400">{{ __('gallery.no_results') }}</p>
+          </template>
+          <div x-show="! similar.loading && similar.photos.length" class="mt-3 grid grid-cols-3 gap-1.5">
+            <template x-for="sp in similar.photos" :key="sp.id">
+              <button type="button" @click="openSimilar(sp)" class="aspect-square overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
+                <template x-if="sp.hasThumb"><img :src="thumbUrl(sp)" loading="lazy" class="h-full w-full object-cover transition hover:scale-[1.05]"></template>
+                <template x-if="! sp.hasThumb"><div class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div></template>
+              </button>
+            </template>
+          </div>
+        </div>
       </aside>
     </div>
 
@@ -526,6 +637,56 @@
         <div class="mt-4 flex items-center justify-between gap-2">
           <button type="button" @click="albumPicker = false; createAlbum()" class="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100"><x-icon name="plus" class="h-4 w-4" />{{ __('gallery.new_album') }}</button>
           <x-button variant="secondary" type="button" @click="albumPicker = false">{{ __('common.cancel') }}</x-button>
+        </div>
+      </div>
+    </div>
+
+    {{-- Merge this person into another --}}
+    <div x-show="mergePicker.open" x-cloak class="fixed inset-0 z-[965] flex items-center justify-center p-4" @keydown.escape.window="closeMerge()">
+      <div class="absolute inset-0 bg-black/60" @click="closeMerge()"></div>
+      <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.merge_heading') }}</h3>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.merge_hint') }}</p>
+        <p x-show="! mergeCandidates.length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.merge_none') }}</p>
+        <div class="mt-3 max-h-72 space-y-1 overflow-y-auto">
+          <template x-for="cand in mergeCandidates" :key="cand.id">
+            <button type="button" @click="mergeInto(cand)" class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-800">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                <template x-if="cand.coverFaceId"><img :src="personCover(cand)" class="h-full w-full object-cover"></template>
+                <template x-if="! cand.coverFaceId"><x-icon name="user" class="h-4 w-4 text-gray-400" /></template>
+              </span>
+              <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200"><span x-show="cand.name" x-text="cand.name"></span><span x-show="! cand.name" x-cloak>{{ __('gallery.person_unnamed') }}</span></span>
+              <span class="shrink-0 text-xs tabular-nums text-gray-400" x-text="cand.faceCount"></span>
+            </button>
+          </template>
+        </div>
+        <div class="mt-4 flex justify-end">
+          <x-button variant="secondary" type="button" @click="closeMerge()">{{ __('common.cancel') }}</x-button>
+        </div>
+      </div>
+    </div>
+
+    {{-- Move a face to another person --}}
+    <div x-show="facePicker.open" x-cloak class="fixed inset-0 z-[966] flex items-center justify-center p-4" @keydown.escape.window="closeFaceReassign()">
+      <div class="absolute inset-0 bg-black/60" @click="closeFaceReassign()"></div>
+      <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.reassign_heading') }}</h3>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.reassign_hint') }}</p>
+        <p x-show="! facePickerCandidates.length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.merge_none') }}</p>
+        <div class="mt-3 max-h-72 space-y-1 overflow-y-auto">
+          <template x-for="cand in facePickerCandidates" :key="cand.id">
+            <button type="button" @click="reassignFace(cand)" class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-800">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                <template x-if="cand.coverFaceId"><img :src="personCover(cand)" class="h-full w-full object-cover"></template>
+                <template x-if="! cand.coverFaceId"><x-icon name="user" class="h-4 w-4 text-gray-400" /></template>
+              </span>
+              <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200"><span x-show="cand.name" x-text="cand.name"></span><span x-show="! cand.name" x-cloak>{{ __('gallery.person_unnamed') }}</span></span>
+              <span class="shrink-0 text-xs tabular-nums text-gray-400" x-text="cand.faceCount"></span>
+            </button>
+          </template>
+        </div>
+        <div class="mt-4 flex justify-end">
+          <x-button variant="secondary" type="button" @click="closeFaceReassign()">{{ __('common.cancel') }}</x-button>
         </div>
       </div>
     </div>

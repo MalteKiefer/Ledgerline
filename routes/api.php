@@ -257,6 +257,20 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/gallery/rel-shares', [GalleryController::class, 'storeShare'])->middleware('throttle:60,1')->name('api.gallery.rel.shares.store');
             Route::put('/gallery/rel-shares/{share}', [GalleryController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.gallery.rel.shares.update');
             Route::delete('/gallery/rel-shares/{share}', [GalleryController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.gallery.rel.shares.destroy');
+
+            // ML: CLIP semantic search + face/people recognition (pgvector-backed;
+            // empty/degraded when ML is off or the vector extension is absent).
+            Route::get('/gallery/search', [GalleryController::class, 'search'])->middleware('throttle:120,1')->name('api.gallery.rel.search');
+            Route::get('/gallery/photos/{photo}/similar', [GalleryController::class, 'similar'])->whereNumber('photo')->middleware('throttle:120,1')->name('api.gallery.rel.similar');
+            Route::post('/gallery/photos/{photo}/reprocess', [GalleryController::class, 'reprocess'])->whereNumber('photo')->middleware('throttle:120,1')->name('api.gallery.rel.reprocess');
+            Route::get('/gallery/people', [GalleryController::class, 'people'])->name('api.gallery.rel.people');
+            Route::get('/gallery/people/{person}', [GalleryController::class, 'person'])->whereNumber('person')->name('api.gallery.rel.people.show');
+            Route::put('/gallery/people/{person}', [GalleryController::class, 'updatePerson'])->whereNumber('person')->middleware('throttle:600,1')->name('api.gallery.rel.people.update');
+            Route::delete('/gallery/people/{person}', [GalleryController::class, 'destroyPerson'])->whereNumber('person')->middleware('throttle:600,1')->name('api.gallery.rel.people.destroy');
+            Route::post('/gallery/people/merge', [GalleryController::class, 'mergePeople'])->middleware('throttle:600,1')->name('api.gallery.rel.people.merge');
+            Route::post('/gallery/faces/{face}/assign', [GalleryController::class, 'assignFace'])->whereNumber('face')->middleware('throttle:600,1')->name('api.gallery.rel.faces.assign');
+            Route::post('/gallery/faces/{face}/hide', [GalleryController::class, 'hideFace'])->whereNumber('face')->middleware('throttle:600,1')->name('api.gallery.rel.faces.hide');
+            Route::get('/gallery/faces/{face}/crop', [GalleryController::class, 'faceCrop'])->whereNumber('face')->middleware('throttle:6000,1')->name('api.gallery.rel.faces.crop');
         });
 
         // Plaintext-relational Explore (pivot) — same controller as web, JSON.

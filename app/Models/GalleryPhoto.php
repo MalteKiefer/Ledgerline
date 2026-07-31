@@ -39,6 +39,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $medium_path
  * @property string|null $motion_path
  * @property array<string, mixed>|null $exif
+ * @property Carbon|null $embedded_at
  * @property int $version
  * @property Carbon|null $deleted_at
  */
@@ -50,6 +51,9 @@ class GalleryPhoto extends Model
     /** Only the user-editable fields are mass-assignable; byte metadata is forceFill'd. */
     protected $fillable = ['favorite', 'description'];
 
+    /** The pgvector CLIP column (Postgres only) is written/read raw, never serialised. */
+    protected $hidden = ['embedding'];
+
     protected $casts = [
         'exif' => 'array',
         'favorite' => 'boolean',
@@ -58,6 +62,7 @@ class GalleryPhoto extends Model
         'height' => 'integer',
         'phash' => 'integer',
         'taken_at' => 'datetime',
+        'embedded_at' => 'datetime',
         'lat' => 'decimal:6',
         'lng' => 'decimal:6',
         'version' => 'integer',

@@ -5,11 +5,18 @@
 // load directly from their render URLs (/gallery/photos/{id}/thumb|medium|raw|
 // motion) in <img>/<video> — no decryption, no object URLs, no worker pool.
 //
-// CLIP semantic search + face/people detection + duplicate scanning are DEFERRED
-// (server-side ML, to be re-added later) and were removed from this build, along
-// with the on-device rendition derivation (the server derives thumb/medium/EXIF/
-// pHash now) and Live-Photo pairing (the single-file upload endpoint can't merge
-// a separately-uploaded .MOV). What remains: the timeline grid, the viewer
+// CLIP semantic search + face/people detection are served by a server-side ML
+// backend again (pgvector); this client CONSUMES those plaintext endpoints:
+//   GET /gallery/search?q=            → semantic photo results
+//   GET /gallery/photos/{id}/similar  → visually similar photos
+//   GET /gallery/people[/{id}]        → people + their faces/photos
+//   PUT/DELETE /gallery/people/{id}, POST /gallery/people/merge
+//   POST /gallery/faces/{id}/assign|hide, GET /gallery/faces/{id}/crop
+//   POST /gallery/photos/{id}/reprocess
+// All of it degrades silently when ML/pgvector is off (empty people/search).
+// Duplicate scanning + on-device rendition derivation (the server derives thumb/
+// medium/EXIF/pHash now) and Live-Photo pairing (the single-file upload endpoint
+// can't merge a separately-uploaded .MOV) stay deferred. What remains: the timeline grid, the viewer
 // (image/video/Live motion), favorites, description edit, non-destructive
 // date/location edits, trash (soft-delete + restore + purge + empty), albums
 // (create/rename/delete/cover/add-remove), the viewer map/EXIF panel, whole +
@@ -66,6 +73,24 @@ const normShare = (s) => ({
     version: s.version ?? 0,
 });
 
+// People + faces (server ML). snake_case → camelCase; the face crop is served
+// by id (/gallery/faces/{id}/crop), never from crop_path directly.
+const normPerson = (p) => ({
+    id: p.id,
+    name: p.name ?? '',
+    faceCount: p.face_count ?? 0,
+    coverFaceId: p.cover_face_id ?? null,
+    version: p.version ?? 0,
+});
+const normFace = (f) => ({
+    id: f.id,
+    photoId: f.gallery_photo_id ?? null,
+    personId: f.gallery_person_id ?? null,
+    score: f.score ?? null,
+    box: Array.isArray(f.box) ? f.box : null,
+    hidden: !! f.hidden,
+});
+
 export default (config = {}, labels = {}, initial = {}) => ({
     photos: (initial.photos || []).map(normPhoto),
     albums: (initial.albums || []).map(normAlbum),
@@ -84,17 +109,32 @@ export default (config = {}, labels = {}, initial = {}) => ({
     uploads: [], // { name, state, progress, error }
     uploadBatches: 0,
 
-    viewer: { open: false, photo: null, fit: 1, motionOn: false },
+    viewer: { open: false, photo: null, fit: 1, motionOn: false, pool: null },
     _miniMap: null,
 
     // trash (loaded on demand)
     trash: [],
     trashLoaded: false,
 
-    // search (metadata only — CLIP semantic search is deferred)
+    // search — instant local metadata filter (while typing) + server-side CLIP
+    // semantic search on submit (Enter). semanticActive flags the smart results.
     query: '',
     searchResults: null, // null = not searching; array = results
     _searchTimer: null,
+    semanticActive: false,
+    semanticBusy: false,
+
+    // people + faces (server ML, loaded on demand for the People view)
+    people: [],
+    peopleLoaded: false,
+    activePerson: null,          // person id while in the person-detail view
+    personDetail: null,          // { person, faces:[], photos:[] }
+    mergePicker: { open: false, into: null },
+    facePicker: { open: false, face: null },
+
+    // "find similar" strip shown inside the viewer
+    similar: { loading: false, photos: [] },
+    similarOpen: false,
 
     // multi-select
     selected: [],
@@ -127,6 +167,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
             this.selected = [];
             if (v !== 'library') this.clearSearch();
             if (v === 'trash') this._loadTrash();
+            if (v === 'people') this._loadPeople();
         });
         await this._track(this.load());
         // Deep link to a single photo (?photo=<id>) → open it directly.
@@ -234,13 +275,16 @@ export default (config = {}, labels = {}, initial = {}) => ({
     },
     get isSearching() { return this.searchResults !== null; },
 
-    /* ---- Search (metadata only) ---- */
+    /* ---- Search — instant local metadata filter + semantic (CLIP) on submit ---- */
+    // Typing → debounced local metadata filter (keeps the box responsive and
+    // works with ML off). Any keystroke invalidates a prior smart-results set.
     runSearch() {
         clearTimeout(this._searchTimer);
+        this.semanticActive = false;
         if (! this.query.trim()) { this.searchResults = null; return; }
         this._searchTimer = setTimeout(() => this._doSearch(), 250);
     },
-    clearSearch() { this.query = ''; this.searchResults = null; },
+    clearSearch() { this.query = ''; this.searchResults = null; this.semanticActive = false; this.semanticBusy = false; },
     _doSearch() {
         const q = this.query.trim().toLowerCase();
         if (! q) { this.searchResults = null; return; }
@@ -249,6 +293,24 @@ export default (config = {}, labels = {}, initial = {}) => ({
             || (p.camera || '').toLowerCase().includes(q)
             || (this.placeText(p.place) || '').toLowerCase().includes(q)
             || (p.takenAt ? this.fmtDate(p.takenAt).toLowerCase().includes(q) : false));
+    },
+    // Enter/submit → natural-language CLIP search. Graceful fallback: empty
+    // result (ML/pgvector off) or an error keeps the local metadata filter.
+    async submitSearch() {
+        const q = this.query.trim();
+        clearTimeout(this._searchTimer);
+        if (! q) { this.clearSearch(); return; }
+        if (! config.searchUrl) { this._doSearch(); return; }
+        this._doSearch(); // seed with local hits so the grid is never blank while we wait
+        this.semanticBusy = true;
+        try {
+            const d = await getJson(config.searchUrl + '?q=' + encodeURIComponent(q));
+            const hits = (d.photos || []).map(normPhoto);
+            if (hits.length) { this.searchResults = hits; this.semanticActive = true; }
+            else { this.semanticActive = false; } // nothing semantic → local filter stands
+        } catch (e) {
+            this.semanticActive = false; // ML unavailable → local filter stands
+        } finally { this.semanticBusy = false; }
     },
 
     /* ---- Upload (plaintext; the server derives renditions/EXIF/pHash) ---- */
@@ -497,16 +559,25 @@ export default (config = {}, labels = {}, initial = {}) => ({
     },
 
     /* ---- Viewer ---- */
-    openViewer(p) {
-        this.viewer = { open: true, photo: p, fit: 1, motionOn: false };
+    // `pool` overrides the prev/next set (person photos, similar strip); default
+    // is the current library/search display groups.
+    openViewer(p, pool = null) {
+        this.similar = { loading: false, photos: [] };
+        this.similarOpen = false;
+        this.viewer = { open: true, photo: p, fit: 1, motionOn: false, pool };
         if (p.lat != null && p.lng != null) this._renderMiniMap(parseFloat(p.lat), parseFloat(p.lng));
     },
     closeViewer() {
         if (this._miniMap) { this._miniMap.remove(); this._miniMap = null; }
-        this.viewer = { open: false, photo: null, fit: 1, motionOn: false };
+        this.similar = { loading: false, photos: [] };
+        this.similarOpen = false;
+        this.viewer = { open: false, photo: null, fit: 1, motionOn: false, pool: null };
     },
-    // Images in the current view, for prev/next stepping in the viewer.
-    get viewerImages() { return (this.displayGroups.flatMap((g) => g.photos)).filter((p) => p.kind !== 'video'); },
+    // Images in the current view (or the explicit pool), for prev/next stepping.
+    get viewerImages() {
+        const pool = this.viewer.pool || this.displayGroups.flatMap((g) => g.photos);
+        return pool.filter((p) => p.kind !== 'video');
+    },
     get viewerIndex() { return this.viewer.photo ? this.viewerImages.findIndex((r) => r.id === this.viewer.photo.id) : -1; },
     get viewerHasGallery() { return !! this.viewer.photo && this.viewerImages.length > 1; },
     viewerStep(dir) {
@@ -514,7 +585,34 @@ export default (config = {}, labels = {}, initial = {}) => ({
         if (imgs.length < 2) return;
         const i = this.viewerIndex;
         if (i < 0) return;
-        this.openViewer(imgs[(i + dir + imgs.length) % imgs.length]);
+        this.openViewer(imgs[(i + dir + imgs.length) % imgs.length], this.viewer.pool);
+    },
+
+    /* ---- Find similar (server ML), shown as a strip inside the viewer ---- */
+    async findSimilar() {
+        const photo = this.viewer.photo;
+        if (! photo) return;
+        this.similarOpen = true;
+        this.similar = { loading: true, photos: [] };
+        try {
+            const d = await getJson(config.photoBase + '/' + photo.id + '/similar');
+            this.similar.photos = (d.photos || []).map(normPhoto).filter((x) => x.id !== photo.id);
+        } catch (e) { this.similar.photos = []; } // ML off → empty strip
+        finally { this.similar.loading = false; }
+    },
+    openSimilar(p) { this.openViewer(p, this.similar.photos.slice()); },
+
+    // Re-run ML detection on a single photo (backfill); refresh the row.
+    async reprocess(p) {
+        const photo = p || this.viewer.photo;
+        if (! photo) return;
+        try {
+            const d = await postForm(config.photoBase + '/' + photo.id + '/reprocess', {});
+            if (d && d.photo) this._applyPhoto(d.photo);
+            this.peopleLoaded = false; // people may have changed
+            if (this.view === 'people') this._loadPeople();
+            window.llToast?.(labels.reprocessing || '');
+        } catch (e) { window.llToast?.(labels.loadFailed); }
     },
     playMotion() { if (this.viewer.photo?.hasMotion) this.viewer.motionOn = true; },
     stopMotion() { this.viewer.motionOn = false; },
@@ -789,6 +887,121 @@ export default (config = {}, labels = {}, initial = {}) => ({
         this.share.busy = true;
         try { await apiRequest('DELETE', `${config.sharesUrl}/${al.share.id}`); } catch (e) { /* best effort */ }
         al.share = null; this.share.link = ''; this.share.busy = false;
+    },
+
+    /* ---- People (server ML) ---- */
+    async _loadPeople() {
+        if (this.peopleLoaded) return;
+        try {
+            const d = await getJson(config.peopleBase);
+            this.people = (d.people || []).map(normPerson);
+            this.peopleLoaded = true;
+        } catch (e) { this.people = []; this.peopleLoaded = true; } // ML off → empty
+    },
+    async _reloadPeople() { this.peopleLoaded = false; await this._loadPeople(); },
+    peopleCount() { return this.people.length; },
+    // Named people first, then by face count (biggest clusters up top).
+    get peopleSorted() {
+        return this.people.slice().sort((a, b) => {
+            const an = a.name ? 0 : 1, bn = b.name ? 0 : 1;
+            if (an !== bn) return an - bn;
+            return (b.faceCount || 0) - (a.faceCount || 0);
+        });
+    },
+    faceCropUrl(faceId) { return faceId ? config.facesBase + '/' + faceId + '/crop' : ''; },
+    personCover(person) { return person ? this.faceCropUrl(person.coverFaceId) : ''; },
+    get currentPerson() {
+        return this.personDetail ? this.personDetail.person : (this.people.find((p) => p.id === this.activePerson) || null);
+    },
+    get personPhotos() { return this.personDetail ? this.personDetail.photos : []; },
+    get personFaces() { return this.personDetail ? this.personDetail.faces.filter((f) => ! f.hidden) : []; },
+
+    async openPerson(person) {
+        if (! person) return;
+        this.activePerson = person.id;
+        this.view = 'person';
+        this.personDetail = { person: normPerson(person), faces: [], photos: [] };
+        try {
+            const d = await getJson(config.peopleBase + '/' + person.id);
+            this.personDetail = {
+                person: normPerson(d.person || person),
+                faces: (d.faces || []).map(normFace),
+                photos: (d.photos || []).map(normPhoto),
+            };
+        } catch (e) { /* keep the stub; ML/detail unavailable */ }
+    },
+    backToPeople() { this.view = 'people'; this.activePerson = null; this.personDetail = null; },
+
+    // Inline rename (optimistic version; on repeated 409 reload the list).
+    async renamePerson(person) {
+        if (! person) return;
+        const raw = await this.$store.confirm.prompt('', { value: person.name, placeholder: labels.personName || '', ok: labels.save || '' });
+        if (raw === null || raw === undefined) return;
+        const name = raw.trim();
+        for (let i = 0; i < 4; i++) {
+            let res;
+            try { res = await fetch(config.peopleBase + '/' + person.id, { method: 'PUT', headers: jsonHeaders(), body: JSON.stringify({ name, version: person.version }) }); }
+            catch (e) { break; }
+            if (res.ok) {
+                const d = await res.json().catch(() => ({}));
+                if (d.person) { Object.assign(person, normPerson(d.person)); if (this.personDetail && this.personDetail.person.id === person.id) Object.assign(this.personDetail.person, normPerson(d.person)); }
+                return;
+            }
+            if (res.status === 409) { const d = await res.json().catch(() => ({})); if (typeof d.version === 'number') { person.version = d.version; continue; } await this._reloadPeople(); return; }
+            break;
+        }
+        window.llToast?.(labels.loadFailed);
+    },
+    async deletePerson(person) {
+        if (! person) return;
+        if (! await this.$store.confirm.ask(labels.deletePersonConfirm || '')) return;
+        try {
+            await apiRequest('DELETE', config.peopleBase + '/' + person.id);
+            this.people = this.people.filter((p) => p.id !== person.id);
+            if (this.activePerson === person.id) this.backToPeople();
+        } catch (e) { window.llToast?.(labels.loadFailed); }
+    },
+
+    /* ---- Merge two people ---- */
+    openMerge(person) { this.mergePicker = { open: true, into: person || this.currentPerson }; },
+    closeMerge() { this.mergePicker = { open: false, into: null }; },
+    get mergeCandidates() { const into = this.mergePicker.into; return into ? this.peopleSorted.filter((p) => p.id !== into.id) : []; },
+    async mergeInto(source) {
+        const into = this.mergePicker.into;
+        if (! into || ! source) return;
+        this.closeMerge();
+        try {
+            await postForm(config.peopleBase + '/merge', { source_id: source.id, target_id: into.id });
+            await this._reloadPeople();
+            if (this.activePerson === into.id) { const cur = this.people.find((p) => p.id === into.id); if (cur) this.openPerson(cur); else this.backToPeople(); }
+        } catch (e) { window.llToast?.(labels.loadFailed); }
+    },
+
+    /* ---- Face management within a person ---- */
+    async assignFace(face, personId) {
+        if (! face) return;
+        try {
+            await postForm(config.facesBase + '/' + face.id + '/assign', { gallery_person_id: personId ?? null });
+            if (this.personDetail) this.personDetail.faces = this.personDetail.faces.filter((f) => f.id !== face.id);
+            this._reloadPeople();
+        } catch (e) { window.llToast?.(labels.loadFailed); }
+    },
+    detachFace(face) { return this.assignFace(face, null); }, // "not this person"
+    async hideFace(face) {
+        if (! face) return;
+        try {
+            await postForm(config.facesBase + '/' + face.id + '/hide', {});
+            if (this.personDetail) this.personDetail.faces = this.personDetail.faces.filter((f) => f.id !== face.id);
+            this._reloadPeople();
+        } catch (e) { window.llToast?.(labels.loadFailed); }
+    },
+    openFaceReassign(face) { this.facePicker = { open: true, face }; },
+    closeFaceReassign() { this.facePicker = { open: false, face: null }; },
+    get facePickerCandidates() { return this.peopleSorted.filter((p) => p.id !== this.activePerson); },
+    async reassignFace(person) {
+        const face = this.facePicker.face;
+        this.closeFaceReassign();
+        if (face && person) await this.assignFace(face, person.id);
     },
 
     /* ---- Formatting helpers ---- */

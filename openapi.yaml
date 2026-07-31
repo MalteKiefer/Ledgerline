@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.516.0
+  version: 1.517.0
   description: >
     Plaintext-relational personal cloud API for the Ledgerline mobile client.
 
@@ -814,6 +814,30 @@ components:
         version: { type: integer }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+
+    GalleryPerson:
+      type: object
+      description: "A person = a cluster of detected faces (relational gallery_people). Auto-grouped by CLIP/face-embedding cosine similarity; nameable."
+      properties:
+        id: { type: integer }
+        name: { type: [string, "null"] }
+        cover_face_id: { type: [integer, "null"] }
+        face_count: { type: integer }
+        version: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    GalleryFace:
+      type: object
+      description: "One detected face in a photo (relational gallery_faces). Crop bytes at /gallery/faces/{id}/crop; the embedding is server-only (pgvector), never serialised."
+      properties:
+        id: { type: integer }
+        gallery_photo_id: { type: integer }
+        gallery_person_id: { type: [integer, "null"] }
+        score: { type: number }
+        box: { type: array, items: { type: number }, description: "Normalised [x, y, w, h] 0..1." }
+        crop_path: { type: [string, "null"] }
+        hidden: { type: boolean }
 
     GalleryShare:
       type: object
@@ -3527,6 +3551,26 @@ paths:
   /gallery/rel-shares/{share}:
     put: { tags: [Gallery], operationId: galleryShareUpdate, summary: Update a share, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }, responses: { "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { share: { $ref: "#/components/schemas/GalleryShare" } } } } } }, "401": { description: Unauthenticated. } } }
     delete: { tags: [Gallery], operationId: galleryShareDestroy, summary: Revoke a share, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Revoked., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } } }
+  /gallery/search:
+    get: { tags: [Gallery], operationId: gallerySearch, summary: CLIP semantic photo search (empty if ML/pgvector unavailable), security: [ { bearerAuth: [] } ], parameters: [ { name: q, in: query, required: true, schema: { type: string } } ], responses: { "200": { description: Matching photos., content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }, "401": { description: Unauthenticated. } } }
+  /gallery/photos/{photo}/similar:
+    get: { tags: [Gallery], operationId: gallerySimilar, summary: Visually similar photos (CLIP nearest-neighbour), security: [ { bearerAuth: [] } ], parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Similar photos., content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }, "401": { description: Unauthenticated. } } }
+  /gallery/photos/{photo}/reprocess:
+    post: { tags: [Gallery], operationId: galleryReprocess, summary: Re-run ML (embedding + face detection) on a photo, security: [ { bearerAuth: [] } ], parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Reprocessed., content: { application/json: { schema: { type: object, properties: { photo: { $ref: "#/components/schemas/GalleryPhoto" } } } } } }, "401": { description: Unauthenticated. } } }
+  /gallery/people:
+    get: { tags: [Gallery], operationId: galleryPeople, summary: People (face clusters) with at least one visible face, security: [ { bearerAuth: [] } ], responses: { "200": { description: People., content: { application/json: { schema: { type: object, properties: { people: { type: array, items: { $ref: "#/components/schemas/GalleryPerson" } } } } } } }, "401": { description: Unauthenticated. } } }
+  /gallery/people/{person}:
+    get: { tags: [Gallery], operationId: galleryPersonShow, summary: A person with their faces + photos, security: [ { bearerAuth: [] } ], parameters: [ { name: person, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Person detail., content: { application/json: { schema: { type: object, properties: { person: { $ref: "#/components/schemas/GalleryPerson" }, faces: { type: array, items: { $ref: "#/components/schemas/GalleryFace" } }, photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }, "401": { description: Unauthenticated. }, "404": { description: Not found. } } }
+    put: { tags: [Gallery], operationId: galleryPersonUpdate, summary: Rename a person (optimistic concurrency), security: [ { bearerAuth: [] } ], parameters: [ { name: person, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: [string, "null"] }, version: { type: integer } } } } } }, responses: { "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { person: { $ref: "#/components/schemas/GalleryPerson" } } } } } }, "401": { description: Unauthenticated. }, "409": { description: Version conflict. } } }
+    delete: { tags: [Gallery], operationId: galleryPersonDestroy, summary: Delete a person (faces detach), security: [ { bearerAuth: [] } ], parameters: [ { name: person, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } } }
+  /gallery/people/merge:
+    post: { tags: [Gallery], operationId: galleryPeopleMerge, summary: Merge one person into another, security: [ { bearerAuth: [] } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [source_id, target_id], properties: { source_id: { type: integer }, target_id: { type: integer } } } } } }, responses: { "200": { description: Merged., content: { application/json: { schema: { type: object, properties: { person: { $ref: "#/components/schemas/GalleryPerson" } } } } } }, "401": { description: Unauthenticated. } } }
+  /gallery/faces/{face}/assign:
+    post: { tags: [Gallery], operationId: galleryFaceAssign, summary: Assign/detach a face to a person, security: [ { bearerAuth: [] } ], parameters: [ { name: face, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { gallery_person_id: { type: [integer, "null"] } } } } } }, responses: { "200": { description: Reassigned., content: { application/json: { schema: { type: object, properties: { face: { $ref: "#/components/schemas/GalleryFace" } } } } } }, "401": { description: Unauthenticated. } } }
+  /gallery/faces/{face}/hide:
+    post: { tags: [Gallery], operationId: galleryFaceHide, summary: Hide a false-positive face, security: [ { bearerAuth: [] } ], parameters: [ { name: face, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Hidden., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }, "401": { description: Unauthenticated. } } }
+  /gallery/faces/{face}/crop:
+    get: { tags: [Gallery], operationId: galleryFaceCrop, summary: Stream a cropped face JPEG, security: [ { bearerAuth: [] } ], parameters: [ { name: face, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Crop bytes., content: { image/jpeg: { schema: { type: string, format: binary } } } }, "401": { description: Unauthenticated. }, "404": { description: None. } } }
   /health/data:
     get:
       tags: [Health]
