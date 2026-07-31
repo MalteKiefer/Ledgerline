@@ -40,8 +40,7 @@ class ExploreTrack extends Model
     protected $fillable = ['name', 'source_format', 'points', 'stats', 'note', 'imported_at'];
 
     protected $casts = [
-        'points' => 'encrypted:array',
-        'note' => 'encrypted',
+        'points' => 'array',
         'stats' => 'array',
         'imported_at' => 'datetime',
         'version' => 'integer',

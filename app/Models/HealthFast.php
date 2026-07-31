@@ -31,7 +31,6 @@ class HealthFast extends Model
     protected $fillable = ['start_at', 'end_at', 'target_hours', 'note'];
 
     protected $casts = [
-        'note' => 'encrypted',
         'start_at' => 'datetime',
         'end_at' => 'datetime',
         'target_hours' => 'integer',

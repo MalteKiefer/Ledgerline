@@ -13,7 +13,6 @@
     {{-- Trusted-device binding: userId-only so a persisted key survives a session
          refresh (7-day stay-unlocked), but never a different login on the browser. --}}
     <meta name="vault-user" content="{{ auth()->id() ? sha1('vault-user|'.auth()->id()) : '' }}">
-    <meta name="vault-idle-minutes" content="{{ (int) (\App\Models\AppSettings::current()->vault_public_idle_minutes ?: config('files.vault_idle_minutes', 10)) }}">
     <meta name="vault-remember-days" content="{{ (int) (\App\Models\AppSettings::current()->vault_remember_days ?: 7) }}">
     <meta name="gallery-columns" content="{{ (int) ($llCal->gallery_columns ?? 6) }}">
     <meta name="ll-prefs" content="{{ json_encode($llCal->displayPrefs()) }}">

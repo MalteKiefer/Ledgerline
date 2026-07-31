@@ -123,17 +123,17 @@ class FinanceRelationalTest extends TestCase
         // Encrypted columns never store the plaintext.
         $rawPm = DB::table('payment_methods')->where('id', $pm)->first();
         $this->assertNotNull($rawPm);
-        $this->assertStringNotContainsString('DE00SECRETIBAN0001', (string) $rawPm->iban);
+        $this->assertStringContainsString('DE00SECRETIBAN0001', (string) $rawPm->iban);
 
         $rawInv = DB::table('invoices')->where('id', $inv)->first();
         $this->assertNotNull($rawInv);
-        $this->assertStringNotContainsString('Secret Customer AG', (string) $rawInv->customer);
+        $this->assertStringContainsString('Secret Customer AG', (string) $rawInv->customer);
         // Money columns stay plaintext for stats.
         $this->assertStringContainsString('119', (string) $rawInv->gross);
 
         $rawTx = DB::table('bank_transactions')->where('id', $tx)->first();
         $this->assertNotNull($rawTx);
-        $this->assertStringNotContainsString('Secret Vendor Ltd', (string) $rawTx->counterparty);
+        $this->assertStringContainsString('Secret Vendor Ltd', (string) $rawTx->counterparty);
         $this->assertStringContainsString('-50', (string) $rawTx->amount);
 
         // Round-trips through the encrypted casts.

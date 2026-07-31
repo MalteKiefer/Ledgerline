@@ -53,13 +53,7 @@ class BankTransaction extends Model
     protected $casts = [
         'date' => 'date',
         'amount' => 'decimal:2',
-        'counterparty' => 'encrypted',
-        'counterparty_iban' => 'encrypted',
-        'bic' => 'encrypted',
-        'purpose' => 'encrypted',
-        'booking_text' => 'encrypted',
-        'eref' => 'encrypted',
-        'receipts' => 'encrypted:array',
+        'receipts' => 'array',
         'version' => 'integer',
     ];
 

@@ -45,11 +45,7 @@ class FinancePartner extends Model
     ];
 
     protected $casts = [
-        'address' => 'encrypted',
-        'email' => 'encrypted',
-        'phone' => 'encrypted',
-        'vat_id' => 'encrypted',
-        'contacts' => 'encrypted:array',
+        'contacts' => 'array',
         'version' => 'integer',
     ];
 
