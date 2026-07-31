@@ -6,6 +6,7 @@ namespace App\Services\Finance;
 
 use App\Models\BankTransaction;
 use App\Models\Invoice;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
@@ -208,6 +209,56 @@ class FinanceReports
             'prevNet' => $prevNet,
             'growthPct' => $prevNet > 0 ? $this->r2(($net - $prevNet) / $prevNet * 100) : null,
         ];
+    }
+
+    /**
+     * Aging of OPEN invoices (issued but unpaid, i.e. status='sent', not trashed),
+     * bucketed by how many days each is past its due date vs today: current (not
+     * yet due / no due date), 1-30, 31-60, 60+. Each bucket carries its count,
+     * gross sum, and the invoice list (id/number/customer/gross/due_date/days).
+     * Owner-scoped + cent-exact via {@see invoiceTotals()}. Read-only.
+     *
+     * @return array<string, mixed>
+     */
+    public function aging(): array
+    {
+        $today = Carbon::today();
+        $keys = ['current', '1_30', '31_60', '60_plus'];
+        $buckets = [];
+        foreach ($keys as $k) {
+            $buckets[$k] = ['count' => 0, 'gross' => 0.0, 'invoices' => []];
+        }
+        $openCount = 0;
+        $openGross = 0.0;
+
+        foreach (Invoice::query()->where('status', 'sent')->get() as $inv) {
+            $gross = $this->invoiceTotals($inv)['gross'];
+            $due = $inv->due_date;
+            if (! $due instanceof Carbon) {
+                $key = 'current';
+                $days = 0;
+            } else {
+                $days = $due->lt($today) ? (int) $due->diffInDays($today) : 0;
+                $key = $days <= 0 ? 'current' : ($days <= 30 ? '1_30' : ($days <= 60 ? '31_60' : '60_plus'));
+            }
+            $customer = is_array($inv->customer) ? $inv->customer : [];
+            $name = is_string($customer['name'] ?? null) && $customer['name'] !== '' ? $customer['name'] : '—';
+
+            $buckets[$key]['count']++;
+            $buckets[$key]['gross'] = $this->r2($buckets[$key]['gross'] + $gross);
+            $buckets[$key]['invoices'][] = [
+                'id' => $inv->id,
+                'number' => $inv->number,
+                'customer' => $name,
+                'gross' => $gross,
+                'due_date' => $due instanceof Carbon ? $due->format('Y-m-d') : null,
+                'days_overdue' => $days,
+            ];
+            $openCount++;
+            $openGross = $this->r2($openGross + $gross);
+        }
+
+        return ['buckets' => $buckets, 'openCount' => $openCount, 'openGross' => $openGross];
     }
 
     /**

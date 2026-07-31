@@ -102,6 +102,13 @@
         txtype_transfer: @js(__('invoices.txtype_transfer')),
         txtype_other: @js(__('invoices.txtype_other')),
         cats_delete_confirm: @js(__('invoices.cats_delete_confirm')),
+        email_send: @js(__('invoices.email_send')),
+        email_sent: @js(__('invoices.email_sent')),
+        email_failed: @js(__('invoices.email_failed')),
+        email_no_pdf: @js(__('invoices.email_no_pdf')),
+        email_no_recipient: @js(__('invoices.email_no_recipient')),
+        email_no_smtp: @js(__('invoices.email_no_smtp')),
+        email_to: @js(__('invoices.email_to')),
      }, @js([
         'invoices' => $invoices,
         'partners' => $partners,
@@ -240,6 +247,37 @@
               </div>
             </div>
           </div>
+
+          {{-- Open-items aging (server-computed, best-effort) --}}
+          <template x-if="aging">
+            <div class="ll-card mt-4 !p-0 overflow-hidden">
+              <div class="flex items-center justify-between gap-2 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+                <div class="flex items-center gap-2">
+                  <span class="ll-chip h-7 w-7 rounded-lg" style="background:#d9a441"><x-icon name="clock" class="h-4 w-4 text-white" /></span>
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.aging_title') }}</h3>
+                </div>
+                <p class="text-xs text-gray-400 dark:text-gray-500">
+                  <span>{{ __('invoices.aging_open_total') }}:</span>
+                  <span class="font-semibold tabular-nums text-gray-700 dark:text-gray-300" x-text="fmtMoney(aging.openGross)"></span>
+                  <span x-text="'(' + aging.openCount + ')'"></span>
+                </p>
+              </div>
+              <div class="grid grid-cols-2 divide-y divide-black/[0.06] dark:divide-white/10 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+                <template x-for="b in [
+                  { key: 'current', label: @js(__('invoices.aging_current')) },
+                  { key: '1_30', label: @js(__('invoices.aging_1_30')) },
+                  { key: '31_60', label: @js(__('invoices.aging_31_60')) },
+                  { key: '60_plus', label: @js(__('invoices.aging_60plus')) },
+                ]" :key="b.key">
+                  <div class="px-5 py-4">
+                    <p class="text-xs text-gray-400 dark:text-gray-500" x-text="b.label"></p>
+                    <p class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney((aging.buckets[b.key] || {}).gross || 0)"></p>
+                    <p class="text-[11px] text-gray-400 dark:text-gray-500" x-text="((aging.buckets[b.key] || {}).count || 0) + ' {{ __('invoices.invoice_count') }}'"></p>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
         </div>
 
         {{-- ===================== RECEIPTS (document manager) ===================== --}}
@@ -2270,6 +2308,7 @@
                         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                           :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
                           x-text="statusLabel(inv.status)"></span>
+                        <template x-if="isOverdue(inv)"><x-badge variant="error"><span x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(inv))"></span></x-badge></template>
                         <template x-if="isInvoiceLinked(inv)">
                           <span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'">
                             <x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}
@@ -2365,6 +2404,7 @@
               <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                 :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
                 x-text="statusLabel(current?.status)"></span>
+              <template x-if="isOverdue(current)"><x-badge variant="error"><span x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(current))"></span></x-badge></template>
               <template x-if="isInvoiceLinked(current)"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
             </div>
             <div class="flex flex-wrap items-center gap-2">
@@ -2380,6 +2420,8 @@
                 <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
                 <x-action-menu-item icon="check" x-show="! current?.imported && current?.status === 'draft'" @click="finalize(current)">{{ __('invoices.finalize') }}</x-action-menu-item>
                 <x-action-menu-item icon="check-circle" x-show="! current?.imported && current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-action-menu-item>
+                <x-action-menu-item icon="envelope" x-show="canEmail(current)" @click="emailInvoice(current)">{{ __('invoices.email_send') }}</x-action-menu-item>
+                <x-action-menu-item icon="envelope" x-show="! canEmail(current)" disabled class="opacity-50 cursor-not-allowed" title="{{ __('invoices.email_disabled_hint') }}">{{ __('invoices.email_send') }}</x-action-menu-item>
               </x-action-menu>
             </div>
           </div>

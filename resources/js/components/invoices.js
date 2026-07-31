@@ -51,6 +51,7 @@ const normInvoice = (row) => {
         gross: num(row.gross),
         imported: !! row.imported,
         paidAt: iso10(row.paid_at) || null,
+        sentAt: row.sent_at ?? null,
         paymentAccount: row.payment_account ?? null,
         customer,
         lang,
@@ -155,6 +156,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
     // Read-only server insights (additive; best-effort, never block the page).
     duplicates: { invoices: [], transactions: [] }, // suspected-duplicate groups from GET /finance/duplicates
     catSuggestions: [],  // [{tx_id, merchant, suggested_category}] from GET /finance/category-suggestions
+    aging: null,         // { buckets, openCount, openGross } from GET /finance/reports (open-items widget)
 
     query: '',           // invoice-list search
     view: 'list',        // 'list' | 'edit' | 'imported'
@@ -201,6 +203,20 @@ export default (config = {}, labels = {}, initial = {}) => ({
         // Read-only server insights, best-effort — must never break the page.
         this._loadDuplicates();
         this._loadCatSuggestions();
+        this._loadAging();
+    },
+
+    // Open-invoice aging buckets (current / 1-30 / 31-60 / 60+). Read-only display.
+    async _loadAging() {
+        try { const d = await getJson('/finance/reports'); this.aging = d?.aging || null; }
+        catch (e) { /* leave null */ }
+    },
+    // Overdue = an issued (sent) invoice past its due date. Derived, no column.
+    isOverdue(inv) { const i = inv || this.current; return !! i && i.status === 'sent' && !! i.dueDate && i.dueDate < this._today(); },
+    daysOverdue(inv) {
+        const i = inv || this.current;
+        if (! this.isOverdue(i)) return 0;
+        return Math.max(0, Math.floor((Date.parse(this._today()) - Date.parse(i.dueDate)) / 86400000));
     },
 
     // Suspected-duplicate groups (invoices + transactions). Read-only display.
@@ -2215,6 +2231,40 @@ export default (config = {}, labels = {}, initial = {}) => ({
         this.receiptPreview = { url: this._invoicePdfUrl(inv), mime: 'application/pdf', name: (inv.number || 'PDF') + '.pdf' };
     },
     openOriginalPdf(inv) { return this.openInvoicePdfPreview(inv); },
+
+    // ---- Email the invoice PDF to the customer ----
+    // Enabled once the invoice is finalized (numbered / sent / paid), has a stored
+    // PDF, and the customer has an email. The server re-checks all three.
+    canEmail(inv) {
+        const i = inv || this.current;
+        if (! i) return false;
+        const finalized = !! (i.imported || i.status === 'sent' || i.status === 'paid' || i.number);
+        return finalized && !! i.pdfPath && !! (i.customer && i.customer.email);
+    },
+    async emailInvoice(inv) {
+        const i = inv || this.current;
+        if (! i) return;
+        if (! i.pdfPath) { window.llToast?.(labels.email_no_pdf || 'No PDF to send.'); return; }
+        const prefill = (i.customer && i.customer.email) || '';
+        const to = await this.$store.confirm.prompt(labels.email_to || 'Recipient email', { value: prefill, placeholder: prefill });
+        if (to === null) return;
+        const addr = String(to).trim() || prefill;
+        if (! addr) { window.llToast?.(labels.email_no_recipient || 'No recipient email.'); return; }
+        try {
+            const r = await this._req('POST', `/finance/invoices/${i.id}/email`, { to: addr });
+            if (r.ok && r.data.ok) {
+                i.sentAt = r.data.sent_at || new Date().toISOString();
+                window.llToast?.(labels.email_sent || 'Invoice emailed.');
+                return;
+            }
+            const code = r.data && r.data.error;
+            const msg = code === 'no_pdf' ? labels.email_no_pdf
+                : code === 'no_recipient' ? labels.email_no_recipient
+                    : code === 'no_smtp' ? labels.email_no_smtp
+                        : labels.email_failed;
+            window.llToast?.(msg || labels.email_failed || 'Could not send the email.');
+        } catch (e) { window.llToast?.(labels.email_failed || 'Could not send the email.'); }
+    },
     async finalize(inv) {
         let i = inv || this.current;
         if (! i) return;

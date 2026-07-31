@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Mail\InvoiceMail;
+use App\Models\AppSettings;
+use App\Models\AuditLog;
 use App\Models\BankTransaction;
 use App\Models\FinanceCategory;
 use App\Models\FinancePartner;
@@ -19,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -580,6 +584,62 @@ class FinanceController extends Controller
         });
 
         return response()->json(['invoice' => $fresh]);
+    }
+
+    /**
+     * Email a finalized invoice's stored PDF to the customer. Owner-scoped (route
+     * model binding sits behind the owner global scope + module:finance gate).
+     *
+     * Only finalized invoices (status sent|paid OR already numbered) may be sent.
+     * The recipient is the validated `to` field or the customer snapshot email
+     * (422 if neither). The stored PDF (server-owned pdf_path) is attached (422 if
+     * missing). Refuses (422) when SMTP is not configured (mirrors the
+     * ChannelNotifier::mailTo gate). Stamps sent_at via forceFill/saveQuietly so it
+     * does NOT bump the optimistic `version`, then writes a secret-free audit row.
+     */
+    public function emailInvoice(Request $request, Invoice $invoice): JsonResponse
+    {
+        $this->requireUser($request);
+        $request->validate(['to' => ['nullable', 'email:rfc']]);
+
+        $finalized = in_array($invoice->status, ['sent', 'paid'], true)
+            || (is_string($invoice->number) && $invoice->number !== '');
+        if (! $finalized) {
+            return response()->json(['error' => 'not_finalized'], 422);
+        }
+
+        $path = $this->safeBlobPath($invoice->pdf_path);
+        if ($path === null || ! $this->fs()->exists($path)) {
+            return response()->json(['error' => 'no_pdf'], 422);
+        }
+
+        $to = $request->filled('to') ? $request->string('to')->value() : $this->customerEmail($invoice);
+        if ($to === null || $to === '') {
+            return response()->json(['error' => 'no_recipient'], 422);
+        }
+
+        $s = AppSettings::current();
+        if (! $s->mail_enabled || ! filled($s->smtp_host) || ! filled($s->smtp_from_address)) {
+            return response()->json(['error' => 'no_smtp'], 422);
+        }
+
+        Mail::to($to)->send(new InvoiceMail($invoice));
+
+        $sentAt = Carbon::now();
+        $invoice->forceFill(['sent_at' => $sentAt])->saveQuietly();
+        // Secret-free: the recipient domain only, never the full address.
+        AuditLog::record('invoice.emailed', $invoice, ['to_domain' => Str::after($to, '@')]);
+
+        return response()->json(['ok' => true, 'sent_at' => $sentAt->toIso8601String()]);
+    }
+
+    /** The customer snapshot's email, if a valid-looking address is present. */
+    private function customerEmail(Invoice $invoice): ?string
+    {
+        $customer = is_array($invoice->customer) ? $invoice->customer : [];
+        $email = $customer['email'] ?? null;
+
+        return is_string($email) && str_contains($email, '@') && trim($email) !== '' ? trim($email) : null;
     }
 
     /** Render a number template (YYYY/YY/MM/DD + a run of N's → zero-padded seq). */

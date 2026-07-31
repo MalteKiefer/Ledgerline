@@ -19,6 +19,9 @@ Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
 // Refresh EUR exchange rates once a day for the finance amount suggestions (no user data).
 Schedule::command('finance:fetch-fx')->dailyAt('03:15')->withoutOverlapping();
 
+// Remind the owner about unpaid, overdue invoices (throttled per invoice).
+Schedule::command('invoices:remind')->dailyAt('08:00')->withoutOverlapping();
+
 // Drop expired/consumed QR device-pairing rows (short-lived, single-use).
 Schedule::command('device-pairings:prune')->hourly()->withoutOverlapping();
 
