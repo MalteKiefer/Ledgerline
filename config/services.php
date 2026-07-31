@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\Secret;
+
 return [
 
     /*
@@ -33,6 +35,27 @@ return [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pocket-ID (OIDC / OAuth2) — OPTIONAL, ADDITIONAL sign-in
+    |--------------------------------------------------------------------------
+    |
+    | Optional single-sign-on that coexists with the first-party email+password
+    | auth. The credentials are issued when registering an OIDC client in the
+    | Pocket-ID admin UI. PKCE is enabled by default to harden the
+    | authorization-code exchange. Leave POCKETID_* unset to disable the feature
+    | entirely (the login button hides and the routes bounce to /login).
+    |
+    */
+
+    'pocketid' => [
+        'base_url' => env('POCKETID_BASE_URL'),
+        'client_id' => env('POCKETID_CLIENT_ID'),
+        'client_secret' => Secret::get('POCKETID_CLIENT_SECRET'),
+        'redirect' => env('POCKETID_REDIRECT_URI'),
+        'use_pkce' => env('POCKETID_USE_PKCE', true),
     ],
 
 ];

@@ -9,6 +9,9 @@
         @error('email')
             <x-alert variant="error" class="mt-4" role="alert">{{ $message }}</x-alert>
         @enderror
+        @error('pocketid')
+            <x-alert variant="error" class="mt-4" role="alert">{{ $message }}</x-alert>
+        @enderror
 
         <form method="POST" action="{{ route('login.store') }}" class="mt-6 space-y-4">
             @csrf
@@ -30,6 +33,18 @@
                 {{ __('auth_ui.sign_in') }}
             </x-button>
         </form>
+
+        @if (\App\Http\Controllers\Auth\PocketIdController::configured())
+            <div class="mt-6 flex items-center gap-3">
+                <span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span>
+                <span class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('auth_ui.or_divider') }}</span>
+                <span class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></span>
+            </div>
+            <a href="{{ route('auth.pocketid.redirect') }}"
+                class="mt-4 flex w-full items-center justify-center rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-4 py-2.5 text-sm font-medium text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800">
+                {{ __('auth_ui.pocketid_login') }}
+            </a>
+        @endif
 
         <div class="mt-4 flex items-center justify-between text-xs">
             <a href="{{ route('password.request') }}" class="text-accent hover:underline">{{ __('auth_ui.forgot') }}</a>

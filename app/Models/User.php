@@ -17,9 +17,11 @@ use Laravel\Sanctum\HasApiTokens;
 
 /**
  * An authenticated user. Identity is first-party (email + password, optional TOTP
- * two-factor via Fortify); the legacy OIDC `oidc_sub` column is retained (nullable)
- * for provenance only. Privilege is a first-party `role` (admin|user). App login is
- * fully independent of the zero-knowledge vault passphrase.
+ * two-factor via Fortify), with optional Pocket-ID (OIDC) sign-in bound to the
+ * `oidc_sub` column. Privilege is a first-party `role` (admin|user) and is never
+ * derived from OIDC claims. App login is independent of any vault passphrase.
+ *
+ * @property ?string $oidc_sub Stable Pocket-ID subject identifier (set server-side only)
  */
 // `role` and `groups` are deliberately NOT fillable — `role` is the privilege
 // boundary (drives the admin gate), so it is only ever set server-side, never

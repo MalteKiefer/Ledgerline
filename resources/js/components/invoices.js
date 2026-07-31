@@ -971,7 +971,13 @@ export default (config = {}, labels = {}, initial = {}) => ({
         const loc = this._catLocale();
         return [...new Set([...(this.financeCategories || []).map((c) => c.name), ...this.receiptCatSuggestions])].sort((a, b) => a.localeCompare(b, loc));
     },
-    get sortedCatSuggestions() { const loc = this._catLocale(); return [...this.receiptCatSuggestions].sort((a, b) => a.localeCompare(b, loc)); },
+    get sortedCatSuggestions() {
+        const loc = this._catLocale();
+        // Hide any default that has been adopted (now exists as a custom category)
+        // so it shows once, as the editable row.
+        const owned = new Set((this.financeCategories || []).map((c) => String(c.name || '').toLowerCase()));
+        return this.receiptCatSuggestions.filter((c) => ! owned.has(c.toLowerCase())).sort((a, b) => a.localeCompare(b, loc));
+    },
     get sortedFinanceCategories() { const loc = this._catLocale(); return [...(this.financeCategories || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), loc)); },
     // ---- Custom category CRUD (name + colour + monochrome icon) ----
     // Icon names — each exists in components/icon.blade.php (kept in sync with the
@@ -997,14 +1003,20 @@ export default (config = {}, labels = {}, initial = {}) => ({
     catEditing: null,
     openNewCategory() { this.newCategory = { name: '', color: this.catColorOptions[0], icon: 'hashtag' }; this.catEditing = { id: null, name: '', color: this.catColorOptions[0], icon: 'hashtag' }; },
     editCategory(c) { this.catEditing = { id: c.id, name: c.name, color: this.catColor(c), icon: this.catIcon(c) }; },
+    // Editing a built-in default (a plain suggestion string) materialises it as a
+    // real, fully-editable category with the chosen colour + icon. The default
+    // then drops out of the read-only suggestions list (sortedCatSuggestions
+    // dedupes against existing categories) and appears as a custom row.
+    editDefault(name) { this.catEditing = { id: null, name: String(name || ''), color: this.catColorOptions[0], icon: 'hashtag' }; },
     cancelCategory() { this.catEditing = null; },
     async saveCategory() {
         const e = this.catEditing; if (! e) return;
         const n = String(e.name || '').trim(); if (! n) return;
         const payload = { name: n, color: e.color || null, icon: e.icon || null };
         if (e.id == null) {
-            const dup = (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase())
-                || this.receiptCatSuggestions.some((c) => c.toLowerCase() === n.toLowerCase());
+            // Only block a duplicate CUSTOM category — a name matching a default
+            // suggestion is allowed (that IS how a default gets adopted/edited).
+            const dup = (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase());
             if (! dup) { const row = await this._create('categories', payload, 'category', normCategory); if (row) this.financeCategories.push(row); }
         } else {
             const row = await this._update('categories', e.id, payload, 'category', normCategory);
@@ -1015,8 +1027,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
     // Kept for the simple add-row / programmatic callers.
     async addFinanceCategory() {
         const n = String(this.newCategory.name || '').trim(); if (! n) return;
-        const exists = (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase())
-            || this.receiptCatSuggestions.some((c) => c.toLowerCase() === n.toLowerCase());
+        const exists = (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase());
         if (! exists) {
             const row = await this._create('categories', { name: n, color: this.newCategory.color || null, icon: this.newCategory.icon || null }, 'category', normCategory);
             if (row) this.financeCategories.push(row);

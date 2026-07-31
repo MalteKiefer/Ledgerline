@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FinanceController;
@@ -38,6 +39,15 @@ Route::get('/metrics', [MetricsController::class, 'index'])->middleware('throttl
 
 // First-party auth (login, registration, password reset, email verification,
 // two-factor) is owned by Laravel Fortify — see FortifyServiceProvider.
+
+// Optional Pocket-ID (OIDC) sign-in — an ADDITIONAL login option alongside the
+// first-party auth. Guest-only + throttled; the controller gates itself off
+// (redirects to /login) when POCKETID_* is unconfigured, and the login view
+// hides the button. GET /login + POST /login|/logout stay owned by Fortify.
+Route::middleware('guest')->group(function (): void {
+    Route::get('/auth/redirect', [PocketIdController::class, 'redirect'])->middleware('throttle:30,1')->name('auth.pocketid.redirect');
+    Route::get('/auth/callback', [PocketIdController::class, 'callback'])->middleware('throttle:30,1')->name('auth.pocketid.callback');
+});
 
 // Mail-independent invite / password-reset links: public consumption. The token
 // is a hashed, single-use, expiring secret in the URL; the route is throttled and

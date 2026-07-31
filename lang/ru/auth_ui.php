@@ -13,6 +13,10 @@ return [
     'forgot' => 'Забыли пароль?',
     'no_account' => 'Ещё нет аккаунта?',
     'register_link' => 'Создать',
+    'or_divider' => 'или',
+    'pocketid_login' => 'Войти через Pocket ID',
+    'pocketid_unavailable' => 'Вход через Pocket ID недоступен.',
+    'pocketid_failed' => 'Ошибка аутентификации. Попробуйте ещё раз.',
 
     // Register
     'register_title' => 'Создать аккаунт',
