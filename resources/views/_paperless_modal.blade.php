@@ -37,7 +37,7 @@
                         <input type="text" x-model="s.corrQuery" @focus="show = true" @input="show = true; s.form.correspondent = ''"
                             placeholder="{{ __('paperless.search_or_create') }}" autocomplete="off"
                             class="block w-full rounded-md border-gray-300 pr-8 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
-                        <button type="button" x-show="s.corrQuery" @click="s.clearCorrespondent(); show = false" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600 dark:text-gray-500"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                        <button type="button" x-show="s.corrQuery" @click="s.clearCorrespondent(); show = false" aria-label="{{ __('common.clear') }}" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600 dark:text-gray-500"><x-icon name="x-mark" class="h-4 w-4" /></button>
                         <div x-show="show" x-cloak class="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 text-sm shadow-lg">
                             <template x-for="c in s.filteredCorrespondents" :key="c.id">
                                 <button type="button" @click="s.selectCorrespondent(c); show = false" class="block w-full truncate px-3 py-2.5 text-left hover:bg-accent/5" x-text="c.name"></button>
@@ -56,7 +56,7 @@
                         <input type="text" x-model="s.typeQuery" @focus="show = true" @input="show = true; s.form.documentType = ''"
                             placeholder="{{ __('paperless.search_or_create') }}" autocomplete="off"
                             class="block w-full rounded-md border-gray-300 pr-8 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
-                        <button type="button" x-show="s.typeQuery" @click="s.clearDocumentType(); show = false" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600 dark:text-gray-500"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                        <button type="button" x-show="s.typeQuery" @click="s.clearDocumentType(); show = false" aria-label="{{ __('common.clear') }}" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600 dark:text-gray-500"><x-icon name="x-mark" class="h-4 w-4" /></button>
                         <div x-show="show" x-cloak class="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 text-sm shadow-lg">
                             <template x-for="t in s.filteredDocumentTypes" :key="t.id">
                                 <button type="button" @click="s.selectDocumentType(t); show = false" class="block w-full truncate px-3 py-2.5 text-left hover:bg-accent/5" x-text="t.name"></button>
@@ -75,7 +75,7 @@
                         <template x-for="id in s.form.tags" :key="id">
                             <span class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
                                 <span x-text="s.tagName(id)"></span>
-                                <button type="button" @click="s.removeTag(id)" class="text-gray-400 hover:text-gray-600 dark:text-gray-500"><x-icon name="x-mark" class="h-3 w-3" /></button>
+                                <button type="button" @click="s.removeTag(id)" aria-label="{{ __('common.delete') }}" class="text-gray-400 hover:text-gray-600 dark:text-gray-500"><x-icon name="x-mark" class="h-3 w-3" /></button>
                             </span>
                         </template>
                     </div>

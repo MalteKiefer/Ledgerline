@@ -594,7 +594,7 @@
 
     {{-- ===== ADD / EDIT MEASUREMENT MODAL ===== --}}
     <template x-if="editorOpen">
-      <div class="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4"
+      <div class="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4" role="dialog" aria-modal="true"
            @keydown.escape.window="closeEditor()">
         <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" @click="closeEditor()"></div>
         <div class="relative w-full max-w-sm rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl space-y-4">
@@ -671,7 +671,7 @@
 
     {{-- ===== FASTING EDIT MODAL ===== --}}
     <template x-if="fastEditorOpen">
-      <div class="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4"
+      <div class="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4" role="dialog" aria-modal="true"
            @keydown.escape.window="closeFastEditor()">
         <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" @click="closeFastEditor()"></div>
         <div class="relative w-full max-w-sm rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl space-y-4">

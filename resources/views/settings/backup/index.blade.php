@@ -173,7 +173,7 @@
 
         {{-- Decrypt an encrypted backup to a plaintext download (needs the passphrase) --}}
         <template x-teleport="body">
-            <div x-show="decrypt.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="decrypt.open = false">
+            <div x-show="decrypt.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="decrypt.open = false">
                 <div class="absolute inset-0 bg-gray-900/40" @click="decrypt.open = false"></div>
                 <form method="POST" :action="decryptAction" class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
                     @csrf
@@ -191,7 +191,7 @@
 
         {{-- Guided restore: verify integrity (dry run), then recover the archive. Nothing is applied to live data. --}}
         <template x-teleport="body">
-            <div x-show="restore.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="closeRestore()">
+            <div x-show="restore.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeRestore()">
                 <div class="absolute inset-0 bg-gray-900/40" @click="closeRestore()"></div>
                 <div class="relative w-full max-w-lg rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
                     <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_restore_heading') }}</h3>
@@ -259,7 +259,7 @@
                 <tbody>
                     <tr class="border-t border-gray-100 dark:border-gray-800">
                         <td class="py-1.5 align-top">
-                            <button type="button" @click="toggle(r.id)" class="rounded p-0.5 text-gray-400 dark:text-gray-500 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300">
+                            <button type="button" @click="toggle(r.id)" aria-label="{{ __('common.details') }}" :aria-expanded="expanded[r.id] ? 'true' : 'false'" class="rounded p-0.5 text-gray-400 dark:text-gray-500 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300">
                                 <x-icon name="chevron-down" class="h-4 w-4 transition-transform" ::class="expanded[r.id] ? 'rotate-180' : ''" />
                             </button>
                         </td>

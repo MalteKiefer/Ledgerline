@@ -219,7 +219,7 @@
             </div>
             <span x-show="activeTag" x-cloak class="inline-flex items-center gap-2 rounded-full bg-blue-50 dark:bg-blue-950 px-3 py-1 text-xs text-blue-800 dark:text-blue-300">
                 {{ __('files.filtered_by') }}: <span x-text="activeTag"></span>
-                <button type="button" @click="activeTag = ''" class="text-blue-500 hover:text-blue-700"><x-icon name="x-mark" class="h-3 w-3" /></button>
+                <button type="button" @click="activeTag = ''" aria-label="{{ __('common.clear') }}" class="text-blue-500 hover:text-blue-700"><x-icon name="x-mark" class="h-3 w-3" /></button>
             </span>
         </div>
 

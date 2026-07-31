@@ -1261,7 +1261,8 @@
                 <template x-for="pm in scopedPayments" :key="pm.id">
                   <div class="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5"
                        :class="pm.type === 'bank' && 'cursor-pointer'"
-                       @click="pm.type === 'bank' && openAccount(pm)">
+                       :role="pm.type === 'bank' ? 'button' : null" :tabindex="pm.type === 'bank' ? '0' : null"
+                       @click="pm.type === 'bank' && openAccount(pm)" @keydown.enter="pm.type === 'bank' && openAccount(pm)">
                     <template x-if="payIconSrc(pm)"><img :src="payIconSrc(pm)" alt="" class="h-9 w-9 shrink-0 rounded-xl bg-white object-contain p-0.5 ring-1 ring-black/[0.06] dark:ring-white/10"></template>
                     <template x-if="! payIconSrc(pm)"><span class="ll-chip h-9 w-9 rounded-xl shrink-0" :style="{ background: payTint(pm.type) }">@include('invoices._payment_icon', ['expr' => 'pm.type', 'cls' => 'h-4.5 w-4.5 text-white'])</span></template>
                     <div class="min-w-0 flex-1">
@@ -2378,7 +2379,7 @@
         </div>{{-- /section invoices --}}
 
         {{-- ===================== CUSTOMER PICKER ===================== --}}
-        <div x-show="customerPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeCustomerPicker()">
+        <div x-show="customerPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeCustomerPicker()">
           <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" @click="closeCustomerPicker()"></div>
           <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
             <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.picker_title') }}</h2>
