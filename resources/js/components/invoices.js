@@ -71,6 +71,7 @@ export default (config = {}, labels = {}) => ({
     _printing: null,     // invoice rendered into the hidden print sheet
     dirty: false,        // a LOCKED invoice has unsaved edits (drafts autosave; locked don't)
     pdfBusy: false,      // a version PDF is being rendered
+    _lockBusy: new Set(), // invoice ids with an in-flight finalize/markSent (re-entrancy guard)
     editUnlocked: false, // locked invoice: fields stay disabled until "Bearbeiten" + confirm
     _lockBaseline: null, // JSON of a locked invoice as opened, to revert unsaved edits on leave
     // Finance section: the page is a "Finanzen" hub with tabs. Invoices are one tab.
@@ -2269,19 +2270,27 @@ export default (config = {}, labels = {}) => ({
     async finalize(inv) {
         let i = inv || this.current;
         if (! i) return;
-        if (! i.number) {
-            const id = i.id;
+        // Synchronous re-entrancy guard BEFORE any await: rapid double-clicks each slipped
+        // into the async gap before the number was assigned and cascaded the sequence
+        // (6→7→8→9→10). Bail if this invoice is already numbered or a finalize is in flight.
+        // Guard on a component-level Set (never a property on the record — it would be sealed).
+        const id = i.id;
+        if (i.number || this._lockBusy.has(id)) return;
+        this._lockBusy.add(id);
+        try {
             await this._refresh();            // observe other devices' invoices first
             i = this.invoices.find((x) => x.id === id) || i; // re-find after the in-place merge
             if (this.current && this.current.id === id) this.current = i;
-            this._assignNumber(i);
+            if (! i.number) this._assignNumber(i);
+            if (i.status === 'draft') i.status = 'sent';
+            i.totals = this.computeTotals(i); // freeze
+            await this._lockCommit(i, labels.version_finalized || 'Finalized');
+            // Right after finalising, offer to file the invoice in Paperless (opens the
+            // same transfer dialog as Files), pre-filled — if Paperless is configured.
+            if (this.$store.paperless?.configured) this.sendInvoiceToPaperless(i);
+        } finally {
+            this._lockBusy.delete(id);
         }
-        if (i.status === 'draft') i.status = 'sent';
-        i.totals = this.computeTotals(i); // freeze
-        await this._lockCommit(i, labels.version_finalized || 'Finalized');
-        // Right after finalising, offer to file the invoice in Paperless (opens the
-        // same transfer dialog as Files), pre-filled — if Paperless is configured.
-        if (this.$store.paperless?.configured) this.sendInvoiceToPaperless(i);
     },
     // Send an invoice to Paperless: generate its PDF client-side (or use the original
     // for imported invoices), open the shared transfer dialog pre-filled (title =
@@ -2439,15 +2448,22 @@ export default (config = {}, labels = {}) => ({
     async markPaid(inv) { inv.status = 'paid'; await this._lockCommit(inv, labels.version_paid || 'Marked paid'); },
     async markSent(inv) {
         let i = inv;
-        if (! i.number) {
-            const id = i.id;
-            await this._refresh();
-            i = this.invoices.find((x) => x.id === id) || i;
-            if (this.current && this.current.id === id) this.current = i;
-            this._assignNumber(i);
+        if (! i) return;
+        const id = i.id;
+        if (this._lockBusy.has(id)) return; // synchronous re-entrancy guard (see finalize)
+        this._lockBusy.add(id);
+        try {
+            if (! i.number) {
+                await this._refresh();
+                i = this.invoices.find((x) => x.id === id) || i;
+                if (this.current && this.current.id === id) this.current = i;
+                if (! i.number) this._assignNumber(i);
+            }
+            i.status = 'sent';
+            await this._lockCommit(i, labels.version_sent || 'Sent');
+        } finally {
+            this._lockBusy.delete(id);
         }
-        i.status = 'sent';
-        await this._lockCommit(i, labels.version_sent || 'Sent');
     },
     // A lock-point transition (finalize/sent/paid) freezes the state as a version (online →
     // with a generated PDF) and persists. Reason is automatic (no prompt) for these.
