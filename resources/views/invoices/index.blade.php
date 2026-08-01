@@ -3038,17 +3038,20 @@
        preview + version PDFs — a display:none node captures blank. 794px ≈ A4 @96dpi.
        Print media resets it to the normal flow (the app itself is hidden below). */
     #invoice-print { position: fixed; left: -10000px; top: 0; width: 794px; background: #fff; }
-    /* Repeating page footer: hidden on screen, fixed to the bottom of every printed
-       page (position:fixed repeats per page in print media). */
+    /* Repeating page footer: hidden on screen, fixed inside the reserved bottom page
+       margin so it appears on every printed page without overlapping content. */
     .ip-foot { display: none; }
     @media print {
-      @page { size: A4; margin: 0; }
+      /* A4 with ~1cm side/top margins; a wider bottom margin reserves a band the
+         fixed footer lives in (content never flows into an @page margin). */
+      @page { size: A4; margin: 12mm 14mm 24mm 14mm; }
       html, body { height: auto !important; background: #fff !important; }
       body > *:not(#invoice-print) { display: none !important; }
       #invoice-print { position: static !important; left: auto !important; top: auto !important; width: auto !important; }
-      /* Reserve space so page content never collides with the fixed footer. */
-      #invoice-print > div > div { padding-bottom: 22mm !important; }
-      .ip-foot { display: block !important; position: fixed; bottom: 6mm; left: 14mm; right: 14mm;
+      /* The @page margins now provide the page margins — drop each template's own outer
+         padding (which was the print margin) so nothing is doubled. */
+      #invoice-print > div:not(.ip-foot) { padding: 0 !important; }
+      .ip-foot { display: block !important; position: fixed; bottom: 8mm; left: 14mm; right: 14mm;
                  font-size: 8px; line-height: 1.4; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 4px; }
       /* Keep accent backgrounds/colours in print — browsers drop them otherwise. */
       #invoice-print, #invoice-print * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
