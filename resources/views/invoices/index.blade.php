@@ -2,6 +2,15 @@
     $s = \App\Models\UserSetting::for(auth()->id());
     // Daily-refreshed EUR FX rates (X→EUR) for fuzzy amount suggestions; config default until the first fetch.
     $fxRates = \Illuminate\Support\Facades\Cache::get(\App\Console\Commands\FetchExchangeRates::CACHE_KEY)['rates'] ?? config('finance.fx_default');
+    // Inline the company logo as a data URI so it always renders in the printed / rasterised
+    // PDF (no network fetch, no auth/CSP round-trip that intermittently blanks the logo).
+    $companyLogo = null;
+    if ($s->company_logo_path) {
+        $logoDisk = \App\Support\BlobStore::disk();
+        if ($logoDisk->exists($s->company_logo_path)) {
+            $companyLogo = 'data:'.($logoDisk->mimeType($s->company_logo_path) ?: 'image/png').';base64,'.base64_encode($logoDisk->get($s->company_logo_path));
+        }
+    }
 @endphp
 <x-layouts.app :title="__('messages.nav.finance')">
   <div x-data="invoices({
@@ -18,7 +27,7 @@
             'bank_name' => $s->company_bank_name,
             'website' => $s->company_website,
             'contacts' => $s->company_contacts ?: [],
-            'logo' => $s->company_logo_path ? route('settings.company.logo') : null,
+            'logo' => $companyLogo,
             'number_format' => $s->invoice_number_format ?: 'YYYY-NNNN',
             'next_number' => $s->invoice_next_number,
             'default_vat_rate' => $s->invoice_default_vat_rate,
@@ -3191,16 +3200,18 @@
        (.inv-inline-foot) in BOTH the print and rasterised paths — it can never overlap. */
     .ip-foot { display: none !important; }
     @media print {
-      /* DIN 5008 A4 margins: left 25mm, right 20mm, top 20mm, bottom 20mm. */
-      @page { size: A4; margin: 20mm 20mm 20mm 25mm; }
+      /* DIN 5008 A4: left 25mm, right 20mm, top 20mm; wider bottom margin reserves the
+         band the per-page footer sits in (content never flows into an @page margin). */
+      @page { size: A4; margin: 20mm 20mm 26mm 25mm; }
       html, body { height: auto !important; background: #fff !important; }
       body > *:not(#invoice-print) { display: none !important; }
       #invoice-print { position: static !important; left: auto !important; top: auto !important; width: auto !important; }
       /* The @page margins now provide the page margins — drop each template's own outer
          padding (which was the print margin) so nothing is doubled. */
       #invoice-print > div { padding: 0 !important; min-height: 0 !important; }
-      /* Footer flows at the document end in print too (no fixed positioning). */
-      .inv-inline-foot { display: table !important; }
+      /* Footer pinned to the bottom of EVERY printed page (single element, so no double).
+         Content stays inside the content box above the reserved bottom margin. */
+      .inv-inline-foot { display: table !important; position: fixed; bottom: 8mm; left: 25mm; right: 20mm; width: auto !important; margin-top: 0 !important; }
       /* Keep accent backgrounds/colours in print — browsers drop them otherwise. */
       #invoice-print, #invoice-print * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     }
