@@ -62,6 +62,7 @@
         reminder_subject: @js(__('invoices.reminder_subject')),
         reminder_body: @js(__('invoices.reminder_body')),
         reminder_sent: @js(__('invoices.reminder_sent')),
+        credit_ref: @js(__('invoices.credit_ref')),
         version_reason_title: @js(__('invoices.version_reason_title')),
         version_reason_ph: @js(__('invoices.version_reason_ph')),
         version_reason_required: @js(__('invoices.version_reason_required')),
@@ -2256,6 +2257,8 @@
                         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                           :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
                           x-text="statusLabel(inv.status)"></span>
+                        <template x-if="isCredit(inv)"><span class="inline-flex items-center gap-1 rounded-full bg-purple-500/15 px-2 py-0.5 text-xs font-medium text-purple-600 dark:text-purple-400">{{ __("invoices.credit_badge") }}</span></template>
+
                         <template x-if="isOverdue(inv)">
                           <span class="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400" x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(inv))"></span>
                         </template>
@@ -2357,6 +2360,7 @@
               <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                 :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
                 x-text="statusLabel(current?.status)"></span>
+              <template x-if="isCredit(current)"><span class="inline-flex items-center rounded-full bg-purple-500/15 px-2 py-0.5 text-xs font-medium text-purple-600 dark:text-purple-400">{{ __("invoices.credit_badge") }}</span></template>
               <template x-if="isOverdue(current)"><span class="inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400" x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(current))"></span></template>
               <template x-if="isInvoiceLinked(current)"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
             </div>
@@ -2374,6 +2378,7 @@
                 <x-action-menu-item icon="printer" x-show="! current?.imported || ! current?.pdf" @click="printInvoice(current)">{{ __('invoices.print') }}</x-action-menu-item>
                 <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
                 <x-action-menu-item icon="check-circle" x-show="! current?.imported && current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-action-menu-item>
+                <x-action-menu-item icon="arrow-uturn-left" x-show="! current?.imported && ! isCredit(current) && (current?.status === 'sent' || current?.status === 'paid')" @click="createCreditNote(current)">{{ __('invoices.credit_note') }}</x-action-menu-item>
                 <x-action-menu-item icon="inbox-arrow-down" x-show="$store.paperless?.configured" @click="sendInvoiceToPaperless(current)">{{ __('invoices.send_paperless') }}</x-action-menu-item>
                 <x-action-menu-item icon="envelope" x-show="company.mail_enabled" @click="openMailInvoice(current)">{{ __('invoices.send_mail') }}</x-action-menu-item>
                 <x-action-menu-item icon="bell" x-show="company.mail_enabled && isOverdue(current)" @click="openReminderMail(current)">{{ __('invoices.send_reminder') }}</x-action-menu-item>
@@ -2595,7 +2600,7 @@
                     <div style="opacity:.85; font-size:9.5px; margin-top:2px;" x-text="[company.address ? company.address.replace(/\n/g, ' · ') : '', company.email, company.phone].filter(Boolean).join(' · ')"></div>
                   </div>
                   <div style="text-align:right; white-space:nowrap;">
-                    <div style="font-size:26px; font-weight:800; letter-spacing:.02em; line-height:1; text-transform:uppercase;" x-text="pl('print_title')"></div>
+                    <div style="font-size:26px; font-weight:800; letter-spacing:.02em; line-height:1; text-transform:uppercase;" x-text="docTitle(_printing)"></div>
                     <div style="opacity:.9; margin-top:4px;" class="tabular-nums" x-text="pl('invoice_number') + ' ' + (_printing.number || '—')"></div>
                   </div>
                 </div>
@@ -2661,7 +2666,7 @@
               <div style="font-family:Georgia,'Times New Roman',serif; font-size:10.5px; line-height:1.55; color:#2b2b2b; padding:20mm;">
                 <div style="display:flex; justify-content:space-between; align-items:baseline; border-bottom:1px solid #222; padding-bottom:10px;">
                   <div style="font-size:16px; font-weight:700; letter-spacing:.01em;" x-text="company.name"></div>
-                  <div style="font-size:17px; letter-spacing:.3em; text-transform:uppercase;" :style="'color:' + company.accent" x-text="pl('print_title')"></div>
+                  <div style="font-size:17px; letter-spacing:.3em; text-transform:uppercase;" :style="'color:' + company.accent" x-text="docTitle(_printing)"></div>
                 </div>
                 <div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#777; font-size:8.5px; margin-top:6px; letter-spacing:.02em;" x-text="[company.address ? company.address.replace(/\n/g, ' · ') : '', company.email, company.phone, company.vat_id ? pl('vat_id_label') + ' ' + company.vat_id : ''].filter(Boolean).join(' · ')"></div>
                 <div style="display:flex; justify-content:space-between; gap:24px; margin-top:26px;">
@@ -2719,7 +2724,7 @@
                       <template x-if="! company.logo"><div class="ie-brand-text"><div class="ie-co-name" x-text="company.name"></div></div></template>
                     </div>
                     <div class="ie-doc-meta">
-                      <div class="ie-doc-kind" x-text="pl('print_title')"></div>
+                      <div class="ie-doc-kind" x-text="docTitle(_printing)"></div>
                       <div class="ie-doc-no num" x-text="_printing.number || '—'"></div>
                     </div>
                   </div>
@@ -2822,7 +2827,7 @@
                 </div>
 
                 {{-- Subject line --}}
-                <div style="margin-top:22px; font-size:14px; font-weight:700;" :style="'color:' + company.accent"><span x-text="pl('print_title')"></span> <span class="tabular-nums" x-text="_printing.number || ''"></span></div>
+                <div style="margin-top:22px; font-size:14px; font-weight:700;" :style="'color:' + company.accent"><span x-text="docTitle(_printing)"></span> <span class="tabular-nums" x-text="_printing.number || ''"></span></div>
 
                 {{-- Line-item table --}}
                 <table style="width:100%; margin-top:12px; border-collapse:collapse;">

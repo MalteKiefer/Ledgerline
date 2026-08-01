@@ -2385,6 +2385,28 @@ export default (config = {}, labels = {}) => ({
         } catch (e) { window.llToast(labels.mail_failed || 'Could not send the invoice.'); }
         this.mailBusy = false;
     },
+    // ---- Credit note / Storno (Gutschrift) ----
+    isCredit(inv) { return (inv || this.current)?.type === 'credit'; },
+    docTitle(inv) { return this.pl((inv || this._printing)?.type === 'credit' ? 'print_title_credit' : 'print_title'); },
+    // Create a GoBD-correct reversal of a finalized invoice: a new draft credit note
+    // with NEGATED line prices (subtracts from revenue/EÜR), referencing the original.
+    // It gets its own number from the same series on finalize.
+    createCreditNote(inv) {
+        const src = inv || this.current; if (! src) return;
+        const c = {
+            id: window.LLInvoicesStore.newId(),
+            number: null, status: 'draft', type: 'credit',
+            creditOf: src.number || '', creditOfId: src.id,
+            issueDate: this._today(), dueDate: this._today(),
+            currency: src.currency || (this.company.currency || 'EUR'), lang: src.lang || 'de',
+            customer: { ...(src.customer || {}) },
+            lines: (src.lines || []).map((l) => ({ ...l, unitPrice: -Math.abs(Number(l.unitPrice) || 0) })),
+            note: (labels.credit_ref || 'Credit note for invoice :number').replace(':number', src.number || ''),
+            footer: src.footer || this.company.footer_text || '',
+            trashed: false, updated: new Date().toISOString(),
+        };
+        this.invoices.unshift(c); this._save(); this.open(c);
+    },
     async markPaid(inv) { inv.status = 'paid'; await this._lockCommit(inv, labels.version_paid || 'Marked paid'); },
     async markSent(inv) {
         let i = inv;
