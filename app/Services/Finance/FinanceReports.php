@@ -128,7 +128,7 @@ class FinanceReports
      */
     public function realizedInvoices(): Collection
     {
-        return Invoice::query()->whereIn('status', ['sent', 'paid'])->get();
+        return Invoice::query()->whereIn('status', ['final', 'sent', 'paid'])->get();
     }
 
     /**
@@ -410,19 +410,30 @@ class FinanceReports
      *
      * @return array<string, mixed>
      */
-    public function vatAdvanceReturn(int $year, ?int $quarter = null): array
+    public function vatAdvanceReturn(int $year, ?int $quarter = null, bool $ist = true): array
     {
         $q = ($quarter !== null && $quarter >= 1 && $quarter <= 4) ? $quarter : null;
         $small = $this->smallBusiness();
         $inQuarter = fn (int $month): bool => $q === null || (int) ceil($month / 3) === $q;
 
-        // ---- Output side: realized invoices (year + optional quarter) ----
+        // VAT scheme: Ist (cash-basis) → only PAID invoices, booked to the payment date;
+        // Soll (accrual) → every issued (final/sent/paid) invoice, booked to the issue date.
+        $outputList = $ist
+            ? Invoice::query()->where('status', 'paid')->get()
+            : $this->realizedInvoices();
+        $taxDate = function (Invoice $i) use ($ist): ?Carbon {
+            $d = $ist ? ($i->paid_at ?? $i->issue_date) : $i->issue_date;
+
+            return $d instanceof Carbon ? $d : null;
+        };
+
+        // ---- Output side (year + optional quarter) ----
         $outNet = 0.0;
         $outVat = 0.0;
         /** @var array<string, array{net: float, vat: float}> $outByRate */
         $outByRate = [];
-        foreach ($this->realizedInvoices()->filter(fn (Invoice $i): bool => $this->yearOf($i) === $year) as $inv) {
-            if (! $inQuarter($this->monthOf($inv))) {
+        foreach ($outputList->filter(fn (Invoice $i): bool => (int) ($taxDate($i)?->format('Y')) === $year) as $inv) {
+            if (! $inQuarter((int) ($taxDate($inv)?->format('n') ?? 0))) {
                 continue;
             }
             $t = $this->invoiceTotals($inv);

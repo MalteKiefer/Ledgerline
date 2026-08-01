@@ -28,6 +28,10 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $invoice_next_number
  * @property ?string $invoice_default_vat_rate
  * @property bool $small_business
+ * @property bool $invoice_vat_ist
+ * @property ?string $invoice_font
+ * @property ?string $company_website
+ * @property array<int, array<string, string>>|null $company_contacts
  * @property int $invoice_payment_terms_days
  * @property ?string $invoice_footer_text
  * @property ?string $invoice_accent_color
@@ -62,8 +66,9 @@ use Illuminate\Database\Eloquent\Model;
     // Per-user company identity + invoice numbering (formerly workspace-global).
     'company_name', 'company_address', 'company_email', 'company_phone', 'company_tax_id',
     'company_vat_id', 'company_iban', 'company_bic', 'company_bank_name', 'company_logo_path',
+    'company_website', 'company_contacts',
     'invoice_number_prefix', 'invoice_number_padding', 'invoice_number_format', 'invoice_next_number',
-    'invoice_default_vat_rate', 'small_business', 'invoice_payment_terms_days', 'invoice_footer_text',
+    'invoice_default_vat_rate', 'small_business', 'invoice_vat_ist', 'invoice_font', 'invoice_payment_terms_days', 'invoice_footer_text',
     'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
     'invoice_payment_methods', 'invoice_payment_terms_text',
     // Per-user COMPANY SMTP — a dedicated transport for sending invoices,
@@ -82,6 +87,7 @@ class UserSetting extends Model
     protected $attributes = [
         'paperless_enabled' => false,
         'small_business' => false,
+        'invoice_vat_ist' => true,
         'gallery_columns' => 6,
         'file_max_versions' => 10,
         'theme' => 'system',
@@ -128,6 +134,8 @@ class UserSetting extends Model
             'invoice_payment_terms_days' => 'integer',
             'invoice_default_vat_rate' => 'decimal:2',
             'small_business' => 'boolean',
+            'invoice_vat_ist' => 'boolean',
+            'company_contacts' => 'array',
         ];
     }
 

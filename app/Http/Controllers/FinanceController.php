@@ -231,6 +231,8 @@ class FinanceController extends Controller
             'invoice_email' => ['nullable', 'string', 'email:rfc', 'max:320'],
             'phone' => ['nullable', 'string', 'max:100'],
             'vat_id' => ['nullable', 'string', 'max:64'],
+            'hourly_rate' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+            'currency' => ['nullable', 'string', 'max:8'],
             'contacts' => ['nullable', 'array', 'max:200'],
         ];
     }
@@ -248,6 +250,12 @@ class FinanceController extends Controller
         }
         if ($create || $request->has('contacts')) {
             $patch['contacts'] = $request->filled('contacts') ? $request->array('contacts') : null;
+        }
+        if ($create || $request->has('hourly_rate')) {
+            $patch['hourly_rate'] = $request->filled('hourly_rate') ? $request->float('hourly_rate') : null;
+        }
+        if ($create || $request->has('currency')) {
+            $patch['currency'] = $request->filled('currency') ? $request->string('currency')->value() : null;
         }
 
         return $patch;
@@ -593,7 +601,9 @@ class FinanceController extends Controller
                 'number' => $this->formatNumber($fmt, $seq, $current->issue_date),
                 'seq' => $seq,
                 'year' => $year,
-                'status' => $current->status === 'draft' ? 'sent' : $current->status,
+                // Finalising ISSUES the invoice (number, immutable, counts as revenue) →
+                // status 'final' (Open). It does NOT mean "sent"; only an actual send does.
+                'status' => $current->status === 'draft' ? 'final' : $current->status,
             ]);
             $current->version = $current->version + 1;
             $current->save();
@@ -904,7 +914,7 @@ class FinanceController extends Controller
 
         return [
             'number' => ['nullable', 'string', 'max:64'],
-            'status' => ['sometimes', 'string', Rule::in(['draft', 'sent', 'paid'])],
+            'status' => ['sometimes', 'string', Rule::in(['draft', 'final', 'sent', 'paid'])],
             'type' => ['sometimes', 'string', Rule::in(['invoice', 'credit_note'])],
             'issue_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date'],

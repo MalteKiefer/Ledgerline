@@ -276,4 +276,58 @@ class FinanceRelationalTest extends TestCase
         // b's request is owner-scoped → the row is invisible → 404.
         $this->actingAs($b)->deleteJson(route('finance.partners.destroy', $id))->assertNotFound();
     }
+
+    public function test_finalize_issues_to_open_not_sent(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        UserSetting::for((int) $user->id)->update(['invoice_number_format' => 'YYYY-NNNN', 'invoice_next_number' => 1]);
+
+        $id = $this->postJson(route('finance.invoices.store'), ['issue_date' => '2026-05-01'])->json('invoice.id');
+        // Finalising issues the invoice → status 'final' (Open), NOT 'sent'.
+        $this->postJson(route('finance.invoices.finalize', $id))
+            ->assertOk()
+            ->assertJsonPath('invoice.status', 'final');
+        $this->assertSame('final', Invoice::find($id)->status);
+    }
+
+    public function test_partner_stores_hourly_rate_and_currency(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $id = $this->postJson(route('finance.partners.store'), [
+            'name' => 'Acme',
+            'hourly_rate' => 95.5,
+            'currency' => 'CHF',
+        ])->assertCreated()->json('partner.id');
+
+        $p = FinancePartner::find($id);
+        $this->assertSame('95.50', $p->hourly_rate);
+        $this->assertSame('CHF', $p->currency);
+    }
+
+    public function test_vat_advance_ist_counts_only_paid_by_payment_date(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $settings = UserSetting::for((int) $user->id);
+
+        // One paid invoice (paid in Q2) + one still open (final, unpaid). imported=true so
+        // totals derive from the gross/vat_rate columns (no line-item rows needed).
+        Invoice::create(['status' => 'paid', 'imported' => true, 'issue_date' => '2026-01-10', 'paid_at' => '2026-05-10', 'year' => 2026,
+            'currency' => 'EUR', 'vat_rate' => 19, 'net' => 100, 'vat' => 19, 'gross' => 119]);
+        Invoice::create(['status' => 'final', 'imported' => true, 'issue_date' => '2026-01-15', 'year' => 2026,
+            'currency' => 'EUR', 'vat_rate' => 19, 'net' => 200, 'vat' => 38, 'gross' => 238]);
+
+        // Ist (default): only the paid invoice counts, booked to Q2.
+        $settings->update(['invoice_vat_ist' => true]);
+        $ist = $this->getJson(route('finance.reports.vat-advance', ['year' => 2026]))->assertOk()->json();
+        $this->assertSame(19.0, (float) $ist['outputVat']);
+
+        // Soll: both the paid and the open invoice count (issued).
+        $settings->update(['invoice_vat_ist' => false]);
+        $soll = $this->getJson(route('finance.reports.vat-advance', ['year' => 2026]))->assertOk()->json();
+        $this->assertSame(57.0, (float) $soll['outputVat']);
+    }
 }
