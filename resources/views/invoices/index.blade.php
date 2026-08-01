@@ -2844,7 +2844,7 @@
 
             {{-- ---------- KLASSISCH (traditional German business sheet) ---------- --}}
             <template x-if="_printing && tpl === 'klassisch'">
-              <div style="font-family:Arial,'Helvetica Neue',Helvetica,sans-serif; font-size:10.5px; line-height:1.5; color:#222; padding:20mm 20mm 22mm 25mm; box-sizing:border-box; min-height:297mm; display:flex; flex-direction:column;">
+              <div style="font-family:Arial,'Helvetica Neue',Helvetica,sans-serif; font-size:10.5px; line-height:1.5; color:#222; padding:20mm 20mm 22mm 25mm;">
                 {{-- Wordmark / logo, top-right --}}
                 <div style="min-height:56px; text-align:right; margin-bottom:30px;">
                   <template x-if="company.logo"><img :src="company.logo" alt="" style="max-height:60px; display:inline-block;"></template>
@@ -2925,24 +2925,26 @@
 
                 {{-- Inline footer, pushed to sheet bottom (for the rasterised PDF / mail path;
                      the window.print path hides this and uses the fixed .ip-foot per page). --}}
-                <div class="inv-inline-foot" style="margin-top:auto; padding-top:8px; border-top:1px solid #cfcfcf; display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; font-size:8px; color:#555; line-height:1.5;">
-                  <div>
-                    <div style="font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#374151;" x-text="company.name"></div>
-                    <div x-show="company.address" style="white-space:pre-line;" x-text="company.address"></div>
-                    <div x-show="company.vat_id" x-text="pl('vat_id_label') + ' ' + company.vat_id"></div>
-                  </div>
-                  <div>
-                    <div x-show="company.website" x-text="company.website"></div>
-                    <div x-show="company.email" x-text="company.email"></div>
-                    <div x-show="company.phone" x-text="company.phone"></div>
-                    <template x-for="(c, ci) in (company.contacts || [])" :key="ci"><div x-text="[c.name, c.role].filter(Boolean).join(' · ')"></div></template>
-                  </div>
-                  <div x-show="company.bank_name || company.iban">
-                    <div x-show="company.iban" x-text="'IBAN: ' + company.iban"></div>
-                    <div x-show="company.bic" x-text="'BIC: ' + company.bic"></div>
-                    <div x-show="company.bank_name" x-text="'Bank: ' + company.bank_name"></div>
-                  </div>
-                </div>
+                <table class="inv-inline-foot" style="width:100%; margin-top:40px; border-top:1px solid #cfcfcf; border-collapse:collapse; font-size:8px; color:#555; line-height:1.5;">
+                  <tr style="vertical-align:top;">
+                    <td style="width:34%; padding:8px 8px 0 0;">
+                      <div style="font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#374151;" x-text="company.name"></div>
+                      <div x-show="company.address" style="white-space:pre-line;" x-text="company.address"></div>
+                      <div x-show="company.vat_id" x-text="pl('vat_id_label') + ' ' + company.vat_id"></div>
+                    </td>
+                    <td style="width:33%; padding:8px 8px 0;">
+                      <div x-show="company.website" x-text="company.website"></div>
+                      <div x-show="company.email" x-text="company.email"></div>
+                      <div x-show="company.phone" x-text="company.phone"></div>
+                      <template x-for="(c, ci) in (company.contacts || [])" :key="ci"><div x-text="[c.name, c.role].filter(Boolean).join(' · ')"></div></template>
+                    </td>
+                    <td style="width:33%; padding:8px 0 0 8px;" x-show="company.bank_name || company.iban">
+                      <div x-show="company.iban" x-text="'IBAN: ' + company.iban"></div>
+                      <div x-show="company.bic" x-text="'BIC: ' + company.bic"></div>
+                      <div x-show="company.bank_name" x-text="'Bank: ' + company.bank_name"></div>
+                    </td>
+                  </tr>
+                </table>
               </div>
             </template>
 
