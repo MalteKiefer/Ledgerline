@@ -114,6 +114,8 @@ return [
     'due' => 'Due',
     'amount' => 'Amount',
     'subtotal' => 'Subtotal',
+    'thanks_line' => 'Thank you for your business.',
+    'pay_until_line' => 'Please settle the outstanding amount by :date.',
     'export_revenue' => 'Revenue CSV',
     'export_expenses' => 'Expenses CSV',
     'csv_date' => 'Document date',

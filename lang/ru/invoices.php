@@ -114,6 +114,8 @@ return [
     'due' => 'Ð¡ÑÐ¾Ðº',
     'amount' => 'Ð¡ÑÐ¼Ð¼Ð°',
     'subtotal' => 'ÐÐ¾Ð´ÑÑÐ¾Ð³',
+    'thanks_line' => 'Благодарим за заказ.',
+    'pay_until_line' => 'Пожалуйста, оплатите оставшуюся сумму до :date.',
     'export_revenue' => 'Доходы CSV',
     'export_expenses' => 'Расходы CSV',
     'csv_date' => 'Дата документа',

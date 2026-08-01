@@ -114,6 +114,8 @@ return [
     'due' => 'Fällig',
     'amount' => 'Betrag',
     'subtotal' => 'Zwischensumme',
+    'thanks_line' => 'Vielen Dank für Ihren Auftrag.',
+    'pay_until_line' => 'Bitte begleichen Sie den offenen Betrag bis zum :date.',
     'export_revenue' => 'Umsatz-CSV',
     'export_expenses' => 'Belege-CSV',
     'csv_date' => 'Belegdatum',
