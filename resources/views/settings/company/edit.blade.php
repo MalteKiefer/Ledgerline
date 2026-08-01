@@ -161,6 +161,17 @@
                 </div>
                 @error('invoice_template')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
             </div>
+            <div class="mt-4">
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_font') }}
+                    <select name="invoice_font" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <option value="">{{ __('settings.invoice_font_default') }}</option>
+                        @foreach (config('fonts.families') as $css => $label)
+                            <option value="{{ $css }}" style="font-family:{{ $css }}" @selected(old('invoice_font', $s->invoice_font) === $css)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    <span class="mt-1 block text-xs text-gray-400">{{ __('settings.invoice_font_hint') }}</span>
+                </label>
+            </div>
             <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_accent_color') }}
                     <span class="mt-1 flex items-center gap-2">

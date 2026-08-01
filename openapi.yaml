@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.536.11
+  version: 1.536.12
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 

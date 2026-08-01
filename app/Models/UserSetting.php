@@ -34,6 +34,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property ?string $invoice_accent_color
  * @property ?string $invoice_heading_color
  * @property ?string $invoice_template
+ * @property ?string $invoice_font
  * @property ?string $invoice_payment_methods
  * @property ?string $invoice_payment_terms_text
  * @property bool $invoice_mail_enabled
@@ -73,6 +74,7 @@ use Illuminate\Database\Eloquent\Model;
     'invoice_default_vat_rate', 'invoice_payment_terms_days', 'invoice_footer_text',
     'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
     'invoice_payment_methods', 'invoice_payment_terms_text',
+    'invoice_font',
     'invoice_mail_enabled', 'invoice_smtp_host', 'invoice_smtp_port', 'invoice_smtp_encryption',
     'invoice_smtp_username', 'invoice_smtp_password', 'invoice_from_email', 'invoice_from_name',
     'invoice_mail_subject', 'invoice_mail_body', 'invoice_mail_signature',
