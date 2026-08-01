@@ -3186,23 +3186,21 @@
     #invoice-print { position: fixed; left: -10000px; top: 0; width: 794px; background: #fff; }
     /* Chosen invoice font overrides every element's own family (renders in the PDF). */
     #invoice-print.has-inv-font, #invoice-print.has-inv-font * { font-family: var(--inv-font) !important; }
-    /* Repeating page footer: hidden on screen, fixed inside the reserved bottom page
-       margin so it appears on every printed page without overlapping content. */
-    .ip-foot { display: none; }
+    /* The old fixed per-page footer is dead: a position:fixed footer overlaps long
+       content in browser print. The footer now flows normally at the document end
+       (.inv-inline-foot) in BOTH the print and rasterised paths — it can never overlap. */
+    .ip-foot { display: none !important; }
     @media print {
-      /* DIN 5008 A4 margins: left 25mm, right 20mm, top 20mm; a wider bottom margin
-         reserves the band the fixed footer lives in (content never flows into it). */
-      @page { size: A4; margin: 20mm 20mm 28mm 25mm; }
+      /* DIN 5008 A4 margins: left 25mm, right 20mm, top 20mm, bottom 20mm. */
+      @page { size: A4; margin: 20mm 20mm 20mm 25mm; }
       html, body { height: auto !important; background: #fff !important; }
       body > *:not(#invoice-print) { display: none !important; }
       #invoice-print { position: static !important; left: auto !important; top: auto !important; width: auto !important; }
       /* The @page margins now provide the page margins — drop each template's own outer
          padding (which was the print margin) so nothing is doubled. */
-      #invoice-print > div:not(.ip-foot) { padding: 0 !important; min-height: 0 !important; }
-      /* The inline (rasteriser) footer is replaced by the fixed per-page .ip-foot in print. */
-      .inv-inline-foot { display: none !important; }
-      .ip-foot { display: block !important; position: fixed; bottom: 10mm; left: 25mm; right: 20mm;
-                 font-size: 8px; line-height: 1.45; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 5px; }
+      #invoice-print > div { padding: 0 !important; min-height: 0 !important; }
+      /* Footer flows at the document end in print too (no fixed positioning). */
+      .inv-inline-foot { display: table !important; }
       /* Keep accent backgrounds/colours in print — browsers drop them otherwise. */
       #invoice-print, #invoice-print * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     }
