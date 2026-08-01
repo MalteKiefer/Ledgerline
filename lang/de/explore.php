@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 return [
     'title' => 'Entdecken',
+    'heatmap' => 'Heatmap',
     'subtitle' => 'Deine Touren und verorteten Fotos auf einer privaten Karte.',
     'search_ph' => 'Ort, POI, Koordinaten oder Google-Maps-Link suchen',
     'search_go' => 'Suchen',
