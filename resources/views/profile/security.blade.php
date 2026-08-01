@@ -9,6 +9,40 @@
             <div class="mt-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">{{ $errors->first() }}</div>
         @endif
 
+        {{-- Password change (Fortify updatePasswords; errors in the "updatePassword" bag) --}}
+        <div class="mt-5 ll-card space-y-4">
+            <div>
+                <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.password_title') }}</h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ __('account.password_desc') }}</p>
+            </div>
+            @if (session('status') === 'password-updated')
+                <x-alert variant="success">{{ __('account.password_updated') }}</x-alert>
+            @endif
+            @if ($errors->updatePassword->any())
+                <x-alert variant="error">{{ $errors->updatePassword->first() }}</x-alert>
+            @endif
+            <form method="POST" action="{{ route('user-password.update') }}" class="space-y-3">
+                @csrf
+                @method('PUT')
+                <div>
+                    <label for="current_password" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('account.password_current') }}</label>
+                    <input id="current_password" name="current_password" type="password" autocomplete="current-password" required
+                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                </div>
+                <div>
+                    <label for="password" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('account.password_new') }}</label>
+                    <input id="password" name="password" type="password" autocomplete="new-password" required minlength="12"
+                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                </div>
+                <div>
+                    <label for="password_confirmation" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('account.password_confirm') }}</label>
+                    <input id="password_confirmation" name="password_confirmation" type="password" autocomplete="new-password" required minlength="12"
+                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                </div>
+                <x-button type="submit">{{ __('account.password_save') }}</x-button>
+            </form>
+        </div>
+
         <div class="mt-5 ll-card space-y-4">
             <div class="flex items-center justify-between gap-3">
                 <div>
