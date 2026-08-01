@@ -15,8 +15,12 @@ function isPlainObject(v) {
     return v !== null && typeof v === 'object' && ! Array.isArray(v);
 }
 
+// JSON-safe clone. structuredClone throws a DataCloneError once Alpine has wrapped a
+// record in its reactive Proxy ("[object Object] could not be cloned"), which would
+// abort a 409 rebase and lose the write. Merge operates on JSON-contract store data,
+// so a JSON round-trip is both correct and proxy-safe. (undefined → undefined.)
 function clone(v) {
-    return v === undefined ? v : structuredClone(v);
+    return v == null ? v : JSON.parse(JSON.stringify(v));
 }
 
 /** Change detection for merge purposes only (never a crypto/canonical comparison). */

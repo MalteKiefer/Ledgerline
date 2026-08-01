@@ -26,8 +26,11 @@ import { padBlob } from './padme';
 import { bucketize, shardHash, recommendedShardBits } from './shard';
 import { canonicalJSON } from './canonical-json';
 import { mergeArrayById } from './manifest-merge';
+import { jsonClone } from './clone';
 
-const clone = (v) => (v == null ? v : structuredClone(v));
+// JSON-safe clone: structuredClone throws a DataCloneError on Alpine-reactive
+// records (see shared/clone.js). The sharded root/collections are JSON by contract.
+const clone = (v) => jsonClone(v);
 
 export function makeShardedStore({ prefix, recordKey, collections }) {
     return {
