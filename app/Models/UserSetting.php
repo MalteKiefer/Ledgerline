@@ -44,6 +44,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property ?string $invoice_from_name
  * @property ?string $invoice_mail_subject
  * @property ?string $invoice_mail_body
+ * @property ?string $invoice_mail_signature
  */
 #[Fillable([
     'user_id',
@@ -71,7 +72,7 @@ use Illuminate\Database\Eloquent\Model;
     'invoice_payment_methods', 'invoice_payment_terms_text',
     'invoice_mail_enabled', 'invoice_smtp_host', 'invoice_smtp_port', 'invoice_smtp_encryption',
     'invoice_smtp_username', 'invoice_smtp_password', 'invoice_from_email', 'invoice_from_name',
-    'invoice_mail_subject', 'invoice_mail_body',
+    'invoice_mail_subject', 'invoice_mail_body', 'invoice_mail_signature',
 ])]
 class UserSetting extends Model
 {

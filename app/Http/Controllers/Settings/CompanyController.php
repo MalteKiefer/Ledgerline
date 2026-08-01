@@ -8,6 +8,7 @@ use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\UserSetting;
 use App\Support\BlobStore;
+use App\Support\HtmlMailSanitizer;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -65,6 +66,7 @@ class CompanyController extends Controller
             'invoice_from_name' => ['nullable', 'string', 'max:200'],
             'invoice_mail_subject' => ['nullable', 'string', 'max:255'],
             'invoice_mail_body' => ['nullable', 'string', 'max:20000'],
+            'invoice_mail_signature' => ['nullable', 'string', 'max:20000'],
             // Raster only — SVG served inline on the app origin is a stored-XSS
             // vector (embedded <script>). Logos rarely need vector.
             'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,gif,webp', 'max:2048'],
@@ -98,6 +100,13 @@ class CompanyController extends Controller
         // round-trip the secret to the browser).
         if ($request->filled('invoice_smtp_password')) {
             $data['invoice_smtp_password'] = $request->string('invoice_smtp_password')->value();
+        }
+        // The mail body + signature are rich HTML — sanitise server-side (defence in
+        // depth; the client DOMPurify-sanitises before submit).
+        foreach (['invoice_mail_body', 'invoice_mail_signature'] as $htmlField) {
+            if ($request->has($htmlField)) {
+                $data[$htmlField] = HtmlMailSanitizer::clean($request->string($htmlField)->value());
+            }
         }
 
         $settings = UserSetting::for($this->requireUser($request)->id);

@@ -2530,9 +2530,10 @@
               <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.mail_subject_label') }}
                 <input type="text" x-model="mailSubject" class="mt-1 w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
               </label>
-              <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.mail_body_label') }}
-                <textarea x-model="mailBody" rows="5" class="mt-1 w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
-              </label>
+              <div class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.mail_body_label') }}
+                <div x-ref="mailBodyEl" contenteditable="true" @input="mailBody = $event.target.innerHTML"
+                     class="mt-1 min-h-[120px] max-h-64 overflow-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent [&_a]:text-accent [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"></div>
+              </div>
               <p class="text-xs text-gray-400">{{ __('invoices.mail_attach_note') }}</p>
             </div>
             <div class="mt-5 flex justify-end gap-2">

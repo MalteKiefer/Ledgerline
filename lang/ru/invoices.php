@@ -363,6 +363,8 @@ return [
     'mail_not_configured' => 'Настройте почтовый сервер для счетов в «Настройки → Компания».',
     'mail_bad_recipient' => 'Введите корректный адрес получателя.',
     'mail_body_default' => 'во вложении счёт :number.',
+    'mail_test_subject' => 'Тест',
+    'mail_test_body' => 'Это тестовое письмо с вашего почтового сервера счетов Ledgerline.',
     'partner_phone' => 'Телефон',
     'partner_address' => 'Адрес',
     'partner_vat' => 'ИНН/НДС',

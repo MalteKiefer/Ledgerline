@@ -16,6 +16,7 @@ import todos from './components/todos';
 import notes from './components/notes';
 import bookmarks from './components/bookmarks';
 import toastHub from './components/toast-hub';
+import wysiwyg from './components/wysiwyg';
 import cropModal from './components/crop-modal';
 import backupRuns from './components/backup-runs';
 import devicePairing from './components/device-pairing';
@@ -272,6 +273,7 @@ window.llToast = toast;
 
 // Component registrations (definitions live in ./components/*).
 Alpine.data('toastHub', toastHub);
+Alpine.data('wysiwyg', wysiwyg);
 Alpine.data('cropModal', cropModal);
 Alpine.data('devicePairing', devicePairing);
 Alpine.data('pwStrength', pwStrength);

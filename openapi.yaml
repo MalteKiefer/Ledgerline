@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.536.6
+  version: 1.536.7
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -6221,6 +6221,31 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { error: { type: string, enum: [not_configured] } } }
+
+  /invoices/mail-test:
+    post:
+      tags: [Store]
+      operationId: invoicesMailTest
+      summary: Send a sample test e-mail through the saved invoice SMTP
+      description: >
+        Sends a small test message (no attachment) through the user's saved invoice
+        SMTP so they can verify the configuration. Recipient defaults to the from
+        address. Requires the `finance` module. Throttle: 6 req/min.
+      requestBody:
+        required: false
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                to: { type: string, format: email, description: "Recipient; defaults to the from address." }
+      responses:
+        "200": { description: "Sent.", content: { application/json: { schema: { type: object, required: [ok], properties: { ok: { type: boolean } } } } } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "422": { description: "No recipient, or the SMTP send failed." }
+        "429": { description: Rate limit exceeded. }
+        "501": { description: Invoice mail is not configured/enabled. }
 
   /invoices/raw/{blob}:
     get:

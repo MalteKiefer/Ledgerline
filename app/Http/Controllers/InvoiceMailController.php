@@ -54,4 +54,38 @@ class InvoiceMailController extends Controller
 
         return response()->json(['ok' => true])->header('Cache-Control', 'no-store');
     }
+
+    /**
+     * Send a sample test e-mail through the saved invoice SMTP (no attachment) so the
+     * user can verify the configuration. Defaults the recipient to the from address.
+     */
+    public function test(Request $request, InvoiceMailer $mailer): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $settings = UserSetting::for($user->id);
+
+        if (! $mailer->configured($settings)) {
+            return response()->json(['error' => 'not_configured'], 501)->header('Cache-Control', 'no-store');
+        }
+        $request->validate(['to' => ['nullable', 'email', 'max:254']]);
+        $to = $request->string('to')->value() ?: (string) $settings->invoice_from_email;
+        if ($to === '') {
+            return response()->json(['error' => 'no_recipient'], 422)->header('Cache-Control', 'no-store');
+        }
+
+        try {
+            $mailer->send(
+                $settings,
+                $to,
+                'Ledgerline — '.__('invoices.mail_test_subject'),
+                '<p>'.e(__('invoices.mail_test_body')).'</p>',
+                null,
+                '',
+            );
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'send_failed'], 422)->header('Cache-Control', 'no-store');
+        }
+
+        return response()->json(['ok' => true])->header('Cache-Control', 'no-store');
+    }
 }

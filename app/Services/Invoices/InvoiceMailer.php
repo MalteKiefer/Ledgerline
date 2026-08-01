@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Invoices;
 
 use App\Models\UserSetting;
+use App\Support\HtmlMailSanitizer;
 use App\Support\OutboundUrl;
 use Symfony\Component\Mailer\Mailer;
 use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
@@ -30,12 +31,16 @@ class InvoiceMailer
     }
 
     /**
-     * @param  string  $pdf  raw PDF bytes (transient)
+     * Send an HTML e-mail (body + stored signature) with an optional PDF attachment.
+     *
+     * @param  string  $bodyHtml  the composed message as HTML (already client-sanitised;
+     *                            re-sanitised here as defence-in-depth)
+     * @param  ?string  $pdf  raw PDF bytes (transient), or null for a test message
      * @param  string  $filename  attachment filename
      *
      * @throws \RuntimeException on misconfiguration / disallowed host
      */
-    public function send(UserSetting $s, string $to, string $subject, string $body, string $pdf, string $filename): void
+    public function send(UserSetting $s, string $to, string $subject, string $bodyHtml, ?string $pdf = null, string $filename = 'invoice.pdf'): void
     {
         if (! $this->configured($s)) {
             throw new \RuntimeException('Invoice mail is not configured.');
@@ -58,12 +63,27 @@ class InvoiceMailer
             $transport->setPassword((string) $s->invoice_smtp_password);
         }
 
+        $html = HtmlMailSanitizer::clean($bodyHtml);
+        $signature = HtmlMailSanitizer::clean((string) $s->invoice_mail_signature);
+        if ($signature !== '') {
+            $html .= '<br><br>'.$signature;
+        }
+        if ($html === '') {
+            $html = e($subject !== '' ? $subject : 'Invoice');
+        }
+        // Plaintext alternative for clients that don't render HTML.
+        $text = trim(html_entity_decode(strip_tags(str_ireplace(['<br>', '<br/>', '<br />', '</p>', '</div>', '</li>'], "\n", $html)), ENT_QUOTES | ENT_HTML5));
+
         $email = (new Email)
             ->from(new Address((string) $s->invoice_from_email, (string) ($s->invoice_from_name ?: 'Ledgerline')))
             ->to($to)
             ->subject($subject !== '' ? $subject : 'Invoice')
-            ->text($body !== '' ? $body : $subject)
-            ->attach($pdf, $filename !== '' ? $filename : 'invoice.pdf', 'application/pdf');
+            ->text($text !== '' ? $text : ($subject !== '' ? $subject : 'Invoice'))
+            ->html($html);
+
+        if ($pdf !== null && $pdf !== '') {
+            $email->attach($pdf, $filename !== '' ? $filename : 'invoice.pdf', 'application/pdf');
+        }
 
         (new Mailer($transport))->send($email);
     }
