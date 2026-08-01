@@ -957,6 +957,8 @@
                     <div x-show="openPartnerRec.vatId"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_vat') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.vatId"></dd></div>
                     <div x-show="openPartnerRec.email"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.email" class="text-accent hover:underline" x-text="openPartnerRec.email"></a></dd></div>
                     <div x-show="openPartnerRec.invoiceEmail"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_invoice_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.invoiceEmail" class="text-accent hover:underline" x-text="openPartnerRec.invoiceEmail"></a></dd></div>
+                    <div x-show="openPartnerRec.hourlyRate"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_hourly_rate') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="fmtMoney(openPartnerRec.hourlyRate, openPartnerRec.currency || company.currency, document.documentElement.lang)"></dd></div>
+                    <div x-show="openPartnerRec.currency"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_currency') }}</dt><dd class="text-gray-800 dark:text-gray-200" x-text="openPartnerRec.currency"></dd></div>
                     <div x-show="openPartnerRec.phone"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_phone') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.phone"></dd></div>
                     <div x-show="openPartnerRec.url"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_url') }}</dt><dd><a :href="openPartnerRec.url" target="_blank" rel="noopener" class="text-accent hover:underline break-all" x-text="openPartnerRec.url"></a></dd></div>
                     <div x-show="openPartnerRec.address"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_address') }}</dt><dd class="whitespace-pre-line text-gray-800 dark:text-gray-200" x-text="openPartnerRec.address"></dd></div>
@@ -1048,6 +1050,21 @@
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_invoice_email') }}</label>
                       <input type="email" x-model="partnerEditing.invoiceEmail" placeholder="{{ __('invoices.partner_invoice_email_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_hourly_rate') }}</label>
+                        <input type="number" step="0.01" min="0" x-model.number="partnerEditing.hourlyRate" placeholder="0.00" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums">
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_currency') }}</label>
+                        <select x-model="partnerEditing.currency" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                          <option value="">{{ __('invoices.partner_currency_default') }}</option>
+                          @foreach(['EUR','USD','GBP','CHF','JPY'] as $cur)
+                            <option value="{{ $cur }}" :selected="partnerEditing.currency === '{{ $cur }}'">{{ $cur }}</option>
+                          @endforeach
+                        </select>
+                      </div>
                     </div>
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_vat') }}</label>
@@ -2300,6 +2317,7 @@
                 <x-action-menu-item icon="printer" x-show="! current?.imported || ! current?.pdf" @click="printInvoice(current)">{{ __('invoices.print') }}</x-action-menu-item>
                 <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
                 <x-action-menu-item icon="check-circle" x-show="! current?.imported && current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-action-menu-item>
+                <x-action-menu-item icon="inbox-arrow-down" x-show="$store.paperless?.configured" @click="sendInvoiceToPaperless(current)">{{ __('invoices.send_paperless') }}</x-action-menu-item>
               </x-action-menu>
             </div>
           </div>

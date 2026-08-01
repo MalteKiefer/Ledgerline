@@ -717,7 +717,7 @@ export default (config = {}, labels = {}) => ({
     partners: [],
     financeCategories: [],
     partnerEditing: null,
-    newPartner() { this.partnerEditing = { name: '', url: '', address: '', email: '', phone: '', vatId: '', category: '', note: '', contacts: [] }; },
+    newPartner() { this.partnerEditing = { name: '', url: '', address: '', email: '', invoiceEmail: '', phone: '', vatId: '', category: '', note: '', hourlyRate: null, currency: '', contacts: [] }; },
     // Contact persons (Ansprechpartner) — multiple per partner.
     _newContact() { return { id: window.LLInvoicesStore.newId(), name: '', email: '', phone: '', role: '' }; },
     addPartnerContact(p) { if (! p) return; (p.contacts ||= []).push(this._newContact()); },
@@ -1783,7 +1783,7 @@ export default (config = {}, labels = {}) => ({
     closePreview() { this.previewOpen = false; if (this.previewUrl) { URL.revokeObjectURL(this.previewUrl); this.previewUrl = null; } },
     openVersionPdf(v) { return this._openBlob(v?.pdf ? { ...v.pdf, mime: 'application/pdf' } : null); },
 
-    addLine() { this.current.lines.push({ desc: '', qty: 1, unit: '', unitPrice: 0, vatRate: this._defaultVat() }); this.saveSoon(); },
+    addLine() { const rate = parseFloat(this.current._defaultRate) || 0; this.current.lines.push({ desc: '', qty: 1, unit: '', unitPrice: rate, vatRate: this._defaultVat() }); this.saveSoon(); },
     removeLine(i) { this.current.lines.splice(i, 1); if (! this.current.lines.length) this.addLine(); else this.saveSoon(); },
 
     // ---- Clockify CSV import → prefill line items ----
@@ -2096,6 +2096,15 @@ export default (config = {}, labels = {}) => ({
             contactId: null,
             partnerId: p.id,
         };
+        // A partner may carry a default hourly rate + currency. Apply them to the
+        // invoice: set the currency, remember the rate for new lines, and back-fill it
+        // onto any existing line whose unit price is still empty (0).
+        const rate = parseFloat(p.hourlyRate);
+        if (Number.isFinite(rate) && rate > 0) {
+            this.current._defaultRate = rate;
+            for (const l of (this.current.lines || [])) { if (! (parseFloat(l.unitPrice) > 0)) l.unitPrice = rate; }
+        }
+        if (p.currency) this.current.currency = p.currency;
         this.customerPicker = false;
         this.saveSoon();
     },
@@ -2245,6 +2254,32 @@ export default (config = {}, labels = {}) => ({
         if (i.status === 'draft') i.status = 'sent';
         i.totals = this.computeTotals(i); // freeze
         await this._lockCommit(i, labels.version_finalized || 'Finalized');
+        // Right after finalising, offer to file the invoice in Paperless (opens the
+        // same transfer dialog as Files), pre-filled — if Paperless is configured.
+        if (this.$store.paperless?.configured) this.sendInvoiceToPaperless(i);
+    },
+    // Send an invoice to Paperless: generate its PDF client-side (or use the original
+    // for imported invoices), open the shared transfer dialog pre-filled (title =
+    // number + customer, correspondent = customer, date = issue date). Leaves ZK.
+    async sendInvoiceToPaperless(inv) {
+        const i = inv || this.current; if (! i) return;
+        const store = this.$store.paperless; if (! store || ! store.configured) return;
+        const num = i.number || (labels.status_draft || 'Draft');
+        const title = (labels.print_title || 'Invoice') + ' ' + num + (i.customer?.name ? ' – ' + i.customer.name : '');
+        const fname = (i.number ? String(i.number).replace(/[^\w.-]+/g, '_') : 'rechnung') + '.pdf';
+        store.begin(fname, { title, created: i.issueDate || undefined }, { context: { source: 'invoice' } });
+        if (i.customer?.name) store.corrQuery = i.customer.name;
+        try {
+            let blob;
+            if (i.imported && i.pdf?.blob) {
+                const buf = await fetchBlobBuffer(`${config.rawBase}/${i.pdf.blob}`);
+                blob = new Blob([window.Vault.decryptFile(buf, i.pdf.key)], { type: 'application/pdf' });
+            } else {
+                blob = await this._invoicePdfBlob(i);
+            }
+            if (! blob) throw new Error('render failed');
+            store.setFile(blob);
+        } catch (e) { store.fail(labels.downloadFailed || 'Could not open file.'); }
     },
     async markPaid(inv) { inv.status = 'paid'; await this._lockCommit(inv, labels.version_paid || 'Marked paid'); },
     async markSent(inv) {
