@@ -66,6 +66,17 @@ return {
             if (! await bootGalleryStore(this.$store)) { this.state = 'locked'; return; }
         } catch (e) { this.state = 'error'; return; }
         this.index = window.LLGalleryStore.data;
+        // After a background 409 rebase the store splices data.photos with fresh clones;
+        // re-resolve the live element the viewer / location picker hold by id (else edits
+        // made after the rebase mutate a detached ghost and are lost), bump _mut so the
+        // memoized grid re-resolves to the merged clones + server-added photos, and drop
+        // the dup-group memo which also held detached refs. Mirrors invoices._reresolveOpenRefs.
+        window.LLGalleryStore._afterRebase = () => {
+            this._mut++;
+            if (this.viewer?.photo?.id) { const l = this.index.photos.find((x) => x.id === this.viewer.photo.id); if (l) this.viewer.photo = l; }
+            if (this.loc?.target?.id) { const l = this.index.photos.find((x) => x.id === this.loc.target.id); if (l) this.loc.target = l; }
+            this.dupGroups = null;
+        };
         this.renderLimit = this._renderStep; // start with a small render window
         this.state = 'ready';
         // Deep link from a linked contact (?person=<id>) → open that person.

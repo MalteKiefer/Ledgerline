@@ -220,9 +220,14 @@ export default (labels = {}) => ({
     },
 
     async stopFast() {
-        const f = this.activeFast;
-        if (! f) return;
+        const f0 = this.activeFast;
+        if (! f0) return;
         if (! await this.$store.confirm.ask(labels.fastStopConfirm || 'End this fast now?')) return;
+        // Re-resolve the record by id after the await — a concurrent 409 rebase may have
+        // spliced this.fasts with fresh clones, detaching f0. Writing to the detached
+        // ghost then _save()ing would seal the (still-running) live record and lose the stop.
+        const f = this.fasts.find((x) => x.id === f0.id) || (this.activeFast && this.activeFast.id === f0.id ? this.activeFast : null);
+        if (! f) return;
         f.end = new Date().toISOString();
         this._save();
         this._stopFastClock();
@@ -268,7 +273,10 @@ export default (labels = {}) => ({
 
     async deleteFast(fast) {
         if (! await this.$store.confirm.ask(labels.fastDeleteConfirm || 'Delete this fast?')) return;
-        const i = this.fasts.indexOf(fast);
+        // Match by id, not object identity — a background rebase during the confirm may
+        // have replaced the array elements with clones, so indexOf(reference) would miss
+        // and silently no-op the delete.
+        const i = this.fasts.findIndex((x) => x.id === fast.id);
         if (i >= 0) this.fasts.splice(i, 1);
         this._save();
         if (! this.activeFast) this._stopFastClock();

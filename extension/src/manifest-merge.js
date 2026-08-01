@@ -32,7 +32,8 @@ function keyOf(rec) {
     if (! isPlainObject(rec)) return undefined;
     if (rec.id != null) return 'id\0' + rec.id;
     if (rec.credentialId != null) return 'cred\0' + rec.credentialId;
-    if (rec.seq != null) return 'seq\0' + rec.seq;
+    // seq is deliberately NOT a merge key (per-invoice counter, not globally unique —
+    // would let a concurrent version overwrite another). Versions carry a stable id.
     if (rec.photoId != null && rec.idx != null) return 'pf\0' + rec.photoId + '\0' + rec.idx;
     return undefined;
 }
@@ -48,8 +49,10 @@ function keyable(arr) {
     return true;
 }
 
+// STRING arrays only — a numeric positional vector (face centroid/embedding) must NOT
+// set-union (it is not a set); numeric arrays fall to last-writer-wins instead.
 function scalarArray(arr) {
-    return Array.isArray(arr) && arr.every((v) => v === null || typeof v !== 'object');
+    return Array.isArray(arr) && arr.every((v) => typeof v === 'string');
 }
 
 /** Set-union merge for scalar arrays (fields.urls[] strings): both writers' additions survive. */

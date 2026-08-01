@@ -783,8 +783,6 @@ export default (config = {}, labels = {}) => ({
 
     async deleteTrack(track) {
         if (! await this.$store.confirm.ask(labels.deleteTrackConfirm || 'Delete this track?')) return;
-        const idx = this.tracks.findIndex((t) => t.id === track.id);
-        if (idx < 0) return;
         // Drop couplings that pointed at this track.
         for (const [mid, c] of Object.entries(this.couplings)) if (c.trackId === track.id) delete this.couplings[mid];
         // Best-effort cleanup of the sealed raw-track blob (orphan sweep is the
@@ -797,6 +795,11 @@ export default (config = {}, labels = {}) => ({
                 });
             } catch (e) { /* orphan sweep handles it */ }
         }
+        // Resolve the index by id AFTER the awaits (confirm + blob delete). A concurrent
+        // 409 rebase may have reordered this.tracks in the meantime, so an index computed
+        // earlier could splice out the WRONG track.
+        const idx = this.tracks.findIndex((t) => t.id === track.id);
+        if (idx < 0) { this._save(); return; }
         this.tracks.splice(idx, 1);
         if (this.selectedTrackId === track.id) { this.selectedTrackId = null; if (this.view === 'detail') this.view = 'tracks'; }
         this._save();

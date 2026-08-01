@@ -479,12 +479,18 @@ export default (config = {}, labels = {}) => ({
     avatarMenu: false,
     // Encrypt cropped avatar bytes → upload → set on the current contact.
     async _setAvatarFromBytes(bytes) {
-        const c = this.current;
-        if (! bytes || ! c) return;
+        const c0 = this.current;
+        if (! bytes || ! c0) return;
         try {
             const enc = window.Vault.encryptContent(bytes, { name: 'avatar.jpg', mime: 'image/jpeg' });
             const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
             const ref = await this._uploadContactBlob(cipher);
+            // Re-resolve the contact by id after the upload await — a concurrent 409
+            // rebase may have replaced this.contacts elements with clones, detaching c0.
+            // Writing the avatar ref to the ghost + _save() would seal the avatarless live
+            // record and orphan the just-uploaded blob.
+            const c = (this.contacts || []).find((x) => x.id === c0.id) || (this.current && this.current.id === c0.id ? this.current : null);
+            if (! c) { this._freeAvatar(ref); return; }
             const old = c.avatarRef;
             c.avatarRef = ref; c.avatarKey = enc.encFileKey; c.updated = new Date().toISOString();
             // Seed the display cache from the plaintext crop so the avatar updates

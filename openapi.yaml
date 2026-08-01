@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.535.0
+  version: 1.535.1
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -45,16 +45,25 @@ tags:
       decrypted object; the server never sees them. Preserve unknown keys on write.
         • notes → {v:3, notes:[NoteRecord]} (sharded /notes/store)
         • todos → {v:3, todos:[TodoRecord], todoLists:[TodoList]}
-        • bookmarks → {bookmarks:[BookmarkRecord], folders:[BookmarkFolder]}
+        • bookmarks → {v:3, bookmarks:[BookmarkRecord], bookmarkFolders:[BookmarkFolder]}
         • contacts → {contacts:[ContactRecord]} (+ avatar blobs)
         • passwords → PasswordsStoreModel {secrets:[SecretItem], secretFolders:[PersonalVault], pwVaultMigrated} (sharded /passwords/store)
         • invoices → {invoices:[InvoiceRecord], transactions:[InvoiceTransaction], paymentMethods:[PaymentMethod], projects:[FinanceProject], partners:[FinancePartner], financeCategories:[FinanceCategory]} (sharded /invoices/store)
         • health → {healthProfile:HealthProfile, healthEntries:[HealthEntry], healthFasts:[HealthFast]}
-        • explore → ExploreStoreModel {tracks:[ExploreTrack], couplings:[ExploreCoupling], settings:ExploreSettings}
+        • explore → ExploreStoreModel {tracks:[ExploreTrack], couplings:{photoId→ExploreCoupling}(OBJECT MAP, not an array — remove a coupling by DELETING its key, never by nulling it), settings:ExploreSettings}
         • sharing → SharingStoreModel {knownFingerprints:{userId→hex}} (TOFU, shared by passwords+files)
         • files → {v:3, files:[FileRecord], fileFolders:[FileFolder]} (sharded /files/store)
         • gallery → {v:3, photos:[GalleryPhoto], people:[GalleryPerson], albums:[GalleryAlbum]} (sharded /gallery/store)
         • shared vaults → SharedVaultManifest (GET/PUT /vaults/{vault}/store)
+
+      409 MERGE (per the StoreVersionConflict contract): each TOP-LEVEL value is one of
+      three shapes and MUST merge exactly as documented there — keyed record ARRAYS
+      (key precedence: id → credentialId → photoId+idx; `seq` is NEVER a key), STRING
+      SCALAR arrays (set-union), or OBJECT MAPS (key-by-key, delete keys absent from
+      ours). A native client that whole-value last-writer-wins any of these on a 409
+      diverges from web/extension and loses the co-writer's records. After a background
+      merge, an open editor MUST re-resolve the record it holds BY ID (the merge replaces
+      element objects with fresh clones), or an edit made after the merge is lost.
   - name: Files
     description: Personal encrypted file blobs and multipart upload pipeline
   - name: SharedFolders
@@ -543,13 +552,29 @@ components:
         the other writer (another tab / device / user of a shared vault) added, and
         orphans those records' sealed blobs (reclaimed after the grace window).
 
-        SAME-RECORD DEEP-MERGE — records are keyed collections (by id; embedded passkeys
-        by credentialId; invoice versions by seq; gallery faces by photoId+idx). For a
-        record BOTH sides changed since the base, merge it FIELD BY FIELD and union its
-        nested arrays (fields.passkeys[], fields.urls[], invoice versions[]/receipts[],
-        album photoIds[], person faces[]) — do NOT replace the whole record with your
-        copy, which drops the other side's concurrent change to the same record. Scalar
-        arrays (urls, photoIds, tags) merge as a set-union honouring deletions.
+        The three value shapes MUST each merge exactly as below, or two clients diverge:
+
+        (1) KEYED RECORD ARRAYS — key each element by this precedence: `id`, else
+        `credentialId` (embedded passkeys), else `photoId`+`idx` composite (gallery
+        person.faces). `seq` is NOT a key (it is a per-invoice counter, not unique —
+        invoice versions carry their own `id`). Merge: keep the server's list, DROP the
+        records you deleted (in base, absent from ours), UPSERT the records you
+        added/changed. For a record BOTH sides changed since the base, DEEP-MERGE it
+        field by field (recurse into its nested arrays/objects) — do NOT replace the
+        whole record with your copy.
+
+        (2) SCALAR ARRAYS (fields.urls[], album.photoIds[], tags[]) — merge as a
+        SET-UNION: keep server members, drop the ones you deleted (base minus ours), add
+        the ones you introduced (ours minus base). Both writers' additions survive.
+
+        (3) OBJECT MAPS / ID-MAPS (sharing.knownFingerprints, explore.couplings,
+        explore.settings, health.healthProfile) — merge KEY BY KEY: keep the server's
+        value for keys you did not touch, take yours for keys you added or changed,
+        DELETE keys present in base but absent in ours, and recurse with (1)/(3) when
+        both sides changed a key whose value is a keyed array / nested object. Do NOT do
+        whole-map last-writer-wins — that drops the other side's concurrently-added key.
+        (SECURITY: dropping a sharing.knownFingerprints[user] entry silently disables the
+        TOFU key-swap guard for that user — treat this merge as security-critical.)
 
         RECOVERY — if a record is nonetheless lost, GET /{store}/history to pull an
         earlier sealed root and re-merge it (see the history endpoints).
@@ -751,8 +776,17 @@ components:
     ConflictResponse:
       type: object
       description: >
-        409 Conflict — another client wrote the store concurrently. Contains
-        the current server state so the caller can re-read and re-apply its changes.
+        409 Conflict — another client wrote the store concurrently. Carries the current
+        server state (version + sealed_manifest) so the caller can rebase.
+
+        MANDATORY REBASE-MERGE (shared-vault store): two DIFFERENT members may edit the
+        same shared vault manifest {name, items[]} concurrently. On 409 the client MUST
+        decrypt sealed_manifest, replay ONLY its own delta (base→ours) onto it by record
+        id, deep-merging a record both sides changed, and re-seal at the returned
+        version — it must NEVER re-PUT its whole decrypted copy, which silently clobbers
+        the other member's committed items and orphans their sealed blobs. Same merge
+        rules as StoreVersionConflict. There is no shared-vault history recovery net, so
+        a clobber here is unrecoverable.
       required: [version]
       properties:
         version:
@@ -1139,9 +1173,10 @@ components:
         authoritative); online-created invoices additionally seal a generated PDF of the sheet
         (rastered client-side — never server-rendered). Label counts up as
         `<invoice number>-NNN` (e.g. 2026-0007-001, -002).
-      required: [seq, label, reason, at, snapshot]
+      required: [id, seq, label, reason, at, snapshot]
       properties:
-        seq: { type: integer, description: "1-based version index (= InvoiceRecord.versionSeq at creation)." }
+        id: { type: string, format: uuid, description: "Stable random id — the 409 rebase merge key for versions[]. MANDATORY: `seq` is a per-invoice counter (NOT globally unique), so keying the merge on seq would let two devices versioning the same invoice concurrently overwrite each other's committed version + orphan its sealed PDF. Always mint a fresh id per version." }
+        seq: { type: integer, description: "1-based version index (= InvoiceRecord.versionSeq at creation). Display/label only — NOT a merge key." }
         label: { type: string, description: "`<number>-NNN`, e.g. 2026-0007-001." }
         reason: { type: string, description: "Mandatory change reason (auto for lock-point commits: Finalized/Sent/Marked paid)." }
         at: { type: string, format: date-time }
@@ -1355,6 +1390,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
+        photoIds: { type: array, items: { type: string, format: uuid }, description: "Album membership — GalleryPhoto.id list. On a 409 rebase this array merges as a SET-UNION honouring deletions (both devices' concurrent additions survive); do NOT last-writer-wins it." }
         cover: { type: [string, "null"], format: uuid, description: "GalleryPhoto.id used as cover." }
         created: { type: string, format: date-time }
 
@@ -2060,15 +2096,12 @@ paths:
         "403":
           description: Module disabled for this account.
         "409":
-          description: Concurrent write conflict; re-read and retry.
+          description: >
+            Concurrent write conflict. The client MUST rebase-merge its delta onto the
+            winning manifest and retry — never re-PUT its stale copy (see StoreVersionConflict).
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    enum: [version_conflict]
+              schema: { $ref: "#/components/schemas/StoreVersionConflict" }
         "404":
           description: Unknown module key.
         "422":
@@ -2162,15 +2195,12 @@ paths:
         "403":
           description: Module disabled for this account.
         "409":
-          description: Concurrent write conflict; re-read and retry.
+          description: >
+            Concurrent write conflict. The client MUST rebase-merge its delta onto the
+            winning manifest and retry — never re-PUT its stale copy (see StoreVersionConflict).
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    enum: [version_conflict]
+              schema: { $ref: "#/components/schemas/StoreVersionConflict" }
         "422":
           description: >
             Validation error, or `missing_shard` — the root references a blob with no
@@ -3100,15 +3130,12 @@ paths:
         "403":
           description: Module disabled for this account.
         "409":
-          description: Version conflict.
+          description: >
+            Concurrent write conflict. The client MUST rebase-merge its delta onto the
+            winning manifest and retry — never re-PUT its stale copy (see StoreVersionConflict).
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    enum: [version_conflict]
+              schema: { $ref: "#/components/schemas/StoreVersionConflict" }
         "422":
           description: >
             `missing_shard` — the root references a blob with no ledger row (rejected to

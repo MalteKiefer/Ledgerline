@@ -175,13 +175,15 @@ describe('mergeArrayById — generalized keys + scalar set-union (audit v1.535.0
         expect(merged.s[0].fields.passkeys.map((p) => p.credentialId).sort()).toEqual(['c1', 'cA', 'cB']);
     });
 
-    it('unions invoice versions keyed by seq (no id field)', () => {
+    it('unions invoice versions keyed by id (seq is NOT a merge key)', () => {
         const merged = mergeManifest(
-            { inv: [{ id: 'I', versions: [{ seq: 1 }] }] },
-            { inv: [{ id: 'I', versions: [{ seq: 1 }, { seq: 2 }] }] },
-            { inv: [{ id: 'I', versions: [{ seq: 1 }, { seq: 3 }] }] },
+            { inv: [{ id: 'I', versions: [{ id: 'v1', seq: 1 }] }] },
+            { inv: [{ id: 'I', versions: [{ id: 'v1', seq: 1 }, { id: 'vB', seq: 2 }] }] },
+            { inv: [{ id: 'I', versions: [{ id: 'v1', seq: 1 }, { id: 'vA', seq: 2 }] }] },
         );
-        expect(merged.inv[0].versions.map((v) => v.seq).sort()).toEqual([1, 2, 3]);
+        // Both concurrent versions survive even though they share seq=2, because they
+        // key on their distinct ids (the v1.535.0 seq-collision regression fix).
+        expect(merged.inv[0].versions.map((v) => v.id).sort()).toEqual(['v1', 'vA', 'vB']);
     });
 
     it('unions person.faces keyed by (photoId, idx)', () => {
@@ -192,5 +194,25 @@ describe('mergeArrayById — generalized keys + scalar set-union (audit v1.535.0
         );
         const keys = merged.people[0].faces.map((f) => f.photoId + ':' + f.idx).sort();
         expect(keys).toEqual(['p1:0', 'p2:1', 'p3:0']); // manual tag p2 survives
+    });
+});
+
+describe('mergeArrayById — numeric vectors are NOT set-unioned (centroid corruption fix)', () => {
+    it('takes last-writer-wins on a concurrently-recomputed float vector (no 2x garbage)', () => {
+        const merged = mergeManifest(
+            { people: [{ id: 'P', centroid: [0.1, 0.2, 0.3] }] },
+            { people: [{ id: 'P', centroid: [0.4, 0.5, 0.6] }] }, // A recomputed
+            { people: [{ id: 'P', centroid: [0.7, 0.8, 0.9] }] }, // B recomputed (won)
+        );
+        // NOT a 6-element union — a numeric vector keeps one side's length.
+        expect(merged.people[0].centroid.length).toBe(3);
+    });
+    it('still set-unions a string array in the same record', () => {
+        const merged = mergeManifest(
+            { people: [{ id: 'P', tags: ['a'], centroid: [1, 2] }] },
+            { people: [{ id: 'P', tags: ['a', 'b'], centroid: [1, 2] }] },
+            { people: [{ id: 'P', tags: ['a', 'c'], centroid: [1, 2] }] },
+        );
+        expect(merged.people[0].tags.sort()).toEqual(['a', 'b', 'c']);
     });
 });
