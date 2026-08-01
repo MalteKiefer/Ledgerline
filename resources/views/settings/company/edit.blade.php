@@ -155,6 +155,51 @@
             @error('logo')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
         </div>
 
+        {{-- Dedicated invoice mail server (for sending invoices by e-mail) --}}
+        <div class="ll-card">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.invoice_mail_heading') }}</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.invoice_mail_desc') }}</p>
+            <label class="mt-4 inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <input type="hidden" name="invoice_mail_enabled" value="0">
+                <input type="checkbox" name="invoice_mail_enabled" value="1" @checked(old('invoice_mail_enabled', $s->invoice_mail_enabled)) class="rounded border-gray-300 dark:border-gray-700 text-gray-900 focus:ring-accent">
+                {{ __('settings.invoice_mail_enabled') }}
+            </label>
+            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.invoice_smtp_host') }}
+                    <input type="text" name="invoice_smtp_host" value="{{ old('invoice_smtp_host', $s->invoice_smtp_host) }}" placeholder="smtp.example.com" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_smtp_port') }}
+                    <input type="number" name="invoice_smtp_port" value="{{ old('invoice_smtp_port', $s->invoice_smtp_port) }}" placeholder="587" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent tabular-nums">
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_smtp_encryption') }}
+                    <select name="invoice_smtp_encryption" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        @foreach(['tls' => 'STARTTLS (TLS)', 'ssl' => 'SSL', 'none' => __('settings.invoice_smtp_enc_none')] as $val => $label)
+                            <option value="{{ $val }}" @selected(old('invoice_smtp_encryption', $s->invoice_smtp_encryption ?: 'tls') === $val)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_smtp_username') }}
+                    <input type="text" name="invoice_smtp_username" value="{{ old('invoice_smtp_username', $s->invoice_smtp_username) }}" autocomplete="off" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_smtp_password') }}
+                    <input type="password" name="invoice_smtp_password" value="" placeholder="{{ $s->invoice_smtp_password ? '••••••••' : '' }}" autocomplete="new-password" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                    <span class="mt-1 block text-xs text-gray-400">{{ __('settings.invoice_smtp_password_hint') }}</span>
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_from_email') }}
+                    <input type="email" name="invoice_from_email" value="{{ old('invoice_from_email', $s->invoice_from_email) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_from_name') }}
+                    <input type="text" name="invoice_from_name" value="{{ old('invoice_from_name', $s->invoice_from_name) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.invoice_mail_subject') }}
+                    <input type="text" name="invoice_mail_subject" value="{{ old('invoice_mail_subject', $s->invoice_mail_subject) }}" placeholder="{{ __('settings.invoice_mail_subject_ph') }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.invoice_mail_body') }}
+                    <textarea name="invoice_mail_body" rows="4" placeholder="{{ __('settings.invoice_mail_body_ph') }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">{{ old('invoice_mail_body', $s->invoice_mail_body) }}</textarea>
+                </label>
+            </div>
+        </div>
+
         <div class="flex justify-end">
             <x-button variant="primary" type="submit">{{ __('common.save') }}</x-button>
         </div>

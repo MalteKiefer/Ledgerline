@@ -54,6 +54,17 @@ class CompanyController extends Controller
             'invoice_template' => ['nullable', 'string', 'in:editorial,modern,elegant,klassisch'],
             'invoice_payment_methods' => ['nullable', 'string', 'max:500'],
             'invoice_payment_terms_text' => ['nullable', 'string', 'max:1000'],
+            // Dedicated invoice SMTP (for sending invoices by e-mail).
+            'invoice_mail_enabled' => ['nullable', 'boolean'],
+            'invoice_smtp_host' => ['nullable', 'string', 'max:255'],
+            'invoice_smtp_port' => ['nullable', 'integer', 'min:1', 'max:65535'],
+            'invoice_smtp_encryption' => ['nullable', 'string', 'in:tls,ssl,none'],
+            'invoice_smtp_username' => ['nullable', 'string', 'max:255'],
+            'invoice_smtp_password' => ['nullable', 'string', 'max:255'],
+            'invoice_from_email' => ['nullable', 'email', 'max:254'],
+            'invoice_from_name' => ['nullable', 'string', 'max:200'],
+            'invoice_mail_subject' => ['nullable', 'string', 'max:255'],
+            'invoice_mail_body' => ['nullable', 'string', 'max:20000'],
             // Raster only — SVG served inline on the app origin is a stored-XSS
             // vector (embedded <script>). Logos rarely need vector.
             'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,gif,webp', 'max:2048'],
@@ -69,6 +80,9 @@ class CompanyController extends Controller
             'invoice_default_vat_rate', 'invoice_payment_terms_days', 'invoice_footer_text',
             'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
             'invoice_payment_methods', 'invoice_payment_terms_text',
+            'invoice_smtp_host', 'invoice_smtp_port', 'invoice_smtp_encryption',
+            'invoice_smtp_username', 'invoice_from_email', 'invoice_from_name',
+            'invoice_mail_subject', 'invoice_mail_body',
         ];
 
         $data = [];
@@ -76,6 +90,14 @@ class CompanyController extends Controller
             if ($request->has($field)) {
                 $data[$field] = $request->input($field);
             }
+        }
+        if ($request->has('invoice_mail_enabled')) {
+            $data['invoice_mail_enabled'] = $request->boolean('invoice_mail_enabled');
+        }
+        // Keep the stored SMTP password when the field is submitted blank (never
+        // round-trip the secret to the browser).
+        if ($request->filled('invoice_smtp_password')) {
+            $data['invoice_smtp_password'] = $request->string('invoice_smtp_password')->value();
         }
 
         $settings = UserSetting::for($this->requireUser($request)->id);
