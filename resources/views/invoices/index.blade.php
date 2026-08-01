@@ -1242,6 +1242,45 @@
                   </template>
                 </div>
               </div>
+
+              {{-- EÜR (Einnahmen-Überschuss-Rechnung) — cash-basis income/expense --}}
+              <div class="ll-card">
+                <p class="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100" x-text="'{{ __('invoices.euer_heading') }} · ' + euer.year"></p>
+                <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                    <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.euer_income') }}</p>
+                    <p class="mt-0.5 text-sm font-semibold tabular-nums text-green-600 dark:text-green-400" x-text="fmtMoney(euer.incomeNet)"></p>
+                    <p class="text-[11px] text-gray-400 dark:text-gray-500" x-text="fmtMoney(euer.incomeVat) + ' {{ __('invoices.euer_vat_short') }}'"></p>
+                  </div>
+                  <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                    <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.euer_expenses') }}</p>
+                    <p class="mt-0.5 text-sm font-semibold tabular-nums text-red-600 dark:text-red-400" x-text="fmtMoney(euer.expNet)"></p>
+                    <p class="text-[11px] text-gray-400 dark:text-gray-500" x-text="fmtMoney(euer.expVat) + ' {{ __('invoices.euer_vat_short') }}'"></p>
+                  </div>
+                  <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                    <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.euer_surplus') }}</p>
+                    <p class="mt-0.5 text-sm font-semibold tabular-nums" :class="euer.surplus >= 0 ? 'text-gray-900 dark:text-gray-100' : 'text-red-600 dark:text-red-400'" x-text="fmtMoney(euer.surplus)"></p>
+                  </div>
+                  <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                    <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.euer_vat_payable') }}</p>
+                    <p class="mt-0.5 text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(euer.vatPayable)"></p>
+                  </div>
+                </div>
+                <template x-if="euer.byCategory.length">
+                  <div class="mt-4">
+                    <p class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.euer_by_category') }}</p>
+                    <div class="divide-y divide-black/[0.06] dark:divide-white/10">
+                      <template x-for="c in euer.byCategory" :key="c.category">
+                        <div class="flex items-center justify-between gap-3 py-1.5 text-sm">
+                          <span class="min-w-0">@include('invoices._cat_badges', ['list' => '[c.category]'])</span>
+                          <span class="shrink-0 tabular-nums text-gray-700 dark:text-gray-300" x-text="fmtMoney(c.net)"></span>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+                <p class="mt-3 text-[11px] text-gray-400">{{ __('invoices.euer_hint') }}</p>
+              </div>
               </div>{{-- /business revenue --}}
             </div>
           </template>

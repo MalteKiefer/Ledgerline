@@ -90,3 +90,23 @@ describe('finance stats', () => {
         expect(s.expense.map((r) => r.rate)).toEqual(['19', '7']);
     });
 });
+
+import { euerReport } from '../shared/finance-stats';
+describe('euerReport (EÜR)', () => {
+    it('nets paid invoices against receipts + project expenses by category', () => {
+        const inv = [
+            { status: 'paid', paidAt: '2026-03-01', lines: [{ qty: 1, unitPrice: 100, vatRate: 19 }] },
+            { status: 'sent', issueDate: '2026-02-01', lines: [{ qty: 1, unitPrice: 999, vatRate: 19 }] }, // not paid → excluded
+            { status: 'paid', paidAt: '2025-12-01', lines: [{ qty: 1, unitPrice: 50, vatRate: 19 }] }, // other year
+        ];
+        const tx = [{ date: '2026-04-01', receipts: [{ total: 119, vat: 19, categories: ['Software'] }, { total: 50, vat: 0, category: 'Bar', trashed: true }] }];
+        const projects = [{ expenses: [{ amount: 30, date: '2026-05-01', category: 'Bar' }] }];
+        const r = euerReport(inv, tx, projects, 2026);
+        expect(r.incomeNet).toBe(100);
+        expect(r.incomeVat).toBe(19);
+        expect(r.expNet).toBe(130); // 100 (software net) + 30 (bar)
+        expect(r.surplus).toBe(-30);
+        expect(r.vatPayable).toBe(0); // 19 output - 19 input
+        expect(r.byCategory.find((c) => c.category === 'Software').net).toBe(100);
+    });
+});
