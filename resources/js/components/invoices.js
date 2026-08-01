@@ -58,7 +58,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); self._migrateCategoryIds(); self._seedCategoryStyles(); self._migrateReceiptCategories(); ms._afterRebase = () => self._reresolveOpenRefs(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; self.eigenbeleg = null; self._egTx = null; self.showInvTrash = false; self.showReceiptTrash = false; self.catEditing = null; self.customerPicker = false; if (self.previewUrl) { URL.revokeObjectURL(self.previewUrl); self.previewUrl = null; } self.previewOpen = false; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); self._migrateCategoryIds(); self._seedCategoryStyles(); self._migrateReceiptCategories(); ms._afterRebase = () => self._reresolveOpenRefs(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; self.eigenbeleg = null; self._egTx = null; self.showInvTrash = false; self.showReceiptTrash = false; self.catEditing = null; self.customerPicker = false; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -1775,23 +1775,6 @@ export default (config = {}, labels = {}) => ({
             return await this._uploadFile(bytes, `${label}.pdf`, 'application/pdf');
         } catch (e) { this._printing = null; return null; }
     },
-    // ---- Preview (client-side PDF of the current draft, no upload) ----
-    previewOpen: false,
-    previewUrl: null,
-    previewBusy: false,
-    async openPreview() {
-        const inv = this.current;
-        if (! inv) return;
-        this.previewBusy = true;
-        this.previewOpen = true;
-        try {
-            const blob = await this._invoicePdfBlob(inv);
-            if (this.previewUrl) URL.revokeObjectURL(this.previewUrl);
-            this.previewUrl = blob ? URL.createObjectURL(blob) : null;
-        } catch (e) { this._printing = null; }
-        this.previewBusy = false;
-    },
-    closePreview() { this.previewOpen = false; if (this.previewUrl) { URL.revokeObjectURL(this.previewUrl); this.previewUrl = null; } },
     openVersionPdf(v) { return this._openBlob(v?.pdf ? { ...v.pdf, mime: 'application/pdf' } : null); },
 
     addLine() { const rate = parseFloat(this.current._defaultRate) || 0; this.current.lines.push({ desc: '', qty: 1, unit: '', unitPrice: rate, vatRate: this._defaultVat() }); this.saveSoon(); },
