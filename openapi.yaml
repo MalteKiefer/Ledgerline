@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.536.4
+  version: 1.536.5
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -1327,6 +1327,8 @@ components:
         address: { type: string }
         email: { type: string }
         invoiceEmail: { type: string, description: "Billing email — used as the invoice customer's email when this partner is picked for an invoice (prefers over `email`)." }
+        hourlyRate: { type: [number, "null"], description: "Default hourly rate; on picking this partner it seeds new invoice lines and back-fills existing lines whose unit price is still 0." }
+        currency: { type: string, description: "Default currency (ISO 4217); on picking this partner it sets the invoice currency." }
         phone: { type: string }
         vatId: { type: string, description: "VAT identification number (USt-IdNr.)." }
         category: { type: string, description: "Learned default category for this merchant." }
