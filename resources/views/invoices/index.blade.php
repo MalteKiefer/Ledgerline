@@ -2935,9 +2935,12 @@
                 {{-- Payment QR --}}
                 <div x-show="printQr" style="margin-top:20px;"><img :src="printQr" style="width:84px; height:84px;"><div style="font-size:8px; color:#666; margin-top:2px;" x-text="pl('giro_hint')"></div></div>
                </td></tr></tbody>
-               {{-- Footer in <tfoot>: repeats + reserves height on every page (no overlap). --}}
-               <tfoot><tr><td style="padding-top:16px; vertical-align:bottom;">
-                <table style="width:100%; border-top:1px solid #cfcfcf; border-collapse:collapse; font-size:8px; color:#555; line-height:1.5;">
+               {{-- Footer in <tfoot>: repeats + reserves a fixed-height band on every page.
+                    In print the inner .inv-foot is position:fixed → pinned to the bottom of
+                    EVERY page (incl. a short last page); the reserved band prevents overlap.
+                    On screen / raster it flows inside the band at the document end. --}}
+               <tfoot><tr><td style="height:24mm; padding-top:16px; vertical-align:bottom;">
+                <table class="inv-foot" style="width:100%; border-top:1px solid #cfcfcf; border-collapse:collapse; font-size:8px; color:#555; line-height:1.5;">
                   <tr style="vertical-align:top;">
                     <td style="width:34%; padding:8px 8px 0 0;">
                       <div style="font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#374151;" x-text="company.name"></div>
@@ -3212,6 +3215,9 @@
       #invoice-print { position: static !important; left: auto !important; top: auto !important; width: auto !important; }
       /* The @page margins provide the page margins — drop each template's own outer padding. */
       #invoice-print > div { padding: 0 !important; min-height: 0 !important; }
+      /* The <tfoot> cell reserves a 24mm band per page; the footer is pinned to the bottom
+         of every page (incl. a short last page) inside that band, so it never overlaps. */
+      .inv-foot { position: fixed !important; bottom: 8mm; left: 25mm; right: 20mm; width: auto !important; }
       /* Keep accent backgrounds/colours in print — browsers drop them otherwise. */
       #invoice-print, #invoice-print * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     }
