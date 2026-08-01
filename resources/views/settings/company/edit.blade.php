@@ -30,7 +30,28 @@
                 <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_vat_id') }}
                     <input type="text" name="company_vat_id" value="{{ old('company_vat_id', $s->company_vat_id) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                 </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.company_website') }}
+                    <input type="url" name="company_website" value="{{ old('company_website', $s->company_website) }}" placeholder="https://…" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                </label>
             </div>
+        </div>
+
+        {{-- Contact persons (invoice footer) --}}
+        <div class="ll-card" x-data="{ rows: {{ Illuminate\Support\Js::from(old('company_contacts', $s->company_contacts ?: [])) }} }">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_contacts_heading') }}</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.company_contacts_hint') }}</p>
+            <div class="mt-4 space-y-3">
+                <template x-for="(row, i) in rows" :key="i">
+                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-12 items-start">
+                        <input type="text" :name="`company_contacts[${i}][name]`" x-model="row.name" placeholder="{{ __('settings.company_contact_name') }}" class="sm:col-span-3 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <input type="text" :name="`company_contacts[${i}][role]`" x-model="row.role" placeholder="{{ __('settings.company_contact_role') }}" class="sm:col-span-3 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <input type="text" :name="`company_contacts[${i}][email]`" x-model="row.email" placeholder="{{ __('settings.company_contact_email') }}" class="sm:col-span-3 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <input type="text" :name="`company_contacts[${i}][phone]`" x-model="row.phone" placeholder="{{ __('settings.company_contact_phone') }}" class="sm:col-span-2 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <button type="button" @click="rows.splice(i, 1)" class="sm:col-span-1 flex h-9 items-center justify-center rounded-md text-gray-400 hover:bg-red-500/10 hover:text-red-500" aria-label="{{ __('common.delete') }}"><x-icon name="trash" class="h-4 w-4" /></button>
+                    </div>
+                </template>
+            </div>
+            <button type="button" @click="rows.push({ name: '', role: '', email: '', phone: '' })" class="mt-3 inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline"><x-icon name="plus" class="h-4 w-4" /> {{ __('settings.company_contact_add') }}</button>
         </div>
 
         {{-- Bank --}}
@@ -90,6 +111,16 @@
                     </label>
                     <span class="mt-1 block text-xs text-gray-400 dark:text-gray-500">{{ __('settings.invoice_small_business_hint') }}</span>
                 </div>
+                <div class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">
+                    <span class="block font-medium">{{ __('settings.invoice_vat_scheme') }}</span>
+                    <input type="hidden" name="invoice_vat_ist_present" value="1">
+                    <input type="hidden" name="invoice_vat_ist" value="0">
+                    <label class="mt-1 flex items-start gap-2">
+                        <input type="checkbox" name="invoice_vat_ist" value="1" @checked(old('invoice_vat_ist', $s->invoice_vat_ist)) class="mt-0.5 rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
+                        <span>{{ __('settings.invoice_vat_ist') }}</span>
+                    </label>
+                    <span class="mt-1 block text-xs text-gray-400 dark:text-gray-500">{{ __('settings.invoice_vat_ist_hint') }}</span>
+                </div>
                 <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_payment_terms_days') }}
                     <input type="number" name="invoice_payment_terms_days" value="{{ old('invoice_payment_terms_days', $s->invoice_payment_terms_days ?: 14) }}" min="0" max="365" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     @error('invoice_payment_terms_days')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
@@ -127,6 +158,15 @@
                     @endforeach
                 </div>
                 @error('invoice_template')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
+                <label class="mt-4 block text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_font') }}
+                    <select name="invoice_font" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <option value="">{{ __('settings.invoice_font_default') }}</option>
+                        @foreach (config('fonts.families') as $css => $label)
+                            <option value="{{ $css }}" style="font-family:{{ $css }}" @selected(old('invoice_font', $s->invoice_font) === $css)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    <span class="mt-1 block text-xs text-gray-400">{{ __('settings.invoice_font_hint') }}</span>
+                </label>
             </div>
             <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_accent_color') }}

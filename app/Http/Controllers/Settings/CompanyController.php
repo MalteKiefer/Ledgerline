@@ -12,6 +12,7 @@ use App\Support\KeepBlankSecrets;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -49,11 +50,19 @@ class CompanyController extends Controller
             'invoice_next_number' => ['nullable', 'integer', 'min:1', 'max:100000000'],
             'invoice_default_vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'small_business' => ['nullable', 'boolean'],
+            'invoice_vat_ist' => ['nullable', 'boolean'],
+            'company_website' => ['nullable', 'string', 'max:255'],
+            'company_contacts' => ['nullable', 'array', 'max:20'],
+            'company_contacts.*.name' => ['nullable', 'string', 'max:200'],
+            'company_contacts.*.role' => ['nullable', 'string', 'max:200'],
+            'company_contacts.*.email' => ['nullable', 'string', 'max:200'],
+            'company_contacts.*.phone' => ['nullable', 'string', 'max:100'],
             'invoice_payment_terms_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'invoice_footer_text' => ['nullable', 'string', 'max:2000'],
             'invoice_accent_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'invoice_heading_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'invoice_template' => ['nullable', 'string', 'in:editorial,modern,elegant,klassisch'],
+            'invoice_font' => ['nullable', 'string', 'max:80', Rule::in(array_merge([''], array_keys((array) config('fonts.families'))))],
             'invoice_payment_methods' => ['nullable', 'string', 'max:500'],
             'invoice_payment_terms_text' => ['nullable', 'string', 'max:1000'],
             // Per-user company SMTP (invoice sending), separate from the workspace
@@ -77,9 +86,9 @@ class CompanyController extends Controller
         $fields = [
             'company_name', 'company_address', 'company_email', 'company_phone',
             'company_tax_id', 'company_vat_id', 'company_iban', 'company_bic',
-            'company_bank_name', 'invoice_number_format', 'invoice_next_number',
+            'company_bank_name', 'company_website', 'invoice_number_format', 'invoice_next_number',
             'invoice_default_vat_rate', 'invoice_payment_terms_days', 'invoice_footer_text',
-            'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
+            'invoice_accent_color', 'invoice_heading_color', 'invoice_template', 'invoice_font',
             'invoice_payment_methods', 'invoice_payment_terms_text',
             'company_smtp_enabled', 'company_smtp_host', 'company_smtp_port',
             'company_smtp_encryption', 'company_smtp_username', 'company_smtp_password',
@@ -101,6 +110,29 @@ class CompanyController extends Controller
         // §19 toggle is always rendered on the form → resolve it from the checkbox
         // (unchecked = off), never left stale.
         $data['small_business'] = $request->boolean('small_business');
+        if ($request->has('invoice_vat_ist_present')) {
+            $data['invoice_vat_ist'] = $request->boolean('invoice_vat_ist');
+        }
+        if ($request->has('company_contacts')) {
+            $rows = $request->input('company_contacts');
+            $str = static fn (mixed $v): string => is_scalar($v) ? trim((string) $v) : '';
+            $clean = [];
+            foreach (is_array($rows) ? $rows : [] as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $c = [
+                    'name' => $str($row['name'] ?? null),
+                    'role' => $str($row['role'] ?? null),
+                    'email' => $str($row['email'] ?? null),
+                    'phone' => $str($row['phone'] ?? null),
+                ];
+                if ($c['name'] !== '' || $c['email'] !== '' || $c['phone'] !== '') {
+                    $clean[] = $c;
+                }
+            }
+            $data['company_contacts'] = $clean;
+        }
 
         $settings = UserSetting::for($this->requireUser($request)->id);
 

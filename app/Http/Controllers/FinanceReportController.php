@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\BankTransaction;
+use App\Models\UserSetting;
 use App\Services\Finance\CategorySuggester;
 use App\Services\Finance\FinanceDuplicates;
 use App\Services\Finance\FinanceReports;
@@ -58,11 +59,13 @@ class FinanceReportController extends Controller
     /** Unified USt-Voranmeldung (output − input VAT = Zahllast) for a year/quarter. */
     public function vatAdvance(Request $request, FinanceReports $reports): JsonResponse
     {
-        $this->requireUser($request);
+        $uid = (int) $this->requireUser($request)->id;
         $year = $request->integer('year') ?: (int) date('Y');
         $quarter = $request->integer('quarter') ?: null;
+        // VAT scheme from the company profile: Ist (cash-basis, default) vs Soll (accrual).
+        $ist = (bool) UserSetting::for($uid)->invoice_vat_ist;
 
-        return response()->json($reports->vatAdvanceReturn($year, $quarter));
+        return response()->json($reports->vatAdvanceReturn($year, $quarter, $ist));
     }
 
     /** Simplified EÜR (income − expenses = profit) for a year. */

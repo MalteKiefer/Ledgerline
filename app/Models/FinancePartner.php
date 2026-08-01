@@ -29,6 +29,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $invoice_email
  * @property string|null $phone
  * @property string|null $vat_id
+ * @property string|null $hourly_rate
+ * @property string|null $currency
  * @property array<int, array<string, mixed>>|null $contacts
  * @property int $version
  * @property Carbon|null $created_at
@@ -43,11 +45,13 @@ class FinancePartner extends Model
     protected $fillable = [
         'name', 'category', 'kind', 'url', 'logo', 'note',
         'address', 'email', 'invoice_email', 'phone', 'vat_id', 'contacts',
+        'hourly_rate', 'currency',
     ];
 
     protected $casts = [
         'contacts' => 'array',
         'version' => 'integer',
+        'hourly_rate' => 'decimal:2',
     ];
 
     /**

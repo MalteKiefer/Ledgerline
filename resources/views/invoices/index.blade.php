@@ -24,6 +24,8 @@
             'iban' => $s->company_iban,
             'bic' => $s->company_bic,
             'bank_name' => $s->company_bank_name,
+            'website' => $s->company_website,
+            'contacts' => $s->company_contacts ?: [],
             'logo' => $companyLogo,
             'number_format' => $s->invoice_number_format ?: 'YYYY-NNNN',
             'next_number' => $s->invoice_next_number,
@@ -35,6 +37,7 @@
             'accent' => $s->invoice_accent_color ?: '#111827',
             'heading' => $s->invoice_heading_color ?: '#6b7280',
             'template' => $s->invoice_template ?: 'editorial',
+            'font' => $s->invoice_font ?: '',
             'currency' => 'EUR',
         ]),
         smallBusiness: @js((bool) $s->small_business),
@@ -44,6 +47,7 @@
      }, {
         deleteConfirm: @js(__('invoices.delete_confirm')),
         statusDraft: @js(__('invoices.status_draft')),
+        statusFinal: @js(__('invoices.status_final')),
         statusSent: @js(__('invoices.status_sent')),
         statusPaid: @js(__('invoices.status_paid')),
         csvImported: @js(__('invoices.csv_imported')),
@@ -1124,6 +1128,21 @@
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_vat') }}</label>
                       <input type="text" x-model="partnerEditing.vatId" placeholder="DE…" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_hourly_rate') }}</label>
+                        <input type="number" step="0.01" min="0" x-model.number="partnerEditing.hourlyRate" placeholder="0.00" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums">
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_currency') }}</label>
+                        <select x-model="partnerEditing.currency" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                          <option value="">{{ __('invoices.partner_currency_default') }}</option>
+                          @foreach(['EUR','USD','GBP','CHF','JPY'] as $cur)
+                            <option value="{{ $cur }}" :selected="partnerEditing.currency === '{{ $cur }}'">{{ $cur }}</option>
+                          @endforeach
+                        </select>
+                      </div>
                     </div>
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_address') }}</label>
@@ -2317,6 +2336,7 @@
             <select x-model="filterStatus" @change="invPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
               <option value="">{{ __('invoices.filter_all') }}</option>
               <option value="draft">{{ __('invoices.status_draft') }}</option>
+              <option value="final">{{ __('invoices.status_final') }}</option>
               <option value="sent">{{ __('invoices.status_sent') }}</option>
               <option value="paid">{{ __('invoices.status_paid') }}</option>
             </select>
@@ -2405,7 +2425,7 @@
                     <td class="px-4 py-2.5">
                       <div class="flex flex-wrap items-center gap-1.5">
                         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                          :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
+                          :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-amber-500/15 text-amber-600 dark:text-amber-400': inv.status === 'final', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
                           x-text="statusLabel(inv.status)"></span>
                         <template x-if="isOverdue(inv)"><x-badge variant="error"><span x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(inv))"></span></x-badge></template>
                         <template x-if="isCreditNote(inv)"><x-badge variant="warning">{{ __('invoices.credit_note_badge') }}</x-badge></template>
@@ -2508,7 +2528,7 @@
               <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
               <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
               <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
+                :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-amber-500/15 text-amber-600 dark:text-amber-400': current?.status === 'final', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
                 x-text="statusLabel(current?.status)"></span>
               <template x-if="isOverdue(current)"><x-badge variant="error"><span x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(current))"></span></x-badge></template>
               <template x-if="isCreditNote(current)"><x-badge variant="warning">{{ __('invoices.credit_note_badge') }}</x-badge></template>
@@ -2607,6 +2627,14 @@
                 <div class="flex justify-between border-t border-gray-200 dark:border-gray-800 pt-1.5 font-semibold"><dt class="text-gray-900 dark:text-gray-100">{{ __('invoices.gross') }}</dt><dd class="tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(totals.gross)"></dd></div>
               </dl>
               <p x-show="smallBusiness" class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ __('invoices.vat_kleinunternehmer_note') }}</p>
+              {{-- Payment QR preview (GiroCode) — only for EUR invoices with a company IBAN --}}
+              <div x-show="invoiceQr" class="mt-4 flex items-center gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 p-3">
+                <img :src="invoiceQr" class="h-20 w-20 rounded bg-white p-1">
+                <div class="text-xs text-gray-500 dark:text-gray-400">
+                  <p class="font-medium text-gray-700 dark:text-gray-300">{{ __('invoices.giro_title') }}</p>
+                  <p>{{ __('invoices.giro_hint') }}</p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -2732,8 +2760,12 @@
                 <x-empty-state class="py-6">{{ __('invoices.picker_empty') }}</x-empty-state>
               </template>
               <template x-for="c in custSuggestions()" :key="c.id">
-                <button type="button" @click="pickCustomer(c)" class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-accent/5">
-                  <span class="text-sm font-medium text-accent" x-text="_custName(c) || (c.org || '—')"></span>
+                <button type="button" @click="pickCustomer(c)" class="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left hover:bg-accent/5">
+                  <span class="min-w-0">
+                    <span class="block text-sm font-medium text-accent" x-text="_custName(c) || '—'"></span>
+                    <span class="block truncate text-xs text-gray-400 dark:text-gray-500" x-text="[c.invoiceEmail || c.email, c.category].filter(Boolean).join(' · ')"></span>
+                  </span>
+                  <span class="shrink-0 text-xs text-gray-400 tabular-nums" x-show="c.hourlyRate" x-text="fmtMoney(c.hourlyRate, c.currency || (company.currency||'EUR')) + '/h'"></span>
                 </button>
               </template>
             </div>
@@ -2743,7 +2775,7 @@
         {{-- ===================== PRINT / PDF SHEET ===================== --}}
         {{-- Teleported to <body> so print CSS can hide the app and leave only this. --}}
         <template x-teleport="body">
-          <div id="invoice-print" style="background:#fff; color:#1f2937;">
+          <div id="invoice-print" style="background:#fff; color:#1f2937;" :class="company.font ? 'has-inv-font' : ''" :style="company.font ? ('--inv-font:' + company.font) : ''">
             {{-- ---------- MODERN (accent band + cards) ---------- --}}
             <template x-if="_printing && tpl === 'modern'">
               <div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:10.5px; line-height:1.5; color:#1f2937;">
@@ -2813,6 +2845,7 @@
                     <div x-show="company.payment_methods"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + company.heading" x-text="pl('payment_methods_heading')"></div><div style="white-space:pre-line;" x-text="company.payment_methods"></div></div>
                     <div x-show="company.bank_name || company.iban"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + company.heading" x-text="pl('bank_details')"></div><div x-text="[company.bank_name, company.iban ? 'IBAN ' + company.iban : '', company.bic ? 'BIC ' + company.bic : ''].filter(Boolean).join(' · ')"></div></div>
                   </div>
+                  <div x-show="printQr" style="margin-top:10px; text-align:center;"><img :src="printQr" style="width:80px; height:80px;"><div style="font-size:8px; color:#8a8a8a; margin-top:2px;" x-text="pl('giro_hint')"></div></div>
                   <div style="margin-top:12px; text-align:center; font-size:9px; color:#6b7280; white-space:pre-line;" x-show="_printing.footer || company.footer_text" x-text="_printing.footer || company.footer_text"></div>
                 </div>
               </div>
@@ -2869,6 +2902,7 @@
                   </table>
                 </div>
                 <div style="margin-top:34px; text-align:center; font-style:italic; color:#555; white-space:pre-line;" x-show="_printing.note || _printing.footer || company.footer_text" x-text="_printing.note || _printing.footer || company.footer_text"></div>
+                <div x-show="printQr" style="margin-top:16px; text-align:center;"><img :src="printQr" style="width:82px; height:82px;"><div style="font-size:8px; color:#8a8a8a; margin-top:2px;" x-text="pl('giro_hint')"></div></div>
                 <div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; margin-top:20px; padding-top:10px; border-top:1px solid #ededed; text-align:center; font-size:8.5px; color:#8a8a8a; letter-spacing:.02em;" x-text="[company.payment_terms_text, company.payment_methods, company.bank_name, company.iban ? 'IBAN ' + company.iban : '', company.bic ? 'BIC ' + company.bic : ''].filter(Boolean).join(' · ')"></div>
               </div>
             </template>
@@ -2944,6 +2978,7 @@
                       <div x-show="skontoDate(_printing)" class="ie-pc-val" style="font-weight:600;" x-text="pl('skonto_note').replace(':percent', _printing.skontoPercent).replace(':date', skontoDate(_printing))"></div>
                       <div x-show="company.payment_methods"><div class="ie-pc-lbl" x-text="pl('payment_methods_heading')"></div><div class="ie-pc-val" x-text="company.payment_methods"></div></div>
                       <div x-show="company.bank_name || company.iban"><div class="ie-pc-lbl" x-text="pl('bank_details')"></div><div class="ie-pc-val"><span x-text="company.bank_name"></span><template x-if="company.iban"><span><br x-show="company.bank_name">IBAN: <span x-text="company.iban"></span></span></template><template x-if="company.bic"><span><br>BIC: <span x-text="company.bic"></span></span></template></div></div>
+                      <div x-show="printQr"><img :src="printQr" style="width:78px; height:78px;"><div class="ie-pc-lbl" style="margin-top:2px;" x-text="pl('giro_hint')"></div></div>
                     </div>
                   </div>
                 </div>
@@ -3270,6 +3305,7 @@
        body child and print only it — no phantom trailing blank page. --}}
   <style>
     #invoice-print { display: none; }
+    #invoice-print.has-inv-font, #invoice-print.has-inv-font * { font-family: var(--inv-font) !important; }
     @media print {
       @page { size: A4; margin: 0; }
       html, body { height: auto !important; background: #fff !important; }

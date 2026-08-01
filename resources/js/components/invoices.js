@@ -7,9 +7,10 @@
 // WARNINGS and money math stay client-side; the server owns GoBD numbering.
 import { nextSeqForYear, duplicateNumbers as dupNumbers, missingNumbers as gapNumbers, invoicesInYear, invoiceYear } from '../shared/invoice-numbering';
 import { parseInvoiceFilename, parseInvoiceText, buildImportDraft } from '../shared/invoice-pdf-import';
-import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
+import { contactDisplayName } from '../shared/contact-utils';
 import { getJson, apiRequest, jsonHeaders, csrfToken } from '../shared/api';
 import { parseTags, addTags, removeTagFrom, popTag } from '../shared/tag-chips';
+import { buildEpcPayload } from '../shared/epc-qr';
 import { saveBlobAs, formatDate } from '../shared/dom';
 import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
 import { fileSig } from '../shared/file-sig';
@@ -89,6 +90,8 @@ const normPartner = (row) => ({
     invoiceEmail: row.invoice_email ?? '',
     phone: row.phone ?? '',
     vatId: row.vat_id ?? '',
+    hourlyRate: row.hourly_rate ?? null,
+    currency: row.currency ?? '',
     contacts: Array.isArray(row.contacts) ? row.contacts : [],
     version: row.version ?? 0,
     trashed: row.deleted_at ? true : false,
@@ -248,7 +251,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
         catch (e) { /* leave null */ }
     },
     // Overdue = an issued (sent) invoice past its due date. Derived, no column.
-    isOverdue(inv) { const i = inv || this.current; return !! i && i.status === 'sent' && !! i.dueDate && i.dueDate < this._today(); },
+    isOverdue(inv) { const i = inv || this.current; return !! i && (i.status === 'sent' || i.status === 'final') && !! i.dueDate && i.dueDate < this._today(); },
     daysOverdue(inv) {
         const i = inv || this.current;
         if (! this.isOverdue(i)) return 0;
@@ -406,6 +409,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
             name: p.name || '', category: p.category || null, kind: p.kind || null,
             url: p.url || null, logo: p.logo || null, note: p.note || null,
             address: p.address || null, email: p.email || null, invoice_email: p.invoiceEmail || null, phone: p.phone || null,
+            hourly_rate: (p.hourlyRate === '' || p.hourlyRate == null) ? null : p.hourlyRate, currency: p.currency || null,
             vat_id: p.vatId || null, contacts: Array.isArray(p.contacts) ? p.contacts : [],
         };
     },
@@ -462,7 +466,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
             const g = this.computeTotals(inv).gross || 0;
             const y = parseInt((inv.issueDate || '').slice(0, 4), 10);
             if (inv.status === 'paid') { paidAll += g; if (y === year) paidYear += g; }
-            if (y === year) { countYear++; if (inv.status === 'sent') outstandingYear += g; }
+            if (y === year) { countYear++; if (inv.status === 'sent' || inv.status === 'final') outstandingYear += g; }
         }
         return { year, paidYear, outstandingYear, countYear, paidAll };
     },
@@ -952,7 +956,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
 
     // ---- Business partners (Geschäftspartner) ----
     partnerEditing: null,
-    newPartner() { this.partnerEditing = { name: '', url: '', address: '', email: '', invoiceEmail: '', phone: '', vatId: '', category: '', note: '', contacts: [] }; },
+    newPartner() { this.partnerEditing = { name: '', url: '', address: '', email: '', invoiceEmail: '', phone: '', vatId: '', category: '', note: '', hourlyRate: null, currency: '', contacts: [] }; },
     _newContact() { return { id: this._newId(), name: '', email: '', phone: '', role: '' }; },
     addPartnerContact(p) { if (! p) return; (p.contacts ||= []).push(this._newContact()); },
     removePartnerContact(p, i) { if (p && Array.isArray(p.contacts)) p.contacts.splice(i, 1); },
@@ -1789,6 +1793,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
         this._lockBaseline = this.isLocked(inv) ? JSON.stringify(this._editable(inv)) : null;
         if (inv.imported) { this.view = 'imported'; this._loadInvoicePdf(inv); }
         else this.view = 'edit';
+        this._epcQr(inv).then((d) => { this.invoiceQr = d; });
     },
 
     // ---- Imported invoice: inline PDF + the six key fields ----
@@ -1904,6 +1909,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
     async _renderAndUploadInvoicePdf(inv, label, versionSeq = null) {
         try {
             const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
+            this.printQr = await this._epcQr(inv);
             this._printing = inv;
             await this.$nextTick();
             await new Promise((r) => setTimeout(r, 80));
@@ -1956,7 +1962,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
         this.openOriginalPdf(inv);
     },
 
-    addLine() { this.current.lines.push({ desc: '', qty: 1, unit: '', unitPrice: 0, vatRate: this._defaultVat() }); this.saveSoon(); },
+    addLine() { const rate = parseFloat(this.current?._defaultRate) || 0; this.current.lines.push({ desc: '', qty: 1, unit: '', unitPrice: rate, vatRate: this._defaultVat() }); this.saveSoon(); },
     removeLine(i) { this.current.lines.splice(i, 1); if (! this.current.lines.length) this.addLine(); else this.saveSoon(); },
 
     // ---- Clockify CSV import → prefill line items ----
@@ -2241,40 +2247,39 @@ export default (config = {}, labels = {}, initial = {}) => ({
     // ---- Customer picker (reads zero-knowledge contacts, if still available) ----
     customerPicker: false,
     custQuery: '',
-    _custContacts: [],
     async openCustomerPicker() {
         this.customerPicker = true;
         this.custQuery = '';
-        try { this._custContacts = []; }
-        catch (e) { /* leave empty */ }
     },
     closeCustomerPicker() { this.customerPicker = false; },
-    _custName(c) { return contactDisplayName(c) || ''; },
+    _custName(c) { return (c && c.name) || contactDisplayName(c) || ''; },
+    // The invoice customer is picked from the business partners (contacts were dropped in the
+    // finance-only app). Picking a partner also applies its default hourly rate + currency.
     custSuggestions() {
         const q = this.custQuery.trim().toLowerCase();
-        let list = this._custContacts;
-        if (q) list = list.filter((c) => this._custName(c).toLowerCase().includes(q) || (c.org || '').toLowerCase().includes(q));
-        return [...list].sort((a, b) => this._custName(a).localeCompare(this._custName(b)));
+        let list = (this.partners || []).filter((p) => ! p.trashed);
+        if (q) list = list.filter((p) => (p.name || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q) || (p.invoiceEmail || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q));
+        return [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     },
-    _custAddress(c) {
-        const a = (c.addresses || [])[0];
-        if (! a) return '';
-        return [a.street, [a.zip, a.city].filter(Boolean).join(' '), a.region, a.country].filter(Boolean).join('\n');
-    },
-    pickCustomer(c) {
-        const parts = contactNameParts(c);
-        const person = [parts.first, parts.last].filter(Boolean).join(' ') || this._custName(c);
-        const org = (c.org || '').trim();
+    _custAddress(p) { return (p && p.address) || ''; },
+    pickCustomer(p) {
+        const attn = (Array.isArray(p.contacts) && p.contacts[0] && p.contacts[0].name) || '';
         this.current.customer = {
-            name: org || person,
-            attn: org ? person : '',
-            address: this._custAddress(c),
-            email: (c.emails || [])[0]?.value || '',
-            invoiceEmail: '',
-            vatId: c.vatId || '',
-            contactId: c.id,
-            partnerId: null,
+            name: p.name || '',
+            attn,
+            address: p.address || '',
+            email: p.invoiceEmail || p.email || '',
+            invoiceEmail: p.invoiceEmail || '',
+            vatId: p.vatId || '',
+            contactId: null,
+            partnerId: p.id,
         };
+        const rate = parseFloat(p.hourlyRate);
+        if (! Number.isNaN(rate) && rate > 0) {
+            this.current._defaultRate = rate;
+            for (const l of (this.current.lines || [])) { if (! (parseFloat(l.unitPrice) > 0)) l.unitPrice = rate; }
+        }
+        if (p.currency) this.current.currency = p.currency;
         this.customerPicker = false;
         this.saveSoon();
     },
@@ -2444,7 +2449,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
         i.totals = this.computeTotals(i);
         await this._lockCommit(i, labels.version_finalized || 'Finalized');
     },
-    async markPaid(inv) { inv.status = 'paid'; await this._lockCommit(inv, labels.version_paid || 'Marked paid'); },
+    async markPaid(inv) { inv.status = 'paid'; if (! inv.paidAt) inv.paidAt = this._today(); await this._lockCommit(inv, labels.version_paid || 'Marked paid'); },
     async markSent(inv) {
         let i = inv;
         if (! i.number) {
@@ -2465,13 +2470,32 @@ export default (config = {}, labels = {}, initial = {}) => ({
         this.pdfBusy = false;
         if (this.current && this.current.id === inv.id) { this.dirty = false; this._lockBaseline = JSON.stringify(this._editable(inv)); }
     },
-    statusLabel(s) { return ({ draft: labels.statusDraft, sent: labels.statusSent, paid: labels.statusPaid })[s] || s; },
+    statusLabel(s) { return ({ draft: labels.statusDraft, final: labels.statusFinal, sent: labels.statusSent, paid: labels.statusPaid })[s] || s; },
 
     // ---- Print / PDF (client-side) ----
-    printInvoice(inv) {
+    async printInvoice(inv) {
         const i = inv || this.current;
         if (i?.imported && i?.pdfPath) { this.openOriginalPdf(i); return; }
+        this.printQr = await this._epcQr(i);
         this._printing = i;
         this.$nextTick(() => { window.print(); });
+    },
+
+    // ---- Payment QR (EPC069-12 / GiroCode): SEPA credit transfer to the company IBAN,
+    // amount = gross, remittance = invoice number. EUR/SEPA only (canEpcQr gates). Client-side.
+    printQr: '',   // QR for the sheet currently being rendered (#invoice-print)
+    invoiceQr: '', // QR for the editor preview
+    async _epcQr(inv) {
+        if (! inv) return '';
+        const payload = buildEpcPayload({
+            name: this.company.name || '',
+            iban: this.company.iban || '',
+            bic: this.company.bic || '',
+            amount: this.computeTotals(inv).gross,
+            currency: inv.currency || 'EUR',
+            reference: inv.number ? (inv.lang === 'en' ? 'Invoice ' : 'Rechnung ') + inv.number : '',
+        });
+        if (! payload) return '';
+        try { const mod = await import('qrcode'); const QR = mod.default ?? mod; return await QR.toDataURL(payload, { margin: 0, width: 260 }); } catch (e) { return ''; }
     },
 });
