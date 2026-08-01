@@ -119,6 +119,15 @@
                     <input type="number" step="0.01" name="invoice_default_vat_rate" value="{{ old('invoice_default_vat_rate', $s->invoice_default_vat_rate ?: '19.00') }}" min="0" max="100" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     @error('invoice_default_vat_rate')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
                 </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.invoice_vat_scheme') }}
+                    <input type="hidden" name="invoice_vat_ist_present" value="1">
+                    <input type="hidden" name="invoice_vat_ist" value="0">
+                    <span class="mt-1 flex items-center gap-2">
+                        <input type="checkbox" name="invoice_vat_ist" value="1" @checked(old('invoice_vat_ist', $s->invoice_vat_ist)) class="rounded border-gray-300 dark:border-gray-700 text-gray-900 focus:ring-accent">
+                        <span class="text-sm">{{ __('settings.invoice_vat_ist') }}</span>
+                    </span>
+                    <span class="mt-1 block text-xs text-gray-400 dark:text-gray-500">{{ __('settings.invoice_vat_ist_hint') }}</span>
+                </label>
                 <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_payment_terms_days') }}
                     <input type="number" name="invoice_payment_terms_days" value="{{ old('invoice_payment_terms_days', $s->invoice_payment_terms_days ?: 14) }}" min="0" max="365" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     @error('invoice_payment_terms_days')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror

@@ -62,6 +62,7 @@ class CompanyController extends Controller
             'invoice_font' => ['nullable', 'string', 'max:80'],
             'invoice_payment_methods' => ['nullable', 'string', 'max:500'],
             'invoice_payment_terms_text' => ['nullable', 'string', 'max:1000'],
+            'invoice_vat_ist' => ['nullable', 'boolean'],
             // Dedicated invoice SMTP (for sending invoices by e-mail).
             'invoice_mail_enabled' => ['nullable', 'boolean'],
             'invoice_smtp_host' => ['nullable', 'string', 'max:255'],
@@ -102,6 +103,10 @@ class CompanyController extends Controller
         }
         if ($request->has('invoice_mail_enabled')) {
             $data['invoice_mail_enabled'] = $request->boolean('invoice_mail_enabled');
+        }
+        // VAT scheme: on = Ist-Versteuerung (cash-basis, VAT on payment); off = Soll (accrual).
+        if ($request->has('invoice_vat_ist_present')) {
+            $data['invoice_vat_ist'] = $request->boolean('invoice_vat_ist');
         }
         // Keep the stored SMTP password when the field is submitted blank (never
         // round-trip the secret to the browser).

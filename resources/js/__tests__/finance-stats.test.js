@@ -28,8 +28,8 @@ describe('finance stats', () => {
     it('realized = issued and not trashed', () => {
         expect(realizedInvoices(data).map((i) => i.number)).toEqual(['2026-001', '2026-002', '2026-003', '2025-009']);
     });
-    it('VAT advance return: net/VAT by rate and by quarter', () => {
-        const r = vatReturn(data, 2026);
+    it('VAT advance return (Soll, accrual): counts every issued invoice by issue date', () => {
+        const r = vatReturn(data, 2026, 'soll');
         expect(r.net).toBe(1557.5);   // 157.5 + 900 + 500
         expect(r.vat).toBe(235.93);   // 29.93 + 171 + 35
         expect(r.count).toBe(3);
@@ -41,6 +41,25 @@ describe('finance stats', () => {
         expect(q3.net).toBe(500);
         expect(r.byRate.map((b) => b.rate)).toEqual([7, 19]);
         expect(r.byRate.find((b) => b.rate === 7).vat).toBe(35);
+    });
+    it('VAT advance return (Ist, cash-basis, default): only PAID invoices, booked to payment date', () => {
+        // 2026-002 is "sent" (unpaid) → excluded under Ist. 2026-001 + 2026-003 are paid.
+        const r = vatReturn(data, 2026); // default 'ist'
+        expect(r.count).toBe(2);
+        expect(r.net).toBe(657.5);  // 157.5 + 500
+        expect(r.vat).toBe(64.93);  // 29.93 + 35
+    });
+    it('Ist books to payment date, not issue date', () => {
+        const d = [
+            inv({ number: 'A', issueDate: '2026-02-01', paidAt: '2026-05-15', lines: [line(1, 100)] }), // issued Q1, paid Q2
+        ];
+        const r = vatReturn(d, 2026); // ist
+        expect(r.quarters.find((q) => q.q === 1).net).toBe(0);
+        expect(r.quarters.find((q) => q.q === 2).net).toBe(100);
+    });
+    it('realized includes final (issued but not yet sent)', () => {
+        const d = [inv({ number: 'F', status: 'final', issueDate: '2026-01-01', lines: [line(1, 10)] })];
+        expect(realizedInvoices(d).map((i) => i.number)).toEqual(['F']);
     });
     it('revenue by customer, highest first', () => {
         const c = revenueByCustomer(data, 2026);

@@ -28,7 +28,7 @@ class CompanyController extends Controller
         'company_bank_name', 'invoice_number_format', 'invoice_next_number',
         'invoice_default_vat_rate', 'invoice_payment_terms_days', 'invoice_footer_text',
         'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
-        'invoice_payment_methods', 'invoice_payment_terms_text',
+        'invoice_payment_methods', 'invoice_payment_terms_text', 'invoice_vat_ist',
     ];
 
     /** Return the caller's company profile. */
@@ -60,6 +60,7 @@ class CompanyController extends Controller
             'invoice_template' => ['nullable', 'string', 'in:editorial,modern,elegant,klassisch'],
             'invoice_payment_methods' => ['nullable', 'string', 'max:500'],
             'invoice_payment_terms_text' => ['nullable', 'string', 'max:1000'],
+            'invoice_vat_ist' => ['nullable', 'boolean'],
             // Raster only — inline SVG on the app origin is a stored-XSS vector.
             'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,gif,webp', 'max:2048'],
             'remove_logo' => ['nullable', 'boolean'],
@@ -70,6 +71,9 @@ class CompanyController extends Controller
             if ($request->has($field)) {
                 $data[$field] = $request->input($field);
             }
+        }
+        if ($request->has('invoice_vat_ist')) {
+            $data['invoice_vat_ist'] = $request->boolean('invoice_vat_ist');
         }
 
         $settings = UserSetting::for($this->requireUser($request)->id);
@@ -134,6 +138,7 @@ class CompanyController extends Controller
             'invoice_template' => $s->invoice_template,
             'invoice_payment_methods' => $s->invoice_payment_methods,
             'invoice_payment_terms_text' => $s->invoice_payment_terms_text,
+            'invoice_vat_ist' => (bool) $s->invoice_vat_ist,
             'has_logo' => (bool) $s->company_logo_path,
         ];
     }

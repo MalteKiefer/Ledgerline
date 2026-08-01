@@ -12,6 +12,7 @@ return [
     'search' => 'Rechnungen suchen',
     'filter_all' => 'Alle',
     'status_draft' => 'Entwurf',
+    'status_final' => 'Offen',
     'status_sent' => 'Gesendet',
     'status_paid' => 'Bezahlt',
 

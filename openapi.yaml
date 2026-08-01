@@ -215,6 +215,7 @@ components:
         invoice_template: { type: string, nullable: true, enum: [editorial, modern, elegant, klassisch] }
         invoice_payment_methods: { type: string, nullable: true, maxLength: 500 }
         invoice_payment_terms_text: { type: string, nullable: true, maxLength: 1000 }
+        invoice_vat_ist: { type: boolean, description: "VAT taxation scheme for the Umsatzsteuer-Voranmeldung. true = Ist-Versteuerung (cash-basis, VAT due on payment — only paid invoices count, booked to payment date). false = Soll (accrual, VAT on issue). Default true." }
         has_logo: { type: boolean, readOnly: true, description: "Whether a company logo is stored (GET /company/logo)." }
 
     Group:

@@ -38,6 +38,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property ?string $invoice_payment_methods
  * @property ?string $invoice_payment_terms_text
  * @property bool $invoice_mail_enabled
+ * @property bool $invoice_vat_ist
  * @property ?string $invoice_smtp_host
  * @property ?int $invoice_smtp_port
  * @property ?string $invoice_smtp_encryption
@@ -74,7 +75,7 @@ use Illuminate\Database\Eloquent\Model;
     'invoice_default_vat_rate', 'invoice_payment_terms_days', 'invoice_footer_text',
     'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
     'invoice_payment_methods', 'invoice_payment_terms_text',
-    'invoice_font',
+    'invoice_font', 'invoice_vat_ist',
     'invoice_mail_enabled', 'invoice_smtp_host', 'invoice_smtp_port', 'invoice_smtp_encryption',
     'invoice_smtp_username', 'invoice_smtp_password', 'invoice_from_email', 'invoice_from_name',
     'invoice_mail_subject', 'invoice_mail_body', 'invoice_mail_signature',
@@ -134,6 +135,7 @@ class UserSetting extends Model
             'invoice_default_vat_rate' => 'decimal:2',
             'company_contacts' => 'array',
             'invoice_mail_enabled' => 'boolean',
+            'invoice_vat_ist' => 'boolean',
             'invoice_smtp_port' => 'integer',
             'invoice_smtp_host' => 'encrypted',
             'invoice_smtp_username' => 'encrypted',
