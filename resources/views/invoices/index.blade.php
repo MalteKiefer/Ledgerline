@@ -1160,11 +1160,15 @@
               <div x-show="financeScope !== 'private'" :class="projects.length ? 'mt-6' : ''">
               <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_revenue_section') }}</h2>
               {{-- Year selector --}}
-              <div class="mb-4 flex items-center gap-2">
+              <div class="mb-4 flex flex-wrap items-center gap-2">
                 <label class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stats_year') }}</label>
                 <select x-model.number="statsYear" class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] px-2 py-1 text-sm">
                   <template x-for="y in statsYears" :key="y"><option :value="y" x-text="y"></option></template>
                 </select>
+                <div class="ml-auto flex gap-2">
+                  <x-button variant="secondary" size="sm" type="button" @click="exportRevenueCsv()"><x-icon name="arrow-down-tray" class="mr-1 h-4 w-4" />{{ __('invoices.export_revenue') }}</x-button>
+                  <x-button variant="secondary" size="sm" type="button" @click="exportExpenseCsv()"><x-icon name="arrow-down-tray" class="mr-1 h-4 w-4" />{{ __('invoices.export_expenses') }}</x-button>
+                </div>
               </div>
 
               {{-- KPI row --}}
