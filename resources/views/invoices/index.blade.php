@@ -53,6 +53,15 @@
         importDone: @js(__('invoices.import_done')),
         importFailed: @js(__('invoices.import_load_failed')),
         status_draft: @js(__('invoices.status_draft')),
+        print_title: @js(__('invoices.print_title')),
+        mail_sent: @js(__('invoices.mail_sent')),
+        mail_failed: @js(__('invoices.mail_failed')),
+        mail_not_configured: @js(__('invoices.mail_not_configured')),
+        mail_bad_recipient: @js(__('invoices.mail_bad_recipient')),
+        mail_body_default: @js(__('invoices.mail_body_default')),
+        reminder_subject: @js(__('invoices.reminder_subject')),
+        reminder_body: @js(__('invoices.reminder_body')),
+        reminder_sent: @js(__('invoices.reminder_sent')),
         version_reason_title: @js(__('invoices.version_reason_title')),
         version_reason_ph: @js(__('invoices.version_reason_ph')),
         version_reason_required: @js(__('invoices.version_reason_required')),
@@ -2208,6 +2217,12 @@
                         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                           :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
                           x-text="statusLabel(inv.status)"></span>
+                        <template x-if="isOverdue(inv)">
+                          <span class="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400" x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(inv))"></span>
+                        </template>
+                        <template x-if="reminderCount(inv)">
+                          <span class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400" x-text="'{{ __('invoices.reminded_n') }}'.replace(':n', reminderCount(inv))"></span>
+                        </template>
                         <template x-if="isInvoiceLinked(inv)">
                           <span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'">
                             <x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}
@@ -2303,6 +2318,7 @@
               <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                 :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
                 x-text="statusLabel(current?.status)"></span>
+              <template x-if="isOverdue(current)"><span class="inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400" x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(current))"></span></template>
               <template x-if="isInvoiceLinked(current)"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
             </div>
             <div class="flex flex-wrap items-center gap-2">
@@ -2321,6 +2337,7 @@
                 <x-action-menu-item icon="check-circle" x-show="! current?.imported && current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-action-menu-item>
                 <x-action-menu-item icon="inbox-arrow-down" x-show="$store.paperless?.configured" @click="sendInvoiceToPaperless(current)">{{ __('invoices.send_paperless') }}</x-action-menu-item>
                 <x-action-menu-item icon="envelope" x-show="company.mail_enabled" @click="openMailInvoice(current)">{{ __('invoices.send_mail') }}</x-action-menu-item>
+                <x-action-menu-item icon="bell" x-show="company.mail_enabled && isOverdue(current)" @click="openReminderMail(current)">{{ __('invoices.send_reminder') }}</x-action-menu-item>
               </x-action-menu>
             </div>
           </div>
