@@ -2,7 +2,7 @@
 import { zkModule, bootStore } from '../shared/zk-module';
 import { nextSeqForYear, duplicateNumbers as dupNumbers, missingNumbers as gapNumbers, invoicesInYear, invoiceYear } from '../shared/invoice-numbering';
 import { parseInvoiceFilename, parseInvoiceText, buildImportDraft } from '../shared/invoice-pdf-import';
-import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
+import { contactDisplayName } from '../shared/contact-utils';
 import { jsonHeaders, postForm } from '../shared/api';
 import { saveBlobAs, formatDate } from '../shared/dom';
 import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
@@ -18,6 +18,7 @@ import { analyzeReceiptText } from '../shared/receipt-ocr';
 import { normMerchant, matchPartner, learnedCategoryFor } from '../shared/merchant-learn';
 import { buildReceiptName } from '../shared/receipt-name';
 import { amountMatches } from '../shared/amount-search';
+import { FINANCE_ICON_NAMES, FINANCE_COLORS, DEFAULT_CAT_COLOR, DEFAULT_CAT_ICON, catIconPath as _catIconPath } from '../shared/finance-icons';
 import { PAYMENT_TYPES, paymentTint, paymentSubtitle, isValidPaymentMethod, sortedPaymentMethods, blankPaymentMethod, cardNetworkOf } from '../shared/payment-methods';
 import { detectFormat, parseMt940, parseCsv, detectCsvMapping, applyCsvMapping, enrichExisting, classifyTxType, guessVatCat, VAT_CATS, txSignature as txSig, TX_FIELDS, TX_REQUIRED } from '../shared/bank-statement';
 
@@ -57,7 +58,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); self._migrateCategoryIds(); ms._afterRebase = () => self._reresolveOpenRefs(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; self.eigenbeleg = null; self._egTx = null; self.showInvTrash = false; self.showReceiptTrash = false; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); self._migrateCategoryIds(); self._seedCategoryStyles(); ms._afterRebase = () => self._reresolveOpenRefs(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; self.eigenbeleg = null; self._egTx = null; self.showInvTrash = false; self.showReceiptTrash = false; self.catEditing = null; self.customerPicker = false; if (self.previewUrl) { URL.revokeObjectURL(self.previewUrl); self.previewUrl = null; } self.previewOpen = false; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -329,13 +330,58 @@ export default (config = {}, labels = {}) => ({
     get pagedPartners() { const s = (this.parPage - 1) * this.parPerPage; return this.filteredPartners.slice(s, s + this.parPerPage); },
     setParPerPage(n) { this.parPerPage = n; this.parPage = 1; },
     parGoto(p) { this.parPage = Math.min(this.parPageCount, Math.max(1, p)); },
-    // Settings tab: custom categories (defaults are a small fixed list, not paginated).
+    // Categories tab: ALL categories (builtin defaults + custom) live in
+    // financeCategories as {id,name,color,icon,builtin} and paginate together.
     catPage: 1,
     catPerPage: 10,
     get catPageCount() { return Math.max(1, Math.ceil((this.financeCategories || []).length / this.catPerPage)); },
     get pagedCategories() { const s = (this.catPage - 1) * this.catPerPage; return this.sortedFinanceCategories.slice(s, s + this.catPerPage); },
     setCatPerPage(n) { this.catPerPage = n; this.catPage = 1; },
     catGoto(p) { this.catPage = Math.min(this.catPageCount, Math.max(1, p)); },
+    // Category color + icon editor
+    catEditing: null,       // the category object being edited (null = closed)
+    catIconGrid: false,     // show the icon picker inside the editor
+    catIconQuery: '',
+    financeIconNames: FINANCE_ICON_NAMES,
+    financeColors: FINANCE_COLORS,
+    catIconPath(name) { return _catIconPath(name); },
+    filteredCatIcons() { const q = this.catIconQuery.trim().toLowerCase(); return q ? this.financeIconNames.filter((n) => n.includes(q)) : this.financeIconNames; },
+    catStyle(name) {
+        const c = (this.financeCategories || []).find((x) => String(x.name || '').toLowerCase() === String(name || '').toLowerCase());
+        return { color: c?.color || DEFAULT_CAT_COLOR, icon: c?.icon || DEFAULT_CAT_ICON };
+    },
+    catColor(name) { return this.catStyle(name).color; },
+    catIcon(name) { return this.catStyle(name).icon; },
+    // Autocomplete source: all category names filtered by the typed query (cap 50).
+    catFilter(q) {
+        const s = String(q || '').trim().toLowerCase();
+        const all = this.allCategories;
+        return (s ? all.filter((n) => n.toLowerCase().includes(s)) : all).slice(0, 50);
+    },
+    editCategory(c) { this.catEditing = c; this.catIconGrid = false; this.catIconQuery = ''; },
+    closeCatEditor() { this.catEditing = null; this.catIconGrid = false; },
+    pickCatColor(hex) { if (this.catEditing) { this.catEditing.color = hex; this._save(); } },
+    pickCatIcon(name) { if (this.catEditing) { this.catEditing.icon = name; this.catIconGrid = false; this._save(); } },
+    renameCategory(c, name) { const n = String(name || '').trim(); if (! n || c.builtin) return; c.name = n; this._save(); },
+    // Seed a color/icon on every category and ensure a row exists for each builtin
+    // default (so builtins are editable + paginate with the rest). Idempotent.
+    _seedCategoryStyles() {
+        this.financeCategories ||= [];
+        let changed = false;
+        for (const c of this.financeCategories) {
+            if (! c.id) { c.id = window.LLInvoicesStore.newId(); changed = true; }
+            if (! c.color) { c.color = DEFAULT_CAT_COLOR; changed = true; }
+            if (! c.icon) { c.icon = DEFAULT_CAT_ICON; changed = true; }
+        }
+        const have = new Set(this.financeCategories.map((c) => String(c.name || '').toLowerCase()));
+        for (const name of this.receiptCatSuggestions) {
+            if (! have.has(name.toLowerCase())) {
+                this.financeCategories.push({ id: window.LLInvoicesStore.newId(), name, color: DEFAULT_CAT_COLOR, icon: DEFAULT_CAT_ICON, builtin: true });
+                changed = true;
+            }
+        }
+        if (changed) this._save();
+    },
     // Generic paging helpers (used by the settings + project tables).
     _pageSlice(arr, page, per) { const s = (Math.max(1, page) - 1) * per; return (arr || []).slice(s, s + per); },
     _pageCount(len, per) { return Math.max(1, Math.ceil((len || 0) / per)); },
@@ -724,21 +770,20 @@ export default (config = {}, labels = {}) => ({
 
     // Locale for alphabetical sorting (follows the app language).
     _catLocale() { return document.documentElement.lang || undefined; },
-    // Managed categories (merged with the built-in suggestions), sorted A→Z per language.
+    // All category names (builtins are seeded into financeCategories), sorted A→Z per language.
     get allCategories() {
         const loc = this._catLocale();
         return [...new Set([...(this.financeCategories || []).map((c) => c.name), ...this.receiptCatSuggestions])].sort((a, b) => a.localeCompare(b, loc));
     },
-    get sortedCatSuggestions() { const loc = this._catLocale(); return [...this.receiptCatSuggestions].sort((a, b) => a.localeCompare(b, loc)); },
     get sortedFinanceCategories() { const loc = this._catLocale(); return [...(this.financeCategories || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), loc)); },
     addFinanceCategory(name) {
         const n = String(name || '').trim(); if (! n) return;
-        const exists = (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase())
-            || this.receiptCatSuggestions.some((c) => c.toLowerCase() === n.toLowerCase());
-        if (! exists) { this.financeCategories.push({ id: window.LLInvoicesStore.newId(), name: n }); this._save(); }
+        const exists = (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase());
+        if (! exists) { this.financeCategories.push({ id: window.LLInvoicesStore.newId(), name: n, color: DEFAULT_CAT_COLOR, icon: DEFAULT_CAT_ICON }); this._save(); }
         this.newCategoryName = '';
     },
-    async removeFinanceCategory(c) { const i = this.financeCategories.indexOf(c); if (i >= 0) this.financeCategories.splice(i, 1); this._save(); },
+    // Builtins can't be deleted (only their color/icon customised); custom categories can.
+    async removeFinanceCategory(c) { if (c.builtin) return; const i = this.financeCategories.indexOf(c); if (i >= 0) this.financeCategories.splice(i, 1); this._save(); },
 
     // Backfill stable ids on legacy id-less finance categories so the 409 rebase can
     // merge them per-record (id-less arrays collapse to last-writer-wins, silently
@@ -1656,30 +1701,54 @@ export default (config = {}, labels = {}) => ({
     // ZK: nothing leaves the browser — html2canvas rasterises the in-page node, jsPDF wraps
     // it, and _uploadFile encrypts before upload. Lazy-loaded so the deps stay out of the
     // main bundle.
+    // Rasterise the hidden #invoice-print sheet for `inv` into a PDF Blob (client-side,
+    // zero-knowledge — nothing leaves the browser). Shared by the encrypted version PDF
+    // and the local preview. Returns null on failure.
+    async _invoicePdfBlob(inv) {
+        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
+        this._printing = inv;
+        await this.$nextTick();
+        await new Promise((r) => setTimeout(r, 80)); // let the logo/image paint
+        const node = document.getElementById('invoice-print');
+        if (! node) { this._printing = null; return null; }
+        const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+        this._printing = null;
+        const img = canvas.toDataURL('image/jpeg', 0.92);
+        const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+        const pw = pdf.internal.pageSize.getWidth();
+        const ph = (canvas.height * pw) / canvas.width;
+        const pageH = pdf.internal.pageSize.getHeight();
+        let y = 0;
+        pdf.addImage(img, 'JPEG', 0, 0, pw, ph); // first page
+        let remaining = ph - pageH;
+        while (remaining > 0) { pdf.addPage(); y -= pageH; pdf.addImage(img, 'JPEG', 0, y, pw, ph); remaining -= pageH; }
+        return pdf.output('blob');
+    },
     async _renderInvoicePdf(inv, label) {
         try {
-            const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
-            this._printing = inv;
-            await this.$nextTick();
-            await new Promise((r) => setTimeout(r, 80)); // let the logo/image paint
-            const node = document.getElementById('invoice-print');
-            if (! node) { this._printing = null; return null; }
-            const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
-            this._printing = null;
-            const img = canvas.toDataURL('image/jpeg', 0.92);
-            const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-            const pw = pdf.internal.pageSize.getWidth();
-            const ph = (canvas.height * pw) / canvas.width;
-            const pageH = pdf.internal.pageSize.getHeight();
-            let y = 0;
-            pdf.addImage(img, 'JPEG', 0, 0, pw, ph); // first page
-            let remaining = ph - pageH;
-            while (remaining > 0) { pdf.addPage(); y -= pageH; pdf.addImage(img, 'JPEG', 0, y, pw, ph); remaining -= pageH; }
-            const blob = pdf.output('blob');
+            const blob = await this._invoicePdfBlob(inv);
+            if (! blob) return null;
             const bytes = new Uint8Array(await blob.arrayBuffer());
             return await this._uploadFile(bytes, `${label}.pdf`, 'application/pdf');
         } catch (e) { this._printing = null; return null; }
     },
+    // ---- Preview (client-side PDF of the current draft, no upload) ----
+    previewOpen: false,
+    previewUrl: null,
+    previewBusy: false,
+    async openPreview() {
+        const inv = this.current;
+        if (! inv) return;
+        this.previewBusy = true;
+        this.previewOpen = true;
+        try {
+            const blob = await this._invoicePdfBlob(inv);
+            if (this.previewUrl) URL.revokeObjectURL(this.previewUrl);
+            this.previewUrl = blob ? URL.createObjectURL(blob) : null;
+        } catch (e) { this._printing = null; }
+        this.previewBusy = false;
+    },
+    closePreview() { this.previewOpen = false; if (this.previewUrl) { URL.revokeObjectURL(this.previewUrl); this.previewUrl = null; } },
     openVersionPdf(v) { return this._openBlob(v?.pdf ? { ...v.pdf, mime: 'application/pdf' } : null); },
 
     addLine() { this.current.lines.push({ desc: '', qty: 1, unit: '', unitPrice: 0, vatRate: this._defaultVat() }); this.saveSoon(); },
@@ -1967,47 +2036,38 @@ export default (config = {}, labels = {}) => ({
         catch (e) { return String(n ?? ''); }
     },
 
-    // ---- Customer picker (reads zero-knowledge contacts) ----
+    // ---- Customer picker (bills from the zero-knowledge Geschäftspartner) ----
     customerPicker: false,
     custQuery: '',
-    _custContacts: [],
-    async openCustomerPicker() {
+    openCustomerPicker() {
         this.customerPicker = true;
         this.custQuery = '';
-        try { if (await bootStore(this.$store, 'contacts')) this._custContacts = (window.LLModuleStore.contacts.data.contacts || []).filter((c) => ! c.trashed); }
-        catch (e) { /* leave empty */ }
     },
     closeCustomerPicker() { this.customerPicker = false; },
-    _custName(c) { return contactDisplayName(c) || ''; },
+    _custName(p) { return String(p?.name || '').trim(); },
+    _custContact(p) { const c = (p?.contacts || [])[0]; return c ? String(c.name || '').trim() : ''; },
     custSuggestions() {
         const q = this.custQuery.trim().toLowerCase();
-        let list = this._custContacts;
-        if (q) list = list.filter((c) => this._custName(c).toLowerCase().includes(q) || (c.org || '').toLowerCase().includes(q));
+        let list = (this.partners || []);
+        if (q) list = list.filter((p) => this._custName(p).toLowerCase().includes(q) || this._custContact(p).toLowerCase().includes(q) || String(p.email || '').toLowerCase().includes(q) || String(p.category || '').toLowerCase().includes(q));
         return [...list].sort((a, b) => this._custName(a).localeCompare(this._custName(b)));
     },
-    _custAddress(c) {
-        const a = (c.addresses || [])[0];
-        if (! a) return '';
-        return [a.street, [a.zip, a.city].filter(Boolean).join(' '), a.region, a.country].filter(Boolean).join('\n');
-    },
-    pickCustomer(c) {
-        // Bill a company to its org name with the person as the contact (Attn);
-        // a private contact bills to the person directly.
-        const parts = contactNameParts(c);
-        const person = [parts.first, parts.last].filter(Boolean).join(' ') || this._custName(c);
-        const org = (c.org || '').trim();
+    pickCustomer(p) {
+        // A partner bills to its name; the first contact person becomes the Attn line.
+        const attn = this._custContact(p);
         this.current.customer = {
-            name: org || person,
-            attn: org ? person : '',
-            address: this._custAddress(c),
-            email: (c.emails || [])[0]?.value || '',
-            vatId: c.vatId || '',
-            contactId: c.id,
+            name: this._custName(p),
+            attn,
+            address: String(p.address || ''),
+            email: String(p.email || (p.contacts || [])[0]?.email || ''),
+            vatId: String(p.vatId || ''),
+            contactId: null,
+            partnerId: p.id,
         };
         this.customerPicker = false;
         this.saveSoon();
     },
-    clearCustomer() { this.current.customer = { name: '', attn: '', address: '', email: '', vatId: '', contactId: null }; this.saveSoon(); },
+    clearCustomer() { this.current.customer = { name: '', attn: '', address: '', email: '', vatId: '', contactId: null, partnerId: null }; this.saveSoon(); },
 
     // ---- Finalize / status ----
     // Render a number template. YYYY/YY/MM/DD from the issue date, and a run of

@@ -134,7 +134,7 @@
           <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('messages.nav.finance') }}</h1>
           <div class="-mx-1 max-w-full overflow-x-auto px-1 pb-1">
             <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/10 p-0.5 text-sm font-medium">
-              @php $tabs = ['dashboard' => 'tab_dashboard', 'invoices' => 'tab_invoices', 'payments' => 'tab_payments', 'receipts' => 'tab_receipts', 'projects' => 'tab_projects', 'partners' => 'tab_partners', 'stats' => 'tab_stats', 'settings' => 'tab_settings']; @endphp
+              @php $tabs = ['dashboard' => 'tab_dashboard', 'invoices' => 'tab_invoices', 'payments' => 'tab_payments', 'receipts' => 'tab_receipts', 'projects' => 'tab_projects', 'partners' => 'tab_partners', 'stats' => 'tab_stats', 'settings' => 'tab_categories']; @endphp
               @foreach ($tabs as $key => $lbl)
                 <button type="button" @click="setSection('{{ $key }}')"
                   class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 transition-colors"
@@ -409,7 +409,7 @@
                         <span x-text="doc.tx.date"></span> · <span x-text="doc.tx.counterparty || doc.tx.purpose || '—'"></span> · <span class="tabular-nums" x-text="fmtMoney(doc.tx.amount, doc.tx.currency)"></span>
                       </p>
                     </div>
-                    <template x-if="doc.r.category"><x-badge variant="gray"><span x-text="doc.r.category"></span></x-badge></template>
+                    @include('invoices._cat_badge', ['name' => 'doc.r.category'])
                     <template x-if="doc.r.contactId || doc.r.partnerId"><x-icon name="user" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" /></template>
                     <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
                   </button>
@@ -499,8 +499,8 @@
                     {{-- Category (with suggestions) --}}
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_category') }}</label>
-                      <input type="text" x-model="receiptDoc.r.category" @change="saveReceiptDoc()" list="receiptCats" placeholder="{{ __('invoices.receipt_category_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                      <datalist id="receiptCats"><template x-for="c in allCategories" :key="c"><option :value="c"></option></template></datalist>
+                      @include('invoices._cat_autocomplete', ['model' => 'receiptDoc.r.category', 'commit' => 'saveReceiptDoc()', 'placeholder' => __('invoices.receipt_category_ph')])
+                      <div class="mt-1.5">@include('invoices._cat_badge', ['name' => 'receiptDoc.r.category'])</div>
                     </div>
 
                     {{-- Tax rate (VAT) — stored on the linked booking; the receipt's detected rate is shown as a hint --}}
@@ -694,7 +694,7 @@
                               <p class="truncate text-sm text-gray-800 dark:text-gray-200" x-text="ex.note || '{{ __('invoices.project_expense') }}'"></p>
                               <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="[ex.date, expenseAccountName(ex.account)].filter(Boolean).join(' · ') || '—'"></p>
                             </div>
-                            <template x-if="ex.category"><x-badge variant="gray"><span x-text="ex.category"></span></x-badge></template>
+                            @include('invoices._cat_badge', ['name' => 'ex.category'])
                             <span class="shrink-0 text-sm tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(ex.amount)"></span>
                             <div class="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100">
                               <x-icon-button name="pencil" tone="gray" size="sm" @click="editExpense(openProject, ex)" :aria-label="__('common.edit')" />
@@ -722,7 +722,7 @@
                           <button type="button" @click="openReceiptDoc(d)" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-accent/5">
                             <x-icon name="document" class="h-4 w-4 text-gray-400" />
                             <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="d.r.name || '{{ __('invoices.receipt') }}'"></span>
-                            <template x-if="d.r.category"><x-badge variant="gray"><span x-text="d.r.category"></span></x-badge></template>
+                            @include('invoices._cat_badge', ['name' => 'd.r.category'])
                             <span class="text-xs tabular-nums text-gray-500" x-text="fmtMoney(d.r.total != null ? d.r.total : Math.abs(d.tx.amount || 0))"></span>
                           </button>
                         </template>
@@ -919,7 +919,7 @@
                           <td class="px-4 py-3 hidden lg:table-cell text-gray-600 dark:text-gray-300" x-text="p.email || '—'"></td>
                           <td class="px-4 py-3 hidden lg:table-cell text-gray-600 dark:text-gray-300 tabular-nums" x-text="p.phone || '—'"></td>
                           <td class="px-4 py-3 hidden md:table-cell text-gray-600 dark:text-gray-300 tabular-nums" x-text="p.vatId || '—'"></td>
-                          <td class="px-4 py-3 hidden xl:table-cell"><template x-if="p.category"><x-badge variant="gray"><span x-text="p.category"></span></x-badge></template></td>
+                          <td class="px-4 py-3 hidden xl:table-cell">@include('invoices._cat_badge', ['name' => 'p.category'])</td>
                           <td class="px-4 py-3 text-right tabular-nums text-gray-500 dark:text-gray-400" x-text="partnerLinkCount(p.id)"></td>
                           <td class="px-4 py-3 text-right"><x-icon name="chevron-right" class="h-4 w-4 text-gray-300 dark:text-gray-600" /></td>
                         </tr>
@@ -960,7 +960,7 @@
                     <div x-show="openPartnerRec.phone"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_phone') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.phone"></dd></div>
                     <div x-show="openPartnerRec.url"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_url') }}</dt><dd><a :href="openPartnerRec.url" target="_blank" rel="noopener" class="text-accent hover:underline break-all" x-text="openPartnerRec.url"></a></dd></div>
                     <div x-show="openPartnerRec.address"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_address') }}</dt><dd class="whitespace-pre-line text-gray-800 dark:text-gray-200" x-text="openPartnerRec.address"></dd></div>
-                    <div x-show="openPartnerRec.category"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_category') }}</dt><dd class="text-gray-800 dark:text-gray-200" x-text="openPartnerRec.category"></dd></div>
+                    <div x-show="openPartnerRec.category"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_category') }}</dt><dd class="mt-0.5">@include('invoices._cat_badge', ['name' => 'openPartnerRec.category'])</dd></div>
                     <div x-show="openPartnerRec.note"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_note') }}</dt><dd class="whitespace-pre-line text-gray-800 dark:text-gray-200" x-text="openPartnerRec.note"></dd></div>
                   </dl>
                   {{-- Contact persons --}}
@@ -1077,7 +1077,7 @@
                     </div>
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_category') }}</label>
-                      <input type="text" x-model="partnerEditing.category" list="receiptCats" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      @include('invoices._cat_autocomplete', ['model' => 'partnerEditing.category', 'commit' => '', 'placeholder' => __('invoices.receipt_category_ph')])
                     </div>
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_note') }}</label>
@@ -1216,20 +1216,18 @@
           <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.cats_title') }}</h2>
           <p class="mb-2 px-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.cats_intro') }}</p>
           <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
-            {{-- Built-in default categories (not removable) — shown in full, no pagination --}}
-            <template x-for="c in sortedCatSuggestions" :key="'def-'+c">
-              <div class="flex items-center gap-3 px-4 py-2.5">
-                <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #e2915a"><x-icon name="hashtag" class="h-4 w-4" /></span>
-                <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="c"></span>
-                <x-badge variant="gray">{{ __('invoices.cats_default') }}</x-badge>
-              </div>
-            </template>
-            {{-- Custom categories (removable) --}}
-            <template x-for="c in pagedCategories" :key="c.name">
+            {{-- All categories (builtin + custom) — unified, paginated, each editable --}}
+            <template x-for="c in pagedCategories" :key="c.id">
               <div class="group flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5">
-                <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="--chip: #59ad6b"><x-icon name="hashtag" class="h-4 w-4" /></span>
+                <span class="ll-chip h-8 w-8 rounded-lg shrink-0" :style="'--chip:'+(c.color||'#e2915a')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" :d="catIconPath(c.icon)"></path></svg>
+                </span>
                 <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="c.name"></span>
-                <x-icon-button name="trash" tone="red" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="removeFinanceCategory(c)" :aria-label="__('common.delete')" />
+                <template x-if="c.builtin"><x-badge variant="gray">{{ __('invoices.cats_default') }}</x-badge></template>
+                <x-icon-button name="pencil" tone="gray" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="editCategory(c)" title="{{ __('invoices.cats_edit') }}" />
+                <template x-if="! c.builtin">
+                  <x-icon-button name="trash" tone="red" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="removeFinanceCategory(c)" :aria-label="__('common.delete')" />
+                </template>
               </div>
             </template>
             {{-- Add row --}}
@@ -1241,6 +1239,55 @@
             <template x-if="(financeCategories || []).length > catPerPage">
               @include('invoices._pagination', ['page' => 'catPage', 'perPage' => 'catPerPage', 'pageCount' => 'catPageCount', 'setPerPage' => 'setCatPerPage', 'goto' => 'catGoto'])
             </template>
+          </div>
+
+          {{-- Category color + icon editor --}}
+          <div x-show="catEditing" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" @keydown.escape.window="closeCatEditor()">
+            <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" @click="closeCatEditor()"></div>
+            <div class="relative w-full max-w-lg rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+              <div class="flex items-center gap-3">
+                <span class="ll-chip h-10 w-10 rounded-xl shrink-0" :style="'--chip:'+(catEditing?.color||'#e2915a')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-5 w-5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" :d="catIconPath(catEditing?.icon)"></path></svg>
+                </span>
+                <div class="min-w-0 flex-1">
+                  <template x-if="catEditing && ! catEditing.builtin">
+                    <input type="text" :value="catEditing?.name" @change="renameCategory(catEditing, $event.target.value)" class="w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm font-semibold">
+                  </template>
+                  <template x-if="catEditing && catEditing.builtin">
+                    <div class="text-sm font-semibold text-gray-900 dark:text-gray-100" x-text="catEditing?.name"></div>
+                  </template>
+                </div>
+                <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeCatEditor()" :aria-label="__('common.close')" />
+              </div>
+
+              {{-- Colour palette --}}
+              <p class="mt-4 mb-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.cats_color') }}</p>
+              <div class="flex flex-wrap gap-2">
+                <template x-for="hex in financeColors" :key="hex">
+                  <button type="button" @click="pickCatColor(hex)" class="h-7 w-7 rounded-full ring-offset-2 ring-offset-white dark:ring-offset-[#1c1c1e] transition"
+                          :class="catEditing?.color === hex ? 'ring-2 ring-accent' : ''" :style="'background:'+hex" :aria-label="hex"></button>
+                </template>
+              </div>
+
+              {{-- Icon picker --}}
+              <div class="mt-4 flex items-center justify-between">
+                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.cats_icon') }}</p>
+                <input type="search" x-model="catIconQuery" placeholder="{{ __('invoices.cats_icon_search') }}" class="w-40 rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-xs py-1">
+              </div>
+              <div class="mt-2 grid max-h-56 grid-cols-8 gap-1.5 overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 p-2">
+                <template x-for="ic in filteredCatIcons()" :key="ic">
+                  <button type="button" @click="pickCatIcon(ic)" :title="ic"
+                          class="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-accent/10"
+                          :class="catEditing?.icon === ic ? 'bg-accent/15 text-accent' : 'text-gray-600 dark:text-gray-300'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" :d="catIconPath(ic)"></path></svg>
+                  </button>
+                </template>
+              </div>
+
+              <div class="mt-5 flex justify-end">
+                <x-button variant="primary" size="sm" @click="closeCatEditor()">{{ __('invoices.cats_done') }}</x-button>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -2236,12 +2283,18 @@
                 <span x-show="! pdfBusy">{{ __('invoices.save_changes') }}</span>
                 <span x-show="pdfBusy">{{ __('invoices.saving') }}</span>
               </x-button>
+              {{-- Preview: render the current draft to a client-side PDF (no upload, ZK). --}}
+              <x-button variant="secondary" size="sm" icon="eye" x-show="! current?.imported" ::disabled="previewBusy" @click="openPreview()">
+                <span x-show="! previewBusy">{{ __('invoices.preview') }}</span>
+                <span x-show="previewBusy">{{ __('invoices.preview_generating') }}</span>
+              </x-button>
+              {{-- Finalize: freeze the draft, assign the invoice number. --}}
+              <x-button variant="primary" size="sm" icon="check" x-show="! current?.imported && current?.status === 'draft'" ::disabled="pdfBusy" @click="finalize(current)">{{ __('invoices.finalize') }}</x-button>
               <x-action-menu :aria-label="__('invoices.col_actions')">
                 <x-action-menu-item icon="pencil" x-show="isLocked(current) && ! editUnlocked" @click="requestEdit()">{{ __('invoices.edit') }}</x-action-menu-item>
                 <x-action-menu-item icon="document-text" x-show="current?.imported && current?.pdf" @click="openOriginalPdf(current)">{{ __('invoices.open_original') }}</x-action-menu-item>
                 <x-action-menu-item icon="printer" x-show="! current?.imported || ! current?.pdf" @click="printInvoice(current)">{{ __('invoices.print') }}</x-action-menu-item>
                 <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
-                <x-action-menu-item icon="check" x-show="! current?.imported && current?.status === 'draft'" @click="finalize(current)">{{ __('invoices.finalize') }}</x-action-menu-item>
                 <x-action-menu-item icon="check-circle" x-show="! current?.imported && current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-action-menu-item>
               </x-action-menu>
             </div>
@@ -2405,8 +2458,31 @@
               </template>
               <template x-for="c in custSuggestions()" :key="c.id">
                 <button type="button" @click="pickCustomer(c)" class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-accent/5">
-                  <span class="text-sm font-medium text-accent" x-text="_custName(c) || (c.org || '—')"></span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block text-sm font-medium text-accent truncate" x-text="_custName(c) || '—'"></span>
+                    <span class="block text-xs text-gray-500 dark:text-gray-400 truncate" x-text="[_custContact(c), c.email].filter(Boolean).join(' · ')"></span>
+                  </span>
+                  <span class="shrink-0">@include('invoices._cat_badge', ['name' => 'c.category'])</span>
                 </button>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        {{-- Invoice PDF preview (client-side render of the current draft, no upload) --}}
+        <div x-show="previewOpen" x-cloak class="fixed inset-0 z-[1130] flex items-center justify-center p-4" @keydown.escape.window="closePreview()">
+          <div class="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" @click="closePreview()"></div>
+          <div class="relative flex h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-4 py-3">
+              <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.preview_title') }}</h2>
+              <x-icon-button name="x-mark" tone="gray" size="sm" @click="closePreview()" :aria-label="__('common.close')" />
+            </div>
+            <div class="relative flex-1 bg-gray-100 dark:bg-gray-900">
+              <div x-show="previewBusy" class="absolute inset-0 flex items-center justify-center gap-2 text-sm text-gray-500">
+                <x-icon name="arrow-path" class="h-5 w-5 animate-spin" /> {{ __('invoices.preview_generating') }}
+              </div>
+              <template x-if="previewUrl">
+                <iframe :src="previewUrl + '#view=FitH'" class="h-full w-full" title="{{ __('invoices.preview_title') }}"></iframe>
               </template>
             </div>
           </div>
