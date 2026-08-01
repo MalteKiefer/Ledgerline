@@ -344,6 +344,8 @@ return [
     'partner_url' => 'Веб-сайт',
     'partner_url_hint' => 'Логотип загружается с этого адреса.',
     'partner_email' => 'Эл. почта',
+    'partner_invoice_email' => 'Эл. почта для счетов',
+    'partner_invoice_email_ph' => 'billing@…',
     'partner_phone' => 'Телефон',
     'partner_address' => 'Адрес',
     'partner_vat' => 'ИНН/НДС',

@@ -344,6 +344,8 @@ return [
     'partner_url' => 'Webseite',
     'partner_url_hint' => 'Aus dieser Adresse wird das Logo geladen.',
     'partner_email' => 'E-Mail',
+    'partner_invoice_email' => 'Rechnungs-E-Mail',
+    'partner_invoice_email_ph' => 'rechnung@…',
     'partner_phone' => 'Telefon',
     'partner_address' => 'Adresse',
     'partner_vat' => 'USt-IdNr.',

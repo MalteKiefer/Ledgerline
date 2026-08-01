@@ -409,7 +409,7 @@
                         <span x-text="doc.tx.date"></span> · <span x-text="doc.tx.counterparty || doc.tx.purpose || '—'"></span> · <span class="tabular-nums" x-text="fmtMoney(doc.tx.amount, doc.tx.currency)"></span>
                       </p>
                     </div>
-                    @include('invoices._cat_badge', ['name' => 'doc.r.category'])
+                    @include('invoices._cat_badges', ['list' => 'catList(doc.r)'])
                     <template x-if="doc.r.contactId || doc.r.partnerId"><x-icon name="user" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" /></template>
                     <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
                   </button>
@@ -499,8 +499,7 @@
                     {{-- Category (with suggestions) --}}
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_category') }}</label>
-                      @include('invoices._cat_autocomplete', ['model' => 'receiptDoc.r.category', 'commit' => 'saveReceiptDoc()', 'placeholder' => __('invoices.receipt_category_ph')])
-                      <div class="mt-1.5">@include('invoices._cat_badge', ['name' => 'receiptDoc.r.category'])</div>
+                      @include('invoices._cat_multiselect', ['model' => 'receiptDoc.r', 'commit' => 'saveReceiptDoc()'])
                     </div>
 
                     {{-- Tax rate (VAT) — stored on the linked booking; the receipt's detected rate is shown as a hint --}}
@@ -722,7 +721,7 @@
                           <button type="button" @click="openReceiptDoc(d)" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-accent/5">
                             <x-icon name="document" class="h-4 w-4 text-gray-400" />
                             <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="d.r.name || '{{ __('invoices.receipt') }}'"></span>
-                            @include('invoices._cat_badge', ['name' => 'd.r.category'])
+                            @include('invoices._cat_badges', ['list' => 'catList(d.r)'])
                             <span class="text-xs tabular-nums text-gray-500" x-text="fmtMoney(d.r.total != null ? d.r.total : Math.abs(d.tx.amount || 0))"></span>
                           </button>
                         </template>
@@ -957,6 +956,7 @@
                   <dl class="mt-3 space-y-2 text-sm">
                     <div x-show="openPartnerRec.vatId"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_vat') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.vatId"></dd></div>
                     <div x-show="openPartnerRec.email"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.email" class="text-accent hover:underline" x-text="openPartnerRec.email"></a></dd></div>
+                    <div x-show="openPartnerRec.invoiceEmail"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_invoice_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.invoiceEmail" class="text-accent hover:underline" x-text="openPartnerRec.invoiceEmail"></a></dd></div>
                     <div x-show="openPartnerRec.phone"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_phone') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.phone"></dd></div>
                     <div x-show="openPartnerRec.url"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_url') }}</dt><dd><a :href="openPartnerRec.url" target="_blank" rel="noopener" class="text-accent hover:underline break-all" x-text="openPartnerRec.url"></a></dd></div>
                     <div x-show="openPartnerRec.address"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_address') }}</dt><dd class="whitespace-pre-line text-gray-800 dark:text-gray-200" x-text="openPartnerRec.address"></dd></div>
@@ -1044,6 +1044,10 @@
                         <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_phone') }}</label>
                         <input type="tel" x-model="partnerEditing.phone" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
                       </div>
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_invoice_email') }}</label>
+                      <input type="email" x-model="partnerEditing.invoiceEmail" placeholder="{{ __('invoices.partner_invoice_email_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
                     </div>
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_vat') }}</label>
@@ -2973,12 +2977,15 @@
   {{-- Print isolation: the sheet is teleported to <body>, so we hide every other
        body child and print only it — no phantom trailing blank page. --}}
   <style>
-    #invoice-print { display: none; }
+    /* Rendered OFF-SCREEN (not display:none) so html2canvas can rasterise it for the
+       preview + version PDFs — a display:none node captures blank. 794px ≈ A4 @96dpi.
+       Print media resets it to the normal flow (the app itself is hidden below). */
+    #invoice-print { position: fixed; left: -10000px; top: 0; width: 794px; background: #fff; }
     @media print {
       @page { size: A4; margin: 0; }
       html, body { height: auto !important; background: #fff !important; }
       body > *:not(#invoice-print) { display: none !important; }
-      #invoice-print { display: block !important; }
+      #invoice-print { position: static !important; left: auto !important; top: auto !important; width: auto !important; }
       /* Keep accent backgrounds/colours in print — browsers drop them otherwise. */
       #invoice-print, #invoice-print * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     }
