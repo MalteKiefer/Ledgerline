@@ -363,6 +363,8 @@ return [
     'mail_not_configured' => 'Set up the invoice mail server under Settings → Company.',
     'mail_bad_recipient' => 'Enter a valid recipient address.',
     'mail_body_default' => 'Please find attached invoice :number.',
+    'mail_test_subject' => 'Test',
+    'mail_test_body' => 'This is a test e-mail from your Ledgerline invoice mail server.',
     'partner_phone' => 'Phone',
     'partner_address' => 'Address',
     'partner_vat' => 'VAT ID',

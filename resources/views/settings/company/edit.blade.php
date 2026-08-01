@@ -1,10 +1,23 @@
 <x-layouts.app :title="__('settings.company_section')">
     <x-page-heading :title="__('settings.company_section')" :subtitle="__('settings.company_desc')" />
 
-    <form method="POST" action="{{ route('settings.company.update') }}" enctype="multipart/form-data" class="mt-6 space-y-6">
+    <form method="POST" action="{{ route('settings.company.update') }}" enctype="multipart/form-data" class="mt-6 space-y-6" x-data="{ tab: (location.hash || '#info').slice(1) }">
         @csrf
         @method('PUT')
 
+        {{-- Tabs --}}
+        <div class="flex gap-1 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] p-0.5 text-sm">
+            @foreach (['info' => 'company_tab_info', 'design' => 'company_tab_design', 'mail' => 'company_tab_mail'] as $key => $lk)
+                <button type="button" @click="tab = '{{ $key }}'; location.hash = '{{ $key }}'"
+                        class="flex-1 rounded-lg px-3 py-1.5 font-medium transition"
+                        :class="tab === '{{ $key }}' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-accent'">
+                    {{ __('settings.' . $lk) }}
+                </button>
+            @endforeach
+        </div>
+
+        {{-- ============================ INFO ============================ --}}
+        <div x-show="tab === 'info'" x-cloak class="space-y-6">
         {{-- Identity --}}
         <div class="ll-card">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_identity_heading') }}</h2>
@@ -99,6 +112,10 @@
             </div>
         </div>
 
+        </div>{{-- /info --}}
+
+        {{-- ============================ DESIGN ============================ --}}
+        <div x-show="tab === 'design'" x-cloak class="space-y-6">
         {{-- Design --}}
         <div class="ll-card">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.invoice_design_heading') }}</h2>
@@ -155,6 +172,10 @@
             @error('logo')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
         </div>
 
+        </div>{{-- /design --}}
+
+        {{-- ============================ MAIL ============================ --}}
+        <div x-show="tab === 'mail'" x-cloak class="space-y-6">
         {{-- Dedicated invoice mail server (for sending invoices by e-mail) --}}
         <div class="ll-card">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.invoice_mail_heading') }}</h2>
@@ -194,11 +215,46 @@
                 <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.invoice_mail_subject') }}
                     <input type="text" name="invoice_mail_subject" value="{{ old('invoice_mail_subject', $s->invoice_mail_subject) }}" placeholder="{{ __('settings.invoice_mail_subject_ph') }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                 </label>
-                <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.invoice_mail_body') }}
-                    <textarea name="invoice_mail_body" rows="4" placeholder="{{ __('settings.invoice_mail_body_ph') }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">{{ old('invoice_mail_body', $s->invoice_mail_body) }}</textarea>
-                </label>
+                <div class="sm:col-span-2">
+                    <span class="block text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_mail_body') }}</span>
+                    @include('settings._wysiwyg', ['name' => 'invoice_mail_body', 'html' => \App\Support\HtmlMailSanitizer::clean(old('invoice_mail_body', $s->invoice_mail_body ?? ''))])
+                </div>
+                <div class="sm:col-span-2">
+                    <span class="block text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_mail_signature') }}</span>
+                    <span class="block text-xs text-gray-400">{{ __('settings.invoice_mail_signature_hint') }}</span>
+                    @include('settings._wysiwyg', ['name' => 'invoice_mail_signature', 'html' => \App\Support\HtmlMailSanitizer::clean(old('invoice_mail_signature', $s->invoice_mail_signature ?? ''))])
+                </div>
+            </div>
+
+            {{-- Placeholders --}}
+            <div class="mt-4 rounded-lg bg-black/[0.03] dark:bg-white/[0.04] px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                <span class="font-medium text-gray-600 dark:text-gray-300">{{ __('settings.invoice_mail_placeholders') }}:</span>
+                @foreach (['number', 'customer', 'company', 'date', 'due', 'total', 'currency'] as $ph)
+                    <code class="mx-0.5 rounded bg-black/5 dark:bg-white/10 px-1 py-0.5">:{{ $ph }}</code>
+                @endforeach
+            </div>
+
+            {{-- Test send --}}
+            <div class="mt-4 flex flex-wrap items-center gap-3" x-data="{ to: '', busy: false, msg: '', ok: false,
+                async test() {
+                    this.busy = true; this.msg = '';
+                    try {
+                        const fd = new FormData(); if (this.to) fd.append('to', this.to);
+                        const r = await fetch('{{ route('invoices.mail-test') }}', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content }, body: fd });
+                        this.ok = r.ok; this.msg = r.ok ? @js(__('settings.invoice_mail_test_ok')) : (r.status === 501 ? @js(__('settings.invoice_mail_test_501')) : @js(__('settings.invoice_mail_test_failed')));
+                    } catch (e) { this.ok = false; this.msg = @js(__('settings.invoice_mail_test_failed')); }
+                    this.busy = false;
+                } }">
+                <input type="email" x-model="to" placeholder="{{ __('settings.invoice_mail_test_to_ph') }}" class="w-64 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                <x-button variant="secondary" type="button" ::disabled="busy" @click="test()">
+                    <span x-show="! busy">{{ __('settings.invoice_mail_test') }}</span>
+                    <span x-show="busy">{{ __('settings.invoice_mail_test_sending') }}</span>
+                </x-button>
+                <span x-show="msg" x-text="msg" :class="ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" class="text-xs"></span>
+                <span class="text-xs text-gray-400">{{ __('settings.invoice_mail_test_note') }}</span>
             </div>
         </div>
+        </div>{{-- /mail --}}
 
         <div class="flex justify-end">
             <x-button variant="primary" type="submit">{{ __('common.save') }}</x-button>

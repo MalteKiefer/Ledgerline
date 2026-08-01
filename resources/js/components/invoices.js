@@ -1743,8 +1743,19 @@ export default (config = {}, labels = {}) => ({
         await new Promise((r) => setTimeout(r, 80)); // let the logo/image paint
         const node = document.getElementById('invoice-print');
         if (! node) { this._printing = null; return null; }
-        const canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
-        this._printing = null;
+        // html2canvas rasterises in screen space and captures BLANK from an element
+        // parked at left:-10000px. Bring the sheet to on-screen coords (0,0) just for
+        // the capture — it stays occluded behind the preview modal's backdrop, so no
+        // visible flash — then clear the inline overrides back to the off-screen rule.
+        node.style.left = '0'; node.style.top = '0'; node.style.zIndex = '1';
+        await new Promise((r) => setTimeout(r, 60));
+        let canvas;
+        try {
+            canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+        } finally {
+            node.style.left = ''; node.style.top = ''; node.style.zIndex = '';
+            this._printing = null;
+        }
         const img = canvas.toDataURL('image/jpeg', 0.92);
         const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
         const pw = pdf.internal.pageSize.getWidth();
@@ -2289,15 +2300,34 @@ export default (config = {}, labels = {}) => ({
         const p = (this.partners || []).find((x) => x.id === i.customer?.partnerId);
         return p?.invoiceEmail || p?.email || '';
     },
+    // Fill the mail placeholders from an invoice: :number :customer :company :date
+    // :due :total :currency. Used for both subject (plain) and body (HTML).
+    _fillPlaceholders(tpl, i, escape = false) {
+        const num = i.number || (labels.status_draft || 'Draft');
+        const esc = (v) => (escape ? String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])) : String(v));
+        const map = {
+            ':number': esc(num),
+            ':customer': esc(i.customer?.name || ''),
+            ':company': esc(this.company.name || ''),
+            ':date': esc(i.issueDate || ''),
+            ':due': esc(i.dueDate || ''),
+            ':total': esc(this.fmtMoney(this.computeTotals(i).gross, i.currency, document.documentElement.lang)),
+            ':currency': esc(i.currency || this.company.currency || ''),
+        };
+        return String(tpl || '').replace(/:(number|customer|company|date|due|total|currency)/g, (m) => map[m] ?? m);
+    },
     openMailInvoice(inv) {
         const i = inv || this.current; if (! i) return;
         if (! this.company.mail_enabled) { window.llToast(labels.mail_not_configured || 'Configure the invoice mail server in settings.'); return; }
-        const num = i.number || (labels.status_draft || 'Draft');
         this._mailInv = i;
         this.mailTo = this._mailRecipient(i);
-        this.mailSubject = (this.company.mail_subject || (labels.print_title || 'Invoice') + ' :number').replace(':number', num);
-        this.mailBody = (this.company.mail_body || (labels.mail_body_default || 'Please find attached invoice :number.')).replace(':number', num);
+        this.mailSubject = this._fillPlaceholders(this.company.mail_subject || ((labels.print_title || 'Invoice') + ' :number'), i);
+        // Body is the stored HTML template (WYSIWYG) with placeholders filled; the
+        // signature is appended server-side. Plain default falls back to a paragraph.
+        const bodyTpl = this.company.mail_body || ('<p>' + (labels.mail_body_default || 'Please find attached invoice :number.') + '</p>');
+        this.mailBody = this._fillPlaceholders(bodyTpl, i, true);
         this.mailOpen = true;
+        this.$nextTick(() => { if (this.$refs.mailBodyEl) this.$refs.mailBodyEl.innerHTML = this.mailBody; });
     },
     closeMailInvoice() { this.mailOpen = false; this._mailInv = null; },
     async confirmSendMail() {

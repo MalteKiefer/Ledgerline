@@ -363,6 +363,8 @@ return [
     'mail_not_configured' => 'Richte den Rechnungs-Mailserver unter Einstellungen → Firma ein.',
     'mail_bad_recipient' => 'Gib eine gültige Empfängeradresse ein.',
     'mail_body_default' => 'anbei erhalten Sie die Rechnung :number.',
+    'mail_test_subject' => 'Test',
+    'mail_test_body' => 'Dies ist eine Test-E-Mail von deinem Ledgerline-Rechnungs-Mailserver.',
     'partner_phone' => 'Telefon',
     'partner_address' => 'Adresse',
     'partner_vat' => 'USt-IdNr.',
