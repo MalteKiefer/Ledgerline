@@ -11,7 +11,7 @@ import { fetchBlobBuffer } from '../shared/blob-io';
 import { fileSig } from '../shared/file-sig';
 import { autoPick, suggestBookings } from '../shared/receipt-match';
 import { projectTree as buildProjectTree, rolledTotal as projectRolled, ownTotal as projectOwn, projectReceipts as receiptsForProject } from '../shared/finance-projects';
-import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary } from '../shared/finance-stats';
+import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary, euerReport } from '../shared/finance-stats';
 import { matchInvoice } from '../shared/invoice-match';
 import { extractDocText } from '../shared/doc-text';
 import { analyzeReceiptText } from '../shared/receipt-ocr';
@@ -152,6 +152,8 @@ export default (config = {}, labels = {}) => ({
     get statsCustomers() { return revenueByCustomer(this.invoices, this.statsYear); },
     get statsMonths() { return monthlyRevenue(this.invoices, this.statsYear); },
     get statsVat() { return vatReturn(this.invoices, this.statsYear); },
+    get euer() { return euerReport(this.invoices, this.transactions, this.projects, this.statsYear); },
+    monthShort(m) { try { return new Date(2000, m - 1, 1).toLocaleDateString(document.documentElement.lang || 'de', { month: 'short' }); } catch (e) { return String(m); } },
     // Largest monthly net in the selected year — scales the bar chart.
     get statsMonthPeak() { return Math.max(1, ...this.statsMonths.map((m) => m.net)); },
     monthLabel(m) {

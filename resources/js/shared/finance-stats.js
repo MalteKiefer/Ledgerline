@@ -152,3 +152,63 @@ export function activeYears(invoices) {
     const years = new Set(realizedInvoices(invoices).map(yearOf).filter(Boolean));
     return [...years].sort((a, b) => b - a);
 }
+
+/**
+ * EÜR (Einnahmen-Überschuss-Rechnung) for a year — a cash-basis income/expense report.
+ * Income = PAID invoices (cash basis; year from paidAt, falling back to issueDate).
+ * Expenses = receipts (attached to bank transactions) + manual project expenses, grouped
+ * by category. Net/VAT split derived from each receipt's detected VAT rate; manual project
+ * expenses are treated as net (no VAT tracked). Pure + zero-knowledge (client-side).
+ */
+export function euerReport(invoices, transactions, projects, year) {
+    const y = String(year);
+    let incomeNet = 0, incomeVat = 0;
+    const incomeMonths = Array.from({ length: 12 }, () => 0);
+    for (const inv of (invoices || [])) {
+        if (inv.trashed || inv.status !== 'paid') continue;
+        const paidYear = String(inv.paidAt || inv.issueDate || '').slice(0, 4);
+        if (paidYear !== y) continue;
+        const t = invoiceTotals(inv);
+        incomeNet = round2(incomeNet + t.net); incomeVat = round2(incomeVat + t.vat);
+        const m = (parseInt(String(inv.paidAt || inv.issueDate || '').slice(5, 7), 10) || 1) - 1;
+        incomeMonths[m] = round2(incomeMonths[m] + t.net);
+    }
+    const byCat = {}; let expNet = 0, expVat = 0;
+    const expMonths = Array.from({ length: 12 }, () => 0);
+    const add = (cat, gross, rate, month) => {
+        const vat = rate ? round2(gross * rate / (100 + rate)) : 0;
+        const net = round2(gross - vat);
+        expNet = round2(expNet + net); expVat = round2(expVat + vat);
+        const k = cat || '—';
+        (byCat[k] ||= { category: k, net: 0, vat: 0, gross: 0 });
+        byCat[k].net = round2(byCat[k].net + net); byCat[k].vat = round2(byCat[k].vat + vat); byCat[k].gross = round2(byCat[k].gross + gross);
+        if (month >= 0 && month < 12) expMonths[month] = round2(expMonths[month] + net);
+    };
+    for (const tx of (transactions || [])) {
+        for (const r of (tx.receipts || [])) {
+            if (r.trashed) continue;
+            const dt = String(r.date || tx.date || '');
+            if (dt.slice(0, 4) !== y) continue;
+            const gross = Number(r.total) || 0; if (! gross) continue;
+            const rate = Number(r.vat) || 0;
+            const cats = Array.isArray(r.categories) ? r.categories : (r.category ? [r.category] : []);
+            add(cats[0] || '', gross, rate, (parseInt(dt.slice(5, 7), 10) || 1) - 1);
+        }
+    }
+    for (const p of (projects || [])) {
+        for (const ex of (p.expenses || [])) {
+            const dt = String(ex.date || '');
+            if (dt.slice(0, 4) !== y) continue;
+            const gross = Number(ex.amount) || 0; if (! gross) continue;
+            add(ex.category || '', gross, 0, (parseInt(dt.slice(5, 7), 10) || 1) - 1);
+        }
+    }
+    return {
+        year: y,
+        incomeNet, incomeVat, expNet, expVat,
+        surplus: round2(incomeNet - expNet),
+        vatPayable: round2(incomeVat - expVat),
+        byCategory: Object.values(byCat).sort((a, b) => b.net - a.net),
+        months: Array.from({ length: 12 }, (_, i) => ({ m: i + 1, income: incomeMonths[i], expense: expMonths[i], surplus: round2(incomeMonths[i] - expMonths[i]) })),
+    };
+}
