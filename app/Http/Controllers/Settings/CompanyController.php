@@ -45,6 +45,12 @@ class CompanyController extends Controller
             'company_iban' => ['nullable', 'string', 'max:60'],
             'company_bic' => ['nullable', 'string', 'max:20'],
             'company_bank_name' => ['nullable', 'string', 'max:200'],
+            'company_website' => ['nullable', 'string', 'max:255'],
+            'company_contacts' => ['nullable', 'array', 'max:20'],
+            'company_contacts.*.name' => ['nullable', 'string', 'max:200'],
+            'company_contacts.*.role' => ['nullable', 'string', 'max:200'],
+            'company_contacts.*.email' => ['nullable', 'string', 'max:200'],
+            'company_contacts.*.phone' => ['nullable', 'string', 'max:100'],
             'invoice_number_format' => ['nullable', 'string', 'max:40'],
             'invoice_next_number' => ['nullable', 'integer', 'min:1', 'max:100000000'],
             'invoice_default_vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -78,7 +84,7 @@ class CompanyController extends Controller
         $fields = [
             'company_name', 'company_address', 'company_email', 'company_phone',
             'company_tax_id', 'company_vat_id', 'company_iban', 'company_bic',
-            'company_bank_name', 'invoice_number_format', 'invoice_next_number',
+            'company_bank_name', 'company_website', 'invoice_number_format', 'invoice_next_number',
             'invoice_default_vat_rate', 'invoice_payment_terms_days', 'invoice_footer_text',
             'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
             'invoice_payment_methods', 'invoice_payment_terms_text',
@@ -107,6 +113,27 @@ class CompanyController extends Controller
             if ($request->has($htmlField)) {
                 $data[$htmlField] = HtmlMailSanitizer::clean($request->string($htmlField)->value());
             }
+        }
+        // Company contact persons: drop fully-empty rows, keep only the four fields.
+        if ($request->has('company_contacts')) {
+            $rows = $request->input('company_contacts');
+            $str = static fn (mixed $v): string => is_scalar($v) ? trim((string) $v) : '';
+            $clean = [];
+            foreach (is_array($rows) ? $rows : [] as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $c = [
+                    'name' => $str($row['name'] ?? null),
+                    'role' => $str($row['role'] ?? null),
+                    'email' => $str($row['email'] ?? null),
+                    'phone' => $str($row['phone'] ?? null),
+                ];
+                if ($c['name'] !== '' || $c['email'] !== '' || $c['phone'] !== '') {
+                    $clean[] = $c;
+                }
+            }
+            $data['company_contacts'] = $clean;
         }
 
         $settings = UserSetting::for($this->requireUser($request)->id);

@@ -85,6 +85,25 @@ class CompanySettingsTest extends TestCase
         ]);
     }
 
+    public function test_it_stores_website_and_contacts_dropping_empty_rows(): void
+    {
+        $user = $this->signIn();
+
+        $this->put(route('settings.company.update'), [
+            'company_website' => 'https://acme.test',
+            'company_contacts' => [
+                ['name' => 'Jane', 'role' => 'Sales', 'email' => 'jane@acme.test', 'phone' => ''],
+                ['name' => '', 'role' => '', 'email' => '', 'phone' => ''], // empty → dropped
+            ],
+        ])->assertRedirect();
+
+        $s = \App\Models\UserSetting::for($user->id)->fresh();
+        $this->assertSame('https://acme.test', $s->company_website);
+        $this->assertCount(1, $s->company_contacts);
+        $this->assertSame('Jane', $s->company_contacts[0]['name']);
+        $this->assertSame('jane@acme.test', $s->company_contacts[0]['email']);
+    }
+
     public function test_logo_upload_stores_and_streams_then_removes(): void
     {
         $disk = config('files.disk');

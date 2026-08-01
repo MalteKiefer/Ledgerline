@@ -1,14 +1,16 @@
 <x-layouts.app :title="__('settings.company_section')">
     <x-page-heading :title="__('settings.company_section')" :subtitle="__('settings.company_desc')" />
 
-    <form method="POST" action="{{ route('settings.company.update') }}" enctype="multipart/form-data" class="mt-6 space-y-6" x-data="{ tab: (location.hash || '#info').slice(1) }">
+    <form method="POST" action="{{ route('settings.company.update') }}" enctype="multipart/form-data" class="mt-6 space-y-6"
+          x-data="{ tab: sessionStorage.getItem('companyTab') || 'info' }"
+          x-init="$watch('tab', v => sessionStorage.setItem('companyTab', v))">
         @csrf
         @method('PUT')
 
         {{-- Tabs --}}
         <div class="flex gap-1 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] p-0.5 text-sm">
             @foreach (['info' => 'company_tab_info', 'design' => 'company_tab_design', 'mail' => 'company_tab_mail'] as $key => $lk)
-                <button type="button" @click="tab = '{{ $key }}'; location.hash = '{{ $key }}'"
+                <button type="button" @click="tab = '{{ $key }}'"
                         class="flex-1 rounded-lg px-3 py-1.5 font-medium transition"
                         :class="tab === '{{ $key }}' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-accent'">
                     {{ __('settings.' . $lk) }}
@@ -43,7 +45,28 @@
                 <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_vat_id') }}
                     <input type="text" name="company_vat_id" value="{{ old('company_vat_id', $s->company_vat_id) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                 </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.company_website') }}
+                    <input type="url" name="company_website" value="{{ old('company_website', $s->company_website) }}" placeholder="https://…" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                </label>
             </div>
+        </div>
+
+        {{-- Contact persons --}}
+        <div class="ll-card" x-data="{ rows: {{ Illuminate\Support\Js::from(old('company_contacts', $s->company_contacts ?: [])) }} }">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_contacts_heading') }}</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.company_contacts_hint') }}</p>
+            <div class="mt-4 space-y-3">
+                <template x-for="(row, i) in rows" :key="i">
+                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-12 items-start">
+                        <input type="text" :name="`company_contacts[${i}][name]`" x-model="row.name" placeholder="{{ __('settings.company_contact_name') }}" class="sm:col-span-3 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <input type="text" :name="`company_contacts[${i}][role]`" x-model="row.role" placeholder="{{ __('settings.company_contact_role') }}" class="sm:col-span-3 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <input type="text" :name="`company_contacts[${i}][email]`" x-model="row.email" placeholder="{{ __('settings.company_contact_email') }}" class="sm:col-span-3 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <input type="text" :name="`company_contacts[${i}][phone]`" x-model="row.phone" placeholder="{{ __('settings.company_contact_phone') }}" class="sm:col-span-2 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <button type="button" @click="rows.splice(i, 1)" class="sm:col-span-1 flex h-9 items-center justify-center rounded-md text-gray-400 hover:bg-red-500/10 hover:text-red-500" aria-label="{{ __('common.delete') }}"><x-icon name="trash" class="h-4 w-4" /></button>
+                    </div>
+                </template>
+            </div>
+            <button type="button" @click="rows.push({ name: '', role: '', email: '', phone: '' })" class="mt-3 inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline"><x-icon name="plus" class="h-4 w-4" /> {{ __('settings.company_contact_add') }}</button>
         </div>
 
         {{-- Bank --}}

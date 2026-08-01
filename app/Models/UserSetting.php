@@ -22,6 +22,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property ?string $company_bic
  * @property ?string $company_bank_name
  * @property ?string $company_logo_path
+ * @property ?string $company_website
+ * @property ?array<int,array<string,string>> $company_contacts
  * @property ?string $invoice_number_prefix
  * @property int $invoice_number_padding
  * @property ?string $invoice_number_format
@@ -66,6 +68,7 @@ use Illuminate\Database\Eloquent\Model;
     // Per-user company identity + invoice numbering (formerly workspace-global).
     'company_name', 'company_address', 'company_email', 'company_phone', 'company_tax_id',
     'company_vat_id', 'company_iban', 'company_bic', 'company_bank_name', 'company_logo_path',
+    'company_website', 'company_contacts',
     'invoice_number_prefix', 'invoice_number_padding', 'invoice_number_format', 'invoice_next_number',
     'invoice_default_vat_rate', 'invoice_payment_terms_days', 'invoice_footer_text',
     'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
@@ -127,6 +130,7 @@ class UserSetting extends Model
             'invoice_next_number' => 'integer',
             'invoice_payment_terms_days' => 'integer',
             'invoice_default_vat_rate' => 'decimal:2',
+            'company_contacts' => 'array',
             'invoice_mail_enabled' => 'boolean',
             'invoice_smtp_port' => 'integer',
             'invoice_smtp_host' => 'encrypted',
