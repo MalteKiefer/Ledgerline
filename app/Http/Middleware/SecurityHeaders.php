@@ -43,7 +43,7 @@ final class SecurityHeaders
         // Deny access to powerful browser features the app never uses.
         $response->headers->set(
             'Permissions-Policy',
-            'geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()'
+            'geolocation=(), camera=(), microphone=(), payment=(), usb=()'
         );
 
         // Pin HTTPS only when the deployment is actually served over TLS
