@@ -2844,7 +2844,7 @@
 
             {{-- ---------- KLASSISCH (traditional German business sheet) ---------- --}}
             <template x-if="_printing && tpl === 'klassisch'">
-              <div style="font-family:Arial,'Helvetica Neue',Helvetica,sans-serif; font-size:10.5px; line-height:1.5; color:#222; padding:16mm 18mm;">
+              <div style="font-family:Arial,'Helvetica Neue',Helvetica,sans-serif; font-size:10.5px; line-height:1.5; color:#222; padding:20mm 20mm 22mm 25mm; box-sizing:border-box; min-height:297mm; display:flex; flex-direction:column;">
                 {{-- Wordmark / logo, top-right --}}
                 <div style="min-height:56px; text-align:right; margin-bottom:30px;">
                   <template x-if="company.logo"><img :src="company.logo" alt="" style="max-height:60px; display:inline-block;"></template>
@@ -2923,10 +2923,11 @@
                 {{-- Payment QR --}}
                 <div x-show="printQr" style="margin-top:20px;"><img :src="printQr" style="width:84px; height:84px;"><div style="font-size:8px; color:#666; margin-top:2px;" x-text="pl('giro_hint')"></div></div>
 
-                {{-- Footer (3 columns) --}}
-                <div style="margin-top:34px; padding-top:8px; border-top:1px solid #cfcfcf; display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; font-size:8.5px; color:#555; line-height:1.5;">
+                {{-- Inline footer, pushed to sheet bottom (for the rasterised PDF / mail path;
+                     the window.print path hides this and uses the fixed .ip-foot per page). --}}
+                <div class="inv-inline-foot" style="margin-top:auto; padding-top:8px; border-top:1px solid #cfcfcf; display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; font-size:8px; color:#555; line-height:1.5;">
                   <div>
-                    <div style="font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#2c3542;" x-text="company.name"></div>
+                    <div style="font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#374151;" x-text="company.name"></div>
                     <div x-show="company.address" style="white-space:pre-line;" x-text="company.address"></div>
                     <div x-show="company.vat_id" x-text="pl('vat_id_label') + ' ' + company.vat_id"></div>
                   </div>
@@ -2934,6 +2935,7 @@
                     <div x-show="company.website" x-text="company.website"></div>
                     <div x-show="company.email" x-text="company.email"></div>
                     <div x-show="company.phone" x-text="company.phone"></div>
+                    <template x-for="(c, ci) in (company.contacts || [])" :key="ci"><div x-text="[c.name, c.role].filter(Boolean).join(' · ')"></div></template>
                   </div>
                   <div x-show="company.bank_name || company.iban">
                     <div x-show="company.iban" x-text="'IBAN: ' + company.iban"></div>
@@ -2947,12 +2949,26 @@
             {{-- Repeating page footer (bank details + contacts + website) — fixed so it
                  appears at the bottom of EVERY printed page regardless of page count. --}}
             <div class="ip-foot" x-show="_printing">
-              <div style="display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap;">
-                <span x-show="company.bank_name || company.iban" x-text="[company.bank_name, company.iban ? 'IBAN ' + company.iban : '', company.bic ? 'BIC ' + company.bic : ''].filter(Boolean).join(' · ')"></span>
-                <span x-show="company.website" x-text="company.website"></span>
-              </div>
-              <div x-show="(company.contacts || []).length" style="margin-top:2px;">
-                <template x-for="(c, ci) in (company.contacts || [])" :key="ci"><span x-text="[c.name, c.role, c.email, c.phone].filter(Boolean).join(' · ') + (ci < (company.contacts.length - 1) ? '   ·   ' : '')"></span></template>
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;">
+                {{-- Address --}}
+                <div>
+                  <div style="font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#374151;" x-text="company.name"></div>
+                  <div x-show="company.address" style="white-space:pre-line;" x-text="company.address"></div>
+                  <div x-show="company.vat_id" x-text="pl('vat_id_label') + ' ' + company.vat_id"></div>
+                </div>
+                {{-- Contacts --}}
+                <div>
+                  <div x-show="company.website" x-text="company.website"></div>
+                  <div x-show="company.email" x-text="company.email"></div>
+                  <div x-show="company.phone" x-text="company.phone"></div>
+                  <template x-for="(c, ci) in (company.contacts || [])" :key="ci"><div x-text="[c.name, c.role].filter(Boolean).join(' · ')"></div></template>
+                </div>
+                {{-- Bank --}}
+                <div x-show="company.bank_name || company.iban">
+                  <div x-show="company.iban" x-text="'IBAN: ' + company.iban"></div>
+                  <div x-show="company.bic" x-text="'BIC: ' + company.bic"></div>
+                  <div x-show="company.bank_name" x-text="'Bank: ' + company.bank_name"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -3172,17 +3188,19 @@
        margin so it appears on every printed page without overlapping content. */
     .ip-foot { display: none; }
     @media print {
-      /* A4 with ~1cm side/top margins; a wider bottom margin reserves a band the
-         fixed footer lives in (content never flows into an @page margin). */
-      @page { size: A4; margin: 12mm 14mm 24mm 14mm; }
+      /* DIN 5008 A4 margins: left 25mm, right 20mm, top 20mm; a wider bottom margin
+         reserves the band the fixed footer lives in (content never flows into it). */
+      @page { size: A4; margin: 20mm 20mm 28mm 25mm; }
       html, body { height: auto !important; background: #fff !important; }
       body > *:not(#invoice-print) { display: none !important; }
       #invoice-print { position: static !important; left: auto !important; top: auto !important; width: auto !important; }
       /* The @page margins now provide the page margins — drop each template's own outer
          padding (which was the print margin) so nothing is doubled. */
-      #invoice-print > div:not(.ip-foot) { padding: 0 !important; }
-      .ip-foot { display: block !important; position: fixed; bottom: 8mm; left: 14mm; right: 14mm;
-                 font-size: 8px; line-height: 1.4; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 4px; }
+      #invoice-print > div:not(.ip-foot) { padding: 0 !important; min-height: 0 !important; }
+      /* The inline (rasteriser) footer is replaced by the fixed per-page .ip-foot in print. */
+      .inv-inline-foot { display: none !important; }
+      .ip-foot { display: block !important; position: fixed; bottom: 10mm; left: 25mm; right: 20mm;
+                 font-size: 8px; line-height: 1.45; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 5px; }
       /* Keep accent backgrounds/colours in print — browsers drop them otherwise. */
       #invoice-print, #invoice-print * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     }
