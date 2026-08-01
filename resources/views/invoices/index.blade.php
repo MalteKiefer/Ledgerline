@@ -2950,7 +2950,7 @@
 
             {{-- Repeating page footer (bank details + contacts + website) — fixed so it
                  appears at the bottom of EVERY printed page regardless of page count. --}}
-            <div class="ip-foot" x-show="_printing">
+            <div class="ip-foot">
               <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;">
                 {{-- Address --}}
                 <div>
