@@ -748,6 +748,14 @@ export default (config = {}, labels = {}) => ({
         for (const c of (this.financeCategories || [])) {
             if (c && ! c.id) { c.id = window.LLInvoicesStore.newId(); changed = true; }
         }
+        // Backfill stable ids on legacy id-less invoice versions so the 409 merge keys
+        // them uniquely (not on the non-unique per-invoice `seq`) — otherwise two
+        // devices versioning the same invoice can overwrite each other's version.
+        for (const inv of (this.invoices || [])) {
+            for (const v of (inv.versions || [])) {
+                if (v && ! v.id) { v.id = window.LLInvoicesStore.newId(); changed = true; }
+            }
+        }
         if (changed) this._save();
     },
     newCategoryName: '',
@@ -972,12 +980,11 @@ export default (config = {}, labels = {}) => ({
     },
     closeReceipts() { this.receiptTx = null; },
     async uploadReceipts(fileList) {
-        const tx = this.receiptTx;
-        if (! tx) return;
+        const txId = this.receiptTx?.id;
+        if (! txId) return;
         const files = [...(fileList || [])];
         if (! files.length) return;
         this.receiptBusy = true;
-        tx.receipts = tx.receipts || [];
         const seen = this._existingReceiptSigs();
         let ok = 0, dupes = 0;
         for (const file of files) {
@@ -986,6 +993,13 @@ export default (config = {}, labels = {}) => ({
                 const sig = await fileSig(bytes.slice(0));
                 if (sig && seen.has(sig)) { dupes++; continue; }
                 const up = await this._uploadFile(bytes, file.name, file.type || 'application/octet-stream');
+                // Resolve the LIVE transaction by id after the upload await — a
+                // concurrent 409 rebase may have replaced this.transactions elements with
+                // clones, so a reference captured before the loop would be a detached
+                // ghost and the pushed receipt would never reach the sealed store.
+                const tx = (this.transactions || []).find((x) => x.id === txId);
+                if (! tx) continue; // booking vanished mid-upload; the orphaned blob is grace-swept
+                tx.receipts = tx.receipts || [];
                 if (up) { if (sig) { up.sig = sig; seen.add(sig); } up.id = window.LLInvoicesStore.newId(); tx.receipts.push(up); ok++; this._ocrReceipt(bytes.slice(0), up, tx); }
             } catch (e) { /* skip this file */ }
         }
@@ -1421,8 +1435,8 @@ export default (config = {}, labels = {}) => ({
     get egVat() { return this._round2((parseFloat(this.eigenbeleg?.gross) || 0) - this.egNet); },
     egVatChoices() { const s = new Set([19, 16, 7, 0]); const v = this.eigenbeleg?.vatRate; if (v != null) s.add(Number(v)); return [...s].sort((a, b) => b - a); },
     async saveEigenbeleg() {
-        const e = this.eigenbeleg, tx = this._egTx;
-        if (! e || ! tx) return;
+        const e = this.eigenbeleg, txId = this._egTx?.id;
+        if (! e || ! txId) return;
         // Amount is always required; a lost-receipt business expense also needs recipient + reason.
         if (! (parseFloat(e.gross) > 0) || (this.egIsExpense && (! String(e.recipient || '').trim() || ! String(e.reason || '').trim()))) {
             window.llToast?.(labels.eg_missing || 'Betrag (und bei Betriebsausgabe Empfänger + Begründung) sind Pflicht.');
@@ -1436,6 +1450,11 @@ export default (config = {}, labels = {}) => ({
             const base = `Eigenbeleg ${e.date} ${label}`.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120);
             const up = await this._uploadFile(bytes, base + '.pdf', 'application/pdf');
             if (! up) throw new Error('upload');
+            // Resolve the live booking by id after the render+upload awaits — a
+            // concurrent 409 rebase may have detached the _egTx reference; pushing onto
+            // the ghost would lose the self-receipt and orphan its PDF.
+            const tx = (this.transactions || []).find((x) => x.id === txId);
+            if (! tx) throw new Error('booking gone'); // orphan blob grace-swept
             up.id = window.LLInvoicesStore.newId();
             up.kind = 'eigenbeleg';
             up.eigenbeleg = { ...e, net: this.egNet, vat: this.egVat };
@@ -1619,7 +1638,12 @@ export default (config = {}, labels = {}) => ({
         const label = `${inv.number || (labels.status_draft || 'ENTWURF')}-${String(seq).padStart(3, '0')}`;
         const snapshot = JSON.parse(JSON.stringify(this._editable(inv)));
         snapshot.totals = this.computeTotals(inv);
-        const version = { seq, label, reason, at: new Date().toISOString(), snapshot };
+        // Stable random id — NOT seq. seq is a per-invoice counter, so two devices
+        // versioning the SAME invoice concurrently both mint seq=N; keying the 409
+        // merge on seq (keyOf) would let the loser's rebase overwrite the winner's
+        // already-committed version and orphan its sealed GoBD PDF. A random id keys
+        // the merge uniquely so both versions survive.
+        const version = { id: window.LLInvoicesStore.newId(), seq, label, reason, at: new Date().toISOString(), snapshot };
         // Online-created invoices freeze a generated PDF per version; imported keep fields only.
         if (! inv.imported) {
             const pdf = await this._renderInvoicePdf(inv, label);

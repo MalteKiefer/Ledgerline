@@ -387,6 +387,17 @@ export default (config = {}, labels = {}) => ({
                     const vk = Uint8Array.from(atob(vkB64), (c) => c.charCodeAt(0));
                     // Cache the raw key bytes for write operations (in-memory only).
                     this._folderKeys[m.vault_id] = vk;
+                    // If this vault is ALREADY loaded, PRESERVE its live in-memory tree +
+                    // version + rebase base. A blind re-fetch+overwrite here (this can be
+                    // called again from acceptFolderInvite / removeFolderMember / a save
+                    // give-up) would clobber a user's unsaved edits and detach an in-flight
+                    // upload batch's captured array refs. Carry its existing sidebar entry
+                    // forward so the list is never collapsed to just the newly-loaded ones.
+                    const existing = this.sharedFolders.find((sf) => sf.vaultId === m.vault_id);
+                    if (existing && this.sharedTree[m.vault_id]) {
+                        active.push({ ...existing, role: this._serverToClientRole(m.role), owned: m.owner === true });
+                        continue;
+                    }
                     const store = await getJson('/vaults/' + m.vault_id + '/store');
                     let manifest = { name: '', folders: [], files: [] };
                     if (store.sealed_manifest) {
@@ -396,8 +407,6 @@ export default (config = {}, labels = {}) => ({
                     this.sharedTree[m.vault_id] = { folders: manifest.folders || [], files: manifest.files || [] };
                     // Rebase base: a 409 replays only our delta onto the winning copy.
                     this._folderBase[m.vault_id] = structuredClone({ name: manifest.name || '', folders: this.sharedTree[m.vault_id].folders, files: this.sharedTree[m.vault_id].files });
-                    // Avoid duplicates if _loadSharedFolders is somehow called twice.
-                    if (this.sharedFolders.some((sf) => sf.vaultId === m.vault_id)) continue;
                     active.push({
                         id: m.vault_id,
                         vaultId: m.vault_id,
@@ -446,9 +455,26 @@ export default (config = {}, labels = {}) => ({
             } else if (res.status === 409) {
                 conflicts++;
                 const data = await res.json();
-                const serverManifest = data.sealed_manifest
-                    ? await VaultShareCrypto.openVaultManifest(data.sealed_manifest, vkBytes)
-                    : { name: entry.name, folders: [], files: [] };
+                let serverManifest;
+                try {
+                    serverManifest = data.sealed_manifest
+                        ? await VaultShareCrypto.openVaultManifest(data.sealed_manifest, vkBytes)
+                        : { name: entry.name, folders: [], files: [] };
+                } catch (decErr) {
+                    // The server manifest no longer decrypts with our cached key → a
+                    // manager rotated the vault key concurrently (member removal). Don't
+                    // throw (the caller swallows it and the client wedges). Reload the
+                    // vault with the fresh wrapped key + tree and surface a conflict so the
+                    // user can redo the edit against the new key.
+                    window.llToast?.(labels.saveConflict || '');
+                    // Drop this vault's stale cached key/tree so the reload re-derives the
+                    // fresh wrapped key (the #27 preserve-branch skips already-loaded vaults).
+                    delete this.sharedTree[vaultId]; delete this._folderKeys[vaultId];
+                    delete this._folderVersion[vaultId]; delete this._folderBase[vaultId];
+                    this.sharedFolders = this.sharedFolders.filter((sf) => sf.vaultId !== vaultId);
+                    await this._loadSharedFolders();
+                    return;
+                }
                 const server = { name: serverManifest.name ?? entry.name, folders: serverManifest.folders || [], files: serverManifest.files || [] };
                 const merged = mergeManifest(this._folderBase[vaultId] || server, ours, server);
                 // Merge IN PLACE — splice the tree's existing folders/files arrays rather
@@ -491,7 +517,12 @@ export default (config = {}, labels = {}) => ({
         if (! entry.versions || entry.versions.length <= keep) return;
         const evicted = entry.versions.slice(keep);
         entry.versions = entry.versions.slice(0, keep);
-        this._freeBlobs(evicted.map((v) => v.blob));
+        // A concurrent same-version restore on two devices can merge into two version
+        // entries pointing at the SAME blob id; the current record can also share a
+        // blob with a version. Only free an evicted blob that NOTHING kept still
+        // references, or the survivor's snapshot 404s.
+        const stillReferenced = new Set([entry.blob, entry.textRef, entry.embRef, ...entry.versions.map((v) => v.blob)].filter(Boolean));
+        this._freeBlobs(evicted.map((v) => v.blob).filter((b) => b && ! stillReferenced.has(b)));
     },
 
     usage: { used: 0, quota: 0 },
@@ -1247,7 +1278,7 @@ export default (config = {}, labels = {}) => ({
     // Delete via the modal: to the trash (soft) or permanently. A folder brings
     // its whole subtree. Everything is a manifest edit — trash is just a flag;
     // permanent removal also reclaims the content blobs (file + versions).
-    applyDelete(permanent = false) {
+    async applyDelete(permanent = false) {
         const refs = this.deleteRefs;
         this.deleteOpen = false;
         this.deleteRefs = [];
@@ -1274,10 +1305,15 @@ export default (config = {}, labels = {}) => ({
                 // Fix 1: pass the real deleted ids so 409 re-apply removes exactly the right entries.
                 const deletedFileIds = [...kill];
                 const deletedFolderIds = [...killFolders];
-                this._saveFolder(vaultId, { op: 'deleteFiles', ids: deletedFileIds, folderIds: deletedFolderIds })
-                    .catch(() => {});
+                // AWAIT the durable save first: its 409 rebase pulls the server tree and
+                // merges in any files another editor uploaded that our local tree does not
+                // yet know about. Only reconcile AFTER that — a reconcile built from the
+                // pre-merge (stale) tree would omit those files' blobs and prune them.
+                let saveOk = true;
+                try { await this._saveFolder(vaultId, { op: 'deleteFiles', ids: deletedFileIds, folderIds: deletedFolderIds }); }
+                catch (_) { saveOk = false; }
                 this._sharedFreeBlobs(vaultId, blobs);
-                this._sharedReconcileNow(vaultId).catch(() => {});
+                if (saveOk) this._sharedReconcileNow(vaultId).catch(() => {});
             } else {
                 const stamp = new Date().toISOString();
                 for (const f of targets) {

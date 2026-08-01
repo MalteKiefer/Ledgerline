@@ -34,7 +34,10 @@ function keyOf(rec) {
     if (! isPlainObject(rec)) return undefined;
     if (rec.id != null) return 'id\0' + rec.id;
     if (rec.credentialId != null) return 'cred\0' + rec.credentialId;
-    if (rec.seq != null) return 'seq\0' + rec.seq;
+    // NOTE: `seq` is deliberately NOT a merge key. seq is a per-invoice counter, so two
+    // devices versioning the same invoice both mint the same seq — keying on it let the
+    // loser's 409 rebase overwrite the winner's committed version. Invoice versions now
+    // carry a stable random id (backfilled on load), so they key on id above.
     // A gallery person.faces membership keys naturally on (photoId, idx) — the
     // face-scan worker builds these without an id, so a composite natural key lets
     // concurrent face tags from two devices union instead of clobbering.
@@ -54,9 +57,15 @@ function keyable(arr) {
     return true;
 }
 
-/** True if every element is a scalar (string/number/bool) — merge as a set-union. */
+/**
+ * True if every element is a STRING — a set (tags, urls, album photoIds) safe to union.
+ * Numeric arrays are deliberately excluded: a positional numeric vector (a face centroid
+ * / embedding) is NOT a set — set-unioning two recomputed centroids yields a garbage
+ * ~2x-length vector. Numeric arrays fall through to last-writer-wins (correct for a
+ * recomputable vector), never to a union.
+ */
 function scalarArray(arr) {
-    return Array.isArray(arr) && arr.every((v) => v === null || typeof v !== 'object');
+    return Array.isArray(arr) && arr.every((v) => typeof v === 'string');
 }
 
 /**
