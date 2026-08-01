@@ -114,6 +114,8 @@ return [
     'due' => 'Ð¡ÑÐ¾Ðº',
     'amount' => 'Ð¡ÑÐ¼Ð¼Ð°',
     'subtotal' => 'ÐÐ¾Ð´ÑÑÐ¾Ð³',
+    'giro_title' => 'QR для оплаты (GiroCode)',
+    'giro_hint' => 'Отсканируйте для оплаты SEPA-переводом.',
     'discount' => 'Скидка',
     'skonto' => 'Скидка за раннюю оплату (Skonto)',
     'skonto_within' => 'в течение',

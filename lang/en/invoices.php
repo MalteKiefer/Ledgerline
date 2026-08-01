@@ -114,6 +114,8 @@ return [
     'due' => 'Due',
     'amount' => 'Amount',
     'subtotal' => 'Subtotal',
+    'giro_title' => 'Payment QR (GiroCode)',
+    'giro_hint' => 'Scan to pay by SEPA transfer.',
     'discount' => 'Discount',
     'skonto' => 'Cash discount (Skonto)',
     'skonto_within' => 'within',

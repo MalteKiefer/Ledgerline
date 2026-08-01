@@ -2526,6 +2526,15 @@
             </div>
           </div>
 
+          {{-- Payment QR preview (GiroCode) --}}
+          <div x-show="invoiceQr" class="mt-4 flex items-center gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 p-3">
+            <img :src="invoiceQr" class="h-20 w-20 rounded bg-white p-1">
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+              <p class="font-medium text-gray-700 dark:text-gray-300">{{ __('invoices.giro_title') }}</p>
+              <p>{{ __('invoices.giro_hint') }}</p>
+            </div>
+          </div>
+
           {{-- Note / footer --}}
           <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
             <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.note') }}
@@ -2690,6 +2699,7 @@
                     <div x-show="company.payment_terms_text"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + company.heading" x-text="pl('payment_terms_heading')"></div><div style="white-space:pre-line;" x-text="company.payment_terms_text"></div></div>
                     <div x-show="company.payment_methods"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + company.heading" x-text="pl('payment_methods_heading')"></div><div style="white-space:pre-line;" x-text="company.payment_methods"></div></div>
                     <div x-show="company.bank_name || company.iban"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + company.heading" x-text="pl('bank_details')"></div><div x-text="[company.bank_name, company.iban ? 'IBAN ' + company.iban : '', company.bic ? 'BIC ' + company.bic : ''].filter(Boolean).join(' · ')"></div></div>
+                    <div x-show="printQr" style="margin-top:8px; display:flex; align-items:center; gap:8px;"><img :src="printQr" style="width:76px; height:76px;"><span style="font-size:8px; color:#8a8a8a;" x-text="pl('giro_hint')"></span></div>
                   </div>
                   <div style="margin-top:12px; text-align:center; font-size:9px; color:#6b7280; white-space:pre-line;" x-show="_printing.footer || company.footer_text" x-text="_printing.footer || company.footer_text"></div>
                 </div>
@@ -2747,6 +2757,7 @@
                 </div>
                 <div style="margin-top:34px; text-align:center; font-style:italic; color:#555; white-space:pre-line;" x-show="_printing.note || _printing.footer || company.footer_text" x-text="_printing.note || _printing.footer || company.footer_text"></div>
                 <div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; margin-top:20px; padding-top:10px; border-top:1px solid #ededed; text-align:center; font-size:8.5px; color:#8a8a8a; letter-spacing:.02em;" x-text="[company.payment_terms_text, company.payment_methods, company.bank_name, company.iban ? 'IBAN ' + company.iban : '', company.bic ? 'BIC ' + company.bic : ''].filter(Boolean).join(' · ')"></div>
+                <div x-show="printQr" style="margin-top:10px; text-align:center;"><img :src="printQr" style="width:80px; height:80px;"><div style="font-size:8px; color:#8a8a8a; margin-top:2px;" x-text="pl('giro_hint')"></div></div>
               </div>
             </template>
 
@@ -2819,6 +2830,7 @@
                       <div x-show="company.payment_terms_text"><div class="ie-pc-lbl" x-text="pl('payment_terms_heading')"></div><div class="ie-pc-val" x-text="company.payment_terms_text"></div></div>
                       <div x-show="company.payment_methods"><div class="ie-pc-lbl" x-text="pl('payment_methods_heading')"></div><div class="ie-pc-val" x-text="company.payment_methods"></div></div>
                       <div x-show="company.bank_name || company.iban"><div class="ie-pc-lbl" x-text="pl('bank_details')"></div><div class="ie-pc-val"><span x-text="company.bank_name"></span><template x-if="company.iban"><span><br x-show="company.bank_name">IBAN: <span x-text="company.iban"></span></span></template><template x-if="company.bic"><span><br>BIC: <span x-text="company.bic"></span></span></template></div></div>
+                      <div x-show="printQr" style="margin-top:8px; display:flex; align-items:center; gap:8px;"><img :src="printQr" style="width:76px; height:76px;"><span style="font-size:8px; color:#8a8a8a;" x-text="pl('giro_hint')"></span></div>
                     </div>
                   </div>
                 </div>
@@ -2912,6 +2924,7 @@
                   <div x-show="company.payment_terms_text"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.05em;" :style="'color:' + company.accent" x-text="pl('payment_terms_heading')"></div><div style="white-space:pre-line;" x-text="company.payment_terms_text"></div></div>
                   <div x-show="company.payment_methods"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.05em;" :style="'color:' + company.accent" x-text="pl('payment_methods_heading')"></div><div style="white-space:pre-line;" x-text="company.payment_methods"></div></div>
                   <div x-show="company.bank_name || company.iban"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.05em;" :style="'color:' + company.accent" x-text="pl('bank_details')"></div><div x-text="[company.bank_name, company.iban ? 'IBAN ' + company.iban : '', company.bic ? 'BIC ' + company.bic : ''].filter(Boolean).join(' · ')"></div></div>
+                  <div x-show="printQr" style="margin-top:8px; display:flex; align-items:center; gap:8px;"><img :src="printQr" style="width:76px; height:76px;"><span style="font-size:8px; color:#8a8a8a;" x-text="pl('giro_hint')"></span></div>
                 </div>
               </div>
             </template>
