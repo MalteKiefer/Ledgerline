@@ -5,13 +5,7 @@
     $btn = 'flex h-7 min-w-7 items-center justify-center rounded px-1.5 text-gray-700 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10';
     $sep = '<span class="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700"></span>';
     $inp = 'w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent';
-    $fonts = [
-        '' => __('settings.wysiwyg_font_default'),
-        'Inter, sans-serif' => 'Inter', 'Roboto, sans-serif' => 'Roboto', "'Open Sans', sans-serif" => 'Open Sans',
-        'Lato, sans-serif' => 'Lato', 'Montserrat, sans-serif' => 'Montserrat', "'Source Sans 3', sans-serif" => 'Source Sans 3',
-        'Merriweather, serif' => 'Merriweather', "'Playfair Display', serif" => 'Playfair Display',
-        'Georgia, serif' => 'Georgia', 'Arial, sans-serif' => 'Arial',
-    ];
+    $fonts = ['' => __('settings.wysiwyg_font_default')] + config('fonts.families');
 @endphp
 <div x-data="wysiwyg()" class="mt-1 overflow-hidden rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
   <div class="flex flex-wrap items-center gap-0.5 border-b border-gray-200 dark:border-gray-700 px-1.5 py-1">

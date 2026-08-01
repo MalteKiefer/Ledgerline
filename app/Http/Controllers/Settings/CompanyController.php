@@ -59,6 +59,7 @@ class CompanyController extends Controller
             'invoice_accent_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'invoice_heading_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'invoice_template' => ['nullable', 'string', 'in:editorial,modern,elegant,klassisch'],
+            'invoice_font' => ['nullable', 'string', 'max:80'],
             'invoice_payment_methods' => ['nullable', 'string', 'max:500'],
             'invoice_payment_terms_text' => ['nullable', 'string', 'max:1000'],
             // Dedicated invoice SMTP (for sending invoices by e-mail).
@@ -86,7 +87,7 @@ class CompanyController extends Controller
             'company_tax_id', 'company_vat_id', 'company_iban', 'company_bic',
             'company_bank_name', 'company_website', 'invoice_number_format', 'invoice_next_number',
             'invoice_default_vat_rate', 'invoice_payment_terms_days', 'invoice_footer_text',
-            'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
+            'invoice_accent_color', 'invoice_heading_color', 'invoice_template', 'invoice_font',
             'invoice_payment_methods', 'invoice_payment_terms_text',
             'invoice_smtp_host', 'invoice_smtp_port', 'invoice_smtp_encryption',
             'invoice_smtp_username', 'invoice_from_email', 'invoice_from_name',

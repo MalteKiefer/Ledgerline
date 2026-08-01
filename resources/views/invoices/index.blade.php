@@ -29,6 +29,7 @@
             'accent' => $s->invoice_accent_color ?: '#111827',
             'heading' => $s->invoice_heading_color ?: '#6b7280',
             'template' => $s->invoice_template ?: 'editorial',
+            'font' => $s->invoice_font ?: '',
             'currency' => 'EUR',
             'mail_enabled' => (bool) $s->invoice_mail_enabled,
             'mail_subject' => $s->invoice_mail_subject ?: '',
@@ -2527,7 +2528,7 @@
         {{-- ===================== PRINT / PDF SHEET ===================== --}}
         {{-- Teleported to <body> so print CSS can hide the app and leave only this. --}}
         <template x-teleport="body">
-          <div id="invoice-print" style="background:#fff; color:#1f2937;">
+          <div id="invoice-print" style="background:#fff; color:#1f2937;" :class="company.font ? 'has-inv-font' : ''" :style="company.font ? ('--inv-font:' + company.font) : ''">
             {{-- ---------- MODERN (accent band + cards) ---------- --}}
             <template x-if="_printing && tpl === 'modern'">
               <div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:10.5px; line-height:1.5; color:#1f2937;">
@@ -3038,6 +3039,8 @@
        preview + version PDFs — a display:none node captures blank. 794px ≈ A4 @96dpi.
        Print media resets it to the normal flow (the app itself is hidden below). */
     #invoice-print { position: fixed; left: -10000px; top: 0; width: 794px; background: #fff; }
+    /* Chosen invoice font overrides every element's own family (renders in the PDF). */
+    #invoice-print.has-inv-font, #invoice-print.has-inv-font * { font-family: var(--inv-font) !important; }
     /* Repeating page footer: hidden on screen, fixed inside the reserved bottom page
        margin so it appears on every printed page without overlapping content. */
     .ip-foot { display: none; }
