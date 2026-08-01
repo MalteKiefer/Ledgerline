@@ -7,6 +7,7 @@ import { jsonHeaders, postForm } from '../shared/api';
 import { saveBlobAs, formatDate } from '../shared/dom';
 import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
 import { buildEpcPayload } from '../shared/epc-qr';
+import { buildRevenueCsv, buildExpenseCsv } from '../shared/datev-export';
 import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
 import { fileSig } from '../shared/file-sig';
@@ -2468,6 +2469,28 @@ export default (config = {}, labels = {}) => ({
         this.printQr = await this._epcQr(i);
         this._printing = i;
         this.$nextTick(() => { window.print(); });
+    },
+
+    // ---- GoBD accounting export (revenue + expense journal CSV) ----
+    _csvHeaders() {
+        const L = this._labelsByLang[document.documentElement.lang] || {};
+        return {
+            date: L.csv_date, number: L.csv_number, customer: L.csv_customer, net: L.csv_net,
+            vatRate: L.csv_vat_rate, vat: L.csv_vat, gross: L.csv_gross, currency: L.csv_currency,
+            status: L.csv_status, paid: L.csv_paid, type: L.csv_type, invoice: L.csv_kind_invoice,
+            credit: L.csv_kind_credit, merchant: L.csv_merchant, category: L.csv_category,
+            account: L.csv_account, manual: L.csv_manual,
+        };
+    },
+    exportRevenueCsv() {
+        const y = this.statsYear;
+        const csv = buildRevenueCsv(this.invoices, y, this._csvHeaders());
+        saveBlobAs(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `rechnungsausgang-${y}.csv`, 'text/csv');
+    },
+    exportExpenseCsv() {
+        const y = this.statsYear;
+        const csv = buildExpenseCsv(this.transactions, this.projects, y, this._csvHeaders());
+        saveBlobAs(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `belege-${y}.csv`, 'text/csv');
     },
 
     // ---- EPC069-12 payment QR (GiroCode) ----
