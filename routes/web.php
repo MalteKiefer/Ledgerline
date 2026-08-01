@@ -20,6 +20,7 @@ use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\InviteLinkController;
 use App\Http\Controllers\InvoiceBlobController;
+use App\Http\Controllers\InvoiceMailController;
 use App\Http\Controllers\InvoicesStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MapController;
@@ -252,6 +253,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/invoices/upload', [InvoiceBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('invoices.upload');
     Route::get('/invoices/raw/{blob}', [InvoiceBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('invoices.raw');
     Route::post('/invoices/raw-batch', [InvoiceBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('invoices.raw-batch');
+    Route::post('/invoices/send', [InvoiceMailController::class, 'send'])->middleware(['throttle:30,1', 'module:finance'])->name('invoices.send');
     Route::post('/invoices/blobs/reconcile', [InvoiceBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('invoices.blobs.reconcile');
 
     // Passwords sharded store (merge-safety spec §3b): sealed root + record-shard blobs.

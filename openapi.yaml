@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.536.5
+  version: 1.536.6
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -6175,6 +6175,52 @@ paths:
           description: Rate limit exceeded (Retry-After header).
         "501":
           description: OCR toolchain not available on this server (client falls back to manual entry).
+
+  /invoices/send:
+    post:
+      tags: [Store]
+      operationId: invoicesSend
+      summary: Send an invoice PDF by e-mail through the user's own invoice SMTP
+      description: >
+        Sends the invoice PDF as an e-mail attachment via the per-user dedicated
+        invoice SMTP server (configured on the web Company settings; separate from
+        the workspace notification SMTP). The PDF is generated CLIENT-side and posted
+        transiently — the server stores nothing and logs no content (a deliberate,
+        user-initiated boundary crossing, mirroring receipt→Paperless). The SMTP host
+        is egress-guarded; credentials live encrypted on the user's settings. Returns
+        501 when invoice mail is not configured/enabled (client falls back to
+        download/manual send). Requires the `finance` module. Throttle: 30 req/min.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [to, pdf]
+              properties:
+                to: { type: string, format: email, description: "Recipient (defaults client-side to the partner's invoiceEmail)." }
+                subject: { type: string, maxLength: 255 }
+                body: { type: string, maxLength: 20000 }
+                pdf: { type: string, format: binary, description: "The invoice PDF (application/pdf, ≤20 MiB)." }
+      responses:
+        "200":
+          description: Sent.
+          content:
+            application/json:
+              schema: { type: object, required: [ok], properties: { ok: { type: boolean, enum: [true] } } }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled for this account. }
+        "422":
+          description: Validation failed, or the SMTP send failed (no internals leaked).
+          content:
+            application/json:
+              schema: { type: object, properties: { error: { type: string, enum: [send_failed] } } }
+        "429": { description: Rate limit exceeded (Retry-After header). }
+        "501":
+          description: Invoice mail is not configured/enabled for this user.
+          content:
+            application/json:
+              schema: { type: object, properties: { error: { type: string, enum: [not_configured] } } }
 
   /invoices/raw/{blob}:
     get:

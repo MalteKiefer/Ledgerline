@@ -28,10 +28,14 @@
             'heading' => $s->invoice_heading_color ?: '#6b7280',
             'template' => $s->invoice_template ?: 'editorial',
             'currency' => 'EUR',
+            'mail_enabled' => (bool) $s->invoice_mail_enabled,
+            'mail_subject' => $s->invoice_mail_subject ?: '',
+            'mail_body' => $s->invoice_mail_body ?: '',
         ]),
         labelsByLang: @js(['de' => __('invoices', [], 'de'), 'en' => __('invoices', [], 'en')]),
         uploadUrl: '{{ url('/invoices/upload') }}',
         rawBase: '{{ url('/invoices/raw') }}',
+        sendUrl: '{{ url('/invoices/send') }}',
         reconcileUrl: '{{ url('/invoices/blobs/reconcile') }}',
         iconUrl: '{{ url('/passwords/icon') }}',
         fxRates: @js($fxRates),
@@ -2318,6 +2322,7 @@
                 <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
                 <x-action-menu-item icon="check-circle" x-show="! current?.imported && current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-action-menu-item>
                 <x-action-menu-item icon="inbox-arrow-down" x-show="$store.paperless?.configured" @click="sendInvoiceToPaperless(current)">{{ __('invoices.send_paperless') }}</x-action-menu-item>
+                <x-action-menu-item icon="envelope" x-show="company.mail_enabled" @click="openMailInvoice(current)">{{ __('invoices.send_mail') }}</x-action-menu-item>
               </x-action-menu>
             </div>
           </div>
@@ -2506,6 +2511,36 @@
               <template x-if="previewUrl">
                 <iframe :src="previewUrl + '#view=FitH'" class="h-full w-full" title="{{ __('invoices.preview_title') }}"></iframe>
               </template>
+            </div>
+          </div>
+        </div>
+
+        {{-- Send invoice by e-mail (dedicated invoice SMTP) --}}
+        <div x-show="mailOpen" x-cloak class="fixed inset-0 z-[1130] flex items-center justify-center p-4" @keydown.escape.window="closeMailInvoice()">
+          <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" @click="closeMailInvoice()"></div>
+          <div class="relative w-full max-w-lg rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+            <div class="flex items-center justify-between">
+              <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.mail_title') }}</h2>
+              <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeMailInvoice()" :aria-label="__('common.close')" />
+            </div>
+            <div class="mt-4 space-y-3">
+              <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.mail_to') }}
+                <input type="email" x-model="mailTo" class="mt-1 w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+              </label>
+              <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.mail_subject_label') }}
+                <input type="text" x-model="mailSubject" class="mt-1 w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+              </label>
+              <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.mail_body_label') }}
+                <textarea x-model="mailBody" rows="5" class="mt-1 w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+              </label>
+              <p class="text-xs text-gray-400">{{ __('invoices.mail_attach_note') }}</p>
+            </div>
+            <div class="mt-5 flex justify-end gap-2">
+              <x-button variant="secondary" size="sm" @click="closeMailInvoice()">{{ __('common.cancel') }}</x-button>
+              <x-button variant="primary" size="sm" icon="envelope" ::disabled="mailBusy || ! mailTo.includes('@')" @click="confirmSendMail()">
+                <span x-show="! mailBusy">{{ __('invoices.mail_send') }}</span>
+                <span x-show="mailBusy">{{ __('invoices.mail_sending') }}</span>
+              </x-button>
             </div>
           </div>
         </div>

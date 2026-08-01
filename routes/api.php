@@ -28,6 +28,7 @@ use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\InvoiceBlobController;
+use App\Http\Controllers\InvoiceMailController;
 use App\Http\Controllers\InvoicesStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MapController;
@@ -146,6 +147,7 @@ Route::prefix('v1')->group(function (): void {
         // text only (recognition is client-side). Nothing is persisted/logged — same
         // transient-cleartext window as /gallery/process. Best-effort for the client.
         Route::post('/invoices/ocr', [InvoiceOcrController::class, 'ocr'])->middleware(['throttle:120,1', 'module:finance'])->name('api.invoices.ocr');
+        Route::post('/invoices/send', [InvoiceMailController::class, 'send'])->middleware(['throttle:30,1', 'module:finance'])->name('api.invoices.send');
 
         // Per-user Paperless-ngx integration: cached term quick-picks, live term
         // creation, document forwarding, and cache sync. The /documents endpoint is

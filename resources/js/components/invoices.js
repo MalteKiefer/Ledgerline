@@ -2281,6 +2281,50 @@ export default (config = {}, labels = {}) => ({
             store.setFile(blob);
         } catch (e) { store.fail(labels.downloadFailed || 'Could not open file.'); }
     },
+
+    // ---- Send invoice by e-mail (dedicated invoice SMTP, server-side send) ----
+    mailOpen: false, mailBusy: false, mailTo: '', mailSubject: '', mailBody: '', _mailInv: null,
+    _mailRecipient(i) {
+        if (i.customer?.email) return i.customer.email;
+        const p = (this.partners || []).find((x) => x.id === i.customer?.partnerId);
+        return p?.invoiceEmail || p?.email || '';
+    },
+    openMailInvoice(inv) {
+        const i = inv || this.current; if (! i) return;
+        if (! this.company.mail_enabled) { window.llToast(labels.mail_not_configured || 'Configure the invoice mail server in settings.'); return; }
+        const num = i.number || (labels.status_draft || 'Draft');
+        this._mailInv = i;
+        this.mailTo = this._mailRecipient(i);
+        this.mailSubject = (this.company.mail_subject || (labels.print_title || 'Invoice') + ' :number').replace(':number', num);
+        this.mailBody = (this.company.mail_body || (labels.mail_body_default || 'Please find attached invoice :number.')).replace(':number', num);
+        this.mailOpen = true;
+    },
+    closeMailInvoice() { this.mailOpen = false; this._mailInv = null; },
+    async confirmSendMail() {
+        const i = this._mailInv; if (! i || this.mailBusy) return;
+        if (! String(this.mailTo || '').includes('@')) { window.llToast(labels.mail_bad_recipient || 'Enter a valid recipient.'); return; }
+        this.mailBusy = true;
+        try {
+            let blob;
+            if (i.imported && i.pdf?.blob) {
+                const buf = await fetchBlobBuffer(`${config.rawBase}/${i.pdf.blob}`);
+                blob = new Blob([window.Vault.decryptFile(buf, i.pdf.key)], { type: 'application/pdf' });
+            } else {
+                blob = await this._invoicePdfBlob(i);
+            }
+            if (! blob) throw new Error('render failed');
+            const fd = new FormData();
+            fd.append('to', this.mailTo.trim());
+            fd.append('subject', this.mailSubject || '');
+            fd.append('body', this.mailBody || '');
+            fd.append('pdf', new File([blob], (i.number ? String(i.number).replace(/[^\w.-]+/g, '_') : 'rechnung') + '.pdf', { type: 'application/pdf' }));
+            const res = await fetch(config.sendUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': jsonHeaders()['X-CSRF-TOKEN'] }, body: fd });
+            if (res.ok) { window.llToast(labels.mail_sent || 'Invoice sent.'); this.closeMailInvoice(); }
+            else if (res.status === 501) { window.llToast(labels.mail_not_configured || 'Configure the invoice mail server in settings.'); }
+            else { window.llToast(labels.mail_failed || 'Could not send the invoice.'); }
+        } catch (e) { window.llToast(labels.mail_failed || 'Could not send the invoice.'); }
+        this.mailBusy = false;
+    },
     async markPaid(inv) { inv.status = 'paid'; await this._lockCommit(inv, labels.version_paid || 'Marked paid'); },
     async markSent(inv) {
         let i = inv;
