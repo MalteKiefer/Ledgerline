@@ -40,6 +40,15 @@ class ReceiptOcr
 
     private const RASTER_DPI = 200;
 
+    /**
+     * Longest-edge pixel cap for a rasterised PDF page AND a directly-uploaded image.
+     * A 25 MiB input can still declare enormous page/image dimensions; at 200 DPI a
+     * poster-sized MediaBox would rasterise to a multi-gigapixel bitmap and exhaust
+     * memory. pdftoppm -scale-to bounds the raster regardless of page size, and an
+     * oversized direct image is refused before it reaches tesseract.
+     */
+    private const MAX_EDGE_PX = 5000;
+
     private const TIMEOUT = 60;
 
     /**
@@ -100,6 +109,8 @@ class ReceiptOcr
             $prefix = $dir.'/page';
             BinaryProcess::run([
                 'pdftoppm', '-png', '-r', (string) self::RASTER_DPI,
+                // Bound the raster: a huge MediaBox at 200 DPI would otherwise OOM.
+                '-scale-to', (string) self::MAX_EDGE_PX,
                 '-f', '1', '-l', (string) self::MAX_PDF_PAGES, $path, $prefix,
             ], self::TIMEOUT);
 
@@ -119,6 +130,14 @@ class ReceiptOcr
 
     private function ocrImage(string $path, string $lang): string
     {
+        // Refuse an image whose dimensions exceed the edge cap before handing it to
+        // tesseract — a small-on-disk but huge-in-pixels image (e.g. a highly-compressed
+        // 20000×20000 PNG) would otherwise exhaust memory during OCR. Rasterised PDF
+        // pages are already bounded by pdftoppm -scale-to.
+        $size = @getimagesize($path);
+        if (is_array($size) && ($size[0] > self::MAX_EDGE_PX || $size[1] > self::MAX_EDGE_PX)) {
+            return '';
+        }
         // Default PSM (block layout) preserves lines; -l selects the language(s).
         $out = BinaryProcess::run(['tesseract', $path, 'stdout', '-l', $lang], self::TIMEOUT);
 

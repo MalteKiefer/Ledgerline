@@ -71,7 +71,10 @@ Route::get('/metrics', [MetricsController::class, 'index'])->middleware('throttl
 // allow-list; the decryption key rides in the URL fragment and never arrives
 // here. The optional password gate is hard-throttled; blob/manifest reads are
 // generous (a shared album loads many thumbnails).
-Route::prefix('s/{token}')->name('public.share.')->group(function (): void {
+// Public share token is Str::random(22) → [A-Za-z0-9]. Constrain the param so a
+// crafted token (quotes/percent-encodings) 404s instead of being reflected into the
+// share view — defence in depth against reflected XSS through the token.
+Route::prefix('s/{token}')->name('public.share.')->whereAlphaNumeric('token')->group(function (): void {
     Route::get('/', [PublicShareController::class, 'show'])->middleware('throttle:120,1')->name('show');
     Route::get('/meta', [PublicShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
     Route::post('/unlock', [PublicShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
@@ -301,10 +304,10 @@ Route::middleware('auth')->group(function (): void {
     // Zero-knowledge transform: the browser POSTs one photo's PLAINTEXT, we return
     // its derived data (renditions/exif/embedding/faces/place) and discard the
     // bytes — nothing is persisted server-side. embed-text embeds a search query.
-    Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('throttle:600,1')->name('gallery.process');
-    Route::post('/gallery/analyze', [GalleryProcessController::class, 'analyze'])->middleware('throttle:600,1')->name('gallery.analyze');
-    Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('throttle:300,1')->name('gallery.embed-text');
-    Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('throttle:60,1')->name('gallery.geocode');
+    Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('module:gallery', 'throttle:600,1')->name('gallery.process');
+    Route::post('/gallery/analyze', [GalleryProcessController::class, 'analyze'])->middleware('module:gallery', 'throttle:600,1')->name('gallery.analyze');
+    Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('module:gallery', 'throttle:300,1')->name('gallery.embed-text');
+    Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('module:gallery', 'throttle:60,1')->name('gallery.geocode');
 
     // Opaque zero-knowledge gallery content blobs (ciphertext bytes only).
     Route::get('/gallery/usage', [GalleryBlobController::class, 'usage'])->name('gallery.usage');

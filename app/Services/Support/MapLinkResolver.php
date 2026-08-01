@@ -46,7 +46,7 @@ class MapLinkResolver
                     return $coords;
                 }
 
-                $response = OutboundUrl::client($current, 6)
+                $response = OutboundUrl::client($current, 6, 2 * 1024 * 1024)
                     ->withHeaders(['User-Agent' => 'Ledgerline (self-hosted personal cloud)'])
                     ->get($current);
 

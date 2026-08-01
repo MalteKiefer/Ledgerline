@@ -31,7 +31,7 @@ class TwoFactorDirectoryController extends Controller
     {
         $entries = Cache::remember('tfa_directory_entries_v3', now()->addDay(), function (): array {
             try {
-                $res = OutboundUrl::client(self::SOURCE, 12)
+                $res = OutboundUrl::client(self::SOURCE, 12, 8 * 1024 * 1024)
                     ->withHeaders(['User-Agent' => 'Ledgerline', 'Accept' => 'application/json'])
                     ->get(self::SOURCE);
                 if (! $res->ok()) {

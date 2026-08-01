@@ -137,6 +137,18 @@ abstract class BlobStoreController extends Controller
     protected function authorizeMutation(Request $request): void {}
 
     /**
+     * Re-authorize a chunked-upload continuation (part/complete). The 12h upload
+     * session outlives a membership change, so a shared scope MUST re-check its policy
+     * on every part/complete — otherwise a member revoked (rotate-on-removal) after
+     * chunkInit could still finish the upload and write a blob attributed to the owner's
+     * quota. Defaults to the same gate as any mutation.
+     */
+    protected function authorizeChunk(Request $request): void
+    {
+        $this->authorizeMutation($request);
+    }
+
+    /**
      * Authorize the DESTRUCTIVE reconcile (blob prune) specifically. Defaults to the
      * same gate as any mutation; a shared scope raises it (e.g. manage-only) so a
      * lesser role cannot prune a ledger it doesn't own.
@@ -361,6 +373,7 @@ abstract class BlobStoreController extends Controller
     /** Upload one part; returns its ETag for the completion call. */
     public function chunkPart(Request $request): JsonResponse
     {
+        $this->authorizeChunk($request);
         $request->validate([
             'token' => ['required', 'string'],
             'part' => ['required', 'integer', 'min:1', 'max:10000'],
@@ -380,6 +393,7 @@ abstract class BlobStoreController extends Controller
     /** Finish the upload and register the blob (same contract as upload()). */
     public function chunkComplete(Request $request): JsonResponse
     {
+        $this->authorizeChunk($request);
         $request->validate([
             'token' => ['required', 'string'],
             'parts' => ['required', 'array', 'min:1', 'max:10000'],

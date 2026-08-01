@@ -14,7 +14,7 @@
         metaUrl: '{{ route('public.share.meta', $token) }}',
         unlockUrl: '{{ route('public.share.unlock', $token) }}',
         manifestUrl: '{{ route('public.share.manifest', $token) }}',
-        blobBase: '{{ url('/s/'.$token.'/blob') }}',
+        blobBase: '{{ rtrim(route('public.share.blob', ['token' => $token, 'ref' => '_']), '/_') }}',
      }, {
         noKey: @js(__('gallery.share_err_no_key')),
         badKey: @js(__('gallery.share_err_bad_key')),

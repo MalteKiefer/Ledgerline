@@ -25,7 +25,7 @@ class PasswordBreachController extends Controller
 
         $body = '';
         try {
-            $res = OutboundUrl::client('https://api.pwnedpasswords.com/range/'.$prefix, 8)
+            $res = OutboundUrl::client('https://api.pwnedpasswords.com/range/'.$prefix, 8, 2 * 1024 * 1024)
                 ->withHeaders(['Add-Padding' => 'true', 'User-Agent' => 'Ledgerline'])
                 ->get('https://api.pwnedpasswords.com/range/'.$prefix);
             if ($res->ok()) {

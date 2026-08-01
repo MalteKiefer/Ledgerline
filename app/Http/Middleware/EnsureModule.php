@@ -21,9 +21,24 @@ final class EnsureModule
     /**
      * @param  Closure(Request): Response  $next
      */
+    /**
+     * Legacy sealed-store keys that differ from their module toggle key. The generic
+     * /store/{module} endpoint still accepts the old `invoices` key (dual-read
+     * migration), which maps to the `finance` module toggle — without this alias the
+     * gate would silently skip it and a disabled-finance account could still read/write
+     * the legacy invoices store.
+     *
+     * @var array<string, string>
+     */
+    private const ALIASES = ['invoices' => 'finance'];
+
+    /**
+     * @param  Closure(Request): Response  $next
+     */
     public function handle(Request $request, Closure $next, ?string $module = null): Response
     {
-        $key = $module ?? $request->route('module');
+        $raw = $module ?? $request->route('module');
+        $key = is_string($raw) ? (self::ALIASES[$raw] ?? $raw) : $raw;
         $known = array_keys((array) config('modules.list', []));
         $user = $request->user();
 

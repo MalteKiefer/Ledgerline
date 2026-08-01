@@ -62,6 +62,18 @@ final class ModulePermissionsTest extends TestCase
         $this->actingAs($user)->get('/store/notes')->assertStatus(200);
     }
 
+    public function test_legacy_invoices_store_key_is_gated_by_the_finance_module(): void
+    {
+        // The generic /store/invoices key maps to the `finance` module toggle. A user
+        // with finance disabled must NOT reach it via the legacy key (the alias in
+        // EnsureModule closes the gap where the raw key skipped the gate).
+        $noFinance = User::factory()->create(['role' => 'user', 'modules' => ['notes']]);
+        $this->actingAs($noFinance)->get('/store/invoices')->assertForbidden();
+
+        $withFinance = User::factory()->create(['role' => 'user', 'modules' => ['notes', 'finance']]);
+        $this->actingAs($withFinance)->get('/store/invoices')->assertStatus(200);
+    }
+
     public function test_me_exposes_allowed_modules(): void
     {
         $user = User::factory()->create(['role' => 'user', 'modules' => ['notes', 'health']]);

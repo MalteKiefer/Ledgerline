@@ -89,7 +89,7 @@ class ReverseGeocoder
     private function viaPhoton(string $base, float $lat, float $lon): array
     {
         try {
-            $response = OutboundUrl::client($base, 5)
+            $response = OutboundUrl::client($base, 5, 2 * 1024 * 1024)
                 ->get($base.'/reverse', ['lat' => $lat, 'lon' => $lon, 'limit' => 1]);
 
             if (! $response->successful()) {

@@ -59,7 +59,7 @@ final class OutboundUrl
      * metadata IP to the real request. Fails closed when the host cannot be
      * resolved to a verified-safe address.
      */
-    public static function client(string $url, int $timeout = 15): PendingRequest
+    public static function client(string $url, int $timeout = 15, int $maxBytes = 0): PendingRequest
     {
         $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
         $host = parse_url($url, PHP_URL_HOST);
@@ -94,6 +94,21 @@ final class OutboundUrl
         }
         // Default posture: an unresolvable host (e.g. a Docker-internal service
         // not resolvable at request time) is left unpinned, as before.
+
+        // Hard download cap: without it a malicious/compromised outbound host can
+        // stream unbounded bytes and exhaust memory when the caller buffers ->body().
+        // CURLOPT_MAXFILESIZE aborts a download whose Content-Length exceeds the cap;
+        // the progress callback aborts a chunked/unknown-length stream the moment the
+        // received bytes cross it (returning non-zero aborts the transfer).
+        if ($maxBytes > 0) {
+            $curl = $options['curl'] ?? [];
+            $curl[CURLOPT_MAXFILESIZE] = $maxBytes;
+            $curl[CURLOPT_NOPROGRESS] = false;
+            $curl[CURLOPT_XFERINFOFUNCTION] = static function ($ch, $dlTotal, $dlNow) use ($maxBytes): int {
+                return ($dlTotal > $maxBytes || $dlNow > $maxBytes) ? 1 : 0;
+            };
+            $options['curl'] = $curl;
+        }
 
         return Http::withOptions($options)->timeout($timeout);
     }

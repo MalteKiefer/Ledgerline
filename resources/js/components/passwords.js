@@ -325,9 +325,23 @@ export default (config = {}, labels = {}) => ({
             } else if (res.status === 409) {
                 conflicts++;
                 const data = await res.json();
-                const serverManifest = data.sealed_manifest
-                    ? await VaultShareCrypto.openVaultManifest(data.sealed_manifest, vkBytes)
-                    : { name: vault.name, items: [] };
+                let serverManifest;
+                try {
+                    serverManifest = data.sealed_manifest
+                        ? await VaultShareCrypto.openVaultManifest(data.sealed_manifest, vkBytes)
+                        : { name: vault.name, items: [] };
+                } catch (decErr) {
+                    // The server manifest no longer decrypts with our cached key → a
+                    // manager rotated the vault key concurrently (member removal). Don't
+                    // throw (it would escape the loop AND the trailing !ok reload, wedging
+                    // the client with the edit silently dropped). Reload the vault with the
+                    // fresh wrapped key + surface a conflict so the user can redo the edit.
+                    window.llToast(labels.saveConflict || '');
+                    delete this._sharedKeys[vaultId]; delete this._sharedVersion[vaultId]; delete this._sharedBase[vaultId];
+                    this.sharedVaults = this.sharedVaults.filter((sv) => sv.id !== vaultId);
+                    await this._loadSharedVaults();
+                    return;
+                }
                 const server = {
                     name: serverManifest.name ?? vault.name,
                     items: (serverManifest.items || []).map((i) => ({ ...i, shared: true, vaultId })),
