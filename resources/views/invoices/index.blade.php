@@ -2308,11 +2308,6 @@
                 <span x-show="! pdfBusy">{{ __('invoices.save_changes') }}</span>
                 <span x-show="pdfBusy">{{ __('invoices.saving') }}</span>
               </x-button>
-              {{-- Preview: render the current draft to a client-side PDF (no upload, ZK). --}}
-              <x-button variant="secondary" size="sm" icon="eye" x-show="! current?.imported" ::disabled="previewBusy" @click="openPreview()">
-                <span x-show="! previewBusy">{{ __('invoices.preview') }}</span>
-                <span x-show="previewBusy">{{ __('invoices.preview_generating') }}</span>
-              </x-button>
               {{-- Finalize: freeze the draft, assign the invoice number. --}}
               <x-button variant="primary" size="sm" icon="check" x-show="! current?.imported && current?.status === 'draft'" ::disabled="pdfBusy" @click="finalize(current)">{{ __('invoices.finalize') }}</x-button>
               <x-action-menu :aria-label="__('invoices.col_actions')">
@@ -2491,25 +2486,6 @@
                   </span>
                   <span class="shrink-0">@include('invoices._cat_badge', ['name' => 'c.category'])</span>
                 </button>
-              </template>
-            </div>
-          </div>
-        </div>
-
-        {{-- Invoice PDF preview (client-side render of the current draft, no upload) --}}
-        <div x-show="previewOpen" x-cloak class="fixed inset-0 z-[1130] flex items-center justify-center p-4" @keydown.escape.window="closePreview()">
-          <div class="absolute inset-0 bg-gray-900/70 backdrop-blur-sm" @click="closePreview()"></div>
-          <div class="relative flex h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
-            <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-4 py-3">
-              <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.preview_title') }}</h2>
-              <x-icon-button name="x-mark" tone="gray" size="sm" @click="closePreview()" :aria-label="__('common.close')" />
-            </div>
-            <div class="relative flex-1 bg-gray-100 dark:bg-gray-900">
-              <div x-show="previewBusy" class="absolute inset-0 flex items-center justify-center gap-2 text-sm text-gray-500">
-                <x-icon name="arrow-path" class="h-5 w-5 animate-spin" /> {{ __('invoices.preview_generating') }}
-              </div>
-              <template x-if="previewUrl">
-                <iframe :src="previewUrl + '#view=FitH'" class="h-full w-full" title="{{ __('invoices.preview_title') }}"></iframe>
               </template>
             </div>
           </div>
