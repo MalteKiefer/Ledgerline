@@ -2492,6 +2492,40 @@
             </div>
           </div>
 
+          {{-- Discount + Skonto + live totals --}}
+          <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.discount') }}</label>
+                <div class="mt-1 flex items-center gap-2">
+                  <select x-model="current.discount.type" @change="saveSoon()" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    <option value="percent">%</option>
+                    <option value="amount" x-text="current.currency || 'EUR'"></option>
+                  </select>
+                  <input type="number" step="0.01" min="0" x-model.number="current.discount.value" @input="saveSoon()" class="w-32 rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums" placeholder="0">
+                  <span class="text-xs text-gray-400" x-show="computeTotals(current).discountAmount > 0" x-text="'−' + fmtMoney(computeTotals(current).discountAmount)"></span>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.skonto') }}</label>
+                <div class="mt-1 flex flex-wrap items-center gap-2">
+                  <input type="number" step="0.01" min="0" x-model.number="current.skonto.percent" @input="saveSoon()" class="w-24 rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums" placeholder="0"><span class="text-sm text-gray-500">%</span>
+                  <span class="text-sm text-gray-500">{{ __('invoices.skonto_within') }}</span>
+                  <input type="number" min="0" x-model.number="current.skonto.days" @input="saveSoon()" class="w-20 rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums" placeholder="0"><span class="text-sm text-gray-500">{{ __('invoices.skonto_days') }}</span>
+                </div>
+                <p class="mt-1 text-xs text-gray-400" x-show="computeTotals(current).skontoAmount > 0" x-text="'{{ __('invoices.skonto_hint') }}'.replace(':amount', fmtMoney(computeTotals(current).skontoAmount)).replace(':net', fmtMoney(computeTotals(current).skontoNet)).replace(':date', computeTotals(current).skontoDate || '')"></p>
+              </div>
+            </div>
+            {{-- live totals --}}
+            <div class="rounded-xl border border-black/[0.06] dark:border-white/10 p-3 text-sm">
+              <div class="flex justify-between py-0.5 text-gray-500"><span>{{ __('invoices.subtotal') }}</span><span class="tabular-nums" x-text="fmtMoney(computeTotals(current).subtotal)"></span></div>
+              <div class="flex justify-between py-0.5 text-gray-500" x-show="computeTotals(current).discountAmount > 0"><span>{{ __('invoices.discount') }}</span><span class="tabular-nums" x-text="'−' + fmtMoney(computeTotals(current).discountAmount)"></span></div>
+              <div class="flex justify-between py-0.5 text-gray-500"><span>{{ __('invoices.net') }}</span><span class="tabular-nums" x-text="fmtMoney(computeTotals(current).net)"></span></div>
+              <template x-for="rate in vatRatesOf(current)" :key="rate"><div class="flex justify-between py-0.5 text-gray-500"><span x-text="'{{ __('invoices.vat_at') }}'.replace(':rate', rate)"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(current).vatByRate[rate])"></span></div></template>
+              <div class="mt-1 flex justify-between border-t border-black/[0.08] dark:border-white/10 pt-1.5 font-semibold text-gray-900 dark:text-gray-100"><span>{{ __('invoices.gross') }}</span><span class="tabular-nums" x-text="fmtMoney(computeTotals(current).gross)"></span></div>
+            </div>
+          </div>
+
           {{-- Note / footer --}}
           <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
             <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.note') }}
@@ -2640,7 +2674,8 @@
                   </table>
                   <div style="display:flex; justify-content:flex-end; margin-top:18px;">
                     <div style="width:250px;">
-                      <div style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span x-text="pl('subtotal')"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
+                      <div style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span x-text="pl('subtotal')"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).subtotal, _printing.currency, _printing.lang)"></span></div>
+                      <div x-show="computeTotals(_printing).discountAmount > 0" style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span x-text="pl('discount')"></span><span class="tabular-nums" x-text="'−' + fmtMoney(computeTotals(_printing).discountAmount, _printing.currency, _printing.lang)"></span></div>
                       <template x-for="rate in vatRatesOf(_printing)" :key="rate">
                         <div style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span x-text="pl('vat_at').replace(':rate', rate)"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></span></div>
                       </template>
@@ -2704,7 +2739,8 @@
                 </table>
                 <div style="display:flex; justify-content:flex-end; margin-top:18px;">
                   <table style="min-width:250px; border-collapse:collapse;">
-                    <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('subtotal')"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></td></tr>
+                    <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('subtotal')"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).subtotal, _printing.currency, _printing.lang)"></td></tr>
+                    <tr x-show="computeTotals(_printing).discountAmount > 0"><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('discount')"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="'−' + fmtMoney(computeTotals(_printing).discountAmount, _printing.currency, _printing.lang)"></td></tr>
                     <template x-for="rate in vatRatesOf(_printing)" :key="rate"><tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;" x-text="pl('vat_at').replace(':rate', rate)"></td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></td></tr></template>
                     <tr style="border-top:1px solid #222;"><td style="padding:7px 6px; letter-spacing:.1em; text-transform:uppercase;" :style="'color:' + company.accent" x-text="pl('gross')"></td><td style="padding:7px 0 7px 6px; text-align:right; font-weight:700; font-size:13px;" :style="'color:' + company.accent" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></td></tr>
                   </table>
@@ -2766,7 +2802,8 @@
                     </table>
                   </div>
                   <div class="ie-sum-area"><div class="ie-sum">
-                    <div class="ie-sr"><span class="l" x-text="pl('subtotal')"></span><span class="v num" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
+                    <div class="ie-sr"><span class="l" x-text="pl('subtotal')"></span><span class="v num" x-text="fmtMoney(computeTotals(_printing).subtotal, _printing.currency, _printing.lang)"></span></div>
+                    <div class="ie-sr" x-show="computeTotals(_printing).discountAmount > 0"><span class="l" x-text="pl('discount')"></span><span class="v num" x-text="'−' + fmtMoney(computeTotals(_printing).discountAmount, _printing.currency, _printing.lang)"></span></div>
                     <template x-for="rate in vatRatesOf(_printing)" :key="rate">
                       <div class="ie-sr"><span class="l" x-text="pl('vat_at').replace(':rate', rate)"></span><span class="v num" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></span></div>
                     </template>
@@ -2857,7 +2894,8 @@
                 {{-- Totals --}}
                 <div style="display:flex; justify-content:flex-end; margin-top:16px;">
                   <div style="width:270px;">
-                    <div style="display:flex; justify-content:space-between; padding:3px 10px; color:#6b7280;"><span x-text="pl('subtotal')"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
+                    <div style="display:flex; justify-content:space-between; padding:3px 10px; color:#6b7280;"><span x-text="pl('subtotal')"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).subtotal, _printing.currency, _printing.lang)"></span></div>
+                    <div x-show="computeTotals(_printing).discountAmount > 0" style="display:flex; justify-content:space-between; padding:3px 10px; color:#6b7280;"><span x-text="pl('discount')"></span><span class="tabular-nums" x-text="'−' + fmtMoney(computeTotals(_printing).discountAmount, _printing.currency, _printing.lang)"></span></div>
                     <template x-for="rate in vatRatesOf(_printing)" :key="rate">
                       <div style="display:flex; justify-content:space-between; padding:3px 10px; color:#6b7280;"><span x-text="pl('vat_at').replace(':rate', rate)"></span><span class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></span></div>
                     </template>

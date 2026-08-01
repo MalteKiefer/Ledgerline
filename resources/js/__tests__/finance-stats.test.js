@@ -110,3 +110,29 @@ describe('euerReport (EÜR)', () => {
         expect(r.byCategory.find((c) => c.category === 'Software').net).toBe(100);
     });
 });
+
+describe('invoiceTotals discount', () => {
+    it('applies a percent discount to net and VAT', () => {
+        const inv = { lines: [{ qty: 1, unitPrice: 100, vatRate: 19 }], discount: { type: 'percent', value: 10 } };
+        const t = invoiceTotals(inv);
+        expect(t.subtotal).toBe(100);
+        expect(t.discountAmount).toBe(10);
+        expect(t.net).toBe(90);
+        expect(t.vat).toBe(17.1);
+        expect(t.gross).toBe(107.1);
+    });
+    it('applies a fixed-amount discount', () => {
+        const inv = { lines: [{ qty: 2, unitPrice: 100, vatRate: 19 }], discount: { type: 'amount', value: 50 } };
+        const t = invoiceTotals(inv);
+        expect(t.subtotal).toBe(200);
+        expect(t.discountAmount).toBe(50);
+        expect(t.net).toBe(150);
+        expect(t.vat).toBe(28.5);
+    });
+    it('no discount when value is zero', () => {
+        const t = invoiceTotals({ lines: [{ qty: 1, unitPrice: 100, vatRate: 19 }], discount: { type: 'percent', value: 0 } });
+        expect(t.subtotal).toBe(100);
+        expect(t.discountAmount).toBe(0);
+        expect(t.net).toBe(100);
+    });
+});

@@ -19,15 +19,22 @@ export function invoiceTotals(inv) {
         const net = round2(gross - vat);
         return { net, vat, gross, vatByRate: { [rate]: vat } };
     }
+    let subtotal = 0;
+    for (const l of (inv.lines || [])) subtotal += (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);
+    const disc = inv.discount || null;
+    let frac = 0;
+    if (disc && Number(disc.value) > 0 && subtotal > 0) {
+        frac = disc.type === 'amount' ? Math.min(1, Number(disc.value) / subtotal) : Math.min(1, Number(disc.value) / 100);
+    }
     let net = 0; const vatByRate = {};
     for (const l of (inv.lines || [])) {
-        const lineNet = (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);
+        const lineNet = (Number(l.qty) || 0) * (Number(l.unitPrice) || 0) * (1 - frac);
         net += lineNet;
         const r = Number(l.vatRate) || 0;
         vatByRate[r] = (vatByRate[r] || 0) + lineNet * r / 100;
     }
     const vat = Object.values(vatByRate).reduce((a, b) => a + b, 0);
-    return { net: round2(net), vat: round2(vat), gross: round2(net + vat), vatByRate };
+    return { net: round2(net), vat: round2(vat), gross: round2(net + vat), vatByRate, subtotal: round2(subtotal), discountAmount: round2(subtotal * frac) };
 }
 
 /** Invoices that count as revenue: issued (sent or paid) and not trashed. */

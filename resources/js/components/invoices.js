@@ -1596,6 +1596,8 @@ export default (config = {}, labels = {}) => ({
         inv.lang ??= 'de';
         inv.currency ??= (this.company.currency || 'EUR');
         inv.customer ??= { name: '', attn: '', address: '', email: '', vatId: '', contactId: null };
+        inv.discount ??= { type: 'percent', value: 0 };
+        inv.skonto ??= { percent: 0, days: 0 };
         inv.customer.attn ??= '';
         inv.customer.partnerId ??= null;
         this.current = inv;
@@ -2029,15 +2031,38 @@ export default (config = {}, labels = {}) => ({
             t.vatByRate[rate] = t.vat;
             return t;
         }
+        // Optional invoice-level discount (Rabatt): a percentage or a fixed amount off the
+        // net subtotal. Applied as a fraction to EACH line's net so the VAT-per-rate split
+        // stays correct. `subtotal` = before discount, `net` = after.
+        let subtotal = 0;
+        for (const l of inv.lines || []) subtotal += this.lineNet(l);
+        const disc = inv.discount || null;
+        let frac = 0;
+        if (disc && Number(disc.value) > 0 && subtotal > 0) {
+            frac = disc.type === 'amount' ? Math.min(1, Number(disc.value) / subtotal) : Math.min(1, Number(disc.value) / 100);
+        }
         for (const l of inv.lines || []) {
-            const net = this.lineNet(l);
+            const net = this.lineNet(l) * (1 - frac);
             const rate = parseFloat(l.vatRate) || 0;
             t.net += net;
             const v = net * rate / 100;
             t.vatByRate[rate] = (t.vatByRate[rate] || 0) + v;
             t.vat += v;
         }
-        t.gross = t.net + t.vat;
+        t.subtotal = this._round2(subtotal);
+        t.discountAmount = this._round2(subtotal * frac);
+        t.net = this._round2(t.net);
+        t.vat = this._round2(t.vat);
+        t.gross = this._round2(t.net + t.vat);
+        // Skonto (early-payment discount) — informational: amount deductible + due date.
+        const sk = inv.skonto || null;
+        if (sk && Number(sk.percent) > 0) {
+            t.skontoPercent = Number(sk.percent);
+            t.skontoDays = Number(sk.days) || 0;
+            t.skontoAmount = this._round2(t.gross * Number(sk.percent) / 100);
+            t.skontoNet = this._round2(t.gross - t.skontoAmount);
+            t.skontoDate = this._addDays(inv.issueDate || this._today(), t.skontoDays);
+        }
         return t;
     },
     fmtMoney(n, currency, lang) {
