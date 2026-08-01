@@ -2853,7 +2853,10 @@
 
             {{-- ---------- KLASSISCH (traditional German business sheet) ---------- --}}
             <template x-if="_printing && tpl === 'klassisch'">
-              <div style="font-family:Arial,'Helvetica Neue',Helvetica,sans-serif; font-size:10.5px; line-height:1.5; color:#222; padding:20mm 20mm 22mm 25mm;">
+              <div style="font-family:Arial,'Helvetica Neue',Helvetica,sans-serif; font-size:10.5px; line-height:1.5; color:#222; padding:20mm 20mm 12mm 25mm;">
+               {{-- Whole sheet wrapped in a table so the <tfoot> footer repeats at the bottom
+                    of EVERY printed page AND reserves its height (content never overlaps it). --}}
+               <table style="width:100%; border-collapse:collapse;"><tbody><tr><td style="padding:0; vertical-align:top;">
                 {{-- Wordmark / logo, top-right --}}
                 <div style="min-height:56px; text-align:right; margin-bottom:30px;">
                   <template x-if="company.logo"><img :src="company.logo" alt="" style="max-height:60px; display:inline-block;"></template>
@@ -2931,10 +2934,10 @@
 
                 {{-- Payment QR --}}
                 <div x-show="printQr" style="margin-top:20px;"><img :src="printQr" style="width:84px; height:84px;"><div style="font-size:8px; color:#666; margin-top:2px;" x-text="pl('giro_hint')"></div></div>
-
-                {{-- Inline footer, pushed to sheet bottom (for the rasterised PDF / mail path;
-                     the window.print path hides this and uses the fixed .ip-foot per page). --}}
-                <table class="inv-inline-foot" style="width:100%; margin-top:40px; border-top:1px solid #cfcfcf; border-collapse:collapse; font-size:8px; color:#555; line-height:1.5;">
+               </td></tr></tbody>
+               {{-- Footer in <tfoot>: repeats + reserves height on every page (no overlap). --}}
+               <tfoot><tr><td style="padding-top:16px; vertical-align:bottom;">
+                <table style="width:100%; border-top:1px solid #cfcfcf; border-collapse:collapse; font-size:8px; color:#555; line-height:1.5;">
                   <tr style="vertical-align:top;">
                     <td style="width:34%; padding:8px 8px 0 0;">
                       <div style="font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#374151;" x-text="company.name"></div>
@@ -2954,6 +2957,7 @@
                     </td>
                   </tr>
                 </table>
+               </td></tr></tfoot></table>
               </div>
             </template>
 
@@ -3200,18 +3204,14 @@
        (.inv-inline-foot) in BOTH the print and rasterised paths — it can never overlap. */
     .ip-foot { display: none !important; }
     @media print {
-      /* DIN 5008 A4: left 25mm, right 20mm, top 20mm; wider bottom margin reserves the
-         band the per-page footer sits in (content never flows into an @page margin). */
-      @page { size: A4; margin: 20mm 20mm 26mm 25mm; }
+      /* DIN 5008 A4 margins: left 25mm, right 20mm, top 20mm, bottom 14mm. The klassisch
+         footer lives in a <tfoot> which the browser repeats + reserves per page. */
+      @page { size: A4; margin: 20mm 20mm 14mm 25mm; }
       html, body { height: auto !important; background: #fff !important; }
       body > *:not(#invoice-print) { display: none !important; }
       #invoice-print { position: static !important; left: auto !important; top: auto !important; width: auto !important; }
-      /* The @page margins now provide the page margins — drop each template's own outer
-         padding (which was the print margin) so nothing is doubled. */
+      /* The @page margins provide the page margins — drop each template's own outer padding. */
       #invoice-print > div { padding: 0 !important; min-height: 0 !important; }
-      /* Footer pinned to the bottom of EVERY printed page (single element, so no double).
-         Content stays inside the content box above the reserved bottom margin. */
-      .inv-inline-foot { display: table !important; position: fixed; bottom: 8mm; left: 25mm; right: 20mm; width: auto !important; margin-top: 0 !important; }
       /* Keep accent backgrounds/colours in print — browsers drop them otherwise. */
       #invoice-print, #invoice-print * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     }
