@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
@@ -168,11 +169,8 @@ trait SealedManifestStore
 
         $auditModule = $this->manifestAuditModule($request);
         $expectedVersion = $request->integer('version');
-
-        // Referential-integrity guard for sharded stores: reject a root that points
-        // at a shard blob with no ledger row (a partial/racy save), so the store can
-        // never be persisted in the corrupt "dangling shard" state that lost data.
         $ledger = $this->manifestBlobLedger($request);
+
         $refs = null;
         if ($request->has('shards')) {
             $refs = $request->collect('shards')
@@ -180,12 +178,29 @@ trait SealedManifestStore
                 ->filter()
                 ->unique()
                 ->values();
-            if ($ledger !== null && $refs->isNotEmpty()) {
-                $present = (clone $ledger)->whereIn('blob', $refs->all())->pluck('blob');
+        }
+
+        $ciphertext = $request->string('ciphertext')->value();
+        $model = $this->manifestModel();
+        $key = $this->manifestKey($request);
+        $uid = (int) $this->requireUser($request)->id;
+
+        // The shard-integrity guard + the root commit MUST run under the SAME per-user
+        // write lock that BlobStoreController::reconcile() holds ("{module}-write:{uid}").
+        // Otherwise a concurrent reconcile on the sibling blob controller can delete a
+        // still-referenced shard blob in the TOCTOU window between the guard's ledger
+        // check and the root persist — re-introducing the exact dangling-shard corruption
+        // the guard exists to prevent. The lock is only needed for sharded stores (those
+        // with a blob ledger); the blobless module stores skip it (no reconcile races them).
+        $commit = function () use ($request, $ledger, $refs, $auditModule, $expectedVersion, $uid, $ciphertext, $model, $key) {
+            // Referential-integrity guard: reject a root that points at a shard blob with
+            // no ledger row (a partial/racy save or one concurrently reconciled away).
+            if ($ledger !== null && $refs !== null && $refs->isNotEmpty()) {
+                $present = (clone $ledger)->whereIn('blob', $refs->all())->lockForUpdate()->pluck('blob');
                 if ($present->count() < $refs->count()) {
                     if ($auditModule !== null) {
                         BlobAudit::record('root_reject', $auditModule, [
-                            'user_id' => (int) $this->requireUser($request)->id,
+                            'user_id' => $uid,
                             'result' => 'rejected',
                             'reason' => 'missing_shard',
                             'meta' => [
@@ -196,30 +211,36 @@ trait SealedManifestStore
                         ]);
                     }
 
-                    return response()->json(['error' => 'missing_shard'], 422);
+                    return ['missing_shard' => true];
                 }
             }
+
+            $version = DB::transaction(function () use ($request, $ciphertext, $expectedVersion, $model, $key): ?int {
+                $row = $this->manifestScope($request, $model::query())->lockForUpdate()->first();
+                $current = (int) ($row?->version ?? 0);
+                if ($current !== $expectedVersion) {
+                    return null; // conflict
+                }
+                $v = $current + 1;
+                $model::query()->updateOrCreate($key, ['ciphertext' => $ciphertext, 'version' => $v]);
+
+                return $v;
+            });
+
+            return ['version' => $version];
+        };
+
+        if ($ledger !== null && $auditModule !== null) {
+            /** @var array{missing_shard?: bool, version?: int|null} $result */
+            $result = Cache::lock($auditModule.'-write:'.$uid, 120)->block(20, $commit);
+        } else {
+            $result = $commit();
         }
 
-        $ciphertext = $request->string('ciphertext')->value();
-
-        $model = $this->manifestModel();
-        $key = $this->manifestKey($request);
-
-        $next = DB::transaction(function () use ($request, $ciphertext, $expectedVersion, $model, $key): ?int {
-            $row = $this->manifestScope($request, $model::query())->lockForUpdate()->first();
-            $current = (int) ($row?->version ?? 0);
-            if ($current !== $expectedVersion) {
-                return null; // conflict
-            }
-            $version = $current + 1;
-            $model::query()->updateOrCreate(
-                $key,
-                ['ciphertext' => $ciphertext, 'version' => $version],
-            );
-
-            return $version;
-        });
+        if ($result['missing_shard'] ?? false) {
+            return response()->json(['error' => 'missing_shard'], 422);
+        }
+        $next = $result['version'] ?? null;
 
         if ($next === null) {
             // Forensic trail of the conflict (store merge-safety spec §8): a stale
