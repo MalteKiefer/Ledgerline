@@ -2134,12 +2134,12 @@ export default (config = {}, labels = {}) => ({
         await window.LLInvoicesStore.refresh();
         this.invoices = window.LLInvoicesStore.data.invoices;
     },
-    // Numbers assigned to more than one invoice — a GoBD violation the owner MUST fix
-    // (a concurrent finalize on two offline devices is the only way to reach it).
-    // GoBD duplicate guard applies to the app's OWN issued series only — imported historical
-    // invoices carry archival numbers from other systems (may legitimately clash/repeat) and
-    // must not trip it.
-    get duplicateNumbers() { return dupNumbers(this.activeInvoices.filter((i) => ! i.imported)); },
+    // Numbers assigned to more than one ACTIVE invoice in the SAME year — a GoBD
+    // violation the owner must fix. Keyed by year+number, so the same bare number in
+    // two different years never false-alarms. Imported invoices ARE included: a
+    // re-import (or a genuinely duplicated number) is exactly the "doppelte Rechnung"
+    // to catch; the per-year key keeps legitimate archival numbers from clashing.
+    get duplicateNumbers() { return dupNumbers(this.activeInvoices); },
     // An invoice counts as "linked" if it carries a payment link OR any bank transaction points
     // at it (by id or — after a re-import with a fresh id — by number). Robust to stale ids.
     isInvoiceLinked(inv) {
@@ -2277,7 +2277,7 @@ export default (config = {}, labels = {}) => ({
     },
 
     // ---- Send invoice by e-mail (dedicated invoice SMTP, server-side send) ----
-    mailOpen: false, mailBusy: false, mailTo: '', mailSubject: '', mailBody: '', _mailInv: null,
+    mailOpen: false, mailBusy: false, mailTo: '', mailSubject: '', mailBody: '', _mailInv: null, _mailMode: 'invoice',
     _mailRecipient(i) {
         if (i.customer?.email) return i.customer.email;
         const p = (this.partners || []).find((x) => x.id === i.customer?.partnerId);
@@ -2312,7 +2312,42 @@ export default (config = {}, labels = {}) => ({
         this.mailOpen = true;
         this.$nextTick(() => { if (this.$refs.mailBodyEl) this.$refs.mailBodyEl.innerHTML = this.mailBody; });
     },
-    closeMailInvoice() { this.mailOpen = false; this._mailInv = null; },
+    // ---- Overdue / aging + dunning (Mahnung) ----
+    _daysBetween(a, b) { const d = (new Date(b) - new Date(a)) / 86400000; return Number.isFinite(d) ? Math.floor(d) : 0; },
+    isOverdue(inv) { return !! inv && inv.status === 'sent' && ! inv.imported && inv.dueDate && inv.dueDate < this._today(); },
+    daysOverdue(inv) { return this.isOverdue(inv) ? this._daysBetween(inv.dueDate, this._today()) : 0; },
+    get overdueInvoices() { return this.activeInvoices.filter((i) => this.isOverdue(i)); },
+    get overdueTotal() { return this.overdueInvoices.reduce((s, i) => s + (this.computeTotals(i).gross || 0), 0); },
+    // Aging buckets over the outstanding (sent, unpaid) invoices.
+    get aging() {
+        const b = { current: 0, d30: 0, d60: 0, d90: 0, d90p: 0 };
+        for (const i of this.activeInvoices) {
+            if (i.status !== 'sent' || i.imported) continue;
+            const g = this.computeTotals(i).gross || 0;
+            const od = this.isOverdue(i) ? this.daysOverdue(i) : 0;
+            if (od <= 0) b.current += g; else if (od <= 30) b.d30 += g; else if (od <= 60) b.d60 += g; else if (od <= 90) b.d90 += g; else b.d90p += g;
+        }
+        return b;
+    },
+    reminderCount(inv) { return (inv?.reminders || []).length; },
+    lastReminderAt(inv) { const r = inv?.reminders || []; return r.length ? r[r.length - 1].at : ''; },
+    // Open the mail dialog pre-filled as a payment reminder (dunning) instead of a
+    // plain invoice send. Placeholders add :days (days overdue) + :level.
+    openReminderMail(inv) {
+        const i = inv || this.current; if (! i) return;
+        if (! this.company.mail_enabled) { window.llToast(labels.mail_not_configured || 'Configure the invoice mail server in settings.'); return; }
+        const level = this.reminderCount(i) + 1;
+        const days = this.daysOverdue(i);
+        const fill = (t) => this._fillPlaceholders(String(t || '').replace(/:days/g, days).replace(/:level/g, level), i, true);
+        this._mailInv = i;
+        this._mailMode = 'reminder';
+        this.mailTo = this._mailRecipient(i);
+        this.mailSubject = this._fillPlaceholders((labels.reminder_subject || 'Payment reminder — invoice :number').replace(/:level/g, level).replace(/:days/g, days), i);
+        this.mailBody = fill('<p>' + (labels.reminder_body || 'Invoice :number is :days days overdue. Please arrange payment.') + '</p>');
+        this.mailOpen = true;
+        this.$nextTick(() => { if (this.$refs.mailBodyEl) this.$refs.mailBodyEl.innerHTML = this.mailBody; });
+    },
+    closeMailInvoice() { this.mailOpen = false; this._mailInv = null; this._mailMode = 'invoice'; },
     async confirmSendMail() {
         const i = this._mailInv; if (! i || this.mailBusy) return;
         if (! String(this.mailTo || '').includes('@')) { window.llToast(labels.mail_bad_recipient || 'Enter a valid recipient.'); return; }
@@ -2332,7 +2367,17 @@ export default (config = {}, labels = {}) => ({
             fd.append('body', this.mailBody || '');
             fd.append('pdf', new File([blob], (i.number ? String(i.number).replace(/[^\w.-]+/g, '_') : 'rechnung') + '.pdf', { type: 'application/pdf' }));
             const res = await fetch(config.sendUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': jsonHeaders()['X-CSRF-TOKEN'] }, body: fd });
-            if (res.ok) { window.llToast(labels.mail_sent || 'Invoice sent.'); this.closeMailInvoice(); }
+            if (res.ok) {
+                // Record a sent reminder on the invoice (dunning history), re-resolving
+                // the live record by id in case a background 409 rebase detached it.
+                if (this._mailMode === 'reminder') {
+                    const live = this.invoices.find((x) => x.id === i.id) || i;
+                    (live.reminders ||= []).push({ at: this._today(), days: this.daysOverdue(live), level: this.reminderCount(live) + 1 });
+                    this._save();
+                }
+                window.llToast(this._mailMode === 'reminder' ? (labels.reminder_sent || 'Reminder sent.') : (labels.mail_sent || 'Invoice sent.'));
+                this.closeMailInvoice();
+            }
             else if (res.status === 501) { window.llToast(labels.mail_not_configured || 'Configure the invoice mail server in settings.'); }
             else { window.llToast(labels.mail_failed || 'Could not send the invoice.'); }
         } catch (e) { window.llToast(labels.mail_failed || 'Could not send the invoice.'); }
