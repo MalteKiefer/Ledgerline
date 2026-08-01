@@ -106,6 +106,7 @@ export default (config = {}, labels = {}) => ({
     _mapReady: false,
     _markers: [],        // Leaflet media-pin marker layers
     _trackLayers: [],    // Leaflet polyline layers currently on the map
+    heatOn: false,       // tracks view: aggregate route-frequency heatmap of ALL tours
     _hoverMarker: null,  // elevation-profile hover position marker (circleMarker)
     _photoMarkers: {},   // id → { marker, photo } thumbnail markers on the detail map
     focusedPhotoId: null, // id of the coupled photo currently pinned on the route
@@ -279,9 +280,37 @@ export default (config = {}, labels = {}) => ({
         if (this.view === 'detail') this._drawDetailPhotos();
     },
 
+    // Toggle the aggregate route-frequency heatmap over all tours (tracks view only).
+    toggleHeat() {
+        this.heatOn = ! this.heatOn;
+        if (this.heatOn) { this.selectedTrackId = null; this._renderView(); this._fitAllTracks(); }
+        else this._renderView();
+    },
+    _fitAllTracks() {
+        const L = this._L;
+        if (! L || ! this._map) return;
+        const pts = [];
+        for (const t of (this.tracks || [])) for (const p of (t.points || [])) pts.push([p.lat, p.lng]);
+        if (pts.length) { try { this._map.fitBounds(L.latLngBounds(pts), { padding: [48, 48], maxZoom: 15 }); } catch (e) { /* ignore */ } }
+    },
+
     _drawTracks() {
         const L = this._L;
         if (! L) return;
+        // Heatmap: draw EVERY track as a low-opacity warm polyline. SVG alpha blends on
+        // overlap, so frequently-walked segments render darker (a route-frequency heatmap).
+        // No per-track colour / click / arrows — it's an aggregate view.
+        if (this.heatOn && this.view === 'tracks') {
+            for (const track of this.tracks) {
+                const latlngs = (track.points || []).map((p) => [p.lat, p.lng]);
+                if (latlngs.length < 2) continue;
+                try {
+                    const line = L.polyline(latlngs, { color: '#ef4444', weight: 5, opacity: 0.13, lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(this._map);
+                    this._trackLayers.push(line);
+                } catch (e) { /* ignore */ }
+            }
+            return;
+        }
         // In the detail view only the selected track is drawn.
         const detail = this.view === 'detail';
         this.tracks.forEach((track, i) => {

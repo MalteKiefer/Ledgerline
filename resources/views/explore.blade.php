@@ -194,12 +194,20 @@
                     {{ __('explore.tracks_heading') }}
                     <span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400" x-text="'(' + tracks.length + ')'"></span>
                   </h2>
-                  <button type="button" @click="togglePlan()"
-                    class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent/5"
-                    :class="planning ? 'bg-accent/10' : ''">
-                    <x-icon name="map-pin" class="h-3.5 w-3.5" />
-                    <span>{{ __('explore.plan_tour') }}</span>
-                  </button>
+                  <div class="flex items-center gap-1">
+                    <button type="button" @click="toggleHeat()" x-show="tracks.length > 1"
+                      class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent/5"
+                      :class="heatOn ? 'bg-accent/10' : ''">
+                      <x-icon name="fire" class="h-3.5 w-3.5" />
+                      <span>{{ __('explore.heatmap') }}</span>
+                    </button>
+                    <button type="button" @click="togglePlan()"
+                      class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent/5"
+                      :class="planning ? 'bg-accent/10' : ''">
+                      <x-icon name="map-pin" class="h-3.5 w-3.5" />
+                      <span>{{ __('explore.plan_tour') }}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {{-- Planning toolbar --}}

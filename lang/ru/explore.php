@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 return [
     'title' => 'Обзор',
+    'heatmap' => 'Тепловая карта',
     'subtitle' => 'Ваши треки и геотегированные фото на приватной карте.',
     'search_ph' => 'Поиск места, POI, координат или ссылки Google Maps',
     'search_go' => 'Найти',
