@@ -37,17 +37,31 @@ export function invoiceTotals(inv) {
     return { net: round2(net), vat: round2(vat), gross: round2(net + vat), vatByRate, subtotal: round2(subtotal), discountAmount: round2(subtotal * frac) };
 }
 
-/** Invoices that count as revenue: issued (sent or paid) and not trashed. */
+/** Invoices that count as revenue: issued (final, sent or paid) and not trashed. */
 export function realizedInvoices(invoices) {
-    return (invoices || []).filter((i) => ! i.trashed && (i.status === 'paid' || i.status === 'sent'));
+    return (invoices || []).filter((i) => ! i.trashed && (i.status === 'paid' || i.status === 'sent' || i.status === 'final'));
+}
+
+/** The date an invoice is booked under a given VAT scheme. Ist (cash) → payment date; Soll → issue date. */
+function taxDate(inv, ist) {
+    if (ist) return inv.paidAt || inv.issueDate || '';
+    return inv.issueDate || '';
 }
 
 /**
  * VAT advance return (Umsatzsteuer-Voranmeldung) figures for a year: net turnover and
  * VAT owed, broken down by rate and by quarter.
+ *
+ * scheme: 'ist' (Ist-Versteuerung, cash-basis — VAT due on PAYMENT, only paid invoices,
+ * booked to the payment date) or 'soll' (Soll-Versteuerung, accrual — VAT due on issue,
+ * every issued/final/sent/paid invoice, booked to the issue date). Default 'ist'.
  */
-export function vatReturn(invoices, year) {
-    const list = realizedInvoices(invoices).filter((i) => yearOf(i) === year);
+export function vatReturn(invoices, year, scheme = 'ist') {
+    const ist = scheme !== 'soll';
+    const base = ist
+        ? (invoices || []).filter((i) => ! i.trashed && i.status === 'paid')
+        : realizedInvoices(invoices);
+    const list = base.filter((i) => Number((taxDate(i, ist) || '').slice(0, 4)) === year);
     const quarters = [1, 2, 3, 4].map((q) => ({ q, net: 0, vat: 0 }));
     const byRate = {}; // rate -> { rate, net, vat }
     let net = 0, vat = 0;
@@ -60,7 +74,8 @@ export function vatReturn(invoices, year) {
             byRate[rate].vat += v;
             byRate[rate].net += rate > 0 ? v / (rate / 100) : t.net;
         }
-        const q = Math.ceil(monthOf(inv) / 3);
+        const mon = Number((taxDate(inv, ist) || '').slice(5, 7));
+        const q = Math.ceil(mon / 3);
         if (q >= 1 && q <= 4) { quarters[q - 1].net += t.net; quarters[q - 1].vat += t.vat; }
     }
     return {

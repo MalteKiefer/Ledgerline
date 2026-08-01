@@ -43,6 +43,7 @@
             'mail_enabled' => (bool) $s->invoice_mail_enabled,
             'mail_subject' => $s->invoice_mail_subject ?: '',
             'mail_body' => $s->invoice_mail_body ?: '',
+            'vat_ist' => (bool) $s->invoice_vat_ist,
         ]),
         labelsByLang: @js(['de' => __('invoices', [], 'de'), 'en' => __('invoices', [], 'en')]),
         uploadUrl: '{{ url('/invoices/upload') }}',
@@ -54,6 +55,7 @@
      }, {
         deleteConfirm: @js(__('invoices.delete_confirm')),
         statusDraft: @js(__('invoices.status_draft')),
+        statusFinal: @js(__('invoices.status_final')),
         statusSent: @js(__('invoices.status_sent')),
         statusPaid: @js(__('invoices.status_paid')),
         csvImported: @js(__('invoices.csv_imported')),
@@ -1043,7 +1045,7 @@
           {{-- Partner editor modal (create + edit; multiple contact persons) --}}
           <div x-show="partnerEditing" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelPartner()">
             <div class="absolute inset-0 bg-gray-900/50" @click="cancelPartner()"></div>
-            <div class="relative flex max-h-[88vh] w-full max-w-md flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[88vh] w-full max-w-3xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <template x-if="partnerEditing">
                 <div class="flex min-h-0 flex-col">
                   <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
@@ -2180,6 +2182,7 @@
             <select x-model="filterStatus" @change="invPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
               <option value="">{{ __('invoices.filter_all') }}</option>
               <option value="draft">{{ __('invoices.status_draft') }}</option>
+              <option value="final">{{ __('invoices.status_final') }}</option>
               <option value="sent">{{ __('invoices.status_sent') }}</option>
               <option value="paid">{{ __('invoices.status_paid') }}</option>
             </select>
@@ -2268,7 +2271,7 @@
                     <td class="px-4 py-2.5">
                       <div class="flex flex-wrap items-center gap-1.5">
                         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                          :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
+                          :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-amber-500/15 text-amber-600 dark:text-amber-400': inv.status === 'final', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
                           x-text="statusLabel(inv.status)"></span>
                         <template x-if="isCredit(inv)"><span class="inline-flex items-center gap-1 rounded-full bg-purple-500/15 px-2 py-0.5 text-xs font-medium text-purple-600 dark:text-purple-400">{{ __("invoices.credit_badge") }}</span></template>
 
@@ -2371,7 +2374,7 @@
               <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
               <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
               <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
+                :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-amber-500/15 text-amber-600 dark:text-amber-400': current?.status === 'final', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
                 x-text="statusLabel(current?.status)"></span>
               <template x-if="isCredit(current)"><span class="inline-flex items-center rounded-full bg-purple-500/15 px-2 py-0.5 text-xs font-medium text-purple-600 dark:text-purple-400">{{ __("invoices.credit_badge") }}</span></template>
               <template x-if="isOverdue(current)"><span class="inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400" x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(current))"></span></template>
@@ -2390,8 +2393,8 @@
                 <x-action-menu-item icon="document-text" x-show="current?.imported && current?.pdf" @click="openOriginalPdf(current)">{{ __('invoices.open_original') }}</x-action-menu-item>
                 <x-action-menu-item icon="printer" x-show="! current?.imported || ! current?.pdf" @click="printInvoice(current)">{{ __('invoices.print') }}</x-action-menu-item>
                 <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
-                <x-action-menu-item icon="check-circle" x-show="! current?.imported && current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-action-menu-item>
-                <x-action-menu-item icon="arrow-uturn-left" x-show="! current?.imported && ! isCredit(current) && (current?.status === 'sent' || current?.status === 'paid')" @click="createCreditNote(current)">{{ __('invoices.credit_note') }}</x-action-menu-item>
+                <x-action-menu-item icon="check-circle" x-show="! current?.imported && (current?.status === 'sent' || current?.status === 'final')" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-action-menu-item>
+                <x-action-menu-item icon="arrow-uturn-left" x-show="! current?.imported && ! isCredit(current) && (current?.status === 'final' || current?.status === 'sent' || current?.status === 'paid')" @click="createCreditNote(current)">{{ __('invoices.credit_note') }}</x-action-menu-item>
                 <x-action-menu-item icon="inbox-arrow-down" x-show="$store.paperless?.configured" @click="sendInvoiceToPaperless(current)">{{ __('invoices.send_paperless') }}</x-action-menu-item>
                 <x-action-menu-item icon="envelope" x-show="company.mail_enabled" @click="openMailInvoice(current)">{{ __('invoices.send_mail') }}</x-action-menu-item>
                 <x-action-menu-item icon="bell" x-show="company.mail_enabled && isOverdue(current)" @click="openReminderMail(current)">{{ __('invoices.send_reminder') }}</x-action-menu-item>
@@ -3157,6 +3160,7 @@
     #invoice-print .ie-m-val { font-size:11px; font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
     #invoice-print .ie-pill { display:inline-block; padding:2px 10px; border-radius:2px; font-size:8px; font-weight:700; letter-spacing:1px; text-transform:uppercase; background:var(--ink); color:#fff; }
     #invoice-print .ie-pill.ie-paid { background:#0f7a4d; }
+    #invoice-print .ie-pill.ie-final { background:#c07d1a; }
     #invoice-print .ie-pill.ie-draft { background:var(--faint); }
     #invoice-print .ie-parties { display:grid; grid-template-columns:1fr 1fr; gap:56px; margin-bottom:30px; }
     #invoice-print .ie-p-lbl { font-size:7.5px; font-weight:600; letter-spacing:1.6px; text-transform:uppercase; color:var(--faint); padding-bottom:8px; margin-bottom:14px; border-bottom:1px solid var(--hair); }

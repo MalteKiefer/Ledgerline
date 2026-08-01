@@ -72,6 +72,9 @@ export default (config = {}, labels = {}) => ({
     dirty: false,        // a LOCKED invoice has unsaved edits (drafts autosave; locked don't)
     pdfBusy: false,      // a version PDF is being rendered
     _lockBusy: new Set(), // invoice ids with an in-flight finalize/markSent (re-entrancy guard)
+    _mut: 0, // reactivity nudge: this.invoices IS the sharded store's plain (non-Alpine-reactive)
+             // data array, so status/field mutations don't auto-trigger. Bump on every change;
+             // list/stat getters read `void this._mut` so they re-run. (CLAUDE.md store-getter gotcha.)
     editUnlocked: false, // locked invoice: fields stay disabled until "Bearbeiten" + confirm
     _lockBaseline: null, // JSON of a locked invoice as opened, to revert unsaved edits on leave
     // Finance section: the page is a "Finanzen" hub with tabs. Invoices are one tab.
@@ -146,7 +149,8 @@ export default (config = {}, labels = {}) => ({
     },
 
     // ---- VAT advance return (Umsatzsteuer-Voranmeldung), current year ----
-    get vatReturn() { return vatReturn(this.invoices, new Date().getFullYear()); },
+    get _vatScheme() { return this.company && this.company.vat_ist === false ? 'soll' : 'ist'; },
+    get vatReturn() { void this._mut; return vatReturn(this.invoices, new Date().getFullYear(), this._vatScheme); },
 
     // ---- Statistics tab (year-scoped; the year is selectable) ----
     statsYear: new Date().getFullYear(),
@@ -154,7 +158,7 @@ export default (config = {}, labels = {}) => ({
     get statsKpis() { return yearKpis(this.invoices, this.statsYear); },
     get statsCustomers() { return revenueByCustomer(this.invoices, this.statsYear); },
     get statsMonths() { return monthlyRevenue(this.invoices, this.statsYear); },
-    get statsVat() { return vatReturn(this.invoices, this.statsYear); },
+    get statsVat() { void this._mut; return vatReturn(this.invoices, this.statsYear, this._vatScheme); },
     get euer() { return euerReport(this.invoices, this.transactions, this.projects, this.statsYear); },
     monthShort(m) { try { return new Date(2000, m - 1, 1).toLocaleDateString(document.documentElement.lang || 'de', { month: 'short' }); } catch (e) { return String(m); } },
     // Largest monthly net in the selected year — scales the bar chart.
@@ -1043,6 +1047,7 @@ export default (config = {}, labels = {}) => ({
     // long-lived references an open editor holds, by id, so edits made after the
     // rebase land on the LIVE record that gets sealed — not a detached ghost (F2).
     _reresolveOpenRefs() {
+        this._mut++; // a background 409 rebase merged fresh records → nudge list/stat getters
         if (this.current && this.current.id) {
             const live = (this.invoices || []).find((i) => i.id === this.current.id);
             if (live) this.current = live;
@@ -1399,10 +1404,10 @@ export default (config = {}, labels = {}) => ({
     cancelStatement() { this.stmt = null; },
 
     // ---- Derived ----
-    get activeInvoices() { return (this.invoices || []).filter((i) => ! i.trashed); },
+    get activeInvoices() { void this._mut; return (this.invoices || []).filter((i) => ! i.trashed); },
     // Invoice trash bin.
     showInvTrash: false,
-    get trashedInvoices() { return (this.invoices || []).filter((i) => i.trashed).sort((a, b) => String(b.trashed).localeCompare(String(a.trashed))); },
+    get trashedInvoices() { void this._mut; return (this.invoices || []).filter((i) => i.trashed).sort((a, b) => String(b.trashed).localeCompare(String(a.trashed))); },
     async deleteInvoiceForever(inv) {
         if (! await this.$store.confirm.ask(labels.deleteConfirm || 'Delete this invoice permanently?')) return;
         const i = this.invoices.indexOf(inv);
@@ -1423,6 +1428,7 @@ export default (config = {}, labels = {}) => ({
     get invoiceYears() { return [...new Set(this.activeInvoices.map((i) => invoiceYear(i)).filter(Boolean))].sort((a, b) => b.localeCompare(a)); },
     get invoiceCustomers() { return [...new Set(this.activeInvoices.map((i) => i.customer?.name).filter(Boolean))].sort((a, b) => a.localeCompare(b)); },
     get filtered() {
+        void this._mut;
         // Invoices are business documents — hidden in the private scope.
         if (this.financeScope === 'private') return [];
         const q = this.query.trim().toLowerCase();
@@ -1676,11 +1682,14 @@ export default (config = {}, labels = {}) => ({
         this._revokeInvoicePdf();
         this.view = 'list'; this.current = null; this.dirty = false; this.editUnlocked = false; this._lockBaseline = null;
     },
+    // Override the mixin _save to also nudge _mut: this.invoices is the sharded store's
+    // plain (non-reactive) array, so create/trash/restore/delete must bump for the list.
+    _save() { this._mut++; this._store().touch(); },
     saveSoon() { if (this.current) this.current.updated = new Date().toISOString(); this._save(); },
 
     // A finalized (sent/paid) or imported invoice is an immutable record: edits become
     // versioned corrections with a mandatory reason. Drafts stay free-form autosave.
-    isLocked(inv) { const i = inv || this.current; return !! i && (i.imported || i.status === 'sent' || i.status === 'paid'); },
+    isLocked(inv) { const i = inv || this.current; return !! i && (i.imported || i.status === 'final' || i.status === 'sent' || i.status === 'paid'); },
     // Field input: drafts autosave live; a locked invoice only marks dirty (persist happens
     // via saveVersionedEdit, which records a reason + a new version).
     onFieldInput() { if (this.isLocked(this.current)) { if (this.editUnlocked) this.dirty = true; } else this.saveSoon(); },
@@ -2282,8 +2291,11 @@ export default (config = {}, labels = {}) => ({
             i = this.invoices.find((x) => x.id === id) || i; // re-find after the in-place merge
             if (this.current && this.current.id === id) this.current = i;
             if (! i.number) this._assignNumber(i);
-            if (i.status === 'draft') i.status = 'sent';
+            // Finalising ISSUES the invoice (assigns number, freezes) → status 'final'
+            // (Offen). It does NOT mean "sent" — only an actual mail send / markSent does.
+            if (i.status === 'draft') i.status = 'final';
             i.totals = this.computeTotals(i); // freeze
+            this._mut++;
             await this._lockCommit(i, labels.version_finalized || 'Finalized');
             // Right after finalising, offer to file the invoice in Paperless (opens the
             // same transfer dialog as Files), pre-filled — if Paperless is configured.
@@ -2354,7 +2366,7 @@ export default (config = {}, labels = {}) => ({
     },
     // ---- Overdue / aging + dunning (Mahnung) ----
     _daysBetween(a, b) { const d = (new Date(b) - new Date(a)) / 86400000; return Number.isFinite(d) ? Math.floor(d) : 0; },
-    isOverdue(inv) { return !! inv && inv.status === 'sent' && ! inv.imported && inv.dueDate && inv.dueDate < this._today(); },
+    isOverdue(inv) { return !! inv && (inv.status === 'sent' || inv.status === 'final') && ! inv.imported && inv.dueDate && inv.dueDate < this._today(); },
     daysOverdue(inv) { return this.isOverdue(inv) ? this._daysBetween(inv.dueDate, this._today()) : 0; },
     get overdueInvoices() { return this.activeInvoices.filter((i) => this.isOverdue(i)); },
     get overdueTotal() { return this.overdueInvoices.reduce((s, i) => s + (this.computeTotals(i).gross || 0), 0); },
@@ -2410,10 +2422,18 @@ export default (config = {}, labels = {}) => ({
             if (res.ok) {
                 // Record a sent reminder on the invoice (dunning history), re-resolving
                 // the live record by id in case a background 409 rebase detached it.
+                const live = this.invoices.find((x) => x.id === i.id) || i;
                 if (this._mailMode === 'reminder') {
-                    const live = this.invoices.find((x) => x.id === i.id) || i;
                     (live.reminders ||= []).push({ at: this._today(), days: this.daysOverdue(live), level: this.reminderCount(live) + 1 });
+                    this._mut++;
                     this._save();
+                } else if (live.status !== 'paid') {
+                    // Actually sending the invoice marks it Sent (issuing it first if it was
+                    // still a draft/final without a number, so the record stays consistent).
+                    if (! live.number) this._assignNumber(live);
+                    live.status = 'sent';
+                    this._mut++;
+                    await this._lockCommit(live, labels.version_sent || 'Sent');
                 }
                 window.llToast(this._mailMode === 'reminder' ? (labels.reminder_sent || 'Reminder sent.') : (labels.mail_sent || 'Invoice sent.'));
                 this.closeMailInvoice();
@@ -2445,7 +2465,7 @@ export default (config = {}, labels = {}) => ({
         };
         this.invoices.unshift(c); this._save(); this.open(c);
     },
-    async markPaid(inv) { inv.status = 'paid'; await this._lockCommit(inv, labels.version_paid || 'Marked paid'); },
+    async markPaid(inv) { inv.status = 'paid'; if (! inv.paidAt) inv.paidAt = this._today(); this._mut++; await this._lockCommit(inv, labels.version_paid || 'Marked paid'); },
     async markSent(inv) {
         let i = inv;
         if (! i) return;
@@ -2459,7 +2479,8 @@ export default (config = {}, labels = {}) => ({
                 if (this.current && this.current.id === id) this.current = i;
                 if (! i.number) this._assignNumber(i);
             }
-            i.status = 'sent';
+            if (i.status !== 'paid') i.status = 'sent';
+            this._mut++;
             await this._lockCommit(i, labels.version_sent || 'Sent');
         } finally {
             this._lockBusy.delete(id);
@@ -2475,7 +2496,7 @@ export default (config = {}, labels = {}) => ({
         this._save();
         this.reconcileBlobs();
     },
-    statusLabel(s) { return ({ draft: labels.statusDraft, sent: labels.statusSent, paid: labels.statusPaid })[s] || s; },
+    statusLabel(s) { return ({ draft: labels.statusDraft, final: labels.statusFinal, sent: labels.statusSent, paid: labels.statusPaid })[s] || s; },
 
     // ---- Print / PDF (client-side, zero-knowledge) ----
     async printInvoice(inv) {

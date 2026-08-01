@@ -12,6 +12,7 @@ return [
     'search' => 'Search invoices',
     'filter_all' => 'All',
     'status_draft' => 'Draft',
+    'status_final' => 'Open',
     'status_sent' => 'Sent',
     'status_paid' => 'Paid',
 

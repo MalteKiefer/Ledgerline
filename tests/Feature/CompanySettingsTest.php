@@ -61,6 +61,23 @@ class CompanySettingsTest extends TestCase
         $this->assertSame('Bob Ltd', $this->settings($bob->id)->company_name);
     }
 
+    public function test_vat_scheme_toggle_persists(): void
+    {
+        $user = $this->signIn();
+        // Default is Ist (true); unchecking sends the hidden 0 + present marker → Soll (false).
+        $this->put(route('settings.company.update'), [
+            'invoice_vat_ist_present' => '1',
+            'invoice_vat_ist' => '0',
+        ])->assertRedirect();
+        $this->assertFalse($this->settings($user->id)->invoice_vat_ist);
+
+        $this->put(route('settings.company.update'), [
+            'invoice_vat_ist_present' => '1',
+            'invoice_vat_ist' => '1',
+        ])->assertRedirect();
+        $this->assertTrue($this->settings($user->id)->fresh()->invoice_vat_ist);
+    }
+
     public function test_it_rejects_a_bad_accent_colour(): void
     {
         $this->signIn();
