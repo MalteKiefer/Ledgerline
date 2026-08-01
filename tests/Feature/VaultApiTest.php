@@ -407,6 +407,7 @@ class VaultApiTest extends TestCase
         $this->addMember($vault, $manager, 'manager');
 
         $target = User::factory()->create();
+        $target->forceFill(['x25519_public_key' => 't-pub', 'mlkem_public_key' => 't-mlkem'])->save();
 
         $response = $this->postJson(route('vaults.members.store', $vault), [
             'user_id' => $target->id,
@@ -426,6 +427,30 @@ class VaultApiTest extends TestCase
         $this->assertSame('viewer', $member->role->value);
     }
 
+    public function test_inviting_a_user_without_identity_keys_is_rejected_uniformly(): void
+    {
+        // Enumeration-resistance: a user who never published identity keys must fail the
+        // invite exactly like a non-existent id (no user-existence oracle over the users
+        // table via the members.store 201-vs-422 difference).
+        $manager = $this->signIn();
+        $vault = $this->makeVault($manager);
+        $this->addMember($vault, $manager, 'manager');
+
+        $keyless = User::factory()->create(); // no identity keys published
+
+        // Both a keyless existing user AND a non-existent id must be rejected by the
+        // user_id validation (redirect/422 on the web route), never a 201 — so the
+        // 201-vs-reject difference is not a user-existence oracle. No member is created.
+        $r1 = $this->postJson(route('vaults.members.store', $vault), ['user_id' => $keyless->id, 'role' => 'viewer', 'wrapped_vault_key' => 'x']);
+        $this->assertGreaterThanOrEqual(300, $r1->getStatusCode());
+        $this->assertLessThan(500, $r1->getStatusCode());
+
+        $r2 = $this->postJson(route('vaults.members.store', $vault), ['user_id' => 999999, 'role' => 'viewer', 'wrapped_vault_key' => 'x']);
+        $this->assertSame($r1->getStatusCode(), $r2->getStatusCode()); // identical outcome → no oracle
+
+        $this->assertSame(0, SharedVaultMember::where('vault_id', $vault->id)->where('user_id', $keyless->id)->count());
+    }
+
     public function test_non_manager_cannot_add_member(): void
     {
         $owner = User::factory()->create();
@@ -434,6 +459,7 @@ class VaultApiTest extends TestCase
         $this->addMember($vault, $editor, 'editor');
 
         $target = User::factory()->create();
+        $target->forceFill(['x25519_public_key' => 't-pub', 'mlkem_public_key' => 't-mlkem'])->save();
 
         $response = $this->postJson(route('vaults.members.store', $vault), [
             'user_id' => $target->id,

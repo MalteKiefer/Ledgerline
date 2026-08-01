@@ -104,4 +104,14 @@ class FileShareTest extends TestCase
         $this->actingAs($owner)->deleteJson(route('files.shares.destroy', $token))->assertOk();
         $this->assertNull(PublicShare::where('token', $token)->first());
     }
+
+    public function test_public_share_token_route_rejects_non_alphanumeric_tokens(): void
+    {
+        // The token param is constrained to [A-Za-z0-9]; a crafted token carrying quotes
+        // or percent-encodings 404s at the route rather than being reflected into the
+        // share view (reflected-XSS defence in depth).
+        $this->get('/s/'.rawurlencode("x'});alert(1)//"))->assertNotFound();
+        $this->get('/s/'.rawurlencode('has space'))->assertNotFound();
+        $this->get('/s/abc-DEF-123')->assertNotFound(); // hyphen not in [A-Za-z0-9] → constraint 404
+    }
 }

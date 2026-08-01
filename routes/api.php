@@ -190,16 +190,16 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/gallery/raw/{blob}', [GalleryBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.gallery.raw');
         Route::post('/gallery/raw-batch', [GalleryBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.gallery.raw-batch');
         Route::delete('/gallery/blob/{blob}', [GalleryBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.gallery.blob.destroy');
-        Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('throttle:600,1')->name('api.gallery.process');
+        Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('module:gallery', 'throttle:600,1')->name('api.gallery.process');
         // Deferred vision pass: client POSTs a photo's medium rendition (plaintext, discarded
         // after) and gets back the CLIP embedding + faces to merge into the sealed metadata.
-        Route::post('/gallery/analyze', [GalleryProcessController::class, 'analyze'])->middleware('throttle:600,1')->name('api.gallery.analyze');
-        Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('throttle:300,1')->name('api.gallery.embed-text');
+        Route::post('/gallery/analyze', [GalleryProcessController::class, 'analyze'])->middleware('module:gallery', 'throttle:600,1')->name('api.gallery.analyze');
+        Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('module:gallery', 'throttle:300,1')->name('api.gallery.embed-text');
         // Reverse-geocode a photo coordinate to a place name (viewer display). Self-hosted
         // Photon first (ZK), snap-to-grid before egress, never cached server-side.
-        Route::get('/gallery/reverse', [GalleryProcessController::class, 'reverse'])->middleware('throttle:60,1')->name('api.gallery.reverse');
+        Route::get('/gallery/reverse', [GalleryProcessController::class, 'reverse'])->middleware('module:gallery', 'throttle:60,1')->name('api.gallery.reverse');
         // Forward geocode: address/place search for photo location tagging (reverse is above).
-        Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('throttle:60,1')->name('api.gallery.geocode');
+        Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('module:gallery', 'throttle:60,1')->name('api.gallery.geocode');
         // Album public share links (parity with files.shares): create, update metadata, revoke.
         Route::post('/gallery/shares', [GalleryShareController::class, 'store'])->middleware('throttle:60,1')->name('api.gallery.shares.store');
         Route::put('/gallery/shares/{token}', [GalleryShareController::class, 'update'])->middleware('throttle:60,1')->name('api.gallery.shares.update');

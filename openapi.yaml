@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.535.1
+  version: 1.536.0
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -1160,6 +1160,8 @@ components:
         pdf: { type: object, nullable: true, description: "Sealed original PDF blob ref (imported invoices).", properties: { blob: { type: string, format: uuid }, key: { type: string }, name: { type: string }, mime: { type: string } } }
         versionSeq: { type: integer, description: "Running version counter (last assigned). Increments per versioned correction." }
         versions: { type: array, items: { $ref: "#/components/schemas/InvoiceVersion" }, description: "GoBD correction trail — one entry per save of a locked invoice." }
+        gross: { type: [number, "null"], description: "IMPORTED invoices only: the exact printed gross. computeTotals/invoiceTotals TRUST it verbatim (derive net/vat from it) — a client must preserve it or the imported invoice's totals change. Online-created invoices derive totals from lines[] and omit it." }
+        vatRate: { type: [number, "null"], description: "IMPORTED invoices only: the VAT rate paired with `gross`. Preserve alongside gross." }
         trashed: { type: [boolean, string] }
         updated: { type: string, format: date-time }
 
@@ -1218,6 +1220,7 @@ components:
         blob: { type: string, format: uuid }
         key: { type: string, description: "Sealed content key for the blob." }
         name: { type: string }
+        trashed: { type: [boolean, string, "null"], description: "Soft-trash marker (truthy = in the receipt trash). Preserve as passthrough — dropping it un-trashes a soft-deleted receipt on the next write." }
         mime: { type: string }
         sig: { type: string, description: "{size}:{sha256(head‖tail)} dedup signature." }
         ocr: { type: string, description: "Extracted text (client-side; up to 200k chars)." }
@@ -1350,6 +1353,9 @@ components:
         mediumRef: { type: string, format: uuid }
         mediumKey: { type: string }
         motionRef: { type: [string, "null"], format: uuid, description: "Motion-photo / Live-Photo clip blob (null if none)." }
+        motionKey: { type: [string, "null"], description: "Sealed content key for motionRef — MUST be round-tripped as passthrough alongside motionRef, or the motion clip is undecryptable." }
+        faceCropRefs: { type: array, items: { type: string, format: uuid }, description: "Per-face crop blob refs. This is the SOLE field driving the crop-blob reconcile live-set — a client that drops it on write orphans the crop blobs (swept after grace). Passthrough." }
+        duration: { type: [number, "null"], description: "Video duration seconds (null for stills). Hot-record passthrough." }
         metaRef: { type: [string, "null"], format: uuid, description: "Sealed EXIF/GPS meta blob." }
         metaKey: { type: [string, "null"] }
         taken_at: { type: [string, "null"], description: "EXIF capture time (falls back to created)." }
@@ -1376,7 +1382,9 @@ components:
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
-        count: { type: integer, description: "Cluster size (running-mean centroid)." }
+        hidden: { type: boolean, description: "User hid this cluster from the People view. Passthrough." }
+        pinned: { type: boolean, description: "Manually anchored — seeds every future face rescan by id + centroid (a rescan does NOT reassign a pinned id). Passthrough." }
+        centroid: { type: array, items: { type: number }, description: "Face-embedding vector (positional; ~512 floats). On a 409 rebase this is last-writer-wins, NOT set-unioned — it is a vector, not a set. Passthrough." }
         contactId: { type: [string, "null"], format: uuid }
         contactName: { type: string }
         contactAvatarRef: { type: [string, "null"] }
@@ -1518,7 +1526,17 @@ components:
 
     AdminUserWrite:
       type: object
-      description: "User create/update body. role/quotas/modules are privilege fields (never mass-assigned server-side)."
+      description: >
+        User create/update body. role/quotas/modules are privilege fields (never
+        mass-assigned server-side — set via forceFill/privilegedFields).
+
+        FULL REPLACE on PUT /users/{user}: the update is NOT a partial patch. An OMITTED
+        limit field (files_quota_mb / gallery_quota_mb / max_connected_devices) resets to
+        null = UNLIMITED; an omitted `groups` removes ALL group memberships; an omitted
+        `modules` (without modules_marker=set) resets to null = ALL modules enabled. A
+        client MUST send the user's COMPLETE current state on every update, or it will
+        silently widen quotas/modules and drop group memberships.
+      required: [name, email, role]
       properties:
         name: { type: string, maxLength: 255 }
         email: { type: string, format: email, maxLength: 255 }
@@ -1600,17 +1618,17 @@ components:
     BackupJobWrite:
       type: object
       required: [name, source, backup_destination_id, cron, retention]
-      description: "source=database requires encrypt=true (422 otherwise). Blank passphrase keeps the stored value on update."
+      description: "source=database requires encrypt=true (422 otherwise). Blank/omitted passphrase keeps the stored value on update. cron must be a valid crontab expression (422 otherwise)."
       properties:
-        name: { type: string }
+        name: { type: string, maxLength: 120 }
         source: { type: string, enum: [database, files, gallery, notes, passwords, invoices, contacts, explore, shared-folders] }
-        mode: { type: string }
-        backup_destination_id: { type: integer }
-        cron: { type: string }
-        retention: { type: integer, minimum: 1 }
+        mode: { type: string, enum: [mirror, archive], description: "Optional; mirror = incremental blob mirror, archive = full tarball. Ignored for source=database (always a full dump)." }
+        backup_destination_id: { type: integer, description: "Must reference an existing backup_destinations row." }
+        cron: { type: string, maxLength: 64, description: "Valid crontab expression." }
+        retention: { type: integer, minimum: 1, maximum: 9999 }
         encrypt: { type: boolean }
-        passphrase: { type: string }
-        notify_channels: { type: array, items: { type: string } }
+        passphrase: { type: [string, "null"], minLength: 12, maxLength: 255, description: "Required when encrypt=true on create; min 12 chars. Blank/omitted on update keeps the stored passphrase. NEVER returned in any response." }
+        notify_channels: { type: array, nullable: true, items: { type: string, enum: [desktop, mail, ntfy, webhook] } }
         enabled: { type: boolean }
 
     BackupRunSummary:
@@ -7288,7 +7306,7 @@ paths:
   /passwords/store/history:
     get:
       operationId: passwordsStoreHistory
-      tags: [Passwords]
+      tags: [Store]
       summary: List retained sealed-root versions (recovery net).
       description: >
         Newest-first index of retained previous sealed roots (version + byte size +
@@ -7320,7 +7338,7 @@ paths:
   /passwords/store/history/{version}:
     get:
       operationId: passwordsStoreHistoryVersion
-      tags: [Passwords]
+      tags: [Store]
       summary: Fetch one retained sealed-root ciphertext to re-merge a lost record.
       description: >
         Returns a single retained sealed root ciphertext by version. The client

@@ -46,7 +46,15 @@ class CreateMemberRequest extends FormRequest
             'user_id' => [
                 'required',
                 'integer',
-                'exists:users,id',
+                // Enumeration-resistance parity with resolveRecipient: the target must be
+                // a user who has PUBLISHED identity keys (x25519 + ML-KEM). A bare
+                // `exists:users,id` was a user-existence oracle (201 vs 422 over the whole
+                // users table); requiring keys means a probe of any id that isn't a
+                // vault-provisioned user fails identically to a non-existent id. You cannot
+                // wrap a vault key to a keyless user anyway, so this is also a correctness rule.
+                Rule::exists('users', 'id')
+                    ->whereNotNull('x25519_public_key')
+                    ->whereNotNull('mlkem_public_key'),
                 Rule::unique('shared_vault_members', 'user_id')
                     ->where('vault_id', $vault->id),
             ],

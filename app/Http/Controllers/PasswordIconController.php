@@ -65,7 +65,10 @@ class PasswordIconController extends Controller
             if (! OutboundUrl::safe($url)) {
                 return null;
             }
-            $res = OutboundUrl::client($url, 8)->get($url);
+            // Cap the download at the wire, not just after buffering — a hostile icon
+            // host could otherwise stream unbounded bytes and exhaust memory before the
+            // post-buffer size check below runs.
+            $res = OutboundUrl::client($url, 8, self::MAX_BYTES)->get($url);
             if (! $res->ok()) {
                 return null;
             }

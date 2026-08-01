@@ -44,7 +44,7 @@ class NominatimClient
             $this->throttle();
 
             $base = $this->base();
-            $response = OutboundUrl::client($base, 5)
+            $response = OutboundUrl::client($base, 5, 2 * 1024 * 1024)
                 ->withHeaders(['User-Agent' => 'Ledgerline (self-hosted personal cloud)'])
                 ->get($base.'/'.ltrim($endpoint, '/'), $query);
 
