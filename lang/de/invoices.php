@@ -114,6 +114,8 @@ return [
     'due' => 'Fällig',
     'amount' => 'Betrag',
     'subtotal' => 'Zwischensumme',
+    'giro_title' => 'Zahlungs-QR (GiroCode)',
+    'giro_hint' => 'Zum Bezahlen per SEPA-Überweisung scannen.',
     'discount' => 'Rabatt',
     'skonto' => 'Skonto',
     'skonto_within' => 'innerhalb',

@@ -6,6 +6,7 @@ import { contactDisplayName } from '../shared/contact-utils';
 import { jsonHeaders, postForm } from '../shared/api';
 import { saveBlobAs, formatDate } from '../shared/dom';
 import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
+import { buildEpcPayload } from '../shared/epc-qr';
 import { padBlob } from '../shared/padme';
 import { fetchBlobBuffer } from '../shared/blob-io';
 import { fileSig } from '../shared/file-sig';
@@ -1610,6 +1611,7 @@ export default (config = {}, labels = {}) => ({
         // key fields); online-created invoices use the full editor.
         if (inv.imported) { this.view = 'imported'; this._loadInvoicePdf(inv); }
         else this.view = 'edit';
+        this._epcQr(inv).then((d) => { this.invoiceQr = d; });
     },
 
     // ---- Imported invoice: inline PDF + the six key fields ----
@@ -1742,6 +1744,7 @@ export default (config = {}, labels = {}) => ({
     // and the local preview. Returns null on failure.
     async _invoicePdfBlob(inv) {
         const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
+        this.printQr = await this._epcQr(inv);
         this._printing = inv;
         await this.$nextTick();
         await new Promise((r) => setTimeout(r, 80)); // let the logo/image paint
@@ -2458,11 +2461,31 @@ export default (config = {}, labels = {}) => ({
     statusLabel(s) { return ({ draft: labels.statusDraft, sent: labels.statusSent, paid: labels.statusPaid })[s] || s; },
 
     // ---- Print / PDF (client-side, zero-knowledge) ----
-    printInvoice(inv) {
+    async printInvoice(inv) {
         const i = inv || this.current;
         // Imported invoices show their ORIGINAL PDF, never a regenerated sheet (GoBD).
         if (i?.imported && i?.pdf?.blob) { this.openOriginalPdf(i); return; }
+        this.printQr = await this._epcQr(i);
         this._printing = i;
         this.$nextTick(() => { window.print(); });
+    },
+
+    // ---- EPC069-12 payment QR (GiroCode) ----
+    // GiroCode data-URL for an invoice: SEPA credit transfer to the company IBAN, amount =
+    // gross, remittance = invoice number. EUR/SEPA only (canEpcQr gates). Pure client-side.
+    printQr: '',   // QR for the sheet currently being rendered (#invoice-print)
+    invoiceQr: '', // QR for the editor preview
+    async _epcQr(inv) {
+        if (! inv) return '';
+        const payload = buildEpcPayload({
+            name: this.company.name || '',
+            iban: this.company.iban || '',
+            bic: this.company.bic || '',
+            amount: this.computeTotals(inv).gross,
+            currency: inv.currency || 'EUR',
+            reference: inv.number ? (inv.lang === 'de' ? 'Rechnung ' : 'Invoice ') + inv.number : '',
+        });
+        if (! payload) return '';
+        try { const mod = await import('qrcode'); const QR = mod.default ?? mod; return await QR.toDataURL(payload, { margin: 0, width: 260 }); } catch (e) { return ''; }
     },
 });
