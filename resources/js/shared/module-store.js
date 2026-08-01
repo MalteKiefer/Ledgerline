@@ -10,6 +10,7 @@
 import { newId } from './sealed-store';
 import { jsonHeaders } from './api';
 import { mergeManifest } from './manifest-merge';
+import { jsonClone } from './clone';
 
 /** How many 409 rebase attempts before we give up and surface an error. */
 const MAX_CONFLICT_RETRIES = 5;
@@ -92,7 +93,7 @@ export function makeStore(module, blankFn) {
             const { version, data } = await this._fetchManifest();
             this.version = version;
             this.data = data;
-            this._base = structuredClone(this.data);
+            this._base = jsonClone(this.data);
             this.loaded = true;
             this.ready = true;
             return this.data;
@@ -117,7 +118,7 @@ export function makeStore(module, blankFn) {
                 // manifest, NOT the merged copy. Setting it to the merged copy would
                 // bake our still-un-pushed delta into the base, so the next 409 rebase
                 // would see no delta for those records and silently drop them.
-                this._base = structuredClone(server.data);
+                this._base = jsonClone(server.data);
             } catch (e) { /* offline / transient — keep the in-memory copy */ }
         },
 
@@ -145,7 +146,7 @@ export function makeStore(module, blankFn) {
                     // may have mutated during the await (records added mid-flight are not
                     // in the body). Advancing _base past what we actually sent would hide
                     // those mid-flight records from the next 409 delta and drop them.
-                    const sent = structuredClone(this.data);
+                    const sent = jsonClone(this.data);
                     const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(sent), version: this.version, counts: this._counts(sent) });
                     const res = await fetch('/store/' + module, { method: 'PUT', headers: jsonHeaders(), body });
                     if (res.ok) {
@@ -170,6 +171,8 @@ export function makeStore(module, blankFn) {
                 }
                 if (! ok) throw new Error('module store conflict budget exhausted: ' + module);
             } catch (e) {
+                // Never swallow silently — a failed flush means an unpersisted change.
+                console.error('[store] flush failed for module:', module, e);
                 if (this._onError) this._onError();
             } finally {
                 this._saving = false;

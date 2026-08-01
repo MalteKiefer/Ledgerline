@@ -108,8 +108,10 @@
                   class="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-2 pl-9 pr-24 text-sm focus:border-accent focus:ring-accent">
                 <div class="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1">
                   <button type="button" x-show="searchQuery.trim()" @click="searchQuery=''; searchResults=[]; searchMsg=''" class="flex h-6 w-6 items-center justify-center rounded-full text-gray-400 transition hover:bg-black/5 dark:hover:bg-white/10" :title="@js(__('common.cancel'))"><x-icon name="x-mark" class="h-4 w-4" /></button>
-                  <x-button variant="primary" size="sm" @click="runSearch()" ::disabled="searching || !searchQuery.trim()"
-                    x-text="searching ? '…' : @js(__('explore.search_go'))"></x-button>
+                  <x-button variant="primary" size="sm" @click="runSearch()" ::disabled="searching || !searchQuery.trim()">
+                    <span x-show="! searching">{{ __('explore.search_go') }}</span>
+                    <span x-show="searching">…</span>
+                  </x-button>
                 </div>
               </div>
               {{-- Geocoder result dropdown --}}

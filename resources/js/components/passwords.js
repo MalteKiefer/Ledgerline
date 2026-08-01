@@ -1,5 +1,6 @@
 // Password manager (ZK). Extracted from app.js.
 import { zkModule } from '../shared/zk-module';
+import { jsonClone } from '../shared/clone';
 import { PW_WORDS } from '../shared/wordlists';
 import { parseCsv as pwParseCsv, detectCsv as pwDetectCsv, cardBrand as pwCardBrand, totpSecret as pwTotpSecret, totp as pwTotp, pwScore as pwStrength } from '../passwords-util';
 import { Vault, VaultShareCrypto } from '../vault';
@@ -288,7 +289,7 @@ export default (config = {}, labels = {}) => ({
                     this._sharedVersion[m.vault_id] = store.version;
                     // Rebase base: the manifest we just loaded. A 409 replays only our
                     // delta (base→current) onto the winning copy — never overwrites it.
-                    this._sharedBase[m.vault_id] = structuredClone({ name: (manifest && manifest.name) || 'Shared Vault', items: this.sharedItems[m.vault_id] });
+                    this._sharedBase[m.vault_id] = jsonClone({ name: (manifest && manifest.name) || 'Shared Vault', items: this.sharedItems[m.vault_id] });
                 } catch (e) {
                     console.warn('[shared vault] failed to load vault', m.vault_id, e);
                 }
@@ -317,7 +318,7 @@ export default (config = {}, labels = {}) => ({
             const res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
             if (res.ok) {
                 this._sharedVersion[vaultId] = (await res.json()).version;
-                this._sharedBase[vaultId] = structuredClone(ours);
+                this._sharedBase[vaultId] = jsonClone(ours);
                 ok = true;
             } else if (res.status === 429) {
                 const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
@@ -355,7 +356,7 @@ export default (config = {}, labels = {}) => ({
                 // second consecutive 409 rebases against the original load base while `ours`
                 // already contains the first merge's server items, re-adding an item a later
                 // concurrent writer deleted (resurrection). (#25)
-                this._sharedBase[vaultId] = structuredClone(server);
+                this._sharedBase[vaultId] = jsonClone(server);
                 // Re-point this.current so it tracks the merged array element.
                 if (this.current && this.current.vaultId === vaultId) {
                     this.current = items.find((i) => i.id === this.current.id) || null;
@@ -1306,7 +1307,7 @@ export default (config = {}, labels = {}) => ({
             // Seed the rebase base with the just-written manifest. Without it the first
             // 409 would fall back to base=server, and mergeManifest would treat every
             // record the other writer already added as "deleted by us" and drop it (#15).
-            this._sharedBase[id] = structuredClone(manifest);
+            this._sharedBase[id] = jsonClone(manifest);
             this.sharedVaults.push({ id, name, role: 'manage', shared: true, version, vaultId: id });
             this.sharedItems[id] = [];
         } catch (e) {

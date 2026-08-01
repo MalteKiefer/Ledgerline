@@ -1,5 +1,6 @@
 // Files module (nestable ZK file browser). Extracted from app.js.
 import { apiRequest, jsonHeaders, postForm, getJson } from '../shared/api';
+import { jsonClone } from '../shared/clone';
 import { Vault, VaultShareCrypto } from '../vault';
 import { mergeManifest } from '../shared/manifest-merge';
 import { fetchDecrypt, fetchBlobBuffer, queueBlobDelete } from '../shared/blob-io';
@@ -406,7 +407,7 @@ export default (config = {}, labels = {}) => ({
                     this._folderVersion[m.vault_id] = store.version || 0;
                     this.sharedTree[m.vault_id] = { folders: manifest.folders || [], files: manifest.files || [] };
                     // Rebase base: a 409 replays only our delta onto the winning copy.
-                    this._folderBase[m.vault_id] = structuredClone({ name: manifest.name || '', folders: this.sharedTree[m.vault_id].folders, files: this.sharedTree[m.vault_id].files });
+                    this._folderBase[m.vault_id] = jsonClone({ name: manifest.name || '', folders: this.sharedTree[m.vault_id].folders, files: this.sharedTree[m.vault_id].files });
                     active.push({
                         id: m.vault_id,
                         vaultId: m.vault_id,
@@ -447,7 +448,7 @@ export default (config = {}, labels = {}) => ({
             const res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
             if (res.ok) {
                 this._folderVersion[vaultId] = (await res.json()).version;
-                this._folderBase[vaultId] = structuredClone(ours);
+                this._folderBase[vaultId] = jsonClone(ours);
                 ok = true;
             } else if (res.status === 429) {
                 const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
@@ -489,7 +490,7 @@ export default (config = {}, labels = {}) => ({
                 // Advance the rebase base to the SERVER state we merged onto, so a second
                 // consecutive 409 derives our delta afresh and cannot resurrect a record a
                 // concurrent writer deleted between retries.
-                this._folderBase[vaultId] = structuredClone(server);
+                this._folderBase[vaultId] = jsonClone(server);
                 this._folderVersion[vaultId] = data.version;
             } else {
                 throw new Error('Save shared folder failed: ' + res.status);
@@ -2411,7 +2412,7 @@ export default (config = {}, labels = {}) => ({
             this._folderVersion[id] = version;
             // Seed the rebase base so the first 409 doesn't fall back to base=server
             // (which drops a concurrent member's records as phantom deletions, #15).
-            this._folderBase[id] = structuredClone(manifest);
+            this._folderBase[id] = jsonClone(manifest);
             this.sharedTree[id] = { folders: [], files: [] };
             this.sharedFolders.push({ id, vaultId: id, name: folderName, role: 'manage', version });
         } catch (e) {
@@ -2458,7 +2459,7 @@ export default (config = {}, labels = {}) => ({
             const res = await apiRequest('PUT', '/vaults/' + vaultId + '/store', { sealed_manifest: sealed, expected_version: 0 });
             this._folderKeys[vaultId] = vkBytes;
             this._folderVersion[vaultId] = (res && typeof res.version === 'number') ? res.version : 1;
-            this._folderBase[vaultId] = structuredClone(manifest); // #15 rebase base
+            this._folderBase[vaultId] = jsonClone(manifest); // #15 rebase base
             this.sharedTree[vaultId] = { folders: subFolders, files: newFiles };
             this.sharedFolders.push({ id: vaultId, vaultId, name: root.name, role: 'manage', version: this._folderVersion[vaultId] });
         } catch (e) {
