@@ -58,7 +58,7 @@ async function migrateInvoicesFromMonolith(ms) {
 }
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); self._migrateCategoryIds(); self._seedCategoryStyles(); ms._afterRebase = () => self._reresolveOpenRefs(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; self.eigenbeleg = null; self._egTx = null; self.showInvTrash = false; self.showReceiptTrash = false; self.catEditing = null; self.customerPicker = false; if (self.previewUrl) { URL.revokeObjectURL(self.previewUrl); self.previewUrl = null; } self.previewOpen = false; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => { migrateInvoicesFromMonolith(ms); self._migratePartnerContacts(); self._migrateCategoryIds(); self._seedCategoryStyles(); self._migrateReceiptCategories(); ms._afterRebase = () => self._reresolveOpenRefs(); }, map: { invoices: 'invoices', paymentMethods: 'paymentMethods', transactions: 'transactions', partners: 'partners', financeCategories: 'financeCategories', projects: 'projects' }, onLock: (self) => { self._revokeInvoicePdf?.(); self.view = 'list'; self.current = null; self.payEditing = null; self.payView = 'list'; self.payAccount = null; self.stmt = null; self.openProjectId = null; self.projectEditing = null; self.expenseEditing = null; self.receiptPicker = false; self.partnersView = 'list'; self.openPartnerId = null; self.partnerEditMode = false; self.eigenbeleg = null; self._egTx = null; self.showInvTrash = false; self.showReceiptTrash = false; self.catEditing = null; self.customerPicker = false; if (self.previewUrl) { URL.revokeObjectURL(self.previewUrl); self.previewUrl = null; } self.previewOpen = false; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -358,11 +358,42 @@ export default (config = {}, labels = {}) => ({
         const all = this.allCategories;
         return (s ? all.filter((n) => n.toLowerCase().includes(s)) : all).slice(0, 50);
     },
+    // A receipt can carry MULTIPLE categories. Read them tolerantly (legacy single
+    // `category` string counts as a one-element list) and mutate the array in place.
+    catList(r) { return Array.isArray(r?.categories) ? r.categories : (r?.category ? [r.category] : []); },
+    addReceiptCat(r, name, commit) {
+        const n = String(name || '').trim(); if (! r || ! n) return;
+        if (! Array.isArray(r.categories)) r.categories = r.category ? [r.category] : [];
+        if (! r.categories.some((c) => String(c).toLowerCase() === n.toLowerCase())) r.categories.push(n);
+        delete r.category; // migrated to the array — never keep both
+        if (commit) commit();
+    },
+    removeReceiptCat(r, name, commit) {
+        if (! r || ! Array.isArray(r.categories)) return;
+        const i = r.categories.findIndex((c) => c === name);
+        if (i >= 0) r.categories.splice(i, 1);
+        if (commit) commit();
+    },
     editCategory(c) { this.catEditing = c; this.catIconGrid = false; this.catIconQuery = ''; },
     closeCatEditor() { this.catEditing = null; this.catIconGrid = false; },
     pickCatColor(hex) { if (this.catEditing) { this.catEditing.color = hex; this._save(); } },
     pickCatIcon(name) { if (this.catEditing) { this.catEditing.icon = name; this.catIconGrid = false; this._save(); } },
     renameCategory(c, name) { const n = String(name || '').trim(); if (! n || c.builtin) return; c.name = n; this._save(); },
+    // One-time: lift every receipt's legacy single `category` string into the
+    // `categories[]` array (multi-category). Idempotent; runs once on load.
+    _migrateReceiptCategories() {
+        let changed = false;
+        for (const tx of (this.transactions || [])) {
+            for (const r of (tx.receipts || [])) {
+                if (! Array.isArray(r.categories)) {
+                    r.categories = r.category ? [r.category] : [];
+                    delete r.category;
+                    changed = true;
+                }
+            }
+        }
+        if (changed) this._save();
+    },
     // Seed a color/icon on every category and ensure a row exists for each builtin
     // default (so builtins are editable + paginate with the rest). Idempotent.
     _seedCategoryStyles() {
@@ -562,7 +593,7 @@ export default (config = {}, labels = {}) => ({
         let list = this.allReceipts.filter((d) => this._scopeMatch(this._receiptPrivate(d)));
         if (q) list = list.filter(({ r, tx }) =>
             (r.name || '').toLowerCase().includes(q) || (r.note || '').toLowerCase().includes(q) ||
-            (r.category || '').toLowerCase().includes(q) || (r.tags || []).join(' ').toLowerCase().includes(q) ||
+            this.catList(r).join(' ').toLowerCase().includes(q) || (r.tags || []).join(' ').toLowerCase().includes(q) ||
             (r.merchant || '').toLowerCase().includes(q) || (r.ocr || '').toLowerCase().includes(q) ||
             (tx.counterparty || '').toLowerCase().includes(q) || (tx.purpose || '').toLowerCase().includes(q));
         return list;
@@ -952,7 +983,7 @@ export default (config = {}, labels = {}) => ({
         else { r.partnerId = opt.id; r.contactId = null; r.partnerName = opt.name; }
         r.partnerQuery = '';
         // Pre-fill the category this partner is known for (learned rule), if none yet.
-        if (! r.category && opt && opt.name) { const learned = this._learnedCategory(opt.name); if (learned) r.category = learned; }
+        if (! this.catList(r).length && opt && opt.name) { const learned = this._learnedCategory(opt.name); if (learned) this.addReceiptCat(r, learned); }
         this._save();
     },
     receiptPartnerName(r) {
@@ -980,9 +1011,10 @@ export default (config = {}, labels = {}) => ({
     // Remember a receipt's category on its merchant's partner (rule holder).
     _learnFromReceipt(r, tx) {
         const name = String((tx && tx.counterparty) || r.merchant || '').trim();
-        if (name.length < 2 || ! r.category) return;
+        const primary = this.catList(r)[0]; // the partner rule holds one default category
+        if (name.length < 2 || ! primary) return;
         const p = this._findOrCreatePartner(name);
-        if (p.category !== r.category) p.category = r.category;
+        if (p.category !== primary) p.category = primary;
     },
     // Auto-link a receipt to a business partner from the booking's counterparty (reliable)
     // or the recognised merchant: match an existing contact/partner, else create a partner.
@@ -991,7 +1023,7 @@ export default (config = {}, labels = {}) => ({
         const name = String((tx && tx.counterparty) || r.merchant || '').trim();
         if (name.length < 2) return;
         const learned = this._learnedCategory(name);
-        if (learned) r.category = learned;
+        if (learned && ! this.catList(r).length) this.addReceiptCat(r, learned);
         if (r.contactId || r.partnerId) return;
         const nk = this._normName(name);
         const contact = (this._receiptContacts || []).find((c) => this._normName(contactDisplayName(c)) === nk);
@@ -1070,7 +1102,7 @@ export default (config = {}, labels = {}) => ({
     },
     // Apply recognised fields without overwriting anything the user set.
     _applyAnalysis(r, a) {
-        if (! r.category && a.category) r.category = a.category;
+        if (! this.catList(r).length && a.category) this.addReceiptCat(r, a.category);
         if ((! r.tags || ! r.tags.length) && a.tags.length) r.tags = a.tags;
         if (a.merchant && ! r.merchant) r.merchant = a.merchant;
         if (a.date && ! r.date) r.date = a.date;
@@ -1135,7 +1167,7 @@ export default (config = {}, labels = {}) => ({
         const title = r.merchant || (r.name || '').replace(/\.[^.]+$/, '') || 'Beleg';
         store.begin(r.name || 'beleg.pdf', { title, created: created || undefined }, { context: { source: 'receipt' } });
         const partner = this.receiptPartnerName(r); if (partner) store.corrQuery = partner;
-        if (r.category) store.tagQuery = r.category;
+        const cats = this.catList(r); if (cats.length) store.tagQuery = cats.join(', ');
         try {
             const buf = await fetchBlobBuffer(`${config.rawBase}/${r.blob}`);
             const plain = window.Vault.decryptFile(buf, r.key);
@@ -2059,7 +2091,7 @@ export default (config = {}, labels = {}) => ({
             name: this._custName(p),
             attn,
             address: String(p.address || ''),
-            email: String(p.email || (p.contacts || [])[0]?.email || ''),
+            email: String(p.invoiceEmail || p.email || (p.contacts || [])[0]?.email || ''),
             vatId: String(p.vatId || ''),
             contactId: null,
             partnerId: p.id,

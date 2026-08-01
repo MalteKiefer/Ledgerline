@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.536.3
+  version: 1.536.4
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -1225,7 +1225,8 @@ components:
         mime: { type: string }
         sig: { type: string, description: "{size}:{sha256(head‖tail)} dedup signature." }
         ocr: { type: string, description: "Extracted text (client-side; up to 200k chars)." }
-        category: { type: string }
+        categories: { type: array, items: { type: string }, description: "One or more categories for this receipt (multi-category). The web client migrates the legacy single `category` string into this array on load." }
+        category: { type: string, description: "DEPRECATED — legacy single category; migrated into categories[0]. Prefer `categories[]`." }
         tags: { type: array, items: { type: string } }
         merchant: { type: string }
         date: { type: string }
@@ -1325,6 +1326,7 @@ components:
         logo: { type: string, description: "data: URI logo/favicon (sealed)." }
         address: { type: string }
         email: { type: string }
+        invoiceEmail: { type: string, description: "Billing email — used as the invoice customer's email when this partner is picked for an invoice (prefers over `email`)." }
         phone: { type: string }
         vatId: { type: string, description: "VAT identification number (USt-IdNr.)." }
         category: { type: string, description: "Learned default category for this merchant." }

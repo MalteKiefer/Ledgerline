@@ -344,6 +344,8 @@ return [
     'partner_url' => 'Website',
     'partner_url_hint' => 'The logo is fetched from this address.',
     'partner_email' => 'Email',
+    'partner_invoice_email' => 'Invoice email',
+    'partner_invoice_email_ph' => 'billing@…',
     'partner_phone' => 'Phone',
     'partner_address' => 'Address',
     'partner_vat' => 'VAT ID',
