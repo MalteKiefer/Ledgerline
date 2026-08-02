@@ -225,11 +225,11 @@ export default (config = {}, labels = {}) => ({
             const res = await fetch(`${config.iconUrl}?domain=${encodeURIComponent(host)}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (! res.ok) return;
             const { icon } = await res.json();
-            if (icon && pm.icon !== icon) { pm.icon = icon; this._save(); }
+            if (icon && pm.icon !== icon) { pm.icon = icon; this._mut++; this._save(); }
         } catch (e) { /* best effort */ }
     },
     // A usable <img> src for a stored bank logo (only data:/http(s) URIs).
-    payIconSrc(pm) { const v = pm && pm.icon; return (typeof v === 'string' && /^(data:|https?:)/.test(v)) ? v : ''; },
+    payIconSrc(pm) { void this._mut; const v = pm && pm.icon; return (typeof v === 'string' && /^(data:|https?:)/.test(v)) ? v : ''; },
     async removePayment(pm) {
         if (! await this.$store.confirm.ask(labels.pay_delete_confirm || 'Delete this payment method?')) return;
         const i = this.paymentMethods.indexOf(pm);
@@ -762,11 +762,11 @@ export default (config = {}, labels = {}) => ({
             const res = await fetch(`${config.iconUrl}?domain=${encodeURIComponent(host)}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (! res.ok) return;
             const { icon } = await res.json();
-            if (icon && p.logo !== icon) { p.logo = icon; this._save(); }
+            if (icon && p.logo !== icon) { p.logo = icon; this._mut++; this._save(); }
         } catch (e) { /* best effort */ }
     },
     // A usable <img> src for a stored partner logo (only data:/http(s) URIs).
-    partnerLogoSrc(p) { const v = p && p.logo; return (typeof v === 'string' && /^(data:|https?:)/.test(v)) ? v : ''; },
+    partnerLogoSrc(p) { void this._mut; const v = p && p.logo; return (typeof v === 'string' && /^(data:|https?:)/.test(v)) ? v : ''; },
     async removePartner(p) {
         if (! await this.$store.confirm.ask(labels.partner_delete_confirm || 'Delete this business partner?')) return;
         const i = this.partners.indexOf(p); if (i >= 0) this.partners.splice(i, 1);
