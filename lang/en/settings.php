@@ -258,6 +258,7 @@ return [
     'backup_delete_confirm' => 'Delete this? This cannot be undone.',
     'backup_never_run' => 'never',
     'backup_source_database' => 'Database',
+    'backup_source_all' => 'Everything (all sources, one after another)',
     'backup_source_files' => 'Files',
     'backup_source_gallery' => 'Gallery',
     'backup_source_notes' => 'Notes',

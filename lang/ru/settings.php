@@ -258,6 +258,7 @@ return [
     'backup_delete_confirm' => 'Удалить это? Действие необратимо.',
     'backup_never_run' => 'никогда',
     'backup_source_database' => 'База данных',
+    'backup_source_all' => 'Всё (все источники по очереди)',
     'backup_source_files' => 'Файлы',
     'backup_source_gallery' => 'Галерея',
     'backup_source_notes' => 'Заметки',

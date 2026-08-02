@@ -1610,7 +1610,7 @@ components:
       properties:
         id: { type: integer }
         name: { type: string }
-        source: { type: string, enum: [database, files, gallery, notes, passwords, invoices, contacts, explore, shared-folders] }
+        source: { type: string, enum: [all, database, files, gallery, notes, passwords, invoices, contacts, explore, shared-folders] }
         mode: { type: string }
         destination_id: { type: integer }
         cron: { type: string }
@@ -1628,8 +1628,8 @@ components:
       description: "source=database MAY use encrypt=false (operator opt-out; unencrypted DB dump exposes wrapped vault keys off-box). Blank/omitted passphrase keeps the stored value on update. cron must be a valid crontab expression (422 otherwise)."
       properties:
         name: { type: string, maxLength: 120 }
-        source: { type: string, enum: [database, files, gallery, notes, passwords, invoices, contacts, explore, shared-folders] }
-        mode: { type: string, enum: [mirror, archive], description: "Optional; mirror = incremental blob mirror, archive = full tarball. Ignored for source=database (always a full dump)." }
+        source: { type: string, enum: [all, database, files, gallery, notes, passwords, invoices, contacts, explore, shared-folders] }
+        mode: { type: string, enum: [mirror, archive], description: "Optional; mirror = incremental blob mirror, archive = full tarball. Ignored for source=database (always a full dump) and source=all (each source uses its natural mode)." }
         backup_destination_id: { type: integer, description: "Must reference an existing backup_destinations row." }
         cron: { type: string, maxLength: 64, description: "Valid crontab expression." }
         retention: { type: integer, minimum: 1, maximum: 9999 }

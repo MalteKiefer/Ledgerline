@@ -7,8 +7,8 @@
         encrypt: {{ old('encrypt', $j->encrypt ?? false) ? 'true' : 'false' }},
         source: @js(old('source', $j->source ?? 'database')),
         mode: @js(old('mode', $j->mode ?? 'mirror')),
-        get canChooseMode() { return this.source !== 'database'; },
-        get isArchive() { return this.source === 'database' || (this.canChooseMode && this.mode === 'archive'); },
+        get canChooseMode() { return this.source !== 'database' && this.source !== 'all'; },
+        get isArchive() { return this.source === 'database' || this.source === 'all' || (this.canChooseMode && this.mode === 'archive'); },
     }" class="space-y-3">
     @csrf
     @if ($j) @method('PUT') @endif
@@ -18,6 +18,7 @@
             @error('name')<p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>@enderror</div>
         <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.backup_source') }}</label>
             <select name="source" x-model="source" class="{{ $input }}">
+                <option value="all" @selected(old('source', $j->source ?? '') === 'all')>{{ __('settings.backup_source_all') }}</option>
                 @foreach (\App\Models\BackupJob::SOURCES as $src)
                     <option value="{{ $src }}" @selected(old('source', $j->source ?? '') === $src)>{{ __('settings.backup_source_'.$src) }}</option>
                 @endforeach

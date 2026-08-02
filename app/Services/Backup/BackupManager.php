@@ -38,6 +38,36 @@ final class BackupManager
 
     public function run(BackupJob $job): BackupRun
     {
+        return $job->source === 'all'
+            ? $this->runAll($job)
+            : $this->runSource($job, $job->source);
+    }
+
+    /**
+     * The "all" alias: back up every registered source in sequence — the database
+     * dump followed by each blob source (incrementally, its natural mode). Each
+     * source produces its OWN BackupRun so the history shows them individually; a
+     * failing source does not stop the rest (runSource never throws). Cancellation
+     * mid-sequence stops the whole run.
+     */
+    private function runAll(BackupJob $job): BackupRun
+    {
+        // BackupJob::SOURCES is a non-empty constant, so the loop always runs and
+        // $last is always a BackupRun by the end.
+        $last = $this->runSource($job, BackupJob::SOURCES[0]);
+        foreach (array_slice(BackupJob::SOURCES, 1) as $source) {
+            if ($last->status === 'cancelled') {
+                break;
+            }
+            $last = $this->runSource($job, $source);
+        }
+
+        return $last;
+    }
+
+    /** Run one concrete source end to end (creates + returns its own BackupRun; never throws). */
+    private function runSource(BackupJob $job, string $source): BackupRun
+    {
         $run = $job->runs()->create(['status' => 'running', 'started_at' => Carbon::now()]);
         $workDir = storage_path('app/backup-tmp/'.Str::uuid()->toString());
         File::ensureDirectoryExists($workDir, 0700);
@@ -72,7 +102,7 @@ final class BackupManager
         $fs = null;
 
         try {
-            $step(sprintf('Backup "%s" started (source: %s).', $job->name, $job->source));
+            $step(sprintf('Backup "%s" started (source: %s).', $job->name, $source));
             // Unencrypted backups are allowed (operator opt-out, Security-Register) —
             // for a database source that means the non-ZK rows + wrapped vault keys
             // leave the box in cleartext; the UI warns before saving such a job. What
@@ -95,7 +125,7 @@ final class BackupManager
 
             // Files/Gallery can be either an incremental mirror (default) or a
             // full archive; the database is always a full archive.
-            $sourceObj = $this->source($job->source);
+            $sourceObj = $this->source($source);
             $useMirror = ($sourceObj instanceof MirrorableSource) && ($job->mode ?? 'mirror') !== 'archive';
 
             if ($useMirror) {
@@ -117,7 +147,7 @@ final class BackupManager
                     || $job->last_full_mirror_at->lt(Carbon::now()->subHours($reconcileHours));
 
                 if ($needFull) {
-                    $step('Full reconcile of '.$job->source.' → '.$prefix.'…');
+                    $step('Full reconcile of '.$source.' → '.$prefix.'…');
                     // Capture the cursor BEFORE the mirror snapshot, not after. mirror()
                     // snapshots the source at its START; a blob written during the (long)
                     // mirror gets a created_at below the post-mirror max(), so a cursor
@@ -131,9 +161,9 @@ final class BackupManager
                         'last_full_mirror_at' => Carbon::now(),
                         'mirror_cursor' => $cursor,
                     ])->save();
-                    $summary = sprintf('%s → %s (%s, %d uploaded, %d removed, full reconcile)', $job->source, $prefix, Bytes::format($bytes), $r['uploaded'], $r['removed']);
+                    $summary = sprintf('%s → %s (%s, %d uploaded, %d removed, full reconcile)', $source, $prefix, Bytes::format($bytes), $r['uploaded'], $r['removed']);
                 } else {
-                    $step('Incremental mirror of '.$job->source.' → '.$prefix.'…');
+                    $step('Incremental mirror of '.$source.' → '.$prefix.'…');
                     // Use >= not >: gallery/file blobs stamp created_at to the START OF
                     // THE HOUR, so many blobs share one timestamp. A strict > cursor
                     // (= max(created_at)) would skip every blob added later in the same
@@ -155,10 +185,10 @@ final class BackupManager
                     if ($cursor !== null) {
                         $job->forceFill(['mirror_cursor' => $cursor])->save();
                     }
-                    $summary = sprintf('%s → %s (%s, %d new)', $job->source, $prefix, Bytes::format($bytes), $r['uploaded']);
+                    $summary = sprintf('%s → %s (%s, %d new)', $source, $prefix, Bytes::format($bytes), $r['uploaded']);
                 }
             } else {
-                $step('Building '.$job->source.' archive…');
+                $step('Building '.$source.' archive…');
                 $artifact = $sourceObj->build($workDir);
                 $uploadPath = $artifact->path;
                 $extension = $artifact->extension;
@@ -200,7 +230,7 @@ final class BackupManager
                     ? sprintf('Retention: kept %d, removed %d old version(s).', $job->retention, $deleted)
                     : sprintf('Retention: keeping up to %d version(s).', $job->retention));
 
-                $summary = sprintf('%s → %s (%s)', $job->source, $filename, Bytes::format($bytes));
+                $summary = sprintf('%s → %s (%s)', $source, $filename, Bytes::format($bytes));
             }
 
             // Log the completion directly (not via $step) so a cancel requested
