@@ -232,6 +232,7 @@ return [
     'backup_cron_invalid' => 'Kein gültiger Cron-Ausdruck.',
     'backup_retention' => 'Versionen behalten',
     'backup_encrypt' => 'Archiv verschlüsseln',
+    'backup_db_unencrypted_warn' => 'Warnung: ein unverschlüsseltes Datenbank-Backup schreibt die non-ZK-Zeilen im Klartext UND die gewrappten Vault-Schlüssel off-box. Wer das Archiv erlangt, liest deine Metadaten und kann offline die Vault-Passphrase angreifen. Verschlüsselung dringend empfohlen.',
     'backup_passphrase' => 'Passphrase',
     'backup_passphrase_required' => 'Bei aktiver Verschlüsselung ist eine Passphrase erforderlich.',
     'backup_db_encrypt_required' => 'Ein Datenbank-Backup muss verschlüsselt sein (enthält andere Module im Klartext). Verschlüsselung aktivieren + Passphrase setzen.',

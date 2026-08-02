@@ -159,8 +159,8 @@ tags:
     description: >
       Admin backup management (admin role + device token). Credential hygiene is
       enforced: destination `config` (cloud credentials) and job `passphrase` are
-      NEVER present in any response. A database job with encrypt=false is refused
-      (422) — a DB dump carries wrapped vault keys and must never leave unencrypted.
+      NEVER present in any response. A database job MAY be created with encrypt=false
+      (operator opt-out) — the UI warns that the dump carries wrapped vault keys off-box.
   - name: SecurityLog
     description: >
       Admin, read-only, metadata-only audit trail (admin role + device token). Rows
@@ -1625,7 +1625,7 @@ components:
     BackupJobWrite:
       type: object
       required: [name, source, backup_destination_id, cron, retention]
-      description: "source=database requires encrypt=true (422 otherwise). Blank/omitted passphrase keeps the stored value on update. cron must be a valid crontab expression (422 otherwise)."
+      description: "source=database MAY use encrypt=false (operator opt-out; unencrypted DB dump exposes wrapped vault keys off-box). Blank/omitted passphrase keeps the stored value on update. cron must be a valid crontab expression (422 otherwise)."
       properties:
         name: { type: string, maxLength: 120 }
         source: { type: string, enum: [database, files, gallery, notes, passwords, invoices, contacts, explore, shared-folders] }
@@ -6980,7 +6980,7 @@ paths:
       tags: [Backup]
       operationId: backupJobsStore
       summary: Create a backup job (admin)
-      description: "Invariant: source=database + encrypt=false → 422 (a DB dump carries wrapped vault keys). Throttle 20/min."
+      description: "source=database + encrypt=false is allowed (operator opt-out; DB dump carries wrapped vault keys off-box). Throttle 20/min."
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BackupJobWrite" } } } }
       responses:
         "201": { description: "Created.", content: { application/json: { schema: { type: object, properties: { job: { $ref: "#/components/schemas/BackupJobSummary" } } } } } }

@@ -69,5 +69,8 @@
             @error('passphrase')<p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>@enderror
         </div>
     </div>
+    <div x-show="source === 'database' && ! encrypt" x-cloak class="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+        {{ __('settings.backup_db_unencrypted_warn') }}
+    </div>
     <x-button variant="primary" type="submit">{{ __('settings.backup_save') }}</x-button>
 </form>
