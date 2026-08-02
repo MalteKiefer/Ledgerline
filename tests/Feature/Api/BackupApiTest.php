@@ -23,7 +23,7 @@ use Tests\TestCase;
  * Critical invariants verified here:
  *   1. GET /destinations never leaks destination.config (remote credentials).
  *   2. GET /jobs never leaks job.passphrase (vault-key protection).
- *   3. source=database + encrypt=false → 422 (unencrypted DB dump is forbidden).
+ *   3. source=database + encrypt=false → allowed (operator opt-out; UI warns).
  *   4. Non-admin tokens → 403 on all endpoints.
  */
 class BackupApiTest extends TestCase
@@ -246,8 +246,10 @@ class BackupApiTest extends TestCase
         $response->assertJsonMissing(['do-not-leak-this-passphrase']);
     }
 
-    public function test_database_job_without_encrypt_is_rejected(): void
+    public function test_database_job_without_encrypt_is_allowed(): void
     {
+        // Operator opt-out (2026-08-02): an unencrypted DB backup is permitted — no
+        // passphrase required — though the UI warns about the off-box key exposure.
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
         $this->postJson('/api/v1/backup/jobs', [
@@ -256,12 +258,13 @@ class BackupApiTest extends TestCase
             'backup_destination_id' => $dest->id,
             'cron' => '0 3 * * *',
             'retention' => 3,
-            'encrypt' => false,   // ← forbidden for database source
+            'encrypt' => false,
         ], ['Authorization' => 'Bearer '.$this->adminToken()])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['encrypt']);
+            ->assertCreated();
 
-        $this->assertSame(0, BackupJob::count());
+        $job = BackupJob::firstWhere('name', 'Unencrypted DB');
+        $this->assertNotNull($job);
+        $this->assertFalse($job->encrypt);
     }
 
     public function test_admin_can_create_a_job(): void

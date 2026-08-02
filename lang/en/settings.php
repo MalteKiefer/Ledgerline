@@ -232,6 +232,7 @@ return [
     'backup_cron_invalid' => 'Not a valid cron expression.',
     'backup_retention' => 'Versions to keep',
     'backup_encrypt' => 'Encrypt archive',
+    'backup_db_unencrypted_warn' => 'Warning: an unencrypted database backup writes the non-ZK rows in cleartext AND the wrapped vault keys off-box. Anyone who obtains the archive can read your metadata and run offline attacks against the vault passphrase. Encryption is strongly recommended.',
     'backup_passphrase' => 'Passphrase',
     'backup_passphrase_required' => 'A passphrase is required when encryption is enabled.',
     'backup_db_encrypt_required' => 'A database backup must be encrypted (it contains other modules in plaintext). Enable encryption + set a passphrase.',
