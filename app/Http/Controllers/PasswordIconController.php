@@ -55,8 +55,13 @@ class PasswordIconController extends Controller
         }
         // Parse the homepage HTML for <link rel="icon|apple-touch-icon"> — most sites
         // (WordPress etc.) serve NO bare /favicon.ico and only declare it in <head>.
+        // Page-declared hrefs are attacker-influenceable, so SSRF-gate them here too
+        // (defense in depth — tryFetch() re-validates every fetch as well). Cross-host
+        // CDN icons stay allowed; only link-local/metadata/etc. targets are dropped.
         foreach ($this->htmlIcons($domain) as $u) {
-            $urls[] = $u;
+            if (OutboundUrl::safe($u)) {
+                $urls[] = $u;
+            }
         }
         $urls[] = 'https://'.$domain.'/favicon.ico';
         $urls[] = 'https://'.$domain.'/apple-touch-icon.png';
