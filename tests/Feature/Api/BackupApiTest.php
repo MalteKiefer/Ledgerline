@@ -246,6 +246,26 @@ class BackupApiTest extends TestCase
         $response->assertJsonMissing(['do-not-leak-this-passphrase']);
     }
 
+    public function test_all_source_job_is_accepted(): void
+    {
+        // The "all" alias backs up every source in sequence; it is a valid source
+        // value even though it is not one of the concrete BackupJob::SOURCES.
+        $this->assertNotContains('all', BackupJob::SOURCES);
+
+        $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
+        $this->postJson('/api/v1/backup/jobs', [
+            'name' => 'Everything nightly',
+            'source' => 'all',
+            'backup_destination_id' => $dest->id,
+            'cron' => '0 2 * * *',
+            'retention' => 7,
+            'encrypt' => true,
+            'passphrase' => 'a-very-long-passphrase-for-testing',
+        ], ['Authorization' => 'Bearer '.$this->adminToken()])->assertCreated();
+
+        $this->assertSame('all', BackupJob::firstWhere('name', 'Everything nightly')?->source);
+    }
+
     public function test_database_job_without_encrypt_is_allowed(): void
     {
         // Operator opt-out (2026-08-02): an unencrypted DB backup is permitted — no

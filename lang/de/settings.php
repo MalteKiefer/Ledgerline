@@ -258,6 +258,7 @@ return [
     'backup_delete_confirm' => 'Dies löschen? Kann nicht rückgängig gemacht werden.',
     'backup_never_run' => 'nie',
     'backup_source_database' => 'Datenbank',
+    'backup_source_all' => 'Alles (alle Systeme nacheinander)',
     'backup_source_files' => 'Dateien',
     'backup_source_gallery' => 'Galerie',
     'backup_source_notes' => 'Notizen',
