@@ -182,7 +182,7 @@ Route::prefix('v1')->group(function (): void {
 
         // Gallery: sealed index + opaque photo blobs + the stateless transform.
         Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->middleware('module:gallery')->name('api.gallery.store.show');
-        Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:gallery'])->name('api.gallery.store.save');
+        Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:1200,1', 'module:gallery'])->name('api.gallery.store.save');
         Route::get('/gallery/usage', [GalleryBlobController::class, 'usage'])->name('api.gallery.usage');
         Route::post('/gallery/blobs/reconcile', [GalleryBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.gallery.reconcile');
         Route::post('/gallery/upload', [GalleryBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('api.gallery.upload');
@@ -193,10 +193,10 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/gallery/raw/{blob}', [GalleryBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.gallery.raw');
         Route::post('/gallery/raw-batch', [GalleryBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.gallery.raw-batch');
         Route::delete('/gallery/blob/{blob}', [GalleryBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.gallery.blob.destroy');
-        Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('module:gallery', 'throttle:600,1')->name('api.gallery.process');
+        Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('module:gallery', 'throttle:1200,1')->name('api.gallery.process');
         // Deferred vision pass: client POSTs a photo's medium rendition (plaintext, discarded
         // after) and gets back the CLIP embedding + faces to merge into the sealed metadata.
-        Route::post('/gallery/analyze', [GalleryProcessController::class, 'analyze'])->middleware('module:gallery', 'throttle:600,1')->name('api.gallery.analyze');
+        Route::post('/gallery/analyze', [GalleryProcessController::class, 'analyze'])->middleware('module:gallery', 'throttle:1200,1')->name('api.gallery.analyze');
         Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('module:gallery', 'throttle:300,1')->name('api.gallery.embed-text');
         // Reverse-geocode a photo coordinate to a place name (viewer display). Self-hosted
         // Photon first (ZK), snap-to-grid before egress, never cached server-side.

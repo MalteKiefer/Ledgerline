@@ -184,7 +184,7 @@ Route::middleware('auth')->group(function (): void {
         // Notification channels (mail / NTFY / webhook).
         Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
         Route::put('/settings/notifications', [SettingsNotificationsController::class, 'update'])->name('settings.notifications.update');
-        Route::post('/settings/notifications/test', [SettingsNotificationsController::class, 'test'])->middleware('throttle:20,1')->name('settings.notifications.test');
+        Route::post('/settings/notifications/test', [SettingsNotificationsController::class, 'test'])->middleware('throttle:60,1')->name('settings.notifications.test');
 
         // Backup destinations, jobs and run history.
         Route::get('/settings/backup', [SettingsBackupController::class, 'index'])->name('settings.backup.index');
@@ -297,7 +297,7 @@ Route::middleware('auth')->group(function (): void {
 
     // Opaque zero-knowledge gallery index (photo/album/people structure sealed).
     Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->middleware('module:gallery')->name('gallery.store.show');
-    Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:gallery'])->name('gallery.store.save');
+    Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:1200,1', 'module:gallery'])->name('gallery.store.save');
     // Public share links for an album: the client seals the share manifest (photo
     // list + per-blob keys re-wrapped under the link's fragment key) before it
     // arrives, so these only ever carry ciphertext + coarse access controls.
@@ -307,8 +307,8 @@ Route::middleware('auth')->group(function (): void {
     // Zero-knowledge transform: the browser POSTs one photo's PLAINTEXT, we return
     // its derived data (renditions/exif/embedding/faces/place) and discard the
     // bytes — nothing is persisted server-side. embed-text embeds a search query.
-    Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('module:gallery', 'throttle:600,1')->name('gallery.process');
-    Route::post('/gallery/analyze', [GalleryProcessController::class, 'analyze'])->middleware('module:gallery', 'throttle:600,1')->name('gallery.analyze');
+    Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('module:gallery', 'throttle:1200,1')->name('gallery.process');
+    Route::post('/gallery/analyze', [GalleryProcessController::class, 'analyze'])->middleware('module:gallery', 'throttle:1200,1')->name('gallery.analyze');
     Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('module:gallery', 'throttle:300,1')->name('gallery.embed-text');
     Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('module:gallery', 'throttle:60,1')->name('gallery.geocode');
 
