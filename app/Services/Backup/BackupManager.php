@@ -73,13 +73,14 @@ final class BackupManager
 
         try {
             $step(sprintf('Backup "%s" started (source: %s).', $job->name, $job->source));
-            // A database dump carries every non-zero-knowledge module in plaintext
-            // AND the wrapped vault-key material (an offline passphrase-cracking
-            // oracle). It must never leave the box unencrypted — enforce here, not
-            // only in the controller, so a job created via seeder/console/legacy
-            // can't ship a cleartext dump.
-            if ($job->source === 'database' && (! $job->encrypt || ! $job->effectivePassphrase())) {
-                throw new RuntimeException('A database backup must be encrypted (set encryption + a passphrase).');
+            // Unencrypted backups are allowed (operator opt-out, Security-Register) —
+            // for a database source that means the non-ZK rows + wrapped vault keys
+            // leave the box in cleartext; the UI warns before saving such a job. What
+            // is still impossible: asking to ENCRYPT without a passphrase (any source),
+            // which would silently ship a cleartext archive under the illusion of
+            // encryption — that is a hard error here (seeder/console/legacy safety net).
+            if ($job->encrypt && ! $job->effectivePassphrase()) {
+                throw new RuntimeException('Encryption is enabled but no passphrase is set.');
             }
             if ($job->destination === null) {
                 throw new RuntimeException('No destination configured for this backup job.');
