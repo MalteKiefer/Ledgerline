@@ -33,6 +33,7 @@
             pushConfirmMsg: @js(__('mail.push_confirm')),
             pushFailed: @js(__('mail.push_failed')),
             pushDone: @js(__('mail.push_done')),
+            pushBulkDone: @js(__('mail.push_bulk_done')),
             trashConfirm: @js(__('mail.trash_confirm')),
             trashDone: @js(__('mail.trash_done')),
             restoreDone: @js(__('mail.restore_done')),
@@ -93,6 +94,20 @@
                 <span class="text-xs text-gray-400">{{ __('mail.trash_immutable') }}</span>
             </div>
 
+            {{-- Bulk action bar --}}
+            <div x-show="selectedCount > 0" x-cloak class="mb-3 flex flex-wrap items-center gap-3 rounded-xl bg-accent/10 px-3 py-2 text-sm">
+                <span class="font-medium text-accent" x-text="'{{ __('mail.bulk_selected') }}'.replace(':n', selectedCount)"></span>
+                <div class="flex flex-wrap gap-2">
+                    <x-button variant="secondary" size="sm" ::disabled="bulkBusy" @click="bulkPushBack()">
+                        <x-icon name="arrow-up-tray" class="mr-1 h-4 w-4" />{{ __('mail.push_back') }}
+                    </x-button>
+                    <x-button variant="danger" size="sm" x-show="!showTrash" @click="bulkTrash()">{{ __('mail.trash_action') }}</x-button>
+                    <x-button variant="secondary" size="sm" x-show="showTrash" x-cloak @click="bulkRestore()">{{ __('mail.restore_action') }}</x-button>
+                </div>
+                <span x-show="bulkBusy" x-cloak class="tabular-nums text-xs text-gray-500" x-text="`${progress}/${progressTotal}`"></span>
+                <button type="button" class="ml-auto text-xs text-gray-500 underline" @click="clearSelection()">{{ __('mail.bulk_clear') }}</button>
+            </div>
+
             <div class="ll-card !p-0 overflow-hidden">
                 <div x-show="loading" class="flex items-center justify-center gap-2 p-8 text-sm text-gray-500">
                     <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />
@@ -110,11 +125,12 @@
                     <div class="overflow-x-auto">
                         <table class="w-full table-fixed text-left text-sm">
                             <colgroup>
-                                <col style="width:9%"><col style="width:11%"><col style="width:18%">
-                                <col style="width:18%"><col style="width:33%"><col style="width:9%"><col style="width:2%">
+                                <col style="width:4%"><col style="width:8%"><col style="width:10%"><col style="width:17%">
+                                <col style="width:17%"><col style="width:31%"><col style="width:9%"><col style="width:4%">
                             </colgroup>
                             <thead class="border-b border-black/[0.06] dark:border-white/10 text-xs uppercase tracking-wide text-gray-500">
                                 <tr>
+                                    <th class="px-3 py-2.5"><input type="checkbox" @click="toggleSelectAllPage()" :checked="allPageSelected" class="rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent"></th>
                                     <th class="px-3 py-2.5 font-medium">{{ __('mail.col_folder') }}</th>
                                     <th class="px-3 py-2.5 font-medium">{{ __('mail.col_mailbox') }}</th>
                                     <th class="px-3 py-2.5 font-medium">{{ __('mail.col_from') }}</th>
@@ -126,7 +142,8 @@
                             </thead>
                             <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
                                 <template x-for="r in pageRows" :key="r.id">
-                                    <tr class="cursor-pointer hover:bg-accent/5" :class="{ 'opacity-50': !r.ok }" @click="openMessage(r)">
+                                    <tr class="cursor-pointer hover:bg-accent/5" :class="{ 'opacity-50': !r.ok, 'bg-accent/5': isSelected(r.id) }" @click="openMessage(r)">
+                                        <td class="px-3 py-2.5" @click.stop><input type="checkbox" :checked="isSelected(r.id)" @change="toggleSelect(r.id)" class="rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent"></td>
                                         <td class="truncate px-3 py-2.5"><x-badge variant="gray" x-text="r.folder"></x-badge></td>
                                         <td class="truncate px-3 py-2.5 text-gray-500" x-text="r.mailbox" :title="r.mailbox"></td>
                                         <td class="truncate px-3 py-2.5" x-text="r.from" :title="r.from"></td>
@@ -248,31 +265,6 @@
             lastSynced: @js(__('mail.last_synced')),
             messageCount: @js(__('mail.message_count')),
          })">
-
-        {{-- Display settings: remote content + scripts (both default off) --}}
-        <div class="ll-card mb-5 max-w-2xl" x-data="mailSettings({ url: '{{ route('preferences.update') }}', failed: @js(__('mail.settings_failed')) })">
-            <h3 class="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('mail.display_settings') }}</h3>
-            <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">{{ __('mail.display_settings_hint') }}</p>
-            <label class="flex items-start gap-3 py-1.5">
-                <input type="checkbox" x-model="remote" class="mt-0.5 rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
-                <span class="text-sm text-gray-700 dark:text-gray-300">
-                    {{ __('mail.load_remote') }}
-                    <span class="block text-xs text-gray-400">{{ __('mail.load_remote_hint') }}</span>
-                </span>
-            </label>
-            <label class="flex items-start gap-3 py-1.5">
-                <input type="checkbox" x-model="scripts" class="mt-0.5 rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
-                <span class="text-sm text-gray-700 dark:text-gray-300">
-                    {{ __('mail.allow_scripts') }}
-                    <span class="block text-xs text-amber-600 dark:text-amber-400">{{ __('mail.allow_scripts_warn') }}</span>
-                </span>
-            </label>
-            <div class="mt-3 flex items-center gap-3">
-                <x-button variant="primary" size="sm" ::disabled="saving" @click="save()">{{ __('common.save') }}</x-button>
-                <span x-show="saved" x-cloak class="text-xs text-green-600 dark:text-green-400">{{ __('mail.settings_saved') }}</span>
-                <span x-show="error" x-cloak class="text-xs text-red-600 dark:text-red-400" x-text="error"></span>
-            </div>
-        </div>
 
         <div class="mb-4 flex justify-end">
             <x-button variant="primary" icon="plus" @click="openCreate()">{{ __('mail.add_account') }}</x-button>

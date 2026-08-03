@@ -28,7 +28,6 @@ import pwStrength from './components/pw-strength';
 import tagSelect from './components/tag-select';
 import mailAccounts from './components/mail-accounts';
 import mailArchive from './components/mail-archive';
-import mailSettings from './components/mail-settings';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -303,7 +302,6 @@ Alpine.data('notificationBell', notificationBell);
  */
 Alpine.data('mailAccounts', mailAccounts);
 Alpine.data('mailArchive', mailArchive);
-Alpine.data('mailSettings', mailSettings);
 
 /**
  * File explorer: multiselect, a shared "move to folder" modal (for a single row

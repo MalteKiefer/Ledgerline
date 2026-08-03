@@ -9,6 +9,8 @@ return [
     'back' => 'Zurück',
     'next' => 'Weiter',
     'reset' => 'Zurücksetzen',
+    'on' => 'An',
+    'off' => 'Aus',
     'previous' => 'Zurück',
     'loading' => 'Wird geladen…',
     'save' => 'Speichern',
