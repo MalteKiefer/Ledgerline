@@ -189,29 +189,54 @@ export default (config) => ({
     openLoading: false,
     openError: '',
     msg: null,         // { textBody, htmlBody, attachments }
+    bodyHtml: '',      // sanitized HTML body (empty for plain-text mails)
     _urls: [],         // object URLs to revoke on close
 
     get bodyText() {
         if (!this.msg) return '';
-        if (this.msg.textBody) return this.msg.textBody;
-        // Fall back to a plain-text preview of an HTML-only mail.
-        return (this.msg.htmlBody || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        return this.msg.textBody || '';
     },
 
     async openMessage(r) {
         this.open = r;
         this.msg = null;
+        this.bodyHtml = '';
         this.openError = '';
         this.openLoading = true;
         try {
             const buffer = await fetchBlobBuffer(this.config.rawBase.replace('__id__', r.id));
             const bytes = await window.Vault.decryptMailBlob(r.sealedKey, buffer);
             this.msg = parseMessage(bytes);
+            // Prefer the HTML body (rendered sanitized); fall back to plain text.
+            if (!this.msg.textBody && this.msg.htmlBody) {
+                this.bodyHtml = await this._sanitizeHtml(this.msg.htmlBody);
+            }
         } catch {
             this.openError = this.config.decryptFailed;
         } finally {
             this.openLoading = false;
         }
+    },
+
+    // Sanitize attacker-controlled mail HTML for inline render: DOMPurify strips
+    // scripts/event handlers (XSS), we additionally forbid <style> (so mail CSS
+    // cannot restyle the whole app) and block remote images (tracking pixels).
+    async _sanitizeHtml(html) {
+        const DOMPurify = (await import('dompurify')).default;
+        if (!DOMPurify._llMailHook) {
+            DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+                if (node.nodeName === 'IMG' && /^https?:/i.test(node.getAttribute('src') || '')) {
+                    node.removeAttribute('src');
+                    node.setAttribute('alt', node.getAttribute('alt') || '[remote image blocked]');
+                }
+                if (node.nodeName === 'A') { node.setAttribute('target', '_blank'); node.setAttribute('rel', 'noopener noreferrer'); }
+            });
+            DOMPurify._llMailHook = true;
+        }
+        return DOMPurify.sanitize(html, {
+            FORBID_TAGS: ['style', 'script', 'title', 'head', 'meta', 'link', 'base', 'iframe', 'object', 'embed'],
+            FORBID_ATTR: ['background'],
+        });
     },
 
     closeMessage() {

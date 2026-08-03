@@ -143,7 +143,7 @@
         <template x-teleport="body">
             <div x-show="open" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeMessage()">
                 <div class="absolute inset-0 bg-gray-900/50" @click="closeMessage()"></div>
-                <div class="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+                <div class="relative flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
                     <div class="flex items-start justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-5 py-3">
                         <div class="min-w-0">
                             <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="open?.subject"></h3>
@@ -162,26 +162,29 @@
                         <div>
                             {{-- Attachments --}}
                             <template x-if="msg.attachments.length">
-                            <div class="mb-4">
-                                <p class="mb-2 text-[11px] uppercase tracking-wide text-gray-500">{{ __('mail.attachments') }}</p>
-                                <div class="space-y-1.5">
+                            <div class="mb-5">
+                                <p class="mb-2 text-[11px] uppercase tracking-wide text-gray-500"><span x-text="msg.attachments.length"></span> {{ __('mail.attachments') }}</p>
+                                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                     <template x-for="(att, i) in msg.attachments" :key="i">
-                                        <div class="flex items-center gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
-                                            <x-icon name="paper-clip" class="h-4 w-4 shrink-0 text-gray-400" />
+                                        <div class="flex items-center gap-2.5 rounded-xl border border-black/[0.06] dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] px-3 py-2">
+                                            <span class="ll-chip flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style="background:#6b7280">
+                                                <x-icon name="paper-clip" class="h-4 w-4 text-white" />
+                                            </span>
                                             <div class="min-w-0 flex-1">
                                                 <p class="truncate text-sm text-gray-900 dark:text-gray-100" x-text="att.filename" :title="att.filename"></p>
-                                                <p class="text-xs text-gray-400" x-text="`${att.contentType} · ${fmtSize(att.size)}`"></p>
+                                                <p class="truncate text-xs text-gray-400" x-text="fmtSize(att.size)"></p>
                                             </div>
-                                            <x-button variant="secondary" size="sm" x-show="canView(att)" @click="viewAttachment(att)">{{ __('mail.att_view') }}</x-button>
-                                            <x-button variant="secondary" size="sm" @click="downloadAttachment(att)">{{ __('mail.att_download') }}</x-button>
+                                            <x-icon-button name="eye" tone="gray" size="sm" x-show="canView(att)" @click="viewAttachment(att)" :aria-label="__('mail.att_view')" />
+                                            <x-icon-button name="arrow-down-tray" tone="gray" size="sm" @click="downloadAttachment(att)" :aria-label="__('mail.att_download')" />
                                         </div>
                                     </template>
                                 </div>
                             </div>
                             </template>
 
-                            {{-- Body (plain-text preview) --}}
-                            <pre class="whitespace-pre-wrap break-words font-sans text-sm text-gray-800 dark:text-gray-200" x-text="bodyText || @js(__('mail.no_body'))"></pre>
+                            {{-- Body: sanitized HTML when present, else plain text --}}
+                            <div x-show="bodyHtml" x-html="bodyHtml" class="ll-mail-body text-sm text-gray-800 dark:text-gray-200"></div>
+                            <pre x-show="!bodyHtml" class="whitespace-pre-wrap break-words font-sans text-sm text-gray-800 dark:text-gray-200" x-text="bodyText || @js(__('mail.no_body'))"></pre>
                         </div>
                         </template>
                     </div>
