@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.536.15
+  version: 1.539.14
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -141,6 +141,40 @@ tags:
       avatar (never customer data, which stays zero-knowledge in the invoices store).
       The invoice records, payment methods and imported bank transactions themselves
       live sealed in the sharded invoices store (GET/PUT /invoices/store, tag Store).
+  - name: Mail
+    description: >
+      Zero-knowledge mail archive. The server runs a per-account IMAP
+      sync and archives fetched messages, but is NEVER able to read them: each
+      raw RFC822 message is sealed server-side to the OWNER'S PUBLIC identity
+      keys (X25519 + ML-KEM-768, the same Store v3 §6.3 PQ-hybrid primitive
+      used for cross-user vault sharing) the instant it is fetched, before
+      anything is written to disk. Account CRUD (host/credentials/folders) and
+      the archived-message LEDGER (metadata only — never subject/from/body)
+      are plain per-user resources over `/api/v1/mail`; the sealed message
+      BYTES live as opaque blobs at `GET /mail/raw/{id}` (a MailMessage's own
+      `id` doubles as the blob's primary key — no separate lookup needed).
+
+
+      CLIENT DECRYPT CONTRACT (there is deliberately NO server-decrypt
+      endpoint — that would break zero-knowledge):
+        1. GET /mail/messages to list the ledger for one or all accounts.
+        2. For a message, hybrid-UNWRAP `sealed_key` (a Store v3 §6.3
+           HybridEnvelope, JSON-encoded) with the caller's OWN identity
+           SECRET keys (the same `hybridUnwrap` used to open a shared vault's
+           `wrapped_vault_key`) to recover the random per-message symmetric key.
+        3. GET /mail/raw/{id} for the sealed bytes and open them with that key
+           via libsodium secretstream (crypto_secretstream_xchacha20poly1305) —
+           byte-identical framing to vault.js's own content blobs: a
+           secretstream header followed by length-prefixed 4 MiB chunks,
+           TAG_FINAL on the last chunk.
+
+
+      The account's IMAP PASSWORD is the one plaintext secret the server must
+      hold to run the sync (`encrypted` at rest via APP_KEY) — it is NEVER
+      returned in any response from this API; a blank `password` on PUT keeps
+      the stored one unchanged (KeepBlankSecrets). `host` is validated against
+      the same SSRF guard used for Paperless/NTFY targets (refuses link-local /
+      cloud-metadata addresses).
   - name: Status
     description: Application availability / health check (the site-root /up up-check).
   - name: TwoFactor
@@ -249,6 +283,58 @@ components:
               id: { type: integer }
               name: { type: string }
               email: { type: string }
+
+    MailAccount:
+      type: object
+      description: >
+        A configured IMAP mail account for the archive sync (metadata only).
+        NEVER carries a password — see the Mail tag description for why, and
+        POST/PUT /mail/accounts for how a password is written without ever
+        being read back.
+      properties:
+        id: { type: integer }
+        name: { type: string, maxLength: 200 }
+        host: { type: string, maxLength: 255, description: "IMAP host. SSRF-guarded: link-local / cloud-metadata addresses are rejected (422)." }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        username: { type: string, maxLength: 255 }
+        encryption: { type: string, enum: [ssl, tls, starttls, none] }
+        folders:
+          type: array
+          nullable: true
+          items: { type: string, maxLength: 255 }
+          description: "Which IMAP folders to sync (null = server default set)."
+        backfill_since: { type: string, format: date, nullable: true, description: "Advisory earliest date to archive. See MailAccount model docblock — not yet consulted by the sync (fetch-all-then-archive)." }
+        enabled: { type: boolean }
+        status: { type: string, enum: [idle, syncing, error], readOnly: true }
+        last_error: { type: string, nullable: true, readOnly: true }
+        last_synced_at: { type: string, format: date-time, nullable: true, readOnly: true }
+        message_count: { type: integer, readOnly: true, description: "Count of this account's rows in the message ledger." }
+
+    MailMessage:
+      type: object
+      description: >
+        One archived message's LEDGER row — metadata only, never content (no
+        subject/from/to/body). See the Mail tag description for the full
+        client decrypt contract.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: >
+            Also the primary key of the sealed blob at GET /mail/raw/{id} —
+            the message and its ciphertext bytes share one uuid, so no
+            separate blob reference is ever needed.
+        account_id: { type: integer, description: "The owning MailAccount's id." }
+        folder: { type: string, description: "IMAP folder the message was archived from (e.g. INBOX)." }
+        size: { type: integer, description: "Plaintext byte size of the original RFC822 message (metadata only — the server never stores or re-derives this from ciphertext)." }
+        created_at: { type: string, format: date-time, description: "Hour-snapped archival time (never the exact arrival instant — same padding discipline as every other sealed module)." }
+        sealed_key:
+          type: string
+          description: >
+            JSON-encoded Store v3 §6.3 HybridEnvelope (X25519+ML-KEM-768,
+            suite:1) wrapping the random per-message secretstream key to the
+            OWNER's public identity keys. Opaque to the server; unwrap with
+            hybridUnwrap using the caller's own identity secret keys.
 
     DisplayPreferences:
       type: object
@@ -1625,7 +1711,7 @@ components:
       properties:
         id: { type: integer }
         name: { type: string }
-        source: { type: string, enum: [all, database, files, gallery, notes, passwords, invoices, contacts, explore, shared-folders] }
+        source: { type: string, enum: [all, database, files, gallery, notes, passwords, invoices, mail, contacts, explore, shared-folders] }
         mode: { type: string }
         destination_id: { type: integer }
         cron: { type: string }
@@ -1643,7 +1729,7 @@ components:
       description: "source=database MAY use encrypt=false (operator opt-out; unencrypted DB dump exposes wrapped vault keys off-box). Blank/omitted passphrase keeps the stored value on update. cron must be a valid crontab expression (422 otherwise)."
       properties:
         name: { type: string, maxLength: 120 }
-        source: { type: string, enum: [all, database, files, gallery, notes, passwords, invoices, contacts, explore, shared-folders] }
+        source: { type: string, enum: [all, database, files, gallery, notes, passwords, invoices, mail, contacts, explore, shared-folders] }
         mode: { type: string, enum: [mirror, archive], description: "Optional; mirror = incremental blob mirror, archive = full tarball. Ignored for source=database (always a full dump) and source=all (each source uses its natural mode)." }
         backup_destination_id: { type: integer, description: "Must reference an existing backup_destinations row." }
         cron: { type: string, maxLength: 64, description: "Valid crontab expression." }
@@ -6501,6 +6587,256 @@ paths:
             application/octet-stream:
               schema: { type: string, format: binary }
         "404": { description: No logo stored. }
+
+  /mail/accounts:
+    get:
+      tags: [Mail]
+      operationId: mailAccountsIndex
+      summary: List the caller's mail accounts
+      description: >
+        Owner-scoped; each account includes its archived-message count. Never
+        includes the account password (see the Mail tag description).
+      responses:
+        "200":
+          description: The accounts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accounts:
+                    type: array
+                    items: { $ref: "#/components/schemas/MailAccount" }
+        "403": { description: Module disabled for this account. }
+    post:
+      tags: [Mail]
+      operationId: mailAccountsStore
+      summary: Create a mail account
+      description: "user_id is stamped server-side from the authenticated caller, never from the request body. Throttle 30/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, host, port, username, password, encryption]
+              properties:
+                name: { type: string, maxLength: 200 }
+                host: { type: string, maxLength: 255, description: "SSRF-guarded — a link-local / cloud-metadata host is rejected (422)." }
+                port: { type: integer, minimum: 1, maximum: 65535 }
+                username: { type: string, maxLength: 255 }
+                password: { type: string, maxLength: 2000, description: "Stored `encrypted` at rest; never returned by any endpoint." }
+                encryption: { type: string, enum: [ssl, tls, starttls, none] }
+                folders: { type: array, nullable: true, items: { type: string, maxLength: 255 } }
+                backfill_since: { type: string, format: date, nullable: true }
+                enabled: { type: boolean, description: "Default true when omitted." }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account: { $ref: "#/components/schemas/MailAccount" }
+        "403": { description: Module disabled for this account. }
+        "422": { description: "Validation error, including an unsafe host (SafeHost rule)." }
+
+  /mail/accounts/{account}:
+    put:
+      tags: [Mail]
+      operationId: mailAccountsUpdate
+      summary: Update a mail account
+      description: >
+        Owner-scoped (404 for a foreign account — no existence leak). Every
+        field except `password` is a full replace; an omitted `folders` /
+        `backfill_since` / `enabled` key leaves the stored value unchanged. A
+        BLANK or omitted `password` keeps the stored one (KeepBlankSecrets) —
+        the current password is never round-tripped to the client to prove
+        "unchanged". Throttle 30/min.
+      parameters:
+        - name: account
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, host, port, username, encryption]
+              properties:
+                name: { type: string, maxLength: 200 }
+                host: { type: string, maxLength: 255, description: "SSRF-guarded — a link-local / cloud-metadata host is rejected (422)." }
+                port: { type: integer, minimum: 1, maximum: 65535 }
+                username: { type: string, maxLength: 255 }
+                password: { type: string, maxLength: 2000, nullable: true, description: "Omit or send blank to keep the stored password." }
+                encryption: { type: string, enum: [ssl, tls, starttls, none] }
+                folders: { type: array, nullable: true, items: { type: string, maxLength: 255 } }
+                backfill_since: { type: string, format: date, nullable: true }
+                enabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account: { $ref: "#/components/schemas/MailAccount" }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not the caller's account. }
+        "422": { description: "Validation error, including an unsafe host (SafeHost rule)." }
+    delete:
+      tags: [Mail]
+      operationId: mailAccountsDestroy
+      summary: Delete a mail account
+      description: >
+        Owner-scoped (404 for a foreign account). Cascades the account's sync
+        cursors and message-ledger rows (FK cascadeOnDelete). The sealed
+        message blobs those rows referenced are NOT unlinked here — mail_blobs
+        cascades with the user, not the account, so the ledger row (and its
+        disk bytes) survives with nothing referencing it anymore; the daily
+        `mail:sweep-orphans` job reclaims it after the grace window (or the
+        GDPR account-erasure contributor, promptly, on full account deletion).
+        Throttle 30/min.
+      parameters:
+        - name: account
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Deleted. }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not the caller's account. }
+
+  /mail/accounts/{account}/sync:
+    post:
+      tags: [Mail]
+      operationId: mailAccountsSync
+      summary: Trigger an on-demand sync for the account
+      description: >
+        Dispatches the same SyncMailAccount producer job the scheduler uses
+        for this one account (fetch + seal + archive; async — the response
+        does not wait for it). Owner-scoped (404 for a foreign account).
+        Throttle 6/min.
+      parameters:
+        - name: account
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Sync dispatched.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dispatched: { type: boolean }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not the caller's account. }
+        "429": { description: Rate limit exceeded. }
+
+  /mail/accounts/{account}/status:
+    get:
+      tags: [Mail]
+      operationId: mailAccountsStatus
+      summary: Current sync status + message count for the account
+      description: "Owner-scoped (404 for a foreign account)."
+      parameters:
+        - name: account
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [idle, syncing, error] }
+                  last_error: { type: string, nullable: true }
+                  last_synced_at: { type: string, format: date-time, nullable: true }
+                  message_count: { type: integer }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not the caller's account. }
+
+  /mail/messages:
+    get:
+      tags: [Mail]
+      operationId: mailMessagesIndex
+      summary: The archived-message ledger — metadata only, never content
+      description: >
+        Owner-scoped, paginated. This is the client's list source for the
+        archive: for each row, unwrap `sealed_key` with the caller's own
+        identity secret keys, then GET /mail/raw/{id} for the sealed bytes —
+        see the Mail tag description for the full decrypt contract. No
+        subject/from/to/body field exists anywhere on this response; the
+        server never sees message content.
+      parameters:
+        - name: account_id
+          in: query
+          schema: { type: integer }
+          description: Restrict to one of the caller's own mail accounts.
+        - name: folder
+          in: query
+          schema: { type: string }
+          description: "Exact folder match, e.g. INBOX."
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: per_page
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        "200":
+          description: Ledger page.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/MailMessage" }
+                  meta:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      per_page: { type: integer }
+                      current_page: { type: integer }
+                      last_page: { type: integer }
+        "403": { description: Module disabled for this account. }
+
+  /mail/raw/{blob}:
+    get:
+      tags: [Mail]
+      operationId: mailRaw
+      summary: Stream a sealed mail-message blob (ciphertext)
+      description: >
+        Streams the raw secretstream-sealed bytes for the given uuid — which
+        is a MailMessage's own `id` (see the MailMessage schema; the message
+        row and its blob share one primary key, so no separate lookup is
+        needed). Owner-scoped; foreign or missing blob returns 404 to avoid an
+        ownership oracle. Served with immutable cache headers — the client
+        decrypts in memory after unwrapping `sealed_key`. Throttle 600/min.
+      parameters:
+        - name: blob
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Blob ciphertext stream.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary, description: "Opaque secretstream-sealed bytes. The client unwraps sealed_key first, then opens this with that key." }
+        "404": { description: Blob not found or not owned by caller. }
+        "429": { description: Rate limit exceeded. }
 
   /passwords/store:
     get:

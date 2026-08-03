@@ -9,6 +9,7 @@ use App\Http\Controllers\ExploreBlobController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\InvoiceBlobController;
+use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\NoteBlobController;
 use App\Http\Controllers\PasswordBlobController;
 use App\Http\Controllers\SharedFolderBlobController;
@@ -59,7 +60,7 @@ class BackupSourcePrefixTest extends TestCase
      * Every registered blob prefix MUST be backed up, otherwise a database-only
      * restore points at ciphertext that no source ever captured — total loss of
      * that module's content (the C1 finding). Locks BlobRegistry ↔ backup sources
-     * ↔ blob-controller prefixes together for all eight modules.
+     * ↔ blob-controller prefixes together for all nine modules.
      */
     public function test_every_blob_module_has_a_backup_source_with_a_matching_prefix(): void
     {
@@ -69,6 +70,7 @@ class BackupSourcePrefixTest extends TestCase
             'notes' => NoteBlobController::class,
             'passwords' => PasswordBlobController::class,
             'invoices' => InvoiceBlobController::class,
+            'mail' => MailBlobController::class,
             'contacts' => ContactBlobController::class,
             'explore' => ExploreBlobController::class,
             'shared-folders' => SharedFolderBlobController::class,

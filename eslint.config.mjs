@@ -5,7 +5,7 @@ import globals from 'globals';
 // not imported after the app.js modularization) that the bundler wouldn't flag.
 export default [
     {
-        files: ['resources/js/**/*.js', 'extension/src/**/*.js'],
+        files: ['resources/js/**/*.{js,mjs}', 'extension/src/**/*.js'],
         languageOptions: {
             ecmaVersion: 2023,
             sourceType: 'module',
@@ -19,6 +19,14 @@ export default [
         rules: {
             'no-undef': 'error',
             'no-unused-vars': ['error', { vars: 'all', args: 'none', varsIgnorePattern: '^_', caughtErrors: 'none' }],
+        },
+    },
+    {
+        // Node-side modules (e.g. the mail-sealer CLI) run under Node, not the
+        // browser — declare the Node globals so no-undef covers them too.
+        files: ['resources/js/**/*.mjs'],
+        languageOptions: {
+            globals: { ...globals.node },
         },
     },
 ];

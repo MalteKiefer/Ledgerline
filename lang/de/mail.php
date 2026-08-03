@@ -1,0 +1,51 @@
+<?php
+
+declare(strict_types=1);
+
+return [
+    'title' => 'Mail',
+    'subheading' => 'IMAP-Konten, die in dein Archiv synchronisiert werden. Das Lesen archivierter Mails ist noch nicht verfügbar.',
+
+    // List
+    'loading' => 'Konten werden geladen…',
+    'empty' => 'Noch keine Mail-Konten. Lege eins an, um mit dem Archivieren zu beginnen.',
+    'load_failed' => 'Deine Mail-Konten konnten nicht geladen werden.',
+    'status_idle' => 'Bereit',
+    'status_syncing' => 'Synchronisiert…',
+    'status_error' => 'Fehler',
+    'disabled' => 'Deaktiviert',
+    'last_synced' => 'Zuletzt synchronisiert :when',
+    'never_synced' => 'Noch nie synchronisiert',
+    'message_count' => ':count archivierte Nachrichten',
+    'sync_now' => 'Jetzt synchronisieren',
+    'syncing' => 'Synchronisiert…',
+    'sync_failed' => 'Die Synchronisierung konnte nicht gestartet werden.',
+
+    // Add/edit
+    'add_account' => 'Konto hinzufügen',
+    'new_account' => 'Neues Konto',
+    'edit_account' => 'Konto bearbeiten',
+    'name' => 'Name',
+    'host' => 'Host',
+    'host_placeholder' => 'imap.beispiel.de',
+    'port' => 'Port',
+    'username' => 'Benutzername',
+    'username_placeholder' => 'name@beispiel.de',
+    'password' => 'Passwort',
+    'password_placeholder' => '••••••••',
+    'password_hint' => 'Leer lassen, um das gespeicherte Passwort zu behalten.',
+    'encryption' => 'Verschlüsselung',
+    'encryption_ssl' => 'SSL',
+    'encryption_tls' => 'TLS',
+    'encryption_starttls' => 'STARTTLS',
+    'encryption_none' => 'Keine',
+    'folders' => 'Ordner',
+    'folders_placeholder' => 'Ordner hinzufügen…',
+    'folders_hint' => 'Leer lassen, um alle Ordner zu synchronisieren.',
+    'backfill_since' => 'Archivieren ab',
+    'backfill_hint' => 'Nur Nachrichten ab diesem Datum archivieren. Leer lassen, um den vollständigen Verlauf zu archivieren.',
+    'enabled' => 'Aktiviert',
+    'save_failed' => 'Das Konto konnte nicht gespeichert werden. Bitte die Felder prüfen und erneut versuchen.',
+    'delete_confirm' => 'Dieses Konto löschen? Die archivierten Nachrichten werden ebenfalls entfernt. Das kann nicht rückgängig gemacht werden.',
+    'delete_failed' => 'Das Konto konnte nicht gelöscht werden.',
+];

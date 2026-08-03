@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\Api\MailAccountController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\ContactNotifyController;
@@ -24,6 +25,7 @@ use App\Http\Controllers\InvoiceBlobController;
 use App\Http\Controllers\InvoiceMailController;
 use App\Http\Controllers\InvoicesStoreController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\ModuleStoreController;
@@ -257,6 +259,27 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/invoices/send', [InvoiceMailController::class, 'send'])->middleware(['throttle:30,1', 'module:finance'])->name('invoices.send');
     Route::post('/invoices/mail-test', [InvoiceMailController::class, 'test'])->middleware(['throttle:6,1', 'module:finance'])->name('invoices.mail-test');
     Route::post('/invoices/blobs/reconcile', [InvoiceBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('invoices.blobs.reconcile');
+
+    // Mail archive (read-only for now): sealed RFC822 blobs written directly by the
+    // server-side ingestor — no client upload/reconcile route yet, only owner-scoped read.
+    Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->middleware(['throttle:3000,1', 'module:mail'])->name('mail.raw');
+
+    // Mail archive settings page (account CRUD + sync/status; no
+    // message-reading UI yet). The page shell is a plain view; the Alpine
+    // component drives everything else over the routes below.
+    Route::view('/mail', 'mail.index')->middleware('module:mail')->name('mail.index');
+    // Account CRUD + on-demand sync/status, mounted on a SESSION-authed web
+    // group instead of `/api/v1` (which is Sanctum bearer-token only — the
+    // browser page has no device token). Reuses Api\MailAccountController
+    // directly: every method resolves the caller via the guard-agnostic
+    // `Controller::requireUser($request)`, so it behaves identically under
+    // the web session guard as it does under Sanctum. No logic duplicated.
+    Route::get('/mail/accounts', [MailAccountController::class, 'index'])->middleware('module:mail')->name('mail.accounts.index');
+    Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.store');
+    Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.update');
+    Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.destroy');
+    Route::post('/mail/accounts/{account}/sync', [MailAccountController::class, 'sync'])->middleware(['throttle:6,1', 'module:mail'])->name('mail.accounts.sync');
+    Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->middleware('module:mail')->name('mail.accounts.status');
 
     // Passwords sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
     Route::get('/passwords/store', [PasswordsStoreController::class, 'show'])->middleware('module:passwords')->name('passwords.store.show');

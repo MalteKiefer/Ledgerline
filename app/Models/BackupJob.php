@@ -29,7 +29,7 @@ class BackupJob extends Model
     // Every blob prefix needs its own source or its ciphertext is not backed up.
     // Keep in lockstep with App\Support\BlobRegistry::modules() (files + gallery
     // + the sharded/attachment modules) plus the always-present database dump.
-    public const SOURCES = ['database', 'files', 'gallery', 'notes', 'passwords', 'invoices', 'contacts', 'explore', 'shared-folders'];
+    public const SOURCES = ['database', 'files', 'gallery', 'notes', 'passwords', 'invoices', 'mail', 'contacts', 'explore', 'shared-folders'];
 
     /** Backup mode for the file-based sources (database is always a full dump). */
     public const MODES = ['mirror', 'archive'];

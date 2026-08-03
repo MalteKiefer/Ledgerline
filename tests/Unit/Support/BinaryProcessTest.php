@@ -21,6 +21,29 @@ class BinaryProcessTest extends TestCase
         $this->assertNull($out);
     }
 
+    public function test_run_pipes_input_to_child_stdin(): void
+    {
+        // cat echoes stdin verbatim → proves the $input arg reaches the child.
+        $out = BinaryProcess::run(['cat'], 5, 'hello');
+        $this->assertSame('hello', $out);
+    }
+
+    public function test_run_passes_binary_input_through_unmangled(): void
+    {
+        // Bytes with NUL + high bytes + a newline must survive round-trip
+        // untouched — the mail sealer relies on this for its binary blob.
+        $binary = "line1\nwith\x00null\xffbyte";
+        $out = BinaryProcess::run(['cat'], 5, $binary);
+        $this->assertSame($binary, $out);
+    }
+
+    public function test_run_defaults_to_no_stdin_when_input_omitted(): void
+    {
+        // With no $input, cat sees EOF immediately and emits nothing.
+        $out = BinaryProcess::run(['cat'], 5);
+        $this->assertSame('', $out);
+    }
+
     public function test_run_returns_null_on_missing_binary(): void
     {
         $out = BinaryProcess::run(['/nonexistent/binary/that/does/not/exist']);
