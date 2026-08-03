@@ -89,7 +89,7 @@ export async function sealMessage(rawBytes, x25519PubB64, mlkemEkB64) {
 
     // Hybrid-wrap the per-message key to the recipient. Empty context '' matches
     // the production wrap/unwrap context used across the client (per-vault HKDF
-    // context is wired but unused everywhere — see CLAUDE.md open points).
+    // context is wired but unused everywhere — see the repo crypto notes).
     const env = await hybridWrap(key, x25519PubB64, mlkemEkB64, '');
 
     return { sealedKey: JSON.stringify(env), blob: concat(parts) };
