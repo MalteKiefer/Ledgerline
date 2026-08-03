@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 return [
+    'import_smime' => 'Import S/MIME (.p12)',
+    'p12_file' => 'PKCS#12 file (.p12/.pfx)',
+    'err_no_file' => 'Choose a .p12 file.',
+    'err_p12' => 'Could not import this .p12 (wrong passphrase?).',
     'nav_desc' => 'PGP keys for encrypted mail',
     'title' => 'Encryption keys',
     'subtitle' => 'Import or generate PGP keys to read encrypted mail. Private keys stay sealed in your vault and never leave your browser in the clear.',

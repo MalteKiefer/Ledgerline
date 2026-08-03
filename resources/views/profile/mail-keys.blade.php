@@ -26,6 +26,22 @@
             <div class="mb-4 flex flex-wrap gap-2" x-show="mode === 'list'">
                 <x-button variant="secondary" size="sm" icon="plus" @click="mode = 'import'">{{ __('mailkeys.import') }}</x-button>
                 <x-button variant="secondary" size="sm" icon="key" @click="mode = 'generate'">{{ __('mailkeys.generate') }}</x-button>
+                <x-button variant="secondary" size="sm" icon="lock-closed" @click="mode = 'smime'">{{ __('mailkeys.import_smime') }}</x-button>
+            </div>
+
+            {{-- S/MIME import (.p12) --}}
+            <div class="ll-card mb-4" x-show="mode === 'smime'" x-cloak>
+                <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('mailkeys.import_smime') }}</h3>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.name') }}</label>
+                <input type="text" x-model="smName" class="mt-1 mb-3 block w-full rounded-md border-gray-300 dark:border-gray-700 sm:text-sm">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.p12_file') }}</label>
+                <input type="file" accept=".p12,.pfx,application/x-pkcs12" @change="p12Chosen($event)" class="mt-1 mb-3 block w-full text-sm text-gray-600 dark:text-gray-400">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.passphrase_opt') }}</label>
+                <input type="password" x-model="smPass" autocomplete="new-password" class="mt-1 mb-4 block w-full rounded-md border-gray-300 dark:border-gray-700 sm:text-sm">
+                <div class="flex gap-2">
+                    <x-button variant="primary" size="sm" ::disabled="busy" @click="importSmime()">{{ __('mailkeys.add') }}</x-button>
+                    <x-button variant="secondary" size="sm" @click="mode = 'list'; error = ''">{{ __('common.cancel') }}</x-button>
+                </div>
             </div>
 
             {{-- Import form --}}
@@ -77,7 +93,10 @@
                             <x-icon name="key" class="h-4 w-4 text-white" />
                         </span>
                         <div class="min-w-0 flex-1">
-                            <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="k.name"></p>
+                            <p class="flex items-center gap-2 truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                                <span class="truncate" x-text="k.name"></span>
+                                <x-badge variant="gray" x-text="keyType(k)"></x-badge>
+                            </p>
                             <p class="truncate text-xs text-gray-500" x-text="k.userId"></p>
                             <p class="mt-0.5 font-mono text-[11px] text-gray-400" x-text="fp(k)"></p>
                         </div>

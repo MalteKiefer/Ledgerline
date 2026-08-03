@@ -13,6 +13,7 @@ import { formatDate, saveBlobAs } from '../shared/dom.js';
 import { mailRemote, mailScripts } from '../shared/prefs.js';
 import { loadEnvelopes, putEnvelopes } from '../shared/mail-cache.js';
 import { isPgpEncrypted, extractPgpMessage, decrypt as pgpDecrypt } from '../shared/pgp.js';
+import { isSmimeEncrypted, decryptSmime } from '../shared/smime.js';
 
 const DECRYPT_CONCURRENCY = 8;
 
@@ -325,6 +326,17 @@ export default (config) => ({
                         this.pgp = 'ok';
                     } catch { this.pgp = 'fail'; }
                 }
+            } else if (isSmimeEncrypted(rawText)) {
+                const keys = await this._smimeKeys();
+                if (!keys.length) {
+                    this.pgp = 'nokey';
+                } else {
+                    try {
+                        const { text } = await decryptSmime(rawText, keys);
+                        this.msg = parseMessage(text);
+                        this.pgp = 'ok';
+                    } catch { this.pgp = 'fail'; }
+                }
             }
 
             // Prefer the HTML body (the designed mail); fall back to plain text
@@ -383,14 +395,21 @@ export default (config) => ({
 
     // Vault-sealed PGP private keys for decryption ([] if none / locked).
     async _pgpKeys() {
+        return (await this._mailKeys())
+            .filter((k) => k.type !== 'smime' && k.privateKey)
+            .map((k) => ({ privateKey: k.privateKey, passphrase: k.passphrase }));
+    },
+
+    async _smimeKeys() {
+        return (await this._mailKeys())
+            .filter((k) => k.type === 'smime' && k.privateKeyPem && k.certPem)
+            .map((k) => ({ privateKeyPem: k.privateKeyPem, certPem: k.certPem }));
+    },
+
+    async _mailKeys() {
         const st = window.LLModuleStore?.mailkeys;
         if (!st) return [];
-        try {
-            await st.load();
-            return (st.data.keys || []).map((k) => ({ privateKey: k.privateKey, passphrase: k.passphrase }));
-        } catch {
-            return [];
-        }
+        try { await st.load(); return st.data.keys || []; } catch { return []; }
     },
 
     closeMessage() {

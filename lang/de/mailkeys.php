@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 return [
+    'import_smime' => 'S/MIME importieren (.p12)',
+    'p12_file' => 'PKCS#12-Datei (.p12/.pfx)',
+    'err_no_file' => 'Wähle eine .p12-Datei.',
+    'err_p12' => 'Diese .p12 konnte nicht importiert werden (falsche Passphrase?).',
     'nav_desc' => 'PGP-Schlüssel für verschlüsselte Mail',
     'title' => 'Verschlüsselungs-Schlüssel',
     'subtitle' => 'PGP-Schlüssel importieren oder erzeugen, um verschlüsselte Mail zu lesen. Private Schlüssel bleiben in deinem Vault versiegelt und verlassen den Browser nie im Klartext.',
