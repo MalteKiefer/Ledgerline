@@ -635,6 +635,22 @@ export const Vault = {
      *
      * Returns { pub: base64, sk: Uint8Array } — sk is raw bytes kept in memory only.
      */
+
+    /**
+     * Decrypt one archived mail. `sealedKeyJson` is the message's `sealed_key`
+     * (a PQ-hybrid envelope wrapping the per-message secretstream key, sealed to
+     * THIS user's own identity public keys at ingest); `buffer` is the raw
+     * `/mail/raw/{id}` bytes (secretstream header + framed chunks). Unwraps the
+     * per-message key with the user's identity SECRET keys, then opens the
+     * framed ciphertext. Returns the plaintext RFC822 message as a Uint8Array.
+     */
+    async decryptMailBlob(sealedKeyJson, buffer) {
+        await ready();
+        const id = await this.ensureIdentityKeys();
+        const keyB64 = await VaultShareCrypto.unwrapVaultKey(sealedKeyJson, id.sk, id.mlkemSeed);
+        return ShareCrypto.decrypt(buffer, unb64(keyB64));
+    },
+
     async ensureIdentityKeys() {
         await ready();
 

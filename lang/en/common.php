@@ -8,6 +8,8 @@ return [
     'sections' => 'Sections',
     'back' => 'Back',
     'next' => 'Next',
+    'previous' => 'Previous',
+    'loading' => 'Loading…',
     'save' => 'Save',
     'edit' => 'Edit',
     'close' => 'Close',

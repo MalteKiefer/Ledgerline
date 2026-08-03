@@ -74,6 +74,79 @@
     </div>
    </div>
 
+   {{-- Archived-message list (zero-knowledge: decrypted + parsed client-side) --}}
+   <div class="mx-auto mt-8 w-full max-w-6xl" x-data="mailArchive({
+        messagesUrl: '{{ route('mail.messages.index') }}',
+        accountsUrl: '{{ route('mail.accounts.index') }}',
+        rawBase: '{{ route('mail.raw', ['blob' => '__id__']) }}',
+        loadFailed: @js(__('mail.load_failed')),
+        decryptFailed: @js(__('mail.decrypt_failed')),
+        unknown: @js(__('mail.unknown')),
+        noSubject: @js(__('mail.no_subject')),
+     })">
+        <h2 class="mb-3 text-lg font-semibold text-gray-900 dark:text-gray-100">{{ __('mail.archive_heading') }}</h2>
+
+        <div x-show="!unlocked" x-cloak>
+            <x-alert variant="info">
+                <span>{{ __('mail.locked_hint') }}</span>
+                <button type="button" class="ml-1 font-medium text-accent underline" @click="unlock()">{{ __('mail.unlock') }}</button>
+            </x-alert>
+        </div>
+
+        <template x-if="unlocked">
+        <div class="ll-card !p-0 overflow-hidden">
+            <div x-show="loading" class="flex items-center justify-center gap-2 p-8 text-sm text-gray-500">
+                <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('common.loading') }}
+            </div>
+            <x-alert variant="error" x-show="error" x-cloak x-text="error" class="m-4" />
+
+            <template x-if="!loading && !error && rows.length === 0">
+                <x-empty-state class="p-10">{{ __('mail.empty') }}</x-empty-state>
+            </template>
+
+            <div x-show="!loading && rows.length" class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="border-b border-black/[0.06] dark:border-white/10 text-xs uppercase tracking-wide text-gray-500">
+                        <tr>
+                            <th class="px-4 py-2.5 font-medium">{{ __('mail.col_folder') }}</th>
+                            <th class="px-4 py-2.5 font-medium">{{ __('mail.col_mailbox') }}</th>
+                            <th class="px-4 py-2.5 font-medium">{{ __('mail.col_from') }}</th>
+                            <th class="px-4 py-2.5 font-medium">{{ __('mail.col_to') }}</th>
+                            <th class="px-4 py-2.5 font-medium">{{ __('mail.col_subject') }}</th>
+                            <th class="px-4 py-2.5 font-medium">{{ __('mail.col_date') }}</th>
+                            <th class="px-4 py-2.5 text-center font-medium"><x-icon name="paper-clip" class="mx-auto h-4 w-4" /></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
+                        <template x-for="r in rows" :key="r.id">
+                            <tr class="hover:bg-accent/5" :class="{ 'opacity-50': !r.ok }">
+                                <td class="px-4 py-2.5"><x-badge variant="gray" x-text="r.folder"></x-badge></td>
+                                <td class="whitespace-nowrap px-4 py-2.5 text-gray-500" x-text="r.mailbox"></td>
+                                <td class="max-w-[14rem] truncate px-4 py-2.5" x-text="r.from" :title="r.from"></td>
+                                <td class="max-w-[14rem] truncate px-4 py-2.5 text-gray-500" x-text="r.to" :title="r.to"></td>
+                                <td class="max-w-[24rem] truncate px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100" x-text="r.subject" :title="r.subject"></td>
+                                <td class="whitespace-nowrap px-4 py-2.5 text-gray-500" x-text="r.dateLabel"></td>
+                                <td class="px-4 py-2.5 text-center">
+                                    <span x-show="r.hasAttachment"><x-icon name="paper-clip" class="mx-auto h-4 w-4 text-gray-400" /></span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            {{-- Pagination --}}
+            <div x-show="!loading && lastPage > 1" class="flex items-center justify-between border-t border-black/[0.06] dark:border-white/10 px-4 py-3 text-sm">
+                <span class="text-gray-500" x-text="`${total} · ${page}/${lastPage}`"></span>
+                <div class="flex gap-2">
+                    <x-button variant="secondary" size="sm" ::disabled="page <= 1" @click="goto(page - 1)">{{ __('common.previous') }}</x-button>
+                    <x-button variant="secondary" size="sm" ::disabled="page >= lastPage" @click="goto(page + 1)">{{ __('common.next') }}</x-button>
+                </div>
+            </div>
+        </div>
+        </template>
+   </div>
+
     {{-- Add/edit account modal --}}
     <template x-teleport="body">
         <div x-show="modalOpen" x-cloak class="fixed inset-0 z-[1050] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeModal()">

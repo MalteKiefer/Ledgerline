@@ -23,6 +23,18 @@ return [
     'sync_busy' => 'A sync is already running or was triggered too often — wait a moment.',
     'sync_cancel' => 'Cancel sync',
     'cancel_failed' => 'Could not cancel the sync.',
+    'archive_heading' => 'Archive',
+    'col_folder' => 'Folder',
+    'col_mailbox' => 'Mailbox',
+    'col_from' => 'From',
+    'col_to' => 'To',
+    'col_subject' => 'Subject',
+    'col_date' => 'Date',
+    'decrypt_failed' => 'Could not decrypt',
+    'locked_hint' => 'Unlock your vault to view the archive.',
+    'no_subject' => '(no subject)',
+    'unknown' => 'Unknown',
+    'unlock' => 'Unlock',
 
     // Add/edit
     'add_account' => 'Add account',
