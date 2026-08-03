@@ -11,6 +11,7 @@ use App\Services\Mail\MbsyncRunner;
 use App\Support\BinaryProcess;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -141,6 +142,120 @@ class MbsyncConfigTest extends TestCase
         $config = $this->render(['folders' => null]);
 
         $this->assertStringContainsString('Patterns *', $config);
+    }
+
+    /**
+     * A folder name is an IMAP GLOB pattern, not a literal — quoting handles
+     * spaces/`"`/`\` but does NOT disable `*`/`%`/`!` operator semantics, and
+     * isync has no escape for a literal one. Assert the ACTUAL behavior (the
+     * name is emitted verbatim inside its quotes, glob operator intact) rather
+     * than a false "matched literally" guarantee. This is a benign matching
+     * quirk — the read-only-origin guarantee holds regardless of what matches.
+     */
+    public function test_folder_name_with_a_glob_char_is_emitted_as_a_glob_not_a_literal(): void
+    {
+        $config = $this->render(['folders' => ['Archive*']]);
+
+        // The `*` survives verbatim into the Patterns line (an IMAP glob),
+        // NOT escaped into a literal — there is no escape to assert otherwise.
+        $this->assertStringContainsString('Patterns "Archive*"', $config);
+    }
+
+    /**
+     * CRITICAL: the config is line-oriented (`implode("\n", …)`), so a value
+     * with an embedded newline could break out of its quoted string and inject
+     * arbitrary physical config lines — a PoC injected `Sync Both` /
+     * `Expunge Both` / `Create Both`, flipping the mirror to WRITE/DELETE the
+     * origin. render() must FAIL CLOSED on any control character in any
+     * interpolated account value (host / username / folders), before a config
+     * can exist.
+     *
+     * @return iterable<string, array{string, mixed}>
+     */
+    public static function controlCharInjectionProvider(): iterable
+    {
+        $inject = "\nSync Both\nExpunge Both\nCreate Both";
+
+        yield 'host with newline injection' => ['host', 'imap.evil.test'.$inject];
+        yield 'host with carriage return' => ['host', "imap.evil.test\rInbox"];
+        yield 'host with NUL' => ['host', "imap.evil.test\0"];
+        yield 'username with newline injection' => ['username', 'user@x.test'.$inject];
+        yield 'username with carriage return' => ['username', "user@x.test\rx"];
+        yield 'folder entry with newline injection' => ['folders', ['INBOX'.$inject]];
+        yield 'folder entry with NUL' => ['folders', ["INBOX\0"]];
+        yield 'folder entry with carriage return' => ['folders', ["INBOX\rSent"]];
+    }
+
+    /**
+     * @param  mixed  $value
+     */
+    #[DataProvider('controlCharInjectionProvider')]
+    public function test_render_rejects_control_characters_in_account_values(string $field, $value): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->render([$field => $value]);
+    }
+
+    /**
+     * Belt-and-braces: even if the exception contract ever changed, the output
+     * of a newline-laden value must NEVER contain an origin-writing directive.
+     * render() throwing satisfies this (no output at all); this test asserts
+     * the property directly.
+     */
+    public function test_a_newline_injection_can_never_produce_an_origin_writing_directive(): void
+    {
+        $config = null;
+
+        try {
+            $config = $this->render([
+                'host' => "imap.evil.test\nSync Both\nExpunge Both\nCreate Both\nRemove Both\nCreate Far",
+            ]);
+        } catch (\InvalidArgumentException) {
+            // Expected: fail-closed, no config produced.
+        }
+
+        if ($config !== null) {
+            $this->assertStringNotContainsString('Sync Both', $config);
+            $this->assertStringNotContainsString('Expunge Both', $config);
+            $this->assertStringNotContainsString('Create Both', $config);
+            $this->assertStringNotContainsString('Create Far', $config);
+            $this->assertStringNotContainsString('Remove Both', $config);
+        }
+
+        // The only correct behavior in this codebase is to throw; assert it.
+        $this->assertNull($config, 'render() must fail closed on a control character.');
+    }
+
+    public function test_render_throws_on_an_unsupported_encryption(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->render(['encryption' => 'bogus']);
+    }
+
+    public function test_runner_degrades_an_unsupported_encryption_to_a_failed_result(): void
+    {
+        // The unknown-encryption throw from render() must not escape run() —
+        // it degrades to a Failed MbsyncResult with a redacted last_error.
+        $account = MailAccount::factory()->create([
+            'host' => 'imap.example.com',
+            'encryption' => 'ssl',
+            'status' => 'idle',
+            'last_error' => null,
+        ]);
+        // Force an unsupported value past the model without re-validating.
+        $account->forceFill(['encryption' => 'bogus']);
+
+        $result = (new MbsyncRunner)->run($account);
+
+        $this->assertSame(MbsyncOutcome::Failed, $result->outcome);
+        $this->assertFalse($result->ok);
+
+        $account->refresh();
+        $this->assertSame('error', $account->status);
+        $this->assertNotNull($account->last_error);
+        $this->assertStringNotContainsString('bogus', (string) $account->last_error);
     }
 
     public function test_runner_rejects_a_link_local_host_without_connecting(): void

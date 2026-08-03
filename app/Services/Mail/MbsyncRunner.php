@@ -10,6 +10,7 @@ use App\Support\DiskTempFile;
 use App\Support\OutboundUrl;
 use App\Support\Redactor;
 use Illuminate\Support\Facades\File;
+use Throwable;
 
 /**
  * Runs a pull-only mbsync mirror of one account's IMAP mailbox into a local
@@ -70,8 +71,24 @@ final class MbsyncRunner
         File::ensureDirectoryExists($stateDir, 0700);
         File::ensureDirectoryExists($maildirDir, 0700);
 
+        // render() FAILS CLOSED on a malformed account value (unsupported
+        // encryption, or a control character that could inject config lines —
+        // see MbsyncConfig). Catch it so the "every outcome is an
+        // MbsyncResult" contract holds instead of an uncaught throw, and so
+        // the account is marked errored rather than silently retried forever.
+        // The caught message is one of MbsyncConfig's own fixed strings (it
+        // never echoes the offending value), but recordError() redacts anyway
+        // as defence in depth.
         $temp = DiskTempFile::create('mbsync-')->withExtension('conf');
-        file_put_contents($temp->path(), $this->config->render($account, $stateDir, $maildirDir));
+        try {
+            $rendered = $this->config->render($account, $stateDir, $maildirDir);
+        } catch (Throwable) {
+            $message = 'IMAP sync configuration is invalid for this account.';
+            $this->recordError($account, $message);
+
+            return MbsyncResult::failed($message);
+        }
+        file_put_contents($temp->path(), $rendered);
 
         if (! BinaryProcess::available('mbsync')) {
             return MbsyncResult::unavailable();

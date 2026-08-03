@@ -166,9 +166,18 @@ final class MbsyncConfig
     /**
      * `Patterns` restricts the sync to the account's configured folder list;
      * with no restriction configured, every folder on the account is synced.
-     * Each folder name is emitted as its own quoted literal (never as an
-     * unquoted glob) so a folder name that happens to contain `*`/`%`/`!` is
-     * matched literally, not interpreted as an mbsync pattern operator.
+     *
+     * IMPORTANT: isync `Patterns` values are IMAP GLOB patterns, not literal
+     * strings. Quoting (see quote()) only lets a name contain spaces / `"` /
+     * `\` safely — it does NOT disable glob-operator semantics, and isync
+     * provides no documented escape for a literal `*` / `%` / `!` inside a
+     * pattern. So a configured folder name that itself contains `*`/`%`/`!`
+     * is matched as a glob and may over- or under-match (e.g. `In*` would
+     * also match `Inbox-archive`). This is a benign matching quirk, not a
+     * security issue: the read-only-origin guarantee is enforced by the
+     * pull-only Channel directives regardless of which folders match. Control
+     * characters, which WOULD be a security issue (config-line injection),
+     * are rejected up front by quote().
      *
      * @param  ?array<int, string>  $folders
      */
@@ -187,13 +196,35 @@ final class MbsyncConfig
     }
 
     /**
-     * Quote a value for embedding as an mbsync config string literal:
-     * backslash and double-quote are the only two characters isync's config
-     * parser treats specially inside a double-quoted string, so escaping
-     * exactly those two is sufficient and exact (no over- or under-escaping).
+     * Quote a value for embedding as an mbsync config string literal.
+     *
+     * SECURITY: the rendered config is line-oriented (`implode("\n", …)`), so
+     * a value containing a newline (or other control character) would break
+     * out of its quoted string and inject arbitrary PHYSICAL config lines —
+     * a PoC injected `Sync Both` / `Expunge Both` / `Create Both`, flipping
+     * the mirror into one that WRITES/DELETES the origin mailbox and defeating
+     * this class's whole reason to exist. Control characters have no
+     * legitimate place in a host / username / folder name, so we FAIL CLOSED:
+     * any value containing NUL, a C0 control (incl. `\n`/`\r`), or DEL makes
+     * render() throw before any config can be produced. The exception message
+     * deliberately does NOT echo the offending value (no leak into logs /
+     * last_error).
+     *
+     * With control characters excluded, backslash and double-quote are the
+     * only two characters isync's config parser treats specially inside a
+     * double-quoted string, so escaping exactly those two is sufficient and
+     * exact.
+     *
+     * @throws InvalidArgumentException if $value contains a control character
      */
     private function quote(string $value): string
     {
+        if (preg_match('/[\x00-\x1f\x7f]/', $value) === 1) {
+            throw new InvalidArgumentException(
+                'Refusing to render mbsync config: an account value contains a disallowed control character.'
+            );
+        }
+
         return '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $value).'"';
     }
 }
