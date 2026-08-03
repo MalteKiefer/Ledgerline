@@ -26,6 +26,8 @@ class PreferencesController extends Controller
             'temp' => ['sometimes', 'string', 'in:c,f'],
             'glucose' => ['sometimes', 'string', 'in:mgdl,mmoll'],
             'time_format' => ['sometimes', 'string', 'in:24h,12h'],
+            'mail_remote' => ['sometimes', 'boolean'],
+            'mail_scripts' => ['sometimes', 'boolean'],
         ]);
 
         $map = [
@@ -40,6 +42,11 @@ class PreferencesController extends Controller
         foreach ($map as $key => $column) {
             if ($request->has($key)) {
                 $update[$column] = $request->string($key)->value();
+            }
+        }
+        foreach (['mail_remote' => 'mail_load_remote', 'mail_scripts' => 'mail_allow_scripts'] as $key => $column) {
+            if ($request->has($key)) {
+                $update[$column] = $request->boolean($key);
             }
         }
 

@@ -16,7 +16,18 @@ class PreferencesTest extends TestCase
     {
         $user = $this->signIn();
         $prefs = UserSetting::for($user->id)->displayPrefs();
-        $this->assertSame(['distance' => 'km', 'elevation' => 'm', 'weight' => 'kg', 'temp' => 'c', 'glucose' => 'mgdl', 'time_format' => '24h'], $prefs);
+        $this->assertSame(['distance' => 'km', 'elevation' => 'm', 'weight' => 'kg', 'temp' => 'c', 'glucose' => 'mgdl', 'time_format' => '24h', 'mail_remote' => false, 'mail_scripts' => false], $prefs);
+    }
+
+    public function test_mail_display_prefs_can_be_toggled(): void
+    {
+        $user = $this->signIn();
+
+        $this->post(route('preferences.update'), ['mail_remote' => '1', 'mail_scripts' => '1'])->assertRedirect();
+
+        $prefs = UserSetting::for($user->id)->displayPrefs();
+        $this->assertTrue($prefs['mail_remote']);
+        $this->assertTrue($prefs['mail_scripts']);
     }
 
     public function test_a_single_preference_can_be_updated(): void

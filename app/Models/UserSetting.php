@@ -67,6 +67,8 @@ use Illuminate\Database\Eloquent\Model;
     'unit_temp',
     'unit_glucose',
     'time_format',
+    'mail_load_remote',
+    'mail_allow_scripts',
     // Per-user company identity + invoice numbering (formerly workspace-global).
     'company_name', 'company_address', 'company_email', 'company_phone', 'company_tax_id',
     'company_vat_id', 'company_iban', 'company_bic', 'company_bank_name', 'company_logo_path',
@@ -115,6 +117,8 @@ class UserSetting extends Model
             'temp' => (string) ($this->unit_temp ?? 'c'),
             'glucose' => (string) ($this->unit_glucose ?? 'mgdl'),
             'time_format' => (string) ($this->time_format ?? '24h'),
+            'mail_remote' => (bool) ($this->mail_load_remote ?? false),
+            'mail_scripts' => (bool) ($this->mail_allow_scripts ?? false),
         ];
     }
 
@@ -134,6 +138,8 @@ class UserSetting extends Model
             'invoice_payment_terms_days' => 'integer',
             'invoice_default_vat_rate' => 'decimal:2',
             'company_contacts' => 'array',
+            'mail_load_remote' => 'boolean',
+            'mail_allow_scripts' => 'boolean',
             'invoice_mail_enabled' => 'boolean',
             'invoice_vat_ist' => 'boolean',
             'invoice_smtp_port' => 'integer',

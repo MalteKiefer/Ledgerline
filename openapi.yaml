@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.539.24
+  version: 1.539.25
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -351,6 +351,8 @@ components:
         temp: { type: string, enum: [c, f] }
         glucose: { type: string, enum: [mgdl, mmoll] }
         time_format: { type: string, enum: [24h, 12h] }
+        mail_remote: { type: boolean, description: "Load remote content (external images/resources) in archived mail. Default false (blocks tracking pixels)." }
+        mail_scripts: { type: boolean, description: "Run scripts in archived mail (in an isolated sandbox iframe, no app-origin access). Default false." }
 
     MeUser:
       type: object
