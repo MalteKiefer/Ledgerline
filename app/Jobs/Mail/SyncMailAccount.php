@@ -140,7 +140,7 @@ class SyncMailAccount implements ShouldQueue
         // The finally closure is serialized into job_batches, so it must NOT
         // capture $this (the job): it captures only the account id and calls a
         // static settler.
-        Bus::batch($chunks)
+        $batch = Bus::batch($chunks)
             ->name('mail-ingest-'.$accountId)
             // One poison chunk must never cancel the batch or block the rest —
             // the ingestor leaves failed files in place for the next sync.
@@ -149,6 +149,11 @@ class SyncMailAccount implements ShouldQueue
                 SyncMailAccount::markIdle($accountId);
             })
             ->dispatch();
+
+        // Record the batch id so a user can cancel this in-flight ingest
+        // (MailAccountController::cancelSync → Bus::findBatch(...)->cancel();
+        // every IngestMailChunk checks $this->batch()?->cancelled()).
+        $account->forceFill(['sync_batch_id' => $batch->id])->save();
     }
 
     /**
@@ -258,7 +263,7 @@ class SyncMailAccount implements ShouldQueue
         try {
             $account = MailAccount::find($accountId);
             if ($account !== null && $account->status === 'syncing') {
-                $account->forceFill(['status' => 'idle', 'last_synced_at' => now()])->save();
+                $account->forceFill(['status' => 'idle', 'last_synced_at' => now(), 'sync_batch_id' => null])->save();
             }
         } catch (Throwable) {
             // Best-effort resting state; the next sync will settle the status.

@@ -21,6 +21,8 @@ return [
     'syncing' => 'Syncing…',
     'sync_failed' => 'Could not start the sync.',
     'sync_busy' => 'A sync is already running or was triggered too often — wait a moment.',
+    'sync_cancel' => 'Cancel sync',
+    'cancel_failed' => 'Could not cancel the sync.',
 
     // Add/edit
     'add_account' => 'Add account',

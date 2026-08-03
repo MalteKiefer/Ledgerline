@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.539.18
+  version: 1.539.19
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -6735,6 +6735,36 @@ paths:
                 type: object
                 properties:
                   dispatched: { type: boolean }
+        "403": { description: Module disabled for this account. }
+        "404": { description: Not the caller's account. }
+        "429": { description: Rate limit exceeded. }
+
+  /mail/accounts/{account}/sync/cancel:
+    post:
+      tags: [Mail]
+      operationId: mailAccountsSyncCancel
+      summary: Cancel an in-flight sync
+      description: >
+        Cancels the running ingest batch (each IngestMailChunk checks the
+        batch's cancelled flag and stops) and settles the account to idle.
+        Already-archived messages are kept; un-ingested Maildir files remain and
+        a LATER scheduled sync resumes them — disable the account to prevent
+        that. Idempotent (no-op when nothing is running). Owner-scoped. Throttle
+        30/min.
+      parameters:
+        - name: account
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Sync cancelled (or nothing was running).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cancelled: { type: boolean }
         "403": { description: Module disabled for this account. }
         "404": { description: Not the caller's account. }
         "429": { description: Rate limit exceeded. }

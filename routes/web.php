@@ -279,6 +279,7 @@ Route::middleware('auth')->group(function (): void {
     Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.update');
     Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.destroy');
     Route::post('/mail/accounts/{account}/sync', [MailAccountController::class, 'sync'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.sync');
+    Route::post('/mail/accounts/{account}/sync/cancel', [MailAccountController::class, 'cancelSync'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.sync-cancel');
     Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->middleware('module:mail')->name('mail.accounts.status');
 
     // Passwords sharded store (merge-safety spec §3b): sealed root + record-shard blobs.

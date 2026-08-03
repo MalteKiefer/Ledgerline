@@ -11,6 +11,7 @@ use App\Rules\SafeHost;
 use App\Support\KeepBlankSecrets;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -95,6 +96,30 @@ class MailAccountController extends Controller
         SyncMailAccount::dispatch($account->id);
 
         return response()->json(['dispatched' => true]);
+    }
+
+    /**
+     * Cancel an in-flight sync. Cancels the running ingest batch (every
+     * IngestMailChunk checks $this->batch()?->cancelled() and stops) and
+     * settles the account back to idle. Already-archived messages are kept;
+     * un-ingested Maildir files stay on disk and a LATER scheduled sync would
+     * resume them — disable the account to prevent that. Idempotent: a no-op
+     * when nothing is running.
+     */
+    public function cancelSync(Request $request, MailAccount $account): JsonResponse
+    {
+        $this->authorizeOwner($request, $account);
+
+        if ($account->sync_batch_id !== null) {
+            Bus::findBatch($account->sync_batch_id)?->cancel();
+        }
+
+        $account->forceFill([
+            'status' => 'idle',
+            'sync_batch_id' => null,
+        ])->save();
+
+        return response()->json(['cancelled' => true]);
     }
 
     /** Current sync status + archived-message count for the account. */

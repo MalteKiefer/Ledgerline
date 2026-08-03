@@ -24,6 +24,8 @@ use Illuminate\Support\Carbon;
  * @property ?array<int,string> $folders
  * @property ?Carbon $backfill_since
  * @property ?Carbon $last_synced_at
+ * @property ?string $sync_batch_id
+ * @property string $status
  */
 #[Fillable([
     'name', 'host', 'port', 'username', 'password', 'encryption',
