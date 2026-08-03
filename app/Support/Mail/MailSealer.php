@@ -15,11 +15,22 @@ use RuntimeException;
  *
  * Zero-knowledge boundary: this class is handed the recipient's PUBLIC X25519
  * key + ML-KEM-768 encapsulation key ONLY (never a secret key — the server
- * cannot decrypt what it seals). The raw plaintext message passed in is
- * transient: it lives only for the duration of the `seal()` call and is
- * scrubbed from memory (`sodium_memzero`) before returning, mirroring the
- * `/gallery/process` and `/invoices/ocr` transient-cleartext pattern used
- * elsewhere in the app (nothing here is persisted, cached, or logged).
+ * cannot decrypt what it seals). The raw plaintext message is transient: it
+ * exists only for the duration of the `seal()` call. Nothing is written to
+ * disk, cached, or logged.
+ *
+ * Memory-hygiene scope (be precise — do not overstate): `seal()` scrubs the
+ * copy IT owns (`$rawMessage`, via `sodium_memzero` in a `finally`). It does
+ * NOT and cannot scrub every transient copy: Symfony Process's `AbstractPipes`
+ * buffers the stdin string internally (`$inputBuffer`, progressively substr'd
+ * as it is written to the child) and the Node child holds the bytes in its own
+ * heap while sealing — neither is reachable from here. So a transient plaintext
+ * copy unavoidably exists in the Process stdin buffer + the Node process memory
+ * for the lifetime of the seal, then is released to the GC/OS on exit. This is
+ * the same accepted transient-plaintext window as `/gallery/process` and
+ * `/invoices/ocr` (opt-in server-side handling of decrypted bytes that never
+ * lands at rest); the feature's Security-Register entry documents it. In-app
+ * copies WE hold are scrubbed; process-boundary copies are not.
  *
  * The Node process is invoked via `Support\BinaryProcess` with an array-argv
  * command (no shell string — no injection risk) and the raw message piped on
@@ -91,8 +102,10 @@ final class MailSealer
 
             return $this->parseFramedOutput($out);
         } finally {
-            // Scrub the transient plaintext from memory regardless of outcome —
-            // the same discipline as the client-side / gallery transient paths.
+            // Scrub OUR copy of the plaintext regardless of outcome. Note this
+            // only clears the buffer this method owns — the Symfony Process
+            // stdin buffer + the Node child's heap hold their own transient
+            // copies we cannot reach (see the class docblock).
             sodium_memzero($rawMessage);
         }
     }
