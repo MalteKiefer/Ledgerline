@@ -9,6 +9,8 @@ return [
     'back' => 'Back',
     'next' => 'Next',
     'reset' => 'Reset',
+    'on' => 'On',
+    'off' => 'Off',
     'previous' => 'Previous',
     'loading' => 'Loading…',
     'save' => 'Save',

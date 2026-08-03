@@ -73,5 +73,31 @@
                 </div>
             @endforeach
         </div>
+
+        {{-- Mail display (remote content + scripts) --}}
+        <h2 class="mt-6 mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('mail.display_settings') }}</h2>
+        <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
+            @foreach (['mail_remote' => ['label' => __('mail.load_remote'), 'hint' => __('mail.load_remote_hint'), 'warn' => false], 'mail_scripts' => ['label' => __('mail.allow_scripts'), 'hint' => __('mail.allow_scripts_warn'), 'warn' => true]] as $key => $m)
+                <div class="flex items-center justify-between gap-3 px-4 py-3">
+                    <div class="min-w-0">
+                        <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ $m['label'] }}</p>
+                        <p class="text-xs {{ $m['warn'] ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500' }}">{{ $m['hint'] }}</p>
+                    </div>
+                    <div class="flex shrink-0 gap-1 rounded-xl bg-black/5 dark:bg-white/5 p-1">
+                        @foreach (['0' => __('common.off'), '1' => __('common.on')] as $val => $lbl)
+                            <form method="POST" action="{{ route('preferences.update') }}">
+                                @csrf
+                                <input type="hidden" name="{{ $key }}" value="{{ $val }}">
+                                <button type="submit" @class([
+                                    'rounded-lg px-3 py-1.5 text-sm font-medium transition',
+                                    'll-accent shadow-sm shadow-accent/30' => (bool) ($prefs[$key] ?? false) === ($val === '1'),
+                                    'text-gray-500 dark:text-gray-400 hover:text-accent' => (bool) ($prefs[$key] ?? false) !== ($val === '1'),
+                                ])>{{ $lbl }}</button>
+                            </form>
+                        @endforeach
+                    </div>
+                </div>
+            @endforeach
+        </div>
     </div>
 </x-layouts.app>

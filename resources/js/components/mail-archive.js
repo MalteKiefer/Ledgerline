@@ -47,6 +47,8 @@ export default (config) => ({
     capped: false,
     error: '',
     showTrash: false,
+    selected: [],
+    bulkBusy: false,
     // filters
     fAccount: '',
     fFolder: '',
@@ -107,6 +109,7 @@ export default (config) => ({
 
             this.cache = ledger.map((m) => this._buildRow(m, cached.get(m.id)));
             this.page = 1;
+            this.selected = [];
         } catch (e) {
             this.error = this.config.loadFailed;
         } finally {
@@ -420,6 +423,61 @@ export default (config) => ({
         const id = this.open.id;
         this.closeMessage();
         await this.restoreIds([id]);
+    },
+
+    // ---- multi-select ----------------------------------------------------
+    isSelected(id) { return this.selected.includes(id); },
+    toggleSelect(id) {
+        const i = this.selected.indexOf(id);
+        if (i >= 0) this.selected.splice(i, 1); else this.selected.push(id);
+    },
+    get selectedCount() { return this.selected.length; },
+    get pageIds() { return this.pageRows.map((r) => r.id); },
+    get allPageSelected() {
+        const ids = this.pageIds;
+        return ids.length > 0 && ids.every((id) => this.selected.includes(id));
+    },
+    toggleSelectAllPage() {
+        const ids = this.pageIds;
+        if (this.allPageSelected) {
+            this.selected = this.selected.filter((id) => !ids.includes(id));
+        } else {
+            for (const id of ids) if (!this.selected.includes(id)) this.selected.push(id);
+        }
+    },
+    clearSelection() { this.selected = []; },
+
+    async bulkTrash() {
+        if (!this.selected.length) return;
+        if (!await this.$store.confirm.ask(this.config.trashConfirm)) return;
+        await this.trashIds([...this.selected]);
+        this.selected = [];
+    },
+    async bulkRestore() {
+        if (!this.selected.length) return;
+        await this.restoreIds([...this.selected]);
+        this.selected = [];
+    },
+    async bulkPushBack() {
+        if (!this.selected.length || this.bulkBusy) return;
+        if (!await this.$store.confirm.ask(this.config.pushConfirmMsg)) return;
+        this.bulkBusy = true;
+        this.progress = 0;
+        this.progressTotal = this.selected.length;
+        let ok = 0;
+        const rows = this.selected.map((id) => this.cache.find((r) => r.id === id)).filter(Boolean);
+        await this._pool(rows, 3, async (r) => {
+            try {
+                const buffer = await fetchBlobBuffer(this.config.rawBase.replace('__id__', r.id));
+                const bytes = await window.Vault.decryptMailBlob(r.sealedKey, buffer);
+                await postForm(this.config.pushbackBase.replace('__id__', r.id), { raw_b64: bytesToB64(bytes), folder: r.folder });
+                ok++;
+            } catch { /* skip one */ }
+            this.progress++;
+        });
+        this.bulkBusy = false;
+        this.selected = [];
+        window.llToast?.(this.config.pushBulkDone.replace(':n', String(ok)));
     },
 
     // Only these types are ever rendered INLINE (same-origin blob URL). Mail
