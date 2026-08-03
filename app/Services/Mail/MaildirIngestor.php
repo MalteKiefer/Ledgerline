@@ -44,7 +44,12 @@ use Throwable;
  * public identity keys (X25519 + ML-KEM-768). If the owner has never unlocked
  * their vault, those keys do not exist yet — the ingestor MUST NOT drop the
  * mail. It returns NotSealable and leaves the Maildir file in place so a later
- * run archives it once the keys are published.
+ * run archives it once the keys are published. The sync PRODUCER
+ * (App\Jobs\Mail\SyncMailAccount) pre-flights this same check via
+ * self::ownerIdentity() before ever invoking mbsync, so a keyless owner's
+ * mailbox is never fetched into the durable Maildir in the first place — the
+ * per-message check here remains as a defence-in-depth backstop (e.g. a chunk
+ * still holding files fetched before keys existed).
  *
  * A file that cannot be READ is quarantined (moved aside) + logged — never
  * silently dropped and never allowed to crash the whole folder loop.
@@ -89,7 +94,7 @@ final class MaildirIngestor
             return IngestResult::duplicate($hash);
         }
 
-        [$x25519Pub, $mlkemEk] = $this->ownerIdentity($account);
+        [$x25519Pub, $mlkemEk] = self::ownerIdentity($account);
         if ($x25519Pub === null || $mlkemEk === null) {
             // Cannot seal yet: the owner has not published identity keys. Leave
             // the file untouched so a later run archives it — losing it here would
@@ -220,9 +225,13 @@ final class MaildirIngestor
      * not provisioned their vault yet — return [null, null] so ingestFile leaves
      * the mail for a later run.
      *
+     * Public + static (no instance state involved) so the sync producer can
+     * run the identical check BEFORE fetching anything — see the class
+     * docblock's "Identity-key gating" note.
+     *
      * @return array{0: ?string, 1: ?string}
      */
-    private function ownerIdentity(MailAccount $account): array
+    public static function ownerIdentity(MailAccount $account): array
     {
         $user = $account->user()->first(['id', 'x25519_public_key', 'mlkem_public_key']);
         if ($user === null) {

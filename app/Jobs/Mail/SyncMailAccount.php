@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs\Mail;
 
 use App\Models\MailAccount;
+use App\Services\Mail\MaildirIngestor;
 use App\Services\Mail\MbsyncRunner;
 use App\Support\Redactor;
 use Illuminate\Bus\Batch;
@@ -19,6 +20,17 @@ use Throwable;
  * mailbox, then fan the fetched Maildir out to chunked ingest workers.
  *
  * Flow (per account):
+ *   0. Identity-key pre-flight: MaildirIngestor::ownerIdentity() must resolve
+ *      BOTH the owner's published X25519 + ML-KEM public keys before mbsync
+ *      is ever invoked. A message MaildirIngestor cannot seal is left as
+ *      durable plaintext in the Maildir until the owner's keys exist — and
+ *      every scheduled sync would re-fetch/re-check it, so an owner who has
+ *      configured a mailbox but never unlocked their vault would otherwise
+ *      accumulate indefinitely-unsealed plaintext on disk. Skipping the fetch
+ *      entirely (no mbsync run at all) keeps that window at zero: the server
+ *      never holds plaintext it cannot immediately seal. The account is
+ *      marked 'error' with a non-secret, actionable last_error; the next
+ *      scheduled sync re-checks and archives normally once keys are published.
  *   1. status = syncing.
  *   2. MbsyncRunner::run() — a pull-only, read-only-origin mbsync mirror into
  *      the account's durable Maildir scratch tree.
@@ -56,6 +68,14 @@ class SyncMailAccount implements ShouldQueue
     /** mbsync itself is bounded to 300s; leave room for the fan-out on top. */
     public int $timeout = 600;
 
+    /**
+     * Fixed, non-secret last_error for the identity-key pre-flight gate. Not
+     * routed through Redactor::redact(): it is a literal author-written
+     * sentence with no interpolated/user-controlled content, so there is
+     * nothing it could leak.
+     */
+    private const NO_IDENTITY_KEY_ERROR = 'Vault not yet unlocked — unlock your vault once so the server can seal archived mail to your keys.';
+
     public function __construct(public int $accountId) {}
 
     /**
@@ -74,6 +94,18 @@ class SyncMailAccount implements ShouldQueue
     {
         $account = MailAccount::find($this->accountId);
         if ($account === null || ! $account->enabled) {
+            return;
+        }
+
+        // Pre-flight BEFORE any fetch: see the class docblock's step 0. Do not
+        // pull a single byte of mail this run cannot immediately seal.
+        [$x25519Pub, $mlkemEk] = MaildirIngestor::ownerIdentity($account);
+        if ($x25519Pub === null || $mlkemEk === null) {
+            $account->forceFill([
+                'status' => 'error',
+                'last_error' => self::NO_IDENTITY_KEY_ERROR,
+            ])->save();
+
             return;
         }
 

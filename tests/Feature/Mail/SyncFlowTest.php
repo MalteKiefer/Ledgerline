@@ -168,6 +168,45 @@ class SyncFlowTest extends TestCase
         }
     }
 
+    // ---- 6: keyless owner → no fetch, no plaintext accumulates -----------
+
+    public function test_sync_is_skipped_when_owner_has_no_identity_keys(): void
+    {
+        // No forceFill of x25519/mlkem keys: this owner has configured a
+        // mailbox but never unlocked their vault.
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id, 'enabled' => true]);
+        $fake = $this->bindRunner(MbsyncResult::success(), fn (MailAccount $a) => $this->dropFixtures($a, 'INBOX', 3));
+
+        SyncMailAccount::dispatch($account->id);
+
+        // The pre-flight must stop the producer before it ever calls the
+        // runner — mbsync is never invoked, so nothing is fetched and no
+        // Maildir files exist to leave as unsealed plaintext.
+        $this->assertSame(0, $fake->runCount, 'MbsyncRunner::run() must not be invoked for a keyless owner.');
+        $this->assertSame([], $this->maildirEmls($account, 'INBOX'));
+        $this->assertDatabaseCount('mail_messages', 0);
+        $this->assertDatabaseCount('mail_blobs', 0);
+
+        $account->refresh();
+        $this->assertSame('error', $account->status);
+        $this->assertNotNull($account->last_error);
+
+        // Once the owner unlocks their vault (keys published), a re-run
+        // archives normally — the skip is a retry, not a permanent lock-out.
+        $keys = self::identityKeys();
+        $user->forceFill(['x25519_public_key' => $keys['pub'], 'mlkem_public_key' => $keys['ek']])->save();
+
+        SyncMailAccount::dispatch($account->id);
+
+        $this->assertSame(1, $fake->runCount);
+        $this->assertDatabaseCount('mail_messages', 3);
+        $this->assertDatabaseCount('mail_blobs', 3);
+        $account->refresh();
+        $this->assertSame('idle', $account->status);
+        $this->assertNull($account->last_error);
+    }
+
     // ---- helpers ----------------------------------------------------------
 
     private function bindRunner(MbsyncResult $result, ?\Closure $onRun = null): FakeMbsyncRunner

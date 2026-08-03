@@ -17,6 +17,14 @@ use Illuminate\Support\Carbon;
  * HIGHMODSEQ where the server supports it. No user_id column: ownership
  * flows through the parent account.
  *
+ * CURRENTLY UNUSED / reserved scaffolding: nothing in the sync pipeline reads
+ * or writes this table today. The live resume anchors are mbsync's own
+ * UID/UIDVALIDITY state FILES on disk (see MbsyncRunner's stateDir) plus the
+ * ledger's (user_id, content_hash) dedup in MaildirIngestor — resumability
+ * does not depend on these columns being kept current. Do not treat a stale
+ * or empty row here as evidence of anything; this model exists for a future
+ * explicit server-side cursor, not as the current source of truth.
+ *
  * Eloquent has no native composite-primary-key support, so save()'s
  * update/select paths are pointed at both columns via the two overrides
  * below instead of a single (non-existent) `id` key. Callers should still

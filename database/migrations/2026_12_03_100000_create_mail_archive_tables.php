@@ -39,6 +39,11 @@ return new class extends Migration
             $table->timestamps();
         });
 
+        // CURRENTLY UNUSED / reserved scaffolding: no code path reads or writes
+        // this table yet (see App\Models\MailSyncState's docblock). The live
+        // resume anchors are mbsync's own UID/UIDVALIDITY state files on disk
+        // plus mail_messages' (user_id, content_hash) dedup — not these
+        // columns. Kept for a future explicit server-side cursor.
         Schema::create('mail_sync_state', function (Blueprint $table): void {
             $table->foreignId('account_id')->constrained('mail_accounts')->cascadeOnDelete();
             $table->string('folder');
