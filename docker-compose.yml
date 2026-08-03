@@ -104,6 +104,19 @@ services:
   # Queue workers. Scale up to 10 processes:  docker compose up -d --scale worker=10
   # Each replica is capped at WORKER_MEMORY_LIMIT (default 768m) so 10 workers
   # stay within ~7.5g. queue:work also self-restarts past its own memory bound.
+  #
+  # MAIL ARCHIVE (mail module) runs ENTIRELY inside this worker — there is no
+  # separate mbsync sidecar service, by design. The sync job (SyncMailAccount)
+  # shells `mbsync` IN-PROCESS via BinaryProcess (array-argv), so isync must be
+  # ON PATH in the app image — it is (see Dockerfile) — and a standalone mbsync
+  # container could not be reached by that in-process call. mbsync mirrors each
+  # account's mailbox pull-only into a scratch Maildir under
+  # storage/app/mail-sync/<id>/ on the app-storage volume (already mounted into
+  # the worker via the *app-image anchor), the ingest worker seals + archives
+  # each message (shelling the Node sealer, `nodejs` is in the image) then shreds
+  # the plaintext. Enable per user via the `mail` module toggle + a configured
+  # account; the scheduler runs `mail:sync-accounts` every
+  # MAIL_SYNC_INTERVAL_MINUTES. Nothing to mount or expose here.
   worker:
     <<: *app-image
     command: ["php", "/var/www/html/artisan", "queue:work", "--sleep=1", "--tries=3", "--max-time=3600", "--timeout=600", "--memory=${WORKER_PHP_MEMORY:-512}"]

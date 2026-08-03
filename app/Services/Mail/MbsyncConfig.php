@@ -36,7 +36,7 @@ use InvalidArgumentException;
  *
  * TLS is pinned per the account's configured `encryption` and never silently
  * downgraded to plaintext: an unrecognised encryption value is a hard error
- * (see sslType()) rather than a fallback to `SSLType None`.
+ * (see tlsType()) rather than a fallback to `TLSType None`.
  *
  * `render()` is a pure string builder — it does not touch the filesystem,
  * the network, or the database beyond reading the given $account's already-
@@ -84,8 +84,15 @@ final class MbsyncConfig
             'User '.$this->quote((string) $account->username),
             // The password itself never appears in this file — see class docblock.
             $this->passCmd($account),
-            'SSLType '.$this->sslType((string) $account->encryption),
-            'SSLVersions TLSv1.2 TLSv1.3',
+            // isync >= 1.5.0 renamed SSLType/SSLVersions to TLSType/TLSVersions
+            // (the old names still parse but emit a deprecation notice), and the
+            // version list changed to the additive `+<ver>` form — `TLSVersions
+            // TLSv1.2 TLSv1.3` is REJECTED by 1.5.x ("Unrecognized TLS version").
+            // The deploy image ships isync 1.5.1 (Alpine 3.24), so we emit the
+            // new directives directly. `+1.2 +1.3` pins TLS >= 1.2 (only 1.2/1.3
+            // enabled), same intent as the old `TLSv1.2 TLSv1.3`.
+            'TLSType '.$this->tlsType((string) $account->encryption),
+            'TLSVersions +1.2 +1.3',
             '',
             "IMAPStore {$id}-remote",
             "Account {$id}",
@@ -143,17 +150,19 @@ final class MbsyncConfig
     }
 
     /**
-     * Map the account's `encryption` column to mbsync's `SSLType` values.
+     * Map the account's `encryption` column to mbsync's `TLSType` values.
      * `ssl` and `tls` both mean "encrypt from the first byte of the
      * connection" vs. `starttls`'s "connect plaintext, then upgrade" — mbsync
      * only exposes two secure transports (IMAPS = implicit, STARTTLS =
      * opportunistic), so `ssl` and `tls` map to the same IMAPS transport and
      * `starttls` maps to STARTTLS. An unrecognised value is a hard error
-     * (fail closed) rather than a fallback to `SSLType None` — silently
+     * (fail closed) rather than a fallback to `TLSType None` — silently
      * downgrading to plaintext on bad input would be the one real security
-     * regression this method could introduce.
+     * regression this method could introduce. (The IMAPS / STARTTLS / None
+     * VALUES are unchanged from the pre-1.5.0 SSLType keyword; only the
+     * directive name was renamed — verified against isync 1.5.1.)
      */
-    private function sslType(string $encryption): string
+    private function tlsType(string $encryption): string
     {
         return match ($encryption) {
             'ssl', 'tls' => 'IMAPS',

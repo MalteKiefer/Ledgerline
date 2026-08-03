@@ -49,6 +49,15 @@ RUN apk add --no-cache \
       # surface minimal. The app only ever shells out to them via array-argv
       # (BinaryProcess, no shell) on a transient temp file that is shredded after.
       tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-deu poppler-utils \
+      # Mail-archive IMAP sync (mail module): isync/mbsync mirrors each account's
+      # mailbox PULL-ONLY into a scratch Maildir (see App\Services\Mail\
+      # MbsyncConfig — read-only origin, Sync Pull / Expunge None / Remove None).
+      # App\Services\Mail\MbsyncRunner shells `mbsync` IN-PROCESS in the worker
+      # via BinaryProcess (array-argv, no shell), so the binary must be ON PATH
+      # in THIS runtime image — a separate mbsync sidecar container could not be
+      # reached by that in-process call. Alpine 3.24 ships isync 1.5.1, whose
+      # TLSType/TLSVersions directives MbsyncConfig emits (see that class).
+      isync \
       # Server-side mail sealer (App\Support\Mail\MailSealer, mail-archive
       # ingest): shells `node resources/js/mail-sealer/seal.mjs` per fetched
       # message to seal it to the user's public identity keys — Node itself

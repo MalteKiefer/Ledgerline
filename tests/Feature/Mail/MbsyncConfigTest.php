@@ -73,7 +73,13 @@ class MbsyncConfigTest extends TestCase
         $this->assertStringContainsString('CopyArrivalDate yes', $config);
         $this->assertStringContainsString('Host "imap.example.com"', $config);
         $this->assertStringContainsString('Port 993', $config);
-        $this->assertStringContainsString('SSLType IMAPS', $config);
+        // isync >= 1.5.0 directive names (renamed from SSLType/SSLVersions).
+        // `+1.2 +1.3` is the additive version syntax 1.5.x requires; the old
+        // `SSLType`/`SSLVersions TLSv1.2 TLSv1.3` form is deprecated/rejected.
+        $this->assertStringContainsString('TLSType IMAPS', $config);
+        $this->assertStringContainsString('TLSVersions +1.2 +1.3', $config);
+        $this->assertStringNotContainsString('SSLType', $config);
+        $this->assertStringNotContainsString('SSLVersions', $config);
 
         // Never any directive that could write to or delete from the origin.
         $this->assertStringNotContainsString('Sync Push', $config);
@@ -106,18 +112,18 @@ class MbsyncConfigTest extends TestCase
     {
         $config = $this->render(['encryption' => 'starttls', 'port' => 143]);
 
-        $this->assertStringContainsString('SSLType STARTTLS', $config);
-        $this->assertStringNotContainsString('SSLType IMAPS', $config);
-        $this->assertStringNotContainsString('SSLType None', $config);
+        $this->assertStringContainsString('TLSType STARTTLS', $config);
+        $this->assertStringNotContainsString('TLSType IMAPS', $config);
+        $this->assertStringNotContainsString('TLSType None', $config);
     }
 
     public function test_none_account_gets_no_tls(): void
     {
         $config = $this->render(['encryption' => 'none', 'port' => 143]);
 
-        $this->assertStringContainsString('SSLType None', $config);
-        $this->assertStringNotContainsString('SSLType IMAPS', $config);
-        $this->assertStringNotContainsString('SSLType STARTTLS', $config);
+        $this->assertStringContainsString('TLSType None', $config);
+        $this->assertStringNotContainsString('TLSType IMAPS', $config);
+        $this->assertStringNotContainsString('TLSType STARTTLS', $config);
     }
 
     public function test_tls_encryption_maps_to_implicit_imaps(): void
@@ -126,7 +132,7 @@ class MbsyncConfigTest extends TestCase
         // secure transports; 'tls' is treated as implicit, same as 'ssl'.
         $config = $this->render(['encryption' => 'tls']);
 
-        $this->assertStringContainsString('SSLType IMAPS', $config);
+        $this->assertStringContainsString('TLSType IMAPS', $config);
     }
 
     public function test_folders_restriction_limits_patterns_to_the_named_folders(): void
