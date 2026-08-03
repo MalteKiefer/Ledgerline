@@ -17,6 +17,15 @@ Schedule::command('backups:run-due')->everyMinute()->withoutOverlapping();
 // the transfer modal always has an up-to-date quick-pick list.
 Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
 
+// Dispatch a pull-only IMAP sync for every enabled mail account on the
+// configured interval. Each dispatch is a queued producer job guarded by its
+// own per-account no-overlap lock, so this scheduler tick never runs mbsync
+// itself — it only enqueues. Interval is minutes-within-the-hour (1..59).
+$mailSyncMinutes = max(1, min(59, (int) config('mail_archive.sync_interval_minutes', 30)));
+Schedule::command('mail:sync-accounts')
+    ->cron('*/'.$mailSyncMinutes.' * * * *')
+    ->withoutOverlapping();
+
 // Reclaim stored file/gallery bytes on disk with no ownership record (leaked/
 // aborted uploads, or bytes orphaned by an interrupted erasure). The client
 // reconciles manifest-unreferenced blobs on its own; this is the crash net.
@@ -24,6 +33,7 @@ Schedule::command('files:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('notes:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('passwords:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('invoices:sweep-orphans')->daily()->withoutOverlapping();
+Schedule::command('mail:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('gallery:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('contacts:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('explore:sweep-orphans')->daily()->withoutOverlapping();

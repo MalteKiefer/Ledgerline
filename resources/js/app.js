@@ -26,6 +26,7 @@ import dashboard from './components/dashboard';
 import explore from './components/explore';
 import pwStrength from './components/pw-strength';
 import tagSelect from './components/tag-select';
+import mailAccounts from './components/mail-accounts';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -292,6 +293,13 @@ Alpine.data('tagSelect', tagSelect);
 
 Alpine.data('paperlessSettings', paperlessSettings);
 Alpine.data('notificationBell', notificationBell);
+
+/**
+ * Mail archive settings (accounts + sync status only): IMAP account CRUD,
+ * "sync now", and a polled status/progress indicator. No message-reading
+ * UI yet.
+ */
+Alpine.data('mailAccounts', mailAccounts);
 
 /**
  * File explorer: multiselect, a shared "move to folder" modal (for a single row

@@ -23,7 +23,7 @@ class DesignSmokeRenderTest extends TestCase
         $u = User::factory()->create();
         $routes = [
             '/dashboard', '/health', '/finance', '/notes', '/todos', '/bookmarks',
-            '/contacts', '/explore', '/gallery', '/files', '/passwords',
+            '/contacts', '/mail', '/explore', '/gallery', '/files', '/passwords',
             '/profile', '/profile/account', '/profile/devices', '/profile/sessions',
             '/profile/encryption', '/profile/security', '/profile/appearance',
             '/profile/export', '/profile/danger',

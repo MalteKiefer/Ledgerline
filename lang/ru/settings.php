@@ -264,6 +264,7 @@ return [
     'backup_source_notes' => 'Заметки',
     'backup_source_passwords' => 'Пароли',
     'backup_source_invoices' => 'Счета',
+    'backup_source_mail' => 'Архив почты',
     'backup_source_contacts' => 'Контакты',
     'backup_source_explore' => 'Explore',
     'backup_source_shared-folders' => 'Общие папки',

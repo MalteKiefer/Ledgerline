@@ -9,6 +9,7 @@ use App\Models\ExploreBlob;
 use App\Models\FileBlob;
 use App\Models\GalleryBlob;
 use App\Models\InvoiceBlob;
+use App\Models\MailBlob;
 use App\Models\NoteBlob;
 use App\Models\PasswordBlob;
 use App\Models\SharedFolderBlob;
@@ -30,6 +31,7 @@ final class BlobRegistry
         'notes' => ['model' => NoteBlob::class,   'prefix' => 'notes'],
         'passwords' => ['model' => PasswordBlob::class, 'prefix' => 'passwords'],
         'invoices' => ['model' => InvoiceBlob::class, 'prefix' => 'invoices'],
+        'mail' => ['model' => MailBlob::class,     'prefix' => 'mail'],
         'contacts' => ['model' => ContactBlob::class, 'prefix' => 'contacts'],
         'explore' => ['model' => ExploreBlob::class, 'prefix' => 'explore'],
         'shared-folders' => ['model' => SharedFolderBlob::class, 'prefix' => 'shared-folders'],
