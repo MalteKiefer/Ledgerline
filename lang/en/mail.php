@@ -24,6 +24,8 @@ return [
     'sync_cancel' => 'Cancel sync',
     'cancel_failed' => 'Could not cancel the sync.',
     'archive_heading' => 'Archive',
+    'spam' => 'Spam',
+    'headers' => 'Original headers',
     'pgp_ok' => 'Decrypted',
     'pgp_nokey' => 'Encrypted — no matching key',
     'pgp_failed' => 'Decryption failed',

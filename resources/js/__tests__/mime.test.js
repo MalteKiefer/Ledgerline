@@ -59,6 +59,30 @@ describe('parseEnvelope', () => {
     });
 });
 
+describe('isSpam / parseAuthResults / rawHeaderBlock', () => {
+    it('detects X-Spam-Flag and X-Spam-Status', () => {
+        expect(splitMessage('X-Spam-Flag: YES\n\nb').headers['x-spam-flag']).toBe('YES');
+        const { headers } = splitMessage('X-Spam-Status: Yes, score=9\n\nb');
+        expect(headers['x-spam-status']).toContain('Yes');
+    });
+
+    it('parses SPF/DKIM/DMARC from Authentication-Results', async () => {
+        const { parseAuthResults, isSpam } = await import('../shared/mime.js');
+        const { headers } = splitMessage('Authentication-Results: mx.test; spf=pass smtp.mailfrom=a@b; dkim=pass header.d=b; dmarc=fail\n\nx');
+        const a = parseAuthResults(headers);
+        expect(a.spf).toBe('pass');
+        expect(a.dkim).toBe('pass');
+        expect(a.dmarc).toBe('fail');
+        expect(isSpam(splitMessage('X-Spam-Flag: YES\n\nx').headers)).toBe(true);
+        expect(isSpam(splitMessage('Subject: x\n\nx').headers)).toBe(false);
+    });
+
+    it('rawHeaderBlock returns the verbatim header block', async () => {
+        const { rawHeaderBlock } = await import('../shared/mime.js');
+        expect(rawHeaderBlock('From: A\nSubject: B\n\nbody')).toBe('From: A\nSubject: B');
+    });
+});
+
 describe('parseMessage', () => {
     it('extracts text body and a base64 attachment from multipart/mixed', () => {
         // "hi" as base64 is "aGk=".

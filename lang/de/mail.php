@@ -24,6 +24,8 @@ return [
     'sync_cancel' => 'Synchronisierung abbrechen',
     'cancel_failed' => 'Synchronisierung konnte nicht abgebrochen werden.',
     'archive_heading' => 'Archiv',
+    'spam' => 'Spam',
+    'headers' => 'Original-Header',
     'pgp_ok' => 'Entschlüsselt',
     'pgp_nokey' => 'Verschlüsselt — kein passender Schlüssel',
     'pgp_failed' => 'Entschlüsselung fehlgeschlagen',

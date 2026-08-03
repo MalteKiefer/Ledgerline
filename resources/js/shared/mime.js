@@ -102,8 +102,38 @@ export function hasAttachment(headers, body) {
     return false;
 }
 
-// The list-row envelope: decoded From / To / Subject, an ISO-ish Date, and the
-// attachment flag. `input` is the decrypted RFC822 message (bytes or string).
+// Whether the mail is flagged as spam by the receiving server (SpamAssassin /
+// Rspamd / generic X-Spam-* headers).
+export function isSpam(headers) {
+    if ((headers['x-spam-flag'] || '').toLowerCase() === 'yes') return true;
+    if (/^\s*yes\b/i.test(headers['x-spam-status'] || '')) return true;
+    if ((headers['x-spamd-result'] || '').toLowerCase().includes('default: true')) return true;
+    if (/\bjunk\b/i.test(headers['x-spam'] || '')) return true;
+    return false;
+}
+
+// Parse the Authentication-Results header into { spf, dkim, dmarc } — each the
+// mechanism's verdict (pass/fail/softfail/neutral/none/…) or null if absent.
+export function parseAuthResults(headers) {
+    const ar = (headers['authentication-results'] || headers['arc-authentication-results'] || '').toLowerCase();
+    const pick = (name) => {
+        const m = new RegExp(`(?:^|;|\\s)${name}=(pass|fail|softfail|hardfail|neutral|none|temperror|permerror|policy|bestguesspass)`).exec(ar);
+        return m ? m[1] : null;
+    };
+    return { spf: pick('spf'), dkim: pick('dkim'), dmarc: pick('dmarc') };
+}
+
+// The ORIGINAL header block (verbatim, not unfolded/lowercased) for a
+// "show original headers" view. `input` is the raw RFC822 (bytes or string).
+export function rawHeaderBlock(input) {
+    const text = typeof input === 'string' ? input : decodeBytes(input, 'latin1');
+    const norm = text.replace(/\r\n/g, '\n');
+    const sep = norm.indexOf('\n\n');
+    return (sep === -1 ? norm : norm.slice(0, sep)).trim();
+}
+
+// The list-row envelope: decoded From / To / Subject, an ISO-ish Date, the
+// attachment flag, and a spam flag. `input` is the RFC822 message (bytes/string).
 export function parseEnvelope(input) {
     const { headers, body } = splitMessage(input);
     return {
@@ -112,6 +142,7 @@ export function parseEnvelope(input) {
         subject: decodeWords(headers.subject || ''),
         date: headers.date || '',
         hasAttachment: hasAttachment(headers, body),
+        spam: isSpam(headers),
     };
 }
 

@@ -148,7 +148,10 @@
                                         <td class="truncate px-3 py-2.5 text-gray-500" x-text="r.mailbox" :title="r.mailbox"></td>
                                         <td class="truncate px-3 py-2.5" x-text="r.from" :title="r.from"></td>
                                         <td class="truncate px-3 py-2.5 text-gray-500" x-text="r.to" :title="r.to"></td>
-                                        <td class="truncate px-3 py-2.5 text-gray-900 dark:text-gray-100" :class="r.seen ? 'font-medium' : 'font-bold'" x-text="r.subject" :title="r.subject"></td>
+                                        <td class="truncate px-3 py-2.5 text-gray-900 dark:text-gray-100" :class="r.seen ? 'font-medium' : 'font-bold'" :title="r.subject">
+                                            <span x-show="r.spam" x-cloak class="mr-1 align-middle"><x-badge variant="error">{{ __('mail.spam') }}</x-badge></span>
+                                            <span x-text="r.subject"></span>
+                                        </td>
                                         <td class="truncate px-3 py-2.5 text-gray-500 tabular-nums" x-text="r.dateLabel" :title="r.dateLabel"></td>
                                         <td class="px-3 py-2.5 text-center">
                                             <span x-show="r.hasAttachment"><x-icon name="paper-clip" class="mx-auto h-4 w-4 text-gray-400" /></span>
@@ -185,10 +188,17 @@
                         <div class="min-w-0">
                             <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="open?.subject"></h3>
                             <p class="mt-0.5 truncate text-xs text-gray-500" x-text="`${open?.from} → ${open?.to} · ${open?.dateLabel}`"></p>
-                            <p class="mt-1" x-show="pgp" x-cloak>
+                            <p class="mt-1 flex flex-wrap items-center gap-1.5">
                                 <span x-show="pgp === 'ok'"><x-badge variant="success"><x-icon name="lock-open" class="mr-1 inline h-3 w-3" />{{ __('mail.pgp_ok') }}</x-badge></span>
                                 <span x-show="pgp === 'nokey'"><x-badge variant="warning">{{ __('mail.pgp_nokey') }}</x-badge></span>
                                 <span x-show="pgp === 'fail'"><x-badge variant="error">{{ __('mail.pgp_failed') }}</x-badge></span>
+                                <span x-show="spam"><x-badge variant="error">{{ __('mail.spam') }}</x-badge></span>
+                                <template x-for="k in ['spf','dkim','dmarc']" :key="k">
+                                    <span x-show="auth[k]"
+                                          class="rounded px-1.5 py-0.5 text-[11px] font-medium"
+                                          :class="auth[k] === 'pass' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : ((auth[k] === 'fail' || auth[k] === 'hardfail') ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300')"
+                                          x-text="k.toUpperCase() + ': ' + auth[k]"></span>
+                                </template>
                             </p>
                         </div>
                         <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeMessage()" :aria-label="__('common.close')" />
@@ -223,6 +233,16 @@
                                 </div>
                             </div>
                             </template>
+
+                            {{-- Controls: load remote content for this mail, show original headers --}}
+                            <div class="mb-3 flex flex-wrap items-center gap-2">
+                                <x-button variant="secondary" size="sm" icon="photo" x-show="canLoadRemote" @click="loadRemoteOnce()">{{ __('mail.load_remote') }}</x-button>
+                                <x-button variant="secondary" size="sm" icon="document-text" @click="showHeaders = !showHeaders">
+                                    <span x-show="!showHeaders">{{ __('mail.headers') }}</span>
+                                    <span x-show="showHeaders" x-cloak>{{ __('common.close') }}</span>
+                                </x-button>
+                            </div>
+                            <pre x-show="showHeaders" x-cloak x-text="rawHead" class="mb-4 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-black/[0.06] dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] p-3 font-mono text-[11px] text-gray-700 dark:text-gray-300"></pre>
 
                             {{-- Body: sandboxed iframe (scripts on), sanitized HTML (scripts off), else plain text --}}
                             <iframe x-show="bodyFrame" x-cloak :srcdoc="bodyFrame" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" class="h-[62vh] w-full rounded-lg border border-black/[0.06] dark:border-white/10 bg-white"></iframe>
