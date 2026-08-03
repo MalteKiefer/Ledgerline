@@ -43,7 +43,7 @@ class ImapAppender
      * origin IMAP server. Throws RuntimeException on any protocol/connection
      * failure (the caller maps that to a generic error — never leaks internals).
      */
-    public function append(MailAccount $account, string $folder, string $rawMessage, string $password): void
+    public function append(MailAccount $account, string $folder, string $rawMessage, string $password, bool $seen = false): void
     {
         $host = (string) $account->host;
         if (! OutboundUrl::hostAllowed($host)) {
@@ -85,7 +85,7 @@ class ImapAppender
             }
 
             $this->command($sock, sprintf('LOGIN %s %s', $this->quoted((string) $account->username), $this->quoted($password)));
-            $this->appendLiteral($sock, $folder, $rawMessage);
+            $this->appendLiteral($sock, $folder, $rawMessage, $seen);
 
             // Best-effort logout; ignore its result.
             @fwrite($sock, "zzzz LOGOUT\r\n");
@@ -127,11 +127,14 @@ class ImapAppender
      *
      * @param  resource  $sock
      */
-    private function appendLiteral($sock, string $folder, string $rawMessage): void
+    private function appendLiteral($sock, string $folder, string $rawMessage, bool $seen = false): void
     {
         $tag = $this->nextTag();
         $len = strlen($rawMessage);
-        $this->write($sock, sprintf("%s APPEND %s {%d}\r\n", $tag, $this->quoted($folder), $len));
+        // Restore the origin read state: APPEND with the \Seen flag when the
+        // archived message was already read on the server.
+        $flags = $seen ? ' (\\Seen)' : '';
+        $this->write($sock, sprintf("%s APPEND %s%s {%d}\r\n", $tag, $this->quoted($folder), $flags, $len));
 
         $cont = $this->readLine($sock);
         if (! str_starts_with($cont, '+')) {

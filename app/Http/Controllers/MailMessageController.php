@@ -43,8 +43,12 @@ class MailMessageController extends Controller
         $user = $this->requireUser($request);
         $perPage = min(max(1, $request->integer('per_page', 50)), self::MAX_PER_PAGE);
 
+        $wantTrashed = $request->boolean('trashed');
         $query = MailMessage::query()
             ->ownedBy($user->id)
+            // Trashed = hidden (soft archive). Excluded by default; ?trashed=1
+            // returns ONLY the trashed ones. Nothing is ever hard-deleted.
+            ->when($wantTrashed, fn ($q) => $q->whereNotNull('trashed_at'), fn ($q) => $q->whereNull('trashed_at'))
             ->when($request->filled('account_id'), fn ($q) => $q->where('account_id', $request->integer('account_id')))
             ->when($request->filled('folder'), fn ($q) => $q->where('folder', $request->string('folder')->value()))
             ->orderByDesc('created_at');
@@ -72,6 +76,8 @@ class MailMessageController extends Controller
             'size' => $message->size,
             'created_at' => $message->created_at?->toIso8601String(),
             'sealed_key' => $message->sealed_key,
+            'seen' => $message->seen,
+            'trashed' => $message->trashed_at !== null,
         ];
     }
 }

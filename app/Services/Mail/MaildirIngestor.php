@@ -146,7 +146,12 @@ final class MaildirIngestor
             throw new RuntimeException('MaildirIngestor: failed to write sealed mail blob to disk.');
         }
 
-        DB::transaction(function () use ($account, $folder, $hash, $rawSize, $sealed, $blobId): void {
+        // Read the origin \Seen state from the Maildir filename flags (cur/ files
+        // carry ":2,<flags>" where S = Seen; new/ files are unseen). Stored so a
+        // later push-back can restore the read state on the origin server.
+        $seen = $this->maildirSeen($path);
+
+        DB::transaction(function () use ($account, $folder, $hash, $rawSize, $sealed, $blobId, $seen): void {
             // Hour-snapped timestamps: never leak the exact arrival time (mirrors
             // the padding/created_at discipline of every other sealed module).
             $now = now()->startOfHour();
@@ -162,6 +167,7 @@ final class MaildirIngestor
                 'id' => $blobId,
                 'account_id' => $account->id,
                 'folder' => $folder,
+                'seen' => $seen,
                 'content_hash' => $hash,
                 'size' => $rawSize,
                 'sealed_key' => $sealed['sealed_key'],
@@ -228,6 +234,19 @@ final class MaildirIngestor
         }
 
         return $summary;
+    }
+
+    /**
+     * Whether a Maildir file was flagged \Seen on the origin. Maildir encodes
+     * per-message flags in the filename after ":2," (info section); 'S' = Seen.
+     * Files still in new/ (no info section) are unseen.
+     */
+    private function maildirSeen(string $path): bool
+    {
+        $base = basename($path);
+        $pos = strpos($base, ':2,');
+
+        return $pos !== false && str_contains(substr($base, $pos + 3), 'S');
     }
 
     private function alreadyArchived(MailAccount $account, string $hash): bool

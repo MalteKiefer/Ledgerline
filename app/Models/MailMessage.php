@@ -24,8 +24,11 @@ use Illuminate\Support\Carbon;
  * (AssignsOwner) — never fillable from request input.
  *
  * @property ?Carbon $created_at
+ * @property ?Carbon $trashed_at
+ * @property bool $seen
+ * @property ?int $account_id
  */
-#[Fillable(['id', 'account_id', 'folder', 'content_hash', 'size', 'sealed_key', 'created_at'])]
+#[Fillable(['id', 'account_id', 'folder', 'seen', 'content_hash', 'size', 'sealed_key', 'created_at'])]
 class MailMessage extends Model
 {
     use AssignsOwner;
@@ -38,7 +41,7 @@ class MailMessage extends Model
 
     protected function casts(): array
     {
-        return ['created_at' => 'datetime'];
+        return ['created_at' => 'datetime', 'trashed_at' => 'datetime', 'seen' => 'boolean'];
     }
 
     /** @return BelongsTo<MailAccount, $this> */

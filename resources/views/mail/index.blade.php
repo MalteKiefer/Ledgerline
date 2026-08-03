@@ -23,12 +23,19 @@
             accountsUrl: '{{ route('mail.accounts.index') }}',
             rawBase: '{{ route('mail.raw', ['blob' => '__id__']) }}',
             pushbackBase: '{{ route('mail.messages.pushback', ['message' => '__id__']) }}',
+            trashBase: '{{ route('mail.messages.trash') }}',
+            restoreBase: '{{ route('mail.messages.restore') }}',
             loadFailed: @js(__('mail.load_failed')),
             decryptFailed: @js(__('mail.decrypt_failed')),
             unknown: @js(__('mail.unknown')),
             noSubject: @js(__('mail.no_subject')),
             pushConfirmMsg: @js(__('mail.push_confirm')),
             pushFailed: @js(__('mail.push_failed')),
+            pushDone: @js(__('mail.push_done')),
+            trashConfirm: @js(__('mail.trash_confirm')),
+            trashDone: @js(__('mail.trash_done')),
+            restoreDone: @js(__('mail.restore_done')),
+            trashFailed: @js(__('mail.trash_failed')),
          })">
 
         <div x-show="!unlocked" x-cloak>
@@ -76,6 +83,15 @@
                 <x-button variant="secondary" size="sm" x-show="filtersActive" x-cloak @click="resetFilters()">{{ __('common.reset') }}</x-button>
             </div>
 
+            {{-- Archive vs. trash (soft-hidden) view --}}
+            <div class="mb-3 flex items-center justify-between gap-3">
+                <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/[0.06] p-0.5 text-sm">
+                    <button type="button" @click="showTrash = false" class="rounded-lg px-3 py-1 font-medium transition" :class="!showTrash ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500'">{{ __('mail.archive_toggle') }}</button>
+                    <button type="button" @click="showTrash = true" class="rounded-lg px-3 py-1 font-medium transition" :class="showTrash ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500'">{{ __('mail.trash_toggle') }}</button>
+                </div>
+                <span class="text-xs text-gray-400">{{ __('mail.trash_immutable') }}</span>
+            </div>
+
             <div class="ll-card !p-0 overflow-hidden">
                 <div x-show="loading" class="flex items-center justify-center gap-2 p-8 text-sm text-gray-500">
                     <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />
@@ -114,7 +130,7 @@
                                         <td class="truncate px-3 py-2.5 text-gray-500" x-text="r.mailbox" :title="r.mailbox"></td>
                                         <td class="truncate px-3 py-2.5" x-text="r.from" :title="r.from"></td>
                                         <td class="truncate px-3 py-2.5 text-gray-500" x-text="r.to" :title="r.to"></td>
-                                        <td class="truncate px-3 py-2.5 font-medium text-gray-900 dark:text-gray-100" x-text="r.subject" :title="r.subject"></td>
+                                        <td class="truncate px-3 py-2.5 text-gray-900 dark:text-gray-100" :class="r.seen ? 'font-medium' : 'font-bold'" x-text="r.subject" :title="r.subject"></td>
                                         <td class="truncate px-3 py-2.5 text-gray-500 tabular-nums" x-text="r.dateLabel" :title="r.dateLabel"></td>
                                         <td class="px-3 py-2.5 text-center">
                                             <span x-show="r.hasAttachment"><x-icon name="paper-clip" class="mx-auto h-4 w-4 text-gray-400" /></span>
@@ -193,11 +209,15 @@
                         </template>
                     </div>
 
-                    {{-- Footer: push back to origin server --}}
+                    {{-- Footer: trash/restore + push back to origin server --}}
                     <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-800 px-5 py-3">
-                        <div class="min-w-0 text-xs">
-                            <span x-show="pushed" x-cloak class="text-green-600 dark:text-green-400">{{ __('mail.push_done') }}</span>
-                            <span x-show="pushError" x-cloak class="text-red-600 dark:text-red-400" x-text="pushError"></span>
+                        <div class="flex gap-2">
+                            <x-button variant="danger" size="sm" x-show="!open?.trashed" @click="trashOpen()">
+                                <x-icon name="trash" class="mr-1 h-4 w-4" />{{ __('mail.trash_action') }}
+                            </x-button>
+                            <x-button variant="secondary" size="sm" x-show="open?.trashed" x-cloak @click="restoreOpen()">
+                                {{ __('mail.restore_action') }}
+                            </x-button>
                         </div>
                         <x-button variant="secondary" size="sm" ::disabled="pushing || openLoading || !msg" @click="pushBack()">
                             <x-icon name="arrow-up-tray" class="mr-1 h-4 w-4" />{{ __('mail.push_back') }}

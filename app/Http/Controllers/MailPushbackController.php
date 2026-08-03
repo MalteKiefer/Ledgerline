@@ -61,7 +61,7 @@ class MailPushbackController extends Controller
 
         try {
             // $account->password decrypts via the model's `encrypted` cast.
-            $appender->append($account, $folder, $raw, (string) $account->password);
+            $appender->append($account, $folder, $raw, (string) $account->password, $message->seen);
         } catch (Throwable $e) {
             // Never surface IMAP internals to the client; log without content.
             Log::warning('mail.pushback.failed', ['account_id' => $account->id, 'message_id' => $message->id]);
