@@ -8,7 +8,7 @@
 
 import { getJson, postForm } from '../shared/api.js';
 import { fetchBlobBuffer } from '../shared/blob-io.js';
-import { parseEnvelope, parseMessage, parseDate, displayAddress } from '../shared/mime.js';
+import { parseEnvelope, parseMessage, parseDate, displayAddress, splitMessage, isSpam, parseAuthResults, rawHeaderBlock } from '../shared/mime.js';
 import { formatDate, saveBlobAs } from '../shared/dom.js';
 import { mailRemote, mailScripts } from '../shared/prefs.js';
 import { loadEnvelopes, putEnvelopes } from '../shared/mail-cache.js';
@@ -170,6 +170,7 @@ export default (config) => ({
             date: iso,
             ts: d ? d.getTime() : (Date.parse(m.created_at) || 0),
             hasAttachment: e.hasAttachment === true,
+            spam: e.spam === true,
         };
     },
 
@@ -228,6 +229,7 @@ export default (config) => ({
             ts: env.ts,
             dateLabel: formatDate(env.date, { dateStyle: 'medium', timeStyle: 'short' }),
             hasAttachment: env.hasAttachment,
+            spam: env.spam === true,
             ok: true,
         };
     },
@@ -278,7 +280,11 @@ export default (config) => ({
     openLoading: false,
     openError: '',
     msg: null,         // { textBody, htmlBody, attachments }
-    pgp: '',           // '' | 'ok' | 'nokey' | 'fail' — PGP decryption status
+    pgp: '',           // '' | 'ok' | 'nokey' | 'fail' — decryption status
+    spam: false,
+    auth: {},          // { spf, dkim, dmarc }
+    rawHead: '',
+    showHeaders: false,
     bodyHtml: '',      // sanitized HTML body (scripts OFF)
     bodyFrame: '',     // srcdoc for the sandboxed iframe (scripts ON)
     _raw: null,        // decrypted RFC822 bytes of the open message (for push-back)
@@ -296,6 +302,10 @@ export default (config) => ({
         this.open = r;
         this.msg = null;
         this.pgp = '';
+        this.spam = false;
+        this.auth = {};
+        this.rawHead = '';
+        this.showHeaders = false;
         this.bodyHtml = '';
         this.bodyFrame = '';
         this._raw = null;
@@ -308,6 +318,14 @@ export default (config) => ({
             const bytes = await window.Vault.decryptMailBlob(r.sealedKey, buffer);
             this._raw = bytes; // ORIGINAL bytes (kept intact for push-back)
             this.msg = parseMessage(bytes);
+
+            // Spam flag + SPF/DKIM/DMARC + raw headers come from the ORIGINAL
+            // (outer) headers of the received mail.
+            const outer = splitMessage(bytes).headers;
+            this.spam = isSpam(outer);
+            this.auth = parseAuthResults(outer);
+            this.rawHead = rawHeaderBlock(bytes);
+            this.showHeaders = false;
 
             // PGP: if the body is encrypted (inline or PGP/MIME), decrypt it with
             // the vault-sealed private keys and re-parse the plaintext. Headers
@@ -339,17 +357,8 @@ export default (config) => ({
                 }
             }
 
-            // Prefer the HTML body (the designed mail); fall back to plain text
-            // only when there is no HTML part. Scripts ON -> isolated sandbox
-            // iframe; scripts OFF -> DOMPurify inline. Remote images load only
-            // when the user has opted in.
-            if (this.msg.htmlBody) {
-                if (mailScripts()) {
-                    this.bodyFrame = this._buildFrame(this.msg.htmlBody, mailRemote());
-                } else {
-                    this.bodyHtml = await this._sanitizeHtml(this.msg.htmlBody, mailRemote());
-                }
-            }
+            this._forceRemote = false;
+            await this._renderBody();
         } catch {
             this.openError = this.config.decryptFailed;
         } finally {
@@ -391,6 +400,31 @@ export default (config) => ({
             ? "default-src 'none'; img-src * data: cid:; media-src *; style-src 'unsafe-inline' *; font-src * data:; script-src 'unsafe-inline' 'unsafe-eval'"
             : "default-src 'none'; img-src data: cid:; style-src 'unsafe-inline'; font-src data:; script-src 'unsafe-inline' 'unsafe-eval'";
         return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"></head><body style="margin:0;font:14px/1.5 sans-serif;color:#111">${html}</body></html>`;
+    },
+
+    // Render the HTML body. Scripts ON -> isolated sandbox iframe; scripts OFF
+    // -> DOMPurify inline. Remote content loads when the global pref allows it OR
+    // the user allowed it for THIS mail (temporary, per-open).
+    async _renderBody() {
+        this.bodyHtml = '';
+        this.bodyFrame = '';
+        if (!this.msg?.htmlBody) return;
+        const remote = mailRemote() || this._forceRemote;
+        if (mailScripts()) {
+            this.bodyFrame = this._buildFrame(this.msg.htmlBody, remote);
+        } else {
+            this.bodyHtml = await this._sanitizeHtml(this.msg.htmlBody, remote);
+        }
+    },
+
+    // Load remote content for the currently open mail only (does not change the
+    // global setting).
+    get canLoadRemote() {
+        return !!(this.open && this.msg?.htmlBody && !mailRemote() && !this._forceRemote);
+    },
+    async loadRemoteOnce() {
+        this._forceRemote = true;
+        await this._renderBody();
     },
 
     // Vault-sealed PGP private keys for decryption ([] if none / locked).
