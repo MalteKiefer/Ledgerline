@@ -1763,8 +1763,14 @@ export default (config = {}, labels = {}) => ({
         if (! node) { this._printing = null; return null; }
         // html2canvas rasterises in screen space and captures BLANK from an element
         // parked at left:-10000px. Bring the sheet to on-screen coords (0,0) just for
-        // the capture — it stays occluded behind the preview modal's backdrop, so no
-        // visible flash — then clear the inline overrides back to the off-screen rule.
+        // the capture, then clear the overrides. It USED to rely on the preview modal's
+        // backdrop to stay hidden — but a status change / finalize has no modal, so the
+        // sheet flashed on screen for ~1s. html2canvas CLONES the node to rasterise it, so
+        // covering it with an opaque shield hides the flash without affecting the capture.
+        const shield = document.createElement('div');
+        shield.style.cssText = 'position:fixed;inset:0;z-index:2147483646;'
+            + 'background:' + (getComputedStyle(document.body).backgroundColor || '#fff');
+        document.body.appendChild(shield);
         node.style.left = '0'; node.style.top = '0'; node.style.zIndex = '1';
         await new Promise((r) => setTimeout(r, 60));
         let canvas;
@@ -1772,6 +1778,7 @@ export default (config = {}, labels = {}) => ({
             canvas = await html2canvas(node, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
         } finally {
             node.style.left = ''; node.style.top = ''; node.style.zIndex = '';
+            shield.remove();
             this._printing = null;
         }
         const img = canvas.toDataURL('image/jpeg', 0.92);
