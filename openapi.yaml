@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.539.25
+  version: 1.539.26
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -6843,6 +6843,49 @@ paths:
                       current_page: { type: integer }
                       last_page: { type: integer }
         "403": { description: Module disabled for this account. }
+
+  /mail/messages/{message}/pushback:
+    post:
+      tags: [Mail]
+      operationId: mailMessagesPushback
+      summary: Push an archived message back to its origin IMAP mailbox (IMAP APPEND)
+      description: >
+        The one deliberate write-to-origin action: APPENDs the message to its
+        origin IMAP mailbox. Zero-knowledge — the server cannot read the sealed
+        archive, so the CLIENT decrypts the message and posts the plaintext
+        RFC822 (base64) here purely so the server can hand it to IMAP; nothing is
+        persisted/cached/logged (Cache-Control: no-store). Owner-scoped; the IMAP
+        host is SSRF-guarded. Throttle 30/min. Max 50 MiB.
+      parameters:
+        - name: message
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [raw_b64]
+              properties:
+                raw_b64: { type: string, description: "base64 of the full decrypted RFC822 message." }
+                folder: { type: string, description: "Target IMAP folder; defaults to the message's archived folder." }
+      responses:
+        "200":
+          description: Appended to the origin mailbox.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pushed: { type: boolean }
+        "403": { description: Module disabled. }
+        "404": { description: Not the caller's message/account. }
+        "413": { description: Message too large. }
+        "422": { description: Invalid message. }
+        "502": { description: IMAP append failed (no internals leaked). }
+        "429": { description: Rate limit exceeded. }
 
   /mail/raw/{blob}:
     get:
