@@ -56,6 +56,40 @@ class MaildirIngestTest extends TestCase
         parent::tearDown();
     }
 
+    // ---- backfill_since (Option B): archive only messages >= cut-off ------
+
+    public function test_message_older_than_backfill_since_is_skipped_not_archived(): void
+    {
+        [, $account] = $this->accountWithIdentity();
+        $account->forceFill(['backfill_since' => '2026-08-02'])->save();
+
+        $path = $this->fixtureEml($account, "Subject: old\r\n\r\nbody");
+        // Arrival (mtime) BEFORE the cut-off → must be skipped, not archived.
+        touch($path, strtotime('2026-07-15 10:00:00'));
+
+        $r = app(MaildirIngestor::class)->ingestFile($account, 'INBOX', $path);
+
+        $this->assertSame(IngestStatus::SkippedOld, $r->status);
+        $this->assertFalse($r->stored);
+        $this->assertDatabaseCount('mail_messages', 0);
+        $this->assertDatabaseCount('mail_blobs', 0);
+        $this->assertFileDoesNotExist($path); // local scratch copy removed (origin untouched)
+    }
+
+    public function test_message_on_or_after_backfill_since_is_archived(): void
+    {
+        [, $account] = $this->accountWithIdentity();
+        $account->forceFill(['backfill_since' => '2026-08-02'])->save();
+
+        $path = $this->fixtureEml($account, "Subject: new\r\n\r\nbody");
+        touch($path, strtotime('2026-08-03 09:00:00'));
+
+        $r = app(MaildirIngestor::class)->ingestFile($account, 'INBOX', $path);
+
+        $this->assertTrue($r->stored);
+        $this->assertDatabaseCount('mail_messages', 1);
+    }
+
     // ---- Step 1: idempotency + shred -------------------------------------
 
     public function test_ingest_is_idempotent_and_shreds_plaintext(): void
