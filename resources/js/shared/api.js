@@ -24,6 +24,10 @@ export async function getJson(url) {
 
 export async function postForm(url, body, method = 'POST') {
     const res = await fetch(url, { method, headers: jsonHeaders(), body: body != null ? JSON.stringify(body) : undefined });
-    if (! res.ok) throw new Error(`request failed: ${res.status}`);
+    if (! res.ok) {
+        const err = new Error(`request failed: ${res.status}`);
+        err.status = res.status;
+        throw err;
+    }
     return res.json().catch(() => ({}));
 }

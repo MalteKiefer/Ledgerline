@@ -146,7 +146,7 @@ export default (config) => ({
             await postForm(this.config.syncBase.replace('__id__', a.id), null, 'POST');
         } catch (e) {
             a.status = prev;
-            this.error = this.config.syncFailed;
+            this.error = e?.status === 429 ? this.config.syncBusy : this.config.syncFailed;
             return;
         }
         this.pollSyncing();
