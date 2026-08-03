@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.539.15
+  version: 1.539.16
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -5130,7 +5130,7 @@ paths:
       summary: Revoke a paired device
       description: >
         Deletes the Sanctum token for the given device, immediately revoking its
-        access. Owner-scoped (can only revoke own tokens). Throttle: 20 req/min.
+        access. Owner-scoped (can only revoke own tokens). Throttle: 60 req/min.
       parameters:
         - name: token
           in: path
@@ -5158,7 +5158,7 @@ paths:
       description: >
         Flags the device's Sanctum token with a wipe request. The token remains
         valid so the device can fetch the flag on its next heartbeat and self-erase.
-        Owner-scoped. Throttle: 20 req/min.
+        Owner-scoped. Throttle: 60 req/min.
       parameters:
         - name: token
           in: path
