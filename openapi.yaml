@@ -1145,7 +1145,21 @@ components:
         id: { type: string, format: uuid }
         number: { type: [string, "null"], description: "GoBD number, e.g. 2026-0007." }
         seq: { type: integer, description: "Per-year sequence." }
-        status: { type: string, enum: [draft, sent, paid] }
+        status:
+          type: string
+          enum: [draft, final, sent, paid]
+          description: >
+            draft (Entwurf, no number, not counted) → final (Offen: numbered + GoBD-frozen,
+            counts as revenue, NOT yet sent) → sent (Gesendet) → paid (Bezahlt). SET IT VIA
+            THE STORE, NOT A DEDICATED ENDPOINT (zero-knowledge — the server can't read the
+            status): mutate this field on the record and PUT the whole sharded store
+            (PUT /api/v1/invoices/store). The finalize/mark-sent/mark-paid flows and the
+            manual status override are all just this field write. Rules the client MUST honour:
+            (a) moving to any non-draft state assigns the GoBD number first if missing
+            (see the numbering invariant above); (b) a NUMBERED invoice must NEVER go back to
+            'draft' (breaks the gapless series); (c) set `paidAt` when → paid, clear it when
+            leaving paid (drives VAT/statistics); (d) append a `versions[]` entry for the
+            change (GoBD audit trail) like any edit to a numbered invoice.
         issueDate: { type: string, description: "YYYY-MM-DD." }
         dueDate: { type: string }
         currency: { type: string }

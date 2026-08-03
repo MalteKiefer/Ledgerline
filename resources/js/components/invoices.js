@@ -2498,6 +2498,29 @@ export default (config = {}, labels = {}) => ({
     },
     statusLabel(s) { return ({ draft: labels.statusDraft, final: labels.statusFinal, sent: labels.statusSent, paid: labels.statusPaid })[s] || s; },
 
+    // Manually set the status of a (non-imported) invoice — e.g. it was sent by another
+    // channel, or paid, without going through the mail/finalize flow. Forward to any numbered
+    // state (Offen/Gesendet/Bezahlt) assigns the GoBD number if missing (like finalize). A
+    // numbered invoice can never go back to 'draft' (that would break the gapless number
+    // series) — the draft option is hidden once numbered. paidAt is set when marking paid and
+    // cleared when moving away from paid (keeps the VAT/statistics consistent). Each change is
+    // a versioned commit (GoBD audit trail), like markPaid/markSent.
+    async setStatus(inv, status) {
+        if (! inv || inv.imported || inv.status === status) return;
+        if (status === 'draft' && inv.number) { window.llToast(labels.status_draft_blocked || labels.statusFinal); return; }
+        if (status !== 'draft' && ! inv.number) {
+            await this._refresh();
+            inv = this.invoices.find((x) => x.id === inv.id) || inv;
+            if (this.current && this.current.id === inv.id) this.current = inv;
+            if (! inv.number) this._assignNumber(inv);
+        }
+        inv.status = status;
+        if (status === 'paid') { if (! inv.paidAt) inv.paidAt = this._today(); }
+        else { inv.paidAt = null; }
+        this._mut++;
+        await this._lockCommit(inv, (labels.version_status || 'Status') + ': ' + this.statusLabel(status));
+    },
+
     // ---- Print / PDF (client-side, zero-knowledge) ----
     async printInvoice(inv) {
         const i = inv || this.current;

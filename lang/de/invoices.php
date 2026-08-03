@@ -77,6 +77,9 @@ return [
     'version_finalized' => 'Finalisiert',
     'version_paid' => 'Als bezahlt markiert',
     'version_sent' => 'Versendet',
+    'status_set' => 'Status setzen',
+    'version_status' => 'Status geändert',
+    'status_draft_blocked' => 'Eine nummerierte Rechnung kann nicht zurück auf Entwurf.',
 
     'note' => 'Notiz',
     'footer' => 'Fußzeile',
