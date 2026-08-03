@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\UsersController as ApiUsersController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\ContactNotifyController;
+use App\Http\Controllers\ContactsStoreController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\ExploreBlobController;
 use App\Http\Controllers\FileController;
@@ -212,9 +213,15 @@ Route::prefix('v1')->group(function (): void {
         // (GET/PUT /store). These are only the optional avatar content blobs, so
         // the native app can show/upload a contact photo. Same controller-reuse,
         // guard-agnostic, zero-knowledge as the web routes.
+        // Sharded contacts index store (Store v3 §3b): sealed shard-pointer root + history.
+        Route::get('/contacts/store', [ContactsStoreController::class, 'show'])->middleware('module:contacts')->name('api.contacts.store.show');
+        Route::put('/contacts/store', [ContactsStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:contacts'])->name('api.contacts.store.save');
+        Route::get('/contacts/store/history', [ContactsStoreController::class, 'history'])->middleware('module:contacts')->name('api.contacts.store.history');
+        Route::get('/contacts/store/history/{version}', [ContactsStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:contacts')->name('api.contacts.store.history.version');
         Route::get('/contacts/usage', [ContactBlobController::class, 'usage'])->name('api.contacts.usage');
         Route::post('/contacts/blobs/reconcile', [ContactBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.contacts.reconcile');
         Route::post('/contacts/upload', [ContactBlobController::class, 'upload'])->middleware('throttle:600,1')->name('api.contacts.upload');
+        Route::post('/contacts/raw-batch', [ContactBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.contacts.raw-batch');
         Route::get('/contacts/raw/{blob}', [ContactBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.contacts.raw');
         Route::delete('/contacts/blob/{blob}', [ContactBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.contacts.blob.destroy');
         // Relay a contact reminder (birthday/anniversary) to the user's own channels.

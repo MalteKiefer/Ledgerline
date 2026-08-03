@@ -125,6 +125,17 @@ window.LLInvoicesStore = makeShardedStore({
     ],
 });
 
+// Contacts graduated to a sharded store too (spec §3b) — imported address books grow
+// large, so they must stay loss-safe + re-seal only the edited shard. Each contact is
+// one shard record (no collections). The record-shard blobs REUSE the existing
+// /contacts blob endpoints + contact_blobs ledger that already back avatars (content-
+// addressed, so refs never collide). We alias LLModuleStore.contacts to it so every
+// cross-module consumer (gallery person-linking, invoices/dashboard reads, bootStore)
+// keeps working unchanged — the sharded store exposes the same .data/.newId()/.touch()/
+// .load()/.loaded interface as a module store.
+window.LLContactsStore = makeShardedStore({ prefix: '/contacts', recordKey: 'contacts', collections: [] });
+window.LLModuleStore.contacts = window.LLContactsStore;
+
 
 // Wait for the vault, then load the sealed gallery index once.
 // App-wide confirm modal store (replaces native window.confirm everywhere).

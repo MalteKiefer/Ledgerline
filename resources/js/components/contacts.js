@@ -204,8 +204,30 @@ const VCard = {
 // Dedupe the gallery-link reconcile across component mounts.
 let _contactsReconAt = 0;
 
+// One-time dual-read migration: move contact records from the old single-blob
+// module store (/store/contacts) into the sharded store (LLContactsStore, spec §3b).
+// Runs only while the sharded store is empty; then blanks the monolith byte-exact so a
+// later "delete all" can't re-import. Mirrors notes/invoices.
+async function migrateContactsFromMonolith(ms) {
+    if ((ms.data.contacts?.length ?? 0) > 0) return; // already sharded
+    let d = null;
+    try { d = await getJson('/store/contacts'); } catch (e) { return; }
+    if (! d || ! d.ciphertext) return;
+    let old = null;
+    try { old = window.Vault.openManifest(d.ciphertext); } catch (e) { return; }
+    if (! Array.isArray(old.contacts) || old.contacts.length === 0) return;
+    ms.data.contacts.push(...old.contacts);
+    await ms.flush(); // persist into the sharded store first
+    // NOTE: we deliberately do NOT blank the old /store/contacts monolith yet (unlike
+    // notes/passwords/invoices). A native client (Android/iOS/Extension) that hasn't been
+    // updated still reads the monolith — blanking it would show EMPTY contacts there during
+    // the rollout window. The empty-sharded guard above prevents a re-import, so leaving the
+    // monolith intact is safe. Re-enable the byte-exact blank (sealManifest {v:3,contacts:[]}
+    // PUT at d.version) once all clients read the sharded store.
+}
+
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'contacts', map: { contacts: 'contacts' }, onLock: (self) => { self.currentId = null; self._revokeAvatars(); } }),
+    ...zkModule({ store: 'contacts', instance: () => window.LLContactsStore, afterLoad: (self, ms) => migrateContactsFromMonolith(ms), map: { contacts: 'contacts' }, onLock: (self) => { self.currentId = null; self._revokeAvatars(); } }),
     contacts: [],
     currentId: null,
     editing: false, // detail pane opens read-only; edit via a button
@@ -648,6 +670,9 @@ export default (config = {}, labels = {}) => ({
         _contactsReconAt = Date.now();
         const blobs = [];
         for (const c of this.contacts) if (c.avatarRef) blobs.push(c.avatarRef);
+        // Record shards share the contact_blobs ledger with avatars (content-addressed),
+        // so the live-set MUST include both or the orphan sweep would drop the shards.
+        for (const r of window.LLContactsStore.shardRefs()) blobs.push(r);
         postForm(config.reconcileUrl, { blobs: [...new Set(blobs)], allow_empty: 1 }).catch(() => {});
     },
 

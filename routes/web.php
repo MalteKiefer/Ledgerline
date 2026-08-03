@@ -6,6 +6,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\ContactNotifyController;
+use App\Http\Controllers\ContactsStoreController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\ExploreBlobController;
@@ -357,9 +358,15 @@ Route::middleware('auth')->group(function (): void {
     // Contacts: zero-knowledge, records in the opaque /store manifest; only the
     // optional avatar images are opaque content blobs (contacts/{blob}).
     Route::view('/contacts', 'contacts.index')->middleware('module:contacts')->name('contacts.index');
+    // Sharded contacts index store (Store v3 §3b): sealed shard-pointer root + history.
+    Route::get('/contacts/store', [ContactsStoreController::class, 'show'])->middleware('module:contacts')->name('contacts.store.show');
+    Route::put('/contacts/store', [ContactsStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:contacts'])->name('contacts.store.save');
+    Route::get('/contacts/store/history', [ContactsStoreController::class, 'history'])->middleware('module:contacts')->name('contacts.store.history');
+    Route::get('/contacts/store/history/{version}', [ContactsStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:contacts')->name('contacts.store.history.version');
     Route::get('/contacts/usage', [ContactBlobController::class, 'usage'])->name('contacts.usage');
     Route::post('/contacts/blobs/reconcile', [ContactBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('contacts.blobs.reconcile');
     Route::post('/contacts/upload', [ContactBlobController::class, 'upload'])->middleware('throttle:600,1')->name('contacts.upload');
+    Route::post('/contacts/raw-batch', [ContactBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('contacts.raw-batch');
     Route::get('/contacts/raw/{blob}', [ContactBlobController::class, 'raw'])->middleware('throttle:600,1')->name('contacts.raw');
     Route::delete('/contacts/blob/{blob}', [ContactBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('contacts.blob.destroy');
     // Client-relayed birthday/anniversary alert (ZK: the client detects the due
