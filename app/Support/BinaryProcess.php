@@ -50,6 +50,37 @@ final class BinaryProcess
     }
 
     /**
+     * Run a command and return its exit code plus captured stdout AND stderr,
+     * even on failure. Use when the caller needs the failure DETAIL (e.g.
+     * surfacing mbsync's real connection error to the account owner) rather
+     * than just stdout-or-null. The caller is responsible for redacting the
+     * captured streams before persisting/displaying them.
+     *
+     * @param  array<int, string>  $argv  command + args as a flat array (no shell string).
+     * @return array{ok: bool, exit: int|null, out: string, err: string}
+     */
+    public static function runCapture(array $argv, int $timeout = 60, ?string $input = null): array
+    {
+        try {
+            $process = new Process($argv);
+            $process->setTimeout($timeout);
+            if ($input !== null) {
+                $process->setInput($input);
+            }
+            $process->run();
+
+            return [
+                'ok' => $process->isSuccessful(),
+                'exit' => $process->getExitCode(),
+                'out' => $process->getOutput(),
+                'err' => $process->getErrorOutput(),
+            ];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'exit' => null, 'out' => '', 'err' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Check whether a binary is available on the system PATH.
      */
     public static function available(string $binary): bool

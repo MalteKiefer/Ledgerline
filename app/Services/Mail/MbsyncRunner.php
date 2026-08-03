@@ -99,13 +99,23 @@ class MbsyncRunner
             return MbsyncResult::unavailable();
         }
 
-        $output = BinaryProcess::run(['mbsync', '-c', $temp->path(), '-a'], self::RUN_TIMEOUT);
+        $result = BinaryProcess::runCapture(['mbsync', '-c', $temp->path(), '-a'], self::RUN_TIMEOUT);
         // $temp is unlinked when it goes out of scope at the end of this
         // method (its destructor fires here), regardless of which branch
         // below is taken.
 
-        if ($output === null) {
-            $message = "IMAP sync failed. Check the account's sync log / mbsync exit status on the host for details.";
+        if (! $result['ok']) {
+            // Surface mbsync's OWN error (connection refused, TLS reject, auth
+            // failure, host unreachable, …) so the owner can self-diagnose in
+            // the UI/API instead of "check the host". mbsync never echoes the
+            // IMAP password — it is fed to mbsync's auth via PassCmd's stdout,
+            // never printed to mbsync's own stdout/stderr — so the captured
+            // stream carries only the owner's own host/IP + error text. It is
+            // still run through Redactor (recordError) as defence in depth.
+            $detail = self::tailDetail((string) ($result['err'] !== '' ? $result['err'] : $result['out']));
+            $message = $detail !== ''
+                ? 'IMAP sync failed: '.$detail
+                : sprintf('IMAP sync failed (mbsync exit %s).', $result['exit'] ?? '?');
             $this->recordError($account, $message);
 
             return MbsyncResult::failed($message);
@@ -121,14 +131,31 @@ class MbsyncRunner
     }
 
     /**
-     * Mark the account as errored with a redacted message. $message is
-     * always one of this class's own fixed, secret-free strings — never
-     * mbsync's raw output, which is deliberately never captured (see the
-     * class docblock). Running it through Redactor anyway is defence in
-     * depth: every other last_error writer in this app does the same, and
-     * keeping that invariant blanket (not per-caller judgment) is cheaper
-     * than reasoning about whether some future edit to this method's message
-     * strings could accidentally interpolate something sensitive.
+     * Reduce mbsync's captured output to a short, single-line detail suitable
+     * for a user-facing last_error: keep the last few non-empty lines (the
+     * actual failure — "Cannot connect …", "Login failed", etc. — is at the
+     * tail), collapse to one line, and hard-cap the length. Redaction happens
+     * separately in recordError().
+     */
+    private static function tailDetail(string $raw): string
+    {
+        $lines = array_values(array_filter(
+            array_map('trim', preg_split('/\r\n|\r|\n/', $raw) ?: []),
+            static fn (string $l): bool => $l !== '',
+        ));
+        $detail = trim(implode(' — ', array_slice($lines, -3)));
+
+        return mb_strlen($detail) > 400 ? mb_substr($detail, -400) : $detail;
+    }
+
+    /**
+     * Mark the account as errored with a redacted message. The message may now
+     * include a tail of mbsync's OWN captured output (host/IP + error text) so
+     * the owner can self-diagnose — mbsync never emits the IMAP password (it is
+     * consumed via PassCmd, never echoed), so the stream carries no secret.
+     * Redactor::redact() still runs as defence in depth (strips Bearer/token=/
+     * key= patterns), keeping the "every last_error is redacted" invariant
+     * blanket rather than per-caller judgment.
      */
     private function recordError(MailAccount $account, string $message): void
     {
