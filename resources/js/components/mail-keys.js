@@ -5,6 +5,7 @@
 // Decryption of mail happens in the mail archive, not here.
 
 import { keyInfo, generateKey, publicFromPrivate } from '../shared/pgp.js';
+import { importP12 } from '../shared/smime.js';
 import { newId } from '../shared/sealed-store.js';
 
 export default (config) => ({
@@ -22,6 +23,10 @@ export default (config) => ({
     genName: '',
     genEmail: '',
     genPassphrase: '',
+    // s/mime import form
+    smName: '',
+    smPass: '',
+    _p12: null,
     _store: null,
 
     async init() {
@@ -54,6 +59,7 @@ export default (config) => ({
             const publicKey = await publicFromPrivate(armored);
             this.keys.push({
                 id: newId(),
+                type: 'pgp',
                 name: this.impName.trim() || info.userId || info.fingerprint.slice(-8),
                 fingerprint: info.fingerprint,
                 userId: info.userId,
@@ -79,6 +85,7 @@ export default (config) => ({
             const kp = await generateKey({ name: this.genName.trim(), email: this.genEmail.trim(), passphrase: this.genPassphrase || undefined });
             this.keys.push({
                 id: newId(),
+                type: 'pgp',
                 name: this.genName.trim() || this.genEmail.trim() || kp.fingerprint.slice(-8),
                 fingerprint: kp.fingerprint,
                 userId: kp.userId,
@@ -97,6 +104,39 @@ export default (config) => ({
         }
     },
 
+    p12Chosen(e) {
+        this._p12 = (e.target.files && e.target.files[0]) || null;
+    },
+
+    async importSmime() {
+        if (!this._p12) { this.error = this.config?.errNoFile || 'Choose a .p12 file.'; return; }
+        this.busy = true;
+        this.error = '';
+        try {
+            const bytes = new Uint8Array(await this._p12.arrayBuffer());
+            const imp = await importP12(bytes, this.smPass || '');
+            this.keys.push({
+                id: newId(),
+                type: 'smime',
+                name: this.smName.trim() || imp.subject || imp.fingerprint.slice(-8),
+                fingerprint: imp.fingerprint,
+                userId: imp.subject,
+                privateKeyPem: imp.privateKeyPem,
+                certPem: imp.certPem,
+                createdAt: new Date().toISOString(),
+            });
+            this._persist();
+            this.smName = ''; this.smPass = ''; this._p12 = null;
+            this.mode = 'list';
+        } catch (e) {
+            this.error = this.config?.errP12 || 'Could not import this .p12 (wrong passphrase?).';
+        } finally {
+            this.busy = false;
+        }
+    },
+
+    keyType(k) { return k.type === 'smime' ? 'S/MIME' : 'PGP'; },
+
     async removeKey(id) {
         if (!await this.$store.confirm.ask(this.config?.confirmDelete || 'Delete this key?')) return;
         this.keys = this.keys.filter((k) => k.id !== id);
@@ -104,7 +144,7 @@ export default (config) => ({
     },
 
     async copyPublic(k) {
-        try { await navigator.clipboard.writeText(k.publicKey); window.llToast?.(this.config?.copied || 'Copied'); } catch { /* ignore */ }
+        try { await navigator.clipboard.writeText(k.publicKey || k.certPem || ''); window.llToast?.(this.config?.copied || 'Copied'); } catch { /* ignore */ }
     },
 
     fp(k) { return (k.fingerprint || '').replace(/(.{4})/g, '$1 ').trim().toUpperCase(); },

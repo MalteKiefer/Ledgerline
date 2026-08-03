@@ -36,4 +36,5 @@ paths = [
     # fetched from the CDN (npm registry is unreachable in this env) and pinned
     # by vendoring. High-entropy minified code, not our secret material.
     '''^resources/js/vendor/openpgp\.min\.mjs$''',
+    '''^resources/js/vendor/forge\.min\.js$''',
 ]
