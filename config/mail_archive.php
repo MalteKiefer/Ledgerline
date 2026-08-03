@@ -18,4 +18,13 @@ return [
      * becomes ~1k retryable chunk jobs, not 100k. Clamped to 1..1000.
      */
     'ingest_chunk_size' => (int) env('MAIL_INGEST_CHUNK_SIZE', 100),
+
+    /*
+     * Grace before an unreferenced sealed mail blob on disk (mail/{blob}) is
+     * reclaimed by mail:sweep-orphans — long enough that a blob whose MailBlob
+     * ledger row commits in the same transaction as its MailMessage a moment
+     * later is never mistaken for an orphan. Mirrors the sibling blob modules
+     * (CONTACTS_/EXPLORE_/FILES_BLOB_ORPHAN_GRACE_HOURS).
+     */
+    'blob_orphan_grace_hours' => (int) env('MAIL_ARCHIVE_BLOB_ORPHAN_GRACE_HOURS', 24),
 ];

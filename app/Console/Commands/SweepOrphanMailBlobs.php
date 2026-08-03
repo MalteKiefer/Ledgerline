@@ -46,7 +46,7 @@ class SweepOrphanMailBlobs extends Command
     public function handle(): int
     {
         $disk = BlobStore::disk();
-        $grace = config('mail.blob_orphan_grace_hours', 24);
+        $grace = config('mail_archive.blob_orphan_grace_hours', 24);
         $cutoff = Carbon::now()->subHours(is_numeric($grace) ? (int) $grace : 24);
 
         $swept = 0;

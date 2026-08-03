@@ -97,4 +97,38 @@ class SweepOrphanMailBlobsTest extends TestCase
         $disk->assertExists('mail/'.$blobId);
         $this->assertNotNull(MailBlob::query()->where('blob', $blobId)->first());
     }
+
+    /**
+     * The grace window is operator-configurable via
+     * mail_archive.blob_orphan_grace_hours (MAIL_ARCHIVE_BLOB_ORPHAN_GRACE_HOURS),
+     * NOT the hardcoded 24h fallback: a blob just OUTSIDE the configured window
+     * is swept and one just INSIDE it is kept. Guards against a silent regression
+     * to a wrong/unconfigurable config key.
+     */
+    public function test_it_honors_the_configured_grace_window(): void
+    {
+        config()->set('mail_archive.blob_orphan_grace_hours', 100);
+
+        Storage::fake(config('files.disk'));
+        $disk = Storage::disk(config('files.disk'));
+        $user = User::factory()->create();
+
+        // Older than 100h -> swept (would have been KEPT under the 24h default).
+        $outside = (string) Str::uuid();
+        $disk->put('mail/'.$outside, 'sealed-ciphertext');
+        MailBlob::create(['blob' => $outside, 'user_id' => $user->id, 'size' => 18, 'created_at' => now()->subHours(101)]);
+
+        // Newer than 100h but older than 24h -> kept (would have been SWEPT under
+        // the default), proving the configured value, not the fallback, is used.
+        $inside = (string) Str::uuid();
+        $disk->put('mail/'.$inside, 'sealed-ciphertext');
+        MailBlob::create(['blob' => $inside, 'user_id' => $user->id, 'size' => 18, 'created_at' => now()->subHours(48)]);
+
+        $this->artisan('mail:sweep-orphans')->assertSuccessful();
+
+        $disk->assertMissing('mail/'.$outside);
+        $this->assertNull(MailBlob::query()->where('blob', $outside)->first());
+        $disk->assertExists('mail/'.$inside);
+        $this->assertNotNull(MailBlob::query()->where('blob', $inside)->first());
+    }
 }
