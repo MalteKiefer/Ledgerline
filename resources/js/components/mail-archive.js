@@ -221,18 +221,31 @@ export default (config) => ({
         this.msg = null;
     },
 
-    _blobUrl(att) {
-        const url = URL.createObjectURL(new Blob([att.bytes], { type: att.contentType }));
-        this._urls.push(url);
-        return url;
+    // Only these types are ever rendered INLINE (same-origin blob URL). Mail
+    // attachments are fully attacker-controlled, so opening e.g. text/html or
+    // image/svg+xml inline would execute script on the app origin (XSS).
+    // Everything else falls back to a download (saveBlobAs never executes).
+    // SVG is deliberately excluded (it can carry script); PDFs render in the
+    // browser's own sandboxed viewer.
+    _viewable(att) {
+        return ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf', 'text/plain']
+            .includes((att.contentType || '').toLowerCase());
+    },
+
+    canView(att) {
+        return this._viewable(att);
     },
 
     viewAttachment(att) {
-        window.open(this._blobUrl(att), '_blank', 'noopener');
+        if (!this._viewable(att)) { this.downloadAttachment(att); return; }
+        const url = URL.createObjectURL(new Blob([att.bytes], { type: att.contentType }));
+        this._urls.push(url);
+        window.open(url, '_blank', 'noopener');
     },
 
     downloadAttachment(att) {
-        saveBlobAs(new Blob([att.bytes], { type: att.contentType }), att.filename);
+        // application/octet-stream forces a save, never an inline render.
+        saveBlobAs(new Blob([att.bytes], { type: 'application/octet-stream' }), att.filename);
     },
 
     fmtSize(n) {

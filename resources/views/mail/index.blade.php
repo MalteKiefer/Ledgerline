@@ -172,7 +172,7 @@
                                                 <p class="truncate text-sm text-gray-900 dark:text-gray-100" x-text="att.filename" :title="att.filename"></p>
                                                 <p class="text-xs text-gray-400" x-text="`${att.contentType} · ${fmtSize(att.size)}`"></p>
                                             </div>
-                                            <x-button variant="secondary" size="sm" @click="viewAttachment(att)">{{ __('mail.att_view') }}</x-button>
+                                            <x-button variant="secondary" size="sm" x-show="canView(att)" @click="viewAttachment(att)">{{ __('mail.att_view') }}</x-button>
                                             <x-button variant="secondary" size="sm" @click="downloadAttachment(att)">{{ __('mail.att_download') }}</x-button>
                                         </div>
                                     </template>
