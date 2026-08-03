@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -39,6 +40,16 @@ class MailAccount extends Model
 
     public const STATUSES = ['idle', 'syncing', 'error'];
 
+    /**
+     * Defence in depth on top of the API controllers' explicit present()
+     * arrays (which never add this key in the first place): even a stray
+     * array()/toJson() call on the model elsewhere in the codebase can never
+     * leak the password.
+     *
+     * @var list<string>
+     */
+    protected $hidden = ['password'];
+
     protected function casts(): array
     {
         return [
@@ -54,5 +65,11 @@ class MailAccount extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** @return HasMany<MailMessage, $this> */
+    public function messages(): HasMany
+    {
+        return $this->hasMany(MailMessage::class, 'account_id');
     }
 }

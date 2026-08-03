@@ -8,16 +8,22 @@ use App\Models\Concerns\AssignsOwner;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * One archived message's metadata + sealed per-message content key. The raw
  * RFC822 bytes are sealed client/sealer-side (secretstream) and stored as a
- * content-addressed blob on the files disk (mail/{blob}, ledgered in
- * MailBlob) — this row never holds message content, only the hash that
- * addresses it and `sealed_key` (the hybrid-wrap envelope over the random
- * per-message symmetric key). `unique(user_id, content_hash)` de-duplicates
- * re-synced/identical messages per user. `user_id` is stamped from context
+ * blob on the files disk at mail/{id} (ledgered in MailBlob under that SAME
+ * uuid — see MaildirIngestor::ingestFile) — this row never holds message
+ * content, only the hash that addresses it (dedup) and `sealed_key` (the
+ * PQ-hybrid wrap envelope over the random per-message symmetric key). The
+ * message's own `id` doubles as the blob's primary key: a client resolves
+ * the sealed bytes for a listed message with `GET /mail/raw/{id}`, no extra
+ * lookup needed. `unique(user_id, content_hash)` de-duplicates re-synced/
+ * identical messages per user. `user_id` is stamped from context
  * (AssignsOwner) — never fillable from request input.
+ *
+ * @property ?Carbon $created_at
  */
 #[Fillable(['id', 'account_id', 'folder', 'content_hash', 'size', 'sealed_key', 'created_at'])]
 class MailMessage extends Model

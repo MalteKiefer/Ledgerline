@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\BackupController as ApiBackupController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
 use App\Http\Controllers\Api\InvoiceOcrController;
+use App\Http\Controllers\Api\MailAccountController;
 use App\Http\Controllers\Api\PaperlessController as ApiPaperlessController;
 use App\Http\Controllers\Api\PasswordController as ApiPasswordController;
 use App\Http\Controllers\Api\PublicShareController as ApiPublicShareController;
@@ -33,6 +34,7 @@ use App\Http\Controllers\InvoiceMailController;
 use App\Http\Controllers\InvoicesStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailBlobController;
+use App\Http\Controllers\MailMessageController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NoteBlobController;
@@ -152,8 +154,19 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/invoices/send', [InvoiceMailController::class, 'send'])->middleware(['throttle:30,1', 'module:finance'])->name('api.invoices.send');
         Route::post('/invoices/mail-test', [InvoiceMailController::class, 'test'])->middleware(['throttle:6,1', 'module:finance'])->name('api.invoices.mail-test');
 
-        // Mail archive (Phase 1, read-only): sealed RFC822 blobs written directly by the
-        // server-side ingestor — no client upload/reconcile route yet, only owner-scoped read.
+        // Mail archive: account config CRUD + on-demand sync/status + the
+        // read-only message ledger, all metadata-only and zero-knowledge preserving —
+        // the sealed RFC822 blobs are written directly by the server-side ingestor (no
+        // client upload/reconcile route). `module:mail` is currently INERT ('mail' is
+        // not yet a registered key in config/modules.php — that lands with the web UI
+        // task); see MailAccountController's class docblock / the Security Register.
+        Route::get('/mail/accounts', [MailAccountController::class, 'index'])->middleware('module:mail')->name('api.mail.accounts.index');
+        Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.store');
+        Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.update');
+        Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.destroy');
+        Route::post('/mail/accounts/{account}/sync', [MailAccountController::class, 'sync'])->middleware(['throttle:6,1', 'module:mail'])->name('api.mail.accounts.sync');
+        Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->middleware('module:mail')->name('api.mail.accounts.status');
+        Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware(['throttle:120,1', 'module:mail'])->name('api.mail.messages.index');
         Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->middleware(['throttle:600,1', 'module:mail'])->name('api.mail.raw');
 
         // Per-user Paperless-ngx integration: cached term quick-picks, live term

@@ -110,6 +110,13 @@ final class MaildirIngestor
         // Blob bytes first (durable, non-transactional). If this fails, no ledger
         // row is written and the file stays; if it succeeds but the ledger write
         // below fails, these bytes become an orphan the sweep reclaims.
+        //
+        // The message row has no separate "which blob" column (Task 8's ledger
+        // contract is deliberately just id/account_id/folder/size/created_at/
+        // sealed_key) — so the message's own id IS the blob's primary key: one
+        // fresh UUID names both `mail/{id}` on disk and the mail_messages row
+        // that describes it. A client resolves the raw ciphertext for a listed
+        // message with `GET /mail/raw/{message.id}`, no extra lookup needed.
         $blobId = (string) Str::uuid();
         if (BlobStore::disk()->put('mail/'.$blobId, $sealed['blob']) === false) {
             throw new RuntimeException('MaildirIngestor: failed to write sealed mail blob to disk.');
@@ -128,7 +135,7 @@ final class MaildirIngestor
             ]);
 
             $message = new MailMessage([
-                'id' => (string) Str::uuid(),
+                'id' => $blobId,
                 'account_id' => $account->id,
                 'folder' => $folder,
                 'content_hash' => $hash,

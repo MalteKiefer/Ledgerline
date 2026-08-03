@@ -1,0 +1,184 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Jobs\Mail\SyncMailAccount;
+use App\Models\MailAccount;
+use App\Rules\SafeHost;
+use App\Support\KeepBlankSecrets;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+
+/**
+ * Owner-scoped CRUD + on-demand sync/status for the mail archive's IMAP
+ * account configuration (metadata only — zero-knowledge preserving). The
+ * account password is the one plaintext secret the server holds to run the
+ * IMAP connection (`encrypted` cast at rest, see MailAccount); it is NEVER
+ * present in any response from this controller (see `present()` — the
+ * password key is simply never added to the array, and the model itself
+ * hides it from array/JSON serialization as defence in depth).
+ *
+ * Ownership uses implicit route-model binding + an explicit `authorizeOwner`
+ * 404 (never a 403 — no existence leak), mirroring
+ * DevicePairingController::authorizeOwner.
+ */
+class MailAccountController extends Controller
+{
+    /** List the caller's mail accounts, each with its archived-message count. */
+    public function index(Request $request): JsonResponse
+    {
+        $accounts = MailAccount::query()
+            ->ownedBy($this->requireUser($request)->id)
+            ->withCount('messages')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'accounts' => $accounts->map(fn (MailAccount $a): array => $this->present($a))->all(),
+        ]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $data = $this->validated($request, isUpdate: false);
+
+        $account = new MailAccount($data);
+        // $data is built explicitly in validated() and never includes 'user_id'
+        // (even a request body carrying one is ignored) — AssignsOwner stamps
+        // it from the authenticated caller on create, the only path in.
+        $account->save();
+
+        return response()->json(['account' => $this->present($account)], 201);
+    }
+
+    public function update(Request $request, MailAccount $account): JsonResponse
+    {
+        $this->authorizeOwner($request, $account);
+
+        $data = KeepBlankSecrets::preserve($this->validated($request, isUpdate: true), ['password']);
+        $account->update($data);
+
+        return response()->json(['account' => $this->present($account->fresh() ?? $account)]);
+    }
+
+    public function destroy(Request $request, MailAccount $account): JsonResponse
+    {
+        $this->authorizeOwner($request, $account);
+
+        // FK cascadeOnDelete on mail_sync_state/mail_messages removes the account's
+        // sync cursors and message ledger rows. The sealed blobs those messages
+        // referenced (mail/{blob}) become orphans reclaimed by the mail blob sweep
+        // / GDPR purge — never deleted synchronously here (mirrors every other
+        // sealed-store module: the ledger row, not an inline unlink, is the source
+        // of truth for reclaim).
+        $account->delete();
+
+        return response()->json([], 204);
+    }
+
+    /** Trigger an on-demand "sync now" for the account. */
+    public function sync(Request $request, MailAccount $account): JsonResponse
+    {
+        $this->authorizeOwner($request, $account);
+
+        SyncMailAccount::dispatch($account->id);
+
+        return response()->json(['dispatched' => true]);
+    }
+
+    /** Current sync status + archived-message count for the account. */
+    public function status(Request $request, MailAccount $account): JsonResponse
+    {
+        $this->authorizeOwner($request, $account);
+
+        return response()->json([
+            'status' => $account->status,
+            'last_error' => $account->last_error,
+            'last_synced_at' => $account->last_synced_at?->toIso8601String(),
+            'message_count' => $account->messages()->count(),
+        ]);
+    }
+
+    /**
+     * Validates the request and returns an EXPLICITLY built array (never the
+     * raw Validator::validate() array, which Laravel does not generically
+     * type as array<string, mixed>) — every key here is a string literal, so
+     * only these known, allow-listed fields are ever passed on to the model.
+     * Optional fields are included only when present, so an omitted key on
+     * PUT never nulls out an existing column (Eloquent's fill() only touches
+     * keys that are actually present in the given array).
+     *
+     * @return array<string, mixed>
+     */
+    private function validated(Request $request, bool $isUpdate): array
+    {
+        Validator::make($request->all(), [
+            'name' => ['required', 'string', 'max:200'],
+            // SafeHost refuses link-local / cloud-metadata targets (169.254.0.0/16,
+            // fe80::/10) — the same SSRF-guard rule used for Paperless/NTFY hosts.
+            'host' => ['required', 'string', 'max:255', new SafeHost],
+            'port' => ['required', 'integer', 'min:1', 'max:65535'],
+            'username' => ['required', 'string', 'max:255'],
+            // Required on create; nullable on update (KeepBlankSecrets preserves the
+            // stored value when the field is sent blank, so an edit form never has
+            // to round-trip the current password to know it's "unchanged").
+            'password' => [$isUpdate ? 'nullable' : 'required', 'string', 'max:2000'],
+            'encryption' => ['required', 'string', Rule::in(MailAccount::ENCRYPTIONS)],
+            'folders' => ['nullable', 'array'],
+            'folders.*' => ['string', 'max:255'],
+            'backfill_since' => ['nullable', 'date'],
+            'enabled' => ['nullable', 'boolean'],
+        ])->validate();
+
+        $data = [
+            'name' => $request->string('name')->value(),
+            'host' => $request->string('host')->value(),
+            'port' => $request->integer('port'),
+            'username' => $request->string('username')->value(),
+            'password' => $request->string('password')->value(),
+            'encryption' => $request->string('encryption')->value(),
+        ];
+        if ($request->has('folders')) {
+            $data['folders'] = $request->input('folders');
+        }
+        if ($request->has('backfill_since')) {
+            $data['backfill_since'] = $request->input('backfill_since');
+        }
+        if ($request->has('enabled')) {
+            $data['enabled'] = $request->boolean('enabled');
+        }
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
+    private function present(MailAccount $account): array
+    {
+        return [
+            'id' => $account->id,
+            'name' => $account->name,
+            'host' => $account->host,
+            'port' => $account->port,
+            'username' => $account->username,
+            'encryption' => $account->encryption,
+            'folders' => $account->folders,
+            'backfill_since' => $account->backfill_since?->toDateString(),
+            'enabled' => $account->enabled,
+            'status' => $account->status,
+            'last_error' => $account->last_error,
+            'last_synced_at' => $account->last_synced_at?->toIso8601String(),
+            'message_count' => $account->messages_count ?? $account->messages()->count(),
+        ];
+    }
+
+    /** An account belongs to exactly one user; anyone else gets a 404 (not a 403 — no existence leak). */
+    private function authorizeOwner(Request $request, MailAccount $account): void
+    {
+        abort_if((int) $account->user_id !== (int) $this->requireUser($request)->id, 404);
+    }
+}

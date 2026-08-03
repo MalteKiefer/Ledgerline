@@ -229,6 +229,27 @@ class MaildirIngestTest extends TestCase
         $this->assertSame($original, $decrypted);
     }
 
+    /**
+     * The message ledger (Task 8, GET /api/v1/mail/messages) returns only
+     * id/account_id/folder/size/created_at/sealed_key — no separate blob
+     * reference. A client must be able to fetch the sealed bytes for a listed
+     * row via GET /mail/raw/{id}, so the message's own id must equal the
+     * MailBlob primary key the ingestor actually wrote the bytes under.
+     */
+    public function test_message_id_doubles_as_its_blob_primary_key(): void
+    {
+        [, $account] = $this->accountWithIdentity();
+        $path = $this->fixtureEml($account, "Subject: linkage\r\n\r\nbody");
+
+        app(MaildirIngestor::class)->ingestFile($account, 'INBOX', $path);
+
+        $message = MailMessage::query()->firstOrFail();
+        $blob = MailBlob::query()->firstOrFail();
+
+        $this->assertSame($blob->blob, $message->id);
+        $this->assertTrue(Storage::disk(config('files.disk'))->exists('mail/'.$message->id));
+    }
+
     // ---- helpers ----------------------------------------------------------
 
     /** @return array{0: User, 1: MailAccount} */
