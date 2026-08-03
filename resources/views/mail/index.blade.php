@@ -106,7 +106,7 @@
                             </thead>
                             <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
                                 <template x-for="r in pageRows" :key="r.id">
-                                    <tr class="hover:bg-accent/5" :class="{ 'opacity-50': !r.ok }">
+                                    <tr class="cursor-pointer hover:bg-accent/5" :class="{ 'opacity-50': !r.ok }" @click="openMessage(r)">
                                         <td class="truncate px-3 py-2.5"><x-badge variant="gray" x-text="r.folder"></x-badge></td>
                                         <td class="truncate px-3 py-2.5 text-gray-500" x-text="r.mailbox" :title="r.mailbox"></td>
                                         <td class="truncate px-3 py-2.5" x-text="r.from" :title="r.from"></td>
@@ -137,6 +137,56 @@
                 </template>
             </div>
         </div>
+        </template>
+
+        {{-- Message / attachments modal --}}
+        <template x-teleport="body">
+            <div x-show="open" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeMessage()">
+                <div class="absolute inset-0 bg-gray-900/50" @click="closeMessage()"></div>
+                <div class="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+                    <div class="flex items-start justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-5 py-3">
+                        <div class="min-w-0">
+                            <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="open?.subject"></h3>
+                            <p class="mt-0.5 truncate text-xs text-gray-500" x-text="`${open?.from} → ${open?.to} · ${open?.dateLabel}`"></p>
+                        </div>
+                        <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeMessage()" :aria-label="__('common.close')" />
+                    </div>
+
+                    <div class="min-h-0 flex-1 overflow-auto p-5">
+                        <div x-show="openLoading" class="flex items-center justify-center gap-2 py-10 text-sm text-gray-500">
+                            <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('mail.decrypting') }}
+                        </div>
+                        <x-alert variant="error" x-show="openError" x-cloak x-text="openError" />
+
+                        <template x-if="msg && !openLoading">
+                        <div>
+                            {{-- Attachments --}}
+                            <template x-if="msg.attachments.length">
+                            <div class="mb-4">
+                                <p class="mb-2 text-[11px] uppercase tracking-wide text-gray-500">{{ __('mail.attachments') }}</p>
+                                <div class="space-y-1.5">
+                                    <template x-for="(att, i) in msg.attachments" :key="i">
+                                        <div class="flex items-center gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                                            <x-icon name="paper-clip" class="h-4 w-4 shrink-0 text-gray-400" />
+                                            <div class="min-w-0 flex-1">
+                                                <p class="truncate text-sm text-gray-900 dark:text-gray-100" x-text="att.filename" :title="att.filename"></p>
+                                                <p class="text-xs text-gray-400" x-text="`${att.contentType} · ${fmtSize(att.size)}`"></p>
+                                            </div>
+                                            <x-button variant="secondary" size="sm" @click="viewAttachment(att)">{{ __('mail.att_view') }}</x-button>
+                                            <x-button variant="secondary" size="sm" @click="downloadAttachment(att)">{{ __('mail.att_download') }}</x-button>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                            </template>
+
+                            {{-- Body (plain-text preview) --}}
+                            <pre class="whitespace-pre-wrap break-words font-sans text-sm text-gray-800 dark:text-gray-200" x-text="bodyText || @js(__('mail.no_body'))"></pre>
+                        </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
         </template>
     </div>
 
