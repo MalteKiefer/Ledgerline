@@ -8,8 +8,8 @@
 
 import { getJson } from '../shared/api.js';
 import { fetchBlobBuffer } from '../shared/blob-io.js';
-import { parseEnvelope, parseDate, displayAddress } from '../shared/mime.js';
-import { formatDate } from '../shared/dom.js';
+import { parseEnvelope, parseMessage, parseDate, displayAddress } from '../shared/mime.js';
+import { formatDate, saveBlobAs } from '../shared/dom.js';
 
 const DECRYPT_CONCURRENCY = 8;
 // Safety cap on how many messages to pull+decrypt into the client cache for one
@@ -69,8 +69,8 @@ export default (config) => ({
     async ensureAccounts() {
         if (this.accounts.length) return;
         try {
-            const list = await getJson(this.config.accountsUrl);
-            this.accounts = (list ?? []).map((a) => ({ id: a.id, name: a.name }));
+            const res = await getJson(this.config.accountsUrl);
+            this.accounts = (res.accounts ?? []).map((a) => ({ id: a.id, name: a.name }));
         } catch {
             // Non-fatal; the mailbox column falls back to the account id.
         }
@@ -114,6 +114,7 @@ export default (config) => ({
     async decryptRow(m) {
         const base = {
             id: m.id,
+            sealedKey: m.sealed_key, // kept so the modal can re-decrypt the full body
             folder: m.folder,
             accountId: m.account_id,
             mailbox: this.accountName(m.account_id),
@@ -181,6 +182,63 @@ export default (config) => ({
         if (p < 1 || p > this.lastPage || p === this.page) return;
         this.page = p;
         window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+
+    // ---- message / attachments modal ------------------------------------
+    open: null,        // the row being viewed
+    openLoading: false,
+    openError: '',
+    msg: null,         // { textBody, htmlBody, attachments }
+    _urls: [],         // object URLs to revoke on close
+
+    get bodyText() {
+        if (!this.msg) return '';
+        if (this.msg.textBody) return this.msg.textBody;
+        // Fall back to a plain-text preview of an HTML-only mail.
+        return (this.msg.htmlBody || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    },
+
+    async openMessage(r) {
+        this.open = r;
+        this.msg = null;
+        this.openError = '';
+        this.openLoading = true;
+        try {
+            const buffer = await fetchBlobBuffer(this.config.rawBase.replace('__id__', r.id));
+            const bytes = await window.Vault.decryptMailBlob(r.sealedKey, buffer);
+            this.msg = parseMessage(bytes);
+        } catch {
+            this.openError = this.config.decryptFailed;
+        } finally {
+            this.openLoading = false;
+        }
+    },
+
+    closeMessage() {
+        for (const u of this._urls) URL.revokeObjectURL(u);
+        this._urls = [];
+        this.open = null;
+        this.msg = null;
+    },
+
+    _blobUrl(att) {
+        const url = URL.createObjectURL(new Blob([att.bytes], { type: att.contentType }));
+        this._urls.push(url);
+        return url;
+    },
+
+    viewAttachment(att) {
+        window.open(this._blobUrl(att), '_blank', 'noopener');
+    },
+
+    downloadAttachment(att) {
+        saveBlobAs(new Blob([att.bytes], { type: att.contentType }), att.filename);
+    },
+
+    fmtSize(n) {
+        if (n < 1024) return `${n} B`;
+        if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+        return `${(n / 1024 / 1024).toFixed(1)} MB`;
     },
 
     unlock() {

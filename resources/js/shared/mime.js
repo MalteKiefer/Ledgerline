@@ -124,6 +124,110 @@ export function parseDate(dateStr) {
     return Number.isNaN(t) ? null : new Date(t);
 }
 
+// Byte-exact latin1 string -> bytes (every code point 0..255 is one byte).
+function latin1ToBytes(s) {
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) & 0xff;
+    return out;
+}
+
+// Decode a leaf part's Content-Transfer-Encoding to raw bytes.
+function decodeTransfer(latin1Body, encoding) {
+    const enc = (encoding || '7bit').toLowerCase().trim();
+    if (enc === 'base64') return base64ToBytes(latin1Body);
+    if (enc === 'quoted-printable') {
+        const collapsed = latin1Body.replace(/=\r?\n/g, ''); // soft line breaks
+        const bytes = [];
+        for (let i = 0; i < collapsed.length; i++) {
+            const c = collapsed[i];
+            if (c === '=' && i + 2 < collapsed.length) {
+                bytes.push(parseInt(collapsed.substr(i + 1, 2), 16) || 0);
+                i += 2;
+            } else {
+                bytes.push(collapsed.charCodeAt(i) & 0xff);
+            }
+        }
+        return Uint8Array.from(bytes);
+    }
+    // 7bit / 8bit / binary: the latin1 string is already byte-exact.
+    return latin1ToBytes(latin1Body);
+}
+
+// Pull a parameter (e.g. boundary=, filename=, name=) out of a structured
+// header value, honouring quotes and RFC 2047 encoded-words. Also handles the
+// simplest RFC 2231 `name*=charset''percent-encoded` continuation-less form.
+function headerParam(value, key) {
+    if (!value) return '';
+    const ext = new RegExp(`${key}\\*\\s*=\\s*([^;]+)`, 'i').exec(value);
+    if (ext) {
+        const raw = ext[1].trim().replace(/^"|"$/g, '');
+        const m = /^([^']*)'[^']*'(.*)$/.exec(raw);
+        const pct = (m ? m[2] : raw).replace(/%([0-9a-f]{2})/gi, (_x, h) => String.fromCharCode(parseInt(h, 16)));
+        try { return decodeBytes(latin1ToBytes(pct), m ? m[1] : 'utf-8'); } catch { return pct; }
+    }
+    const q = new RegExp(`${key}\\s*=\\s*"([^"]*)"`, 'i').exec(value);
+    if (q) return decodeWords(q[1]);
+    const b = new RegExp(`${key}\\s*=\\s*([^;\\s]+)`, 'i').exec(value);
+    return b ? decodeWords(b[1]) : '';
+}
+
+// Recursively collect leaf MIME parts from a raw (latin1) message string.
+// Returns { textBody, htmlBody, attachments:[{filename,contentType,size,bytes}] }.
+function walkParts(latin1, depth, acc) {
+    if (depth > 20) return; // pathological nesting guard
+    const { headers, body } = splitMessage(latin1);
+    const ctype = (headers['content-type'] || 'text/plain').toLowerCase();
+    const disposition = (headers['content-disposition'] || '').toLowerCase();
+
+    if (ctype.startsWith('multipart/')) {
+        const boundary = headerParam(headers['content-type'], 'boundary');
+        if (!boundary) return;
+        const marker = '--' + boundary;
+        const segments = body.split(marker);
+        // segments[0] is the preamble; the last is the epilogue (after --boundary--).
+        for (let i = 1; i < segments.length; i++) {
+            let seg = segments[i];
+            if (seg.startsWith('--')) break; // closing boundary
+            seg = seg.replace(/^\r?\n/, '');   // drop the CRLF after the boundary line
+            walkParts(seg, depth + 1, acc);
+        }
+        return;
+    }
+
+    // Leaf part.
+    const encoding = headers['content-transfer-encoding'] || '7bit';
+    const filename = headerParam(disposition, 'filename') || headerParam(headers['content-type'], 'name');
+    const isAttachment = disposition.startsWith('attachment') || (filename !== '' && !ctype.startsWith('multipart/'));
+
+    if (!isAttachment && ctype.startsWith('text/plain') && !acc.textBody) {
+        acc.textBody = decodeBytes(decodeTransfer(body, encoding), headerParam(headers['content-type'], 'charset'));
+        return;
+    }
+    if (!isAttachment && ctype.startsWith('text/html') && !acc.htmlBody) {
+        acc.htmlBody = decodeBytes(decodeTransfer(body, encoding), headerParam(headers['content-type'], 'charset'));
+        return;
+    }
+    if (isAttachment) {
+        const bytes = decodeTransfer(body, encoding);
+        acc.attachments.push({
+            filename: filename || 'attachment',
+            contentType: ctype.split(';')[0].trim() || 'application/octet-stream',
+            size: bytes.length,
+            bytes,
+        });
+    }
+}
+
+// Full parse for the message/attachments modal: the envelope plus the text/html
+// body and every attachment (filename, type, size, decoded bytes). `input` is
+// the decrypted RFC822 message (bytes or string).
+export function parseMessage(input) {
+    const latin1 = typeof input === 'string' ? input : decodeBytes(input, 'latin1');
+    const acc = { textBody: '', htmlBody: '', attachments: [] };
+    walkParts(latin1, 0, acc);
+    return { envelope: parseEnvelope(latin1), ...acc };
+}
+
 // Extract just the display name (or address) from a "Name <addr@host>" field.
 export function displayAddress(field) {
     if (!field) return '';

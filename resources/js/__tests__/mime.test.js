@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decodeWords, splitMessage, hasAttachment, parseEnvelope, displayAddress, parseDate } from '../shared/mime.js';
+import { decodeWords, splitMessage, hasAttachment, parseEnvelope, displayAddress, parseDate, parseMessage } from '../shared/mime.js';
 
 describe('decodeWords (RFC 2047)', () => {
     it('decodes a UTF-8 Base64 encoded-word', () => {
@@ -56,6 +56,45 @@ describe('parseEnvelope', () => {
         expect(e.to).toBe('c@d');
         expect(e.subject).toBe('hi');
         expect(e.hasAttachment).toBe(true);
+    });
+});
+
+describe('parseMessage', () => {
+    it('extracts text body and a base64 attachment from multipart/mixed', () => {
+        // "hi" as base64 is "aGk=".
+        const raw = [
+            'Content-Type: multipart/mixed; boundary="B"',
+            '',
+            '--B',
+            'Content-Type: text/plain; charset=utf-8',
+            '',
+            'the body text',
+            '--B',
+            'Content-Type: application/pdf; name="doc.pdf"',
+            'Content-Disposition: attachment; filename="doc.pdf"',
+            'Content-Transfer-Encoding: base64',
+            '',
+            'aGk=',
+            '--B--',
+            '',
+        ].join('\r\n');
+        const msg = parseMessage(raw);
+        expect(msg.textBody.trim()).toBe('the body text');
+        expect(msg.attachments).toHaveLength(1);
+        expect(msg.attachments[0].filename).toBe('doc.pdf');
+        expect(msg.attachments[0].contentType).toBe('application/pdf');
+        expect(new TextDecoder().decode(msg.attachments[0].bytes)).toBe('hi');
+    });
+
+    it('decodes a quoted-printable text body', () => {
+        const raw = 'Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\nGr=C3=BC=C3=9Fe';
+        expect(parseMessage(raw).textBody).toBe('Grüße');
+    });
+
+    it('a plain single-part message has no attachments', () => {
+        const msg = parseMessage('Subject: x\r\nContent-Type: text/plain\r\n\r\nhello');
+        expect(msg.attachments).toHaveLength(0);
+        expect(msg.textBody).toBe('hello');
     });
 });
 
