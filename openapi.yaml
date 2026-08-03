@@ -46,7 +46,7 @@ tags:
         • notes → {v:3, notes:[NoteRecord]} (sharded /notes/store)
         • todos → {v:3, todos:[TodoRecord], todoLists:[TodoList]}
         • bookmarks → {v:3, bookmarks:[BookmarkRecord], bookmarkFolders:[BookmarkFolder]}
-        • contacts → {contacts:[ContactRecord]} (+ avatar blobs)
+        • contacts → {v:3, contacts:[ContactRecord]} (sharded /contacts/store, + avatar blobs; record shards reuse the contact_blobs ledger)
         • passwords → PasswordsStoreModel {secrets:[SecretItem], secretFolders:[PersonalVault], pwVaultMigrated} (sharded /passwords/store)
         • invoices → {invoices:[InvoiceRecord], transactions:[InvoiceTransaction], paymentMethods:[PaymentMethod], projects:[FinanceProject], partners:[FinancePartner], financeCategories:[FinanceCategory]} (sharded /invoices/store)
         • health → {healthProfile:HealthProfile, healthEntries:[HealthEntry], healthFasts:[HealthFast]}
@@ -73,10 +73,11 @@ tags:
   - name: Contacts
     description: >
       Optional encrypted contact avatar blobs. The contact RECORDS themselves
-      (names, vCard fields, etc.) live in the sealed contacts module store (see
-      Store, GET/PUT /store/contacts) — these endpoints only hold the optional
-      avatar image bytes a contact record references. Notes and todos are
-      store-only (no blobs, no dedicated endpoints).
+      (names, vCard fields, etc.) live in the sealed sharded contacts store (see
+      Store, GET/PUT /contacts/store) — these endpoints hold the optional avatar
+      image bytes a contact record references AND the content-addressed record-shard
+      blobs (both share the contact_blobs ledger + /contacts/{upload,raw,raw-batch,
+      blobs/reconcile}; refs never collide). Notes and todos are store-only.
   - name: Explore
     description: >
       Optional encrypted Explore track blobs. The Explore RECORDS themselves
@@ -955,8 +956,8 @@ components:
     ContactRecord:
       type: object
       description: >
-        One contact in the contacts module store (GET/PUT /store/contacts, key
-        contacts[]). Avatar: `avatarRef` is a contact-blob UUID (GET /contacts/raw/{avatarRef});
+        One contact in the sharded contacts store (GET/PUT /contacts/store, key
+        contacts[] — one shard blob per record). Avatar: `avatarRef` is a contact-blob UUID (GET /contacts/raw/{avatarRef});
         decrypt the bytes with `avatarKey` (a sealed content key, unwrapped under the vault
         key like a file blob). `personId` links to a Gallery person (written into BOTH stores).
         `_x` round-trips unknown vCard X-properties. `bdayNotified`/`annivNotified` are
@@ -5798,6 +5799,104 @@ paths:
         "403":
           description: Not an admin.
 
+  /contacts/raw-batch:
+    post:
+      tags: [Store]
+      operationId: contactsRawBatch
+      summary: Batch-download contacts shard blobs (framed)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blobs]
+              properties:
+                blobs:
+                  type: array
+                  maxItems: 512
+                  items: { type: string, format: uuid }
+      responses:
+        "200": { description: Framed concatenated ciphertext blobs. }
+
+  /contacts/store:
+    get:
+      tags: [Store]
+      operationId: contactsStoreShow
+      summary: Read the sealed sharded notes root
+      description: >
+        Sharded contacts store (merge-safety spec §3b): the sealed root pointer table
+        (shard descriptors), mirroring /files/store. ETag/304 supported. The note
+        records live in the contacts shard blobs (see /contacts/raw).
+      responses:
+        "200":
+          description: Sealed root + version.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ciphertext: { type: string, nullable: true }
+                  version: { type: integer }
+        "304": { description: Not modified (ETag match). }
+        "403": { description: Module disabled for this account. }
+    put:
+      tags: [Store]
+      operationId: contactsStoreSave
+      summary: Write the sealed sharded notes root
+      description: >
+        Optimistic concurrency (409 on stale version) + shard-reference integrity
+        guard: send the full shard-ref list; the server rejects (422 missing_shard)
+        a root pointing at a shard blob with no ledger row. Throttle 120/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ciphertext, version]
+              properties:
+                ciphertext: { type: string }
+                version: { type: integer, minimum: 0 }
+                counts:
+                  type: object
+                  additionalProperties: { type: integer, minimum: 0 }
+                  description: >
+                    Optional non-secret per-slice record counts (cardinality only,
+                    never content) recorded in the root_write forensic trail so
+                    store:anomaly-scan can flag a version where a record count
+                    regressed — the primary silent-data-loss signal.
+                shards:
+                  type: array
+                  maxItems: 200000
+                  items: { type: string, format: uuid }
+                  description: >
+                    STRONGLY RECOMMENDED: the COMPLETE set of blob refs (every record-shard
+                    AND collection blob) the new sealed root points at. The server rejects
+                    the write (422 missing_shard) if any ref lacks a ledger row. OMITTING or
+                    sending an INCOMPLETE set disables/weakens this guard and can persist a
+                    corrupt dangling-shard root that 404s on load and loses those records —
+                    always send the full set. Non-secret UUIDs (zero-knowledge preserved).
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { version: { type: integer } }
+        "403": { description: Module disabled for this account. }
+        "409":
+          description: Version conflict — re-read, rebase, retry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoreVersionConflict" }
+        "422":
+          description: A referenced shard blob has no ledger row (missing_shard).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MissingShardResponse" }
+
   /notes/store:
     get:
       tags: [Store]
@@ -7298,6 +7397,69 @@ paths:
         version is no longer retained. For the SINGLE-BLOB module store the whole
         content is in the root, so recovery is complete. For a SHARDED store
         (files/gallery/notes/passwords/invoices) the root is only a shard-pointer
+        table: recovery is best-effort and time-bounded by the ~24h blob orphan
+        grace, because a dropped record's shard is reclaimed after the grace — a
+        shard-blob 404 during reconstruction means THAT record is unrecoverable,
+        not a full-recovery failure. Recover within ~24h of the drop.
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: The retained sealed root.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, ciphertext]
+                properties:
+                  version: { type: integer }
+                  ciphertext: { type: string, description: "Opaque sealed root ciphertext." }
+                  created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Version not retained. }
+  /contacts/store/history:
+    get:
+      operationId: contactsStoreHistory
+      tags: [Store]
+      summary: List retained sealed-root versions (recovery net).
+      description: >
+        Newest-first index of retained previous sealed roots (version + byte size +
+        timestamp, NO ciphertext) so the client can pick a version to recover a
+        dropped record from. Owner-scoped, read-only; retention is the last 20
+        versions (STORE_HISTORY_VERSIONS), pruned PER SAVE (not time-based) — an
+        active multiclient store can exhaust the window in minutes, so recover
+        promptly. Zero-knowledge: the stored roots are opaque ciphertext.
+      parameters:
+      responses:
+        "200":
+          description: Retained versions, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        version: { type: integer }
+                        bytes: { type: integer }
+                        created_at: { type: string, format: date-time, nullable: true }
+        "403": { description: Module disabled. }
+        "404": { description: Unknown module. }
+  /contacts/store/history/{version}:
+    get:
+      operationId: contactsStoreHistoryVersion
+      tags: [Store]
+      summary: Fetch one retained sealed-root ciphertext to re-merge a lost record.
+      description: >
+        Returns a single retained sealed root ciphertext by version. The client
+        decrypts it and re-merges the dropped record(s). Owner-scoped; 404 if that
+        version is no longer retained. For the SINGLE-BLOB module store the whole
+        content is in the root, so recovery is complete. For a SHARDED store
+        (files/gallery/contacts/passwords/invoices) the root is only a shard-pointer
         table: recovery is best-effort and time-bounded by the ~24h blob orphan
         grace, because a dropped record's shard is reclaimed after the grace — a
         shard-blob 404 during reconstruction means THAT record is unrecoverable,
