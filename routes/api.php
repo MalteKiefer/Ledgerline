@@ -35,6 +35,7 @@ use App\Http\Controllers\InvoicesStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\MailMessageController;
+use App\Http\Controllers\MailPushbackController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NoteBlobController;
@@ -167,6 +168,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/mail/accounts/{account}/sync/cancel', [MailAccountController::class, 'cancelSync'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.sync-cancel');
         Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->middleware('module:mail')->name('api.mail.accounts.status');
         Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware(['throttle:120,1', 'module:mail'])->name('api.mail.messages.index');
+        Route::post('/mail/messages/{message}/pushback', MailPushbackController::class)->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.messages.pushback');
         Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->middleware(['throttle:600,1', 'module:mail'])->name('api.mail.raw');
 
         // Per-user Paperless-ngx integration: cached term quick-picks, live term

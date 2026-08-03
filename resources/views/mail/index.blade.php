@@ -22,10 +22,13 @@
             messagesUrl: '{{ route('mail.messages.index') }}',
             accountsUrl: '{{ route('mail.accounts.index') }}',
             rawBase: '{{ route('mail.raw', ['blob' => '__id__']) }}',
+            pushbackBase: '{{ route('mail.messages.pushback', ['message' => '__id__']) }}',
             loadFailed: @js(__('mail.load_failed')),
             decryptFailed: @js(__('mail.decrypt_failed')),
             unknown: @js(__('mail.unknown')),
             noSubject: @js(__('mail.no_subject')),
+            pushConfirmMsg: @js(__('mail.push_confirm')),
+            pushFailed: @js(__('mail.push_failed')),
          })">
 
         <div x-show="!unlocked" x-cloak>
@@ -188,6 +191,17 @@
                             <pre x-show="!bodyHtml && !bodyFrame" class="whitespace-pre-wrap break-words font-sans text-sm text-gray-800 dark:text-gray-200" x-text="bodyText || @js(__('mail.no_body'))"></pre>
                         </div>
                         </template>
+                    </div>
+
+                    {{-- Footer: push back to origin server --}}
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-800 px-5 py-3">
+                        <div class="min-w-0 text-xs">
+                            <span x-show="pushed" x-cloak class="text-green-600 dark:text-green-400">{{ __('mail.push_done') }}</span>
+                            <span x-show="pushError" x-cloak class="text-red-600 dark:text-red-400" x-text="pushError"></span>
+                        </div>
+                        <x-button variant="secondary" size="sm" ::disabled="pushing || openLoading || !msg" @click="pushBack()">
+                            <x-icon name="arrow-up-tray" class="mr-1 h-4 w-4" />{{ __('mail.push_back') }}
+                        </x-button>
                     </div>
                 </div>
             </div>

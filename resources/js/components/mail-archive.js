@@ -6,13 +6,23 @@
 // sorting and pagination then happen locally over that decrypted cache — the
 // server never sees sender/subject/etc, so it cannot filter on them for us.
 
-import { getJson } from '../shared/api.js';
+import { getJson, postForm } from '../shared/api.js';
 import { fetchBlobBuffer } from '../shared/blob-io.js';
 import { parseEnvelope, parseMessage, parseDate, displayAddress } from '../shared/mime.js';
 import { formatDate, saveBlobAs } from '../shared/dom.js';
 import { mailRemote, mailScripts } from '../shared/prefs.js';
 
 const DECRYPT_CONCURRENCY = 8;
+
+// Base64-encode a Uint8Array without blowing the call stack on large messages.
+function bytesToB64(bytes) {
+    let bin = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+}
 // Safety cap on how many messages to pull+decrypt into the client cache for one
 // scope — the server orders newest-first, so this keeps the most recent.
 const MAX_LOAD = 3000;
@@ -192,6 +202,10 @@ export default (config) => ({
     msg: null,         // { textBody, htmlBody, attachments }
     bodyHtml: '',      // sanitized HTML body (scripts OFF)
     bodyFrame: '',     // srcdoc for the sandboxed iframe (scripts ON)
+    _raw: null,        // decrypted RFC822 bytes of the open message (for push-back)
+    pushing: false,
+    pushed: false,
+    pushError: '',
     _urls: [],         // object URLs to revoke on close
 
     get bodyText() {
@@ -204,11 +218,15 @@ export default (config) => ({
         this.msg = null;
         this.bodyHtml = '';
         this.bodyFrame = '';
+        this._raw = null;
+        this.pushed = false;
+        this.pushError = '';
         this.openError = '';
         this.openLoading = true;
         try {
             const buffer = await fetchBlobBuffer(this.config.rawBase.replace('__id__', r.id));
             const bytes = await window.Vault.decryptMailBlob(r.sealedKey, buffer);
+            this._raw = bytes;
             this.msg = parseMessage(bytes);
             // Prefer the HTML body; fall back to plain text. How HTML is rendered
             // depends on the per-user prefs: scripts ON -> isolated sandbox iframe;
@@ -269,6 +287,28 @@ export default (config) => ({
         this._urls = [];
         this.open = null;
         this.msg = null;
+        this._raw = null;
+    },
+
+    // Push the open message BACK to its origin IMAP mailbox (IMAP APPEND). The
+    // client sends the decrypted RFC822 to the server, which APPENDs it — the
+    // one deliberate write-to-origin action, behind a confirm.
+    async pushBack() {
+        if (!this._raw || this.pushing) return;
+        if (!await this.$store.confirm.ask(this.config.pushConfirmMsg)) return;
+        this.pushing = true;
+        this.pushError = '';
+        try {
+            await postForm(this.config.pushbackBase.replace('__id__', this.open.id), {
+                raw_b64: bytesToB64(this._raw),
+                folder: this.open.folder,
+            });
+            this.pushed = true;
+        } catch {
+            this.pushError = this.config.pushFailed;
+        } finally {
+            this.pushing = false;
+        }
     },
 
     // Only these types are ever rendered INLINE (same-origin blob URL). Mail

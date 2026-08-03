@@ -27,6 +27,7 @@ use App\Http\Controllers\InvoicesStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\MailMessageController;
+use App\Http\Controllers\MailPushbackController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\ModuleStoreController;
@@ -277,6 +278,7 @@ Route::middleware('auth')->group(function (): void {
     // the web session guard as it does under Sanctum. No logic duplicated.
     Route::get('/mail/accounts', [MailAccountController::class, 'index'])->middleware('module:mail')->name('mail.accounts.index');
     Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware(['throttle:240,1', 'module:mail'])->name('mail.messages.index');
+    Route::post('/mail/messages/{message}/pushback', MailPushbackController::class)->middleware(['throttle:30,1', 'module:mail'])->name('mail.messages.pushback');
     Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.store');
     Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.update');
     Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.destroy');
