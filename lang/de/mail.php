@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 return [
     'title' => 'Mail',
-    'subheading' => 'IMAP-Konten, die in dein Archiv synchronisiert werden. Das Lesen archivierter Mails ist noch nicht verfügbar.',
+    'subheading' => 'Empfange und archiviere Mail zero-knowledge — hier lesen, filtern und durchsuchen.',
 
     // List
     'loading' => 'Konten werden geladen…',
@@ -24,6 +24,17 @@ return [
     'sync_cancel' => 'Synchronisierung abbrechen',
     'cancel_failed' => 'Synchronisierung konnte nicht abgebrochen werden.',
     'archive_heading' => 'Archiv',
+    'read_tab' => 'Lesen',
+    'accounts_tab' => 'Mailkonten',
+    'archive_empty' => 'Noch keine archivierten Mails.',
+    'filter_all_accounts' => 'Alle Postfächer',
+    'filter_all_folders' => 'Alle Ordner',
+    'filter_search_label' => 'Suche',
+    'filter_search_ph' => 'Absender oder Betreff…',
+    'date_from' => 'Von',
+    'date_to' => 'Bis',
+    'decrypting' => 'Entschlüssele…',
+    'capped_note' => '(nur die neuesten :n)',
     'col_folder' => 'Ordner',
     'col_mailbox' => 'Postfach',
     'col_from' => 'Absender',
