@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.539.27
+  version: 1.539.28
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -6937,6 +6937,43 @@ paths:
             application/json:
               schema: { type: object, properties: { updated: { type: integer } } }
         "403": { description: Module disabled. }
+        "429": { description: Rate limit exceeded. }
+
+  /mail/messages/{message}/envelope:
+    post:
+      tags: [Mail]
+      operationId: mailMessagesEnvelope
+      summary: Store the client-built sealed envelope (list/search index)
+      description: >
+        Zero-knowledge list index. The server cannot read the sealed body, so the
+        CLIENT decrypts the body once, parses the headers, and uploads a tiny
+        sealed ENVELOPE (from/to/subject/date/attachment, sealed to the owner's
+        identity keys in the same format as the body). The server stores it opaque
+        so future list-loads / other devices decrypt only this envelope, never the
+        body. Owner-scoped, idempotent. Throttle 1200/min (bulk backfill).
+      parameters:
+        - name: message
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [envelope, envelope_key]
+              properties:
+                envelope: { type: string, description: "base64 framed secretstream blob (<=64 KiB)." }
+                envelope_key: { type: string, description: "hybrid-wrap suite envelope (JSON) of the per-envelope key." }
+      responses:
+        "200":
+          description: Stored.
+          content:
+            application/json:
+              schema: { type: object, properties: { stored: { type: boolean } } }
+        "403": { description: Module disabled. }
+        "404": { description: Not the caller's message. }
         "429": { description: Rate limit exceeded. }
 
   /mail/raw/{blob}:

@@ -78,6 +78,10 @@ class MailMessageController extends Controller
             'sealed_key' => $message->sealed_key,
             'seen' => $message->seen,
             'trashed' => $message->trashed_at !== null,
+            // Per-message sealed envelope (headers) for the fast list/search index;
+            // null until the client has built it (see MailEnvelopeController).
+            'envelope' => $message->envelope,
+            'envelope_key' => $message->envelope_key,
         ];
     }
 }

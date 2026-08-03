@@ -651,6 +651,34 @@ export const Vault = {
         return ShareCrypto.decrypt(buffer, unb64(keyB64));
     },
 
+    /**
+     * Seal small bytes (a mail ENVELOPE — headers only) to THIS user's own
+     * identity public keys, in the SAME framing as an archived mail body
+     * (hybrid-wrapped per-message key + framed secretstream) so decryptMailBlob
+     * opens it. Used to build the list/search index client-side once, then store
+     * it durably. Returns { sealedKey: string, blob: Uint8Array }.
+     */
+    async sealMailBlob(bytes) {
+        await ready();
+        const id = await this.ensureIdentityKeys();
+        const key = sodium.crypto_secretstream_xchacha20poly1305_keygen();
+        const { state, header } = sodium.crypto_secretstream_xchacha20poly1305_init_push(key);
+        const cipher = sodium.crypto_secretstream_xchacha20poly1305_push(
+            state, bytes, null, sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL,
+        );
+        const len = cipher.length;
+        const framed = new Uint8Array(header.length + 4 + len);
+        framed.set(header, 0);
+        framed[header.length] = len & 0xff;
+        framed[header.length + 1] = (len >>> 8) & 0xff;
+        framed[header.length + 2] = (len >>> 16) & 0xff;
+        framed[header.length + 3] = (len >>> 24) & 0xff;
+        framed.set(cipher, header.length + 4);
+        const { hybridWrap } = await import('./shared/pq-kem.js');
+        const env = await hybridWrap(key, id.pub, id.mlkemEk, '');
+        return { sealedKey: JSON.stringify(env), blob: framed };
+    },
+
     async ensureIdentityKeys() {
         await ready();
 

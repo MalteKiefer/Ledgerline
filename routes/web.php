@@ -26,6 +26,7 @@ use App\Http\Controllers\InvoiceMailController;
 use App\Http\Controllers\InvoicesStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailBlobController;
+use App\Http\Controllers\MailEnvelopeController;
 use App\Http\Controllers\MailMessageController;
 use App\Http\Controllers\MailPushbackController;
 use App\Http\Controllers\MailTrashController;
@@ -282,6 +283,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/mail/messages/{message}/pushback', MailPushbackController::class)->middleware(['throttle:30,1', 'module:mail'])->name('mail.messages.pushback');
     Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.messages.trash');
     Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.messages.restore');
+    Route::post('/mail/messages/{message}/envelope', MailEnvelopeController::class)->middleware(['throttle:1200,1', 'module:mail'])->name('mail.messages.envelope');
     Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.store');
     Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.update');
     Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.destroy');
