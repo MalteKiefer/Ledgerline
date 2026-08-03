@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.539.17
+  version: 1.539.18
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -303,7 +303,7 @@ components:
           nullable: true
           items: { type: string, maxLength: 255 }
           description: "Which IMAP folders to sync (null = server default set)."
-        backfill_since: { type: string, format: date, nullable: true, description: "Advisory earliest date to archive. See MailAccount model docblock — not yet consulted by the sync (fetch-all-then-archive)." }
+        backfill_since: { type: string, format: date, nullable: true, description: "Earliest arrival date to ARCHIVE (Option B). mbsync has no server-side date filter, so a sync still DOWNLOADS the whole mailbox — but only messages that arrived on/after this date are sealed + ledgered; older ones are dropped from the local scratch (origin mailbox untouched). Empty = archive everything." }
         enabled: { type: boolean }
         status: { type: string, enum: [idle, syncing, error], readOnly: true }
         last_error: { type: string, nullable: true, readOnly: true }

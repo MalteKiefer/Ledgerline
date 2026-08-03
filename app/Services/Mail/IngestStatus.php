@@ -14,4 +14,8 @@ enum IngestStatus: string
     case Duplicate = 'duplicate';
     case NotSealable = 'not_sealable';
     case Quarantined = 'quarantined';
+    // Message arrived before the account's backfill_since cut-off: not archived.
+    // The local Maildir copy is unlinked (origin mailbox is untouched, so no
+    // data loss); mbsync still downloaded it (no server-side date filter).
+    case SkippedOld = 'skipped_old';
 }

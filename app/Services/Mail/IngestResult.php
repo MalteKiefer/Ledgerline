@@ -8,13 +8,16 @@ namespace App\Services\Mail;
  * The outcome of ingesting a single Maildir message file. Immutable value
  * object returned by MaildirIngestor::ingestFile().
  *
- * The four statuses are the complete, loss-safe decision space for one file:
+ * The statuses are the complete, loss-safe decision space for one file:
  *   - Stored:       sealed, durably ledgered, and the Maildir file shredded.
  *   - Duplicate:    already archived (content_hash match) → file unlinked,
  *                   nothing re-stored.
  *   - NotSealable:  the account owner has not published identity keys yet, so
  *                   the message CANNOT be sealed — the file is LEFT untouched
  *                   so a later run (once keys exist) archives it. Nothing lost.
+ *   - SkippedOld:   arrived before the account's backfill_since cut-off → the
+ *                   local Maildir copy is unlinked (origin untouched, so no
+ *                   loss), not archived.
  *   - Quarantined:  the file could not be read → moved aside + logged, never
  *                   silently dropped.
  *
@@ -52,5 +55,10 @@ final readonly class IngestResult
     public static function quarantined(): self
     {
         return new self(IngestStatus::Quarantined, '');
+    }
+
+    public static function skippedOld(string $hash): self
+    {
+        return new self(IngestStatus::SkippedOld, $hash);
     }
 }

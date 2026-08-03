@@ -75,7 +75,7 @@ class IngestMailChunk implements ShouldQueue
             return; // account deleted mid-run; nothing to archive to.
         }
 
-        $summary = ['stored' => 0, 'duplicate' => 0, 'not_sealable' => 0, 'quarantined' => 0, 'failed' => 0];
+        $summary = ['stored' => 0, 'duplicate' => 0, 'not_sealable' => 0, 'quarantined' => 0, 'skipped_old' => 0, 'failed' => 0];
 
         foreach ($this->paths as $path) {
             // A prior attempt of this job (or a same-content dedup) may have

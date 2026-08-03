@@ -94,6 +94,25 @@ final class MaildirIngestor
             return IngestResult::duplicate($hash);
         }
 
+        // backfill_since (Option B): mbsync has no server-side date filter, so an
+        // initial sync still downloads the whole mailbox — but we only ARCHIVE
+        // messages that arrived on/after the account's cut-off. Older ones are
+        // dropped from our local scratch Maildir; the ORIGIN mailbox is never
+        // touched (pull-only), so this is not data loss. Arrival time = the
+        // Maildir file mtime (mbsync `CopyArrivalDate yes` stamps it with the
+        // IMAP INTERNALDATE). Fail OPEN: if the cut-off or the mtime is missing,
+        // archive the message rather than risk dropping a wanted one.
+        $cutoff = $account->backfill_since;
+        if ($cutoff !== null) {
+            $arrival = @filemtime($path);
+            if ($arrival !== false && $arrival < $cutoff->copy()->startOfDay()->getTimestamp()) {
+                sodium_memzero($raw);
+                @unlink($path);
+
+                return IngestResult::skippedOld($hash);
+            }
+        }
+
         [$x25519Pub, $mlkemEk] = self::ownerIdentity($account);
         if ($x25519Pub === null || $mlkemEk === null) {
             // Cannot seal yet: the owner has not published identity keys. Leave
@@ -173,7 +192,7 @@ final class MaildirIngestor
      */
     public function ingestFolder(MailAccount $account, string $folder, string $maildirPath): array
     {
-        $summary = ['stored' => 0, 'duplicate' => 0, 'not_sealable' => 0, 'quarantined' => 0, 'failed' => 0];
+        $summary = ['stored' => 0, 'duplicate' => 0, 'not_sealable' => 0, 'quarantined' => 0, 'skipped_old' => 0, 'failed' => 0];
 
         foreach (['cur', 'new'] as $sub) {
             $dir = rtrim($maildirPath, '/').'/'.$sub;
