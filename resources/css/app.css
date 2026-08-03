@@ -121,3 +121,12 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--color-accent);
     --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+/* Rendered (sanitized) HTML mail body in the archive modal: keep foreign mail
+   markup from overflowing or restyling the app. Remote images are already
+   stripped by DOMPurify; <style> is forbidden so mail CSS can't leak out. */
+.ll-mail-body { overflow-wrap: anywhere; }
+.ll-mail-body img { max-width: 100%; height: auto; }
+.ll-mail-body a { color: var(--color-accent); text-decoration: underline; }
+.ll-mail-body table { max-width: 100%; border-collapse: collapse; }
+.ll-mail-body td, .ll-mail-body th { padding: 2px 6px; }
