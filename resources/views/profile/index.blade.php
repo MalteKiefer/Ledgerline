@@ -67,6 +67,9 @@
             ['url' => route('settings.company.edit'), 'icon' => 'identification', 'tint' => '#7066f5', 'title' => __('settings.company_section'), 'desc' => __('settings.company_desc')],
             ['url' => route('health.index'), 'icon' => 'heart', 'tint' => '#ef4444', 'title' => __('pages.profile.health_title'), 'desc' => __('pages.profile.health_desc')],
         ];
+        if (auth()->user()?->canModule('mail')) {
+            $personal[] = ['url' => route('profile.mail-keys'), 'icon' => 'key', 'tint' => '#3fae9f', 'title' => __('mailkeys.title'), 'desc' => __('mailkeys.nav_desc')];
+        }
         $data = [
             ['url' => route('profile.export'), 'icon' => 'arrow-down-tray', 'tint' => '#3fae9f', 'title' => __('account.export_heading'), 'desc' => __('account.export_hint')],
             ['url' => route('passwords.index').'?reset=1', 'icon' => 'key', 'tint' => '#ef4444', 'title' => __('passwords.reset'), 'desc' => __('settings.passwords_reset_desc'), 'danger' => true],

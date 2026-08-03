@@ -12,6 +12,7 @@ import { parseEnvelope, parseMessage, parseDate, displayAddress } from '../share
 import { formatDate, saveBlobAs } from '../shared/dom.js';
 import { mailRemote, mailScripts } from '../shared/prefs.js';
 import { loadEnvelopes, putEnvelopes } from '../shared/mail-cache.js';
+import { isPgpEncrypted, extractPgpMessage, decrypt as pgpDecrypt } from '../shared/pgp.js';
 
 const DECRYPT_CONCURRENCY = 8;
 
@@ -276,6 +277,7 @@ export default (config) => ({
     openLoading: false,
     openError: '',
     msg: null,         // { textBody, htmlBody, attachments }
+    pgp: '',           // '' | 'ok' | 'nokey' | 'fail' — PGP decryption status
     bodyHtml: '',      // sanitized HTML body (scripts OFF)
     bodyFrame: '',     // srcdoc for the sandboxed iframe (scripts ON)
     _raw: null,        // decrypted RFC822 bytes of the open message (for push-back)
@@ -292,6 +294,7 @@ export default (config) => ({
     async openMessage(r) {
         this.open = r;
         this.msg = null;
+        this.pgp = '';
         this.bodyHtml = '';
         this.bodyFrame = '';
         this._raw = null;
@@ -302,8 +305,28 @@ export default (config) => ({
         try {
             const buffer = await fetchBlobBuffer(this.config.rawBase.replace('__id__', r.id));
             const bytes = await window.Vault.decryptMailBlob(r.sealedKey, buffer);
-            this._raw = bytes;
+            this._raw = bytes; // ORIGINAL bytes (kept intact for push-back)
             this.msg = parseMessage(bytes);
+
+            // PGP: if the body is encrypted (inline or PGP/MIME), decrypt it with
+            // the vault-sealed private keys and re-parse the plaintext. Headers
+            // (from/to/subject) are on the outer message and stay as-is.
+            this.pgp = '';
+            const rawText = new TextDecoder('latin1').decode(bytes);
+            if (isPgpEncrypted(rawText)) {
+                const armored = extractPgpMessage(rawText);
+                const keys = await this._pgpKeys();
+                if (!keys.length) {
+                    this.pgp = 'nokey';
+                } else if (armored) {
+                    try {
+                        const { text } = await pgpDecrypt(armored, keys);
+                        this.msg = parseMessage(text);
+                        this.pgp = 'ok';
+                    } catch { this.pgp = 'fail'; }
+                }
+            }
+
             // Prefer the HTML body (the designed mail); fall back to plain text
             // only when there is no HTML part. Scripts ON -> isolated sandbox
             // iframe; scripts OFF -> DOMPurify inline. Remote images load only
@@ -356,6 +379,18 @@ export default (config) => ({
             ? "default-src 'none'; img-src * data: cid:; media-src *; style-src 'unsafe-inline' *; font-src * data:; script-src 'unsafe-inline' 'unsafe-eval'"
             : "default-src 'none'; img-src data: cid:; style-src 'unsafe-inline'; font-src data:; script-src 'unsafe-inline' 'unsafe-eval'";
         return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"></head><body style="margin:0;font:14px/1.5 sans-serif;color:#111">${html}</body></html>`;
+    },
+
+    // Vault-sealed PGP private keys for decryption ([] if none / locked).
+    async _pgpKeys() {
+        const st = window.LLModuleStore?.mailkeys;
+        if (!st) return [];
+        try {
+            await st.load();
+            return (st.data.keys || []).map((k) => ({ privateKey: k.privateKey, passphrase: k.passphrase }));
+        } catch {
+            return [];
+        }
     },
 
     closeMessage() {

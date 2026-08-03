@@ -6,6 +6,7 @@ import { buildModuleStores } from './shared/module-store';
 import { makeShardedStore } from './shared/sharded-store';
 import contacts from './components/contacts';
 import health from './components/health';
+import mailKeys from './components/mail-keys';
 import passwords from './components/passwords';
 import vaultFiles from './components/files';
 import vaultGallery from './components/gallery';
@@ -558,6 +559,7 @@ Alpine.data('notes', notes);
 Alpine.data('contacts', contacts);
 
 Alpine.data('health', health);
+Alpine.data('mailKeys', mailKeys);
 
 
 /**

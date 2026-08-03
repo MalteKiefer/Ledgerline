@@ -185,6 +185,11 @@
                         <div class="min-w-0">
                             <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="open?.subject"></h3>
                             <p class="mt-0.5 truncate text-xs text-gray-500" x-text="`${open?.from} → ${open?.to} · ${open?.dateLabel}`"></p>
+                            <p class="mt-1" x-show="pgp" x-cloak>
+                                <span x-show="pgp === 'ok'"><x-badge variant="success"><x-icon name="lock-open" class="mr-1 inline h-3 w-3" />{{ __('mail.pgp_ok') }}</x-badge></span>
+                                <span x-show="pgp === 'nokey'"><x-badge variant="warning">{{ __('mail.pgp_nokey') }}</x-badge></span>
+                                <span x-show="pgp === 'fail'"><x-badge variant="error">{{ __('mail.pgp_failed') }}</x-badge></span>
+                            </p>
                         </div>
                         <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeMessage()" :aria-label="__('common.close')" />
                     </div>

@@ -68,6 +68,14 @@ class ProfileController extends Controller
         return view('profile.encryption');
     }
 
+    /** PGP key management for the mail archive (keys are sealed client-side). */
+    public function mailKeys(Request $request): View
+    {
+        $this->requireUser($request);
+
+        return view('profile.mail-keys');
+    }
+
     /** Login security: two-factor authentication (TOTP) via Fortify. */
     public function security(Request $request): View
     {

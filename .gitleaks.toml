@@ -32,4 +32,8 @@ paths = [
     # test that consumes them. Standard known-answer vectors, not live secrets.
     '''^resources/js/__tests__/fixtures/store-v3/.*$''',
     '''^resources/js/__tests__/store-v3-conformance\.test\.js$''',
+    # Vendored OpenPGP.js v6 build (LGPL): a large minified third-party bundle
+    # fetched from the CDN (npm registry is unreachable in this env) and pinned
+    # by vendoring. High-entropy minified code, not our secret material.
+    '''^resources/js/vendor/openpgp\.min\.mjs$''',
 ]
