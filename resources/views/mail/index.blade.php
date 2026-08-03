@@ -9,6 +9,7 @@
         saveFailed: @js(__('mail.save_failed')),
         deleteFailed: @js(__('mail.delete_failed')),
         syncFailed: @js(__('mail.sync_failed')),
+        syncBusy: @js(__('mail.sync_busy')),
         deleteConfirm: @js(__('mail.delete_confirm')),
         neverSynced: @js(__('mail.never_synced')),
         lastSynced: @js(__('mail.last_synced')),

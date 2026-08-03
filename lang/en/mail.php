@@ -20,6 +20,7 @@ return [
     'sync_now' => 'Sync now',
     'syncing' => 'Syncing…',
     'sync_failed' => 'Could not start the sync.',
+    'sync_busy' => 'A sync is already running or was triggered too often — wait a moment.',
 
     // Add/edit
     'add_account' => 'Add account',

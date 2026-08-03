@@ -20,6 +20,7 @@ return [
     'sync_now' => 'Jetzt synchronisieren',
     'syncing' => 'Synchronisiert…',
     'sync_failed' => 'Die Synchronisierung konnte nicht gestartet werden.',
+    'sync_busy' => 'Eine Synchronisierung läuft bereits oder wurde zu oft ausgelöst — kurz warten.',
 
     // Add/edit
     'add_account' => 'Konto hinzufügen',

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.539.14
+  version: 1.539.15
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -6720,7 +6720,7 @@ paths:
         Dispatches the same SyncMailAccount producer job the scheduler uses
         for this one account (fetch + seal + archive; async — the response
         does not wait for it). Owner-scoped (404 for a foreign account).
-        Throttle 6/min.
+        Throttle 30/min.
       parameters:
         - name: account
           in: path
