@@ -77,6 +77,9 @@ return [
     'version_finalized' => 'Finalized',
     'version_paid' => 'Marked paid',
     'version_sent' => 'Sent',
+    'status_set' => 'Set status',
+    'version_status' => 'Status changed',
+    'status_draft_blocked' => 'A numbered invoice can’t go back to draft.',
 
     'note' => 'Note',
     'footer' => 'Footer',

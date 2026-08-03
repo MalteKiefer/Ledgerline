@@ -2376,6 +2376,15 @@
               <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                 :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-amber-500/15 text-amber-600 dark:text-amber-400': current?.status === 'final', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
                 x-text="statusLabel(current?.status)"></span>
+              {{-- Manual status override: set it directly (sent by another channel, paid, …). --}}
+              <select x-show="! current?.imported" x-model="current.status" @change="setStatus(current, $event.target.value)"
+                aria-label="{{ __('invoices.status_set') }}" title="{{ __('invoices.status_set') }}"
+                class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] py-1 pl-2 pr-7 text-xs focus:border-accent focus:ring-accent">
+                <template x-if="! current?.number"><option value="draft">{{ __('invoices.status_draft') }}</option></template>
+                <option value="final">{{ __('invoices.status_final') }}</option>
+                <option value="sent">{{ __('invoices.status_sent') }}</option>
+                <option value="paid">{{ __('invoices.status_paid') }}</option>
+              </select>
               <template x-if="isCredit(current)"><span class="inline-flex items-center rounded-full bg-purple-500/15 px-2 py-0.5 text-xs font-medium text-purple-600 dark:text-purple-400">{{ __("invoices.credit_badge") }}</span></template>
               <template x-if="isOverdue(current)"><span class="inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400" x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(current))"></span></template>
               <template x-if="isInvoiceLinked(current)"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
