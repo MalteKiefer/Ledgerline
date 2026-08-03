@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.539.26
+  version: 1.539.27
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -6885,6 +6885,58 @@ paths:
         "413": { description: Message too large. }
         "422": { description: Invalid message. }
         "502": { description: IMAP append failed (no internals leaked). }
+        "429": { description: Rate limit exceeded. }
+
+  /mail/messages/trash:
+    post:
+      tags: [Mail]
+      operationId: mailMessagesTrash
+      summary: Soft-hide (trash) archived messages
+      description: >
+        Marks the given messages trashed_at (hidden from the default list). Archived
+        mail is IMMUTABLE — this NEVER deletes a message or its sealed blob; there
+        is no hard-delete endpoint. Bulk + owner-scoped (ignores ids the caller does
+        not own). Throttle 60/min. Max 1000 ids.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, items: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Number of messages hidden.
+          content:
+            application/json:
+              schema: { type: object, properties: { updated: { type: integer } } }
+        "403": { description: Module disabled. }
+        "429": { description: Rate limit exceeded. }
+
+  /mail/messages/restore:
+    post:
+      tags: [Mail]
+      operationId: mailMessagesRestore
+      summary: Un-hide (restore) trashed messages
+      description: "Clears trashed_at on the given owned messages. Bulk + owner-scoped. Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, items: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Number of messages restored.
+          content:
+            application/json:
+              schema: { type: object, properties: { updated: { type: integer } } }
+        "403": { description: Module disabled. }
         "429": { description: Rate limit exceeded. }
 
   /mail/raw/{blob}:

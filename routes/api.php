@@ -36,6 +36,7 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\MailMessageController;
 use App\Http\Controllers\MailPushbackController;
+use App\Http\Controllers\MailTrashController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NoteBlobController;
@@ -165,10 +166,12 @@ Route::prefix('v1')->group(function (): void {
         Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.update');
         Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.destroy');
         Route::post('/mail/accounts/{account}/sync', [MailAccountController::class, 'sync'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.sync');
-        Route::post('/mail/accounts/{account}/sync/cancel', [MailAccountController::class, 'cancelSync'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.sync-cancel');
+        Route::post('/mail/accounts/{account}/sync/cancel', [MailAccountController::class, 'cancelSync'])->middleware(['throttle:60,1', 'module:mail'])->name('api.mail.accounts.sync-cancel');
         Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->middleware('module:mail')->name('api.mail.accounts.status');
         Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware(['throttle:120,1', 'module:mail'])->name('api.mail.messages.index');
         Route::post('/mail/messages/{message}/pushback', MailPushbackController::class)->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.messages.pushback');
+        Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware(['throttle:60,1', 'module:mail'])->name('api.mail.messages.trash');
+        Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware(['throttle:60,1', 'module:mail'])->name('api.mail.messages.restore');
         Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->middleware(['throttle:600,1', 'module:mail'])->name('api.mail.raw');
 
         // Per-user Paperless-ngx integration: cached term quick-picks, live term

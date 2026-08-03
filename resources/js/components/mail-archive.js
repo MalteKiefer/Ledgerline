@@ -37,6 +37,7 @@ export default (config) => ({
     progressTotal: 0,
     capped: false,
     error: '',
+    showTrash: false,
     // filters
     fAccount: '',
     fFolder: '',
@@ -54,6 +55,7 @@ export default (config) => ({
     async init() {
         this.$watch('unlocked', (v) => { if (v && this.cache.length === 0) this.load(); });
         this.$watch('fAccount', () => this.load());
+        this.$watch('showTrash', () => this.load());
         for (const k of ['fFolder', 'fText', 'fFrom', 'fTo']) this.$watch(k, () => { this.page = 1; });
         if (this.unlocked) this.load();
     },
@@ -99,7 +101,8 @@ export default (config) => ({
         let last = 1;
         do {
             const acc = this.fAccount ? `&account_id=${encodeURIComponent(this.fAccount)}` : '';
-            const res = await getJson(`${this.config.messagesUrl}?page=${page}&per_page=${LEDGER_PAGE}${acc}`);
+            const trash = this.showTrash ? '&trashed=1' : '';
+            const res = await getJson(`${this.config.messagesUrl}?page=${page}&per_page=${LEDGER_PAGE}${acc}${trash}`);
             rows.push(...(res.data ?? []));
             last = res.meta?.last_page ?? 1;
             page++;
@@ -130,6 +133,8 @@ export default (config) => ({
             accountId: m.account_id,
             mailbox: this.accountName(m.account_id),
             archivedAt: m.created_at,
+            seen: m.seen !== false,
+            trashed: m.trashed === true,
         };
         try {
             const buffer = await fetchBlobBuffer(this.config.rawBase.replace('__id__', m.id));
@@ -228,11 +233,11 @@ export default (config) => ({
             const bytes = await window.Vault.decryptMailBlob(r.sealedKey, buffer);
             this._raw = bytes;
             this.msg = parseMessage(bytes);
-            // Prefer the HTML body; fall back to plain text. How HTML is rendered
-            // depends on the per-user prefs: scripts ON -> isolated sandbox iframe;
-            // scripts OFF -> DOMPurify inline. Remote content (images) is only
-            // loaded when the user has opted in.
-            if (!this.msg.textBody && this.msg.htmlBody) {
+            // Prefer the HTML body (the designed mail); fall back to plain text
+            // only when there is no HTML part. Scripts ON -> isolated sandbox
+            // iframe; scripts OFF -> DOMPurify inline. Remote images load only
+            // when the user has opted in.
+            if (this.msg.htmlBody) {
                 if (mailScripts()) {
                     this.bodyFrame = this._buildFrame(this.msg.htmlBody, mailRemote());
                 } else {
@@ -297,18 +302,56 @@ export default (config) => ({
         if (!this._raw || this.pushing) return;
         if (!await this.$store.confirm.ask(this.config.pushConfirmMsg)) return;
         this.pushing = true;
-        this.pushError = '';
         try {
             await postForm(this.config.pushbackBase.replace('__id__', this.open.id), {
                 raw_b64: bytesToB64(this._raw),
                 folder: this.open.folder,
             });
-            this.pushed = true;
+            window.llToast?.(this.config.pushDone);
         } catch {
-            this.pushError = this.config.pushFailed;
+            window.llToast?.(this.config.pushFailed);
         } finally {
             this.pushing = false;
         }
+    },
+
+    // Soft-hide (trash) or restore messages by id — immutable, never a hard
+    // delete. `ids` defaults to the open message.
+    async trashIds(ids) {
+        if (!ids.length) return;
+        try {
+            await postForm(this.config.trashBase, { ids });
+            this.cache = this.cache.filter((r) => !ids.includes(r.id));
+            window.llToast?.(this.config.trashDone.replace(':n', String(ids.length)));
+        } catch {
+            window.llToast?.(this.config.trashFailed);
+        }
+    },
+
+    async restoreIds(ids) {
+        if (!ids.length) return;
+        try {
+            await postForm(this.config.restoreBase, { ids });
+            this.cache = this.cache.filter((r) => !ids.includes(r.id));
+            window.llToast?.(this.config.restoreDone.replace(':n', String(ids.length)));
+        } catch {
+            window.llToast?.(this.config.trashFailed);
+        }
+    },
+
+    async trashOpen() {
+        if (!this.open) return;
+        if (!await this.$store.confirm.ask(this.config.trashConfirm)) return;
+        const id = this.open.id;
+        this.closeMessage();
+        await this.trashIds([id]);
+    },
+
+    async restoreOpen() {
+        if (!this.open) return;
+        const id = this.open.id;
+        this.closeMessage();
+        await this.restoreIds([id]);
     },
 
     // Only these types are ever rendered INLINE (same-origin blob URL). Mail
