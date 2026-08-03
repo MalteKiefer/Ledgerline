@@ -182,9 +182,10 @@
                             </div>
                             </template>
 
-                            {{-- Body: sanitized HTML when present, else plain text --}}
-                            <div x-show="bodyHtml" x-html="bodyHtml" class="ll-mail-body text-sm text-gray-800 dark:text-gray-200"></div>
-                            <pre x-show="!bodyHtml" class="whitespace-pre-wrap break-words font-sans text-sm text-gray-800 dark:text-gray-200" x-text="bodyText || @js(__('mail.no_body'))"></pre>
+                            {{-- Body: sandboxed iframe (scripts on), sanitized HTML (scripts off), else plain text --}}
+                            <iframe x-show="bodyFrame" x-cloak :srcdoc="bodyFrame" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" class="h-[62vh] w-full rounded-lg border border-black/[0.06] dark:border-white/10 bg-white"></iframe>
+                            <div x-show="bodyHtml && !bodyFrame" x-html="bodyHtml" class="ll-mail-body text-sm text-gray-800 dark:text-gray-200"></div>
+                            <pre x-show="!bodyHtml && !bodyFrame" class="whitespace-pre-wrap break-words font-sans text-sm text-gray-800 dark:text-gray-200" x-text="bodyText || @js(__('mail.no_body'))"></pre>
                         </div>
                         </template>
                     </div>
@@ -212,6 +213,31 @@
             lastSynced: @js(__('mail.last_synced')),
             messageCount: @js(__('mail.message_count')),
          })">
+
+        {{-- Display settings: remote content + scripts (both default off) --}}
+        <div class="ll-card mb-5 max-w-2xl" x-data="mailSettings({ url: '{{ route('preferences.update') }}', failed: @js(__('mail.settings_failed')) })">
+            <h3 class="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('mail.display_settings') }}</h3>
+            <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">{{ __('mail.display_settings_hint') }}</p>
+            <label class="flex items-start gap-3 py-1.5">
+                <input type="checkbox" x-model="remote" class="mt-0.5 rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
+                <span class="text-sm text-gray-700 dark:text-gray-300">
+                    {{ __('mail.load_remote') }}
+                    <span class="block text-xs text-gray-400">{{ __('mail.load_remote_hint') }}</span>
+                </span>
+            </label>
+            <label class="flex items-start gap-3 py-1.5">
+                <input type="checkbox" x-model="scripts" class="mt-0.5 rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
+                <span class="text-sm text-gray-700 dark:text-gray-300">
+                    {{ __('mail.allow_scripts') }}
+                    <span class="block text-xs text-amber-600 dark:text-amber-400">{{ __('mail.allow_scripts_warn') }}</span>
+                </span>
+            </label>
+            <div class="mt-3 flex items-center gap-3">
+                <x-button variant="primary" size="sm" ::disabled="saving" @click="save()">{{ __('common.save') }}</x-button>
+                <span x-show="saved" x-cloak class="text-xs text-green-600 dark:text-green-400">{{ __('mail.settings_saved') }}</span>
+                <span x-show="error" x-cloak class="text-xs text-red-600 dark:text-red-400" x-text="error"></span>
+            </div>
+        </div>
 
         <div class="mb-4 flex justify-end">
             <x-button variant="primary" icon="plus" @click="openCreate()">{{ __('mail.add_account') }}</x-button>

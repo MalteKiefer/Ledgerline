@@ -10,6 +10,7 @@ import { getJson } from '../shared/api.js';
 import { fetchBlobBuffer } from '../shared/blob-io.js';
 import { parseEnvelope, parseMessage, parseDate, displayAddress } from '../shared/mime.js';
 import { formatDate, saveBlobAs } from '../shared/dom.js';
+import { mailRemote, mailScripts } from '../shared/prefs.js';
 
 const DECRYPT_CONCURRENCY = 8;
 // Safety cap on how many messages to pull+decrypt into the client cache for one
@@ -189,7 +190,8 @@ export default (config) => ({
     openLoading: false,
     openError: '',
     msg: null,         // { textBody, htmlBody, attachments }
-    bodyHtml: '',      // sanitized HTML body (empty for plain-text mails)
+    bodyHtml: '',      // sanitized HTML body (scripts OFF)
+    bodyFrame: '',     // srcdoc for the sandboxed iframe (scripts ON)
     _urls: [],         // object URLs to revoke on close
 
     get bodyText() {
@@ -201,15 +203,23 @@ export default (config) => ({
         this.open = r;
         this.msg = null;
         this.bodyHtml = '';
+        this.bodyFrame = '';
         this.openError = '';
         this.openLoading = true;
         try {
             const buffer = await fetchBlobBuffer(this.config.rawBase.replace('__id__', r.id));
             const bytes = await window.Vault.decryptMailBlob(r.sealedKey, buffer);
             this.msg = parseMessage(bytes);
-            // Prefer the HTML body (rendered sanitized); fall back to plain text.
+            // Prefer the HTML body; fall back to plain text. How HTML is rendered
+            // depends on the per-user prefs: scripts ON -> isolated sandbox iframe;
+            // scripts OFF -> DOMPurify inline. Remote content (images) is only
+            // loaded when the user has opted in.
             if (!this.msg.textBody && this.msg.htmlBody) {
-                this.bodyHtml = await this._sanitizeHtml(this.msg.htmlBody);
+                if (mailScripts()) {
+                    this.bodyFrame = this._buildFrame(this.msg.htmlBody, mailRemote());
+                } else {
+                    this.bodyHtml = await this._sanitizeHtml(this.msg.htmlBody, mailRemote());
+                }
             }
         } catch {
             this.openError = this.config.decryptFailed;
@@ -221,11 +231,14 @@ export default (config) => ({
     // Sanitize attacker-controlled mail HTML for inline render: DOMPurify strips
     // scripts/event handlers (XSS), we additionally forbid <style> (so mail CSS
     // cannot restyle the whole app) and block remote images (tracking pixels).
-    async _sanitizeHtml(html) {
+    async _sanitizeHtml(html, allowRemote) {
         const DOMPurify = (await import('dompurify')).default;
+        // The hook reads this flag each call (hooks are global/one-time).
+        this._allowRemote = allowRemote;
         if (!DOMPurify._llMailHook) {
+            const self = this;
             DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-                if (node.nodeName === 'IMG' && /^https?:/i.test(node.getAttribute('src') || '')) {
+                if (node.nodeName === 'IMG' && !self._allowRemote && /^https?:/i.test(node.getAttribute('src') || '')) {
                     node.removeAttribute('src');
                     node.setAttribute('alt', node.getAttribute('alt') || '[remote image blocked]');
                 }
@@ -237,6 +250,18 @@ export default (config) => ({
             FORBID_TAGS: ['style', 'script', 'title', 'head', 'meta', 'link', 'base', 'iframe', 'object', 'embed'],
             FORBID_ATTR: ['background'],
         });
+    },
+
+    // Build the srcdoc for the sandboxed iframe used when the user has opted into
+    // running mail scripts. The iframe has NO allow-same-origin, so scripts run
+    // in an opaque origin isolated from the app (no access to cookies, storage,
+    // or the vault). The inner CSP additionally gates remote content on the
+    // remote-content preference.
+    _buildFrame(html, allowRemote) {
+        const csp = allowRemote
+            ? "default-src 'none'; img-src * data: cid:; media-src *; style-src 'unsafe-inline' *; font-src * data:; script-src 'unsafe-inline' 'unsafe-eval'"
+            : "default-src 'none'; img-src data: cid:; style-src 'unsafe-inline'; font-src data:; script-src 'unsafe-inline' 'unsafe-eval'";
+        return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"></head><body style="margin:0;font:14px/1.5 sans-serif;color:#111">${html}</body></html>`;
     },
 
     closeMessage() {

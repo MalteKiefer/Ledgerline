@@ -7,7 +7,7 @@
 // Read lazily + memoised. After saving on the appearance page, call setPrefs() so
 // the running UI reflects the change without a reload.
 
-const DEFAULTS = { distance: 'km', elevation: 'm', weight: 'kg', temp: 'c', glucose: 'mgdl', time_format: '24h' };
+const DEFAULTS = { distance: 'km', elevation: 'm', weight: 'kg', temp: 'c', glucose: 'mgdl', time_format: '24h', mail_remote: false, mail_scripts: false };
 
 let _cache = null;
 
@@ -36,6 +36,10 @@ export function setPrefs(patch) {
 
 /** Whether times should render in 12-hour (AM/PM) form. */
 export function is12h() { return read().time_format === '12h'; }
+
+/** Mail-archive display prefs (both default false / safest). */
+export function mailRemote() { return read().mail_remote === true; }
+export function mailScripts() { return read().mail_scripts === true; }
 
 /** Distance: canonical METERS → { value, unit } in the user's unit. */
 export function convertDistance(meters, digits = 2) {
