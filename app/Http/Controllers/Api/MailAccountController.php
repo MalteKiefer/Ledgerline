@@ -72,15 +72,16 @@ class MailAccountController extends Controller
 
         // FK cascadeOnDelete on mail_sync_state/mail_messages removes the account's
         // sync cursors and message ledger rows. The sealed blobs those messages
-        // referenced (mail/{blob}) are NOT unlinked here — they become orphans that
-        // the mail blob orphan-sweep + GDPR contributor (both added in this feature's
-        // forthcoming storage/GDPR task, same release) reclaim after the grace window.
-        // As of this commit neither exists yet — `mail` is not in Support\BlobRegistry
-        // and there is no mail:sweep-orphans command or MailData contributor — so a
-        // deleted account's blob BYTES currently linger on disk until that task lands
-        // (the mail_blobs ledger rows do cascade with the user, not the account). This
-        // mirrors the intended reclaim model of every other sealed-store module (the
-        // ledger row, not an inline unlink, is the source of truth for reclaim).
+        // referenced (mail/{blob}) are NOT unlinked here — mail_blobs.user_id
+        // cascades with the USER, not the account, so the ledger row (and the
+        // bytes it describes) survives this delete with nothing referencing it
+        // anymore. That is reclaimed by the daily `mail:sweep-orphans` command
+        // (SweepOrphanMailBlobs — frees a MailBlob row + its disk bytes once no
+        // MailMessage references its id and it is older than the grace window)
+        // and, on full account erasure, promptly by the MailData GDPR
+        // contributor. This mirrors the intended reclaim model of every other
+        // sealed-store module (the ledger row, not an inline unlink, is the
+        // source of truth for reclaim).
         $account->delete();
 
         return response()->json([], 204);

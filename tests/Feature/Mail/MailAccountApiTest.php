@@ -18,10 +18,9 @@ use Tests\TestCase;
  * /api/v1/mail — metadata only, zero-knowledge preserving. The account
  * password is the one plaintext secret the server holds (to run the IMAP
  * connection); it must never round-trip back to any client in a JSON
- * response. `module:mail` is currently INERT — `mail` is not yet registered
- * in config/modules.php (that lands with the web UI task), so EnsureModule
- * lets every request through regardless of module state; these tests assert
- * that actual current behaviour rather than a 403 that can't yet fire.
+ * response. `module:mail` is a registered key in config/modules.php (see
+ * ModulePermissionsTest for the general gate mechanics); the module-specific
+ * gate assertions live at the bottom of this file.
  */
 class MailAccountApiTest extends TestCase
 {
@@ -402,24 +401,35 @@ class MailAccountApiTest extends TestCase
         $response->assertJsonPath('data.0.account_id', $accountA->id);
     }
 
-    // ---- module gate note -----------------------------------------------------------
+    // ---- module gate -----------------------------------------------------------
 
     /**
-     * `mail` is not yet a registered key in config/modules.php, so EnsureModule's
-     * `in_array($key, $known, true)` guard is false and the middleware is a no-op
-     * — every request passes regardless of any per-user/group module allow-list.
-     * This documents that CURRENT, intentional behaviour (see task-8-report.md);
-     * once the web UI task registers the `mail` module key, this test should be
-     * replaced with one asserting an actual 403 for a disabled module.
+     * `mail` is registered in config/modules.php (Task 9) — EnsureModule now
+     * actually enforces it: a user whose allow-list excludes `mail` gets 403 on
+     * every /api/v1/mail/* route; a user who has it (or an unrestricted
+     * allow-list) passes through unaffected.
      */
-    public function test_module_mail_gate_is_currently_inert_until_registered_in_config(): void
+    public function test_module_mail_gate_blocks_a_user_without_the_mail_module(): void
     {
-        $this->assertArrayNotHasKey('mail', (array) config('modules.list', []));
+        $this->assertArrayHasKey('mail', (array) config('modules.list', []));
 
         $user = User::factory()->create();
-        // Even a user explicitly restricted to an unrelated module allow-list
-        // still reaches the mail endpoints, because `mail` isn't a KNOWN module key.
         $user->forceFill(['modules' => ['dashboard']])->save();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+
+        $this->withHeaders($this->bearer($user))
+            ->getJson('/api/v1/mail/accounts')
+            ->assertForbidden();
+
+        $this->withHeaders($this->bearer($user))
+            ->getJson("/api/v1/mail/accounts/{$account->id}/status")
+            ->assertForbidden();
+    }
+
+    public function test_module_mail_gate_allows_a_user_with_the_mail_module(): void
+    {
+        $user = User::factory()->create();
+        $user->forceFill(['modules' => ['dashboard', 'mail']])->save();
         $account = MailAccount::factory()->create(['user_id' => $user->id]);
 
         $this->withHeaders($this->bearer($user))

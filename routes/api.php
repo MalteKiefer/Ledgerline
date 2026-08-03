@@ -157,9 +157,8 @@ Route::prefix('v1')->group(function (): void {
         // Mail archive: account config CRUD + on-demand sync/status + the
         // read-only message ledger, all metadata-only and zero-knowledge preserving —
         // the sealed RFC822 blobs are written directly by the server-side ingestor (no
-        // client upload/reconcile route). `module:mail` is currently INERT ('mail' is
-        // not yet a registered key in config/modules.php — that lands with the web UI
-        // task); see MailAccountController's class docblock / the Security Register.
+        // client upload/reconcile route). `module:mail` is enforced (registered in
+        // config/modules.php); see MailAccountController's class docblock.
         Route::get('/mail/accounts', [MailAccountController::class, 'index'])->middleware('module:mail')->name('api.mail.accounts.index');
         Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.store');
         Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.update');

@@ -264,6 +264,7 @@ return [
     'backup_source_notes' => 'Notizen',
     'backup_source_passwords' => 'Passwörter',
     'backup_source_invoices' => 'Rechnungen',
+    'backup_source_mail' => 'E-Mail-Archiv',
     'backup_source_contacts' => 'Kontakte',
     'backup_source_explore' => 'Explore',
     'backup_source_shared-folders' => 'Geteilte Ordner',

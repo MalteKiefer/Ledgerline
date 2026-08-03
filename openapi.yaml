@@ -1711,7 +1711,7 @@ components:
       properties:
         id: { type: integer }
         name: { type: string }
-        source: { type: string, enum: [all, database, files, gallery, notes, passwords, invoices, contacts, explore, shared-folders] }
+        source: { type: string, enum: [all, database, files, gallery, notes, passwords, invoices, mail, contacts, explore, shared-folders] }
         mode: { type: string }
         destination_id: { type: integer }
         cron: { type: string }
@@ -1729,7 +1729,7 @@ components:
       description: "source=database MAY use encrypt=false (operator opt-out; unencrypted DB dump exposes wrapped vault keys off-box). Blank/omitted passphrase keeps the stored value on update. cron must be a valid crontab expression (422 otherwise)."
       properties:
         name: { type: string, maxLength: 120 }
-        source: { type: string, enum: [all, database, files, gallery, notes, passwords, invoices, contacts, explore, shared-folders] }
+        source: { type: string, enum: [all, database, files, gallery, notes, passwords, invoices, mail, contacts, explore, shared-folders] }
         mode: { type: string, enum: [mirror, archive], description: "Optional; mirror = incremental blob mirror, archive = full tarball. Ignored for source=database (always a full dump) and source=all (each source uses its natural mode)." }
         backup_destination_id: { type: integer, description: "Must reference an existing backup_destinations row." }
         cron: { type: string, maxLength: 64, description: "Valid crontab expression." }
@@ -6695,11 +6695,11 @@ paths:
       description: >
         Owner-scoped (404 for a foreign account). Cascades the account's sync
         cursors and message-ledger rows (FK cascadeOnDelete). The sealed
-        message blobs those rows referenced are NOT unlinked here — they become
-        orphans that the mail blob orphan-sweep + GDPR contributor (both added
-        in this feature's forthcoming storage/GDPR task, same release) reclaim
-        after the grace window. As of this version neither exists yet, so a
-        deleted account's blob bytes linger on disk until that task lands.
+        message blobs those rows referenced are NOT unlinked here — mail_blobs
+        cascades with the user, not the account, so the ledger row (and its
+        disk bytes) survives with nothing referencing it anymore; the daily
+        `mail:sweep-orphans` job reclaims it after the grace window (or the
+        GDPR account-erasure contributor, promptly, on full account deletion).
         Throttle 30/min.
       parameters:
         - name: account
