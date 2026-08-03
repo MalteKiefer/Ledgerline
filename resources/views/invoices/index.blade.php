@@ -2402,6 +2402,7 @@
                 <x-action-menu-item icon="document-text" x-show="current?.imported && current?.pdf" @click="openOriginalPdf(current)">{{ __('invoices.open_original') }}</x-action-menu-item>
                 <x-action-menu-item icon="printer" x-show="! current?.imported || ! current?.pdf" @click="printInvoice(current)">{{ __('invoices.print') }}</x-action-menu-item>
                 <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
+                <x-action-menu-item icon="arrow-up-right" x-show="! current?.imported && current?.status === 'final'" @click="markSent(current)">{{ __('invoices.mark_sent') }}</x-action-menu-item>
                 <x-action-menu-item icon="check-circle" x-show="! current?.imported && (current?.status === 'sent' || current?.status === 'final')" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-action-menu-item>
                 <x-action-menu-item icon="arrow-uturn-left" x-show="! current?.imported && ! isCredit(current) && (current?.status === 'final' || current?.status === 'sent' || current?.status === 'paid')" @click="createCreditNote(current)">{{ __('invoices.credit_note') }}</x-action-menu-item>
                 <x-action-menu-item icon="inbox-arrow-down" x-show="$store.paperless?.configured" @click="sendInvoiceToPaperless(current)">{{ __('invoices.send_paperless') }}</x-action-menu-item>
