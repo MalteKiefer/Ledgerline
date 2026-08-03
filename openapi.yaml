@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.539.29
+  version: 1.539.30
   description: >
     Zero-knowledge personal cloud API for the Ledgerline mobile client.
 
@@ -2137,7 +2137,8 @@ paths:
         required: true
         description: >
           Module key. One of: notes, todos, bookmarks, contacts, invoices,
-          passwords, health, sharing, explore. Any other value is a 404.
+          passwords, health, sharing, explore, mailkeys. Any other value is a 404.
+          (mailkeys holds the sealed PGP private/public keys for the mail archive.)
         schema:
           type: string
           enum: [notes, todos, bookmarks, contacts, invoices, passwords, health, sharing, explore]

@@ -4,6 +4,8 @@ import globals from 'globals';
 // codebase). The point is to catch undefined references (e.g. a helper that was
 // not imported after the app.js modularization) that the bundler wouldn't flag.
 export default [
+    // Vendored third-party bundles (e.g. OpenPGP.js) are minified and not ours to lint.
+    { ignores: ['resources/js/vendor/**'] },
     {
         files: ['resources/js/**/*.{js,mjs}', 'extension/src/**/*.js'],
         languageOptions: {
