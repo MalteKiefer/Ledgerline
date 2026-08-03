@@ -309,6 +309,38 @@ class MailAccountApiTest extends TestCase
         Bus::assertNotDispatched(SyncMailAccount::class);
     }
 
+    public function test_cancel_settles_the_account_to_idle_and_clears_the_batch(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create([
+            'user_id' => $user->id,
+            'status' => 'syncing',
+            'sync_batch_id' => 'no-such-batch',
+        ]);
+
+        $this->withHeaders($this->bearer($user))
+            ->postJson("/api/v1/mail/accounts/{$account->id}/sync/cancel")
+            ->assertOk()
+            ->assertJson(['cancelled' => true]);
+
+        $account->refresh();
+        $this->assertSame('idle', $account->status);
+        $this->assertNull($account->sync_batch_id);
+    }
+
+    public function test_a_different_user_cannot_cancel_a_sync(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $owner->id, 'status' => 'syncing']);
+
+        $this->withHeaders($this->bearer($other))
+            ->postJson("/api/v1/mail/accounts/{$account->id}/sync/cancel")
+            ->assertNotFound();
+
+        $this->assertSame('syncing', $account->refresh()->status);
+    }
+
     // ---- status -----------------------------------------------------------
 
     public function test_status_returns_counts_and_state(): void

@@ -152,6 +152,17 @@ export default (config) => ({
         this.pollSyncing();
     },
 
+    async cancelSync(a) {
+        const prev = a.status;
+        a.status = 'idle'; // optimistic — poll reconciles
+        try {
+            await postForm(this.config.cancelBase.replace('__id__', a.id), null, 'POST');
+        } catch (e) {
+            a.status = prev;
+            this.error = this.config.cancelFailed;
+        }
+    },
+
     // Tint per status, matching the app-wide `.ll-chip { background: <tint> }`
     // convention (object `:style` binding — never a raw string one).
     statusTint(a) {

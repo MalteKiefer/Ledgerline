@@ -4,12 +4,14 @@
         updateBase: '{{ route('mail.accounts.update', ['account' => '__id__']) }}',
         deleteBase: '{{ route('mail.accounts.destroy', ['account' => '__id__']) }}',
         syncBase: '{{ route('mail.accounts.sync', ['account' => '__id__']) }}',
+        cancelBase: '{{ route('mail.accounts.sync-cancel', ['account' => '__id__']) }}',
         statusBase: '{{ route('mail.accounts.status', ['account' => '__id__']) }}',
         loadFailed: @js(__('mail.load_failed')),
         saveFailed: @js(__('mail.save_failed')),
         deleteFailed: @js(__('mail.delete_failed')),
         syncFailed: @js(__('mail.sync_failed')),
         syncBusy: @js(__('mail.sync_busy')),
+        cancelFailed: @js(__('mail.cancel_failed')),
         deleteConfirm: @js(__('mail.delete_confirm')),
         neverSynced: @js(__('mail.never_synced')),
         lastSynced: @js(__('mail.last_synced')),
@@ -55,9 +57,11 @@
                         <x-alert variant="error" x-show="a.status === 'error' && a.last_error" x-cloak class="mt-2 !px-2.5 !py-1.5 text-xs" x-text="a.last_error" />
                     </div>
                     <div class="flex shrink-0 items-center gap-1.5">
-                        <x-button variant="secondary" size="sm" ::disabled="a.status === 'syncing'" @click="syncNow(a)">
-                            <span x-show="a.status !== 'syncing'">{{ __('mail.sync_now') }}</span>
-                            <span x-show="a.status === 'syncing'" x-cloak>{{ __('mail.syncing') }}</span>
+                        <x-button variant="secondary" size="sm" x-show="a.status !== 'syncing'" @click="syncNow(a)">
+                            {{ __('mail.sync_now') }}
+                        </x-button>
+                        <x-button variant="danger" size="sm" x-show="a.status === 'syncing'" x-cloak @click="cancelSync(a)">
+                            {{ __('mail.sync_cancel') }}
                         </x-button>
                         <x-action-menu :aria-label="__('common.actions')">
                             <x-action-menu-item icon="pencil" @click="openEdit(a)">{{ __('common.edit') }}</x-action-menu-item>

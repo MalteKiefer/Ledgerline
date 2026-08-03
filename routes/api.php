@@ -164,6 +164,7 @@ Route::prefix('v1')->group(function (): void {
         Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.update');
         Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.destroy');
         Route::post('/mail/accounts/{account}/sync', [MailAccountController::class, 'sync'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.sync');
+        Route::post('/mail/accounts/{account}/sync/cancel', [MailAccountController::class, 'cancelSync'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.sync-cancel');
         Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->middleware('module:mail')->name('api.mail.accounts.status');
         Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware(['throttle:120,1', 'module:mail'])->name('api.mail.messages.index');
         Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->middleware(['throttle:600,1', 'module:mail'])->name('api.mail.raw');
