@@ -32,6 +32,7 @@ use App\Http\Controllers\InvoiceBlobController;
 use App\Http\Controllers\InvoiceMailController;
 use App\Http\Controllers\InvoicesStoreController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NoteBlobController;
@@ -150,6 +151,10 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/invoices/ocr', [InvoiceOcrController::class, 'ocr'])->middleware(['throttle:120,1', 'module:finance'])->name('api.invoices.ocr');
         Route::post('/invoices/send', [InvoiceMailController::class, 'send'])->middleware(['throttle:30,1', 'module:finance'])->name('api.invoices.send');
         Route::post('/invoices/mail-test', [InvoiceMailController::class, 'test'])->middleware(['throttle:6,1', 'module:finance'])->name('api.invoices.mail-test');
+
+        // Mail archive (Phase 1, read-only): sealed RFC822 blobs written directly by the
+        // server-side ingestor — no client upload/reconcile route yet, only owner-scoped read.
+        Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->middleware(['throttle:600,1', 'module:mail'])->name('api.mail.raw');
 
         // Per-user Paperless-ngx integration: cached term quick-picks, live term
         // creation, document forwarding, and cache sync. The /documents endpoint is

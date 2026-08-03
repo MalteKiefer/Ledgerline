@@ -24,6 +24,7 @@ use App\Http\Controllers\InvoiceBlobController;
 use App\Http\Controllers\InvoiceMailController;
 use App\Http\Controllers\InvoicesStoreController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\ModuleStoreController;
@@ -257,6 +258,10 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/invoices/send', [InvoiceMailController::class, 'send'])->middleware(['throttle:30,1', 'module:finance'])->name('invoices.send');
     Route::post('/invoices/mail-test', [InvoiceMailController::class, 'test'])->middleware(['throttle:6,1', 'module:finance'])->name('invoices.mail-test');
     Route::post('/invoices/blobs/reconcile', [InvoiceBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('invoices.blobs.reconcile');
+
+    // Mail archive (Phase 1, read-only): sealed RFC822 blobs written directly by the
+    // server-side ingestor — no client upload/reconcile route yet, only owner-scoped read.
+    Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->middleware(['throttle:3000,1', 'module:mail'])->name('mail.raw');
 
     // Passwords sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
     Route::get('/passwords/store', [PasswordsStoreController::class, 'show'])->middleware('module:passwords')->name('passwords.store.show');
