@@ -6695,8 +6695,11 @@ paths:
       description: >
         Owner-scoped (404 for a foreign account). Cascades the account's sync
         cursors and message-ledger rows (FK cascadeOnDelete). The sealed
-        message blobs those rows referenced become orphans reclaimed by the
-        mail blob sweep / GDPR purge — never deleted synchronously here.
+        message blobs those rows referenced are NOT unlinked here — they become
+        orphans that the mail blob orphan-sweep + GDPR contributor (both added
+        in this feature's forthcoming storage/GDPR task, same release) reclaim
+        after the grace window. As of this version neither exists yet, so a
+        deleted account's blob bytes linger on disk until that task lands.
         Throttle 30/min.
       parameters:
         - name: account
