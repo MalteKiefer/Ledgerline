@@ -47,7 +47,12 @@ use Throwable;
  *      fixed, generic, already-safe (nothing secret in it) error message
  *      rather than guessing at or leaking mbsync's raw output.
  */
-final class MbsyncRunner
+/*
+ * Not `final`: the sync producer (App\Jobs\Mail\SyncMailAccount) resolves this
+ * from the container, and the test suite binds a subclass fake over it to drive
+ * the fetch step without the network. All production behaviour still lives here.
+ */
+class MbsyncRunner
 {
     /** mbsync itself has no built-in timeout; bound the whole sync run. */
     private const RUN_TIMEOUT = 300;
@@ -150,6 +155,17 @@ final class MbsyncRunner
      * archived (see MaildirIngestor's class docblock for that ordering).
      */
     private function maildirDir(MailAccount $account): string
+    {
+        return self::maildirPathFor($account);
+    }
+
+    /**
+     * The absolute Maildir root this account is mirrored into. Exposed as the
+     * single source of truth for that path so the ingest producer
+     * (App\Jobs\Mail\SyncMailAccount) enumerates the very tree mbsync wrote,
+     * with no duplicated path literal to drift out of sync.
+     */
+    public static function maildirPathFor(MailAccount $account): string
     {
         return storage_path('app/mail-sync/'.$account->id.'/maildir');
     }
