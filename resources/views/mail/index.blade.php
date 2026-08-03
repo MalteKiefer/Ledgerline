@@ -23,6 +23,7 @@
             accountsUrl: '{{ route('mail.accounts.index') }}',
             rawBase: '{{ route('mail.raw', ['blob' => '__id__']) }}',
             pushbackBase: '{{ route('mail.messages.pushback', ['message' => '__id__']) }}',
+            envelopeBase: '{{ route('mail.messages.envelope', ['message' => '__id__']) }}',
             trashBase: '{{ route('mail.messages.trash') }}',
             restoreBase: '{{ route('mail.messages.restore') }}',
             loadFailed: @js(__('mail.load_failed')),

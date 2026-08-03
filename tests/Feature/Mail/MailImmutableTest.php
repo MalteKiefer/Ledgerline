@@ -81,4 +81,31 @@ class MailImmutableTest extends TestCase
             ->assertOk()->assertJson(['updated' => 0]);
         $this->assertNull($message->fresh()->trashed_at);
     }
+
+    public function test_owner_can_store_a_sealed_envelope_and_it_is_returned_in_the_index(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $user->id]);
+        $message = $this->message($user, $account);
+
+        $this->actingAs($user)->postJson("/api/v1/mail/messages/{$message->id}/envelope", [
+            'envelope' => 'BASE64BLOB', 'envelope_key' => '{"suite":1}',
+        ])->assertOk()->assertJson(['stored' => true]);
+
+        $this->actingAs($user)->getJson('/api/v1/mail/messages')
+            ->assertJsonPath('data.0.envelope', 'BASE64BLOB')
+            ->assertJsonPath('data.0.envelope_key', '{"suite":1}');
+    }
+
+    public function test_a_user_cannot_store_an_envelope_on_another_users_message(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $account = MailAccount::factory()->create(['user_id' => $owner->id]);
+        $message = $this->message($owner, $account);
+
+        $this->actingAs($other)->postJson("/api/v1/mail/messages/{$message->id}/envelope", [
+            'envelope' => 'x', 'envelope_key' => 'y',
+        ])->assertNotFound();
+    }
 }

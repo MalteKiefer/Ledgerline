@@ -11,6 +11,7 @@ import { fetchBlobBuffer } from '../shared/blob-io.js';
 import { parseEnvelope, parseMessage, parseDate, displayAddress } from '../shared/mime.js';
 import { formatDate, saveBlobAs } from '../shared/dom.js';
 import { mailRemote, mailScripts } from '../shared/prefs.js';
+import { loadEnvelopes, putEnvelopes } from '../shared/mail-cache.js';
 
 const DECRYPT_CONCURRENCY = 8;
 
@@ -23,9 +24,17 @@ function bytesToB64(bytes) {
     }
     return btoa(bin);
 }
-// Safety cap on how many messages to pull+decrypt into the client cache for one
-// scope — the server orders newest-first, so this keeps the most recent.
-const MAX_LOAD = 3000;
+
+function b64ToBytes(b64) {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+}
+// Safety cap on how many ledger rows to pull for one scope (newest first). With
+// the envelope index + IndexedDB cache only NEW rows are ever decrypted, so this
+// can be large; it only bounds a pathological mailbox.
+const MAX_LOAD = 50000;
 const LEDGER_PAGE = 200;
 
 export default (config) => ({
@@ -66,11 +75,37 @@ export default (config) => ({
         this.error = '';
         this.capped = false;
         this.progress = 0;
+        this.progressTotal = 0;
         try {
             await this.ensureAccounts();
             const ledger = await this.fetchLedger();
-            this.progressTotal = ledger.length;
-            this.cache = await this.decryptAll(ledger);
+
+            // The list/search index is the per-message ENVELOPE, cached in
+            // IndexedDB. We only decrypt what is not cached: server-stored
+            // envelopes (tiny, fast) or — for messages that have none yet — the
+            // full body ONCE (then build + upload its envelope for next time).
+            const cached = await loadEnvelopes();
+            const needEnv = [];
+            const needBackfill = [];
+            for (const m of ledger) {
+                if (cached.has(m.id)) continue;
+                if (m.envelope && m.envelope_key) needEnv.push(m);
+                else needBackfill.push(m);
+            }
+            this.progressTotal = needEnv.length + needBackfill.length;
+
+            const fresh = [];
+            await this._pool(needEnv, DECRYPT_CONCURRENCY, async (m) => {
+                try { const e = await this._decryptEnvelope(m); fresh.push(e); cached.set(m.id, e); } catch { /* skip */ }
+                this.progress++;
+            });
+            await this._pool(needBackfill, 4, async (m) => {
+                try { const e = await this._backfill(m); fresh.push(e); cached.set(m.id, e); } catch { /* skip */ }
+                this.progress++;
+            });
+            if (fresh.length) putEnvelopes(fresh);
+
+            this.cache = ledger.map((m) => this._buildRow(m, cached.get(m.id)));
             this.page = 1;
         } catch (e) {
             this.error = this.config.loadFailed;
@@ -90,11 +125,10 @@ export default (config) => ({
     },
 
     accountName(id) {
-        return this.accounts.find((a) => a.id === id)?.name || `#${id}`;
+        return this.accounts.find((a) => a.id === id)?.name || (id ? `#${id}` : this.config.unknown);
     },
 
-    // Walk the paginated ledger for the current account scope (newest first,
-    // capped at MAX_LOAD).
+    // Walk the paginated ledger for the current account scope (newest first).
     async fetchLedger() {
         const rows = [];
         let page = 1;
@@ -111,24 +145,64 @@ export default (config) => ({
         return rows.slice(0, MAX_LOAD);
     },
 
-    async decryptAll(ledger) {
-        const out = new Array(ledger.length);
-        let next = 0;
-        const worker = async () => {
-            while (next < ledger.length) {
-                const i = next++;
-                out[i] = await this.decryptRow(ledger[i]);
-                this.progress++;
-            }
-        };
-        await Promise.all(Array.from({ length: Math.min(DECRYPT_CONCURRENCY, ledger.length) }, worker));
-        return out;
+    // Bounded-concurrency runner.
+    async _pool(items, conc, fn) {
+        let i = 0;
+        const worker = async () => { while (i < items.length) { const j = i++; await fn(items[j]); } };
+        await Promise.all(Array.from({ length: Math.max(1, Math.min(conc, items.length)) }, worker));
     },
 
-    async decryptRow(m) {
+    // Build a cached envelope object from a parsed RFC822 envelope.
+    _envFromParsed(m, e) {
+        const d = parseDate(e.date);
+        const iso = d ? d.toISOString() : m.created_at;
+        return {
+            id: m.id,
+            from: displayAddress(e.from) || this.config.unknown,
+            fromRaw: e.from || '',
+            to: displayAddress(e.to) || this.config.unknown,
+            subject: e.subject || this.config.noSubject,
+            date: iso,
+            ts: d ? d.getTime() : (Date.parse(m.created_at) || 0),
+            hasAttachment: e.hasAttachment === true,
+        };
+    },
+
+    // Decrypt a server-stored (tiny) envelope blob.
+    async _decryptEnvelope(m) {
+        const buffer = b64ToBytes(m.envelope);
+        const bytes = await window.Vault.decryptMailBlob(m.envelope_key, buffer);
+        const obj = JSON.parse(new TextDecoder().decode(bytes));
+        obj.id = m.id;
+        return obj;
+    },
+
+    // No envelope yet: decrypt the full body ONCE, build the envelope, and
+    // upload it (sealed to our own keys) so future loads / other devices skip
+    // the body.
+    async _backfill(m) {
+        const buffer = await fetchBlobBuffer(this.config.rawBase.replace('__id__', m.id));
+        const bytes = await window.Vault.decryptMailBlob(m.sealed_key, buffer);
+        const env = this._envFromParsed(m, parseEnvelope(bytes));
+        this._uploadEnvelope(m.id, env).catch(() => {});
+        return env;
+    },
+
+    async _uploadEnvelope(id, env) {
+        const json = new TextEncoder().encode(JSON.stringify(env));
+        const sealed = await window.Vault.sealMailBlob(json);
+        await postForm(this.config.envelopeBase.replace('__id__', id), {
+            envelope: bytesToB64(sealed.blob),
+            envelope_key: sealed.sealedKey,
+        });
+    },
+
+    // Merge an immutable cached envelope with the fresh ledger meta (seen /
+    // trashed / folder / account come from the server, never the cache).
+    _buildRow(m, env) {
         const base = {
             id: m.id,
-            sealedKey: m.sealed_key, // kept so the modal can re-decrypt the full body
+            sealedKey: m.sealed_key,
             folder: m.folder,
             accountId: m.account_id,
             mailbox: this.accountName(m.account_id),
@@ -136,27 +210,21 @@ export default (config) => ({
             seen: m.seen !== false,
             trashed: m.trashed === true,
         };
-        try {
-            const buffer = await fetchBlobBuffer(this.config.rawBase.replace('__id__', m.id));
-            const bytes = await window.Vault.decryptMailBlob(m.sealed_key, buffer);
-            const env = parseEnvelope(bytes);
-            const d = parseDate(env.date);
-            const iso = d ? d.toISOString() : m.created_at;
-            return {
-                ...base,
-                from: displayAddress(env.from) || this.config.unknown,
-                fromRaw: env.from,
-                to: displayAddress(env.to) || this.config.unknown,
-                subject: env.subject || this.config.noSubject,
-                date: iso,
-                ts: d ? d.getTime() : Date.parse(m.created_at) || 0,
-                dateLabel: formatDate(iso, { dateStyle: 'medium', timeStyle: 'short' }),
-                hasAttachment: env.hasAttachment,
-                ok: true,
-            };
-        } catch {
+        if (!env) {
             return { ...base, from: '', fromRaw: '', to: '', subject: this.config.decryptFailed, date: base.archivedAt, ts: Date.parse(base.archivedAt) || 0, dateLabel: formatDate(base.archivedAt), hasAttachment: false, ok: false };
         }
+        return {
+            ...base,
+            from: env.from,
+            fromRaw: env.fromRaw,
+            to: env.to,
+            subject: env.subject,
+            date: env.date,
+            ts: env.ts,
+            dateLabel: formatDate(env.date, { dateStyle: 'medium', timeStyle: 'short' }),
+            hasAttachment: env.hasAttachment,
+            ok: true,
+        };
     },
 
     get folders() {

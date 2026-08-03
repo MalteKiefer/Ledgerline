@@ -28,7 +28,7 @@ use Illuminate\Support\Carbon;
  * @property bool $seen
  * @property ?int $account_id
  */
-#[Fillable(['id', 'account_id', 'folder', 'seen', 'content_hash', 'size', 'sealed_key', 'created_at'])]
+#[Fillable(['id', 'account_id', 'folder', 'seen', 'content_hash', 'size', 'sealed_key', 'envelope', 'envelope_key', 'created_at'])]
 class MailMessage extends Model
 {
     use AssignsOwner;
