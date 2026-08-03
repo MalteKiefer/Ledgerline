@@ -23,6 +23,18 @@ return [
     'sync_busy' => 'Eine Synchronisierung läuft bereits oder wurde zu oft ausgelöst — kurz warten.',
     'sync_cancel' => 'Synchronisierung abbrechen',
     'cancel_failed' => 'Synchronisierung konnte nicht abgebrochen werden.',
+    'archive_heading' => 'Archiv',
+    'col_folder' => 'Ordner',
+    'col_mailbox' => 'Postfach',
+    'col_from' => 'Absender',
+    'col_to' => 'Empfänger',
+    'col_subject' => 'Betreff',
+    'col_date' => 'Datum',
+    'decrypt_failed' => 'Entschlüsselung fehlgeschlagen',
+    'locked_hint' => 'Entsperre deinen Tresor, um das Archiv zu sehen.',
+    'no_subject' => '(kein Betreff)',
+    'unknown' => 'Unbekannt',
+    'unlock' => 'Entsperren',
 
     // Add/edit
     'add_account' => 'Konto hinzufügen',
