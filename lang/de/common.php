@@ -8,6 +8,7 @@ return [
     'sections' => 'Bereiche',
     'back' => 'Zurück',
     'next' => 'Weiter',
+    'reset' => 'Zurücksetzen',
     'previous' => 'Zurück',
     'loading' => 'Wird geladen…',
     'save' => 'Speichern',

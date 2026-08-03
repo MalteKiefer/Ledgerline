@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 return [
     'title' => 'Почта',
-    'subheading' => 'IMAP-аккаунты, синхронизируемые в ваш архив. Чтение архивированной почты пока недоступно.',
+    'subheading' => 'Приём и архивирование почты по принципу zero-knowledge — читайте, фильтруйте и ищите здесь.',
 
     // List
     'loading' => 'Загрузка аккаунтов…',
@@ -24,6 +24,17 @@ return [
     'sync_cancel' => 'Отменить синхронизацию',
     'cancel_failed' => 'Не удалось отменить синхронизацию.',
     'archive_heading' => 'Архив',
+    'read_tab' => 'Чтение',
+    'accounts_tab' => 'Почтовые ящики',
+    'archive_empty' => 'Пока нет архивированной почты.',
+    'filter_all_accounts' => 'Все ящики',
+    'filter_all_folders' => 'Все папки',
+    'filter_search_label' => 'Поиск',
+    'filter_search_ph' => 'Отправитель или тема…',
+    'date_from' => 'С',
+    'date_to' => 'По',
+    'decrypting' => 'Расшифровка…',
+    'capped_note' => '(показаны последние :n)',
     'col_folder' => 'Папка',
     'col_mailbox' => 'Почтовый ящик',
     'col_from' => 'Отправитель',

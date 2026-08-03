@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 return [
     'title' => 'Mail',
-    'subheading' => 'IMAP accounts archived into your account. Reading archived mail is not available yet.',
+    'subheading' => 'Receive and archive mail zero-knowledge — read, filter and search it here.',
 
     // List
     'loading' => 'Loading accounts…',
@@ -24,6 +24,17 @@ return [
     'sync_cancel' => 'Cancel sync',
     'cancel_failed' => 'Could not cancel the sync.',
     'archive_heading' => 'Archive',
+    'read_tab' => 'Reading',
+    'accounts_tab' => 'Mail accounts',
+    'archive_empty' => 'No archived mail yet.',
+    'filter_all_accounts' => 'All mailboxes',
+    'filter_all_folders' => 'All folders',
+    'filter_search_label' => 'Search',
+    'filter_search_ph' => 'Sender or subject…',
+    'date_from' => 'From',
+    'date_to' => 'To',
+    'decrypting' => 'Decrypting…',
+    'capped_note' => '(showing the most recent :n)',
     'col_folder' => 'Folder',
     'col_mailbox' => 'Mailbox',
     'col_from' => 'From',

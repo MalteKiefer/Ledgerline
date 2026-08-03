@@ -1,37 +1,49 @@
-// Mail archive LIST view (Phase 2, slice 1). Zero-knowledge: the server lists
-// only the metadata ledger (id / account / folder / size / archived-at /
-// sealed_key). This component fetches that page, then for each row pulls the
-// sealed blob, decrypts it with the vault identity secret, and parses just the
-// envelope (From / To / Subject / Date / has-attachment) CLIENT-side to render
-// the table. Nothing about sender/subject/etc ever reaches the server.
+// Mail archive LIST view (Phase 2). Zero-knowledge: the server lists only the
+// metadata ledger (id / account / folder / size / archived-at / sealed_key).
+// This component pulls the WHOLE ledger for the current account scope, decrypts
+// each blob with the vault identity secret, and parses just the envelope
+// (From / To / Subject / Date / has-attachment) CLIENT-side. All filtering,
+// sorting and pagination then happen locally over that decrypted cache — the
+// server never sees sender/subject/etc, so it cannot filter on them for us.
 
 import { getJson } from '../shared/api.js';
 import { fetchBlobBuffer } from '../shared/blob-io.js';
 import { parseEnvelope, parseDate, displayAddress } from '../shared/mime.js';
 import { formatDate } from '../shared/dom.js';
 
-// How many blobs to fetch+decrypt at once — bounded so a 50-row page does not
-// open 50 simultaneous requests / decrypts.
-const DECRYPT_CONCURRENCY = 6;
+const DECRYPT_CONCURRENCY = 8;
+// Safety cap on how many messages to pull+decrypt into the client cache for one
+// scope — the server orders newest-first, so this keeps the most recent.
+const MAX_LOAD = 3000;
+const LEDGER_PAGE = 200;
 
 export default (config) => ({
     config,
-    rows: [],
-    accounts: {}, // id -> name (mailbox column)
+    cache: [],       // all decrypted rows for the current account scope
+    accounts: [],    // [{id, name}] for the mailbox filter
     loading: false,
+    progress: 0,
+    progressTotal: 0,
+    capped: false,
     error: '',
+    // filters
+    fAccount: '',
+    fFolder: '',
+    fText: '',
+    fFrom: '',
+    fTo: '',
+    // pagination (client-side, over filtered)
     page: 1,
     perPage: 50,
-    total: 0,
-    lastPage: 1,
 
     get unlocked() {
         return this.$store.vault?.unlocked === true;
     },
 
     async init() {
-        // Reload the list whenever the vault transitions to unlocked.
-        this.$watch('unlocked', (v) => { if (v) this.load(); });
+        this.$watch('unlocked', (v) => { if (v && this.cache.length === 0) this.load(); });
+        this.$watch('fAccount', () => this.load());
+        for (const k of ['fFolder', 'fText', 'fFrom', 'fTo']) this.$watch(k, () => { this.page = 1; });
         if (this.unlocked) this.load();
     },
 
@@ -39,13 +51,14 @@ export default (config) => ({
         if (!this.unlocked || this.loading) return;
         this.loading = true;
         this.error = '';
+        this.capped = false;
+        this.progress = 0;
         try {
             await this.ensureAccounts();
-            const url = `${this.config.messagesUrl}?page=${this.page}&per_page=${this.perPage}`;
-            const res = await getJson(url);
-            this.total = res.meta?.total ?? 0;
-            this.lastPage = res.meta?.last_page ?? 1;
-            this.rows = await this.decryptPage(res.data ?? []);
+            const ledger = await this.fetchLedger();
+            this.progressTotal = ledger.length;
+            this.cache = await this.decryptAll(ledger);
+            this.page = 1;
         } catch (e) {
             this.error = this.config.loadFailed;
         } finally {
@@ -54,23 +67,44 @@ export default (config) => ({
     },
 
     async ensureAccounts() {
-        if (Object.keys(this.accounts).length) return;
+        if (this.accounts.length) return;
         try {
             const list = await getJson(this.config.accountsUrl);
-            for (const a of list ?? []) this.accounts[a.id] = a.name;
+            this.accounts = (list ?? []).map((a) => ({ id: a.id, name: a.name }));
         } catch {
-            // Non-fatal: the mailbox column just falls back to the account id.
+            // Non-fatal; the mailbox column falls back to the account id.
         }
     },
 
-    // Fetch + decrypt + parse each ledger row, bounded concurrency, order preserved.
-    async decryptPage(ledger) {
+    accountName(id) {
+        return this.accounts.find((a) => a.id === id)?.name || `#${id}`;
+    },
+
+    // Walk the paginated ledger for the current account scope (newest first,
+    // capped at MAX_LOAD).
+    async fetchLedger() {
+        const rows = [];
+        let page = 1;
+        let last = 1;
+        do {
+            const acc = this.fAccount ? `&account_id=${encodeURIComponent(this.fAccount)}` : '';
+            const res = await getJson(`${this.config.messagesUrl}?page=${page}&per_page=${LEDGER_PAGE}${acc}`);
+            rows.push(...(res.data ?? []));
+            last = res.meta?.last_page ?? 1;
+            page++;
+            if (rows.length >= MAX_LOAD) { this.capped = true; break; }
+        } while (page <= last);
+        return rows.slice(0, MAX_LOAD);
+    },
+
+    async decryptAll(ledger) {
         const out = new Array(ledger.length);
         let next = 0;
         const worker = async () => {
             while (next < ledger.length) {
                 const i = next++;
                 out[i] = await this.decryptRow(ledger[i]);
+                this.progress++;
             }
         };
         await Promise.all(Array.from({ length: Math.min(DECRYPT_CONCURRENCY, ledger.length) }, worker));
@@ -81,7 +115,8 @@ export default (config) => ({
         const base = {
             id: m.id,
             folder: m.folder,
-            mailbox: this.accounts[m.account_id] || `#${m.account_id}`,
+            accountId: m.account_id,
+            mailbox: this.accountName(m.account_id),
             archivedAt: m.created_at,
         };
         try {
@@ -89,26 +124,62 @@ export default (config) => ({
             const bytes = await window.Vault.decryptMailBlob(m.sealed_key, buffer);
             const env = parseEnvelope(bytes);
             const d = parseDate(env.date);
+            const iso = d ? d.toISOString() : m.created_at;
             return {
                 ...base,
                 from: displayAddress(env.from) || this.config.unknown,
+                fromRaw: env.from,
                 to: displayAddress(env.to) || this.config.unknown,
                 subject: env.subject || this.config.noSubject,
-                date: d ? d.toISOString() : m.created_at,
-                dateLabel: formatDate(d ? d.toISOString() : m.created_at, { dateStyle: 'medium', timeStyle: 'short' }),
+                date: iso,
+                ts: d ? d.getTime() : Date.parse(m.created_at) || 0,
+                dateLabel: formatDate(iso, { dateStyle: 'medium', timeStyle: 'short' }),
                 hasAttachment: env.hasAttachment,
                 ok: true,
             };
         } catch {
-            // A single un-decryptable row must not blank the whole table.
-            return { ...base, from: '', to: '', subject: this.config.decryptFailed, date: base.archivedAt, dateLabel: formatDate(base.archivedAt), hasAttachment: false, ok: false };
+            return { ...base, from: '', fromRaw: '', to: '', subject: this.config.decryptFailed, date: base.archivedAt, ts: Date.parse(base.archivedAt) || 0, dateLabel: formatDate(base.archivedAt), hasAttachment: false, ok: false };
         }
     },
 
-    async goto(p) {
+    get folders() {
+        return [...new Set(this.cache.map((r) => r.folder))].sort();
+    },
+
+    get filtered() {
+        const q = this.fText.trim().toLowerCase();
+        const fromTs = this.fFrom ? Date.parse(this.fFrom) : null;
+        const toTs = this.fTo ? Date.parse(this.fTo) + 86_400_000 : null; // inclusive end-of-day
+        return this.cache.filter((r) => {
+            if (this.fFolder && r.folder !== this.fFolder) return false;
+            if (q && !(`${r.from} ${r.fromRaw} ${r.to} ${r.subject}`.toLowerCase().includes(q))) return false;
+            if (fromTs !== null && r.ts < fromTs) return false;
+            if (toTs !== null && r.ts >= toTs) return false;
+            return true;
+        }).sort((a, b) => b.ts - a.ts);
+    },
+
+    get lastPage() {
+        return Math.max(1, Math.ceil(this.filtered.length / this.perPage));
+    },
+
+    get pageRows() {
+        const start = (this.page - 1) * this.perPage;
+        return this.filtered.slice(start, start + this.perPage);
+    },
+
+    get filtersActive() {
+        return this.fFolder !== '' || this.fText !== '' || this.fFrom !== '' || this.fTo !== '';
+    },
+
+    resetFilters() {
+        this.fFolder = ''; this.fText = ''; this.fFrom = ''; this.fTo = '';
+        this.page = 1;
+    },
+
+    goto(p) {
         if (p < 1 || p > this.lastPage || p === this.page) return;
         this.page = p;
-        await this.load();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
