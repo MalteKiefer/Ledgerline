@@ -46,6 +46,7 @@
             filesReconcileUrl: '{{ url('/files/blobs/reconcile') }}',
             galleryUploadUrl: '{{ url('/gallery/upload') }}',
             galleryReconcileUrl: '{{ url('/gallery/blobs/reconcile') }}',
+            reindexDoneMsg: @js(__('mail.reindex_done')),
             savedToFiles: @js(__('mail.saved_to_files')),
             savedToGallery: @js(__('mail.saved_to_gallery')),
             saveFailed: @js(__('mail.save_failed')),
@@ -81,7 +82,13 @@
                     </select>
                 </div>
                 <div class="min-w-[16rem] flex-1">
-                    <label class="mb-1 block text-[11px] uppercase tracking-wide text-gray-500">{{ __('mail.filter_search_label') }}</label>
+                    <label class="mb-1 flex items-center justify-between text-[11px] uppercase tracking-wide text-gray-500">
+                        <span>{{ __('mail.filter_search_label') }}</span>
+                        <label class="flex cursor-pointer items-center gap-1 normal-case tracking-normal">
+                            <input type="checkbox" x-model="searchBody" class="rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
+                            <span>{{ __('mail.search_content') }}</span>
+                        </label>
+                    </label>
                     <input type="search" x-model="fText" placeholder="{{ __('mail.filter_search_ph') }}"
                            class="block w-full rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] py-1.5 text-sm focus:border-accent focus:ring-accent">
                 </div>
@@ -103,6 +110,13 @@
                     <button type="button" @click="showTrash = true" class="rounded-lg px-3 py-1 font-medium transition" :class="showTrash ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500'">{{ __('mail.trash_toggle') }}</button>
                 </div>
                 <span class="text-xs text-gray-400">{{ __('mail.trash_immutable') }}</span>
+            </div>
+
+            {{-- Content-index banner: some messages have no full-text index yet --}}
+            <div x-show="searchBody && (unindexedCount > 0 || reindexing)" x-cloak class="mb-3 flex flex-wrap items-center gap-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+                <span x-show="!reindexing" x-text="'{{ __('mail.reindex_hint') }}'.replace(':n', unindexedCount)"></span>
+                <span x-show="reindexing" x-cloak class="tabular-nums" x-text="`${reindexDone}/${reindexTotal}`"></span>
+                <x-button variant="secondary" size="sm" x-show="!reindexing" @click="reindexContent()">{{ __('mail.reindex_build') }}</x-button>
             </div>
 
             {{-- Bulk action bar --}}
