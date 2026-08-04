@@ -108,6 +108,8 @@ return [
     'backfill_since' => 'Backfill since',
     'backfill_hint' => 'Only archive messages received on or after this date. Leave empty to archive full history.',
     'enabled' => 'Enabled',
+    'skip_spam' => 'Do not archive spam',
+    'skip_spam_hint' => 'Messages the origin server flags as spam are not archived (they never enter the immutable archive). The origin mailbox is untouched.',
     'view_logs' => 'Sync log',
     'logs_title' => 'Sync log',
     'logs_all_levels' => 'All levels',

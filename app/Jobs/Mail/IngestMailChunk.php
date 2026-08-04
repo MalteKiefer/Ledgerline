@@ -77,7 +77,7 @@ class IngestMailChunk implements ShouldQueue
             return; // account deleted mid-run; nothing to archive to.
         }
 
-        $summary = ['stored' => 0, 'duplicate' => 0, 'not_sealable' => 0, 'quarantined' => 0, 'skipped_old' => 0, 'failed' => 0];
+        $summary = ['stored' => 0, 'duplicate' => 0, 'not_sealable' => 0, 'quarantined' => 0, 'skipped_old' => 0, 'skipped_spam' => 0, 'failed' => 0];
 
         // Origin UIDs of messages freshly archived in this chunk — deleted from
         // the origin server at the end, in ONE IMAP session, when the account has
@@ -158,8 +158,8 @@ class IngestMailChunk implements ShouldQueue
             'chunk_ingested',
             $this->folder,
             sprintf(
-                'archived %d, duplicate %d, skipped_old %d, no_key %d, failed %d, quarantined %d',
-                $summary['stored'], $summary['duplicate'], $summary['skipped_old'],
+                'archived %d, duplicate %d, skipped_old %d, skipped_spam %d, no_key %d, failed %d, quarantined %d',
+                $summary['stored'], $summary['duplicate'], $summary['skipped_old'], $summary['skipped_spam'],
                 $summary['not_sealable'], $summary['failed'], $summary['quarantined'],
             ),
         );

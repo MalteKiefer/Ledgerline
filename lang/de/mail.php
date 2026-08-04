@@ -108,6 +108,8 @@ return [
     'backfill_since' => 'Archivieren ab',
     'backfill_hint' => 'Nur Nachrichten ab diesem Datum archivieren. Leer lassen, um den vollständigen Verlauf zu archivieren.',
     'enabled' => 'Aktiviert',
+    'skip_spam' => 'Spam nicht archivieren',
+    'skip_spam_hint' => 'Vom Server als Spam markierte Nachrichten werden nicht archiviert (sie landen nie im unveränderlichen Archiv). Das Ursprungs-Postfach bleibt unangetastet.',
     'view_logs' => 'Sync-Protokoll',
     'logs_title' => 'Sync-Protokoll',
     'logs_all_levels' => 'Alle Stufen',

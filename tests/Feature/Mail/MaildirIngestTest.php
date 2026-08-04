@@ -114,6 +114,31 @@ class MaildirIngestTest extends TestCase
         $this->assertNull($r->uid);
     }
 
+    public function test_spam_is_skipped_when_skip_spam_is_on(): void
+    {
+        [, $account] = $this->accountWithIdentity();
+        $account->forceFill(['skip_spam' => true])->save();
+
+        $path = $this->fixtureEml($account, "X-Spam-Flag: YES\r\nSubject: buy\r\n\r\nspam");
+        $r = app(MaildirIngestor::class)->ingestFile($account, 'INBOX', $path);
+
+        $this->assertSame(IngestStatus::SkippedSpam, $r->status);
+        $this->assertDatabaseCount('mail_messages', 0);
+        $this->assertFileDoesNotExist($path); // local copy dropped, origin untouched
+    }
+
+    public function test_spam_is_archived_when_skip_spam_is_off(): void
+    {
+        [, $account] = $this->accountWithIdentity();
+        $account->forceFill(['skip_spam' => false])->save();
+
+        $path = $this->fixtureEml($account, "X-Spam-Flag: YES\r\nSubject: buy\r\n\r\nspam");
+        $r = app(MaildirIngestor::class)->ingestFile($account, 'INBOX', $path);
+
+        $this->assertTrue($r->stored);
+        $this->assertDatabaseCount('mail_messages', 1);
+    }
+
     // ---- Step 1: idempotency + shred -------------------------------------
 
     public function test_ingest_is_idempotent_and_shreds_plaintext(): void

@@ -18,4 +18,8 @@ enum IngestStatus: string
     // The local Maildir copy is unlinked (origin mailbox is untouched, so no
     // data loss); mbsync still downloaded it (no server-side date filter).
     case SkippedOld = 'skipped_old';
+    // The origin server flagged the message as spam and the account has
+    // skip_spam on: not archived (the immutable archive never receives spam).
+    // The local Maildir copy is unlinked; the origin mailbox is untouched.
+    case SkippedSpam = 'skipped_spam';
 }

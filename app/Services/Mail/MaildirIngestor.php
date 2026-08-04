@@ -9,6 +9,7 @@ use App\Models\MailBlob;
 use App\Models\MailMessage;
 use App\Support\BlobStore;
 use App\Support\Mail\MailSealer;
+use App\Support\Mail\SpamHeaders;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -113,6 +114,17 @@ class MaildirIngestor
             }
         }
 
+        // Spam filter: if the account skips spam and the origin server flagged
+        // this message (X-Spam-Flag / rspamd / etc.), do NOT archive it — the
+        // immutable archive never receives spam. Drop the local Maildir copy
+        // (origin mailbox untouched). Checked from the RAW headers before seal.
+        if ($account->skip_spam && SpamHeaders::isSpamRaw($raw)) {
+            sodium_memzero($raw);
+            @unlink($path);
+
+            return IngestResult::skippedSpam($hash);
+        }
+
         [$x25519Pub, $mlkemEk] = self::ownerIdentity($account);
         if ($x25519Pub === null || $mlkemEk === null) {
             // Cannot seal yet: the owner has not published identity keys. Leave
@@ -204,7 +216,7 @@ class MaildirIngestor
      */
     public function ingestFolder(MailAccount $account, string $folder, string $maildirPath): array
     {
-        $summary = ['stored' => 0, 'duplicate' => 0, 'not_sealable' => 0, 'quarantined' => 0, 'skipped_old' => 0, 'failed' => 0];
+        $summary = ['stored' => 0, 'duplicate' => 0, 'not_sealable' => 0, 'quarantined' => 0, 'skipped_old' => 0, 'skipped_spam' => 0, 'failed' => 0];
 
         foreach (['cur', 'new'] as $sub) {
             $dir = rtrim($maildirPath, '/').'/'.$sub;
