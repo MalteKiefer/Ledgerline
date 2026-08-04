@@ -14,6 +14,7 @@ import { mailRemote, mailScripts } from '../shared/prefs.js';
 import { loadEnvelopes, putEnvelopes } from '../shared/mail-cache.js';
 import { isPgpEncrypted, extractPgpMessage, decrypt as pgpDecrypt } from '../shared/pgp.js';
 import { isSmimeEncrypted, decryptSmime } from '../shared/smime.js';
+import { padBlob } from '../shared/padme.js';
 
 const DECRYPT_CONCURRENCY = 8;
 
@@ -623,6 +624,106 @@ export default (config) => ({
     downloadAttachment(att) {
         // application/octet-stream forces a save, never an inline render.
         saveBlobAs(new Blob([att.bytes], { type: 'application/octet-stream' }), att.filename);
+    },
+
+    // ---- Save an attachment into another module ----
+
+    // Whether the "send to Paperless" action applies (PDF + Paperless configured).
+    canPaperless(att) {
+        return (att.contentType || '').toLowerCase() === 'application/pdf' && !!this.$store.paperless?.configured;
+    },
+
+    // Send a PDF attachment to Paperless via the shared transfer dialog (leaves ZK,
+    // exactly like the Files/invoice → Paperless flow). The bytes are already
+    // decrypted client-side; we just hand the dialog a Blob.
+    attachmentToPaperless(att) {
+        const store = this.$store.paperless;
+        if (!store || !store.configured) return;
+        const name = att.filename || 'attachment.pdf';
+        store.begin(name, { title: name, created: (this.open?.dateLabel ? undefined : undefined) }, { context: { source: 'mail' } });
+        try {
+            store.setFile(new Blob([att.bytes], { type: att.contentType || 'application/pdf' }));
+        } catch {
+            store.fail(this.config.saveFailed);
+        }
+    },
+
+    // Save an attachment into the personal Files store (zero-knowledge: encrypt in
+    // the browser under the personal VK, upload only ciphertext, register the file
+    // record at the Files root). Reuses the exact upload contract of the Files
+    // module (/files/upload → {id}; padded ciphertext blob). A full reconcile with
+    // the COMPLETE live-set follows so the fresh blob is protected from the orphan
+    // sweep (a partial reconcile would delete other blobs — never send one).
+    async saveAttachmentToFiles(att) {
+        if (this._savingAtt) return;
+        this._savingAtt = true;
+        try {
+            if (!window.Vault?.unlocked) { this.unlock(); return; }
+            if (!window.LLFilesStore.loaded) await window.LLFilesStore.load();
+            if (window.LLFilesStore.degraded) { window.llToast?.(this.config.saveFailed); return; }
+
+            const bytes = att.bytes instanceof Uint8Array ? att.bytes : new Uint8Array(att.bytes);
+            const name = att.filename || 'attachment';
+            const mime = att.contentType || 'application/octet-stream';
+            const enc = window.Vault.encryptContent(bytes, { name, mime });
+            const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
+            const id = await this._uploadFileBlob(cipher);
+
+            window.LLFilesStore.data.files.push({
+                id: crypto.randomUUID(),
+                blob: id,
+                encFileKey: enc.encFileKey,
+                name,
+                mime,
+                size: bytes.length,
+                folder: null, // root
+                created: new Date().toISOString(),
+                versions: [],
+            });
+            await window.LLFilesStore.flush();      // durable sealed save
+            await this._reconcileFiles();           // protect the fresh blob
+            window.llToast?.(this.config.savedToFiles);
+        } catch {
+            window.llToast?.(this.config.saveFailed);
+        } finally {
+            this._savingAtt = false;
+        }
+    },
+
+    _uploadFileBlob(cipherFile) {
+        const fd = new FormData();
+        fd.append('_token', this.config.csrf);
+        fd.append('file', cipherFile, cipherFile.name);
+        return fetch(this.config.filesUploadUrl, {
+            method: 'POST',
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd,
+        }).then((res) => {
+            if (!res.ok) throw new Error('upload failed');
+            return res.json();
+        }).then((j) => j.id);
+    },
+
+    // Report the FULL Files live-set (every file blob + text/emb/version refs +
+    // the sealed-store shard refs) so the orphan sweep keeps the just-added blob.
+    // Mirrors files.js _reconcileNow — the set MUST be complete or referenced
+    // blobs would be reclaimed.
+    async _reconcileFiles() {
+        const blobs = [];
+        for (const f of window.LLFilesStore.data.files) {
+            if (f.blob) blobs.push(f.blob);
+            if (f.textRef) blobs.push(f.textRef);
+            if (f.embRef) blobs.push(f.embRef);
+            for (const v of f.versions ?? []) if (v.blob) blobs.push(v.blob);
+        }
+        for (const ref of window.LLFilesStore.shardRefs()) blobs.push(ref);
+        try {
+            await fetch(this.config.filesReconcileUrl, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': this.config.csrf },
+                body: JSON.stringify({ blobs: [...new Set(blobs)], allow_empty: 1 }),
+            });
+        } catch { /* best effort */ }
     },
 
     fmtSize(n) {
