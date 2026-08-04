@@ -119,6 +119,8 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/profile/export', [ProfileController::class, 'exportPage'])->name('profile.export');
     Route::get('/profile/danger', [ProfileController::class, 'danger'])->name('profile.danger');
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');
+    Route::post('/profile/avatar', [AvatarController::class, 'store'])->middleware('throttle:30,1')->name('profile.avatar.store');
+    Route::delete('/profile/avatar', [AvatarController::class, 'destroy'])->middleware('throttle:30,1')->name('profile.avatar.destroy');
     // Self-service account: GDPR export, session revocation, account erasure.
     Route::get('/account/export', [AccountController::class, 'export'])->middleware('throttle:6,1')->name('account.export');
     Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->name('account.sessions.revoke');
