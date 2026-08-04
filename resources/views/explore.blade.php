@@ -486,7 +486,7 @@
         <template x-teleport="body">
           <div x-show="settingsOpen" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="settingsOpen = false">
             <div class="absolute inset-0 bg-gray-900/40" @click="settingsOpen = false"></div>
-            <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
+            <div class="relative w-full w-[50vw] max-w-[50vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
               <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('explore.settings') }}</h3>
               <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ __('explore.settings_hint') }}</p>
               <div class="mt-4 space-y-3">
@@ -511,7 +511,7 @@
         <template x-teleport="body">
           <div x-show="assignFor" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeAssign()">
             <div class="absolute inset-0 bg-gray-900/40" @click="closeAssign()"></div>
-            <div class="relative flex max-h-[80vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[80vh] w-full w-[50vw] max-w-[50vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-4">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('explore.assign_to_track') }}</h3>
                 <x-icon-button name="x-mark" size="sm" @click="closeAssign()" aria-label="{{ __('explore.close') }}" />
@@ -566,7 +566,7 @@
         <template x-teleport="body">
           <div x-show="photoPickerFor" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closePhotoPicker()">
             <div class="absolute inset-0 bg-gray-900/40" @click="closePhotoPicker()"></div>
-            <div class="relative flex max-h-[80vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[80vh] w-full w-[50vw] max-w-[50vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-4">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('explore.add_photos') }}</h3>
                 <x-icon-button name="x-mark" size="sm" @click="closePhotoPicker()" aria-label="{{ __('explore.close') }}" />

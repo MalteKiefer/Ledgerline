@@ -112,7 +112,7 @@
             <template x-teleport="body">
             <div x-show="mode === 'import'" x-cloak class="fixed inset-0 z-[1080] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="mode = 'list'; error = ''">
                 <div class="absolute inset-0 bg-gray-900/50" @click="mode = 'list'; error = ''"></div>
-                <div class="relative flex max-h-[85vh] w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+                <div class="relative flex max-h-[85vh] w-[50vw] max-w-[50vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
                     <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-5 py-3">
                         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('mailkeys.import') }}</h3>
                         <x-icon-button name="x-mark" tone="gray" size="sm" @click="mode = 'list'; error = ''" :aria-label="__('common.close')" />

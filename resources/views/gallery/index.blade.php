@@ -857,7 +857,7 @@
     {{-- Public album share link (zero-knowledge; the key lives in the URL fragment) --}}
     <div x-show="share.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeShare()">
       <div class="absolute inset-0 bg-black/60" @click="closeShare()"></div>
-      <div class="relative w-full w-[75vw] max-w-[75vw] rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+      <div class="relative w-full w-[50vw] max-w-[50vw] rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
         <div class="flex items-start justify-between gap-2">
           <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.share_album') }}</h3>
           <button type="button" @click="closeShare()" class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
@@ -906,7 +906,7 @@
     {{-- Location picker (Leaflet): click the map to set the photo's place --}}
     <div x-show="loc.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeLocPicker()">
       <div class="absolute inset-0 bg-black/60" @click="closeLocPicker()"></div>
-      <div class="relative w-full w-[75vw] max-w-[75vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+      <div class="relative w-full w-[50vw] max-w-[50vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.edit_location') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.location_hint') }}</p>
         <div class="relative z-[1100] mt-3">
@@ -950,7 +950,7 @@
     {{-- Add the selected photos to an album --}}
     <div x-show="albumPicker" x-cloak class="fixed inset-0 z-[965] flex items-center justify-center p-4" @keydown.escape.window="albumPicker = false">
       <div class="absolute inset-0 bg-black/60" @click="albumPicker = false"></div>
-      <div class="relative w-full w-[75vw] max-w-[75vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+      <div class="relative w-full w-[50vw] max-w-[50vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.add_to_album') }}</h3>
         <p x-show="! albums.length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_albums') }}</p>
         <div class="mt-3 max-h-72 space-y-1 overflow-y-auto">
@@ -972,7 +972,7 @@
     {{-- Assign a manually tagged face to a person (existing or new) --}}
     <div x-show="assignPicker" x-cloak class="fixed inset-0 z-[975] flex items-center justify-center p-4" @keydown.escape.window="closeAssign()">
       <div class="absolute inset-0 bg-black/60" @click="closeAssign()"></div>
-      <div class="relative w-full w-[75vw] max-w-[75vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+      <div class="relative w-full w-[50vw] max-w-[50vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.assign_heading') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.assign_hint') }}</p>
         <input type="search" x-model="assignQuery" placeholder="{{ __('gallery.person_name') }}" class="mt-3 w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
@@ -999,7 +999,7 @@
 
     <div x-show="mergePicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeMergePicker()">
       <div class="absolute inset-0 bg-black/60" @click="closeMergePicker()"></div>
-      <div class="relative w-full w-[75vw] max-w-[75vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+      <div class="relative w-full w-[50vw] max-w-[50vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.merge_heading') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.merge_hint') }}</p>
         <input type="search" x-model="mergeQuery" placeholder="{{ __('gallery.person_name') }}" class="mt-3 w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
@@ -1026,7 +1026,7 @@
     {{-- Reassign a photo's face to another person --}}
     <div x-show="reassignFor" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeReassign()">
       <div class="absolute inset-0 bg-black/60" @click="closeReassign()"></div>
-      <div class="relative w-full w-[75vw] max-w-[75vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+      <div class="relative w-full w-[50vw] max-w-[50vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.reassign_heading') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.reassign_hint') }}</p>
         <p x-show="! mergeCandidates().length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.merge_none') }}</p>
@@ -1052,7 +1052,7 @@
     {{-- Link a person to a contact (loads the /store manifest lazily) --}}
     <div x-show="linkPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeLinkPicker()">
       <div class="absolute inset-0 bg-black/60" @click="closeLinkPicker()"></div>
-      <div class="relative w-full w-[75vw] max-w-[75vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+      <div class="relative w-full w-[50vw] max-w-[50vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.link_heading') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.link_hint') }}</p>
         <input type="search" x-model="linkQuery" placeholder="{{ __('contacts.search') }}" class="mt-3 w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
@@ -1074,7 +1074,7 @@
     {{-- After linking: choose which of the person's photos becomes the contact avatar (then crop) --}}
     <div x-show="avatarChoose" x-cloak class="fixed inset-0 z-[970] flex items-center justify-center p-4" @keydown.escape.window="closeAvatarChoose()">
       <div class="absolute inset-0 bg-black/60" @click="closeAvatarChoose()"></div>
-      <div class="relative w-full w-[75vw] max-w-[75vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+      <div class="relative w-full w-[50vw] max-w-[50vw] rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.link_choose_photo') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.link_choose_hint') }}</p>
         <div class="mt-3 grid max-h-80 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
