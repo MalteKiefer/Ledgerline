@@ -19,10 +19,14 @@ export default (config) => ({
     impArmored: '',
     impPassphrase: '',
     impName: '',
-    // generate form
-    genName: '',
-    genEmail: '',
+    // generate form — full spectrum
+    genType: 'ecc',          // ecc | rsa
+    genCurve: 'curve25519',
+    genRsaBits: 3072,
     genPassphrase: '',
+    genExpiry: '0',          // '0' | '31536000' (1y) | '63072000' (2y) | '94608000' (3y)
+    genSignSubkey: false,    // add a separate signing subkey
+    genUserIDs: [{ name: '', email: '' }], // one or more identities
     // s/mime import form
     smName: '',
     smPass: '',
@@ -78,15 +82,32 @@ export default (config) => ({
         }
     },
 
+    // ---- generate form helpers ----
+    addUserId() { this.genUserIDs.push({ name: '', email: '' }); },
+    removeUserId(i) { if (this.genUserIDs.length > 1) this.genUserIDs.splice(i, 1); },
+
     async generate() {
+        const ids = this.genUserIDs
+            .map((u) => ({ name: (u.name || '').trim(), email: (u.email || '').trim() }))
+            .filter((u) => u.name || u.email);
+        if (!ids.length) { this.error = this.config?.errNoIdentity || 'Add at least one name or email.'; return; }
         this.busy = true;
         this.error = '';
         try {
-            const kp = await generateKey({ name: this.genName.trim(), email: this.genEmail.trim(), passphrase: this.genPassphrase || undefined });
+            const kp = await generateKey({
+                type: this.genType,
+                curve: this.genCurve,
+                rsaBits: Number(this.genRsaBits),
+                userIDs: ids,
+                passphrase: this.genPassphrase || undefined,
+                keyExpirationSeconds: Number(this.genExpiry) || 0,
+                signSubkey: !!this.genSignSubkey,
+            });
+            const primary = ids[0];
             this.keys.push({
                 id: newId(),
                 type: 'pgp',
-                name: this.genName.trim() || this.genEmail.trim() || kp.fingerprint.slice(-8),
+                name: primary.name || primary.email || kp.fingerprint.slice(-8),
                 fingerprint: kp.fingerprint,
                 userId: kp.userId,
                 privateKey: kp.privateKey,
@@ -95,12 +116,32 @@ export default (config) => ({
                 createdAt: new Date().toISOString(),
             });
             this._persist();
-            this.genName = ''; this.genEmail = ''; this.genPassphrase = '';
+            this.genUserIDs = [{ name: '', email: '' }];
+            this.genPassphrase = '';
+            this.genSignSubkey = false;
+            this.genExpiry = '0';
             this.mode = 'list';
         } catch (e) {
             this.error = this.config?.errGenerate || 'Could not generate a key.';
         } finally {
             this.busy = false;
+        }
+    },
+
+    // Import an armored PGP key from a file on disk (.asc / .gpg / .key / .pgp /
+    // .txt). Reads it into the copy-paste textarea so the same importKey() path
+    // (validate → derive public → seal) handles it.
+    async impFileChosen(e) {
+        const file = (e.target.files && e.target.files[0]) || null;
+        if (!file) return;
+        try {
+            const text = await file.text();
+            this.impArmored = text;
+            if (!this.impName) this.impName = file.name.replace(/\.(asc|gpg|key|pgp|txt)$/i, '');
+        } catch {
+            this.error = this.config?.errImport || 'Could not read this file.';
+        } finally {
+            e.target.value = '';
         }
     },
 
