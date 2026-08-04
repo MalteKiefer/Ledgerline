@@ -60,6 +60,8 @@ export default (config) => ({
     fFrom: '',
     fTo: '',
     searchBody: true,      // include the message body in text search
+    _savingAtt: false,     // an attachment save (to Files/Gallery) is in progress
+    _forceRemote: false,   // per-open override to load remote content for this mail
     reindexing: false,     // full-text (content) reindex in progress
     reindexDone: 0,
     reindexTotal: 0,
