@@ -110,6 +110,8 @@ return [
     'enabled' => 'Aktiviert',
     'save_to_files' => 'In Dateien speichern',
     'saved_to_files' => 'In Dateien gespeichert.',
+    'save_to_gallery' => 'In Galerie speichern',
+    'saved_to_gallery' => 'In Galerie gespeichert.',
     'save_failed' => 'Anhang konnte nicht gespeichert werden.',
     'delete_after_import' => 'Nach Import vom Server löschen',
     'delete_after_import_hint' => 'Nachrichten bleiben nach dem Archivieren im Ursprungs-Postfach.',
