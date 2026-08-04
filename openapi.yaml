@@ -6888,6 +6888,53 @@ paths:
         "502": { description: IMAP append failed (no internals leaked). }
         "429": { description: Rate limit exceeded. }
 
+  /mail/messages/{message}/delete-origin:
+    post:
+      tags: [Mail]
+      operationId: mailMessagesDeleteOrigin
+      summary: Delete an archived message from its origin IMAP mailbox (UID STORE \Deleted + EXPUNGE)
+      description: >
+        A deliberate, destructive write-to-origin action (like push-back):
+        removes the message from its ORIGIN IMAP mailbox by RFC822 Message-Id
+        (UID SEARCH HEADER Message-Id → UID STORE +FLAGS (\Deleted) → UID EXPUNGE,
+        fallback EXPUNGE). Frees space upstream AFTER archiving; works for any
+        archived message regardless of when it was imported. Zero-knowledge — the
+        server cannot read the sealed archive, so the CLIENT decrypts the message
+        and posts only its (non-secret) Message-Id here so the server can locate +
+        delete it; nothing is persisted/cached/logged (Cache-Control: no-store).
+        The IMMUTABLE local archive copy is NOT touched. Owner-scoped; the IMAP
+        host is SSRF-guarded. Runs behind an explicit user confirmation.
+        Throttle 30/min.
+      parameters:
+        - name: message
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message_id]
+              properties:
+                message_id: { type: string, description: "The RFC822 Message-Id header value (e.g. <abc@host>) used to locate the message on the origin." }
+                folder: { type: string, description: "IMAP folder to search; defaults to the message's archived folder." }
+      responses:
+        "200":
+          description: Deleted from the origin mailbox (0 if no match).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: integer, description: "Number of messages expunged on the origin." }
+        "403": { description: Module disabled. }
+        "404": { description: Not the caller's message/account. }
+        "422": { description: Missing/invalid Message-Id. }
+        "502": { description: IMAP delete failed (no internals leaked). }
+        "429": { description: Rate limit exceeded. }
+
   /mail/messages/trash:
     post:
       tags: [Mail]

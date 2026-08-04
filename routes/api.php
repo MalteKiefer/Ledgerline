@@ -34,6 +34,7 @@ use App\Http\Controllers\InvoiceMailController;
 use App\Http\Controllers\InvoicesStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailBlobController;
+use App\Http\Controllers\MailDeleteOriginController;
 use App\Http\Controllers\MailEnvelopeController;
 use App\Http\Controllers\MailMessageController;
 use App\Http\Controllers\MailPushbackController;
@@ -171,6 +172,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->middleware('module:mail')->name('api.mail.accounts.status');
         Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware(['throttle:120,1', 'module:mail'])->name('api.mail.messages.index');
         Route::post('/mail/messages/{message}/pushback', MailPushbackController::class)->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.messages.pushback');
+        Route::post('/mail/messages/{message}/delete-origin', MailDeleteOriginController::class)->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.messages.delete-origin');
         Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware(['throttle:60,1', 'module:mail'])->name('api.mail.messages.trash');
         Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware(['throttle:60,1', 'module:mail'])->name('api.mail.messages.restore');
         Route::post('/mail/messages/{message}/envelope', MailEnvelopeController::class)->middleware(['throttle:1200,1', 'module:mail'])->name('api.mail.messages.envelope');
