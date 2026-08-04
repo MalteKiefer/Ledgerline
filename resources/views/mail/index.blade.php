@@ -41,6 +41,11 @@
             trashDone: @js(__('mail.trash_done')),
             restoreDone: @js(__('mail.restore_done')),
             trashFailed: @js(__('mail.trash_failed')),
+            csrf: '{{ csrf_token() }}',
+            filesUploadUrl: '{{ url('/files/upload') }}',
+            filesReconcileUrl: '{{ url('/files/blobs/reconcile') }}',
+            savedToFiles: @js(__('mail.saved_to_files')),
+            saveFailed: @js(__('mail.save_failed')),
          })">
 
         <div x-show="!unlocked" x-cloak>
@@ -233,6 +238,8 @@
                                                 <p class="truncate text-xs text-gray-400" x-text="fmtSize(att.size)"></p>
                                             </div>
                                             <x-icon-button name="eye" tone="gray" size="sm" x-show="canView(att)" @click="viewAttachment(att)" :aria-label="__('mail.att_view')" />
+                                            <x-icon-button name="folder-plus" tone="gray" size="sm" @click="saveAttachmentToFiles(att)" ::disabled="_savingAtt" :aria-label="__('mail.save_to_files')" title="{{ __('mail.save_to_files') }}" />
+                                            <x-icon-button name="inbox-arrow-down" tone="gray" size="sm" x-show="canPaperless(att)" @click="attachmentToPaperless(att)" :aria-label="__('paperless.send_to_paperless')" title="{{ __('paperless.send_to_paperless') }}" />
                                             <x-icon-button name="arrow-down-tray" tone="gray" size="sm" @click="downloadAttachment(att)" :aria-label="__('mail.att_download')" />
                                         </div>
                                     </template>
@@ -433,4 +440,7 @@
         </template>
     </div>
   </div>
+
+    {{-- Shared Paperless transfer dialog (attachment → Paperless). --}}
+    @include('_paperless_modal')
 </x-layouts.app>
