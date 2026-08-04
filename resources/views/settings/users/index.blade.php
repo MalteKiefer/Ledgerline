@@ -8,7 +8,7 @@
         };
     @endphp
     {{-- Mutually-exclusive panels: `open` is 'new', a user id, or null. Opening one closes any other. --}}
-    <div class="mx-auto w-full max-w-3xl" x-data="{ open: null }">
+    <div class="mx-auto w-full max-w-[1700px]" x-data="{ open: null }">
         @include('profile._header', ['title' => __('settings.users_section'), 'subtitle' => __('settings.users_desc')])
 
         @if (session('status'))

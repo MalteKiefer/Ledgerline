@@ -303,7 +303,7 @@
       {{-- Person picker: loads the gallery manifest lazily --}}
       <div x-show="personPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closePersonPicker()">
         <div class="absolute inset-0 bg-black/60" @click="closePersonPicker()"></div>
-        <div class="relative w-full max-w-lg rounded-2xl bg-white dark:bg-[#1c1c1e] p-4 shadow-xl">
+        <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl bg-white dark:bg-[#1c1c1e] p-4 shadow-xl">
             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('contacts.link_person_heading') }}</h3>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('contacts.link_person_hint') }}</p>
             <input type="search" x-model="personQuery" placeholder="{{ __('contacts.search') }}" class="mt-3 w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
@@ -328,7 +328,7 @@
       {{-- Avatar source: pick an image from Files --}}
       <div x-show="filePicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeFilePicker()">
         <div class="absolute inset-0 bg-black/60" @click="closeFilePicker()"></div>
-        <div class="relative w-full max-w-lg rounded-2xl bg-white dark:bg-[#1c1c1e] p-4 shadow-xl">
+        <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl bg-white dark:bg-[#1c1c1e] p-4 shadow-xl">
             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('contacts.pick_image') }}</h3>
             <p x-show="! fileImages().length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('contacts.no_images') }}</p>
             <div class="mt-3 grid max-h-80 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
@@ -347,7 +347,7 @@
       {{-- Avatar source: pick an image from the Gallery (People / Albums / All tabs) --}}
       <div x-show="galleryPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeGalleryPicker()">
         <div class="absolute inset-0 bg-black/60" @click="closeGalleryPicker()"></div>
-        <div class="relative w-full max-w-lg rounded-2xl bg-white dark:bg-[#1c1c1e] p-4 shadow-xl">
+        <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl bg-white dark:bg-[#1c1c1e] p-4 shadow-xl">
             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('contacts.pick_image') }}</h3>
             {{-- Tabs --}}
             <div class="mt-3 flex gap-1 border-b border-gray-200 dark:border-gray-800 text-sm">

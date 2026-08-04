@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('account.nav_devices')">
-    <div class="mx-auto w-full max-w-3xl" x-data="devicePairing({ rateLimited: @js(__('account.pair_rate_limited')), startFailed: @js(__('account.pair_start_failed')) })">
+    <div class="mx-auto w-full max-w-[1700px]" x-data="devicePairing({ rateLimited: @js(__('account.pair_rate_limited')), startFailed: @js(__('account.pair_start_failed')) })">
         @include('profile._header', ['title' => __('account.nav_devices'), 'subtitle' => __('account.devices_hint').' '.__('account.devices_limit_note', ['max' => $deviceMax])])
 
         {{-- Connect: mobile app (QR) or command-line (code) --}}

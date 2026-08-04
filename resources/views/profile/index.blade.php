@@ -12,7 +12,7 @@
         $global = auth()->user()->managesGlobalSettings();
     @endphp
 
-    <div class="mx-auto w-full max-w-3xl">
+    <div class="mx-auto w-full max-w-[1700px]">
 
     {{-- Hero: gradient avatar, name, email, host --}}
     <div class="flex flex-col items-center pt-2 text-center">

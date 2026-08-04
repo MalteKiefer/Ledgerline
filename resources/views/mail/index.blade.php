@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('mail.title')">
-  <div class="mx-auto w-full max-w-7xl" x-data="{ tab: 'read' }">
+  <div class="mx-auto w-full max-w-[1700px]" x-data="{ tab: 'read' }">
 
     <x-page-heading :title="__('mail.title')" :subtitle="__('mail.subheading')" />
 
@@ -197,7 +197,7 @@
         <template x-teleport="body">
             <div x-show="open" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeMessage()">
                 <div class="absolute inset-0 bg-gray-900/50" @click="closeMessage()"></div>
-                <div class="relative flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+                <div class="relative flex max-h-[90vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
                     <div class="flex items-start justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-5 py-3">
                         <div class="min-w-0">
                             <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="open?.subject"></h3>
@@ -364,7 +364,7 @@
         <template x-teleport="body">
             <div x-show="logsOpen" x-cloak class="fixed inset-0 z-[1080] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeLogs()">
                 <div class="absolute inset-0 bg-gray-900/50" @click="closeLogs()"></div>
-                <div class="relative flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+                <div class="relative flex max-h-[85vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
                     <div class="flex items-start justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-5 py-3">
                         <div class="min-w-0">
                             <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('mail.logs_title') }}</h3>
@@ -418,7 +418,7 @@
         <template x-teleport="body">
             <div x-show="modalOpen" x-cloak class="fixed inset-0 z-[1050] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeModal()">
                 <div class="absolute inset-0 bg-gray-900/50" @click="closeModal()"></div>
-                <div class="relative flex max-h-[92vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl" x-show="form">
+                <div class="relative flex max-h-[92vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl" x-show="form">
                     <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-5 py-3">
                         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="form?.id ? @js(__('mail.edit_account')) : @js(__('mail.new_account'))"></h3>
                         <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeModal()" :aria-label="__('common.close')" />

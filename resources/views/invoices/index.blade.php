@@ -770,7 +770,7 @@
           {{-- Project create/edit modal --}}
           <div x-show="projectEditing" x-cloak class="fixed inset-0 z-[1140] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelProject()">
             <div class="absolute inset-0 bg-gray-900/50" @click="cancelProject()"></div>
-            <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+            <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
               <template x-if="projectEditing">
                 <div class="space-y-3">
                   <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="projectEditing?.id ? '{{ __('invoices.project_edit') }}' : '{{ __('invoices.project_add') }}'"></h3>
@@ -865,7 +865,7 @@
           {{-- Receipt picker: bundle existing receipts into the open project --}}
           <div x-show="receiptPicker" x-cloak class="fixed inset-0 z-[1140] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeReceiptPicker()">
             <div class="absolute inset-0 bg-gray-900/50" @click="closeReceiptPicker()"></div>
-            <div class="relative flex h-[75vh] max-h-[75vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex h-[75vh] max-h-[75vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <div class="flex items-center gap-2.5 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
                 <p class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.project_pick_title') }}</p>
                 <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeReceiptPicker()" :aria-label="__('common.close')" />
@@ -1045,7 +1045,7 @@
           {{-- Partner editor modal (create + edit; multiple contact persons) --}}
           <div x-show="partnerEditing" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelPartner()">
             <div class="absolute inset-0 bg-gray-900/50" @click="cancelPartner()"></div>
-            <div class="relative flex max-h-[88vh] w-full max-w-3xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[88vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <template x-if="partnerEditing">
                 <div class="flex min-h-0 flex-col">
                   <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
@@ -1336,7 +1336,7 @@
           {{-- Category color + icon editor --}}
           <div x-show="catEditing" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" @keydown.escape.window="closeCatEditor()">
             <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" @click="closeCatEditor()"></div>
-            <div class="relative w-full max-w-lg rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+            <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
               <div class="flex items-center gap-3">
                 <span class="ll-chip h-10 w-10 rounded-xl shrink-0" :style="'--chip:'+(catEditing?.color||'#e2915a')">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-5 w-5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" :d="catIconPath(catEditing?.icon)"></path></svg>
@@ -1659,7 +1659,7 @@
           {{-- ---- STATEMENT IMPORT WIZARD ---- --}}
           <div x-show="stmt" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelStatement()">
             <div class="absolute inset-0 bg-gray-900/50" @click="cancelStatement()"></div>
-            <div class="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[90vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <template x-if="stmt">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
@@ -1731,7 +1731,7 @@
           {{-- ---- RECEIPTS PANEL (Belege for a transaction) ---- --}}
           <div x-show="receiptTx" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeReceipts()">
             <div class="absolute inset-0 bg-gray-900/50" @click="closeReceipts()"></div>
-            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[90vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <template x-if="receiptTx">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="flex items-start justify-between gap-3 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
@@ -1786,7 +1786,7 @@
           {{-- ---- EIGENBELEG (self-receipt: prefilled from the booking → PDF) ---- --}}
           <div x-show="eigenbeleg" x-cloak class="fixed inset-0 z-[1130] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="! egBusy && cancelEigenbeleg()">
             <div class="absolute inset-0 bg-gray-900/50" @click="! egBusy && cancelEigenbeleg()"></div>
-            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[90vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <template x-if="eigenbeleg">
                 <div class="flex min-h-0 flex-col">
                   <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
@@ -1959,7 +1959,7 @@
           {{-- ---- RECEIPT PREVIEW (quick look, decrypted client-side) ---- --}}
           <div x-show="receiptPreview" x-cloak class="fixed inset-0 z-[1140] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeReceiptPreview()">
             <div class="absolute inset-0 bg-gray-900/70" @click="closeReceiptPreview()"></div>
-            <div class="relative flex h-[90vh] w-full max-w-4xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex h-[90vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <template x-if="receiptPreview">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="flex items-center gap-3 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
@@ -1991,7 +1991,7 @@
           {{-- ---- INVOICE PICKER (link an issued invoice to an income booking) ---- --}}
           <div x-show="invoicePicker" x-cloak class="fixed inset-0 z-[1110] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="invoicePicker = null">
             <div class="absolute inset-0 bg-gray-900/50" @click="invoicePicker = null"></div>
-            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[90vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.match_pick_title') }}</h3>
                 <x-icon-button name="x-mark" tone="gray" size="sm" @click="invoicePicker = null" :aria-label="__('common.close')" />
@@ -2014,7 +2014,7 @@
           {{-- Editor modal --}}
           <div x-show="payEditing" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelPayment()">
             <div class="absolute inset-0 bg-gray-900/50" @click="cancelPayment()"></div>
-            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[90vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <template x-if="payEditing">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="flex items-center gap-2.5 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
@@ -2604,7 +2604,7 @@
         {{-- ===================== CUSTOMER PICKER ===================== --}}
         <div x-show="customerPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeCustomerPicker()">
           <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" @click="closeCustomerPicker()"></div>
-          <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+          <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
             <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.picker_title') }}</h2>
             <input type="search" x-model="custQuery" placeholder="{{ __('invoices.picker_search') }}" class="mt-3 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
             <div class="mt-3 max-h-72 space-y-1 overflow-y-auto">
@@ -2627,7 +2627,7 @@
         {{-- Send invoice by e-mail (dedicated invoice SMTP) --}}
         <div x-show="mailOpen" x-cloak class="fixed inset-0 z-[1130] flex items-center justify-center p-4" @keydown.escape.window="closeMailInvoice()">
           <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" @click="closeMailInvoice()"></div>
-          <div class="relative w-full max-w-lg rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+          <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
             <div class="flex items-center justify-between">
               <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.mail_title') }}</h2>
               <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeMailInvoice()" :aria-label="__('common.close')" />

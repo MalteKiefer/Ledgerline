@@ -156,7 +156,7 @@
     <template x-teleport="body">
         <div x-show="moreIconsOpen" x-cloak class="fixed inset-0 z-[1060] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="moreIconsOpen = false">
             <div class="absolute inset-0 bg-gray-900/50" @click="moreIconsOpen = false"></div>
-            <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
+            <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('bookmarks.all_icons') }}</h3>
                 <div class="mt-4 grid max-h-[60vh] grid-cols-6 gap-1.5 overflow-y-auto sm:grid-cols-8">
                     <button type="button" @click="folderEditor.icon = ''; moreIconsOpen = false" :class="! folderEditor.icon ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'" class="flex aspect-square items-center justify-center rounded" title="{{ __('bookmarks.folder_none') }}">
@@ -179,7 +179,7 @@
     <template x-teleport="body">
         <div x-show="editorOpen" x-cloak class="fixed inset-0 z-[1050] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeEditor()">
             <div class="absolute inset-0 bg-gray-900/50" @click="closeEditor()"></div>
-            <div class="relative flex max-h-[92vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl" x-show="editing">
+            <div class="relative flex max-h-[92vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl" x-show="editing">
                 <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-5 py-3">
                     <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="editing?.id ? @js(__('bookmarks.edit_title')) : @js(__('bookmarks.add_title'))"></h3>
                     <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeEditor()" aria-label="{{ __('bookmarks.cancel') }}" />

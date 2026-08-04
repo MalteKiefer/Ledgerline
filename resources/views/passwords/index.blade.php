@@ -653,7 +653,7 @@
         {{-- Share vault dialog (manager only) --}}
         <div x-show="shareDialog.open" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="closeShareDialog()">
           <div class="absolute inset-0 bg-gray-900/50" @click="closeShareDialog()"></div>
-          <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+          <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
             <div class="flex items-center justify-between">
               <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.share_vault') }}</h3>
               <button type="button" @click="closeShareDialog()" class="rounded p-1 text-gray-400 hover:bg-accent/5"><x-icon name="x-mark" class="h-5 w-5" /></button>
@@ -698,7 +698,7 @@
         {{-- Password generator modal --}}
         <div x-show="gen.open" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="gen.open = false">
           <div class="absolute inset-0 bg-gray-900/50" @click="gen.open = false"></div>
-          <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+          <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.generate') }}</h3>
 
             {{-- Live preview --}}
@@ -774,7 +774,7 @@
         {{-- Import modal --}}
         <div x-show="importOpen" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="importOpen = false">
           <div class="absolute inset-0 bg-gray-900/50" @click="importOpen = false"></div>
-          <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+          <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
             <div class="flex items-center justify-between"><h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.import') }}</h3><button type="button" @click="importOpen = false" class="rounded p-1 text-gray-400 hover:bg-accent/5"><x-icon name="x-mark" class="h-5 w-5" /></button></div>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('passwords.import_intro') }}</p>
             <label class="mt-4 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.import_format') }}
@@ -810,7 +810,7 @@
         {{-- Export modal --}}
         <div x-show="exportOpen" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="_closeExport()">
           <div class="absolute inset-0 bg-gray-900/50" @click="_closeExport()"></div>
-          <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+          <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
             <div class="flex items-center justify-between">
               <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.export') }}</h3>
               <button type="button" @click="_closeExport()" class="rounded p-1 text-gray-400 hover:bg-accent/5"><x-icon name="x-mark" class="h-5 w-5" /></button>
@@ -893,7 +893,7 @@
         {{-- Manage vault members panel --}}
         <template x-if="managingVaultId !== null">
           <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4" @keydown.escape.window="managingVaultId = null">
-            <div class="w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-5 py-4">
                 <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.manage_members') }}</h2>
                 <button type="button" @click="managingVaultId = null" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><x-icon name="x-mark" class="h-5 w-5" /></button>

@@ -477,7 +477,7 @@
       </div>{{-- end main view --}}
 
       {{-- ===== REPORT VIEW ===== --}}
-      <div x-show="view === 'report'" class="health-report mx-auto max-w-4xl px-4 py-6 space-y-8">
+      <div x-show="view === 'report'" class="health-report mx-auto max-w-[1700px] px-4 py-6 space-y-8">
 
         {{-- Report toolbar (hidden when printing) --}}
         <div class="no-print flex items-center justify-between">

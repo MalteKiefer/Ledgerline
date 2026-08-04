@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('account.nav_sessions')">
-    <div class="mx-auto w-full max-w-3xl">
+    <div class="mx-auto w-full max-w-[1700px]">
         @include('profile._header', ['title' => __('account.nav_sessions'), 'subtitle' => __('account.sessions_hint')])
 
         <div class="mt-5 ll-card flex items-center gap-3.5">

@@ -289,10 +289,10 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.messages.trash');
     Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.messages.restore');
     Route::post('/mail/messages/{message}/envelope', MailEnvelopeController::class)->middleware(['throttle:1200,1', 'module:mail'])->name('mail.messages.envelope');
-    Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.store');
-    Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.update');
-    Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.destroy');
-    Route::post('/mail/accounts/{account}/sync', [MailAccountController::class, 'sync'])->middleware(['throttle:30,1', 'module:mail'])->name('mail.accounts.sync');
+    Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.accounts.store');
+    Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.accounts.update');
+    Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.accounts.destroy');
+    Route::post('/mail/accounts/{account}/sync', [MailAccountController::class, 'sync'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.accounts.sync');
     Route::post('/mail/accounts/{account}/sync/cancel', [MailAccountController::class, 'cancelSync'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.accounts.sync-cancel');
     Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->middleware('module:mail')->name('mail.accounts.status');
 

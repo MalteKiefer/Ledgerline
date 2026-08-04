@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('account.delete_heading')">
-    <div class="mx-auto w-full max-w-3xl" x-data="{ del: false }">
+    <div class="mx-auto w-full max-w-[1700px]" x-data="{ del: false }">
         @include('profile._header', ['title' => __('account.delete_heading')])
 
         <div class="mt-5 ll-card border-red-300 dark:border-red-800">

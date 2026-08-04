@@ -7,6 +7,7 @@
 import { keyInfo, generateKey, publicFromPrivate } from '../shared/pgp.js';
 import { importP12 } from '../shared/smime.js';
 import { newId } from '../shared/sealed-store.js';
+import { fetchBlobBuffer } from '../shared/blob-io.js';
 
 export default (config) => ({
     config: config || {},
@@ -16,9 +17,14 @@ export default (config) => ({
     error: '',
     mode: 'list', // list | import | generate
     // import form
+    impMode: 'paste', // paste | computer | app  (tabs in the import modal)
     impArmored: '',
     impPassphrase: '',
     impName: '',
+    // "from the app's Files" picker
+    appFiles: [],
+    appFilesLoading: false,
+    appFileError: '',
     // generate form — full spectrum
     genType: 'ecc',          // ecc | rsa
     genCurve: 'curve25519',
@@ -123,6 +129,54 @@ export default (config) => ({
             this.mode = 'list';
         } catch (e) {
             this.error = this.config?.errGenerate || 'Could not generate a key.';
+        } finally {
+            this.busy = false;
+        }
+    },
+
+    // Open the import modal on a specific tab (resets state).
+    openImport() {
+        this.mode = 'import';
+        this.impMode = 'paste';
+        this.impArmored = '';
+        this.impPassphrase = '';
+        this.impName = '';
+        this.appFileError = '';
+        this.error = '';
+    },
+
+    // "Aus App-Dateien": list the personal Files, so a key stored there can be
+    // picked, decrypted client-side and loaded into the import field. ZK — the
+    // file is decrypted in the browser, never round-tripped to the server.
+    async loadAppFiles() {
+        this.appFileError = '';
+        this.appFilesLoading = true;
+        try {
+            if (!window.Vault?.unlocked) { this.appFileError = this.config?.errLocked || 'Unlock the vault first.'; return; }
+            if (!window.LLFilesStore.loaded) await window.LLFilesStore.load();
+            // Show likely key files first, but list all so nothing is hidden.
+            const files = [...(window.LLFilesStore.data.files || [])];
+            files.sort((a, b) => (this._looksKey(b) - this._looksKey(a)) || (a.name || '').localeCompare(b.name || ''));
+            this.appFiles = files;
+        } catch {
+            this.appFileError = this.config?.errImport || 'Could not load your files.';
+        } finally {
+            this.appFilesLoading = false;
+        }
+    },
+    _looksKey(f) {
+        return /\.(asc|gpg|key|pgp|pem)$/i.test(f.name || '') ? 1 : 0;
+    },
+    async pickAppFile(f) {
+        this.appFileError = '';
+        this.busy = true;
+        try {
+            const buf = await fetchBlobBuffer(`${this.config.filesRawBase}/${f.blob}`);
+            const bytes = window.Vault.decryptFile(buf, f.encFileKey);
+            this.impArmored = new TextDecoder().decode(bytes);
+            if (!this.impName) this.impName = (f.name || '').replace(/\.(asc|gpg|key|pgp|pem|txt)$/i, '');
+        } catch {
+            this.appFileError = this.config?.errImport || 'Could not read this file.';
         } finally {
             this.busy = false;
         }

@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('account.nav_encryption')">
-    <div class="mx-auto w-full max-w-3xl">
+    <div class="mx-auto w-full max-w-[1700px]">
         @include('profile._header', ['title' => __('account.nav_encryption'), 'subtitle' => __('vault.settings_hint')])
 
         <div class="mt-5 ll-card">
