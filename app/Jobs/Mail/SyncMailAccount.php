@@ -7,6 +7,7 @@ namespace App\Jobs\Mail;
 use App\Models\MailAccount;
 use App\Services\Mail\MaildirIngestor;
 use App\Services\Mail\MbsyncRunner;
+use App\Support\Mail\MailLogger;
 use App\Support\Redactor;
 use Illuminate\Bus\Batch;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -97,6 +98,8 @@ class SyncMailAccount implements ShouldQueue
             return;
         }
 
+        MailLogger::record($account, 'info', 'sync_started');
+
         // Pre-flight BEFORE any fetch: see the class docblock's step 0. Do not
         // pull a single byte of mail this run cannot immediately seal.
         [$x25519Pub, $mlkemEk] = MaildirIngestor::ownerIdentity($account);
@@ -105,6 +108,7 @@ class SyncMailAccount implements ShouldQueue
                 'status' => 'error',
                 'last_error' => self::NO_IDENTITY_KEY_ERROR,
             ])->save();
+            MailLogger::record($account, 'warn', 'no_identity_key', null, self::NO_IDENTITY_KEY_ERROR);
 
             return;
         }
@@ -116,13 +120,17 @@ class SyncMailAccount implements ShouldQueue
             // Failed/HostRejected: the runner already recorded this (recording
             // again is idempotent). Unavailable: the runner left the account
             // untouched, so we record the error here. Either way: no ingest.
+            $redacted = Redactor::redact((string) ($result->message ?? 'IMAP sync failed.'));
             $account->forceFill([
                 'status' => 'error',
-                'last_error' => Redactor::redact((string) ($result->message ?? 'IMAP sync failed.')),
+                'last_error' => $redacted,
             ])->save();
+            MailLogger::record($account, 'error', 'mbsync_failed', null, $redacted);
 
             return;
         }
+
+        MailLogger::record($account, 'info', 'mbsync_ok', null, 'Fetch complete; paging folders for ingest.');
 
         // Fetch succeeded (the runner cleared status to idle); hold 'syncing'
         // through the ingest phase so the account only rests once archiving is
@@ -131,6 +139,7 @@ class SyncMailAccount implements ShouldQueue
 
         $chunks = $this->buildChunks($account);
         if ($chunks === []) {
+            MailLogger::record($account, 'info', 'nothing_to_ingest', null, 'No new messages fetched this run.');
             self::markIdle($this->accountId);
 
             return;
@@ -177,7 +186,12 @@ class SyncMailAccount implements ShouldQueue
 
         $jobs = [];
         foreach ($this->folders($root) as $folder => $dir) {
-            foreach (array_chunk($this->messageFiles($dir), $size) as $slice) {
+            $files = $this->messageFiles($dir);
+            // Per-folder visibility: shows the owner EXACTLY which folders the
+            // sync fetched and how many new messages each has this run (the
+            // "only INBOX?" diagnostic). A folder with 0 new files still logs.
+            MailLogger::record($account, 'info', 'folder_fetched', $folder, count($files).' new message(s) to ingest.');
+            foreach (array_chunk($files, $size) as $slice) {
                 $jobs[] = new IngestMailChunk($account->id, $folder, $slice);
             }
         }
@@ -264,6 +278,7 @@ class SyncMailAccount implements ShouldQueue
             $account = MailAccount::find($accountId);
             if ($account !== null && $account->status === 'syncing') {
                 $account->forceFill(['status' => 'idle', 'last_synced_at' => now(), 'sync_batch_id' => null])->save();
+                MailLogger::record($account, 'info', 'sync_done', null, 'Sync finished.');
             }
         } catch (Throwable) {
             // Best-effort resting state; the next sync will settle the status.

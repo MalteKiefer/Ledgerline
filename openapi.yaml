@@ -6891,6 +6891,60 @@ paths:
         "502": { description: IMAP append failed (no internals leaked). }
         "429": { description: Rate limit exceeded. }
 
+  /mail/accounts/{account}/logs:
+    get:
+      tags: [Mail]
+      operationId: mailAccountLogs
+      summary: Per-account sync/ingest diagnostic log (owner-scoped, metadata only)
+      description: >
+        Read-only diagnostic log of an account's sync/ingest activity — which
+        folders were fetched, per-folder archive counts, mbsync errors, origin
+        deletes. Metadata only (never message content/subjects/addresses),
+        redacted, newest first, paginated. Owner-scoped (404 for another user's
+        account). Short retention (mail-logs:prune). Throttle 240/min.
+      parameters:
+        - name: account
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: level
+          in: query
+          schema: { type: string, enum: [info, warn, error] }
+        - name: per_page
+          in: query
+          schema: { type: integer, default: 100, maximum: 200 }
+      responses:
+        "200":
+          description: Log lines, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        level: { type: string, enum: [info, warn, error] }
+                        event: { type: string, description: "e.g. sync_started, folder_fetched, chunk_ingested, mbsync_failed, origin_deleted, sync_done." }
+                        folder: { type: string, nullable: true }
+                        message: { type: string, nullable: true }
+                        created_at: { type: string, format: date-time, nullable: true }
+                  meta:
+                    type: object
+                    properties:
+                      current_page: { type: integer }
+                      last_page: { type: integer }
+                      total: { type: integer }
+        "403": { description: Module disabled. }
+        "404": { description: Not the caller's account. }
+        "429": { description: Rate limit exceeded. }
+
   /mail/messages/{message}/delete-origin:
     post:
       tags: [Mail]
