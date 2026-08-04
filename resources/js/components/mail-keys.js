@@ -5,7 +5,7 @@
 // Decryption of mail happens in the mail archive, not here.
 
 import { keyInfo, generateKey, publicFromPrivate } from '../shared/pgp.js';
-import { importP12 } from '../shared/smime.js';
+import { importP12, generateSmime, importSmimePem } from '../shared/smime.js';
 import { newId } from '../shared/sealed-store.js';
 import { fetchBlobBuffer } from '../shared/blob-io.js';
 
@@ -36,10 +36,17 @@ export default (config) => ({
     genExpiry: '0',          // '0' | '31536000' (1y) | '63072000' (2y) | '94608000' (3y)
     genSignSubkey: false,    // add a separate signing subkey
     genUserIDs: [{ name: '', email: '' }], // one or more identities
-    // s/mime import form
+    // s/mime import form (.p12) + PEM import + generate
     smName: '',
     smPass: '',
+    smImpMode: 'p12',     // p12 | pem  (S/MIME import tabs)
+    smPem: '',
     _p12: null,
+    // s/mime generate form
+    smGenCn: '',
+    smGenEmail: '',
+    smGenBits: 3072,
+    smGenExpiry: '730',   // days
     _store: null,
 
     async init() {
@@ -253,6 +260,72 @@ export default (config) => ({
         } finally {
             this.busy = false;
         }
+    },
+
+    // Import an S/MIME identity from pasted PEM (key + certificate).
+    async importSmimePemNow() {
+        if (!this.smPem.trim()) { this.error = this.config?.errImport || 'Paste a key + certificate PEM.'; return; }
+        this.busy = true;
+        this.error = '';
+        try {
+            const imp = await importSmimePem(this.smPem);
+            this._pushSmime(imp, this.smName.trim());
+            this.smPem = ''; this.smName = ''; this.mode = 'list';
+        } catch {
+            this.error = this.config?.errP12 || 'Could not import this S/MIME PEM.';
+        } finally {
+            this.busy = false;
+        }
+    },
+
+    // Read a .pem/.crt/.key file from disk into the S/MIME PEM field.
+    async smPemFileChosen(e) {
+        const file = (e.target.files && e.target.files[0]) || null;
+        if (!file) return;
+        try {
+            const text = await file.text();
+            this.smPem = this.smPem ? (this.smPem + '\n' + text) : text; // key + cert can be two files
+            if (!this.smName) this.smName = file.name.replace(/\.(pem|crt|cer|key|txt)$/i, '');
+        } catch {
+            this.error = this.config?.errImport || 'Could not read this file.';
+        } finally {
+            e.target.value = '';
+        }
+    },
+
+    // Generate a self-signed S/MIME identity in the browser.
+    async generateSmimeNow() {
+        if (!this.smGenEmail.trim() && !this.smGenCn.trim()) { this.error = this.config?.errNoIdentity || 'Add a name or email.'; return; }
+        this.busy = true;
+        this.error = '';
+        try {
+            const imp = await generateSmime({
+                commonName: this.smGenCn.trim(),
+                email: this.smGenEmail.trim(),
+                rsaBits: Number(this.smGenBits),
+                expiryDays: Number(this.smGenExpiry) || 730,
+            });
+            this._pushSmime(imp, this.smGenCn.trim() || this.smGenEmail.trim());
+            this.smGenCn = ''; this.smGenEmail = ''; this.mode = 'list';
+        } catch {
+            this.error = this.config?.errGenerate || 'Could not generate an S/MIME key.';
+        } finally {
+            this.busy = false;
+        }
+    },
+
+    _pushSmime(imp, name) {
+        this.keys.push({
+            id: newId(),
+            type: 'smime',
+            name: name || imp.subject || imp.fingerprint.slice(-8),
+            fingerprint: imp.fingerprint,
+            userId: imp.subject,
+            privateKeyPem: imp.privateKeyPem,
+            certPem: imp.certPem,
+            createdAt: new Date().toISOString(),
+        });
+        this._persist();
     },
 
     keyType(k) { return k.type === 'smime' ? 'S/MIME' : 'PGP'; },

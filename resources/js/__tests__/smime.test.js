@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { importP12, isSmimeEncrypted, recipientMatches } from '../shared/smime.js';
+import { importP12, isSmimeEncrypted, isSmimeSigned, recipientMatches, importSmimePem } from '../shared/smime.js';
 
 // node-forge's minified UMD build touches `window` at load; the test env is
 // plain node (no jsdom installed — npm is unreachable here), so shim the browser
@@ -39,6 +39,21 @@ describe('smime (vendored node-forge, OpenSSL fixtures)', () => {
         expect(imp.privateKeyPem).toContain('PRIVATE KEY');
         expect(imp.subject).toBe('test@example.com');
         expect(imp.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    }, 20000);
+
+    it('detects a signed S/MIME message', () => {
+        expect(isSmimeSigned('Content-Type: application/pkcs7-mime; smime-type=signed-data\n\nAAA')).toBe(true);
+        expect(isSmimeSigned('Content-Type: multipart/signed; protocol="application/pkcs7-signature"\n\n--x')).toBe(true);
+        expect(isSmimeSigned('Content-Type: text/plain\n\nhi')).toBe(false);
+    });
+
+    it('round-trips a PKCS#12 through PEM import (key + cert reconstructed)', async () => {
+        const p12 = await importP12(b64ToBytes(P12_B64), 'pw');
+        const pem = p12.privateKeyPem + '\n' + p12.certPem;
+        const imp = await importSmimePem(pem);
+        expect(imp.privateKeyPem).toContain('PRIVATE KEY');
+        expect(imp.certPem).toContain('BEGIN CERTIFICATE');
+        expect(imp.fingerprint).toBe(p12.fingerprint);
     }, 20000);
 
     it('recognises the recipient of a real enveloped message', async () => {

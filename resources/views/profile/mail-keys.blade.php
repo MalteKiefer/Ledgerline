@@ -30,19 +30,80 @@
                 <x-button variant="secondary" size="sm" icon="plus" @click="openImport()">{{ __('mailkeys.import') }}</x-button>
                 <x-button variant="secondary" size="sm" icon="key" @click="mode = 'generate'">{{ __('mailkeys.generate') }}</x-button>
                 <x-button variant="secondary" size="sm" icon="lock-closed" @click="mode = 'smime'">{{ __('mailkeys.import_smime') }}</x-button>
+                <x-button variant="secondary" size="sm" icon="lock-closed" @click="mode = 'smime-gen'">{{ __('mailkeys.gen_smime') }}</x-button>
             </div>
 
-            {{-- S/MIME import (.p12) --}}
+            {{-- S/MIME import: .p12 OR PEM (key + certificate) --}}
             <div class="ll-card mb-4" x-show="mode === 'smime'" x-cloak>
                 <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('mailkeys.import_smime') }}</h3>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.name') }}</label>
                 <input type="text" x-model="smName" class="mt-1 mb-3 block w-full rounded-md border-gray-300 dark:border-gray-700 sm:text-sm">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.p12_file') }}</label>
-                <input type="file" accept=".p12,.pfx,application/x-pkcs12" @change="p12Chosen($event)" class="mt-1 mb-3 block w-full text-sm text-gray-600 dark:text-gray-400">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.passphrase_opt') }}</label>
-                <input type="password" x-model="smPass" autocomplete="new-password" class="mt-1 mb-4 block w-full rounded-md border-gray-300 dark:border-gray-700 sm:text-sm">
-                <div class="flex gap-2">
-                    <x-button variant="primary" size="sm" ::disabled="busy" @click="importSmime()">{{ __('mailkeys.add') }}</x-button>
+
+                <div class="mb-3 inline-flex rounded-xl bg-black/[0.04] dark:bg-white/[0.06] p-0.5 text-sm">
+                    <button type="button" @click="smImpMode = 'p12'" class="rounded-lg px-3 py-1 font-medium transition" :class="smImpMode === 'p12' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500'">{{ __('mailkeys.p12_file') }}</button>
+                    <button type="button" @click="smImpMode = 'pem'" class="rounded-lg px-3 py-1 font-medium transition" :class="smImpMode === 'pem' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500'">PEM</button>
+                </div>
+
+                {{-- .p12 --}}
+                <div x-show="smImpMode === 'p12'">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.p12_file') }}</label>
+                    <input type="file" accept=".p12,.pfx,application/x-pkcs12" @change="p12Chosen($event)" class="mt-1 mb-3 block w-full text-sm text-gray-600 dark:text-gray-400">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.passphrase_opt') }}</label>
+                    <input type="password" x-model="smPass" autocomplete="new-password" class="mt-1 mb-4 block w-full rounded-md border-gray-300 dark:border-gray-700 sm:text-sm">
+                    <div class="flex gap-2">
+                        <x-button variant="primary" size="sm" ::disabled="busy" @click="importSmime()">{{ __('mailkeys.add') }}</x-button>
+                        <x-button variant="secondary" size="sm" @click="mode = 'list'; error = ''">{{ __('common.cancel') }}</x-button>
+                    </div>
+                </div>
+
+                {{-- PEM (key + cert), paste or file --}}
+                <div x-show="smImpMode === 'pem'" x-cloak>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.from_file') }}</label>
+                    <input type="file" accept=".pem,.crt,.cer,.key,.txt" @change="smPemFileChosen($event)" class="mt-1 mb-3 block w-full text-sm text-gray-600 dark:text-gray-400">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.pem_key_cert') }}</label>
+                    <textarea x-model="smPem" rows="7" placeholder="-----BEGIN PRIVATE KEY-----&#10;…&#10;-----BEGIN CERTIFICATE-----" class="mt-1 mb-4 block w-full rounded-md border-gray-300 dark:border-gray-700 font-mono text-xs"></textarea>
+                    <div class="flex gap-2">
+                        <x-button variant="primary" size="sm" ::disabled="busy || !smPem" @click="importSmimePemNow()">{{ __('mailkeys.add') }}</x-button>
+                        <x-button variant="secondary" size="sm" @click="mode = 'list'; error = ''">{{ __('common.cancel') }}</x-button>
+                    </div>
+                </div>
+            </div>
+
+            {{-- S/MIME generate (self-signed) --}}
+            <div class="ll-card mb-4" x-show="mode === 'smime-gen'" x-cloak>
+                <h3 class="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('mailkeys.gen_smime') }}</h3>
+                <p class="mb-3 text-xs text-gray-400 dark:text-gray-500">{{ __('mailkeys.gen_smime_hint') }}</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.name') }}</label>
+                        <input type="text" x-model="smGenCn" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 sm:text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.email') }}</label>
+                        <input type="email" x-model="smGenEmail" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 sm:text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.rsa_bits') }}</label>
+                        <select x-model="smGenBits" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 sm:text-sm">
+                            <option value="2048">2048</option>
+                            <option value="3072">3072</option>
+                            <option value="4096">4096</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.expiry') }}</label>
+                        <select x-model="smGenExpiry" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 sm:text-sm">
+                            <option value="365">{{ __('mailkeys.expiry_1y') }}</option>
+                            <option value="730">{{ __('mailkeys.expiry_2y') }}</option>
+                            <option value="1095">{{ __('mailkeys.expiry_3y') }}</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-4 flex items-center gap-2">
+                    <x-button variant="primary" size="sm" ::disabled="busy" @click="generateSmimeNow()">
+                        <span x-show="!busy">{{ __('mailkeys.generate') }}</span>
+                        <span x-show="busy" x-cloak><x-icon name="arrow-path" class="mr-1 inline h-4 w-4 animate-spin" />{{ __('mailkeys.generating') }}</span>
+                    </x-button>
                     <x-button variant="secondary" size="sm" @click="mode = 'list'; error = ''">{{ __('common.cancel') }}</x-button>
                 </div>
             </div>

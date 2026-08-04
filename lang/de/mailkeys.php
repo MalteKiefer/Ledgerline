@@ -49,4 +49,7 @@ return [
     'no_files' => 'Keine Dateien gefunden.',
     'err_locked' => 'Zuerst den Vault entsperren.',
     'files_root' => 'Dateien',
+    'gen_smime' => 'S/MIME erzeugen',
+    'gen_smime_hint' => 'Erzeugt ein selbstsigniertes S/MIME-Zertifikat + Schlüssel im Browser. Reicht zum Entschlüsseln und Signieren; eine CA-Kette ist nur nötig, wenn andere deine Signatur verifizieren.',
+    'pem_key_cert' => 'Privater Schlüssel + Zertifikat (PEM)',
 ];

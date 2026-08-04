@@ -49,4 +49,7 @@ return [
     'no_files' => 'No files found.',
     'err_locked' => 'Unlock the vault first.',
     'files_root' => 'Files',
+    'gen_smime' => 'Generate S/MIME',
+    'gen_smime_hint' => 'Creates a self-signed S/MIME certificate + key in your browser. Enough to decrypt and sign; a CA chain only matters for others verifying your signature.',
+    'pem_key_cert' => 'Private key + certificate (PEM)',
 ];
