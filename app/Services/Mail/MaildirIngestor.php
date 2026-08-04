@@ -54,7 +54,7 @@ use Throwable;
  * A file that cannot be READ is quarantined (moved aside) + logged — never
  * silently dropped and never allowed to crash the whole folder loop.
  */
-final class MaildirIngestor
+class MaildirIngestor
 {
     public function __construct(private readonly MailSealer $sealer) {}
 
@@ -184,7 +184,13 @@ final class MaildirIngestor
         // whose origin (this file) we now remove.
         @unlink($path);
 
-        return IngestResult::stored($hash);
+        // mbsync stamps each Maildir filename with the origin IMAP UID as
+        // `,U=<uid>` — extract it so "delete after import" can remove exactly
+        // this message from the origin server. Absent (non-mbsync layout) → null,
+        // and the delete step skips it (never guesses a UID).
+        $uid = preg_match('/,U=(\d+)/', basename($path), $m) ? $m[1] : null;
+
+        return IngestResult::stored($hash, $uid);
     }
 
     /**

@@ -90,6 +90,30 @@ class MaildirIngestTest extends TestCase
         $this->assertDatabaseCount('mail_messages', 1);
     }
 
+    public function test_stored_result_carries_the_origin_uid_from_the_maildir_filename(): void
+    {
+        [, $account] = $this->accountWithIdentity();
+
+        $dir = $this->maildirRoot().'/cur';
+        // mbsync stamps the UID as ,U=<uid> before the :2, flags section.
+        $path = $dir.'/1700000000.1_1.host,U=42:2,S';
+        file_put_contents($path, "Subject: t\r\n\r\nbody");
+
+        $r = app(MaildirIngestor::class)->ingestFile($account, 'INBOX', $path);
+        $this->assertTrue($r->stored);
+        $this->assertSame('42', $r->uid);
+    }
+
+    public function test_stored_result_uid_is_null_without_a_maildir_uid_stamp(): void
+    {
+        [, $account] = $this->accountWithIdentity();
+        $path = $this->fixtureEml($account, "Subject: t\r\n\r\nnouid");
+
+        $r = app(MaildirIngestor::class)->ingestFile($account, 'INBOX', $path);
+        $this->assertTrue($r->stored);
+        $this->assertNull($r->uid);
+    }
+
     // ---- Step 1: idempotency + shred -------------------------------------
 
     public function test_ingest_is_idempotent_and_shreds_plaintext(): void

@@ -23,13 +23,14 @@ use Illuminate\Support\Carbon;
  *
  * @property ?array<int,string> $folders
  * @property ?Carbon $backfill_since
+ * @property bool $delete_after_import
  * @property ?Carbon $last_synced_at
  * @property ?string $sync_batch_id
  * @property string $status
  */
 #[Fillable([
     'name', 'host', 'port', 'username', 'password', 'encryption',
-    'folders', 'backfill_since', 'enabled', 'status', 'last_error', 'last_synced_at',
+    'folders', 'backfill_since', 'delete_after_import', 'enabled', 'status', 'last_error', 'last_synced_at',
 ])]
 class MailAccount extends Model
 {
@@ -58,6 +59,7 @@ class MailAccount extends Model
             'password' => 'encrypted',
             'folders' => 'array',
             'backfill_since' => 'date',
+            'delete_after_import' => 'boolean',
             'enabled' => 'boolean',
             'last_synced_at' => 'datetime',
         ];

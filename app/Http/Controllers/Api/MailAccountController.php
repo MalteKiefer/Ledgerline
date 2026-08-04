@@ -163,6 +163,7 @@ class MailAccountController extends Controller
             'folders' => ['nullable', 'array'],
             'folders.*' => ['string', 'max:255'],
             'backfill_since' => ['nullable', 'date'],
+            'delete_after_import' => ['nullable', 'boolean'],
             'enabled' => ['nullable', 'boolean'],
         ])->validate();
 
@@ -179,6 +180,9 @@ class MailAccountController extends Controller
         }
         if ($request->has('backfill_since')) {
             $data['backfill_since'] = $request->input('backfill_since');
+        }
+        if ($request->has('delete_after_import')) {
+            $data['delete_after_import'] = $request->boolean('delete_after_import');
         }
         if ($request->has('enabled')) {
             $data['enabled'] = $request->boolean('enabled');
@@ -199,6 +203,7 @@ class MailAccountController extends Controller
             'encryption' => $account->encryption,
             'folders' => $account->folders,
             'backfill_since' => $account->backfill_since?->toDateString(),
+            'delete_after_import' => $account->delete_after_import,
             'enabled' => $account->enabled,
             'status' => $account->status,
             'last_error' => $account->last_error,

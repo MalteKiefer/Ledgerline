@@ -119,6 +119,78 @@ class ImapDeleter
     }
 
     /**
+     * Delete a batch of messages from $folder by their origin IMAP UIDs, in ONE
+     * session (SELECT → UID STORE +FLAGS (\Deleted) → UID EXPUNGE). Used by the
+     * "delete after import" sync path, where the ingestor already knows the exact
+     * origin UIDs (from the mbsync Maildir filename) so no per-message search is
+     * needed. Non-numeric UIDs are dropped. Returns the number of UIDs flagged
+     * (0 if none valid). Throws on connection/protocol failure.
+     *
+     * @param  list<string>  $uids
+     */
+    public function deleteUids(MailAccount $account, string $folder, array $uids, string $password): int
+    {
+        $host = (string) $account->host;
+        if (! OutboundUrl::hostAllowed($host)) {
+            throw new RuntimeException('mail delete refused: host not allowed');
+        }
+        $clean = array_values(array_filter($uids, static fn ($u): bool => is_string($u) && ctype_digit($u)));
+        if ($clean === []) {
+            return 0;
+        }
+
+        $encryption = (string) $account->encryption;
+        $port = (int) $account->port;
+        $implicitTls = in_array($encryption, ['ssl', 'tls'], true);
+        $transport = $implicitTls ? 'ssl' : 'tcp';
+
+        $ctx = stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true, 'SNI_enabled' => true]]);
+        $errno = 0;
+        $errstr = '';
+        $sock = @stream_socket_client(
+            "{$transport}://{$host}:{$port}",
+            $errno,
+            $errstr,
+            self::CONNECT_TIMEOUT,
+            STREAM_CLIENT_CONNECT,
+            $ctx,
+        );
+        if ($sock === false) {
+            throw new RuntimeException('mail delete: cannot connect');
+        }
+        stream_set_timeout($sock, self::IO_TIMEOUT);
+
+        try {
+            $this->readGreeting($sock);
+
+            if ($encryption === 'starttls') {
+                $this->command($sock, 'STARTTLS');
+                if (! stream_socket_enable_crypto($sock, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                    throw new RuntimeException('mail delete: STARTTLS failed');
+                }
+            }
+
+            $this->command($sock, sprintf('LOGIN %s %s', $this->quoted((string) $account->username), $this->quoted($password)));
+            $this->command($sock, sprintf('SELECT %s', $this->quoted($folder)));
+
+            $set = implode(',', $clean);
+            $this->command($sock, sprintf('UID STORE %s +FLAGS (\\Deleted)', $set));
+            try {
+                $this->command($sock, sprintf('UID EXPUNGE %s', $set));
+            } catch (RuntimeException) {
+                $this->command($sock, 'EXPUNGE');
+            }
+
+            @fwrite($sock, "zzzz LOGOUT\r\n");
+
+            return count($clean);
+        } finally {
+            @fclose($sock);
+            sodium_memzero($password);
+        }
+    }
+
+    /**
      * UID SEARCH HEADER Message-Id "<id>"; parse the untagged "* SEARCH ..."
      * line into a list of UID strings (already validated numeric).
      *
