@@ -282,13 +282,13 @@ Route::middleware('auth')->group(function (): void {
     // `Controller::requireUser($request)`, so it behaves identically under
     // the web session guard as it does under Sanctum. No logic duplicated.
     Route::get('/mail/accounts', [MailAccountController::class, 'index'])->middleware('module:mail')->name('mail.accounts.index');
-    Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware(['throttle:240,1', 'module:mail'])->name('mail.messages.index');
-    Route::get('/mail/accounts/{account}/logs', [MailLogController::class, 'index'])->middleware(['throttle:240,1', 'module:mail'])->name('mail.accounts.logs');
+    Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware(['throttle:1200,1', 'module:mail'])->name('mail.messages.index');
+    Route::get('/mail/accounts/{account}/logs', [MailLogController::class, 'index'])->middleware(['throttle:600,1', 'module:mail'])->name('mail.accounts.logs');
     Route::post('/mail/messages/{message}/pushback', MailPushbackController::class)->middleware(['throttle:30,1', 'module:mail'])->name('mail.messages.pushback');
     Route::post('/mail/messages/{message}/delete-origin', MailDeleteOriginController::class)->middleware(['throttle:30,1', 'module:mail'])->name('mail.messages.delete-origin');
     Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.messages.trash');
     Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.messages.restore');
-    Route::post('/mail/messages/{message}/envelope', MailEnvelopeController::class)->middleware(['throttle:1200,1', 'module:mail'])->name('mail.messages.envelope');
+    Route::post('/mail/messages/{message}/envelope', MailEnvelopeController::class)->middleware(['throttle:6000,1', 'module:mail'])->name('mail.messages.envelope');
     Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.accounts.store');
     Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.accounts.update');
     Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.accounts.destroy');

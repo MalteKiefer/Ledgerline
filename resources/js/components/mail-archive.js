@@ -39,7 +39,7 @@ function b64ToBytes(b64) {
 // the envelope index + IndexedDB cache only NEW rows are ever decrypted, so this
 // can be large; it only bounds a pathological mailbox.
 const MAX_LOAD = 50000;
-const LEDGER_PAGE = 200;
+const LEDGER_PAGE = 1000;
 
 export default (config) => ({
     config,

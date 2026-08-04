@@ -27,7 +27,7 @@ use Illuminate\Http\Request;
  */
 class MailMessageController extends Controller
 {
-    private const MAX_PER_PAGE = 200;
+    private const MAX_PER_PAGE = 1000;
 
     /**
      * Paginated, owner-scoped ledger listing.
@@ -36,7 +36,7 @@ class MailMessageController extends Controller
      *   ?account_id= – restrict to one of the caller's own accounts
      *   ?folder=     – exact folder match (e.g. "INBOX")
      *   ?page=       – page number (default 1)
-     *   ?per_page=   – rows per page, clamped 1..200 (default 50)
+     *   ?per_page=   – rows per page, clamped 1..1000 (default 50)
      */
     public function index(Request $request): JsonResponse
     {
