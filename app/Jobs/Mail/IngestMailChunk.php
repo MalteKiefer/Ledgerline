@@ -6,6 +6,7 @@ namespace App\Jobs\Mail;
 
 use App\Models\MailAccount;
 use App\Services\Mail\MaildirIngestor;
+use App\Support\Mail\ImapDeleter;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -77,6 +78,12 @@ class IngestMailChunk implements ShouldQueue
 
         $summary = ['stored' => 0, 'duplicate' => 0, 'not_sealable' => 0, 'quarantined' => 0, 'skipped_old' => 0, 'failed' => 0];
 
+        // Origin UIDs of messages freshly archived in this chunk — deleted from
+        // the origin server at the end, in ONE IMAP session, when the account has
+        // "delete after import" enabled. Only Stored (freshly archived) messages
+        // qualify; duplicates/skipped are never deleted here.
+        $deleteUids = [];
+
         foreach ($this->paths as $path) {
             // A prior attempt of this job (or a same-content dedup) may have
             // already archived + unlinked this file — skip vanished paths so a
@@ -88,6 +95,9 @@ class IngestMailChunk implements ShouldQueue
             try {
                 $result = $ingestor->ingestFile($account, $this->folder, $path);
                 $summary[$result->status->value]++;
+                if ($result->stored && $account->delete_after_import && $result->uid !== null) {
+                    $deleteUids[] = $result->uid;
+                }
             } catch (Throwable $e) {
                 // Seal/blob/ledger failure: the ingestor left the file in place
                 // (it only unlinks after commit), so nothing is lost — the next
@@ -99,6 +109,33 @@ class IngestMailChunk implements ShouldQueue
                     'folder' => $this->folder,
                     'path' => $path,
                     'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // Delete-after-import: remove the just-archived messages from the ORIGIN
+        // mailbox in one IMAP session (UID STORE \Deleted + EXPUNGE). Best-effort:
+        // a failure here NEVER fails the ingest (the messages are safely archived)
+        // — the origin copies simply remain and can be removed on a later run or
+        // via the manual bulk delete. The IMAP host is SSRF-guarded in the deleter.
+        if ($deleteUids !== [] && $account->delete_after_import) {
+            try {
+                $deleted = app(ImapDeleter::class)->deleteUids(
+                    $account,
+                    $this->folder,
+                    $deleteUids,
+                    (string) $account->password,
+                );
+                Log::info('mail.chunk.origin_deleted', [
+                    'account_id' => $this->accountId,
+                    'folder' => $this->folder,
+                    'deleted' => $deleted,
+                ]);
+            } catch (Throwable $e) {
+                Log::warning('mail.chunk.origin_delete_failed', [
+                    'account_id' => $this->accountId,
+                    'folder' => $this->folder,
+                    'count' => count($deleteUids),
                 ]);
             }
         }

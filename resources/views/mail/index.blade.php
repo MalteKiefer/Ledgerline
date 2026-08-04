@@ -409,6 +409,15 @@
                             <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ __('mail.backfill_hint') }}</p>
                         </div>
 
+                        <div>
+                            <label class="flex items-start gap-2">
+                                <input type="checkbox" x-model="form.delete_after_import" class="mt-0.5 rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">{{ __('mail.delete_after_import') }}</span>
+                            </label>
+                            <p x-show="form.delete_after_import" x-cloak class="mt-1 text-xs text-red-600 dark:text-red-400">{{ __('mail.delete_after_import_warn') }}</p>
+                            <p x-show="!form.delete_after_import" class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ __('mail.delete_after_import_hint') }}</p>
+                        </div>
+
                         <label class="flex items-center gap-2">
                             <input type="checkbox" x-model="form.enabled" class="rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
                             <span class="text-sm text-gray-700 dark:text-gray-300">{{ __('mail.enabled') }}</span>

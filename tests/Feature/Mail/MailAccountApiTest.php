@@ -75,6 +75,42 @@ class MailAccountApiTest extends TestCase
         $this->assertSame('idle', $account->status);
     }
 
+    public function test_delete_after_import_persists_and_is_returned(): void
+    {
+        $user = User::factory()->create();
+
+        $this->withHeaders($this->bearer($user))
+            ->postJson('/api/v1/mail/accounts', [
+                'name' => 'Work',
+                'host' => 'imap.example.com',
+                'port' => 993,
+                'username' => 'me@example.com',
+                'password' => 'pw',
+                'encryption' => 'ssl',
+                'delete_after_import' => true,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('account.delete_after_import', true);
+
+        $account = MailAccount::query()->firstOrFail();
+        $this->assertTrue($account->delete_after_import);
+
+        // Defaults to false when omitted.
+        $this->withHeaders($this->bearer($user))
+            ->putJson("/api/v1/mail/accounts/{$account->id}", [
+                'name' => 'Work',
+                'host' => 'imap.example.com',
+                'port' => 993,
+                'username' => 'me@example.com',
+                'encryption' => 'ssl',
+                'delete_after_import' => false,
+            ])
+            ->assertOk()
+            ->assertJsonPath('account.delete_after_import', false);
+
+        $this->assertFalse($account->fresh()->delete_after_import);
+    }
+
     public function test_create_stamps_the_owner_server_side_never_from_request(): void
     {
         $user = User::factory()->create();

@@ -304,6 +304,7 @@ components:
           items: { type: string, maxLength: 255 }
           description: "Which IMAP folders to sync (null = server default set)."
         backfill_since: { type: string, format: date, nullable: true, description: "Earliest arrival date to ARCHIVE (Option B). mbsync has no server-side date filter, so a sync still DOWNLOADS the whole mailbox — but only messages that arrived on/after this date are sealed + ledgered; older ones are dropped from the local scratch (origin mailbox untouched). Empty = archive everything." }
+        delete_after_import: { type: boolean, description: "When true, each freshly archived message is deleted from the ORIGIN IMAP mailbox immediately after it is durably archived (UID STORE \\Deleted + EXPUNGE, one session per ingest chunk). Off by default — a destructive write-to-origin. Only newly archived (not previously-imported) messages are removed by this; use the manual bulk delete for already-archived mail still on the server." }
         enabled: { type: boolean }
         status: { type: string, enum: [idle, syncing, error], readOnly: true }
         last_error: { type: string, nullable: true, readOnly: true }
@@ -6632,6 +6633,7 @@ paths:
                 encryption: { type: string, enum: [ssl, tls, starttls, none] }
                 folders: { type: array, nullable: true, items: { type: string, maxLength: 255 } }
                 backfill_since: { type: string, format: date, nullable: true }
+                delete_after_import: { type: boolean, description: "Auto-delete newly archived messages from the origin server (destructive)." }
                 enabled: { type: boolean, description: "Default true when omitted." }
       responses:
         "201":
@@ -6678,6 +6680,7 @@ paths:
                 encryption: { type: string, enum: [ssl, tls, starttls, none] }
                 folders: { type: array, nullable: true, items: { type: string, maxLength: 255 } }
                 backfill_since: { type: string, format: date, nullable: true }
+                delete_after_import: { type: boolean, description: "Auto-delete newly archived messages from the origin server (destructive)." }
                 enabled: { type: boolean }
       responses:
         "200":

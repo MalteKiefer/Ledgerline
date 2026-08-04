@@ -33,13 +33,20 @@ final readonly class IngestResult
     public function __construct(
         public IngestStatus $status,
         public string $hash,
+        /**
+         * The origin IMAP UID of a freshly stored message (parsed from the
+         * mbsync Maildir filename `,U=<uid>`), or null when unknown / not
+         * stored. Used only to delete the message from the origin server when
+         * the account has "delete after import" enabled.
+         */
+        public ?string $uid = null,
     ) {
         $this->stored = $status === IngestStatus::Stored;
     }
 
-    public static function stored(string $hash): self
+    public static function stored(string $hash, ?string $uid = null): self
     {
-        return new self(IngestStatus::Stored, $hash);
+        return new self(IngestStatus::Stored, $hash, $uid);
     }
 
     public static function duplicate(string $hash): self
