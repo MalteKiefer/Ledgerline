@@ -90,6 +90,16 @@ export default (config) => ({
             await this.ensureAccounts();
             const ledger = await this.fetchLedger();
 
+            // Warm the identity-key cache ONCE up front. Every decryptMailBlob
+            // needs it; without pre-warming, the concurrent decrypt pool would
+            // each call ensureIdentityKeys and — if the very first GET /vaults/keys
+            // hits the rate limit — spiral into a 429 storm (no cache to short-
+            // circuit the retries). One awaited call fills Vault._idKeys so the
+            // 8000 decrypts below all hit the in-memory cache, zero extra fetches.
+            if (window.Vault?.unlocked) {
+                try { await window.Vault.ensureIdentityKeys(); } catch { /* locked / transient — decrypts will surface it */ }
+            }
+
             // The list/search index is the per-message ENVELOPE, cached in
             // IndexedDB. We only decrypt what is not cached: server-stored
             // envelopes (tiny, fast) or — for messages that have none yet — the
