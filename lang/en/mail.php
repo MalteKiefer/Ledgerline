@@ -110,6 +110,8 @@ return [
     'enabled' => 'Enabled',
     'save_to_files' => 'Save to Files',
     'saved_to_files' => 'Saved to Files.',
+    'save_to_gallery' => 'Save to Gallery',
+    'saved_to_gallery' => 'Saved to Gallery.',
     'save_failed' => 'Could not save the attachment.',
     'delete_after_import' => 'Delete from server after import',
     'delete_after_import_hint' => 'Messages stay on the origin mailbox after archiving.',
