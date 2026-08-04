@@ -568,6 +568,36 @@ export default (config) => ({
         window.llToast?.(this.config.pushBulkDone.replace(':n', String(ok)));
     },
 
+    // Delete the selected messages from their ORIGIN mailbox (destructive
+    // write-to-origin). The local immutable archive copy is NOT touched. The
+    // server can't read the sealed blob, so we decrypt each message here and
+    // send only its (non-secret) Message-Id for the server to locate + delete
+    // on the origin. Messages without a Message-Id are skipped.
+    async bulkDeleteOrigin() {
+        if (!this.selected.length || this.bulkBusy) return;
+        if (!await this.$store.confirm.ask(this.config.deleteOriginConfirmMsg)) return;
+        this.bulkBusy = true;
+        this.progress = 0;
+        this.progressTotal = this.selected.length;
+        let ok = 0;
+        let skipped = 0;
+        const rows = this.selected.map((id) => this.cache.find((r) => r.id === id)).filter(Boolean);
+        await this._pool(rows, 3, async (r) => {
+            try {
+                const buffer = await fetchBlobBuffer(this.config.rawBase.replace('__id__', r.id));
+                const bytes = await window.Vault.decryptMailBlob(r.sealedKey, buffer);
+                const mid = (splitMessage(bytes).headers['message-id'] || '').trim();
+                if (!mid) { skipped++; this.progress++; return; }
+                const res = await postForm(this.config.deleteOriginBase.replace('__id__', r.id), { message_id: mid, folder: r.folder });
+                if ((res?.deleted ?? 0) > 0) ok++; else skipped++;
+            } catch { skipped++; }
+            this.progress++;
+        });
+        this.bulkBusy = false;
+        this.selected = [];
+        window.llToast?.(this.config.deleteBulkDone.replace(':n', String(ok)).replace(':s', String(skipped)));
+    },
+
     // Only these types are ever rendered INLINE (same-origin blob URL). Mail
     // attachments are fully attacker-controlled, so opening e.g. text/html or
     // image/svg+xml inline would execute script on the app origin (XSS).

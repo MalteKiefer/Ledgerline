@@ -23,6 +23,7 @@
             accountsUrl: '{{ route('mail.accounts.index') }}',
             rawBase: '{{ route('mail.raw', ['blob' => '__id__']) }}',
             pushbackBase: '{{ route('mail.messages.pushback', ['message' => '__id__']) }}',
+            deleteOriginBase: '{{ route('mail.messages.delete-origin', ['message' => '__id__']) }}',
             envelopeBase: '{{ route('mail.messages.envelope', ['message' => '__id__']) }}',
             trashBase: '{{ route('mail.messages.trash') }}',
             restoreBase: '{{ route('mail.messages.restore') }}',
@@ -34,6 +35,8 @@
             pushFailed: @js(__('mail.push_failed')),
             pushDone: @js(__('mail.push_done')),
             pushBulkDone: @js(__('mail.push_bulk_done')),
+            deleteOriginConfirmMsg: @js(__('mail.delete_origin_confirm')),
+            deleteBulkDone: @js(__('mail.delete_origin_bulk_done')),
             trashConfirm: @js(__('mail.trash_confirm')),
             trashDone: @js(__('mail.trash_done')),
             restoreDone: @js(__('mail.restore_done')),
@@ -100,6 +103,9 @@
                 <div class="flex flex-wrap gap-2">
                     <x-button variant="secondary" size="sm" ::disabled="bulkBusy" @click="bulkPushBack()">
                         <x-icon name="arrow-up-tray" class="mr-1 h-4 w-4" />{{ __('mail.push_back') }}
+                    </x-button>
+                    <x-button variant="danger" size="sm" ::disabled="bulkBusy" @click="bulkDeleteOrigin()">
+                        <x-icon name="trash" class="mr-1 h-4 w-4" />{{ __('mail.delete_origin') }}
                     </x-button>
                     <x-button variant="danger" size="sm" x-show="!showTrash" @click="bulkTrash()">{{ __('mail.trash_action') }}</x-button>
                     <x-button variant="secondary" size="sm" x-show="showTrash" x-cloak @click="bulkRestore()">{{ __('mail.restore_action') }}</x-button>
