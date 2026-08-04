@@ -8,7 +8,7 @@
 
 import { getJson, postForm } from '../shared/api.js';
 import { fetchBlobBuffer } from '../shared/blob-io.js';
-import { parseEnvelope, parseMessage, parseDate, displayAddress, splitMessage, isSpam, parseAuthResults, rawHeaderBlock } from '../shared/mime.js';
+import { parseMessage, parseDate, displayAddress, splitMessage, isSpam, parseAuthResults, rawHeaderBlock } from '../shared/mime.js';
 import { formatDate, saveBlobAs } from '../shared/dom.js';
 import { mailRemote, mailScripts } from '../shared/prefs.js';
 import { loadEnvelopes, putEnvelopes } from '../shared/mail-cache.js';
@@ -59,6 +59,10 @@ export default (config) => ({
     fText: '',
     fFrom: '',
     fTo: '',
+    searchBody: true,      // include the message body in text search
+    reindexing: false,     // full-text (content) reindex in progress
+    reindexDone: 0,
+    reindexTotal: 0,
     // pagination (client-side, over filtered)
     page: 1,
     perPage: 50,
@@ -185,13 +189,26 @@ export default (config) => ({
         return obj;
     },
 
-    // No envelope yet: decrypt the full body ONCE, build the envelope, and
-    // upload it (sealed to our own keys) so future loads / other devices skip
-    // the body.
+    // A searchable plaintext of the message body, for full-text (content) search.
+    // Prefers text/plain; strips HTML to text otherwise. Normalised (collapsed
+    // whitespace, lower-cased) and capped so the sealed envelope stays bounded.
+    _bodyIndex(msg) {
+        let t = msg.textBody || '';
+        if (!t && msg.htmlBody) t = msg.htmlBody.replace(/<[^>]+>/g, ' ');
+        // include attachment filenames in the index too
+        const names = (msg.attachments || []).map((a) => a.filename || '').join(' ');
+        return `${t} ${names}`.replace(/\s+/g, ' ').trim().slice(0, 20000).toLowerCase();
+    },
+
+    // No envelope yet: decrypt the full body ONCE, build the envelope (incl. the
+    // searchable body index), and upload it (sealed to our own keys) so future
+    // loads / other devices skip the body.
     async _backfill(m) {
         const buffer = await fetchBlobBuffer(this.config.rawBase.replace('__id__', m.id));
         const bytes = await window.Vault.decryptMailBlob(m.sealed_key, buffer);
-        const env = this._envFromParsed(m, parseEnvelope(bytes));
+        const msg = parseMessage(bytes);
+        const env = this._envFromParsed(m, msg.envelope);
+        env.body = this._bodyIndex(msg);
         this._uploadEnvelope(m.id, env).catch(() => {});
         return env;
     },
@@ -203,6 +220,42 @@ export default (config) => ({
             envelope: bytesToB64(sealed.blob),
             envelope_key: sealed.sealedKey,
         });
+    },
+
+    // How many loaded messages have no body index yet (envelope built before
+    // content search existed). Content search only matches indexed messages.
+    get unindexedCount() {
+        return this.cache.filter((r) => r.ok && !r.hasBody).length;
+    },
+
+    // Build the full-text body index for every message that lacks one: decrypt
+    // the blob once, extract the searchable body, re-seal the envelope (with the
+    // body) and cache it. Bounded concurrency + progress; safe to re-run.
+    async reindexContent() {
+        if (this.reindexing) return;
+        const todo = this.cache.filter((r) => r.ok && !r.hasBody);
+        if (!todo.length) return;
+        this.reindexing = true;
+        this.reindexDone = 0;
+        this.reindexTotal = todo.length;
+        const fresh = [];
+        await this._pool(todo, 4, async (r) => {
+            try {
+                const buffer = await fetchBlobBuffer(this.config.rawBase.replace('__id__', r.id));
+                const bytes = await window.Vault.decryptMailBlob(r.sealedKey, buffer);
+                const msg = parseMessage(bytes);
+                const env = this._envFromParsed({ id: r.id, created_at: r.archivedAt }, msg.envelope);
+                env.body = this._bodyIndex(msg);
+                await this._uploadEnvelope(r.id, env).catch(() => {});
+                fresh.push(env);
+                // live-update the row so search works immediately
+                r.body = env.body; r.hasBody = true;
+            } catch { /* skip one */ }
+            this.reindexDone++;
+        });
+        if (fresh.length) putEnvelopes(fresh);
+        this.reindexing = false;
+        window.llToast?.(this.config.reindexDoneMsg.replace(':n', String(fresh.length)));
     },
 
     // Merge an immutable cached envelope with the fresh ledger meta (seen /
@@ -232,6 +285,8 @@ export default (config) => ({
             dateLabel: formatDate(env.date, { dateStyle: 'medium', timeStyle: 'short' }),
             hasAttachment: env.hasAttachment,
             spam: env.spam === true,
+            body: env.body || '',          // searchable body index ('' if not indexed yet)
+            hasBody: typeof env.body === 'string',
             ok: true,
         };
     },
@@ -248,7 +303,12 @@ export default (config) => ({
             // The trash is a SINGLE bin across all folders — never filter it by
             // folder (the folder filter only applies to the archive view).
             if (!this.showTrash && this.fFolder && r.folder !== this.fFolder) return false;
-            if (q && !(`${r.from} ${r.fromRaw} ${r.to} ${r.subject}`.toLowerCase().includes(q))) return false;
+            if (q) {
+                // Header fields always; body index too when content-search is on.
+                const hay = `${r.from} ${r.fromRaw} ${r.to} ${r.subject}`.toLowerCase()
+                    + (this.searchBody ? ' ' + (r.body || '') : '');
+                if (!hay.includes(q)) return false;
+            }
             if (fromTs !== null && r.ts < fromTs) return false;
             if (toTs !== null && r.ts >= toTs) return false;
             return true;
