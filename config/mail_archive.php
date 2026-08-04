@@ -19,6 +19,12 @@ return [
      */
     'ingest_chunk_size' => (int) env('MAIL_INGEST_CHUNK_SIZE', 100),
 
+    // Backlog throttle: max messages ingested per sync run (sealing spawns a
+    // Node process per message, so a whole large mailbox in one batch can
+    // saturate the host). A big first-time mailbox drains over several runs.
+    // 0 = no cap.
+    'ingest_max_per_run' => (int) env('MAIL_INGEST_MAX_PER_RUN', 800),
+
     /*
      * Grace before an unreferenced sealed mail blob on disk (mail/{blob}) is
      * reclaimed by mail:sweep-orphans — long enough that a blob whose MailBlob
