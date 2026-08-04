@@ -27,4 +27,7 @@ return [
      * (CONTACTS_/EXPLORE_/FILES_BLOB_ORPHAN_GRACE_HOURS).
      */
     'blob_orphan_grace_hours' => (int) env('MAIL_ARCHIVE_BLOB_ORPHAN_GRACE_HOURS', 24),
+
+    // Diagnostic per-account sync/ingest log retention (days). Metadata only.
+    'log_retention_days' => (int) env('MAIL_ARCHIVE_LOG_RETENTION_DAYS', 30),
 ];

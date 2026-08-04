@@ -1,5 +1,6 @@
 import { getJson, postForm } from '../shared/api';
 import { parseTags, addTags, removeTagFrom, popTag } from '../shared/tag-chips';
+import { formatDate } from '../shared/dom';
 
 // Mail archive settings (accounts + sync status only): IMAP account CRUD +
 // on-demand "sync now" + a polled status/progress indicator. There is
@@ -23,6 +24,15 @@ export default (config) => ({
     saving: false,
     saveError: '',
 
+    // Per-account diagnostic sync/ingest log viewer.
+    logsOpen: false,
+    logsAccount: null,
+    logs: [],
+    logsLoading: false,
+    logsPage: 1,
+    logsLastPage: 1,
+    logsLevel: '',
+
     // Folders are edited as removable badge chips via <x-tag-field>, which
     // reads/writes these exact five members on the PARENT Alpine scope (see
     // resources/views/components/tag-field.blade.php) — `tagsValue` stays the
@@ -30,6 +40,33 @@ export default (config) => ({
     // tag field (shared/tag-chips.js).
     tagsValue: '',
     tagDraft: '',
+    // ---- Per-account logs ----
+    async openLogs(a) {
+        this.logsAccount = a;
+        this.logsOpen = true;
+        this.logsLevel = '';
+        this.logsPage = 1;
+        await this.loadLogs();
+    },
+    closeLogs() { this.logsOpen = false; this.logsAccount = null; this.logs = []; },
+    async setLogsLevel(level) { this.logsLevel = level; this.logsPage = 1; await this.loadLogs(); },
+    async gotoLogs(p) { if (p < 1 || p > this.logsLastPage) return; this.logsPage = p; await this.loadLogs(); },
+    async loadLogs() {
+        if (! this.logsAccount) return;
+        this.logsLoading = true;
+        try {
+            const lvl = this.logsLevel ? `&level=${encodeURIComponent(this.logsLevel)}` : '';
+            const res = await getJson(`${this.config.logsBase.replace('__id__', this.logsAccount.id)}?page=${this.logsPage}${lvl}`);
+            this.logs = res.data ?? [];
+            this.logsLastPage = res.meta?.last_page ?? 1;
+        } catch { this.logs = []; }
+        finally { this.logsLoading = false; }
+    },
+    logTint(level) {
+        return level === 'error' ? '#e2554a' : (level === 'warn' ? '#d9a441' : '#6b7280');
+    },
+    logTime(iso) { return iso ? formatDate(iso, { dateStyle: 'short', timeStyle: 'medium' }) : ''; },
+
     tagList() { return parseTags(this.tagsValue); },
     commitTag() { this.tagsValue = addTags(this.tagsValue, this.tagDraft); this.tagDraft = ''; },
     onTagInput() { if ((this.tagDraft || '').includes(',')) this.commitTag(); },

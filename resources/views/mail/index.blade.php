@@ -296,6 +296,7 @@
             syncBase: '{{ route('mail.accounts.sync', ['account' => '__id__']) }}',
             cancelBase: '{{ route('mail.accounts.sync-cancel', ['account' => '__id__']) }}',
             statusBase: '{{ route('mail.accounts.status', ['account' => '__id__']) }}',
+            logsBase: '{{ route('mail.accounts.logs', ['account' => '__id__']) }}',
             loadFailed: @js(__('mail.load_failed')),
             saveFailed: @js(__('mail.save_failed')),
             deleteFailed: @js(__('mail.delete_failed')),
@@ -327,7 +328,7 @@
                     <span class="ll-chip mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" :style="{ background: statusTint(a) }">
                         <x-icon name="envelope" class="h-5 w-5 text-white" />
                     </span>
-                    <div class="min-w-0 flex-1">
+                    <div class="min-w-0 flex-1 cursor-pointer" @click="openLogs(a)" role="button" title="{{ __('mail.view_logs') }}">
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="min-w-0 truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="a.name"></span>
                             <x-badge variant="gray" x-show="a.status === 'idle'">{{ __('mail.status_idle') }}</x-badge>
@@ -350,6 +351,7 @@
                             {{ __('mail.sync_cancel') }}
                         </x-button>
                         <x-action-menu :aria-label="__('common.actions')">
+                            <x-action-menu-item icon="document-text" @click="openLogs(a)">{{ __('mail.view_logs') }}</x-action-menu-item>
                             <x-action-menu-item icon="pencil" @click="openEdit(a)">{{ __('common.edit') }}</x-action-menu-item>
                             <x-action-menu-item icon="trash" danger @click="remove(a)">{{ __('common.delete') }}</x-action-menu-item>
                         </x-action-menu>
@@ -357,6 +359,60 @@
                 </div>
             </template>
         </div>
+
+        {{-- Per-account sync/ingest log modal --}}
+        <template x-teleport="body">
+            <div x-show="logsOpen" x-cloak class="fixed inset-0 z-[1080] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeLogs()">
+                <div class="absolute inset-0 bg-gray-900/50" @click="closeLogs()"></div>
+                <div class="relative flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+                    <div class="flex items-start justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-5 py-3">
+                        <div class="min-w-0">
+                            <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('mail.logs_title') }}</h3>
+                            <p class="mt-0.5 truncate text-xs text-gray-500" x-text="logsAccount?.name"></p>
+                        </div>
+                        <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeLogs()" :aria-label="__('common.close')" />
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-5 py-2 text-sm">
+                        <select @change="setLogsLevel($event.target.value)" class="rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] py-1 text-sm focus:border-accent focus:ring-accent">
+                            <option value="">{{ __('mail.logs_all_levels') }}</option>
+                            <option value="info">info</option>
+                            <option value="warn">warn</option>
+                            <option value="error">error</option>
+                        </select>
+                        <x-button variant="secondary" size="sm" icon="arrow-path" @click="loadLogs()">{{ __('mail.logs_refresh') }}</x-button>
+                    </div>
+
+                    <div class="min-h-0 flex-1 overflow-auto p-2">
+                        <p x-show="logsLoading" class="p-6 text-center text-sm text-gray-500">{{ __('common.loading') }}</p>
+                        <x-empty-state x-show="! logsLoading && logs.length === 0" icon="document-text" class="py-10">{{ __('mail.logs_empty') }}</x-empty-state>
+                        <table x-show="! logsLoading && logs.length > 0" class="w-full text-left text-xs">
+                            <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
+                                <template x-for="l in logs" :key="l.id">
+                                    <tr class="align-top">
+                                        <td class="whitespace-nowrap px-2 py-1.5 tabular-nums text-gray-400" x-text="logTime(l.created_at)"></td>
+                                        <td class="px-2 py-1.5">
+                                            <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white" :style="{ background: logTint(l.level) }" x-text="l.level"></span>
+                                        </td>
+                                        <td class="whitespace-nowrap px-2 py-1.5 font-mono text-gray-700 dark:text-gray-300" x-text="l.event"></td>
+                                        <td class="px-2 py-1.5 text-gray-500"><span x-show="l.folder" class="rounded bg-black/[0.04] dark:bg-white/[0.06] px-1.5 py-0.5" x-text="l.folder"></span></td>
+                                        <td class="px-2 py-1.5 text-gray-600 dark:text-gray-400" x-text="l.message"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-2 border-t border-gray-100 dark:border-gray-800 px-5 py-2 text-sm" x-show="logsLastPage > 1">
+                        <span class="text-gray-500" x-text="`${logsPage}/${logsLastPage}`"></span>
+                        <div class="flex gap-2">
+                            <x-button variant="secondary" size="sm" ::disabled="logsPage <= 1" @click="gotoLogs(logsPage - 1)">{{ __('common.previous') }}</x-button>
+                            <x-button variant="secondary" size="sm" ::disabled="logsPage >= logsLastPage" @click="gotoLogs(logsPage + 1)">{{ __('common.next') }}</x-button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
 
         {{-- Add/edit account modal --}}
         <template x-teleport="body">

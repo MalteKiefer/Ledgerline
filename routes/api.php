@@ -36,6 +36,7 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\MailDeleteOriginController;
 use App\Http\Controllers\MailEnvelopeController;
+use App\Http\Controllers\MailLogController;
 use App\Http\Controllers\MailMessageController;
 use App\Http\Controllers\MailPushbackController;
 use App\Http\Controllers\MailTrashController;
@@ -171,6 +172,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/mail/accounts/{account}/sync/cancel', [MailAccountController::class, 'cancelSync'])->middleware(['throttle:60,1', 'module:mail'])->name('api.mail.accounts.sync-cancel');
         Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->middleware('module:mail')->name('api.mail.accounts.status');
         Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware(['throttle:120,1', 'module:mail'])->name('api.mail.messages.index');
+        Route::get('/mail/accounts/{account}/logs', [MailLogController::class, 'index'])->middleware(['throttle:240,1', 'module:mail'])->name('api.mail.accounts.logs');
         Route::post('/mail/messages/{message}/pushback', MailPushbackController::class)->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.messages.pushback');
         Route::post('/mail/messages/{message}/delete-origin', MailDeleteOriginController::class)->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.messages.delete-origin');
         Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware(['throttle:60,1', 'module:mail'])->name('api.mail.messages.trash');

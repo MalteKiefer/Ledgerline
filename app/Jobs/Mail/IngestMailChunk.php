@@ -7,6 +7,7 @@ namespace App\Jobs\Mail;
 use App\Models\MailAccount;
 use App\Services\Mail\MaildirIngestor;
 use App\Support\Mail\ImapDeleter;
+use App\Support\Mail\MailLogger;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -131,12 +132,14 @@ class IngestMailChunk implements ShouldQueue
                     'folder' => $this->folder,
                     'deleted' => $deleted,
                 ]);
+                MailLogger::record($account, 'info', 'origin_deleted', $this->folder, $deleted.' message(s) removed from the origin server.');
             } catch (Throwable $e) {
                 Log::warning('mail.chunk.origin_delete_failed', [
                     'account_id' => $this->accountId,
                     'folder' => $this->folder,
                     'count' => count($deleteUids),
                 ]);
+                MailLogger::record($account, 'warn', 'origin_delete_failed', $this->folder, 'Could not delete '.count($deleteUids).' message(s) from the origin server.');
             }
         }
 
@@ -145,5 +148,20 @@ class IngestMailChunk implements ShouldQueue
             'folder' => $this->folder,
             'summary' => $summary,
         ]);
+
+        // Per-folder ingest outcome for the owner-visible log: how many messages
+        // were archived / were duplicates / skipped / failed in this chunk.
+        $level = $summary['failed'] > 0 ? 'warn' : 'info';
+        MailLogger::record(
+            $account,
+            $level,
+            'chunk_ingested',
+            $this->folder,
+            sprintf(
+                'archived %d, duplicate %d, skipped_old %d, no_key %d, failed %d, quarantined %d',
+                $summary['stored'], $summary['duplicate'], $summary['skipped_old'],
+                $summary['not_sealable'], $summary['failed'], $summary['quarantined'],
+            ),
+        );
     }
 }
