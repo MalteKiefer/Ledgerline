@@ -184,16 +184,38 @@ class SyncMailAccount implements ShouldQueue
         $configured = config('mail_archive.ingest_chunk_size', 100);
         $size = max(1, min(1000, is_numeric($configured) ? (int) $configured : 100));
 
+        // Backlog throttle: cap how many messages one sync run ingests. Sealing
+        // spawns a Node process PER message, so paging a whole 8000-message
+        // mailbox into one batch can saturate the host (a real incident). With a
+        // cap, a large first-time mailbox drains gently over several scheduled
+        // runs — the un-paged files stay durably in the Maildir and are picked up
+        // next run (dedup makes it idempotent). 0/unset = no cap.
+        $maxCfg = config('mail_archive.ingest_max_per_run', 800);
+        $maxPerRun = is_numeric($maxCfg) ? (int) $maxCfg : 800;
+
         $jobs = [];
+        $paged = 0;
         foreach ($this->folders($root) as $folder => $dir) {
             $files = $this->messageFiles($dir);
             // Per-folder visibility: shows the owner EXACTLY which folders the
             // sync fetched and how many new messages each has this run (the
             // "only INBOX?" diagnostic). A folder with 0 new files still logs.
             MailLogger::record($account, 'info', 'folder_fetched', $folder, count($files).' new message(s) to ingest.');
+            if ($maxPerRun > 0 && $paged >= $maxPerRun) {
+                // Cap reached — leave the rest of this (and further) folders in
+                // the Maildir for the next run.
+                continue;
+            }
+            if ($maxPerRun > 0 && $paged + count($files) > $maxPerRun) {
+                $files = array_slice($files, 0, $maxPerRun - $paged);
+            }
+            $paged += count($files);
             foreach (array_chunk($files, $size) as $slice) {
                 $jobs[] = new IngestMailChunk($account->id, $folder, $slice);
             }
+        }
+        if ($maxPerRun > 0 && $paged >= $maxPerRun) {
+            MailLogger::record($account, 'info', 'ingest_capped', null, "Ingest capped at {$maxPerRun} this run; the rest continues next sync.");
         }
 
         return $jobs;
