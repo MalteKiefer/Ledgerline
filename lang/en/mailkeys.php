@@ -48,4 +48,5 @@ return [
     'pick_file' => 'Pick a file',
     'no_files' => 'No files found.',
     'err_locked' => 'Unlock the vault first.',
+    'files_root' => 'Files',
 ];

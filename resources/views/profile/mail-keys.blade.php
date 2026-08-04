@@ -81,22 +81,39 @@
                             <p x-show="impArmored" x-cloak class="mt-2 text-xs text-green-600 dark:text-green-400"><x-icon name="check" class="mr-1 inline h-3 w-3" /><span x-text="impName"></span></p>
                         </div>
 
-                        {{-- From app files --}}
+                        {{-- From app files — a real file browser over the vault Files tree --}}
                         <div x-show="impMode === 'app'" x-cloak>
-                            <div class="mb-2 flex items-center justify-between">
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.tab_app') }}</label>
-                                <x-button variant="secondary" size="sm" icon="arrow-path" @click="loadAppFiles()">{{ __('mailkeys.pick_file') }}</x-button>
-                            </div>
                             <x-alert variant="error" x-show="appFileError" x-cloak x-text="appFileError" class="mb-2" />
                             <p x-show="appFilesLoading" class="py-4 text-center text-sm text-gray-500">{{ __('common.loading') }}</p>
-                            <x-empty-state x-show="!appFilesLoading && appFiles.length === 0" icon="folder" class="py-6">{{ __('mailkeys.no_files') }}</x-empty-state>
-                            <div x-show="!appFilesLoading && appFiles.length > 0" class="max-h-56 overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 divide-y divide-black/[0.06] dark:divide-white/10">
-                                <template x-for="f in appFiles" :key="f.id">
-                                    <button type="button" @click="pickAppFile(f)" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/5">
-                                        <x-icon name="document-text" class="h-4 w-4 shrink-0 text-gray-400" />
-                                        <span class="min-w-0 flex-1 truncate" x-text="f.name"></span>
-                                    </button>
-                                </template>
+
+                            <div x-show="!appFilesLoading" class="rounded-xl border border-black/[0.06] dark:border-white/10">
+                                {{-- Breadcrumb --}}
+                                <div class="flex items-center gap-1 overflow-x-auto border-b border-black/[0.06] dark:border-white/10 px-3 py-2 text-sm">
+                                    <button type="button" @click="browserGoto(-1)" class="shrink-0 font-medium text-accent hover:underline">{{ __('mailkeys.files_root') }}</button>
+                                    <template x-for="(crumb, i) in browserPath" :key="crumb.id">
+                                        <span class="flex shrink-0 items-center gap-1">
+                                            <x-icon name="chevron-right" class="h-3 w-3 text-gray-400" />
+                                            <button type="button" @click="browserGoto(i)" class="text-gray-600 dark:text-gray-300 hover:underline" x-text="crumb.name"></button>
+                                        </span>
+                                    </template>
+                                </div>
+                                {{-- Listing: folders first, then files --}}
+                                <div class="max-h-64 overflow-auto divide-y divide-black/[0.06] dark:divide-white/10">
+                                    <template x-for="d in browserFolders()" :key="d.id">
+                                        <button type="button" @click="enterFolder(d)" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/5">
+                                            <x-icon name="folder" class="h-4 w-4 shrink-0 text-accent" />
+                                            <span class="min-w-0 flex-1 truncate font-medium" x-text="d.name"></span>
+                                            <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-400" />
+                                        </button>
+                                    </template>
+                                    <template x-for="f in browserFiles()" :key="f.id">
+                                        <button type="button" @click="pickAppFile(f)" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/5">
+                                            <x-icon name="document-text" class="h-4 w-4 shrink-0 text-gray-400" />
+                                            <span class="min-w-0 flex-1 truncate" x-text="f.name"></span>
+                                        </button>
+                                    </template>
+                                    <p x-show="browserFolders().length === 0 && browserFiles().length === 0" class="px-3 py-6 text-center text-sm text-gray-400">{{ __('mailkeys.no_files') }}</p>
+                                </div>
                             </div>
                             <p x-show="impArmored" x-cloak class="mt-2 text-xs text-green-600 dark:text-green-400"><x-icon name="check" class="mr-1 inline h-3 w-3" /><span x-text="impName"></span></p>
                         </div>
