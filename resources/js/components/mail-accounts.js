@@ -112,7 +112,7 @@ export default (config) => ({
     },
 
     openCreate() {
-        this.form = { id: null, name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', backfill_since: '', delete_after_import: false, enabled: true };
+        this.form = { id: null, name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', backfill_since: '', delete_after_import: false, skip_spam: true, enabled: true };
         this.tagsValue = '';
         this.tagDraft = '';
         this.saveError = '';
@@ -122,7 +122,7 @@ export default (config) => ({
     openEdit(a) {
         this.form = {
             id: a.id, name: a.name, host: a.host, port: a.port, username: a.username,
-            password: '', encryption: a.encryption, backfill_since: a.backfill_since || '', delete_after_import: !! a.delete_after_import, enabled: !! a.enabled,
+            password: '', encryption: a.encryption, backfill_since: a.backfill_since || '', delete_after_import: !! a.delete_after_import, skip_spam: a.skip_spam !== false, enabled: !! a.enabled,
         };
         this.tagsValue = (a.folders ?? []).join(', ');
         this.tagDraft = '';
@@ -149,6 +149,7 @@ export default (config) => ({
             folders: this.tagList(),
             backfill_since: this.form.backfill_since || null,
             delete_after_import: !! this.form.delete_after_import,
+            skip_spam: !! this.form.skip_spam,
             enabled: !! this.form.enabled,
         };
         try {

@@ -68,4 +68,9 @@ final readonly class IngestResult
     {
         return new self(IngestStatus::SkippedOld, $hash);
     }
+
+    public static function skippedSpam(string $hash): self
+    {
+        return new self(IngestStatus::SkippedSpam, $hash);
+    }
 }

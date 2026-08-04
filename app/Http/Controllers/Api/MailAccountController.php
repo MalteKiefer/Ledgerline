@@ -164,6 +164,7 @@ class MailAccountController extends Controller
             'folders.*' => ['string', 'max:255'],
             'backfill_since' => ['nullable', 'date'],
             'delete_after_import' => ['nullable', 'boolean'],
+            'skip_spam' => ['nullable', 'boolean'],
             'enabled' => ['nullable', 'boolean'],
         ])->validate();
 
@@ -183,6 +184,9 @@ class MailAccountController extends Controller
         }
         if ($request->has('delete_after_import')) {
             $data['delete_after_import'] = $request->boolean('delete_after_import');
+        }
+        if ($request->has('skip_spam')) {
+            $data['skip_spam'] = $request->boolean('skip_spam');
         }
         if ($request->has('enabled')) {
             $data['enabled'] = $request->boolean('enabled');
@@ -204,6 +208,7 @@ class MailAccountController extends Controller
             'folders' => $account->folders,
             'backfill_since' => $account->backfill_since?->toDateString(),
             'delete_after_import' => $account->delete_after_import,
+            'skip_spam' => $account->skip_spam,
             'enabled' => $account->enabled,
             'status' => $account->status,
             'last_error' => $account->last_error,
