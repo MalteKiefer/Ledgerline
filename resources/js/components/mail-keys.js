@@ -21,10 +21,13 @@ export default (config) => ({
     impArmored: '',
     impPassphrase: '',
     impName: '',
-    // "from the app's Files" picker
-    appFiles: [],
+    // "from the app's Files" — a real file browser over the vault Files tree.
     appFilesLoading: false,
     appFileError: '',
+    _allFiles: [],        // window.LLFilesStore.data.files
+    _allFolders: [],      // window.LLFilesStore.data.fileFolders
+    browserCwd: null,     // current folder id (null = root)
+    browserPath: [],      // breadcrumb: [{ id, name }]
     // generate form — full spectrum
     genType: 'ecc',          // ecc | rsa
     genCurve: 'curve25519',
@@ -154,18 +157,40 @@ export default (config) => ({
         try {
             if (!window.Vault?.unlocked) { this.appFileError = this.config?.errLocked || 'Unlock the vault first.'; return; }
             if (!window.LLFilesStore.loaded) await window.LLFilesStore.load();
-            // Show likely key files first, but list all so nothing is hidden.
-            const files = [...(window.LLFilesStore.data.files || [])];
-            files.sort((a, b) => (this._looksKey(b) - this._looksKey(a)) || (a.name || '').localeCompare(b.name || ''));
-            this.appFiles = files;
+            this._allFiles = [...(window.LLFilesStore.data.files || [])];
+            this._allFolders = [...(window.LLFilesStore.data.fileFolders || [])];
+            this.browserCwd = null;
+            this.browserPath = [];
         } catch {
             this.appFileError = this.config?.errImport || 'Could not load your files.';
         } finally {
             this.appFilesLoading = false;
         }
     },
+    // Folders directly under the current directory.
+    browserFolders() {
+        return this._allFolders
+            .filter((f) => (f.parent ?? null) === this.browserCwd)
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    },
+    // Files in the current directory (key-looking first).
+    browserFiles() {
+        return this._allFiles
+            .filter((f) => (f.folder ?? null) === this.browserCwd)
+            .sort((a, b) => (this._looksKey(b) - this._looksKey(a)) || (a.name || '').localeCompare(b.name || ''));
+    },
     _looksKey(f) {
         return /\.(asc|gpg|key|pgp|pem)$/i.test(f.name || '') ? 1 : 0;
+    },
+    enterFolder(folder) {
+        this.browserCwd = folder.id;
+        this.browserPath.push({ id: folder.id, name: folder.name });
+    },
+    browserGoto(idx) {
+        // idx = -1 → root; else jump to that breadcrumb crumb.
+        if (idx < 0) { this.browserCwd = null; this.browserPath = []; return; }
+        this.browserPath = this.browserPath.slice(0, idx + 1);
+        this.browserCwd = this.browserPath[idx].id;
     },
     async pickAppFile(f) {
         this.appFileError = '';

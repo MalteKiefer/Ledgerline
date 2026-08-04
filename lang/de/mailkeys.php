@@ -48,4 +48,5 @@ return [
     'pick_file' => 'Datei auswählen',
     'no_files' => 'Keine Dateien gefunden.',
     'err_locked' => 'Zuerst den Vault entsperren.',
+    'files_root' => 'Dateien',
 ];
