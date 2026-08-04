@@ -29,4 +29,31 @@ describe('pgp (vendored OpenPGP.js)', () => {
         const out = await decrypt(armored, [{ privateKey: kp.privateKey }]);
         expect(out.text).toBe('secret body');
     }, 30000);
+
+    it('generates across the full spectrum: multi-UID, expiry, signing subkey', async () => {
+        const kp = await generateKey({
+            type: 'ecc',
+            curve: 'nistP256',
+            userIDs: [{ name: 'Primary', email: 'a@example.com' }, { name: 'Alt', email: 'b@example.com' }],
+            keyExpirationSeconds: 31536000,
+            signSubkey: true,
+        });
+        const op = await openpgp();
+        const key = await op.readKey({ armoredKey: kp.publicKey });
+        // Two identities present.
+        const uids = key.getUserIDs();
+        expect(uids.some((u) => u.includes('a@example.com'))).toBe(true);
+        expect(uids.some((u) => u.includes('b@example.com'))).toBe(true);
+        // Expiration set (a Date, not Infinity).
+        const exp = await key.getExpirationTime();
+        expect(exp instanceof Date).toBe(true);
+        // At least two subkeys (encryption + the extra signing subkey).
+        expect(key.getSubkeys().length).toBeGreaterThanOrEqual(2);
+    }, 30000);
+
+    it('generates an RSA-2048 key', async () => {
+        const kp = await generateKey({ type: 'rsa', rsaBits: 2048, userIDs: [{ email: 'rsa@example.com' }] });
+        expect(kp.privateKey).toContain('BEGIN PGP PRIVATE KEY');
+        expect(kp.fingerprint).toMatch(/^[0-9a-f]{40}$/);
+    }, 60000);
 });
