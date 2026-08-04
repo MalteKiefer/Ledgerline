@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('account.nav_account')">
-    <div class="mx-auto w-full max-w-3xl">
+    <div class="mx-auto w-full max-w-[1700px]">
         @include('profile._header', ['title' => __('account.nav_account')])
 
         <div class="mt-5 ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">

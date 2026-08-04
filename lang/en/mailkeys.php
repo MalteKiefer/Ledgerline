@@ -42,4 +42,10 @@ return [
     'sign_subkey' => 'Add a separate signing subkey',
     'subkeys_hint' => 'The key always certifies + signs and gets a dedicated encryption subkey. Enable this to add a separate signing subkey.',
     'err_no_identity' => 'Add at least one name or email.',
+    'tab_paste' => 'Paste',
+    'tab_computer' => 'From computer',
+    'tab_app' => 'From app files',
+    'pick_file' => 'Pick a file',
+    'no_files' => 'No files found.',
+    'err_locked' => 'Unlock the vault first.',
 ];

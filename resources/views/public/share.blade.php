@@ -28,7 +28,7 @@
       </div>
     </header>
 
-    <main class="mx-auto max-w-6xl px-4 py-8">
+    <main class="mx-auto max-w-[1700px] px-4 py-8">
       {{-- Loading --}}
       <div x-show="state === 'boot'" class="flex items-center justify-center py-24">
         <x-icon name="arrow-path" class="h-6 w-6 animate-spin text-gray-400" />

@@ -22,13 +22,13 @@
      })" x-cloak>
 
     <header class="border-b border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e]">
-      <div class="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+      <div class="mx-auto flex max-w-[1700px] items-center justify-between px-4 py-3">
         <span class="text-sm font-semibold tracking-tight">Ledgerline</span>
         <span x-show="state === 'ready' && manifest?.name" x-cloak class="truncate text-sm text-gray-500 dark:text-gray-400" x-text="manifest?.name"></span>
       </div>
     </header>
 
-    <main class="mx-auto max-w-4xl px-4 py-8">
+    <main class="mx-auto max-w-[1700px] px-4 py-8">
       <div x-show="state === 'boot'" class="flex items-center justify-center py-24">
         <x-icon name="arrow-path" class="h-6 w-6 animate-spin text-gray-400" />
       </div>

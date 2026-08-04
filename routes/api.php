@@ -165,10 +165,10 @@ Route::prefix('v1')->group(function (): void {
         // client upload/reconcile route). `module:mail` is enforced (registered in
         // config/modules.php); see MailAccountController's class docblock.
         Route::get('/mail/accounts', [MailAccountController::class, 'index'])->middleware('module:mail')->name('api.mail.accounts.index');
-        Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.store');
-        Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.update');
-        Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.destroy');
-        Route::post('/mail/accounts/{account}/sync', [MailAccountController::class, 'sync'])->middleware(['throttle:30,1', 'module:mail'])->name('api.mail.accounts.sync');
+        Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware(['throttle:60,1', 'module:mail'])->name('api.mail.accounts.store');
+        Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:60,1', 'module:mail'])->name('api.mail.accounts.update');
+        Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->middleware(['throttle:60,1', 'module:mail'])->name('api.mail.accounts.destroy');
+        Route::post('/mail/accounts/{account}/sync', [MailAccountController::class, 'sync'])->middleware(['throttle:60,1', 'module:mail'])->name('api.mail.accounts.sync');
         Route::post('/mail/accounts/{account}/sync/cancel', [MailAccountController::class, 'cancelSync'])->middleware(['throttle:60,1', 'module:mail'])->name('api.mail.accounts.sync-cancel');
         Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->middleware('module:mail')->name('api.mail.accounts.status');
         Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware(['throttle:120,1', 'module:mail'])->name('api.mail.messages.index');

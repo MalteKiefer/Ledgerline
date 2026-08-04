@@ -93,7 +93,7 @@
     <template x-teleport="body">
         <div x-show="editorOpen" x-cloak class="fixed inset-0 z-[1050] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeEditor()">
             <div class="absolute inset-0 bg-gray-900/50" @click="closeEditor()"></div>
-            <div class="relative flex max-h-[92vh] w-full max-w-lg flex-col rounded-2xl bg-white dark:bg-[#1c1c1e] shadow-xl" x-show="editing">
+            <div class="relative flex max-h-[92vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl bg-white dark:bg-[#1c1c1e] shadow-xl" x-show="editing">
                 <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-5 py-3">
                     <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="editing?.id ? @js(__('todos.edit')) : @js(__('todos.new_task'))"></h3>
                     <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeEditor()" aria-label="{{ __('todos.cancel') }}" />

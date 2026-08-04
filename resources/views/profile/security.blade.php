@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('account.nav_security')">
-    <div class="mx-auto w-full max-w-3xl">
+    <div class="mx-auto w-full max-w-[1700px]">
         @include('profile._header', ['title' => __('account.nav_security'), 'subtitle' => __('account.twofa_hint')])
 
         @if (session('status'))

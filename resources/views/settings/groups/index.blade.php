@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('settings.groups_section')">
-    <div class="mx-auto w-full max-w-3xl" x-data="{ open: null }">
+    <div class="mx-auto w-full max-w-[1700px]" x-data="{ open: null }">
         @include('profile._header', ['title' => __('settings.groups_section'), 'subtitle' => __('settings.groups_desc')])
 
         @if (session('status'))

@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('account.nav_appearance')">
-    <div class="mx-auto w-full max-w-3xl">
+    <div class="mx-auto w-full max-w-[1700px]">
         @include('profile._header', ['title' => __('account.appearance_heading')])
 
         {{-- Colour scheme --}}

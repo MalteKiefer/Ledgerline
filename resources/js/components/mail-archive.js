@@ -245,7 +245,9 @@ export default (config) => ({
         const fromTs = this.fFrom ? Date.parse(this.fFrom) : null;
         const toTs = this.fTo ? Date.parse(this.fTo) + 86_400_000 : null; // inclusive end-of-day
         return this.cache.filter((r) => {
-            if (this.fFolder && r.folder !== this.fFolder) return false;
+            // The trash is a SINGLE bin across all folders — never filter it by
+            // folder (the folder filter only applies to the archive view).
+            if (!this.showTrash && this.fFolder && r.folder !== this.fFolder) return false;
             if (q && !(`${r.from} ${r.fromRaw} ${r.to} ${r.subject}`.toLowerCase().includes(q))) return false;
             if (fromTs !== null && r.ts < fromTs) return false;
             if (toTs !== null && r.ts >= toTs) return false;

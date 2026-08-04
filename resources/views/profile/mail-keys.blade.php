@@ -1,9 +1,11 @@
 <x-layouts.app :title="__('mailkeys.title')">
-    <div class="mx-auto w-full max-w-3xl" x-data="mailKeys({
+    <div class="mx-auto w-full max-w-[1700px]" x-data="mailKeys({
         errNotPrivate: @js(__('mailkeys.err_not_private')),
         errImport: @js(__('mailkeys.err_import')),
         errGenerate: @js(__('mailkeys.err_generate')),
         errNoIdentity: @js(__('mailkeys.err_no_identity')),
+        errLocked: @js(__('mailkeys.err_locked')),
+        filesRawBase: '{{ url('/files/raw') }}',
         confirmDelete: @js(__('mailkeys.confirm_delete')),
         copied: @js(__('mailkeys.copied')),
      })">
@@ -25,7 +27,7 @@
 
             {{-- Actions --}}
             <div class="mb-4 flex flex-wrap gap-2" x-show="mode === 'list'">
-                <x-button variant="secondary" size="sm" icon="plus" @click="mode = 'import'">{{ __('mailkeys.import') }}</x-button>
+                <x-button variant="secondary" size="sm" icon="plus" @click="openImport()">{{ __('mailkeys.import') }}</x-button>
                 <x-button variant="secondary" size="sm" icon="key" @click="mode = 'generate'">{{ __('mailkeys.generate') }}</x-button>
                 <x-button variant="secondary" size="sm" icon="lock-closed" @click="mode = 'smime'">{{ __('mailkeys.import_smime') }}</x-button>
             </div>
@@ -45,24 +47,71 @@
                 </div>
             </div>
 
-            {{-- Import form: copy-paste OR from a file --}}
-            <div class="ll-card mb-4" x-show="mode === 'import'" x-cloak>
-                <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('mailkeys.import') }}</h3>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.name') }}</label>
-                <input type="text" x-model="impName" class="mt-1 mb-3 block w-full rounded-md border-gray-300 dark:border-gray-700 sm:text-sm">
+            {{-- Import modal — tabs: paste / from computer / from app files --}}
+            <template x-teleport="body">
+            <div x-show="mode === 'import'" x-cloak class="fixed inset-0 z-[1080] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="mode = 'list'; error = ''">
+                <div class="absolute inset-0 bg-gray-900/50" @click="mode = 'list'; error = ''"></div>
+                <div class="relative flex max-h-[85vh] w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+                    <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-5 py-3">
+                        <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('mailkeys.import') }}</h3>
+                        <x-icon-button name="x-mark" tone="gray" size="sm" @click="mode = 'list'; error = ''" :aria-label="__('common.close')" />
+                    </div>
 
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.from_file') }}</label>
-                <input type="file" accept=".asc,.gpg,.key,.pgp,.txt,application/pgp-keys" @change="impFileChosen($event)" class="mt-1 mb-3 block w-full text-sm text-gray-600 dark:text-gray-400">
+                    <div class="min-h-0 flex-1 overflow-auto p-5">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.name') }}</label>
+                        <input type="text" x-model="impName" class="mt-1 mb-4 block w-full rounded-md border-gray-300 dark:border-gray-700 sm:text-sm">
 
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.armored_private') }}</label>
-                <textarea x-model="impArmored" rows="6" placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----" class="mt-1 mb-3 block w-full rounded-md border-gray-300 dark:border-gray-700 font-mono text-xs"></textarea>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.passphrase_opt') }}</label>
-                <input type="password" x-model="impPassphrase" autocomplete="new-password" class="mt-1 mb-4 block w-full rounded-md border-gray-300 dark:border-gray-700 sm:text-sm">
-                <div class="flex gap-2">
-                    <x-button variant="primary" size="sm" ::disabled="busy" @click="importKey()">{{ __('mailkeys.add') }}</x-button>
-                    <x-button variant="secondary" size="sm" @click="mode = 'list'; error = ''">{{ __('common.cancel') }}</x-button>
+                        {{-- Tabs --}}
+                        <div class="mb-4 inline-flex rounded-xl bg-black/[0.04] dark:bg-white/[0.06] p-0.5 text-sm">
+                            <button type="button" @click="impMode = 'paste'" class="rounded-lg px-3 py-1 font-medium transition" :class="impMode === 'paste' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500'">{{ __('mailkeys.tab_paste') }}</button>
+                            <button type="button" @click="impMode = 'computer'" class="rounded-lg px-3 py-1 font-medium transition" :class="impMode === 'computer' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500'">{{ __('mailkeys.tab_computer') }}</button>
+                            <button type="button" @click="impMode = 'app'; loadAppFiles()" class="rounded-lg px-3 py-1 font-medium transition" :class="impMode === 'app' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500'">{{ __('mailkeys.tab_app') }}</button>
+                        </div>
+
+                        {{-- Paste --}}
+                        <div x-show="impMode === 'paste'">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.armored_private') }}</label>
+                            <textarea x-model="impArmored" rows="8" placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 font-mono text-xs"></textarea>
+                        </div>
+
+                        {{-- From computer --}}
+                        <div x-show="impMode === 'computer'" x-cloak>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.from_file') }}</label>
+                            <input type="file" accept=".asc,.gpg,.key,.pgp,.txt,.pem,application/pgp-keys" @change="impFileChosen($event)" class="mt-1 block w-full text-sm text-gray-600 dark:text-gray-400">
+                            <p x-show="impArmored" x-cloak class="mt-2 text-xs text-green-600 dark:text-green-400"><x-icon name="check" class="mr-1 inline h-3 w-3" /><span x-text="impName"></span></p>
+                        </div>
+
+                        {{-- From app files --}}
+                        <div x-show="impMode === 'app'" x-cloak>
+                            <div class="mb-2 flex items-center justify-between">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.tab_app') }}</label>
+                                <x-button variant="secondary" size="sm" icon="arrow-path" @click="loadAppFiles()">{{ __('mailkeys.pick_file') }}</x-button>
+                            </div>
+                            <x-alert variant="error" x-show="appFileError" x-cloak x-text="appFileError" class="mb-2" />
+                            <p x-show="appFilesLoading" class="py-4 text-center text-sm text-gray-500">{{ __('common.loading') }}</p>
+                            <x-empty-state x-show="!appFilesLoading && appFiles.length === 0" icon="folder" class="py-6">{{ __('mailkeys.no_files') }}</x-empty-state>
+                            <div x-show="!appFilesLoading && appFiles.length > 0" class="max-h-56 overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 divide-y divide-black/[0.06] dark:divide-white/10">
+                                <template x-for="f in appFiles" :key="f.id">
+                                    <button type="button" @click="pickAppFile(f)" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent/5">
+                                        <x-icon name="document-text" class="h-4 w-4 shrink-0 text-gray-400" />
+                                        <span class="min-w-0 flex-1 truncate" x-text="f.name"></span>
+                                    </button>
+                                </template>
+                            </div>
+                            <p x-show="impArmored" x-cloak class="mt-2 text-xs text-green-600 dark:text-green-400"><x-icon name="check" class="mr-1 inline h-3 w-3" /><span x-text="impName"></span></p>
+                        </div>
+
+                        <label class="mt-4 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mailkeys.passphrase_opt') }}</label>
+                        <input type="password" x-model="impPassphrase" autocomplete="new-password" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 sm:text-sm">
+                    </div>
+
+                    <div class="flex items-center justify-end gap-2 border-t border-gray-100 dark:border-gray-800 px-5 py-3">
+                        <x-button variant="secondary" size="sm" @click="mode = 'list'; error = ''">{{ __('common.cancel') }}</x-button>
+                        <x-button variant="primary" size="sm" ::disabled="busy || !impArmored" @click="importKey()">{{ __('mailkeys.add') }}</x-button>
+                    </div>
                 </div>
             </div>
+            </template>
 
             {{-- Generate form — full configuration spectrum --}}
             <div class="ll-card mb-4" x-show="mode === 'generate'" x-cloak>

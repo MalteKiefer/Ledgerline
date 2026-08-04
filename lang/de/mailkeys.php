@@ -42,4 +42,10 @@ return [
     'sign_subkey' => 'Separaten Signier-Unterschlüssel hinzufügen',
     'subkeys_hint' => 'Der Schlüssel zertifiziert + signiert immer und erhält einen eigenen Verschlüsselungs-Unterschlüssel. Aktivieren, um einen separaten Signier-Unterschlüssel zu erzeugen.',
     'err_no_identity' => 'Mindestens einen Namen oder eine E-Mail angeben.',
+    'tab_paste' => 'Einfügen',
+    'tab_computer' => 'Vom Rechner',
+    'tab_app' => 'Aus App-Dateien',
+    'pick_file' => 'Datei auswählen',
+    'no_files' => 'Keine Dateien gefunden.',
+    'err_locked' => 'Zuerst den Vault entsperren.',
 ];

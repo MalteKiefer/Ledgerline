@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('account.export_heading')">
-    <div class="mx-auto w-full max-w-3xl">
+    <div class="mx-auto w-full max-w-[1700px]">
         @include('profile._header', ['title' => __('account.export_heading'), 'subtitle' => __('account.export_hint')])
 
         <div class="mt-5 ll-card flex flex-col items-start gap-4 sm:flex-row sm:items-center">
