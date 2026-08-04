@@ -408,7 +408,7 @@
     <template x-teleport="body">
         <div x-show="moveOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="moveOpen = false">
             <div class="absolute inset-0 bg-gray-900/40" @click="moveOpen = false"></div>
-            <div class="relative flex max-h-[80vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[80vh] w-full w-[50vw] max-w-[50vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
                 <h3 class="border-b border-gray-100 dark:border-gray-800 px-6 py-4 text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.move_title') }} <span class="text-gray-400 dark:text-gray-500">(<span x-text="moveRefs.length"></span>)</span></h3>
                 <div class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
                     <label class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent/5">
@@ -435,7 +435,7 @@
         <div x-show="viewer.open" x-cloak class="fixed inset-0 z-[1050] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeViewer()"
             @keydown.arrow-left.window="viewerHasGallery && viewerStep(-1)" @keydown.arrow-right.window="viewerHasGallery && viewerStep(1)">
             <div class="absolute inset-0 bg-gray-900/60" @click="closeViewer()"></div>
-            <div class="relative flex max-h-[92vh] w-full w-[75vw] max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[92vh] w-full w-[50vw] max-w-[50vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
                 <div class="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-5 py-3">
                     <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="viewer.row?.name"></h3>
                     <div class="flex shrink-0 items-center gap-3">
@@ -503,7 +503,7 @@
     <template x-teleport="body">
         <div x-show="tagsOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="tagsOpen = false">
             <div class="absolute inset-0 bg-gray-900/40" @click="tagsOpen = false"></div>
-            <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
+            <div class="relative w-full w-[50vw] max-w-[50vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.edit_tags') }}</h3>
                 <x-tag-field list="file-tags" :placeholder="__('files.tags_placeholder')" class="mt-4" />
                 <datalist id="file-tags">
@@ -521,7 +521,7 @@
     <template x-teleport="body">
         <div x-show="versions.open" x-cloak class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" role="dialog" aria-modal="true" @keydown.escape.window="versions.open = false">
             <div class="absolute inset-0 bg-gray-900/40" @click="versions.open = false"></div>
-            <div class="relative my-16 w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative my-16 w-full w-[50vw] max-w-[50vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
                 <h3 class="border-b border-gray-100 dark:border-gray-800 px-6 py-4 text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.versions') }} <span class="text-gray-400 dark:text-gray-500" x-text="versions.row?.name"></span></h3>
                 <div class="max-h-[60vh] overflow-y-auto px-6 py-4">
                     <p x-show="!versions.loading && !versions.list.length" x-cloak class="text-sm text-gray-500 dark:text-gray-400">{{ __('files.versions_none') }}</p>
@@ -551,7 +551,7 @@
     <template x-teleport="body">
         <div x-show="infoOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="infoOpen = false">
             <div class="absolute inset-0 bg-gray-900/40" @click="infoOpen = false"></div>
-            <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl" x-show="infoRow">
+            <div class="relative w-full w-[50vw] max-w-[50vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl" x-show="infoRow">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.info_title') }}</h3>
                 <dl class="mt-4 divide-y divide-gray-100 dark:divide-gray-800 text-sm">
                     <div class="flex justify-between gap-4 py-2">
@@ -615,7 +615,7 @@
     <template x-teleport="body">
         <div x-show="share.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeShare()">
             <div class="absolute inset-0 bg-gray-900/50" @click="closeShare()"></div>
-            <div class="relative w-full w-[75vw] max-w-[75vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
+            <div class="relative w-full w-[50vw] max-w-[50vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
                 <div class="flex items-start justify-between gap-2">
                     <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.share_title') }} <span class="font-normal text-gray-500 dark:text-gray-400" x-text="share.name"></span></h3>
                     <x-icon-button name="x-mark" @click="closeShare()" aria-label="{{ __('gallery.share_close') }}" />
