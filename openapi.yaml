@@ -1991,6 +1991,52 @@ paths:
           description: Unauthenticated.
         "404":
           description: No avatar stored.
+    post:
+      tags: [Me/Device]
+      operationId: avatarStore
+      summary: Upload / replace the authenticated user's avatar
+      description: >
+        Uploads an avatar image (multipart, field `avatar`; jpeg/png/webp/gif,
+        max 10 MiB). Re-encoded server-side to a square 512×512 JPEG (metadata
+        stripped); the previous avatar is deleted. Non-secret profile image (not
+        ZK). Throttle 30/min.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [avatar]
+              properties:
+                avatar: { type: string, format: binary }
+      responses:
+        "200":
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  has_avatar: { type: boolean }
+        "422": { description: Not a valid image / too large. }
+        "429": { description: Rate limit exceeded. }
+    delete:
+      tags: [Me/Device]
+      operationId: avatarDestroy
+      summary: Remove the authenticated user's avatar
+      description: Deletes the stored avatar. Throttle 30/min.
+      responses:
+        "200":
+          description: Removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  has_avatar: { type: boolean }
+        "429": { description: Rate limit exceeded. }
         "429":
           description: Rate limit exceeded.
 

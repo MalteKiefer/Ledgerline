@@ -94,6 +94,8 @@ Route::prefix('v1')->group(function (): void {
         // Streams the signed-in user's stored avatar (same-origin, non-secret);
         // 404 when none stored. `me.user.has_avatar` tells the app whether to fetch it.
         Route::get('/avatar', AvatarController::class)->middleware('throttle:120,1')->name('api.avatar');
+        Route::post('/avatar', [AvatarController::class, 'store'])->middleware('throttle:30,1')->name('api.avatar.store');
+        Route::delete('/avatar', [AvatarController::class, 'destroy'])->middleware('throttle:30,1')->name('api.avatar.destroy');
         Route::post('/device/heartbeat', [AuthController::class, 'heartbeat'])->middleware('throttle:120,1')->name('api.device.heartbeat');
         Route::delete('/auth/session', [AuthController::class, 'destroy'])->name('api.auth.destroy');
 
