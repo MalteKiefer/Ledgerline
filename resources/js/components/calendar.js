@@ -11,10 +11,10 @@ import { parseIcs, buildIcs } from '../shared/ical';
 import { getJson, postForm } from '../shared/api';
 import { collectReminders, REMINDER_PRESETS } from '../shared/calendar-reminders';
 import {
-    ymd, monthMatrix, eventsOnDay, timeLabel, weekNumberOf, CALENDAR_COLORS,
+    ymd, dayStart, monthMatrix, eventsOnDay, timeLabel, weekNumberOf, CALENDAR_COLORS,
 } from '../shared/calendar-utils';
 import { CALENDAR_ICONS, calIconPath } from '../shared/calendar-icons';
-import { calWeekNumbers, calWeekStart } from '../shared/prefs';
+import { calWeekNumbers, calWeekStart, calDefaultView, calDayStart, calDayEnd } from '../shared/prefs';
 import {
     expandEvent, buildRRuleString, parseRRuleString, rruleSummary, RRULE_FREQS, RRULE_WEEKDAYS,
 } from '../shared/calendar-rrule';
@@ -62,10 +62,12 @@ export default (labels = {}) => ({
     events: [],
     _mut: 0,
 
-    // Current visible month.
-    viewY: new Date().getFullYear(),
-    viewM: new Date().getMonth(),
+    // View + cursor. `anchorIso` is a date within the visible month/week/day.
+    view: 'month', // month | week | day
+    anchorIso: ymd(new Date()),
     todayIso: ymd(new Date()),
+    get viewY() { return Number(this.anchorIso.slice(0, 4)); },
+    get viewM() { return Number(this.anchorIso.slice(5, 7)) - 1; },
 
     selectedDay: null, // iso of the open day agenda, or null
     editorOpen: false,
@@ -100,6 +102,7 @@ export default (labels = {}) => ({
     },
 
     async init() {
+        this.view = calDefaultView();
         await this._initZk();
         if (this.state === 'ready') this._startRemClock();
         this.$watch('state', (s) => { if (s === 'ready') this._startRemClock(); else this._stopRemClock(); });
@@ -140,11 +143,8 @@ export default (labels = {}) => ({
     },
 
     // Non-recurring events + expanded occurrences of recurring ones (minus any
-    // occurrence that a per-occurrence override replaces) across the visible range.
-    get visibleEvents() {
-        void this._mut; void this.viewY; void this.viewM;
-        const rangeStart = ymd(new Date(this.viewY, this.viewM, 1 - 7));
-        const rangeEnd = ymd(new Date(this.viewY, this.viewM + 1, 7));
+    // occurrence a per-occurrence override replaces) across [rangeStart, rangeEnd].
+    _expandRange(rangeStart, rangeEnd) {
         const overrides = new Set(this.events.filter((e) => e.overrideOf).map((e) => `${e.overrideOf}@${e.recurrenceId || ''}`));
         const out = [];
         for (const ev of this.events) {
@@ -160,8 +160,10 @@ export default (labels = {}) => ({
     },
     dayEvents(iso) {
         void this._mut;
-        return eventsOnDay(this.visibleEvents, iso);
+        return eventsOnDay(this._expandRange(iso, iso), iso);
     },
+    timedEventsForDay(iso) { return this.dayEvents(iso).filter((e) => !e.allDay); },
+    allDayEventsForDay(iso) { return this.dayEvents(iso).filter((e) => e.allDay); },
     isRecurring(ev) { return !!(ev && (ev.rrule || ev._base)); },
     rruleLabel(ev) {
         void this._mut;
@@ -178,9 +180,71 @@ export default (labels = {}) => ({
         return (this.calendars.find((c) => c.id === id) || {}).name || '';
     },
 
-    prevMonth() { if (--this.viewM < 0) { this.viewM = 11; this.viewY--; } },
-    nextMonth() { if (++this.viewM > 11) { this.viewM = 0; this.viewY++; } },
-    goToday() { const n = new Date(); this.viewY = n.getFullYear(); this.viewM = n.getMonth(); this.selectedDay = this.todayIso; },
+    _shiftAnchor(days) { const d = dayStart(this.anchorIso); d.setDate(d.getDate() + days); this.anchorIso = ymd(d); },
+    prev() {
+        if (this.view === 'month') { const d = dayStart(this.anchorIso); d.setMonth(d.getMonth() - 1, 1); this.anchorIso = ymd(d); }
+        else this._shiftAnchor(this.view === 'week' ? -7 : -1);
+    },
+    next() {
+        if (this.view === 'month') { const d = dayStart(this.anchorIso); d.setMonth(d.getMonth() + 1, 1); this.anchorIso = ymd(d); }
+        else this._shiftAnchor(this.view === 'week' ? 7 : 1);
+    },
+    goToday() { this.anchorIso = this.todayIso; },
+    switchView(v) { this.view = v; },
+
+    // ---- week / day time grid ----
+    get weekDays() {
+        void this._mut;
+        // The 7 iso days of the week containing the anchor, honouring week-start.
+        const d = dayStart(this.anchorIso);
+        const dow = d.getDay(); // 0=Sun..6=Sat
+        const start = this._weekStartNum(); // 1=Mon,0=Sun
+        const back = (dow - start + 7) % 7;
+        d.setDate(d.getDate() - back);
+        const out = [];
+        for (let i = 0; i < 7; i++) { out.push(ymd(d)); d.setDate(d.getDate() + 1); }
+        return out;
+    },
+    get gridDays() { return this.view === 'day' ? [this.anchorIso] : this.weekDays; },
+    get gridColsStyle() { return { gridTemplateColumns: `3.5rem repeat(${this.gridDays.length}, minmax(0,1fr))` }; },
+    switchToDay(iso) { this.anchorIso = iso; this.view = 'day'; },
+    get gridHours() {
+        const s = calDayStart(), e = Math.max(s + 1, calDayEnd());
+        const out = [];
+        for (let h = s; h < e; h++) out.push(h);
+        return out;
+    },
+    get rangeLabel() {
+        const loc = document.documentElement.lang || 'en';
+        if (this.view === 'day') return dayStart(this.anchorIso).toLocaleDateString(loc, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        const days = this.weekDays;
+        const a = dayStart(days[0]), b = dayStart(days[6]);
+        return `${a.toLocaleDateString(loc, { day: 'numeric', month: 'short' })} – ${b.toLocaleDateString(loc, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    },
+    // Weekday + day-number header for a grid column.
+    gridColLabel(iso) {
+        const d = dayStart(iso);
+        return { wd: d.toLocaleDateString(document.documentElement.lang || 'en', { weekday: 'short' }), day: d.getDate(), iso, isToday: iso === this.todayIso };
+    },
+    // Absolute position of a timed event within the day column (48px per hour).
+    eventStyle(ev) {
+        const rowH = 48;
+        const s = calDayStart();
+        const sd = new Date(ev.start), ed = new Date(ev.end || ev.start);
+        let startMin = (sd.getHours() * 60 + sd.getMinutes()) - s * 60;
+        let endMin = (ed.getHours() * 60 + ed.getMinutes()) - s * 60;
+        if (Number.isNaN(startMin)) startMin = 0;
+        if (Number.isNaN(endMin) || endMin <= startMin) endMin = startMin + 30;
+        const top = Math.max(0, startMin) / 60 * rowH;
+        const height = Math.max(18, (endMin - Math.max(0, startMin)) / 60 * rowH);
+        return { top: `${top}px`, height: `${height}px` };
+    },
+    // Click an empty slot → new event at that hour.
+    openSlot(iso, hour) {
+        this.openNew(iso);
+        this._form.startTime = `${String(hour).padStart(2, '0')}:00`;
+        this._form.endTime = `${String(Math.min(23, hour + 1)).padStart(2, '0')}:00`;
+    },
 
     // ---- day agenda ----
     openDay(iso) { this.selectedDay = iso; },
