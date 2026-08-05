@@ -205,6 +205,14 @@ export default (labels = {}) => ({
         this._mut++;
         this._save();
     },
+    setSubColor(id, color) {
+        const s = (this.settings.subscriptions || []).find((x) => x.id === id);
+        if (s) { s.color = color; this._mut++; this._save(); }
+    },
+    renameSubscription(id, name) {
+        const s = (this.settings.subscriptions || []).find((x) => x.id === id);
+        if (s && name.trim()) { s.name = name.trim(); this._mut++; this._save(); }
+    },
 
     // Seed a default calendar on first use so events always have a home.
     _ensureDefault(ms) {
