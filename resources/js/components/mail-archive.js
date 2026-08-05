@@ -388,8 +388,9 @@ export default (config) => ({
     auth: {},          // { spf, dkim, dmarc }
     rawHead: '',
     showHeaders: false,
-    bodyHtml: '',      // sanitized HTML body (scripts OFF)
-    bodyFrame: '',     // srcdoc for the sandboxed iframe (scripts ON)
+    bodyHtml: '',      // sanitized HTML body (inline, default case)
+    bodyFrame: '',     // srcdoc for the sandboxed iframe (scripts on, or remote images)
+    frameSandbox: '',  // sandbox attribute for the body iframe (scripts vs no-scripts)
     _raw: null,        // decrypted RFC822 bytes of the open message (for push-back)
     pushing: false,
     pushed: false,
@@ -495,30 +496,65 @@ export default (config) => ({
         });
     },
 
-    // Build the srcdoc for the sandboxed iframe used when the user has opted into
-    // running mail scripts. The iframe has NO allow-same-origin, so scripts run
-    // in an opaque origin isolated from the app (no access to cookies, storage,
-    // or the vault). The inner CSP additionally gates remote content on the
-    // remote-content preference.
-    _buildFrame(html, allowRemote) {
-        const csp = allowRemote
-            ? "default-src 'none'; img-src * data: cid:; media-src *; style-src 'unsafe-inline' *; font-src * data:; script-src 'unsafe-inline' 'unsafe-eval'"
-            : "default-src 'none'; img-src data: cid:; style-src 'unsafe-inline'; font-src data:; script-src 'unsafe-inline' 'unsafe-eval'";
+    // Attachments shown in the list — inline (cid) images are embedded into the
+    // body instead, so they are hidden from the download list.
+    get realAttachments() {
+        return (this.msg?.attachments || []).filter((a) => !a.inline);
+    },
+
+    // Resolve inline cid: image references to data: URIs from the message's own
+    // (already decrypted) attachment bytes. These are embedded images (signatures,
+    // logos) — NOT remote content — so they render under any CSP via data:.
+    _resolveCidImages(html, attachments) {
+        if (!html || !/cid:/i.test(html)) return html;
+        const map = new Map();
+        for (const a of (attachments || [])) {
+            if (a.contentId) map.set(a.contentId.toLowerCase(), a);
+        }
+        if (map.size === 0) return html;
+        return html.replace(/src\s*=\s*(["'])cid:([^"']+)\1/gi, (m, q, id) => {
+            const key = id.trim().toLowerCase().replace(/^<|>$/g, '');
+            const att = map.get(key);
+            if (!att || !att.bytes) return m;
+            return `src=${q}data:${att.contentType};base64,${bytesToB64(att.bytes)}${q}`;
+        });
+    },
+
+    // Build the srcdoc for a sandboxed iframe. The iframe has NO allow-same-origin,
+    // so it runs in an opaque origin isolated from the app (no cookies/storage/vault).
+    // The inner CSP gates remote images on the remote-content choice and scripts on
+    // the scripts choice; cid images are already inlined as data: by the caller.
+    _buildFrame(html, allowRemote, allowScripts) {
+        const imgSrc = allowRemote ? 'img-src https: data:; media-src https: data:; font-src https: data:' : 'img-src data:; font-src data:';
+        const scriptSrc = allowScripts ? "script-src 'unsafe-inline' 'unsafe-eval'" : "script-src 'none'";
+        const csp = `default-src 'none'; ${imgSrc}; style-src 'unsafe-inline'; ${scriptSrc}`;
         return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"></head><body style="margin:0;font:14px/1.5 sans-serif;color:#111">${html}</body></html>`;
     },
 
-    // Render the HTML body. Scripts ON -> isolated sandbox iframe; scripts OFF
-    // -> DOMPurify inline. Remote content loads when the global pref allows it OR
-    // the user allowed it for THIS mail (temporary, per-open).
+    // Render the HTML body.
+    //  - scripts ON            -> sandboxed iframe WITH allow-scripts (opaque origin)
+    //  - remote ON, scripts OFF -> sandboxed iframe WITHOUT scripts (own CSP loads
+    //                              remote images; the app CSP would block them inline)
+    //  - default                -> DOMPurify inline (external images stripped)
+    // cid: inline images are resolved to data: in every case.
     async _renderBody() {
         this.bodyHtml = '';
         this.bodyFrame = '';
+        this.frameSandbox = '';
         if (!this.msg?.htmlBody) return;
         const remote = mailRemote() || this._forceRemote;
+        const html = this._resolveCidImages(this.msg.htmlBody, this.msg.attachments);
         if (mailScripts()) {
-            this.bodyFrame = this._buildFrame(this.msg.htmlBody, remote);
+            this.frameSandbox = 'allow-scripts allow-popups allow-popups-to-escape-sandbox';
+            this.bodyFrame = this._buildFrame(html, remote, true);
+        } else if (remote) {
+            // Strip scripts/handlers (belt) then isolate in a scriptless sandbox so
+            // remote images load under the iframe's own CSP, not the strict app CSP.
+            const clean = await this._sanitizeHtml(html, true);
+            this.frameSandbox = 'allow-popups allow-popups-to-escape-sandbox';
+            this.bodyFrame = this._buildFrame(clean, true, false);
         } else {
-            this.bodyHtml = await this._sanitizeHtml(this.msg.htmlBody, remote);
+            this.bodyHtml = await this._sanitizeHtml(html, false);
         }
     },
 
