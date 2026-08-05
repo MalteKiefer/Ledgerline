@@ -1,4 +1,4 @@
-// Mail archive LIST view (Phase 2). Zero-knowledge: the server lists only the
+// Mail archive LIST view. Zero-knowledge: the server lists only the
 // metadata ledger (id / account / folder / size / archived-at / sealed_key).
 // This component pulls the WHOLE ledger for the current account scope, decrypts
 // each blob with the vault identity secret, and parses just the envelope
@@ -307,6 +307,27 @@ export default (config) => ({
         return [...new Set(this.cache.map((r) => r.folder))].sort();
     },
 
+    // Unread count in the (non-trash) archive — shown in the tab/list header.
+    get unreadCount() {
+        return this.cache.filter((r) => !r.seen && !r.trashed).length;
+    },
+
+    // ---- Read / unread ----
+    // Mark the given message ids seen/unseen on the server and in the local cache.
+    async setSeen(ids, seen) {
+        if (!ids.length) return;
+        try {
+            await postForm(this.config.seenBase, { ids, seen: seen ? 1 : 0 });
+            const set = new Set(ids);
+            for (const r of this.cache) if (set.has(r.id)) r.seen = seen;
+        } catch { window.llToast?.(this.config.seenFailed); }
+    },
+    async bulkMarkSeen(seen) {
+        if (!this.selected.length) return;
+        await this.setSeen([...this.selected], seen);
+        this.selected = [];
+    },
+
     get filtered() {
         const q = this.fText.trim().toLowerCase();
         const fromTs = this.fFrom ? Date.parse(this.fFrom) : null;
@@ -376,6 +397,8 @@ export default (config) => ({
 
     async openMessage(r) {
         this.open = r;
+        // Auto-mark read on open (fire-and-forget; updates cache + server).
+        if (!r.seen) this.setSeen([r.id], true);
         this.msg = null;
         this.pgp = '';
         this.spam = false;

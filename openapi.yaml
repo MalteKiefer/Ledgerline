@@ -52,6 +52,7 @@ tags:
         • health → {healthProfile:HealthProfile, healthEntries:[HealthEntry], healthFasts:[HealthFast]}
         • explore → ExploreStoreModel {tracks:[ExploreTrack], couplings:{photoId→ExploreCoupling}(OBJECT MAP, not an array — remove a coupling by DELETING its key, never by nulling it), settings:ExploreSettings}
         • sharing → SharingStoreModel {knownFingerprints:{userId→hex}} (TOFU, shared by passwords+files)
+        • mailkeys → MailKeysStoreModel {keys:[MailKey]} (sealed PGP/S-MIME private+public keys for the mail archive; single-blob /store/mailkeys)
         • files → {v:3, files:[FileRecord], fileFolders:[FileFolder]} (sharded /files/store)
         • gallery → {v:3, photos:[GalleryPhoto], people:[GalleryPerson], albums:[GalleryAlbum]} (sharded /gallery/store)
         • shared vaults → SharedVaultManifest (GET/PUT /vaults/{vault}/store)
@@ -167,6 +168,15 @@ tags:
            byte-identical framing to vault.js's own content blobs: a
            secretstream header followed by length-prefixed 4 MiB chunks,
            TAG_FINAL on the last chunk.
+        4. The recovered RFC822 may ITSELF be PGP- (inline or PGP/MIME) or
+           S/MIME- (application/(x-)pkcs7-mime enveloped-data) encrypted. This
+           layer is ALSO decrypted entirely client-side, with the user's own
+           PGP/S-MIME private keys held in the sealed `mailkeys` module store
+           (GET/PUT /store/mailkeys → MailKeysStoreModel). The server never sees
+           the private key armor nor the decrypted body — there is no
+           server-side PGP/S-MIME endpoint. `mailkeys` is managed like any other
+           sealed module store; a native client reads/writes it exactly as it
+           does passwords/notes.
 
 
       The account's IMAP PASSWORD is the one plaintext secret the server must
@@ -336,6 +346,34 @@ components:
             JSON-encoded Store v3 §6.3 HybridEnvelope (X25519+ML-KEM-768,
             suite:1) wrapping the random per-message secretstream key to the
             OWNER's public identity keys. Opaque to the server; unwrap with
+            hybridUnwrap using the caller's own identity secret keys.
+        seen:
+          type: boolean
+          description: >
+            Read/unread flag. Initially derived from the origin Maildir
+            (\Seen), then owner-overridable individually or in bulk via
+            POST /mail/messages/seen. Metadata only.
+        trashed:
+          type: boolean
+          description: >
+            Soft-delete flag (true when trashed_at is set). Archived mail is
+            never hard-deleted, only hidden; toggle via
+            POST /mail/messages/{trash,restore}.
+        envelope:
+          type: string
+          nullable: true
+          description: >
+            Optional per-message sealed ENVELOPE index (from/to/subject/date/📎
+            headers only), sealed to the owner's identity keys exactly like the
+            body blob. Null until the client has built it once (via
+            POST /mail/messages/{message}/envelope). Lets the reading UI list
+            headers without decrypting every full message. Opaque to the server.
+        envelope_key:
+          type: string
+          nullable: true
+          description: >
+            HybridEnvelope (same shape as sealed_key) wrapping the envelope's
+            secretstream key. Null when envelope is null. Unwrap with
             hybridUnwrap using the caller's own identity secret keys.
 
     DisplayPreferences:
@@ -1185,6 +1223,35 @@ components:
           type: object
           description: "Map userId(string) → public-key fingerprint (hex)."
           additionalProperties: { type: string }
+
+    MailKeysStoreModel:
+      type: object
+      description: >
+        Decrypted `mailkeys` module store (GET/PUT /store/mailkeys) — the sealed
+        PGP/S-MIME private+public keys used to read encrypted mail in the archive.
+        Single sealed blob under the vault key; the private key armor NEVER reaches
+        the server in cleartext (zero-knowledge, like passwords). Decryption of a
+        message is entirely client-side. Preserve unknown keys on write.
+      properties:
+        keys:
+          type: array
+          items: { $ref: '#/components/schemas/MailKey' }
+
+    MailKey:
+      type: object
+      description: One PGP or S/MIME key record held in the sealed mailkeys store.
+      required: [id, type, name, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [pgp, smime], description: "Key kind." }
+        name: { type: string, description: "User-facing label (falls back to userId/subject/fingerprint tail)." }
+        fingerprint: { type: string, description: "Key fingerprint (hex)." }
+        userId: { type: string, description: "PGP primary user id (PGP only)." }
+        subject: { type: string, description: "Certificate subject (S/MIME only)." }
+        privateKey: { type: string, description: "PGP ASCII-armored private key OR S/MIME private key PEM. Sealed at rest; never sent to the server in cleartext." }
+        publicKey: { type: string, description: "PGP ASCII-armored public key OR S/MIME certificate PEM." }
+        passphrase: { type: string, description: "Optional passphrase protecting the private key (empty string if none). Sealed like the key." }
+        createdAt: { type: string, format: date-time }
 
     HealthProfile:
       type: object
@@ -7087,6 +7154,36 @@ paths:
       responses:
         "200":
           description: Number of messages restored.
+          content:
+            application/json:
+              schema: { type: object, properties: { updated: { type: integer } } }
+        "403": { description: Module disabled. }
+        "429": { description: Rate limit exceeded. }
+
+  /mail/messages/seen:
+    post:
+      tags: [Mail]
+      operationId: mailMessagesSeen
+      summary: Mark archived messages read/unread
+      description: >
+        Sets the `seen` flag on the given owned messages (true = read,
+        false = unread). Bulk + owner-scoped (ignores ids the caller does not
+        own). Metadata only — never touches content or the origin mailbox.
+        The Web client also fires this automatically (seen=true) when a message
+        is opened. Throttle 120/min. Max 1000 ids.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, seen]
+              properties:
+                ids: { type: array, items: { type: string, format: uuid } }
+                seen: { type: boolean }
+      responses:
+        "200":
+          description: Number of messages updated.
           content:
             application/json:
               schema: { type: object, properties: { updated: { type: integer } } }

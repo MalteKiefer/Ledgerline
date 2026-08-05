@@ -31,6 +31,7 @@ use App\Http\Controllers\MailEnvelopeController;
 use App\Http\Controllers\MailLogController;
 use App\Http\Controllers\MailMessageController;
 use App\Http\Controllers\MailPushbackController;
+use App\Http\Controllers\MailSeenController;
 use App\Http\Controllers\MailTrashController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
@@ -290,6 +291,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/mail/messages/{message}/delete-origin', MailDeleteOriginController::class)->middleware(['throttle:30,1', 'module:mail'])->name('mail.messages.delete-origin');
     Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.messages.trash');
     Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.messages.restore');
+    Route::post('/mail/messages/seen', [MailSeenController::class, 'update'])->middleware(['throttle:120,1', 'module:mail'])->name('mail.messages.seen');
     Route::post('/mail/messages/{message}/envelope', MailEnvelopeController::class)->middleware(['throttle:6000,1', 'module:mail'])->name('mail.messages.envelope');
     Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.accounts.store');
     Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->middleware(['throttle:60,1', 'module:mail'])->name('mail.accounts.update');

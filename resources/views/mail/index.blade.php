@@ -27,6 +27,8 @@
             envelopeBase: '{{ route('mail.messages.envelope', ['message' => '__id__']) }}',
             trashBase: '{{ route('mail.messages.trash') }}',
             restoreBase: '{{ route('mail.messages.restore') }}',
+            seenBase: '{{ route('mail.messages.seen') }}',
+            seenFailed: @js(__('mail.seen_failed')),
             loadFailed: @js(__('mail.load_failed')),
             decryptFailed: @js(__('mail.decrypt_failed')),
             unknown: @js(__('mail.unknown')),
@@ -129,6 +131,8 @@
                     <x-button variant="danger" size="sm" ::disabled="bulkBusy" @click="bulkDeleteOrigin()">
                         <x-icon name="trash" class="mr-1 h-4 w-4" />{{ __('mail.delete_origin') }}
                     </x-button>
+                    <x-button variant="secondary" size="sm" @click="bulkMarkSeen(true)">{{ __('mail.mark_read') }}</x-button>
+                    <x-button variant="secondary" size="sm" @click="bulkMarkSeen(false)">{{ __('mail.mark_unread') }}</x-button>
                     <x-button variant="danger" size="sm" x-show="!showTrash" @click="bulkTrash()">{{ __('mail.trash_action') }}</x-button>
                     <x-button variant="secondary" size="sm" x-show="showTrash" x-cloak @click="bulkRestore()">{{ __('mail.restore_action') }}</x-button>
                 </div>
@@ -194,6 +198,7 @@
                     <div class="flex flex-wrap items-center justify-between gap-2 border-t border-black/[0.06] dark:border-white/10 px-4 py-3 text-sm">
                         <span class="text-gray-500">
                             <span x-text="`${filtered.length} · ${page}/${lastPage}`"></span>
+                            <span x-show="unreadCount > 0" x-cloak class="ml-2 font-medium text-accent" x-text="'{{ __('mail.unread_count', ['n' => ':c']) }}'.replace(':c', unreadCount)"></span>
                             <span x-show="capped" x-cloak class="ml-2 text-amber-600 dark:text-amber-400">{{ __('mail.capped_note', ['n' => 3000]) }}</span>
                         </span>
                         <div class="flex gap-2" x-show="lastPage > 1">
