@@ -135,6 +135,12 @@
           <span class="shrink-0 whitespace-nowrap text-sm font-medium text-gray-800 dark:text-gray-200" x-text="@js(__('gallery.selected', ['count' => '{n}'])).replace('{n}', selectedCount)"></span>
           <button type="button" @click="selectAllVisible()" title="{{ __('gallery.select_all') }}" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="check-circle" class="h-5 w-5" /></button>
           <div class="flex shrink-0 items-center gap-2">
+            <template x-if="view === 'library' || view === 'favorites' || view === 'album' || view === 'archive'">
+              <button type="button" @click="bulkDownload()" ::disabled="downloadBusy" title="{{ __('gallery.download') }}" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
+                <x-icon name="arrow-down-tray" class="h-5 w-5" x-show="!downloadBusy" />
+                <span x-show="downloadBusy" x-cloak class="text-[10px] font-semibold tabular-nums" x-text="`${downloadDone}/${downloadTotal}`"></span>
+              </button>
+            </template>
             <template x-if="view === 'library' || view === 'favorites'">
               <span class="flex items-center gap-2">
                 <button type="button" @click="bulkFavorite()" title="{{ __('gallery.favorite') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="star" class="h-5 w-5" /></button>

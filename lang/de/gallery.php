@@ -198,4 +198,6 @@ return [
     'share_err_no_key' => 'Diesem Link fehlt der Schlüssel; er kann nicht geöffnet werden.',
     'share_err_bad_key' => 'Der Schlüssel dieses Links ist ungültig — das Album kann nicht entschlüsselt werden.',
     'share_err_wrong_password' => 'Falsches Passwort.',
+    'download' => 'Herunterladen',
+    'download_failed' => 'Download fehlgeschlagen.',
 ];

@@ -5,7 +5,7 @@ import { padBlob } from '../shared/padme';
 import { formatBytes } from '../shared/file-categories';
 import { loadLeaflet } from '../shared/lazy-loaders';
 import { bootStore, bootGalleryStore } from '../shared/zk-module';
-import { formatDate } from '../shared/dom';
+import { formatDate, saveBlobAs } from '../shared/dom';
 import { contactNameParts, contactDisplayName, contactsSortPref } from '../shared/contact-utils';
 import { dec6 } from '../shared/canonical-json';
 import { fileSigFromBlob } from '../shared/file-sig';
@@ -1297,6 +1297,62 @@ return {
     _eachSelected(fn) { for (const id of [...this.selected]) { const p = this.index.photos.find((x) => x.id === id); if (p) fn(p); } },
     // Draft date/time for the selection, edited in its own modal (like the
     // location picker) so a half-typed value never commits.
+    // ---- Download ----
+    downloadBusy: false,
+    downloadDone: 0,
+    downloadTotal: 0,
+    // Download the selected photos' ORIGINALS as one ZIP. Each blob is decrypted
+    // client-side (ZK) then zipped; a single selection downloads the bare file.
+    async bulkDownload() {
+        if (! this.selectedCount || this.downloadBusy) return;
+        const photos = [];
+        this._eachSelected((p) => { if (p.originalRef) photos.push(p); });
+        if (! photos.length) return;
+        this.downloadBusy = true;
+        this.downloadDone = 0;
+        this.downloadTotal = photos.length;
+        try {
+            // Single photo → download the file directly (no zip wrapper).
+            if (photos.length === 1) {
+                const p = photos[0];
+                const bytes = await this._decryptBlob(p.originalRef, p.originalKey);
+                saveBlobAs(new Blob([bytes], { type: p.mime || 'application/octet-stream' }), this._downloadName(p));
+                this.downloadDone = 1;
+                return;
+            }
+            // Multiple → build a ZIP (fflate). Names deduped so same-named files
+            // don't collide inside the archive.
+            const files = {};
+            const used = new Set();
+            let idx = 0;
+            const worker = async () => {
+                while (idx < photos.length) {
+                    const p = photos[idx++];
+                    try {
+                        const bytes = await this._decryptBlob(p.originalRef, p.originalKey);
+                        let name = this._downloadName(p);
+                        if (used.has(name)) { const dot = name.lastIndexOf('.'); const base = dot > 0 ? name.slice(0, dot) : name; const ext = dot > 0 ? name.slice(dot) : ''; let k = 2; while (used.has(`${base} (${k})${ext}`)) k++; name = `${base} (${k})${ext}`; }
+                        used.add(name);
+                        files[name] = new Uint8Array(bytes);
+                    } catch { /* skip one bad blob */ }
+                    this.downloadDone++;
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(3, photos.length) }, worker));
+            const { zip } = await import('fflate');
+            const zipped = await new Promise((resolve, reject) => zip(files, { level: 0 }, (err, data) => err ? reject(err) : resolve(data)));
+            saveBlobAs(new Blob([zipped], { type: 'application/zip' }), `fotos-${photos.length}.zip`);
+        } catch {
+            window.llToast?.(labels.downloadFailed || 'Download failed.');
+        } finally {
+            this.downloadBusy = false;
+        }
+    },
+    _downloadName(p) {
+        return (p.name && /\.[a-z0-9]{2,5}$/i.test(p.name)) ? p.name
+            : (p.name || 'foto') + (/^video\//.test(p.mime || '') ? '.mp4' : '.jpg');
+    },
+
     bulkDate: '',
     dateModal: false,
     openBulkDate() { if (! this.selectedCount) return; this.bulkDate = ''; this.dateModal = true; },
