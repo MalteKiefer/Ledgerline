@@ -36,10 +36,15 @@
       {{-- Header: month nav + actions --}}
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2">
-          <x-icon-button name="chevron-left" tone="gray" @click="prevMonth()" :aria-label="__('calendar.prev_month')" />
-          <h1 class="min-w-[10rem] text-center text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="monthLabel"></h1>
-          <x-icon-button name="chevron-right" tone="gray" @click="nextMonth()" :aria-label="__('calendar.next_month')" />
+          <x-icon-button name="chevron-left" tone="gray" @click="prev()" :aria-label="__('calendar.prev_month')" />
+          <h1 class="min-w-[12rem] text-center text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="view === 'month' ? monthLabel : rangeLabel"></h1>
+          <x-icon-button name="chevron-right" tone="gray" @click="next()" :aria-label="__('calendar.next_month')" />
           <x-button variant="secondary" size="sm" @click="goToday()">{{ __('calendar.today') }}</x-button>
+          <div class="ml-1 flex gap-1 rounded-xl bg-black/5 dark:bg-white/5 p-1">
+            <button type="button" @click="switchView('month')" class="rounded-lg px-3 py-1 text-sm font-medium transition" :class="view === 'month' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 hover:text-accent'">{{ __('calendar.view_month') }}</button>
+            <button type="button" @click="switchView('week')" class="rounded-lg px-3 py-1 text-sm font-medium transition" :class="view === 'week' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 hover:text-accent'">{{ __('calendar.view_week') }}</button>
+            <button type="button" @click="switchView('day')" class="rounded-lg px-3 py-1 text-sm font-medium transition" :class="view === 'day' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 hover:text-accent'">{{ __('calendar.view_day') }}</button>
+          </div>
         </div>
         <div class="flex items-center gap-2">
           <input type="file" x-ref="icsInput" accept=".ics,text/calendar" class="hidden" @change="importIcs($event.target.files); $event.target.value = ''">
@@ -51,7 +56,7 @@
       </div>
 
       {{-- Month grid --}}
-      <div class="ll-card !p-0 overflow-hidden">
+      <div x-show="view === 'month'" class="ll-card !p-0 overflow-hidden">
         <div class="grid border-b border-black/[0.06] dark:border-white/10 text-center text-[11px] font-medium uppercase tracking-wide text-gray-500"
              :style="{ gridTemplateColumns: showWeekNumbers ? '2.25rem repeat(7, minmax(0,1fr))' : 'repeat(7, minmax(0,1fr))' }">
           <div x-show="showWeekNumbers" class="px-1 py-2 text-[10px] text-gray-400">{{ __('calendar.wk_abbr') }}</div>
@@ -86,6 +91,52 @@
             </template>
           </div>
         </template>
+      </div>
+
+      {{-- Week / day time grid --}}
+      <div x-show="view !== 'month'" x-cloak class="ll-card !p-0 overflow-hidden">
+        {{-- Column headers --}}
+        <div class="grid border-b border-black/[0.06] dark:border-white/10" :style="gridColsStyle">
+          <div></div>
+          <template x-for="iso in gridDays" :key="'h'+iso">
+            <button type="button" @click="switchToDay(iso)" class="border-l border-black/[0.06] dark:border-white/10 py-2 text-center hover:bg-accent/5">
+              <div class="text-[11px] uppercase tracking-wide text-gray-500" x-text="gridColLabel(iso).wd"></div>
+              <div class="text-sm font-semibold" :class="gridColLabel(iso).isToday ? 'text-accent' : 'text-gray-900 dark:text-gray-100'" x-text="gridColLabel(iso).day"></div>
+            </button>
+          </template>
+        </div>
+        {{-- All-day row --}}
+        <div class="grid border-b border-black/[0.06] dark:border-white/10" :style="gridColsStyle">
+          <div class="py-1 pr-2 text-right text-[10px] text-gray-400">{{ __('calendar.all_day') }}</div>
+          <template x-for="iso in gridDays" :key="'ad'+iso">
+            <div class="min-h-[28px] space-y-0.5 border-l border-black/[0.06] dark:border-white/10 p-0.5">
+              <template x-for="ev in allDayEventsForDay(iso)" :key="'ade'+ev.id+iso">
+                <button type="button" @click="openEvent(ev)" class="block w-full truncate rounded px-1 text-left text-[11px] text-white" :style="{ background: calColor(ev.calendarId) }" x-text="ev.title || '{{ __('calendar.untitled') }}'"></button>
+              </template>
+            </div>
+          </template>
+        </div>
+        {{-- Hour grid --}}
+        <div class="grid max-h-[68vh] overflow-y-auto" :style="gridColsStyle">
+          <div>
+            <template x-for="h in gridHours" :key="'g'+h">
+              <div class="h-12 border-b border-black/[0.04] dark:border-white/[0.06] pr-2 text-right text-[10px] text-gray-400" x-text="String(h).padStart(2,'0') + ':00'"></div>
+            </template>
+          </div>
+          <template x-for="iso in gridDays" :key="'col'+iso">
+            <div class="relative border-l border-black/[0.06] dark:border-white/10">
+              <template x-for="h in gridHours" :key="'c'+iso+h">
+                <div class="h-12 cursor-pointer border-b border-black/[0.04] dark:border-white/[0.06] hover:bg-accent/5" @click="openSlot(iso, h)"></div>
+              </template>
+              <template x-for="ev in timedEventsForDay(iso)" :key="'e'+ev.id+iso">
+                <button type="button" @click.stop="openEvent(ev)" class="absolute left-0.5 right-0.5 overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white shadow-sm" :style="{ top: eventStyle(ev).top, height: eventStyle(ev).height, background: calColor(ev.calendarId) }" :title="ev.title">
+                  <span class="block truncate font-medium" x-text="ev.title || '{{ __('calendar.untitled') }}'"></span>
+                  <span class="block truncate opacity-90" x-text="timeLabel(ev)"></span>
+                </button>
+              </template>
+            </div>
+          </template>
+        </div>
       </div>
     </div>
 
