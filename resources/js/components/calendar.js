@@ -364,10 +364,28 @@ export default (labels = {}) => ({
     get gridDays() { return this.view === 'day' ? [this.anchorIso] : this.weekDays; },
     get gridColsStyle() { return { gridTemplateColumns: `3.5rem repeat(${this.gridDays.length}, minmax(0,1fr))` }; },
     switchToDay(iso) { this.anchorIso = iso; this.view = 'day'; },
+    // Visible hour span of the week/day grid. The working-hours preference is only
+    // the MINIMUM window; any timed event on a visible day expands the span so an
+    // event outside working hours (e.g. 18:00 when the day ends at 17:00) is never
+    // positioned below the grid. gridHours + eventStyle share this start.
+    _gridBounds() {
+        let lo = calDayStart();
+        let hi = Math.max(lo + 1, calDayEnd());
+        for (const iso of this.gridDays) {
+            for (const ev of this.timedEventsForDay(iso)) {
+                const sd = new Date(ev.start), ed = new Date(ev.end || ev.start);
+                if (! Number.isNaN(sd.getTime())) lo = Math.min(lo, sd.getHours());
+                if (! Number.isNaN(ed.getTime())) hi = Math.max(hi, ed.getHours() + (ed.getMinutes() > 0 ? 1 : 0));
+            }
+        }
+        lo = Math.max(0, Math.min(lo, 23));
+        hi = Math.min(24, Math.max(hi, lo + 1));
+        return { lo, hi };
+    },
     get gridHours() {
-        const s = calDayStart(), e = Math.max(s + 1, calDayEnd());
+        const { lo, hi } = this._gridBounds();
         const out = [];
-        for (let h = s; h < e; h++) out.push(h);
+        for (let h = lo; h < hi; h++) out.push(h);
         return out;
     },
     get rangeLabel() {
@@ -385,7 +403,7 @@ export default (labels = {}) => ({
     // Absolute position of a timed event within the day column (48px per hour).
     eventStyle(ev) {
         const rowH = 48;
-        const s = calDayStart();
+        const s = this._gridBounds().lo;
         const sd = new Date(ev.start), ed = new Date(ev.end || ev.start);
         let startMin = (sd.getHours() * 60 + sd.getMinutes()) - s * 60;
         let endMin = (ed.getHours() * 60 + ed.getMinutes()) - s * 60;
