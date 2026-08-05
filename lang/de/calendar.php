@@ -85,4 +85,6 @@ return [
     'sub_add' => 'Abonnieren',
     'sub_none' => 'Noch keine Abos.',
     'sub_refresh' => 'Aktualisieren',
+    'color' => 'Farbe',
+    'sys_birthdays_hint' => 'Aus deinen Kontakten',
 ];

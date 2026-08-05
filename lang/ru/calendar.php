@@ -85,4 +85,6 @@ return [
     'sub_add' => 'Подписаться',
     'sub_none' => 'Пока нет подписок.',
     'sub_refresh' => 'Обновить',
+    'color' => 'Farbe',
+    'sys_birthdays_hint' => 'Из ваших контактов',
 ];
