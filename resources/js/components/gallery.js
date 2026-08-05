@@ -14,6 +14,10 @@ import {
     THUMB_WIDTH, MEDIUM_WIDTH, THUMB_QUALITY, MEDIUM_QUALITY,
 } from '../shared/gallery-derive';
 
+// Last time a gallery blob-reconcile actually ran — dedupes bursts across
+// component re-mounts (module scope, like files.js `_filesReconAt`).
+let _galleryReconAt = 0;
+
 export default (config = {}, labels = {}) => {
 // Non-reactive caches. Decrypted CLIP/face embeddings are large float arrays;
 // keeping them OFF the Alpine component (out of the reactive proxy) is critical
@@ -2446,7 +2450,19 @@ return {
     async refreshUsage() {
         try { const r = await fetch(config.usageUrl, { cache: 'no-store', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }); if (r.ok) this.usage = await r.json(); } catch (e) { /* keep */ }
     },
+    // Debounced + deduped like files.js: reconcile is called on every load /
+    // delete / purge, and with mobile apps uploading concurrently the raw
+    // per-call rate blew through the throttle (429). Coalesce bursts (1.5s) and
+    // skip if one already ran in the last 60s. Best-effort (429/errors swallowed).
+    _reconcileTimer: null,
     reconcileBlobs() {
+        clearTimeout(this._reconcileTimer);
+        this._reconcileTimer = setTimeout(() => this._reconcileNow(), 1500);
+    },
+    async _reconcileNow() {
+        if (this.state !== 'ready') return;
+        if (Date.now() - _galleryReconAt < 60000) return;
+        _galleryReconAt = Date.now();
         const blobs = [];
         for (const p of this.index.photos) {
             for (const ref of [p.originalRef, p.thumbRef, p.mediumRef, p.motionRef, p.metaRef]) if (ref) blobs.push(ref);
@@ -2455,8 +2471,10 @@ return {
         // The shard blobs hold the photo records themselves — keep them too, or the
         // sweep would treat the whole library index as orphaned.
         for (const ref of window.LLGalleryStore.shardRefs()) blobs.push(ref);
-        postForm(config.reconcileUrl, { blobs: [...new Set(blobs)], allow_empty: 1 })
-            .then((u) => { if (u) this.usage = u; }).catch(() => {});
+        try {
+            const u = await postForm(config.reconcileUrl, { blobs: [...new Set(blobs)], allow_empty: 1 });
+            if (u) this.usage = u;
+        } catch { /* best effort — 429/transient swallowed */ }
     },
 
     fmtBytes: formatBytes,

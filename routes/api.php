@@ -131,7 +131,7 @@ Route::prefix('v1')->group(function (): void {
         // Store v3 (§4.2/A10b): sealed files index (own sharded store, out of the monolith).
         Route::get('/files/store', [FilesStoreController::class, 'show'])->middleware('module:files')->name('api.files.store.show');
         Route::put('/files/store', [FilesStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:files'])->name('api.files.store.save');
-        Route::post('/files/blobs/reconcile', [FileController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.files.reconcile');
+        Route::post('/files/blobs/reconcile', [FileController::class, 'reconcile'])->middleware('throttle:600,1')->name('api.files.reconcile');
         Route::post('/files/upload', [FileController::class, 'upload'])->middleware('throttle:1200,1')->name('api.files.upload');
         Route::post('/files/upload/init', [FileController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.files.upload.init');
         Route::post('/files/upload/part', [FileController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.files.upload.part');
@@ -146,14 +146,14 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/notes/upload', [NoteBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('api.notes.upload');
         Route::get('/notes/raw/{blob}', [NoteBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.notes.raw');
         Route::post('/notes/raw-batch', [NoteBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.notes.raw-batch');
-        Route::post('/notes/blobs/reconcile', [NoteBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.notes.reconcile');
+        Route::post('/notes/blobs/reconcile', [NoteBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('api.notes.reconcile');
 
         Route::get('/invoices/store', [InvoicesStoreController::class, 'show'])->middleware('module:finance')->name('api.invoices.store.show');
         Route::put('/invoices/store', [InvoicesStoreController::class, 'save'])->middleware(['throttle:120,1', 'module:finance'])->name('api.invoices.store.save');
         Route::post('/invoices/upload', [InvoiceBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('api.invoices.upload');
         Route::get('/invoices/raw/{blob}', [InvoiceBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.invoices.raw');
         Route::post('/invoices/raw-batch', [InvoiceBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.invoices.raw-batch');
-        Route::post('/invoices/blobs/reconcile', [InvoiceBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.invoices.reconcile');
+        Route::post('/invoices/blobs/reconcile', [InvoiceBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('api.invoices.reconcile');
         // Transient server-side OCR of a raw (decrypted) receipt: returns line-structured
         // text only (recognition is client-side). Nothing is persisted/logged — same
         // transient-cleartext window as /gallery/process. Best-effort for the client.
@@ -203,7 +203,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/passwords/upload', [PasswordBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('api.passwords.upload');
         Route::get('/passwords/raw/{blob}', [PasswordBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.passwords.raw');
         Route::post('/passwords/raw-batch', [PasswordBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.passwords.raw-batch');
-        Route::post('/passwords/blobs/reconcile', [PasswordBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.passwords.reconcile');
+        Route::post('/passwords/blobs/reconcile', [PasswordBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('api.passwords.reconcile');
         Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.files.blob.destroy');
 
         // File / folder public share links: create, update metadata, revoke.
@@ -216,7 +216,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->middleware('module:gallery')->name('api.gallery.store.show');
         Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:1200,1', 'module:gallery'])->name('api.gallery.store.save');
         Route::get('/gallery/usage', [GalleryBlobController::class, 'usage'])->name('api.gallery.usage');
-        Route::post('/gallery/blobs/reconcile', [GalleryBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.gallery.reconcile');
+        Route::post('/gallery/blobs/reconcile', [GalleryBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('api.gallery.reconcile');
         Route::post('/gallery/upload', [GalleryBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('api.gallery.upload');
         Route::post('/gallery/upload/init', [GalleryBlobController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.gallery.upload.init');
         Route::post('/gallery/upload/part', [GalleryBlobController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.gallery.upload.part');
@@ -250,7 +250,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/contacts/store/history', [ContactsStoreController::class, 'history'])->middleware('module:contacts')->name('api.contacts.store.history');
         Route::get('/contacts/store/history/{version}', [ContactsStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:contacts')->name('api.contacts.store.history.version');
         Route::get('/contacts/usage', [ContactBlobController::class, 'usage'])->name('api.contacts.usage');
-        Route::post('/contacts/blobs/reconcile', [ContactBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.contacts.reconcile');
+        Route::post('/contacts/blobs/reconcile', [ContactBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('api.contacts.reconcile');
         Route::post('/contacts/upload', [ContactBlobController::class, 'upload'])->middleware('throttle:600,1')->name('api.contacts.upload');
         Route::post('/contacts/raw-batch', [ContactBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.contacts.raw-batch');
         Route::get('/contacts/raw/{blob}', [ContactBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.contacts.raw');
@@ -261,7 +261,7 @@ Route::prefix('v1')->group(function (): void {
         // Explore (map/GPS): records live in the opaque `explore` module store
         // (GET/PUT /store/explore); these are only the optional raw track blobs.
         Route::get('/explore/usage', [ExploreBlobController::class, 'usage'])->name('api.explore.usage');
-        Route::post('/explore/blobs/reconcile', [ExploreBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.explore.reconcile');
+        Route::post('/explore/blobs/reconcile', [ExploreBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('api.explore.reconcile');
         Route::post('/explore/upload', [ExploreBlobController::class, 'upload'])->middleware('throttle:600,1')->name('api.explore.upload');
         Route::get('/explore/raw/{blob}', [ExploreBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.explore.raw');
         Route::delete('/explore/blob/{blob}', [ExploreBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.explore.blob.destroy');

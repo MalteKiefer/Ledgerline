@@ -238,7 +238,7 @@ Route::middleware('auth')->group(function (): void {
     Route::put('/files/store', [FilesStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:files'])->name('files.store.save');
     // Reclaim blobs the (sealed) manifest no longer references — the client sends
     // its live blob set; owner-scoped, grace-gated pruning of the quota ledger.
-    Route::post('/files/blobs/reconcile', [FileController::class, 'reconcile'])->middleware('throttle:120,1')->name('files.blobs.reconcile');
+    Route::post('/files/blobs/reconcile', [FileController::class, 'reconcile'])->middleware('throttle:600,1')->name('files.blobs.reconcile');
     // Throttled to blunt a large-body upload flood (disk-fill / worker-hold),
     // while staying generous enough for a normal batch upload.
     Route::post('/files/upload', [FileController::class, 'upload'])
@@ -258,7 +258,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/notes/upload', [NoteBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('notes.upload');
     Route::get('/notes/raw/{blob}', [NoteBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('notes.raw');
     Route::post('/notes/raw-batch', [NoteBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('notes.raw-batch');
-    Route::post('/notes/blobs/reconcile', [NoteBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('notes.blobs.reconcile');
+    Route::post('/notes/blobs/reconcile', [NoteBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('notes.blobs.reconcile');
 
     Route::get('/invoices/store', [InvoicesStoreController::class, 'show'])->middleware('module:finance')->name('invoices.store.show');
     Route::put('/invoices/store', [InvoicesStoreController::class, 'save'])->middleware(['throttle:600,1', 'module:finance'])->name('invoices.store.save');
@@ -267,7 +267,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/invoices/raw-batch', [InvoiceBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('invoices.raw-batch');
     Route::post('/invoices/send', [InvoiceMailController::class, 'send'])->middleware(['throttle:30,1', 'module:finance'])->name('invoices.send');
     Route::post('/invoices/mail-test', [InvoiceMailController::class, 'test'])->middleware(['throttle:6,1', 'module:finance'])->name('invoices.mail-test');
-    Route::post('/invoices/blobs/reconcile', [InvoiceBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('invoices.blobs.reconcile');
+    Route::post('/invoices/blobs/reconcile', [InvoiceBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('invoices.blobs.reconcile');
 
     // Mail archive (read-only for now): sealed RFC822 blobs written directly by the
     // server-side ingestor — no client upload/reconcile route yet, only owner-scoped read.
@@ -304,7 +304,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/passwords/upload', [PasswordBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('passwords.upload');
     Route::get('/passwords/raw/{blob}', [PasswordBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('passwords.raw');
     Route::post('/passwords/raw-batch', [PasswordBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('passwords.raw-batch');
-    Route::post('/passwords/blobs/reconcile', [PasswordBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('passwords.blobs.reconcile');
+    Route::post('/passwords/blobs/reconcile', [PasswordBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('passwords.blobs.reconcile');
     // Generous limit: emptying a large trash frees hundreds of blobs at once, and
     // each delete is owner-scoped, idempotent and cheap (unlink + ledger row).
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('files.blob.destroy');
@@ -355,7 +355,7 @@ Route::middleware('auth')->group(function (): void {
 
     // Opaque zero-knowledge gallery content blobs (ciphertext bytes only).
     Route::get('/gallery/usage', [GalleryBlobController::class, 'usage'])->name('gallery.usage');
-    Route::post('/gallery/blobs/reconcile', [GalleryBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('gallery.blobs.reconcile');
+    Route::post('/gallery/blobs/reconcile', [GalleryBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('gallery.blobs.reconcile');
     Route::post('/gallery/upload', [GalleryBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('gallery.upload');
     Route::post('/gallery/upload/init', [GalleryBlobController::class, 'chunkInit'])->middleware('throttle:600,1')->name('gallery.upload.init');
     Route::post('/gallery/upload/part', [GalleryBlobController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('gallery.upload.part');
@@ -404,7 +404,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/contacts/store/history', [ContactsStoreController::class, 'history'])->middleware('module:contacts')->name('contacts.store.history');
     Route::get('/contacts/store/history/{version}', [ContactsStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:contacts')->name('contacts.store.history.version');
     Route::get('/contacts/usage', [ContactBlobController::class, 'usage'])->name('contacts.usage');
-    Route::post('/contacts/blobs/reconcile', [ContactBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('contacts.blobs.reconcile');
+    Route::post('/contacts/blobs/reconcile', [ContactBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('contacts.blobs.reconcile');
     Route::post('/contacts/upload', [ContactBlobController::class, 'upload'])->middleware('throttle:600,1')->name('contacts.upload');
     Route::post('/contacts/raw-batch', [ContactBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('contacts.raw-batch');
     Route::get('/contacts/raw/{blob}', [ContactBlobController::class, 'raw'])->middleware('throttle:600,1')->name('contacts.raw');
@@ -418,7 +418,7 @@ Route::middleware('auth')->group(function (): void {
     // controller-reuse, owner-scoped, zero-knowledge as the contacts blobs.
     Route::get('/explore', ExploreController::class)->middleware('module:explore')->name('explore');
     Route::get('/explore/usage', [ExploreBlobController::class, 'usage'])->name('explore.usage');
-    Route::post('/explore/blobs/reconcile', [ExploreBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('explore.blobs.reconcile');
+    Route::post('/explore/blobs/reconcile', [ExploreBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('explore.blobs.reconcile');
     Route::post('/explore/upload', [ExploreBlobController::class, 'upload'])->middleware('throttle:600,1')->name('explore.upload');
     Route::get('/explore/raw/{blob}', [ExploreBlobController::class, 'raw'])->middleware('throttle:600,1')->name('explore.raw');
     Route::delete('/explore/blob/{blob}', [ExploreBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('explore.blob.destroy');
