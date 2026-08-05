@@ -1280,13 +1280,28 @@ components:
         settings:
           type: object
           description: >
-            Client display feeds. `birthdays` (bool) overlays contact birthdays/
-            anniversaries (read from the ZK contacts store, client-side). `holidays`
-            is false or a country code (DE/AT/CH/GB/US) overlaying computed public
-            holidays. Both are virtual read-only events, never stored as records.
+            Client display feeds + subscriptions (all virtual read-only overlays,
+            never stored as records). `birthdays` overlays contact birthdays/
+            anniversaries (from the ZK contacts store, client-side).
+            `holidayCountries` is a list of country codes overlaying computed public
+            holidays. `birthdaysColor`/`holidaysColor` tint those feeds.
+            `subscriptions` are external public iCal feeds (fetched via
+            /calendar/ics-fetch). Legacy single-country `holidays` is migrated to
+            `holidayCountries`.
           properties:
             birthdays: { type: boolean }
-            holidays: { oneOf: [{ type: boolean }, { type: string, enum: [DE, AT, CH, GB, US] }] }
+            birthdaysColor: { type: string, description: 'Hex colour for the birthday overlay.' }
+            holidayCountries: { type: array, items: { type: string, enum: [DE, AT, CH, GB, US] } }
+            holidaysColor: { type: string, description: 'Hex colour for the holiday overlay.' }
+            subscriptions:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  url: { type: string, description: 'https:// or webcal:// iCal URL.' }
+                  color: { type: string }
 
     Calendar:
       type: object
