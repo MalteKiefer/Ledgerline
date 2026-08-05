@@ -19,6 +19,8 @@
         icsFetchUrl: '{{ route('calendar.ics-fetch') }}',
         contactsUrl: '{{ route('contacts.index') }}',
         kind: { birthday: @js(__('calendar.kind_birthday')), anniversary: @js(__('calendar.kind_anniversary')) },
+        turns: @js(__('calendar.bday_turns')),
+        annivYears: @js(__('calendar.anniv_years')),
      })">
 
     {{-- Zero-knowledge gate: calendar data decrypts with the vault key. --}}
@@ -192,8 +194,8 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-7 w-7"><path stroke-linecap="round" stroke-linejoin="round" :d="calIconPath('cake')"></path></svg>
           </div>
           <h3 class="mt-3 text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="bdayDetail?.name"></h3>
-          <p class="text-sm text-gray-500" x-text="bdayDetail ? (kind[bdayDetail.kind] || '') : ''"></p>
-          <p x-show="bdayDetail?.age != null" x-cloak class="mt-2 text-sm font-medium text-accent" x-text="'{{ __('calendar.bday_turns') }}'.replace(':n', bdayDetail?.age)"></p>
+          <p class="text-sm text-gray-500" x-text="bdayKindText(bdayDetail)"></p>
+          <p x-show="bdayDetail?.age != null" x-cloak class="mt-2 text-sm font-medium text-accent" x-text="bdayAgeText(bdayDetail)"></p>
           <p class="mt-1 text-sm text-gray-600 dark:text-gray-300" x-text="bdayDateLabel(bdayDetail)"></p>
           <div class="mt-5 flex justify-center gap-2">
             <x-button variant="secondary" @click="closeBdayDetail()">{{ __('common.close') }}</x-button>

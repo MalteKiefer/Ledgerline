@@ -570,7 +570,12 @@ export default (labels = {}) => ({
             this._evMap = L.map(el, { attributionControl: false, zoomControl: false }).setView([lat, lng], 14);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this._evMap);
             L.marker([lat, lng]).addTo(this._evMap);
-            setTimeout(() => { if (this._evMap) this._evMap.invalidateSize(); }, 120);
+            // The container becomes visible in the same frame (x-show); recompute the
+            // size across a few ticks so tiles render without needing a reopen.
+            const fix = () => { if (this._evMap) { this._evMap.invalidateSize(); this._evMap.setView([lat, lng], 14); } };
+            requestAnimationFrame(fix);
+            setTimeout(fix, 150);
+            setTimeout(fix, 400);
         });
     },
     _destroyEventMap() { if (this._evMap) { this._evMap.remove(); this._evMap = null; } },
@@ -699,11 +704,21 @@ export default (labels = {}) => ({
     openContact(contactId) {
         if (contactId && this.labels.contactsUrl) window.location = `${this.labels.contactsUrl}?c=${encodeURIComponent(contactId)}`;
     },
-    // The original birthday/anniversary date, nicely formatted (with year if known).
+    bdayKindText(ev) { return ev ? ((this.labels.kind || {})[ev.kind] || '') : ''; },
+    // Age line: "Turns X" for a birthday, "X years" for an anniversary.
+    bdayAgeText(ev) {
+        if (!ev || ev.age == null) return '';
+        const tmpl = ev.kind === 'anniversary' ? (this.labels.annivYears || ':n') : (this.labels.turns || ':n');
+        return tmpl.replace(':n', String(ev.age));
+    },
+    // The original date, DATE-ONLY (no time), with the year only if it is known.
     bdayDateLabel(ev) {
         if (!ev || !ev.bday) return '';
-        const s = String(ev.bday);
-        return /^\d{4}-\d{2}-\d{2}$/.test(s) ? formatDate(s) : formatDate(`2000-${s.slice(-5)}`).replace(/\s*2000/, '');
+        const raw = String(ev.bday);
+        const hasYear = /^\d{4}-\d{2}-\d{2}/.test(raw);
+        const full = hasYear ? raw.slice(0, 10) : `2000-${(raw.match(/(\d{2}-\d{2})$/) || [])[1] || '01-01'}`;
+        const s = formatDate(full);
+        return hasYear ? s : s.replace(/\b2000\b/, '').replace(/[,\s]+$/, '').trim();
     },
 
     fmtDay(iso) { return formatDate(iso); },
