@@ -140,7 +140,9 @@ async function api(method, body = null) {
         body: body ? JSON.stringify(body) : null,
     });
     if (! res.ok && res.status !== 409 && res.status !== 404) {
-        throw new Error('vault request failed');
+        const err = new Error('vault request failed');
+        err.status = res.status; // let callers show a rate-limit message on 429
+        throw err;
     }
     return res.json();
 }

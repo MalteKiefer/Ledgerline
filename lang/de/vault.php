@@ -45,4 +45,5 @@ return [
     'unlock_title' => 'Tresor entsperren',
     'unlocked' => 'Entsperrt',
     'warning' => 'Wenn du Passwort und Wiederherstellungscode verlierst, sind deine verschlüsselten Dateien nicht wiederherstellbar.',
+    'err_busy' => 'Zu viele Versuche — bitte eine Minute warten und erneut versuchen.',
 ];

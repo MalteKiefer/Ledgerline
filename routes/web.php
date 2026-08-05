@@ -225,8 +225,8 @@ Route::middleware('auth')->group(function (): void {
     // Zero-knowledge encryption vault (Files): the server only stores ciphertext
     // and KDF params — never the passphrase, recovery code or vault key.
     Route::get('/vault', [VaultController::class, 'show'])->name('vault.show');
-    Route::post('/vault', [VaultController::class, 'store'])->middleware('throttle:10,1')->name('vault.store');
-    Route::put('/vault', [VaultController::class, 'rotate'])->middleware('throttle:10,1')->name('vault.rotate');
+    Route::post('/vault', [VaultController::class, 'store'])->middleware('throttle:60,1')->name('vault.store');
+    Route::put('/vault', [VaultController::class, 'rotate'])->middleware('throttle:60,1')->name('vault.rotate');
 
     // Files: the whole directory tree (names, folders, tags, notes, trash flags,
     // version history) lives in the sealed opaque store; the server only handles

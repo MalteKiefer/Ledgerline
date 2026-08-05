@@ -104,8 +104,8 @@ Route::prefix('v1')->group(function (): void {
         // Vault lifecycle for native clients (no browser): first-time provisioning +
         // passphrase rotation. Carries only wrapped key material + KDF params — never
         // the plaintext vault key (ZK). Same controller as web, throttled like it.
-        Route::post('/vault', [VaultController::class, 'store'])->middleware('throttle:10,1')->name('api.vault.store');
-        Route::put('/vault', [VaultController::class, 'rotate'])->middleware('throttle:10,1')->name('api.vault.rotate');
+        Route::post('/vault', [VaultController::class, 'store'])->middleware('throttle:60,1')->name('api.vault.store');
+        Route::put('/vault', [VaultController::class, 'rotate'])->middleware('throttle:60,1')->name('api.vault.rotate');
 
         // Per-module sealed stores (Store v3 split): one opaque row per module.
         Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->middleware('module')->name('api.module-store.show');

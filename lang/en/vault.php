@@ -45,4 +45,5 @@ return [
     'unlock_title' => 'Unlock the vault',
     'unlocked' => 'Unlocked',
     'warning' => 'If you lose both the passphrase and the recovery code, your encrypted files cannot be recovered.',
+    'err_busy' => 'Too many attempts — wait a minute and try again.',
 ];
