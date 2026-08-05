@@ -75,6 +75,7 @@ return [
     'feed_birthday' => ':name (Birthday)',
     'feed_anniversary' => ':name (Anniversary)',
     'bday_turns' => 'Turns :n',
+    'anniv_years' => ':n year(s)',
     'open_contact' => 'Open contact',
     'kind_birthday' => 'Birthday',
     'kind_anniversary' => 'Anniversary',

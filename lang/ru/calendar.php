@@ -75,6 +75,7 @@ return [
     'feed_birthday' => ':name (день рождения)',
     'feed_anniversary' => ':name (годовщина)',
     'bday_turns' => 'Исполняется :n',
+    'anniv_years' => ':n лет',
     'open_contact' => 'Открыть контакт',
     'kind_birthday' => 'День рождения',
     'kind_anniversary' => 'Годовщина',
