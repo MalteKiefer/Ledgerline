@@ -31,6 +31,19 @@ class StoreTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_calendar_is_an_allowed_module(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->putJson(route('module-store.save', 'calendar'), ['ciphertext' => 'cal', 'version' => 0])
+            ->assertOk()
+            ->assertJson(['version' => 1]);
+
+        $this->actingAs($user)->getJson(route('module-store.show', 'calendar'))
+            ->assertOk()
+            ->assertJson(['ciphertext' => 'cal', 'version' => 1]);
+    }
+
     public function test_saving_advances_the_version_and_persists(): void
     {
         $user = User::factory()->create();

@@ -17,6 +17,7 @@ return [
         'todos' => 'Задачи',
         'health' => 'Здоровье',
         'explore' => 'Карта',
+        'calendar' => 'Календарь',
         'more' => 'Ещё',
     ],
     'menu' => [

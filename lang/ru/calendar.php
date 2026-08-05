@@ -1,0 +1,30 @@
+<?php
+
+declare(strict_types=1);
+
+return [
+    'title' => 'Календарь',
+    'add_event' => 'Новое событие',
+    'edit_event' => 'Изменить событие',
+    'delete_event' => 'Удалить событие',
+    'today' => 'Сегодня',
+    'prev_month' => 'Предыдущий месяц',
+    'next_month' => 'Следующий месяц',
+    'no_events' => 'Нет событий в этот день.',
+    'all_day' => 'Весь день',
+    'untitled' => '(без названия)',
+    'event_title' => 'Название',
+    'title_required' => 'Требуется название.',
+    'calendar' => 'Календарь',
+    'starts' => 'Начало',
+    'ends' => 'Конец',
+    'location' => 'Место',
+    'description' => 'Заметки',
+    'calendars' => 'Календари',
+    'manage_calendars' => 'Управление календарями',
+    'new_calendar' => 'Новый календарь',
+    'calendar_name' => 'Название календаря',
+    'default_calendar' => 'Личный',
+    'default' => 'По умолчанию',
+    'set_default' => 'Сделать основным',
+];
