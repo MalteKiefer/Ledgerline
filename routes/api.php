@@ -6,6 +6,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController as ApiBackupController;
 use App\Http\Controllers\Api\CalendarReminderController;
+use App\Http\Controllers\Api\CalendarSubscriptionController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
 use App\Http\Controllers\Api\InvoiceOcrController;
@@ -188,6 +189,7 @@ Route::prefix('v1')->group(function (): void {
         // Calendar: records live in the opaque /store/calendar manifest (generic
         // module-store routes). Only the opaque reminder queue needs its own route.
         Route::put('/calendar/reminders', [CalendarReminderController::class, 'update'])->middleware(['throttle:60,1', 'module:calendar'])->name('api.calendar.reminders');
+        Route::get('/calendar/ics-fetch', [CalendarSubscriptionController::class, 'fetch'])->middleware(['throttle:30,1', 'module:calendar'])->name('api.calendar.ics-fetch');
 
         // Per-user Paperless-ngx integration: cached term quick-picks, live term
         // creation, document forwarding, and cache sync. The /documents endpoint is

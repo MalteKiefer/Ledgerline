@@ -16,6 +16,7 @@
         import_done: @js(__('calendar.import_done')),
         feed: { birthday: @js(__('calendar.feed_birthday')), anniversary: @js(__('calendar.feed_anniversary')) },
         remindersUrl: '{{ route('calendar.reminders') }}',
+        icsFetchUrl: '{{ route('calendar.ics-fetch') }}',
      })">
 
     {{-- Zero-knowledge gate: calendar data decrypts with the vault key. --}}
@@ -384,6 +385,36 @@
                     <option :value="cc" :selected="feedHolidays === cc" x-text="cc"></option>
                   </template>
                 </select>
+              </div>
+            </div>
+
+            {{-- Subscribed public calendars (.ics URL) --}}
+            <div class="mt-3 border-t border-black/[0.06] dark:border-white/10 pt-3">
+              <div class="mb-2 flex items-center justify-between px-1">
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ __('calendar.sub_heading') }}</p>
+                <button type="button" x-show="subscriptions.length" @click="refreshSubscriptions()" class="text-xs text-accent hover:underline" :class="_subBusy ? 'opacity-50' : ''">{{ __('calendar.sub_refresh') }}</button>
+              </div>
+              <template x-if="!subscriptions.length">
+                <p class="px-1 text-xs text-gray-400">{{ __('calendar.sub_none') }}</p>
+              </template>
+              <div class="space-y-1.5">
+                <template x-for="s in subscriptions" :key="s.id">
+                  <div class="flex items-center gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                    <span class="h-3.5 w-3.5 shrink-0 rounded-full" :style="{ background: s.color }"></span>
+                    <span class="min-w-0 flex-1 truncate text-sm text-gray-900 dark:text-gray-100" x-text="s.name" :title="s.url"></span>
+                    <x-icon-button name="trash" tone="red" size="sm" @click="removeSubscription(s.id)" :aria-label="__('common.delete')" />
+                  </div>
+                </template>
+              </div>
+              <div class="mt-2 space-y-1.5 rounded-xl border border-black/[0.06] dark:border-white/10 p-2">
+                <input type="text" x-model="_subForm.name" placeholder="{{ __('calendar.sub_name') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm focus:border-accent focus:ring-accent">
+                <div class="flex gap-2">
+                  <input type="url" x-model="_subForm.url" placeholder="{{ __('calendar.sub_url') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm focus:border-accent focus:ring-accent">
+                  <input type="color" x-model="_subForm.color" class="h-9 w-10 shrink-0 rounded-md border border-gray-300 dark:border-gray-700">
+                </div>
+                <div class="text-right">
+                  <x-button variant="primary" size="sm" @click="addSubscription()">{{ __('calendar.sub_add') }}</x-button>
+                </div>
               </div>
             </div>
           </div>

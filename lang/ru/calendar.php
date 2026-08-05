@@ -74,4 +74,10 @@ return [
     'holidays_off' => 'Выкл',
     'feed_birthday' => ':name (день рождения)',
     'feed_anniversary' => ':name (годовщина)',
+    'sub_heading' => 'Подписки на календари',
+    'sub_name' => 'Название',
+    'sub_url' => 'iCal-URL (https или webcal)',
+    'sub_add' => 'Подписаться',
+    'sub_none' => 'Пока нет подписок.',
+    'sub_refresh' => 'Обновить',
 ];

@@ -74,4 +74,10 @@ return [
     'holidays_off' => 'Aus',
     'feed_birthday' => ':name (Geburtstag)',
     'feed_anniversary' => ':name (Jahrestag)',
+    'sub_heading' => 'Abonnierte Kalender',
+    'sub_name' => 'Name',
+    'sub_url' => 'iCal-URL (https oder webcal)',
+    'sub_add' => 'Abonnieren',
+    'sub_none' => 'Noch keine Abos.',
+    'sub_refresh' => 'Aktualisieren',
 ];

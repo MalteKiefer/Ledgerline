@@ -7324,6 +7324,36 @@ paths:
         "403": { description: Module disabled. }
         "429": { description: Rate limit exceeded. }
 
+  /calendar/ics-fetch:
+    get:
+      tags: [Calendar]
+      operationId: calendarIcsFetch
+      summary: Fetch a subscribed public iCalendar feed (SSRF-guarded proxy)
+      description: >
+        Fetches a PUBLIC .ics feed the user subscribed to and returns its body so the
+        client can parse + overlay it read-only. The subscription list (URLs) lives
+        client-side in the sealed calendar store; the client passes one URL here. A
+        user-initiated, SSRF-guarded outbound fetch of PUBLIC data (holidays, sports,
+        …) — same class as geocode/maps-resolve. `webcal://` is normalised to https.
+        Nothing is persisted/logged (Cache-Control: no-store); the body is capped
+        (~2 MB) and must contain BEGIN:VCALENDAR. Throttle 30/min.
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema: { type: string, maxLength: 2048 }
+          description: The https:// or webcal:// iCalendar URL to fetch.
+      responses:
+        "200":
+          description: The iCalendar body.
+          content:
+            application/json:
+              schema: { type: object, properties: { ics: { type: string } } }
+        "422": { description: Unsafe URL (SSRF-blocked) or the response is not iCalendar. }
+        "502": { description: Fetch failed. }
+        "403": { description: Module disabled. }
+        "429": { description: Rate limit exceeded. }
+
   /mail/messages/{message}/envelope:
     post:
       tags: [Mail]
