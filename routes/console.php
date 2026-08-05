@@ -28,6 +28,11 @@ Schedule::command('mail:sync-accounts')
     ->everyMinute()
     ->withoutOverlapping();
 
+// Fire due calendar reminders (opaque timestamps → generic push). Every minute.
+Schedule::command('calendar:dispatch-reminders')
+    ->everyMinute()
+    ->withoutOverlapping();
+
 // Reclaim stored file/gallery bytes on disk with no ownership record (leaked/
 // aborted uploads, or bytes orphaned by an interrupted erasure). The client
 // reconciles manifest-unreferenced blobs on its own; this is the crash net.

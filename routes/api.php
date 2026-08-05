@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController as ApiBackupController;
+use App\Http\Controllers\Api\CalendarReminderController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
 use App\Http\Controllers\Api\InvoiceOcrController;
@@ -183,6 +184,10 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/mail/messages/seen', [MailSeenController::class, 'update'])->middleware(['throttle:120,1', 'module:mail'])->name('api.mail.messages.seen');
         Route::post('/mail/messages/{message}/envelope', MailEnvelopeController::class)->middleware(['throttle:6000,1', 'module:mail'])->name('api.mail.messages.envelope');
         Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->middleware(['throttle:600,1', 'module:mail'])->name('api.mail.raw');
+
+        // Calendar: records live in the opaque /store/calendar manifest (generic
+        // module-store routes). Only the opaque reminder queue needs its own route.
+        Route::put('/calendar/reminders', [CalendarReminderController::class, 'update'])->middleware(['throttle:60,1', 'module:calendar'])->name('api.calendar.reminders');
 
         // Per-user Paperless-ngx integration: cached term quick-picks, live term
         // creation, document forwarding, and cache sync. The /documents endpoint is

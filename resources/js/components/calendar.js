@@ -7,7 +7,7 @@
 import { zkModule } from '../shared/zk-module';
 import { newId } from '../shared/sealed-store';
 import { formatDate } from '../shared/dom';
-import { getJson } from '../shared/api';
+import { getJson, postForm } from '../shared/api';
 import { collectReminders, REMINDER_PRESETS } from '../shared/calendar-reminders';
 import {
     ymd, monthMatrix, eventsOnDay, timeLabel, CALENDAR_COLORS,
@@ -84,6 +84,7 @@ export default (labels = {}) => ({
     _remClock: null,
     _firedReminders: new Set(),
     _lastScanMs: 0,
+    _remSyncTimer: null,
 
     calMgrOpen: false,
     _calForm: null,    // { id, name, color } or null
@@ -267,6 +268,7 @@ export default (labels = {}) => ({
         }
         this._mut++;
         this._save();
+        this._queueRemSync();
         this.closeEditor();
     },
 
@@ -284,6 +286,7 @@ export default (labels = {}) => ({
         }
         this._mut++;
         this._save();
+        this._queueRemSync();
         this.closeEditor();
     },
 
@@ -380,6 +383,27 @@ export default (labels = {}) => ({
         // First scan shortly after load (also nudges permission if reminders exist).
         setTimeout(() => this._scanReminders(), 2_000);
         if ((this.events || []).some((e) => Array.isArray(e.reminders) && e.reminders.length)) this._requestNotifyPermission();
+        // Register the durable server-push set once on load.
+        this._queueRemSync();
+    },
+
+    // Debounced upload of the upcoming reminder fire-times (opaque timestamps) so
+    // the server can push even when the app is closed. Best-effort.
+    _queueRemSync() {
+        clearTimeout(this._remSyncTimer);
+        this._remSyncTimer = setTimeout(() => this._syncReminders(), 1_500);
+    },
+    async _syncReminders() {
+        try {
+            const now = Date.now();
+            const horizon = now + 60 * 86_400_000; // 60 days
+            const list = collectReminders(this.events, now, horizon).map((r) => ({
+                event_id: r.eventId,
+                recurrence_id: r.recurrenceId,
+                remind_at: new Date(r.fireMs).toISOString(),
+            }));
+            await postForm(this.labels.remindersUrl || '/calendar/reminders', { reminders: list }, 'PUT');
+        } catch { /* best-effort; local scheduler still covers the open tab */ }
     },
     _stopRemClock() {
         if (this._remClock) { clearInterval(this._remClock); this._remClock = null; }

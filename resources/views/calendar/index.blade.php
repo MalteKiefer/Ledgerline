@@ -13,6 +13,7 @@
             hours: @js(__('calendar.rem_hours')), days: @js(__('calendar.rem_days')),
         },
         untitled: @js(__('calendar.untitled')),
+        remindersUrl: '{{ route('calendar.reminders') }}',
      })">
 
     {{-- Zero-knowledge gate: calendar data decrypts with the vault key. --}}
