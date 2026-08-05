@@ -2256,7 +2256,7 @@ paths:
           (mailkeys holds the sealed PGP private/public keys for the mail archive.)
         schema:
           type: string
-          enum: [notes, todos, bookmarks, contacts, invoices, passwords, health, sharing, explore]
+          enum: [notes, todos, bookmarks, contacts, invoices, passwords, health, sharing, explore, mailkeys]
     get:
       tags: [Store]
       operationId: moduleStoreShow
