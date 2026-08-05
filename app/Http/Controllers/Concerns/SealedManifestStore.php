@@ -215,7 +215,7 @@ trait SealedManifestStore
                 }
             }
 
-            $version = DB::transaction(function () use ($request, $ciphertext, $expectedVersion, $model, $key): ?int {
+            $version = DB::transaction(function () use ($request, $ciphertext, $expectedVersion, $model, $key, $auditModule, $uid): ?int {
                 $row = $this->manifestScope($request, $model::query())->lockForUpdate()->first();
                 $current = (int) ($row?->version ?? 0);
                 if ($current !== $expectedVersion) {
@@ -223,6 +223,19 @@ trait SealedManifestStore
                 }
                 $v = $current + 1;
                 $model::query()->updateOrCreate($key, ['ciphertext' => $ciphertext, 'version' => $v]);
+
+                // Recovery snapshot is written ATOMICALLY with the live root: either both
+                // the live version AND its store_history snapshot commit, or neither. A
+                // post-commit request abort (client/worker timeout after a large seal —
+                // the 2026-08-05 104 KiB todos incident) could otherwise persist a live
+                // version with no recoverable trail. Throwing here rolls the whole write
+                // back → the client retries; better than an unrecoverable live version.
+                if ($auditModule !== null) {
+                    StoreHistory::query()->updateOrCreate(
+                        ['user_id' => $uid, 'module' => $auditModule, 'version' => $v],
+                        ['ciphertext' => $ciphertext, 'created_at' => now()],
+                    );
+                }
 
                 return $v;
             });
@@ -261,10 +274,10 @@ trait SealedManifestStore
         // versions pinpoints the write that added or DROPPED a shard — the single most
         // useful signal when reconstructing a data-loss event.
         if ($auditModule !== null) {
-            // Recovery net: retain this sealed root so an earlier version can be
-            // pulled back if a later save dropped a record (store:anomaly-scan flags
-            // the drop; this makes it undoable). Opaque ciphertext — ZK preserved.
-            $this->recordHistory($request, $auditModule, $ciphertext, $next);
+            // The recovery snapshot was already committed atomically with the live root
+            // (inside the transaction above). Here we only prune to the last N versions —
+            // best-effort cleanup that must never break the (already-persisted) save.
+            $this->pruneHistory((int) $this->requireUser($request)->id, $auditModule);
 
             $counts = $this->manifestCounts($request);
             BlobAudit::record('root_write', $auditModule, [
@@ -346,18 +359,16 @@ trait SealedManifestStore
     }
 
     /**
-     * Persist this sealed root as history and prune to the last N versions per
-     * (user, module). Best-effort: a history failure must never break the save.
+     * Prune the retained sealed-root history to the last N versions per (user, module).
+     * The snapshot INSERT itself is done atomically inside save()'s write transaction
+     * (so no live version can exist without a recovery snapshot); this prune runs
+     * post-commit and is best-effort — a prune failure must never break the (already
+     * persisted) save. Retention across a version reset is monotonic-by-version, so a
+     * lower version reused after a reset does not evict the newest snapshots.
      */
-    private function recordHistory(Request $request, string $module, string $ciphertext, int $version): void
+    private function pruneHistory(int $uid, string $module): void
     {
         try {
-            $uid = (int) $this->requireUser($request)->id;
-            StoreHistory::query()->updateOrCreate(
-                ['user_id' => $uid, 'module' => $module, 'version' => $version],
-                ['ciphertext' => $ciphertext, 'created_at' => now()],
-            );
-
             $keepCfg = config('store.history_versions', 20);
             $keep = is_numeric($keepCfg) ? max(1, (int) $keepCfg) : 20;
             $cutoff = StoreHistory::query()
@@ -375,7 +386,7 @@ trait SealedManifestStore
                     ->delete();
             }
         } catch (\Throwable) {
-            // Recovery history is best-effort; never break the audited save.
+            // Retention prune is best-effort; never break the persisted save.
         }
     }
 
