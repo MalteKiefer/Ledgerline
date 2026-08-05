@@ -50,4 +50,7 @@ return [
     'rem_hours' => ':n hours before',
     'rem_days' => ':n days before',
     'location_searching' => 'Searching…',
+    'import' => 'Import (.ics)',
+    'export' => 'Export (.ics)',
+    'import_done' => ':n events imported',
 ];

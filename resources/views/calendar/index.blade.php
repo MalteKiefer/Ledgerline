@@ -13,6 +13,7 @@
             hours: @js(__('calendar.rem_hours')), days: @js(__('calendar.rem_days')),
         },
         untitled: @js(__('calendar.untitled')),
+        import_done: @js(__('calendar.import_done')),
         remindersUrl: '{{ route('calendar.reminders') }}',
      })">
 
@@ -41,6 +42,9 @@
           <x-button variant="secondary" size="sm" @click="goToday()">{{ __('calendar.today') }}</x-button>
         </div>
         <div class="flex items-center gap-2">
+          <input type="file" x-ref="icsInput" accept=".ics,text/calendar" class="hidden" @change="importIcs($event.target.files); $event.target.value = ''">
+          <x-button variant="secondary" size="sm" icon="arrow-down-tray" @click="$refs.icsInput.click()">{{ __('calendar.import') }}</x-button>
+          <x-button variant="secondary" size="sm" icon="arrow-up-tray" @click="exportIcs()">{{ __('calendar.export') }}</x-button>
           <x-button variant="secondary" size="sm" icon="cog-6-tooth" @click="openCalMgr()">{{ __('calendar.calendars') }}</x-button>
           <x-button variant="primary" size="sm" icon="plus" @click="openNew()">{{ __('calendar.add_event') }}</x-button>
         </div>

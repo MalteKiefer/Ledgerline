@@ -50,4 +50,7 @@ return [
     'rem_hours' => 'за :n часов',
     'rem_days' => 'за :n дней',
     'location_searching' => 'Поиск…',
+    'import' => 'Импорт (.ics)',
+    'export' => 'Экспорт (.ics)',
+    'import_done' => 'импортировано событий: :n',
 ];

@@ -6,7 +6,8 @@
 // arrays are the (non-Alpine-reactive) store data.
 import { zkModule } from '../shared/zk-module';
 import { newId } from '../shared/sealed-store';
-import { formatDate } from '../shared/dom';
+import { formatDate, saveBlobAs } from '../shared/dom';
+import { parseIcs, buildIcs } from '../shared/ical';
 import { getJson, postForm } from '../shared/api';
 import { collectReminders, REMINDER_PRESETS } from '../shared/calendar-reminders';
 import {
@@ -423,6 +424,52 @@ export default (labels = {}) => ({
                 });
             } catch { /* notifications unavailable */ }
         }
+    },
+
+    // ---- iCalendar import / export (client-only, ZK) ----
+    exportIcs() {
+        const name = (this.calendars[0] && this.calendars[0].name) || 'Ledgerline';
+        const ics = buildIcs(this.events, name);
+        saveBlobAs(new Blob([ics], { type: 'text/calendar' }), 'ledgerline-calendar.ics');
+    },
+    async importIcs(fileList) {
+        const files = Array.from(fileList || []);
+        if (!files.length) return;
+        const calId = this._defaultCalendarId();
+        const now = new Date().toISOString();
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        let added = 0;
+        for (const file of files) {
+            let text = '';
+            try { text = await file.text(); } catch { continue; }
+            for (const e of parseIcs(text)) {
+                if (!e.start) continue;
+                this.events.push({
+                    id: newId(),
+                    calendarId: calId,
+                    title: e.title || '',
+                    description: e.description || '',
+                    location: e.location || null,
+                    allDay: !!e.allDay,
+                    start: e.start,
+                    end: e.end || e.start,
+                    tz,
+                    rrule: e.rrule || null,
+                    exdates: Array.isArray(e.exdates) ? e.exdates : [],
+                    reminders: Array.isArray(e.reminders) ? e.reminders : [],
+                    status: 'confirmed',
+                    createdAt: now,
+                    updatedAt: now,
+                });
+                added++;
+            }
+        }
+        if (added) {
+            this._mut++;
+            this._save();
+            this._queueRemSync();
+        }
+        window.llToast?.((this.labels.import_done || ':n imported').replace(':n', added));
     },
 
     fmtDay(iso) { return formatDate(iso); },
