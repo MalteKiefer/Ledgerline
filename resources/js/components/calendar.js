@@ -711,17 +711,18 @@ export default (labels = {}) => ({
         const tmpl = ev.kind === 'anniversary' ? (this.labels.annivYears || ':n') : (this.labels.turns || ':n');
         return tmpl.replace(':n', String(ev.age));
     },
-    // The original date, DATE-ONLY (no time), with the year only if it is known.
+    // The original date, DATE-ONLY (never a time), with the year only if it is known.
     bdayDateLabel(ev) {
         if (!ev || !ev.bday) return '';
         const raw = String(ev.bday);
         const hasYear = /^\d{4}-\d{2}-\d{2}/.test(raw);
         const full = hasYear ? raw.slice(0, 10) : `2000-${(raw.match(/(\d{2}-\d{2})$/) || [])[1] || '01-01'}`;
-        const s = formatDate(full);
-        return hasYear ? s : s.replace(/\b2000\b/, '').replace(/[,\s]+$/, '').trim();
+        // Explicit date-only options — formatDate's default includes the time.
+        const opts = hasYear ? { year: 'numeric', month: 'long', day: 'numeric' } : { month: 'long', day: 'numeric' };
+        return formatDate(full, opts);
     },
 
-    fmtDay(iso) { return formatDate(iso); },
+    fmtDay(iso) { return formatDate(iso, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); },
 });
 
 // Split an ISO datetime into { d: yyyy-mm-dd, t: HH:MM } (local-ish; the stored
