@@ -1,6 +1,13 @@
 <x-layouts.app :title="__('calendar.title')">
   <div class="mx-auto max-w-[1700px]" x-data="calendar({
         default_calendar: @js(__('calendar.default_calendar')),
+        rrule: {
+            every: @js(__('calendar.every')),
+            freq: {
+                daily: @js(__('calendar.freq_daily')), weekly: @js(__('calendar.freq_weekly')),
+                monthly: @js(__('calendar.freq_monthly')), yearly: @js(__('calendar.freq_yearly')),
+            },
+        },
      })">
 
     {{-- Zero-knowledge gate: calendar data decrypts with the vault key. --}}
@@ -92,6 +99,7 @@
                       <span x-show="ev.allDay">{{ __('calendar.all_day') }}</span>
                       <span x-show="!ev.allDay" x-text="timeLabel(ev)"></span>
                       <span x-show="ev.location" x-text="ev.location ? ' · ' + ev.location.label : ''"></span>
+                      <span x-show="isRecurring(ev)" x-cloak class="text-accent" x-text="' · ' + rruleLabel(ev)"></span>
                     </span>
                   </span>
                 </button>
@@ -114,6 +122,14 @@
             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="editing ? '{{ __('calendar.edit_event') }}' : '{{ __('calendar.add_event') }}'"></h3>
           </div>
           <div class="flex-1 space-y-3 overflow-y-auto p-5">
+            {{-- Scope selector for editing one occurrence of a series --}}
+            <div x-show="_occRid" x-cloak class="rounded-xl bg-amber-50 dark:bg-amber-500/10 px-3 py-2">
+              <span class="block text-xs font-medium text-amber-800 dark:text-amber-300">{{ __('calendar.edit_scope') }}</span>
+              <div class="mt-1 flex gap-4 text-sm">
+                <label class="flex items-center gap-1.5"><input type="radio" value="this" x-model="editScope" class="text-accent focus:ring-accent">{{ __('calendar.scope_this') }}</label>
+                <label class="flex items-center gap-1.5"><input type="radio" value="all" x-model="editScope" class="text-accent focus:ring-accent">{{ __('calendar.scope_all') }}</label>
+              </div>
+            </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('calendar.event_title') }}</label>
               <input type="text" x-model="_form.title" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm" :class="_saveAttempted && !_form.title.trim() ? 'border-red-400 ring-1 ring-red-400' : ''">
@@ -150,6 +166,42 @@
               <div x-show="!_form.allDay">
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">&nbsp;</label>
                 <input type="time" x-model="_form.endTime" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+              </div>
+            </div>
+
+            {{-- Recurrence (hidden when editing just one occurrence) --}}
+            <div x-show="!(_occRid && editScope === 'this')">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('calendar.repeat') }}</label>
+              <select x-model="_form.repeat" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                <option value="none">{{ __('calendar.repeat_none') }}</option>
+                <option value="DAILY">{{ __('calendar.freq_daily') }}</option>
+                <option value="WEEKLY">{{ __('calendar.freq_weekly') }}</option>
+                <option value="MONTHLY">{{ __('calendar.freq_monthly') }}</option>
+                <option value="YEARLY">{{ __('calendar.freq_yearly') }}</option>
+              </select>
+              <div x-show="_form.repeat !== 'none'" x-cloak class="mt-2 space-y-2 rounded-xl border border-black/[0.06] dark:border-white/10 p-3">
+                <div class="flex items-center gap-2 text-sm">
+                  <span class="text-gray-600 dark:text-gray-400">{{ __('calendar.every') }}</span>
+                  <input type="number" min="1" max="99" x-model.number="_form.interval" class="w-16 rounded-md border-gray-300 dark:border-gray-700 text-sm focus:border-accent focus:ring-accent">
+                </div>
+                <div x-show="_form.repeat === 'WEEKLY'" class="flex flex-wrap gap-1">
+                  <template x-for="(wd, i) in weekdays" :key="wd">
+                    <button type="button" @click="toggleByday(wd)" class="h-8 w-8 rounded-full text-xs font-medium"
+                            :class="_form.byday.includes(wd) ? 'bg-accent text-white' : 'bg-black/[0.05] dark:bg-white/[0.06] text-gray-600 dark:text-gray-300'"
+                            x-text="weekdayLabels[i]"></button>
+                  </template>
+                </div>
+                <div>
+                  <span class="block text-xs font-medium text-gray-500">{{ __('calendar.ends') }}</span>
+                  <div class="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                    <label class="flex items-center gap-1.5"><input type="radio" value="never" x-model="_form.ends" class="text-accent focus:ring-accent">{{ __('calendar.ends_never') }}</label>
+                    <label class="flex items-center gap-1.5"><input type="radio" value="count" x-model="_form.ends" class="text-accent focus:ring-accent">{{ __('calendar.ends_after') }}</label>
+                    <input type="number" min="1" max="999" x-model.number="_form.count" x-show="_form.ends === 'count'" class="w-16 rounded-md border-gray-300 dark:border-gray-700 text-sm focus:border-accent focus:ring-accent">
+                    <span x-show="_form.ends === 'count'" class="text-xs text-gray-500">{{ __('calendar.occurrences') }}</span>
+                    <label class="flex items-center gap-1.5"><input type="radio" value="until" x-model="_form.ends" class="text-accent focus:ring-accent">{{ __('calendar.ends_on') }}</label>
+                    <input type="date" x-model="_form.until" x-show="_form.ends === 'until'" class="rounded-md border-gray-300 dark:border-gray-700 text-sm focus:border-accent focus:ring-accent">
+                  </div>
+                </div>
               </div>
             </div>
 

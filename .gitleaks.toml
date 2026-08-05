@@ -37,4 +37,8 @@ paths = [
     # by vendoring. High-entropy minified code, not our secret material.
     '''^resources/js/vendor/openpgp\.min\.mjs$''',
     '''^resources/js/vendor/forge\.min\.js$''',
+    # Vendored rrule.js v2.8.1 (+ its tslib helper), bundled ESM from the CDN and
+    # pinned by vendoring — recurrence expansion for the calendar. Minified, non-secret.
+    '''^resources/js/vendor/rrule\.min\.mjs$''',
+    '''^resources/js/vendor/tslib\.min\.mjs$''',
 ]
