@@ -8,6 +8,11 @@
                 monthly: @js(__('calendar.freq_monthly')), yearly: @js(__('calendar.freq_yearly')),
             },
         },
+        reminder: {
+            at_time: @js(__('calendar.rem_at_time')), minutes: @js(__('calendar.rem_minutes')),
+            hours: @js(__('calendar.rem_hours')), days: @js(__('calendar.rem_days')),
+        },
+        untitled: @js(__('calendar.untitled')),
      })">
 
     {{-- Zero-knowledge gate: calendar data decrypts with the vault key. --}}
@@ -205,9 +210,26 @@
               </div>
             </div>
 
-            <div>
+            <div class="relative">
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('calendar.location') }}</label>
-              <input type="text" x-model="_form.location" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+              <input type="text" x-model="_form.location" @input="onLocationInput()" autocomplete="off" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+              <p x-show="geoSearching" x-cloak class="mt-1 text-xs text-gray-400">{{ __('calendar.location_searching') }}</p>
+              <div x-show="geoResults.length" x-cloak @click.outside="geoResults = []" class="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-lg">
+                <template x-for="(r, i) in geoResults" :key="i">
+                  <button type="button" @click="pickLocation(r)" class="block w-full truncate px-3 py-2 text-left text-sm hover:bg-accent/5" x-text="r.display"></button>
+                </template>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('calendar.reminders') }}</label>
+              <div class="mt-1 flex flex-wrap gap-1.5">
+                <template x-for="min in reminderPresets" :key="min">
+                  <button type="button" @click="toggleReminder(min)" class="rounded-full px-2.5 py-1 text-xs font-medium"
+                          :class="hasReminder(min) ? 'bg-accent text-white' : 'bg-black/[0.05] dark:bg-white/[0.06] text-gray-600 dark:text-gray-300'"
+                          x-text="reminderLabel(min)"></button>
+                </template>
+              </div>
             </div>
 
             <div>

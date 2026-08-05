@@ -7,6 +7,8 @@
 import { zkModule } from '../shared/zk-module';
 import { newId } from '../shared/sealed-store';
 import { formatDate } from '../shared/dom';
+import { getJson } from '../shared/api';
+import { collectReminders, REMINDER_PRESETS } from '../shared/calendar-reminders';
 import {
     ymd, monthMatrix, eventsOnDay, timeLabel, CALENDAR_COLORS,
 } from '../shared/calendar-utils';
@@ -20,6 +22,9 @@ const BLANK_FORM = () => ({
     title: '',
     description: '',
     location: '',
+    locationLat: null,
+    locationLng: null,
+    reminders: [],
     allDay: false,
     startDate: '',
     startTime: '09:00',
@@ -44,6 +49,8 @@ export default (labels = {}) => ({
             self.editing = null;
             self.selectedDay = null;
             self.calMgrOpen = false;
+            self._stopRemClock();
+            self._firedReminders.clear();
         },
     }),
 
@@ -65,7 +72,18 @@ export default (labels = {}) => ({
     _saveAttempted: false,
     freqs: RRULE_FREQS,
     weekdays: RRULE_WEEKDAYS,
+    reminderPresets: REMINDER_PRESETS,
     _form: BLANK_FORM(),
+
+    // Location search (OSM/Nominatim via the calendar-gated geocoder).
+    geoResults: [],
+    geoSearching: false,
+    _geoTimer: null,
+
+    // Local notification scheduler.
+    _remClock: null,
+    _firedReminders: new Set(),
+    _lastScanMs: 0,
 
     calMgrOpen: false,
     _calForm: null,    // { id, name, color } or null
@@ -73,6 +91,8 @@ export default (labels = {}) => ({
 
     async init() {
         await this._initZk();
+        if (this.state === 'ready') this._startRemClock();
+        this.$watch('state', (s) => { if (s === 'ready') this._startRemClock(); else this._stopRemClock(); });
     },
 
     // Seed a default calendar on first use so events always have a home.
@@ -178,6 +198,9 @@ export default (labels = {}) => ({
             title: ev.title || '',
             description: ev.description || '',
             location: (ev.location && ev.location.label) || '',
+            locationLat: (ev.location && ev.location.lat) ?? null,
+            locationLng: (ev.location && ev.location.lng) ?? null,
+            reminders: Array.isArray(ev.reminders) ? ev.reminders.map((r) => ({ ...r })) : [],
             allDay: !!ev.allDay,
             startDate: s.d, startTime: s.t,
             endDate: e.d, endTime: e.t,
@@ -216,14 +239,15 @@ export default (labels = {}) => ({
             calendarId: f.calendarId || this._defaultCalendarId(),
             title: f.title.trim(),
             description: f.description.trim(),
-            location: f.location.trim() ? { label: f.location.trim(), lat: null, lng: null } : null,
+            location: f.location.trim() ? { label: f.location.trim(), lat: f.locationLat ?? null, lng: f.locationLng ?? null } : null,
+            reminders: (f.reminders || []).map((r) => ({ minutesBefore: Number(r.minutesBefore) || 0, method: r.method || 'local' })),
             allDay: !!f.allDay,
             updatedAt: now,
         };
         const temporal = { start, end, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' };
 
         if (!this.editing) {
-            this.events.push({ id: newId(), createdAt: now, ...props, ...temporal, rrule, exdates: [], reminders: [], status: 'confirmed' });
+            this.events.push({ id: newId(), createdAt: now, ...props, ...temporal, rrule, exdates: [], status: 'confirmed' });
         } else if (this._occRid && this.editScope === 'this' && this.editing.rrule) {
             // Override just this occurrence: exclude it from the master + add a
             // standalone override record carrying the edited fields.
@@ -231,7 +255,7 @@ export default (labels = {}) => ({
             if (!this.editing.exdates.includes(this._occRid)) this.editing.exdates.push(this._occRid);
             this.events.push({
                 id: newId(), createdAt: now, ...props, ...temporal,
-                rrule: null, exdates: [], reminders: this.editing.reminders || [],
+                rrule: null, exdates: [],
                 status: 'confirmed', overrideOf: this.editing.id, recurrenceId: this._occRid,
             });
         } else if (this._occRid && this.editScope === 'all') {
@@ -295,6 +319,86 @@ export default (labels = {}) => ({
         for (const x of this.calendars) x.isDefault = x.id === c.id;
         this._mut++;
         this._save();
+    },
+
+    // ---- location search (OSM) ----
+    onLocationInput() {
+        clearTimeout(this._geoTimer);
+        this._form.locationLat = null;
+        this._form.locationLng = null;
+        const q = (this._form.location || '').trim();
+        if (q.length < 3) { this.geoResults = []; return; }
+        this._geoTimer = setTimeout(() => this.searchLocation(q), 350);
+    },
+    async searchLocation(q) {
+        this.geoSearching = true;
+        try {
+            const res = await getJson('/calendar/geocode?q=' + encodeURIComponent(q));
+            this.geoResults = Array.isArray(res.results) ? res.results.slice(0, 6) : [];
+        } catch {
+            this.geoResults = [];
+        } finally {
+            this.geoSearching = false;
+        }
+    },
+    pickLocation(r) {
+        this._form.location = r.display;
+        this._form.locationLat = r.lat;
+        this._form.locationLng = r.lng;
+        this.geoResults = [];
+    },
+
+    // ---- reminders ----
+    hasReminder(min) { return (this._form.reminders || []).some((r) => Number(r.minutesBefore) === Number(min)); },
+    toggleReminder(min) {
+        const i = (this._form.reminders || []).findIndex((r) => Number(r.minutesBefore) === Number(min));
+        if (i >= 0) { this._form.reminders.splice(i, 1); return; }
+        this._form.reminders.push({ minutesBefore: Number(min), method: 'local' });
+        this._requestNotifyPermission();
+    },
+    reminderLabel(min) {
+        const m = Number(min);
+        const L = this.labels.reminder || {};
+        if (m === 0) return L.at_time || 'At time of event';
+        if (m % 1440 === 0) return (L.days || ':n days before').replace(':n', m / 1440);
+        if (m % 60 === 0) return (L.hours || ':n hours before').replace(':n', m / 60);
+        return (L.minutes || ':n minutes before').replace(':n', m);
+    },
+    _requestNotifyPermission() {
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission().catch(() => {});
+        }
+    },
+
+    // ---- local notification scheduler ----
+    // Fires desktop notifications for reminders while the tab is open. The durable,
+    // works-when-closed path is the opaque server push (added in a later slice).
+    _startRemClock() {
+        if (this._remClock) return;
+        this._lastScanMs = Date.now();
+        this._remClock = setInterval(() => this._scanReminders(), 60_000);
+        // First scan shortly after load (also nudges permission if reminders exist).
+        setTimeout(() => this._scanReminders(), 2_000);
+        if ((this.events || []).some((e) => Array.isArray(e.reminders) && e.reminders.length)) this._requestNotifyPermission();
+    },
+    _stopRemClock() {
+        if (this._remClock) { clearInterval(this._remClock); this._remClock = null; }
+    },
+    _scanReminders() {
+        const now = Date.now();
+        const from = this._lastScanMs || (now - 60_000);
+        this._lastScanMs = now;
+        if (!('Notification' in window) || Notification.permission !== 'granted') return;
+        for (const r of collectReminders(this.events, from, now)) {
+            if (this._firedReminders.has(r.key)) continue;
+            this._firedReminders.add(r.key);
+            try {
+                new Notification(r.title || (this.labels.untitled || 'Event'), {
+                    body: this.fmtDay(r.start.slice(0, 10)),
+                    tag: r.key,
+                });
+            } catch { /* notifications unavailable */ }
+        }
     },
 
     fmtDay(iso) { return formatDate(iso); },

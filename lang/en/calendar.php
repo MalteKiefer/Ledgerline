@@ -44,5 +44,10 @@ return [
     'scope_this' => 'This event',
     'scope_all' => 'Entire series',
     'recurring' => 'Repeats',
+    'reminders' => 'Reminders',
+    'rem_at_time' => 'At time of event',
+    'rem_minutes' => ':n minutes before',
+    'rem_hours' => ':n hours before',
+    'rem_days' => ':n days before',
+    'location_searching' => 'Searching…',
 ];
-
