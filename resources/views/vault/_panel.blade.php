@@ -4,7 +4,7 @@
         open: false,
         mode: 'unlock',
         publicComputer: false, // ticked = don't persist; keep the 10-min idle lock
-        pass: '', pass2: '', code: '', recovery: '', error: '', busy: false,
+        pass: '', pass2: '', pass3: '', code: '', recovery: '', error: '', busy: false,
         init() {
             // No vault yet: prompt setup automatically, once per tab session.
             @if (! ($serverConfigured ?? true))
@@ -17,7 +17,7 @@
         },
         panel() {
             this.mode = $store.vault.configured ? 'unlock' : 'setup';
-            this.pass = this.pass2 = this.code = this.recovery = this.error = '';
+            this.pass = this.pass2 = this.pass3 = this.code = this.recovery = this.error = '';
             this.open = true;
         },
         async doSetup() {
@@ -34,13 +34,13 @@
             try { await $store.vault.unlock(this.pass, ! this.publicComputer); this.open = false; }
             catch (e) { this.error = '{{ __('vault.err_wrong') }}'; }
             // Don't leave the passphrase resident in component memory after use.
-            finally { this.busy = false; this.pass = this.pass2 = this.code = ''; }
+            finally { this.busy = false; this.pass = this.pass2 = this.pass3 = this.code = ''; }
         },
         async doRecover() {
             this.error = ''; this.busy = true;
             // Recovery unlocks the in-memory key; then FORCE a new passphrase (the
             // forgotten one is unknown) — this also mints a fresh recovery code.
-            try { await $store.vault.recover(this.code, ! this.publicComputer); this.pass = this.pass2 = ''; this.mode = 'setnew'; }
+            try { await $store.vault.recover(this.code, ! this.publicComputer); this.pass = this.pass2 = this.pass3 = ''; this.mode = 'setnew'; }
             catch (e) { this.error = '{{ __('vault.err_recover') }}'; }
             finally { this.busy = false; }
         },
@@ -55,17 +55,20 @@
         },
         recoverPanel() {
             this.mode = 'recover';
-            this.pass = this.pass2 = this.code = this.recovery = this.error = '';
+            this.pass = this.pass2 = this.pass3 = this.code = this.recovery = this.error = '';
             this.open = true;
         },
         changePanel() {
             this.mode = 'change';
-            this.pass = this.pass2 = this.code = this.recovery = this.error = '';
+            this.pass = this.pass2 = this.pass3 = this.code = this.recovery = this.error = '';
             this.open = true;
         },
         async doChange() {
             this.error = '';
             if (this.pass2.length < 10) { this.error = '{{ __('vault.err_short') }}'; return; }
+            // Confirm the NEW passphrase — without this a typo in the new pass is
+            // wrapped unnoticed, so only the recovery code can open the vault after.
+            if (this.pass2 !== this.pass3) { this.error = '{{ __('vault.err_mismatch') }}'; return; }
             this.busy = true;
             // A passphrase change also mints a fresh recovery code, shown once.
             try { this.recovery = await $store.vault.changePassphrase(this.pass, this.pass2); this.mode = 'recovery'; }
@@ -132,7 +135,8 @@
                         <h3 class="text-base font-semibold text-gray-900">{{ __('vault.change_title') }}</h3>
                         <p class="mt-2 text-sm text-gray-600">{{ __('vault.change_hint') }}</p>
                         <input type="password" x-model="pass" placeholder="{{ __('vault.change_current') }}" class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                        <input type="password" x-model="pass2" @keydown.enter="doChange()" placeholder="{{ __('vault.change_new') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <input type="password" x-model="pass2" placeholder="{{ __('vault.change_new') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <input type="password" x-model="pass3" @keydown.enter="doChange()" placeholder="{{ __('vault.passphrase_confirm') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
                         <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
                         <div class="mt-5 flex justify-end gap-3">
                             <x-button variant="secondary" @click="open = false">{{ __('common.cancel') }}</x-button>
