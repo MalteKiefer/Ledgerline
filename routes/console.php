@@ -20,10 +20,12 @@ Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
 // Dispatch a pull-only IMAP sync for every enabled mail account on the
 // configured interval. Each dispatch is a queued producer job guarded by its
 // own per-account no-overlap lock, so this scheduler tick never runs mbsync
-// itself — it only enqueues. Interval is minutes-within-the-hour (1..59).
-$mailSyncMinutes = max(1, min(59, (int) config('mail_archive.sync_interval_minutes', 30)));
+// itself — it only enqueues. Runs EVERY MINUTE and each account decides due-ness
+// from its own effective interval (per-account override, else the workspace
+// default config('mail_archive.sync_interval_minutes')) — so the fetch cadence
+// is per-account.
 Schedule::command('mail:sync-accounts')
-    ->cron('*/'.$mailSyncMinutes.' * * * *')
+    ->everyMinute()
     ->withoutOverlapping();
 
 // Reclaim stored file/gallery bytes on disk with no ownership record (leaked/

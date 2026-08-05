@@ -496,6 +496,12 @@
                         </div>
 
                         <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('mail.sync_interval') }}</label>
+                            <input type="number" min="1" max="1440" x-model.number="form.sync_interval_minutes" placeholder="{{ __('mail.sync_interval_default') }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                            <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ __('mail.sync_interval_hint') }}</p>
+                        </div>
+
+                        <div>
                             <label class="flex items-start gap-2">
                                 <input type="checkbox" x-model="form.delete_after_import" class="mt-0.5 rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
                                 <span class="text-sm text-gray-700 dark:text-gray-300">{{ __('mail.delete_after_import') }}</span>
