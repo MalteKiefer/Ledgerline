@@ -65,6 +65,9 @@ export default (labels = {}) => ({
     events: [],
     settings: { birthdays: false, holidays: false },
     _contacts: [],
+    _subRaw: [], // parsed events from subscribed public .ics feeds
+    _subForm: { name: '', url: '', color: '#3b9fd6' },
+    _subBusy: false,
     holidayCountries: HOLIDAY_COUNTRIES,
     _mut: 0,
 
@@ -111,7 +114,7 @@ export default (labels = {}) => ({
     async init() {
         this.view = calDefaultView();
         await this._initZk();
-        if (this.state === 'ready') { this._startRemClock(); if (this.settings?.birthdays) this._loadContacts(); }
+        if (this.state === 'ready') { this._startRemClock(); if (this.settings?.birthdays) this._loadContacts(); if (this.settings?.subscriptions?.length) this._loadSubscriptions(); }
         this.$watch('state', (s) => { if (s === 'ready') this._startRemClock(); else this._stopRemClock(); });
     },
 
@@ -144,10 +147,54 @@ export default (labels = {}) => ({
         if (this.settings?.holidays) {
             out.push(...holidayEvents(this.settings.holidays, start, end));
         }
+        if (this._subRaw?.length) {
+            out.push(...this._expandEventsList(this._subRaw, rangeStart, rangeEnd, new Set()));
+        }
         return out;
     },
     feedColor(id) { return FEED_COLORS[id]; },
     feedIcon(id) { return FEED_ICONS[id]; },
+
+    // ---- subscribed public calendars (.ics URL) ----
+    get subscriptions() { void this._mut; return (this.settings && this.settings.subscriptions) || []; },
+    async _loadSubscriptions() {
+        const subs = this.subscriptions;
+        if (!subs.length) { this._subRaw = []; return; }
+        this._subBusy = true;
+        const acc = [];
+        for (const s of subs) {
+            try {
+                const res = await getJson(`${this.labels.icsFetchUrl}?url=${encodeURIComponent(s.url)}`);
+                if (res && res.ics) {
+                    for (const e of parseIcs(res.ics)) {
+                        if (!e.start) continue;
+                        acc.push({ ...e, id: `sub-${s.id}-${e.uid || e.start}-${(e.title || '').slice(0, 20)}`, calendarId: s.id, virtual: true, feed: 'subscription', reminders: [] });
+                    }
+                }
+            } catch { /* skip a failing feed */ }
+        }
+        this._subRaw = acc;
+        this._subBusy = false;
+        this._mut++;
+    },
+    refreshSubscriptions() { this._loadSubscriptions(); },
+    addSubscription() {
+        const f = this._subForm;
+        const url = (f.url || '').trim();
+        if (!url || !/^(https?|webcal):\/\//i.test(url)) return;
+        if (!this.settings.subscriptions) this.settings.subscriptions = [];
+        this.settings.subscriptions.push({ id: newId(), name: (f.name || '').trim() || url, url, color: f.color || '#3b9fd6' });
+        this._subForm = { name: '', url: '', color: '#3b9fd6' };
+        this._mut++;
+        this._save();
+        this._loadSubscriptions();
+    },
+    removeSubscription(id) {
+        this.settings.subscriptions = (this.settings.subscriptions || []).filter((s) => s.id !== id);
+        this._subRaw = this._subRaw.filter((e) => e.calendarId !== id);
+        this._mut++;
+        this._save();
+    },
 
     // Seed a default calendar on first use so events always have a home.
     _ensureDefault(ms) {
@@ -184,8 +231,22 @@ export default (labels = {}) => ({
         return out;
     },
 
-    // Non-recurring events + expanded occurrences of recurring ones (minus any
-    // occurrence a per-occurrence override replaces) across [rangeStart, rangeEnd].
+    // Expand a list of event records into concrete occurrences across [rs, re],
+    // skipping occurrences replaced by a per-occurrence override.
+    _expandEventsList(list, rangeStart, rangeEnd, overrides) {
+        const out = [];
+        for (const ev of list) {
+            if (ev.rrule) {
+                for (const occ of expandEvent(ev, rangeStart, rangeEnd)) {
+                    if (!overrides.has(`${ev.id}@${occ.recurrenceId}`)) out.push(occ);
+                }
+            } else {
+                out.push(ev);
+            }
+        }
+        return out;
+    },
+    // The user's own events expanded over [rangeStart, rangeEnd].
     _expandRange(rangeStart, rangeEnd) {
         const overrides = new Set(this.events.filter((e) => e.overrideOf).map((e) => `${e.overrideOf}@${e.recurrenceId || ''}`));
         const out = [];
@@ -215,7 +276,9 @@ export default (labels = {}) => ({
     timeLabel(ev) { return timeLabel(ev); },
     calColor(id) {
         void this._mut;
-        return (this.calendars.find((c) => c.id === id) || {}).color || FEED_COLORS[id] || CALENDAR_COLORS[8];
+        return (this.calendars.find((c) => c.id === id) || {}).color
+            || (this.subscriptions.find((s) => s.id === id) || {}).color
+            || FEED_COLORS[id] || CALENDAR_COLORS[8];
     },
     calName(id) {
         void this._mut;

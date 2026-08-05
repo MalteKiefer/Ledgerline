@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Api\CalendarReminderController;
+use App\Http\Controllers\Api\CalendarSubscriptionController;
 use App\Http\Controllers\Api\MailAccountController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
@@ -399,6 +400,8 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/calendar/geocode', [GalleryProcessController::class, 'geocode'])->middleware('module:calendar', 'throttle:60,1')->name('calendar.geocode');
     // Opaque reminder registration (client PUTs upcoming fire timestamps only).
     Route::put('/calendar/reminders', [CalendarReminderController::class, 'update'])->middleware('module:calendar', 'throttle:60,1')->name('calendar.reminders');
+    // Fetch a subscribed PUBLIC .ics feed (SSRF-guarded) so the client can overlay it read-only.
+    Route::get('/calendar/ics-fetch', [CalendarSubscriptionController::class, 'fetch'])->middleware('module:calendar', 'throttle:30,1')->name('calendar.ics-fetch');
     // Invoices: zero-knowledge, records in the opaque /store manifest. The per-user
     // company profile (printed on invoices) is plaintext in the user's settings.
     Route::view('/finance', 'invoices.index')->middleware('module:finance')->name('finance.index');

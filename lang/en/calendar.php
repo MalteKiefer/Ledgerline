@@ -74,4 +74,10 @@ return [
     'holidays_off' => 'Off',
     'feed_birthday' => ':name (Birthday)',
     'feed_anniversary' => ':name (Anniversary)',
+    'sub_heading' => 'Subscribed calendars',
+    'sub_name' => 'Name',
+    'sub_url' => 'iCal URL (https or webcal)',
+    'sub_add' => 'Subscribe',
+    'sub_none' => 'No subscriptions yet.',
+    'sub_refresh' => 'Refresh',
 ];
