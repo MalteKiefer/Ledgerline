@@ -1749,7 +1749,8 @@ components:
         Decrypted content of a shared vault (GET/PUT /vaults/{vault}/store), sealed under
         VK_vault. Shape depends on the vault's kind: kind=password → {name, items:[SecretItem]};
         kind=folder → {name, folders:[FileFolder], files:[{ref, key, name, mime, path?}]}
-        where each file `key` is the per-file content key wrapped under VK_folder.
+        where each file `key` is the per-file content key wrapped under VK_folder;
+        kind=calendar → {name, color, events:[CalendarEvent]}.
       required: [name]
       properties:
         name: { type: string }
@@ -4695,7 +4696,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [password, folder]
+            enum: [password, folder, calendar]
           description: Filter by vault kind. Omit to return all kinds.
       responses:
         "200":
@@ -4722,7 +4723,7 @@ paths:
                       enum: [pending, active, revoked]
                     kind:
                       type: string
-                      enum: [password, folder]
+                      enum: [password, folder, calendar]
                       description: Vault kind (password vault or shared folder).
                     owner:
                       type: boolean
@@ -4761,7 +4762,7 @@ paths:
                     ciphertext; the server never reads VK_vault.
                 kind:
                   type: string
-                  enum: [password, folder]
+                  enum: [password, folder, calendar]
                   default: password
                   description: Vault kind. Defaults to `password` for backward compatibility.
       responses:

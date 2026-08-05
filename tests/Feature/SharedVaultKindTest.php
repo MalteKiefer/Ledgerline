@@ -30,6 +30,17 @@ class SharedVaultKindTest extends TestCase
         $this->assertSame('folder', SharedVault::find($id)->kind);
     }
 
+    public function test_store_can_create_a_calendar_vault(): void
+    {
+        $this->signIn();
+        $id = $this->postJson(route('vaults.store'), ['wrapped_vault_key' => 'wk', 'kind' => 'calendar'])
+            ->assertCreated()->json('id');
+        $this->assertSame('calendar', SharedVault::find($id)->kind);
+
+        $rows = $this->getJson(route('vaults.index', ['kind' => 'calendar']))->assertOk()->json();
+        $this->assertContains($id, array_column($rows, 'vault_id'));
+    }
+
     public function test_store_rejects_unknown_kind(): void
     {
         $this->signIn();
