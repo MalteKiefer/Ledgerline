@@ -18,8 +18,9 @@ function birthYear(date) {
 function contactName(c) { return c.displayName || c.name || c.fn || ''; }
 
 // Birthday + anniversary all-day events for every year in [startYear, endYear].
-// `tmpl` = { birthday, anniversary }: strings with :name and optional :age.
-export function birthdayEvents(contacts, startYear, endYear, tmpl = {}) {
+// The title is just the contact's NAME (no age); details (kind, age, original
+// date, contact id) ride on the event for the read-only detail popup.
+export function birthdayEvents(contacts, startYear, endYear) {
     const out = [];
     for (const c of contacts || []) {
         for (const [field, kind] of [['bday', 'birthday'], ['anniversary', 'anniversary']]) {
@@ -29,10 +30,12 @@ export function birthdayEvents(contacts, startYear, endYear, tmpl = {}) {
             if (!name) continue;
             const by = birthYear(c[field]);
             for (let y = startYear; y <= endYear; y++) {
-                const template = tmpl[kind] || ':name';
-                const title = template.replace(':name', name).replace(':age', by ? String(y - by) : '');
                 const date = `${y}-${md}`;
-                out.push({ id: `bday-${c.id}-${field}-${y}`, calendarId: 'birthdays', title: title.replace(/\s+/g, ' ').trim(), allDay: true, start: date, end: date, virtual: true, feed: 'birthdays' });
+                out.push({
+                    id: `bday-${c.id}-${field}-${y}`, calendarId: 'birthdays', title: name,
+                    allDay: true, start: date, end: date, virtual: true, feed: 'birthdays',
+                    contactId: c.id, kind, name, bday: c[field], age: by ? y - by : null,
+                });
             }
         }
     }

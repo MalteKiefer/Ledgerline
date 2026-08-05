@@ -55,6 +55,7 @@ export default (labels = {}) => ({
             self.editing = null;
             self.selectedDay = null;
             self.calMgrOpen = false;
+            self.bdayDetail = null;
             self._stopRemClock();
             self._firedReminders.clear();
         },
@@ -151,7 +152,7 @@ export default (labels = {}) => ({
         const out = [];
         const { start, end } = yearsInRange(rangeStart, rangeEnd);
         if (this.settings?.birthdays && this._contacts?.length) {
-            out.push(...birthdayEvents(this._contacts, start, end, this.labels.feed || {}));
+            out.push(...birthdayEvents(this._contacts, start, end));
         }
         for (const cc of this.holidayCountriesOn) {
             out.push(...holidayEvents(cc, start, end));
@@ -385,8 +386,13 @@ export default (labels = {}) => ({
         this._saveAttempted = false;
         this.editorOpen = true;
     },
+    bdayDetail: null, // clicked birthday feed event (read-only popup) or null
     openEvent(ev) {
-        if (ev && ev.virtual) return; // birthdays/holidays are read-only feeds
+        if (ev && ev.virtual) {
+            // Birthdays open a small read-only detail popup; other feeds are inert.
+            if (ev.feed === 'birthdays') this.bdayDetail = ev;
+            return;
+        }
         // An expanded occurrence carries `_base`; edit the underlying master.
         const master = ev._base ? (this.events.find((e) => e.id === ev._base) || ev) : ev;
         const s = ev.allDay ? { d: (ev.start || '').slice(0, 10), t: '09:00' } : splitDt(ev.start);
@@ -687,6 +693,17 @@ export default (labels = {}) => ({
             this._queueRemSync();
         }
         window.llToast?.((this.labels.import_done || ':n imported').replace(':n', added));
+    },
+
+    closeBdayDetail() { this.bdayDetail = null; },
+    openContact(contactId) {
+        if (contactId && this.labels.contactsUrl) window.location = `${this.labels.contactsUrl}?c=${encodeURIComponent(contactId)}`;
+    },
+    // The original birthday/anniversary date, nicely formatted (with year if known).
+    bdayDateLabel(ev) {
+        if (!ev || !ev.bday) return '';
+        const s = String(ev.bday);
+        return /^\d{4}-\d{2}-\d{2}$/.test(s) ? formatDate(s) : formatDate(`2000-${s.slice(-5)}`).replace(/\s*2000/, '');
     },
 
     fmtDay(iso) { return formatDate(iso); },
