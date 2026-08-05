@@ -29,11 +29,11 @@ describe('calendar-feeds', () => {
         expect(yearsInRange('2026-12-20', '2027-01-05')).toEqual({ start: 2026, end: 2027 });
     });
 
-    it('birthday events per year with age', () => {
+    it('birthday events per year: title is the name, age on the event', () => {
         const contacts = [{ id: 'c1', name: 'Ada', bday: '1990-08-05' }, { id: 'c2', fn: 'No date' }];
-        const evs = birthdayEvents(contacts, 2026, 2026, { birthday: ':name (:age)', anniversary: ':name' });
+        const evs = birthdayEvents(contacts, 2026, 2026);
         expect(evs).toHaveLength(1);
-        expect(evs[0]).toMatchObject({ start: '2026-08-05', allDay: true, virtual: true, feed: 'birthdays', title: 'Ada (36)' });
+        expect(evs[0]).toMatchObject({ start: '2026-08-05', allDay: true, virtual: true, feed: 'birthdays', title: 'Ada', age: 36, contactId: 'c1', kind: 'birthday' });
     });
 
     it('holiday events across a range', () => {

@@ -17,6 +17,8 @@
         feed: { birthday: @js(__('calendar.feed_birthday')), anniversary: @js(__('calendar.feed_anniversary')) },
         remindersUrl: '{{ route('calendar.reminders') }}',
         icsFetchUrl: '{{ route('calendar.ics-fetch') }}',
+        contactsUrl: '{{ route('contacts.index') }}',
+        kind: { birthday: @js(__('calendar.kind_birthday')), anniversary: @js(__('calendar.kind_anniversary')) },
      })">
 
     {{-- Zero-knowledge gate: calendar data decrypts with the vault key. --}}
@@ -176,6 +178,26 @@
           </div>
           <div class="border-t border-black/[0.06] dark:border-white/10 px-5 py-3 text-right">
             <x-button variant="secondary" size="sm" @click="closeDay()">{{ __('common.close') }}</x-button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    {{-- Birthday detail popup (read-only) --}}
+    <template x-teleport="body">
+      <div x-show="bdayDetail" x-cloak class="fixed inset-0 z-[1130] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeBdayDetail()">
+        <div class="absolute inset-0 bg-gray-900/40" @click="closeBdayDetail()"></div>
+        <div class="relative w-full max-w-sm rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 text-center shadow-xl">
+          <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full text-white" :style="{ background: birthdaysColor }">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-7 w-7"><path stroke-linecap="round" stroke-linejoin="round" :d="calIconPath('cake')"></path></svg>
+          </div>
+          <h3 class="mt-3 text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="bdayDetail?.name"></h3>
+          <p class="text-sm text-gray-500" x-text="bdayDetail ? (kind[bdayDetail.kind] || '') : ''"></p>
+          <p x-show="bdayDetail?.age != null" x-cloak class="mt-2 text-sm font-medium text-accent" x-text="'{{ __('calendar.bday_turns') }}'.replace(':n', bdayDetail?.age)"></p>
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-300" x-text="bdayDateLabel(bdayDetail)"></p>
+          <div class="mt-5 flex justify-center gap-2">
+            <x-button variant="secondary" @click="closeBdayDetail()">{{ __('common.close') }}</x-button>
+            <x-button x-show="bdayDetail?.contactId" x-cloak variant="primary" icon="users" @click="openContact(bdayDetail?.contactId)">{{ __('calendar.open_contact') }}</x-button>
           </div>
         </div>
       </div>
