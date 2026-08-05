@@ -87,4 +87,9 @@ return [
     'sub_refresh' => 'Refresh',
     'color' => 'Colour',
     'sys_birthdays_hint' => 'From your contacts',
+    'school_heading' => 'School holidays',
+    'school_hint' => 'Subscribe to your region (public data via OpenHolidays).',
+    'school_add' => 'Add',
+    'school_label' => 'Holidays',
+    'region_select' => 'Select region…',
 ];

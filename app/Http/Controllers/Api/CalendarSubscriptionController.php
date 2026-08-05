@@ -37,7 +37,10 @@ class CalendarSubscriptionController extends Controller
         }
 
         try {
-            $res = OutboundUrl::client($url, 15, self::MAX_BYTES)->get($url);
+            // Some providers (e.g. OpenHolidays) serve iCal only under this Accept.
+            $res = OutboundUrl::client($url, 15, self::MAX_BYTES)
+                ->withHeaders(['Accept' => 'text/calendar'])
+                ->get($url);
         } catch (\Throwable) {
             return response()->json(['error' => 'fetch_failed'], 502)->header('Cache-Control', 'no-store');
         }

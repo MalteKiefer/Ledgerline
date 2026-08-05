@@ -87,4 +87,9 @@ return [
     'sub_refresh' => 'Aktualisieren',
     'color' => 'Farbe',
     'sys_birthdays_hint' => 'Aus deinen Kontakten',
+    'school_heading' => 'Schulferien',
+    'school_hint' => 'Region abonnieren (öffentliche Daten via OpenHolidays).',
+    'school_add' => 'Hinzufügen',
+    'school_label' => 'Ferien',
+    'region_select' => 'Region wählen…',
 ];

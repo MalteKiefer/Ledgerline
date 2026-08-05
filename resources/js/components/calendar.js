@@ -8,6 +8,7 @@ import { zkModule, bootStore } from '../shared/zk-module';
 import { newId } from '../shared/sealed-store';
 import { birthdayEvents, holidayEvents, yearsInRange, FEED_COLORS, FEED_ICONS } from '../shared/calendar-feeds';
 import { HOLIDAY_COUNTRIES } from '../shared/holidays';
+import { SCHOOL_COUNTRIES, SCHOOL_REGIONS, buildSchoolHolidayUrl, regionName } from '../shared/school-holidays';
 import { formatDate, saveBlobAs } from '../shared/dom';
 import { parseIcs, buildIcs } from '../shared/ical';
 import { getJson, postForm } from '../shared/api';
@@ -70,6 +71,8 @@ export default (labels = {}) => ({
     _subForm: { name: '', url: '', color: '#3b9fd6' },
     _subBusy: false,
     holidayCountries: HOLIDAY_COUNTRIES,
+    schoolCountries: SCHOOL_COUNTRIES,
+    schoolForm: { country: 'DE', region: '' },
     _mut: 0,
 
     // View + cursor. `anchorIso` is a date within the visible month/week/day.
@@ -208,6 +211,21 @@ export default (labels = {}) => ({
     setSubColor(id, color) {
         const s = (this.settings.subscriptions || []).find((x) => x.id === id);
         if (s) { s.color = color; this._mut++; this._save(); }
+    },
+    schoolRegions() { void this._mut; return SCHOOL_REGIONS[this.schoolForm.country] || []; },
+    addSchoolHolidays() {
+        const f = this.schoolForm;
+        if (!f.region) return;
+        const y = new Date().getFullYear();
+        const url = buildSchoolHolidayUrl(f.country, f.region, y, y + 2);
+        if (!this.settings.subscriptions) this.settings.subscriptions = [];
+        if (this.settings.subscriptions.some((s) => s.url === url)) { this.schoolForm.region = ''; return; }
+        const name = `${this.labels.school_label || 'Ferien'} ${regionName(f.country, f.region)}`;
+        this.settings.subscriptions.push({ id: newId(), name, url, color: '#e2915a' });
+        this.schoolForm.region = '';
+        this._mut++;
+        this._save();
+        this._loadSubscriptions();
     },
     renameSubscription(id, name) {
         const s = (this.settings.subscriptions || []).find((x) => x.id === id);

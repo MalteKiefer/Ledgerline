@@ -87,4 +87,9 @@ return [
     'sub_refresh' => 'Обновить',
     'color' => 'Farbe',
     'sys_birthdays_hint' => 'Из ваших контактов',
+    'school_heading' => 'Школьные каникулы',
+    'school_hint' => 'Подписка на регион (открытые данные OpenHolidays).',
+    'school_add' => 'Добавить',
+    'school_label' => 'Каникулы',
+    'region_select' => 'Выберите регион…',
 ];
