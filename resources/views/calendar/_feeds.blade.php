@@ -41,6 +41,29 @@
   </div>
 </div>
 
+{{-- School holidays (Ferien) — one-click subscribe via OpenHolidays --}}
+<div class="mt-3 rounded-2xl border border-black/[0.06] dark:border-white/10 p-4">
+  <div class="flex items-center gap-3">
+    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white" style="background:#e2915a">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" :d="calIconPath('sun')"></path></svg>
+    </span>
+    <div class="min-w-0 flex-1">
+      <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ __('calendar.school_heading') }}</p>
+      <p class="text-xs text-gray-400">{{ __('calendar.school_hint') }}</p>
+    </div>
+  </div>
+  <div class="mt-3 flex flex-wrap items-end gap-2">
+    <select x-model="schoolForm.country" @change="schoolForm.region = ''" class="rounded-md border-gray-300 dark:border-gray-700 text-sm focus:border-accent focus:ring-accent">
+      <template x-for="cc in schoolCountries" :key="cc"><option :value="cc" x-text="cc"></option></template>
+    </select>
+    <select x-model="schoolForm.region" class="min-w-0 flex-1 rounded-md border-gray-300 dark:border-gray-700 text-sm focus:border-accent focus:ring-accent">
+      <option value="">{{ __('calendar.region_select') }}</option>
+      <template x-for="r in schoolRegions()" :key="r.code"><option :value="r.code" x-text="r.name"></option></template>
+    </select>
+    <x-button variant="secondary" size="sm" ::disabled="!schoolForm.region || _subBusy" @click="addSchoolHolidays()">{{ __('calendar.school_add') }}</x-button>
+  </div>
+</div>
+
 {{-- Subscribed public calendars (.ics URL) --}}
 <div class="mt-3 rounded-2xl border border-black/[0.06] dark:border-white/10 p-4">
   <div class="mb-3 flex items-center justify-between">

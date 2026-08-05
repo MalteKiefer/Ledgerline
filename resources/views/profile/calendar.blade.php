@@ -71,6 +71,7 @@
                 contactsUrl: '{{ route('contacts.index') }}',
                 icsFetchUrl: '{{ route('calendar.ics-fetch') }}',
                 remindersUrl: '{{ route('calendar.reminders') }}',
+                school_label: @js(__('calendar.school_label')),
              })">
             @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
             <template x-if="state === 'locked'">
