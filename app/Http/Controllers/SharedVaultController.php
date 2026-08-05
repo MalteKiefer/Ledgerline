@@ -60,7 +60,7 @@ class SharedVaultController extends Controller
         // this endpoint (ValidationException on web routes redirects; abort
         // emits the exact status code regardless of Accept header).
         $kind = $request->input('kind', 'password');
-        if (! in_array($kind, ['password', 'folder'], true)) {
+        if (! in_array($kind, ['password', 'folder', 'calendar'], true)) {
             abort(422, 'The selected kind is invalid.');
         }
 

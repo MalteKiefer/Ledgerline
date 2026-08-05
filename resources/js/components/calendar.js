@@ -11,9 +11,12 @@ import { HOLIDAY_COUNTRIES } from '../shared/holidays';
 import { SCHOOL_COUNTRIES, SCHOOL_REGIONS, buildSchoolHolidayUrl, regionName } from '../shared/school-holidays';
 import { formatDate, saveBlobAs } from '../shared/dom';
 import { parseIcs, buildIcs } from '../shared/ical';
-import { getJson, postForm } from '../shared/api';
+import { getJson, postForm, apiRequest, jsonHeaders } from '../shared/api';
 import { collectReminders, REMINDER_PRESETS } from '../shared/calendar-reminders';
 import { loadLeaflet } from '../shared/lazy-loaders';
+import { Vault, VaultShareCrypto } from '../vault';
+import { mergeManifest } from '../shared/manifest-merge';
+import { jsonClone } from '../shared/clone';
 import {
     ymd, dayStart, monthMatrix, eventsOnDay, timeLabel, weekNumberOf, CALENDAR_COLORS,
 } from '../shared/calendar-utils';
@@ -57,6 +60,8 @@ export default (labels = {}) => ({
             self.selectedDay = null;
             self.calMgrOpen = false;
             self.bdayDetail = null;
+            self.sharedCals = []; self.sharedEvents = {}; self._sharedKeys = {}; self._sharedVersion = {}; self._sharedBase = {};
+            self.pendingInvites = []; self.shareDialog = { open: false }; self.managingVaultId = null; self.managingVaultMembers = [];
             self._stopRemClock();
             self._firedReminders.clear();
         },
@@ -99,6 +104,14 @@ export default (labels = {}) => ({
     _geoTimer: null,
     _evMap: null,
 
+    // ---- shared calendars (SharedVault kind='calendar', mirrors passwords.js) ----
+    sharedCals: [],        // [{ id, name, role, vaultId, color }]
+    sharedEvents: {},      // vaultId -> [event records] (tagged calendarId 'sv:<vaultId>')
+    _sharedKeys: {}, _sharedVersion: {}, _sharedBase: {},
+    pendingInvites: [],    // [{ vault_id, member_id, role, wrapped_vault_key }]
+    shareDialog: { open: false },
+    managingVaultId: null, managingVaultMembers: [], managingVaultLoading: false, rotatingKeys: false,
+
     // Local notification scheduler.
     _remClock: null,
     _firedReminders: new Set(),
@@ -118,8 +131,8 @@ export default (labels = {}) => ({
     async init() {
         this.view = calDefaultView();
         await this._initZk();
-        if (this.state === 'ready') { this._startRemClock(); if (this.settings?.birthdays) this._loadContacts(); if (this.settings?.subscriptions?.length) this._loadSubscriptions(); }
-        this.$watch('state', (s) => { if (s === 'ready') this._startRemClock(); else this._stopRemClock(); });
+        if (this.state === 'ready') { this._startRemClock(); if (this.settings?.birthdays) this._loadContacts(); if (this.settings?.subscriptions?.length) this._loadSubscriptions(); this._loadSharedCalendars(); }
+        this.$watch('state', (s) => { if (s === 'ready') { this._startRemClock(); this._loadSharedCalendars(); } else this._stopRemClock(); });
     },
 
     // ---- virtual feeds (birthdays + holidays) ----
@@ -288,19 +301,12 @@ export default (labels = {}) => ({
         return out;
     },
     // The user's own events expanded over [rangeStart, rangeEnd].
+    // Personal + shared calendar events combined (raw records).
+    _allRecords() { return [...this.events, ...Object.values(this.sharedEvents || {}).flat()]; },
     _expandRange(rangeStart, rangeEnd) {
-        const overrides = new Set(this.events.filter((e) => e.overrideOf).map((e) => `${e.overrideOf}@${e.recurrenceId || ''}`));
-        const out = [];
-        for (const ev of this.events) {
-            if (ev.rrule) {
-                for (const occ of expandEvent(ev, rangeStart, rangeEnd)) {
-                    if (!overrides.has(`${ev.id}@${occ.recurrenceId}`)) out.push(occ);
-                }
-            } else {
-                out.push(ev);
-            }
-        }
-        return out;
+        const list = this._allRecords();
+        const overrides = new Set(list.filter((e) => e.overrideOf).map((e) => `${e.overrideOf}@${e.recurrenceId || ''}`));
+        return this._expandEventsList(list, rangeStart, rangeEnd, overrides);
     },
     dayEvents(iso) {
         void this._mut;
@@ -311,7 +317,7 @@ export default (labels = {}) => ({
     isRecurring(ev) { return !!(ev && (ev.rrule || ev._base)); },
     rruleLabel(ev) {
         void this._mut;
-        const master = ev._base ? this.events.find((e) => e.id === ev._base) : ev;
+        const master = ev._base ? this._allRecords().find((e) => e.id === ev._base) : ev;
         return master && master.rrule ? rruleSummary(master.rrule, this.labels.rrule || {}) : '';
     },
     timeLabel(ev) { return timeLabel(ev); },
@@ -319,6 +325,8 @@ export default (labels = {}) => ({
         void this._mut;
         if (id === 'birthdays') return this.birthdaysColor;
         if (id === 'holidays') return this.holidaysColor;
+        const vid = this.sharedVaultId(id);
+        if (vid) return (this.sharedCals.find((c) => c.vaultId === vid) || {}).color || CALENDAR_COLORS[6];
         return (this.calendars.find((c) => c.id === id) || {}).color
             || (this.subscriptions.find((s) => s.id === id) || {}).color
             || FEED_COLORS[id] || CALENDAR_COLORS[8];
@@ -403,9 +411,11 @@ export default (labels = {}) => ({
         const def = this.calendars.find((c) => c.isDefault) || this.calendars[0];
         return def ? def.id : '';
     },
+    _editVid: null, // home shared-vault id of the event being edited (null = personal)
     openNew(iso) {
         const day = iso || this.selectedDay || this.todayIso;
         this._form = { ...BLANK_FORM(), calendarId: this._defaultCalendarId(), startDate: day, endDate: day };
+        this._editVid = null;
         this.editing = null;
         this._occRid = null;
         this.editScope = 'all';
@@ -419,8 +429,12 @@ export default (labels = {}) => ({
             if (ev.feed === 'birthdays') this.bdayDetail = ev;
             return;
         }
-        // An expanded occurrence carries `_base`; edit the underlying master.
-        const master = ev._base ? (this.events.find((e) => e.id === ev._base) || ev) : ev;
+        // An expanded occurrence carries `_base`; edit the underlying master in its
+        // home array (personal or the shared vault).
+        const homeVid = ev.vaultId || this.sharedVaultId(ev.calendarId);
+        this._editVid = homeVid || null;
+        const srcArr = homeVid ? (this.sharedEvents[homeVid] || []) : this.events;
+        const master = ev._base ? (srcArr.find((e) => e.id === ev._base) || ev) : ev;
         const s = ev.allDay ? { d: (ev.start || '').slice(0, 10), t: '09:00' } : splitDt(ev.start);
         const e = ev.allDay ? { d: (ev.end || ev.start || '').slice(0, 10), t: '10:00' } : splitDt(ev.end || ev.start);
         const rr = parseRRuleString(master.rrule || '');
@@ -450,7 +464,7 @@ export default (labels = {}) => ({
         const i = this._form.byday.indexOf(wd);
         if (i >= 0) this._form.byday.splice(i, 1); else this._form.byday.push(wd);
     },
-    closeEditor() { this.editorOpen = false; this.editing = null; this._occRid = null; this._destroyEventMap(); },
+    closeEditor() { this.editorOpen = false; this.editing = null; this._occRid = null; this._editVid = null; this._destroyEventMap(); },
 
     get formValid() {
         const f = this._form;
@@ -468,8 +482,12 @@ export default (labels = {}) => ({
         const endDate = f.endDate || f.startDate;
         const end = f.allDay ? endDate : `${endDate}T${f.endTime || f.startTime || '00:00'}`;
         const rrule = buildRRuleString({ freq: f.repeat, interval: f.interval, byday: f.byday, ends: f.ends, count: f.count, until: f.until }) || null;
+        // Target vault: a NEW event comes from the picker; an EDIT stays in its home.
+        const vid = this.editing ? this._editVid : this.sharedVaultId(f.calendarId);
+        if (vid && !this.canEditCalendar(`sv:${vid}`)) { window.llToast?.(this.labels.share_readonly || ''); return; }
+        const tag = vid ? { calendarId: `sv:${vid}`, shared: true, vaultId: vid } : { calendarId: f.calendarId || this._defaultCalendarId() };
         const props = {
-            calendarId: f.calendarId || this._defaultCalendarId(),
+            ...tag,
             title: f.title.trim(),
             description: f.description.trim(),
             location: f.location.trim() ? { label: f.location.trim(), lat: f.locationLat ?? null, lng: f.locationLng ?? null } : null,
@@ -478,47 +496,51 @@ export default (labels = {}) => ({
             updatedAt: now,
         };
         const temporal = { start, end, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' };
+        if (vid && !Array.isArray(this.sharedEvents[vid])) this.sharedEvents = { ...this.sharedEvents, [vid]: [] };
+        const arr = vid ? this.sharedEvents[vid] : this.events;
 
         if (!this.editing) {
-            this.events.push({ id: newId(), createdAt: now, ...props, ...temporal, rrule, exdates: [], status: 'confirmed' });
+            arr.push({ id: newId(), createdAt: now, ...props, ...temporal, rrule, exdates: [], status: 'confirmed' });
         } else if (this._occRid && this.editScope === 'this' && this.editing.rrule) {
-            // Override just this occurrence: exclude it from the master + add a
-            // standalone override record carrying the edited fields.
             if (!Array.isArray(this.editing.exdates)) this.editing.exdates = [];
             if (!this.editing.exdates.includes(this._occRid)) this.editing.exdates.push(this._occRid);
-            this.events.push({
+            arr.push({
                 id: newId(), createdAt: now, ...props, ...temporal,
                 rrule: null, exdates: [],
                 status: 'confirmed', overrideOf: this.editing.id, recurrenceId: this._occRid,
             });
         } else if (this._occRid && this.editScope === 'all') {
-            // Whole series: edit properties + recurrence, keep the master anchor time.
             Object.assign(this.editing, props, { rrule });
         } else {
-            // Plain edit of a single event (or an override record).
             Object.assign(this.editing, props, temporal, { rrule });
         }
         this._mut++;
-        this._save();
-        this._queueRemSync();
+        this._commitCalendar(vid);
         this.closeEditor();
     },
 
+    // Persist to the right store (personal debounced /store, or a shared vault).
+    _commitCalendar(vid) {
+        if (vid) this._saveSharedCal(vid).catch(() => window.llToast?.(this.labels.share_failed || ''));
+        else { this._save(); this._queueRemSync(); }
+    },
+
     deleteEvent(ev) {
-        // ev may be the master in the editor. When deleting one occurrence of a
-        // series, add an EXDATE instead of removing the master.
-        if (this._occRid && this.editScope === 'this' && this.editing && this.editing.rrule) {
-            if (!Array.isArray(this.editing.exdates)) this.editing.exdates = [];
-            if (!this.editing.exdates.includes(this._occRid)) this.editing.exdates.push(this._occRid);
-            // Drop any override for that occurrence too.
-            this.events = this.events.filter((e) => !(e.overrideOf === this.editing.id && e.recurrenceId === this._occRid));
+        const vid = this._editVid || (this.editing && this.editing.vaultId) || null;
+        if (vid && !this.canEditCalendar(`sv:${vid}`)) { window.llToast?.(this.labels.share_readonly || ''); return; }
+        const master = this.editing || ev;
+        if (this._occRid && this.editScope === 'this' && master && master.rrule) {
+            if (!Array.isArray(master.exdates)) master.exdates = [];
+            if (!master.exdates.includes(this._occRid)) master.exdates.push(this._occRid);
+            const kept = (vid ? this.sharedEvents[vid] : this.events).filter((e) => !(e.overrideOf === master.id && e.recurrenceId === this._occRid));
+            if (vid) this.sharedEvents = { ...this.sharedEvents, [vid]: kept }; else this.events = kept;
         } else {
-            const id = (this.editing || ev).id;
-            this.events = this.events.filter((e) => e.id !== id && e.overrideOf !== id);
+            const id = master.id;
+            const kept = (vid ? this.sharedEvents[vid] : this.events).filter((e) => e.id !== id && e.overrideOf !== id);
+            if (vid) this.sharedEvents = { ...this.sharedEvents, [vid]: kept }; else this.events = kept;
         }
         this._mut++;
-        this._save();
-        this._queueRemSync();
+        this._commitCalendar(vid);
         this.closeEditor();
     },
 
@@ -746,6 +768,237 @@ export default (labels = {}) => ({
         // Explicit date-only options — formatDate's default includes the time.
         const opts = hasYear ? { year: 'numeric', month: 'long', day: 'numeric' } : { month: 'long', day: 'numeric' };
         return formatDate(full, opts);
+    },
+
+    // ================= Shared calendars (ZK cross-user, mirrors passwords.js) =========
+    _svRole(r) { return ({ viewer: 'read', editor: 'edit', manager: 'manage' })[r] || 'read'; },
+    _svServerRole(r) { return ({ read: 'viewer', edit: 'editor', manage: 'manager' })[r] || 'viewer'; },
+    _svTag(events, vaultId) { return (events || []).map((e) => ({ ...e, calendarId: `sv:${vaultId}`, shared: true, vaultId })); },
+    _svStrip(events) { return (events || []).map((e) => { const c = { ...e }; delete c.calendarId; delete c.shared; delete c.vaultId; return c; }); },
+    isSharedCal(id) { return typeof id === 'string' && id.startsWith('sv:'); },
+    sharedVaultId(id) { return this.isSharedCal(id) ? id.slice(3) : null; },
+    sharedRole(vaultId) { const v = this.sharedCals.find((c) => c.vaultId === vaultId); return v ? v.role : 'read'; },
+    canEditCalendar(calendarId) {
+        const vid = this.sharedVaultId(calendarId);
+        if (!vid) return true; // personal calendar
+        const r = this.sharedRole(vid);
+        return r === 'edit' || r === 'manage';
+    },
+    // Personal + shared calendars for the editor picker.
+    get pickerCalendars() {
+        void this._mut;
+        const personal = this.calendars.map((c) => ({ id: c.id, name: c.name, color: c.color, shared: false }));
+        const shared = this.sharedCals
+            .filter((c) => c.role === 'edit' || c.role === 'manage')
+            .map((c) => ({ id: `sv:${c.vaultId}`, name: c.name, color: c.color, shared: true }));
+        return [...personal, ...shared];
+    },
+
+    async _loadSharedCalendars() {
+        try {
+            const id = await Vault.ensureIdentityKeys();
+            const memberships = await apiRequest('GET', '/vaults?kind=calendar');
+            const all = Array.isArray(memberships) ? memberships : [];
+            this.pendingInvites = all.filter((m) => m.status === 'pending')
+                .map((m) => ({ vault_id: m.vault_id, member_id: m.id, role: m.role, wrapped_vault_key: m.wrapped_vault_key }));
+            const cals = [];
+            const events = {};
+            for (const m of all.filter((x) => x.status === 'active')) {
+                try {
+                    const vkB64 = await VaultShareCrypto.unwrapVaultKey(m.wrapped_vault_key, id.sk, id.mlkemSeed);
+                    const vkBytes = Uint8Array.from(atob(vkB64), (c) => c.charCodeAt(0));
+                    this._sharedKeys[m.vault_id] = vkBytes;
+                    const store = await apiRequest('GET', `/vaults/${m.vault_id}/store`);
+                    let manifest = null;
+                    if (store.sealed_manifest) manifest = await VaultShareCrypto.openVaultManifest(store.sealed_manifest, vkBytes);
+                    const name = (manifest && manifest.name) || 'Kalender';
+                    const color = (manifest && manifest.color) || CALENDAR_COLORS[6];
+                    cals.push({ id: m.vault_id, name, color, role: this._svRole(m.role), vaultId: m.vault_id, owner: !!m.owner });
+                    events[m.vault_id] = this._svTag((manifest && manifest.events) || [], m.vault_id);
+                    this._sharedVersion[m.vault_id] = store.version;
+                    this._sharedBase[m.vault_id] = jsonClone({ name, color, events: this._svStrip(events[m.vault_id]) });
+                } catch (e) {
+                    console.warn('[calendar share] load failed', m.vault_id, e);
+                }
+            }
+            this.sharedCals = cals;
+            this.sharedEvents = events;
+            this._mut++;
+        } catch (e) {
+            console.warn('[calendar share] aborted', e);
+        }
+    },
+
+    // Seal + PUT a shared calendar manifest with optimistic concurrency + rebase-merge.
+    async _saveSharedCal(vaultId) {
+        const cal = this.sharedCals.find((c) => c.vaultId === vaultId);
+        const vkBytes = this._sharedKeys[vaultId];
+        if (!cal || !vkBytes) throw new Error('vault key missing');
+        let ok = false; let conflicts = 0;
+        while (!ok && conflicts < 5) {
+            const ours = { name: cal.name, color: cal.color, events: this._svStrip(this.sharedEvents[vaultId] || []) };
+            const sealed = await VaultShareCrypto.sealVaultManifest(ours, vkBytes);
+            const res = await fetch(`/vaults/${vaultId}/store`, { method: 'PUT', headers: jsonHeaders(), body: JSON.stringify({ sealed_manifest: sealed, expected_version: this._sharedVersion[vaultId] }) });
+            if (res.ok) {
+                this._sharedVersion[vaultId] = (await res.json()).version;
+                this._sharedBase[vaultId] = jsonClone(ours);
+                ok = true;
+            } else if (res.status === 429) {
+                const ra = parseInt(res.headers.get('Retry-After') || '5', 10);
+                await new Promise((r) => setTimeout(r, (Number.isNaN(ra) || ra <= 0 ? 5 : Math.min(ra, 60)) * 1000));
+            } else if (res.status === 409) {
+                conflicts++;
+                const data = await res.json();
+                let server;
+                try {
+                    server = data.sealed_manifest ? await VaultShareCrypto.openVaultManifest(data.sealed_manifest, vkBytes) : { name: cal.name, color: cal.color, events: [] };
+                } catch {
+                    window.llToast?.(this.labels.share_conflict || '');
+                    delete this._sharedKeys[vaultId]; delete this._sharedVersion[vaultId]; delete this._sharedBase[vaultId];
+                    await this._loadSharedCalendars();
+                    return;
+                }
+                const srv = { name: server.name ?? cal.name, color: server.color ?? cal.color, events: server.events || [] };
+                const merged = mergeManifest(this._sharedBase[vaultId] || srv, ours, srv);
+                this.sharedEvents = { ...this.sharedEvents, [vaultId]: this._svTag(merged.events || [], vaultId) };
+                cal.name = merged.name ?? cal.name;
+                cal.color = merged.color ?? cal.color;
+                this._sharedVersion[vaultId] = data.version;
+                this._sharedBase[vaultId] = jsonClone(srv);
+                this._mut++;
+            } else {
+                throw new Error('save shared failed ' + res.status);
+            }
+        }
+        if (!ok) { window.llToast?.(this.labels.share_conflict || ''); await this._loadSharedCalendars(); }
+    },
+
+    async createSharedCalendar() {
+        const raw = await this.$store.confirm.prompt('', { placeholder: this.labels.share_new_name || '', ok: this.labels.save || '' });
+        const name = (raw || '').trim();
+        if (!name) return;
+        try {
+            const vk = await VaultShareCrypto.newVaultKey();
+            const idk = await Vault.ensureIdentityKeys();
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, idk.pub, idk.mlkemEk);
+            const { id } = await apiRequest('POST', '/vaults', { wrapped_vault_key: wrapped, kind: 'calendar' });
+            const vkBytes = Uint8Array.from(atob(vk), (c) => c.charCodeAt(0));
+            const color = CALENDAR_COLORS[(this.sharedCals.length + 3) % CALENDAR_COLORS.length];
+            const manifest = { name, color, events: [] };
+            const res = await apiRequest('PUT', `/vaults/${id}/store`, { sealed_manifest: await VaultShareCrypto.sealVaultManifest(manifest, vkBytes), expected_version: 0 });
+            this._sharedKeys[id] = vkBytes;
+            this._sharedVersion[id] = (res && typeof res.version === 'number') ? res.version : 1;
+            this._sharedBase[id] = jsonClone(manifest);
+            this.sharedCals.push({ id, name, color, role: 'manage', vaultId: id, owner: true });
+            this.sharedEvents = { ...this.sharedEvents, [id]: [] };
+            this._mut++;
+        } catch (e) {
+            window.llToast?.(this.labels.share_failed || '');
+        }
+    },
+
+    setSharedColor(vaultId, color) {
+        const c = this.sharedCals.find((x) => x.vaultId === vaultId);
+        if (c && (c.role === 'manage' || c.role === 'edit')) { c.color = color; this._mut++; this._saveSharedCal(vaultId).catch(() => {}); }
+    },
+    async deleteSharedCalendar(vaultId) {
+        if (!await this.$store.confirm.ask(this.labels.share_delete_confirm || '')) return;
+        try {
+            await postForm(`/vaults/${vaultId}`, null, 'DELETE');
+            this.sharedCals = this.sharedCals.filter((c) => c.vaultId !== vaultId);
+            const ev = { ...this.sharedEvents }; delete ev[vaultId]; this.sharedEvents = ev;
+            delete this._sharedKeys[vaultId]; delete this._sharedVersion[vaultId]; delete this._sharedBase[vaultId];
+            if (this.managingVaultId === vaultId) this.managingVaultId = null;
+            this._mut++;
+        } catch { window.llToast?.(this.labels.share_failed || ''); }
+    },
+
+    // ---- invite / accept / members (mirror passwords.js) ----
+    openShareDialog(vaultId) {
+        this.shareDialog = { open: true, vaultId, identifier: '', role: 'read', lookingUp: false, resolved: null, fingerprintStatus: null, sharing: false, notice: '' };
+    },
+    closeShareDialog() { this.shareDialog = { ...this.shareDialog, open: false }; },
+    async lookUpRecipient() {
+        const d = this.shareDialog;
+        if (!d.vaultId || !d.identifier.trim()) return;
+        d.lookingUp = true; d.resolved = null; d.fingerprintStatus = null; d.notice = '';
+        try {
+            const res = await fetch(`/vaults/${d.vaultId}/resolve-recipient`, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ identifier: d.identifier.trim() }) });
+            if (res.status === 422) { d.notice = this.labels.share_no_recipient || ''; return; }
+            if (!res.ok) { d.notice = this.labels.share_failed || ''; return; }
+            const data = await res.json();
+            const computed = await VaultShareCrypto.fingerprint(data.public_key);
+            if (computed !== data.fingerprint) { d.notice = this.labels.share_fp_changed || ''; return; }
+            d.resolved = data;
+            const store = window.LLModuleStore.sharing.data;
+            store.knownFingerprints = store.knownFingerprints || {};
+            const stored = store.knownFingerprints[data.user_id];
+            if (!stored) d.fingerprintStatus = 'new';
+            else if (stored === data.fingerprint) d.fingerprintStatus = 'verified';
+            else { d.fingerprintStatus = 'changed'; d.notice = this.labels.share_fp_changed || ''; d.resolved = null; }
+        } finally { d.lookingUp = false; }
+    },
+    async confirmShare() {
+        const d = this.shareDialog;
+        if (!d.resolved || d.fingerprintStatus === 'changed') return;
+        if (d.fingerprintStatus === 'new') {
+            const store = window.LLModuleStore.sharing.data;
+            store.knownFingerprints = store.knownFingerprints || {};
+            store.knownFingerprints[d.resolved.user_id] = d.resolved.fingerprint;
+            window.LLModuleStore.sharing.touch();
+        }
+        d.sharing = true; d.notice = '';
+        try {
+            const vkBytes = this._sharedKeys[d.vaultId];
+            if (!vkBytes) { d.notice = this.labels.share_failed || ''; return; }
+            const vkB64 = btoa(String.fromCharCode(...new Uint8Array(vkBytes)));
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, d.resolved.public_key, d.resolved.mlkem_public_key);
+            const res = await fetch(`/vaults/${d.vaultId}/members`, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ user_id: d.resolved.user_id, role: this._svServerRole(d.role), wrapped_vault_key: wrapped, recipient_fingerprint: d.resolved.fingerprint }) });
+            if (!res.ok) { d.notice = res.status === 422 ? (this.labels.share_already || '') : (this.labels.share_failed || ''); return; }
+            d.notice = this.labels.share_sent || '';
+            d.resolved = null; d.identifier = '';
+        } finally { d.sharing = false; }
+    },
+    async acceptInvite(inv) {
+        const id = await Vault.ensureIdentityKeys();
+        try { await VaultShareCrypto.unwrapVaultKey(inv.wrapped_vault_key, id.sk, id.mlkemSeed); }
+        catch { window.llToast?.(this.labels.share_invite_invalid || ''); return; }
+        try {
+            await apiRequest('POST', `/vaults/${inv.vault_id}/members/${inv.member_id}/accept`);
+            this.pendingInvites = this.pendingInvites.filter((p) => p.member_id !== inv.member_id);
+            await this._loadSharedCalendars();
+        } catch { window.llToast?.(this.labels.share_failed || ''); }
+    },
+    async openManageMembers(vaultId) {
+        this.managingVaultId = vaultId; this.managingVaultMembers = []; this.managingVaultLoading = true;
+        try { const m = await apiRequest('GET', `/vaults/${vaultId}/members`); this.managingVaultMembers = Array.isArray(m) ? m : []; }
+        catch { window.llToast?.(this.labels.share_failed || ''); }
+        finally { this.managingVaultLoading = false; }
+    },
+    closeManageMembers() { this.managingVaultId = null; this.managingVaultMembers = []; },
+    async removeMember(memberId) {
+        if (!await this.$store.confirm.ask(this.labels.share_remove_confirm || '')) return;
+        const vaultId = this.managingVaultId;
+        const vkBytes = this._sharedKeys[vaultId];
+        if (!vaultId || !vkBytes) { window.llToast?.(this.labels.share_failed || ''); return; }
+        this.rotatingKeys = true;
+        try {
+            const newVkB64 = await VaultShareCrypto.newVaultKey();
+            const newVkBytes = Uint8Array.from(atob(newVkB64), (c) => c.charCodeAt(0));
+            const remaining = this.managingVaultMembers.filter((m) => m.id !== memberId && m.status === 'active' && m.public_key);
+            const members = await Promise.all(remaining.map(async (m) => ({ user_id: m.user_id, wrapped_vault_key: await VaultShareCrypto.wrapVaultKeyFor(newVkB64, m.public_key, m.mlkem_public_key) })));
+            const cal = this.sharedCals.find((c) => c.vaultId === vaultId);
+            const manifest = { name: cal ? cal.name : '', color: cal ? cal.color : CALENDAR_COLORS[6], events: this._svStrip(this.sharedEvents[vaultId] || []) };
+            const sealed = await VaultShareCrypto.sealVaultManifest(manifest, newVkBytes);
+            const res = await fetch(`/vaults/${vaultId}/rotate`, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ sealed_manifest: sealed, expected_version: this._sharedVersion[vaultId] ?? 0, members, remove_member_id: memberId }) });
+            if (res.status === 409) { await this._loadSharedCalendars(); window.llToast?.(this.labels.share_conflict || ''); return; }
+            if (!res.ok) { window.llToast?.(this.labels.share_failed || ''); return; }
+            this._sharedKeys[vaultId] = newVkBytes;
+            this._sharedVersion[vaultId] = (await res.json()).version;
+            this.managingVaultMembers = this.managingVaultMembers.filter((m) => m.id !== memberId);
+            window.llToast?.(this.labels.share_removed || '');
+        } catch { window.llToast?.(this.labels.share_failed || ''); }
+        finally { this.rotatingKeys = false; }
     },
 
     fmtDay(iso) { return formatDate(iso, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }); },

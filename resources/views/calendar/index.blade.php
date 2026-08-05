@@ -21,6 +21,19 @@
         kind: { birthday: @js(__('calendar.kind_birthday')), anniversary: @js(__('calendar.kind_anniversary')) },
         turns: @js(__('calendar.bday_turns')),
         annivYears: @js(__('calendar.anniv_years')),
+        save: @js(__('common.save')),
+        share_new_name: @js(__('calendar.share_new_name')),
+        share_delete_confirm: @js(__('calendar.share_delete_confirm')),
+        share_remove_confirm: @js(__('calendar.share_remove_confirm')),
+        share_failed: @js(__('calendar.share_failed')),
+        share_sent: @js(__('calendar.share_sent')),
+        share_conflict: @js(__('calendar.share_conflict')),
+        share_removed: @js(__('calendar.share_removed')),
+        share_already: @js(__('calendar.share_already')),
+        share_no_recipient: @js(__('calendar.share_no_recipient')),
+        share_fp_changed: @js(__('calendar.share_fp_changed')),
+        share_invite_invalid: @js(__('calendar.share_invite_invalid')),
+        share_readonly: @js(__('calendar.share_readonly')),
      })">
 
     {{-- Zero-knowledge gate: calendar data decrypts with the vault key. --}}
@@ -39,6 +52,19 @@
     </template>
 
     <div x-show="state === 'ready'" x-cloak>
+      {{-- Pending shared-calendar invitations --}}
+      <div x-show="pendingInvites.length" x-cloak class="mb-4 rounded-xl border border-accent/30 bg-accent/5 p-3">
+        <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-accent">{{ __('calendar.pending_invites') }}</p>
+        <div class="space-y-1.5">
+          <template x-for="inv in pendingInvites" :key="inv.member_id">
+            <div class="flex items-center justify-between gap-3 rounded-lg bg-white/60 dark:bg-white/5 px-3 py-2">
+              <span class="text-sm text-gray-700 dark:text-gray-200" x-text="'#' + inv.vault_id"></span>
+              <x-button variant="primary" size="sm" @click="acceptInvite(inv)">{{ __('calendar.accept') }}</x-button>
+            </div>
+          </template>
+        </div>
+      </div>
+
       {{-- Header: month nav + actions --}}
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2">
@@ -230,9 +256,9 @@
 
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('calendar.calendar') }}</label>
-              <select x-model="_form.calendarId" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
-                <template x-for="c in calendars" :key="c.id">
-                  <option :value="c.id" x-text="c.name"></option>
+              <select x-model="_form.calendarId" ::disabled="editing && _editVid" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                <template x-for="c in pickerCalendars" :key="c.id">
+                  <option :value="c.id" x-text="c.shared ? ('◆ ' + c.name) : c.name"></option>
                 </template>
               </select>
             </div>
@@ -385,9 +411,92 @@
               </div>
             </template>
 
+            {{-- Shared calendars (co-managed with other users) --}}
+            <div class="mt-3 border-t border-black/[0.06] dark:border-white/10 pt-3">
+              <div class="mb-2 flex items-center justify-between px-1">
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ __('calendar.shared_calendars') }}</p>
+                <button type="button" @click="createSharedCalendar()" class="text-xs text-accent hover:underline">{{ __('calendar.new_shared') }}</button>
+              </div>
+              <div class="space-y-1.5">
+                <template x-for="c in sharedCals" :key="c.vaultId">
+                  <div class="flex items-center gap-2.5 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                    <input type="color" :value="c.color" @change="setSharedColor(c.vaultId, $event.target.value)" ::disabled="c.role === 'read'" class="h-7 w-8 shrink-0 cursor-pointer rounded-md border border-gray-300 dark:border-gray-700">
+                    <span class="min-w-0 flex-1 truncate text-sm text-gray-900 dark:text-gray-100" x-text="c.name"></span>
+                    <x-badge variant="gray" x-text="c.role"></x-badge>
+                    <x-icon-button name="user-plus" tone="gray" size="sm" x-show="c.role === 'manage'" @click="openShareDialog(c.vaultId)" :aria-label="__('calendar.share')" />
+                    <x-icon-button name="users" tone="gray" size="sm" x-show="c.role === 'manage'" @click="openManageMembers(c.vaultId)" :aria-label="__('calendar.manage_members')" />
+                    <x-icon-button name="trash" tone="red" size="sm" x-show="c.owner" @click="deleteSharedCalendar(c.vaultId)" :aria-label="__('common.delete')" />
+                  </div>
+                </template>
+              </div>
+            </div>
+
           </div>
           <div class="border-t border-black/[0.06] dark:border-white/10 px-5 py-3 text-right">
             <x-button variant="secondary" size="sm" @click="closeCalMgr()">{{ __('common.close') }}</x-button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    {{-- Share dialog (invite a user to co-manage) --}}
+    <template x-teleport="body">
+      <div x-show="shareDialog.open" x-cloak class="fixed inset-0 z-[1130] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeShareDialog()">
+        <div class="absolute inset-0 bg-gray-900/40" @click="closeShareDialog()"></div>
+        <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+          <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('calendar.share') }}</h3>
+          <div class="mt-3 space-y-3">
+            <div class="flex gap-2">
+              <input type="email" x-model="shareDialog.identifier" @keydown.enter="lookUpRecipient()" placeholder="{{ __('calendar.share_recipient') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm focus:border-accent focus:ring-accent">
+              <x-button variant="secondary" size="sm" ::disabled="shareDialog.lookingUp" @click="lookUpRecipient()">{{ __('calendar.look_up') }}</x-button>
+            </div>
+            <template x-if="shareDialog.resolved">
+              <div class="space-y-2 rounded-xl border border-black/[0.06] dark:border-white/10 p-3">
+                <p class="text-xs text-gray-500" x-show="shareDialog.fingerprintStatus === 'new'">{{ __('calendar.share_fp_new') }}</p>
+                <p class="text-xs text-green-600" x-show="shareDialog.fingerprintStatus === 'verified'" x-cloak>{{ __('calendar.share_fp_verified') }}</p>
+                <div class="flex items-center gap-2">
+                  <label class="text-sm text-gray-600 dark:text-gray-300">{{ __('calendar.invite_role') }}</label>
+                  <select x-model="shareDialog.role" class="rounded-md border-gray-300 dark:border-gray-700 text-sm focus:border-accent focus:ring-accent">
+                    <option value="read">{{ __('calendar.role_read') }}</option>
+                    <option value="edit">{{ __('calendar.role_edit') }}</option>
+                    <option value="manage">{{ __('calendar.role_manage') }}</option>
+                  </select>
+                </div>
+                <div class="text-right">
+                  <x-button variant="primary" size="sm" ::disabled="shareDialog.sharing" @click="confirmShare()">{{ __('calendar.share_send') }}</x-button>
+                </div>
+              </div>
+            </template>
+            <p x-show="shareDialog.notice" x-cloak class="text-xs text-amber-600 dark:text-amber-400" x-text="shareDialog.notice"></p>
+          </div>
+          <div class="mt-4 text-right">
+            <x-button variant="secondary" size="sm" @click="closeShareDialog()">{{ __('common.close') }}</x-button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    {{-- Members management --}}
+    <template x-teleport="body">
+      <div x-show="managingVaultId" x-cloak class="fixed inset-0 z-[1130] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeManageMembers()">
+        <div class="absolute inset-0 bg-gray-900/40" @click="closeManageMembers()"></div>
+        <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+          <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('calendar.manage_members') }}</h3>
+          <div class="mt-3 space-y-1.5">
+            <template x-if="!managingVaultLoading && !managingVaultMembers.length">
+              <p class="text-sm text-gray-400">{{ __('calendar.no_members') }}</p>
+            </template>
+            <template x-for="m in managingVaultMembers" :key="m.id">
+              <div class="flex items-center gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                <span class="min-w-0 flex-1 truncate text-sm text-gray-900 dark:text-gray-100" x-text="m.email || ('#' + m.user_id)"></span>
+                <x-badge variant="gray" x-text="m.role"></x-badge>
+                <x-badge x-show="m.status === 'pending'" x-cloak variant="warning">pending</x-badge>
+                <x-icon-button name="trash" tone="red" size="sm" ::disabled="rotatingKeys" @click="removeMember(m.id)" :aria-label="__('common.delete')" />
+              </div>
+            </template>
+          </div>
+          <div class="mt-4 text-right">
+            <x-button variant="secondary" size="sm" @click="closeManageMembers()">{{ __('common.close') }}</x-button>
           </div>
         </div>
       </div>
