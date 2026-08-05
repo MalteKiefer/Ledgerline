@@ -44,5 +44,10 @@ return [
     'scope_this' => 'Diesen Termin',
     'scope_all' => 'Gesamte Serie',
     'recurring' => 'Wiederholt sich',
+    'reminders' => 'Erinnerungen',
+    'rem_at_time' => 'Zum Zeitpunkt des Termins',
+    'rem_minutes' => ':n Minuten vorher',
+    'rem_hours' => ':n Stunden vorher',
+    'rem_days' => ':n Tage vorher',
+    'location_searching' => 'Suche…',
 ];
-

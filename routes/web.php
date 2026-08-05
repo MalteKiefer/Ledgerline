@@ -392,6 +392,9 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/health', 'health.index')->middleware('module:health')->name('health.index');
     // Calendar: zero-knowledge, calendars + events in the opaque /store manifest.
     Route::view('/calendar', 'calendar.index')->middleware('module:calendar')->name('calendar.index');
+    // Calendar location search reuses the generic Nominatim geocoder, but under the
+    // calendar module gate (so it works without the gallery module).
+    Route::get('/calendar/geocode', [GalleryProcessController::class, 'geocode'])->middleware('module:calendar', 'throttle:60,1')->name('calendar.geocode');
     // Invoices: zero-knowledge, records in the opaque /store manifest. The per-user
     // company profile (printed on invoices) is plaintext in the user's settings.
     Route::view('/finance', 'invoices.index')->middleware('module:finance')->name('finance.index');

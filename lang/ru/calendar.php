@@ -44,5 +44,10 @@ return [
     'scope_this' => 'Это событие',
     'scope_all' => 'Всю серию',
     'recurring' => 'Повторяется',
+    'reminders' => 'Напоминания',
+    'rem_at_time' => 'В момент события',
+    'rem_minutes' => 'за :n минут',
+    'rem_hours' => 'за :n часов',
+    'rem_days' => 'за :n дней',
+    'location_searching' => 'Поиск…',
 ];
-
