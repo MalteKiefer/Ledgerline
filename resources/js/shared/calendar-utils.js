@@ -84,6 +84,19 @@ export function timeLabel(ev) {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+// ISO-8601 week number for a yyyy-mm-dd string (weeks start Monday; week 1 is the
+// week containing the first Thursday). Independent of the display week-start.
+export function weekNumberOf(iso) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    const day = (date.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+    date.setUTCDate(date.getUTCDate() - day + 3); // to the Thursday of this week
+    const firstThu = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+    const firstThuDay = (firstThu.getUTCDay() + 6) % 7;
+    firstThu.setUTCDate(firstThu.getUTCDate() - firstThuDay + 3);
+    return 1 + Math.round((date.getTime() - firstThu.getTime()) / (7 * 86_400_000));
+}
+
 export const MONTH_KEYS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 export const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 

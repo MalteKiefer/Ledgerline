@@ -69,6 +69,11 @@ use Illuminate\Database\Eloquent\Model;
     'time_format',
     'mail_load_remote',
     'mail_allow_scripts',
+    'cal_week_numbers',
+    'cal_week_start',
+    'cal_default_view',
+    'cal_day_start',
+    'cal_day_end',
     // Per-user company identity + invoice numbering (formerly workspace-global).
     'company_name', 'company_address', 'company_email', 'company_phone', 'company_tax_id',
     'company_vat_id', 'company_iban', 'company_bic', 'company_bank_name', 'company_logo_path',
@@ -100,13 +105,18 @@ class UserSetting extends Model
         'unit_temp' => 'c',
         'unit_glucose' => 'mgdl',
         'time_format' => '24h',
+        'cal_week_numbers' => false,
+        'cal_week_start' => 'mon',
+        'cal_default_view' => 'month',
+        'cal_day_start' => 8,
+        'cal_day_end' => 17,
     ];
 
     /**
      * The non-secret display preferences as a flat map for injection into the page
      * and the API (window.LLPrefs / GET /me). Presentation only — never data.
      *
-     * @return array{distance:string, elevation:string, weight:string, temp:string, glucose:string, time_format:string}
+     * @return array{distance:string, elevation:string, weight:string, temp:string, glucose:string, time_format:string, mail_remote:bool, mail_scripts:bool, cal_week_numbers:bool, cal_week_start:string, cal_default_view:string, cal_day_start:int, cal_day_end:int}
      */
     public function displayPrefs(): array
     {
@@ -119,6 +129,11 @@ class UserSetting extends Model
             'time_format' => (string) ($this->time_format ?? '24h'),
             'mail_remote' => (bool) ($this->mail_load_remote ?? false),
             'mail_scripts' => (bool) ($this->mail_allow_scripts ?? false),
+            'cal_week_numbers' => (bool) ($this->cal_week_numbers ?? false),
+            'cal_week_start' => (string) ($this->cal_week_start ?? 'mon'),
+            'cal_default_view' => (string) ($this->cal_default_view ?? 'month'),
+            'cal_day_start' => (int) ($this->cal_day_start ?? 8),
+            'cal_day_end' => (int) ($this->cal_day_end ?? 17),
         ];
     }
 
@@ -140,6 +155,9 @@ class UserSetting extends Model
             'company_contacts' => 'array',
             'mail_load_remote' => 'boolean',
             'mail_allow_scripts' => 'boolean',
+            'cal_week_numbers' => 'boolean',
+            'cal_day_start' => 'integer',
+            'cal_day_end' => 'integer',
             'invoice_mail_enabled' => 'boolean',
             'invoice_vat_ist' => 'boolean',
             'invoice_smtp_port' => 'integer',

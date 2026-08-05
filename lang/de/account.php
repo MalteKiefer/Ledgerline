@@ -31,6 +31,8 @@ return [
     'twofa_disable' => 'Zwei-Faktor deaktivieren',
     'nav_appearance' => 'Darstellung',
     'nav_appearance_desc' => 'Design und Sprache',
+    'nav_calendar' => 'Kalender',
+    'nav_calendar_desc' => 'Kalenderwochen, Starttag, Standardansicht, Arbeitszeiten',
     'nav_admin' => 'Verwaltung',
     'nav_admin_desc' => 'Arbeitsbereich-weite Einstellungen',
     'appearance_heading' => 'Darstellung',

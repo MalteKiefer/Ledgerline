@@ -118,6 +118,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/profile/mail-keys', [ProfileController::class, 'mailKeys'])->middleware('module:mail')->name('profile.mail-keys');
     Route::get('/profile/security', [ProfileController::class, 'security'])->name('profile.security');
     Route::get('/profile/appearance', [ProfileController::class, 'appearance'])->name('profile.appearance');
+    Route::get('/profile/calendar', [ProfileController::class, 'calendar'])->middleware('module:calendar')->name('profile.calendar');
     Route::get('/profile/export', [ProfileController::class, 'exportPage'])->name('profile.export');
     Route::get('/profile/danger', [ProfileController::class, 'danger'])->name('profile.danger');
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');

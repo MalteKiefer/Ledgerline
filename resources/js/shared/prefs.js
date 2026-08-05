@@ -7,7 +7,7 @@
 // Read lazily + memoised. After saving on the appearance page, call setPrefs() so
 // the running UI reflects the change without a reload.
 
-const DEFAULTS = { distance: 'km', elevation: 'm', weight: 'kg', temp: 'c', glucose: 'mgdl', time_format: '24h', mail_remote: false, mail_scripts: false };
+const DEFAULTS = { distance: 'km', elevation: 'm', weight: 'kg', temp: 'c', glucose: 'mgdl', time_format: '24h', mail_remote: false, mail_scripts: false, cal_week_numbers: false, cal_week_start: 'mon', cal_default_view: 'month', cal_day_start: 8, cal_day_end: 17 };
 
 let _cache = null;
 
@@ -40,6 +40,13 @@ export function is12h() { return read().time_format === '12h'; }
 /** Mail-archive display prefs (both default false / safest). */
 export function mailRemote() { return read().mail_remote === true; }
 export function mailScripts() { return read().mail_scripts === true; }
+
+/** Calendar display prefs. */
+export function calWeekNumbers() { return read().cal_week_numbers === true; }
+export function calWeekStart() { return read().cal_week_start === 'sun' ? 'sun' : 'mon'; }
+export function calDefaultView() { const v = read().cal_default_view; return (v === 'week' || v === 'day') ? v : 'month'; }
+export function calDayStart() { const n = Number(read().cal_day_start); return Number.isFinite(n) ? Math.min(23, Math.max(0, n)) : 8; }
+export function calDayEnd() { const n = Number(read().cal_day_end); return Number.isFinite(n) ? Math.min(24, Math.max(1, n)) : 17; }
 
 /** Distance: canonical METERS → { value, unit } in the user's unit. */
 export function convertDistance(meters, digits = 2) {

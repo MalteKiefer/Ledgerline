@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ymd, monthMatrix, overlapsDay, eventsOnDay, timeLabel } from '../shared/calendar-utils.js';
+import { ymd, monthMatrix, overlapsDay, eventsOnDay, timeLabel, weekNumberOf } from '../shared/calendar-utils.js';
 
 describe('calendar-utils', () => {
     it('ymd formats local date parts', () => {
@@ -38,6 +38,17 @@ describe('calendar-utils', () => {
         ];
         const on = eventsOnDay(events, '2026-08-05').map((e) => e.id);
         expect(on).toEqual(['b', 'c', 'a']);
+    });
+
+    it('weekNumberOf (ISO-8601)', () => {
+        expect(weekNumberOf('2026-01-01')).toBe(1);
+        expect(weekNumberOf('2026-08-05')).toBe(32);
+        expect(weekNumberOf('2026-12-31')).toBe(53);
+    });
+
+    it('monthMatrix Sunday-aligned', () => {
+        const m = monthMatrix(2026, 7, '2026-08-05', 0); // Sunday start
+        expect(m[0][0].iso).toBe('2026-07-26'); // Sunday before Aug 1
     });
 
     it('timeLabel', () => {

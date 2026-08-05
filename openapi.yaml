@@ -401,6 +401,11 @@ components:
         time_format: { type: string, enum: [24h, 12h] }
         mail_remote: { type: boolean, description: "Load remote content (external images/resources) in archived mail. Default false (blocks tracking pixels)." }
         mail_scripts: { type: boolean, description: "Run scripts in archived mail (in an isolated sandbox iframe, no app-origin access). Default false." }
+        cal_week_numbers: { type: boolean, description: "Show ISO week numbers in the calendar. Default false." }
+        cal_week_start: { type: string, enum: [mon, sun], description: "First day of the week. Default mon." }
+        cal_default_view: { type: string, enum: [month, week, day], description: "Calendar view shown on open. Default month." }
+        cal_day_start: { type: integer, minimum: 0, maximum: 23, description: "First hour shown in the week/day time grid. Default 8." }
+        cal_day_end: { type: integer, minimum: 1, maximum: 24, description: "Last hour shown in the week/day time grid. Default 17." }
 
     MeUser:
       type: object
@@ -5901,6 +5906,13 @@ paths:
                 time_format:
                   type: string
                   enum: [24h, 12h]
+                mail_remote: { type: boolean }
+                mail_scripts: { type: boolean }
+                cal_week_numbers: { type: boolean }
+                cal_week_start: { type: string, enum: [mon, sun] }
+                cal_default_view: { type: string, enum: [month, week, day] }
+                cal_day_start: { type: integer, minimum: 0, maximum: 23 }
+                cal_day_end: { type: integer, minimum: 1, maximum: 24 }
       responses:
         "200":
           description: Preferences updated; returns the full preference set.

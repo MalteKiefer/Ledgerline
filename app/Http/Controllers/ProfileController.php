@@ -116,6 +116,14 @@ class ProfileController extends Controller
         ]);
     }
 
+    /** Calendar display preferences (week numbers, week start, default view, hours). */
+    public function calendar(Request $request): View
+    {
+        return view('profile.calendar', [
+            'prefs' => UserSetting::for($this->requireUser($request)->id)->displayPrefs(),
+        ]);
+    }
+
     /** GDPR data export. */
     public function exportPage(Request $request): View
     {
