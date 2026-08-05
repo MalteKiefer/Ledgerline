@@ -319,14 +319,21 @@ export default (config) => ({
     // Mark the given message ids seen/unseen on the server and in the local cache.
     async setSeen(ids, seen) {
         if (!ids.length) return;
+        const set = new Set(ids);
+        // Optimistic + in-place: mutate seen on the reactive cache rows so the list's
+        // bold/normal :class flips INSTANTLY (no reload, no waiting on the POST). The
+        // rows are Alpine-reactive proxies, so an in-place property write re-renders
+        // reliably. Revert on server failure.
+        const prev = new Map();
+        this.cache.forEach((r) => { if (set.has(r.id)) { prev.set(r.id, r.seen); r.seen = seen; } });
+        if (this.open && set.has(this.open.id)) this.open.seen = seen;
         try {
             await postForm(this.config.seenBase, { ids, seen: seen ? 1 : 0 });
-            const set = new Set(ids);
-            // Reassign with fresh identities for the changed rows so the x-for
-            // (keyed by id) re-renders them and the bold/normal :class re-evaluates.
-            this.cache = this.cache.map((r) => (set.has(r.id) ? { ...r, seen } : r));
-            if (this.open && set.has(this.open.id)) this.open = { ...this.open, seen };
-        } catch { window.llToast?.(this.config.seenFailed); }
+        } catch {
+            this.cache.forEach((r) => { if (prev.has(r.id)) r.seen = prev.get(r.id); });
+            if (this.open && prev.has(this.open.id)) this.open.seen = prev.get(this.open.id);
+            window.llToast?.(this.config.seenFailed);
+        }
     },
     async bulkMarkSeen(seen) {
         if (!this.selected.length) return;
