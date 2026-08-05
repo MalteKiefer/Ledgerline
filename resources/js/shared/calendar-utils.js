@@ -88,4 +88,8 @@ export const MONTH_KEYS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug
 export const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 // A palette of calendar colours (accent-friendly, distinct hues).
-export const CALENDAR_COLORS = ['#7066f5', '#3b9fd6', '#59ad6b', '#e2915a', '#d9a441', '#3fae9f', '#9e70fa', '#d1607e', '#6b7280'];
+export const CALENDAR_COLORS = [
+    '#7066f5', '#5b6ef5', '#3b82f6', '#3b9fd6', '#0ea5a4', '#3fae9f',
+    '#59ad6b', '#22a06b', '#84cc16', '#d9a441', '#e2915a', '#f97316',
+    '#ef4444', '#d1607e', '#ec4899', '#9e70fa', '#7c3aed', '#6b7280',
+];

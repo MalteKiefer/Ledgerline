@@ -102,7 +102,9 @@
             <div class="space-y-1.5">
               <template x-for="ev in (selectedDay ? dayEvents(selectedDay) : [])" :key="ev.id">
                 <button type="button" @click="openEvent(ev)" class="flex w-full items-start gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2 text-left hover:bg-accent/5">
-                  <span class="mt-1 h-3 w-3 shrink-0 rounded-full" :style="{ background: calColor(ev.calendarId) }"></span>
+                  <span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-white" :style="{ background: calColor(ev.calendarId) }">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5"><path stroke-linecap="round" stroke-linejoin="round" :d="calIconPath(calIcon(ev.calendarId))"></path></svg>
+                  </span>
                   <span class="min-w-0 flex-1">
                     <span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="ev.title || '{{ __('calendar.untitled') }}'"></span>
                     <span class="block text-xs text-gray-500">
@@ -274,6 +276,15 @@
                     <button type="button" @click="_calForm.color = col" class="h-6 w-6 rounded-full ring-offset-1" :style="{ background: col }" :class="_calForm.color === col ? 'ring-2 ring-accent' : ''"></button>
                   </template>
                 </div>
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                  <template x-for="ic in calIcons" :key="ic">
+                    <button type="button" @click="_calForm.icon = ic" class="flex h-8 w-8 items-center justify-center rounded-lg"
+                            :class="_calForm.icon === ic ? 'text-white' : 'bg-black/[0.05] dark:bg-white/[0.06] text-gray-500 dark:text-gray-300'"
+                            :style="_calForm.icon === ic ? { background: _calForm.color } : {}">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><path stroke-linecap="round" stroke-linejoin="round" :d="calIconPath(ic)"></path></svg>
+                    </button>
+                  </template>
+                </div>
                 <div class="mt-2 flex justify-end gap-2">
                   <x-button variant="secondary" size="sm" @click="_calForm = null">{{ __('common.cancel') }}</x-button>
                   <x-button variant="primary" size="sm" @click="saveCalendar()">{{ __('common.save') }}</x-button>
@@ -282,7 +293,9 @@
             </template>
             <template x-for="c in calendars" :key="c.id">
               <div class="flex items-center gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
-                <span class="h-3.5 w-3.5 shrink-0 rounded-full" :style="{ background: c.color }"></span>
+                <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white" :style="{ background: c.color }">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><path stroke-linecap="round" stroke-linejoin="round" :d="calIconPath(c.icon)"></path></svg>
+                </span>
                 <span class="min-w-0 flex-1 truncate text-sm text-gray-900 dark:text-gray-100" x-text="c.name"></span>
                 <x-badge x-show="c.isDefault" x-cloak variant="accent">{{ __('calendar.default') }}</x-badge>
                 <x-icon-button name="star" tone="gray" size="sm" x-show="!c.isDefault" @click="setDefaultCalendar(c)" :aria-label="__('calendar.set_default')" />
