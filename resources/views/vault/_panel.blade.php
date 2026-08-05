@@ -50,7 +50,7 @@
             if (this.pass !== this.pass2) { this.error = '{{ __('vault.err_mismatch') }}'; return; }
             this.busy = true;
             try { this.recovery = await $store.vault.setPassphrase(this.pass); this.mode = 'recovery'; }
-            catch (e) { this.error = '{{ __('vault.err_change') }}'; }
+            catch (e) { this.error = e && e.status === 429 ? '{{ __('vault.err_busy') }}' : '{{ __('vault.err_change') }}'; }
             finally { this.busy = false; }
         },
         recoverPanel() {
@@ -72,7 +72,7 @@
             this.busy = true;
             // A passphrase change also mints a fresh recovery code, shown once.
             try { this.recovery = await $store.vault.changePassphrase(this.pass, this.pass2); this.mode = 'recovery'; }
-            catch (e) { this.error = '{{ __('vault.err_change') }}'; }
+            catch (e) { this.error = e && e.status === 429 ? '{{ __('vault.err_busy') }}' : '{{ __('vault.err_change') }}'; }
             finally { this.busy = false; }
         },
      }" @vault-panel.window="panel()" @vault-change.window="changePanel()" @vault-recover.window="recoverPanel()">
