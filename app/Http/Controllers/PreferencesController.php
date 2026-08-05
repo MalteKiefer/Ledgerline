@@ -28,6 +28,11 @@ class PreferencesController extends Controller
             'time_format' => ['sometimes', 'string', 'in:24h,12h'],
             'mail_remote' => ['sometimes', 'boolean'],
             'mail_scripts' => ['sometimes', 'boolean'],
+            'cal_week_numbers' => ['sometimes', 'boolean'],
+            'cal_week_start' => ['sometimes', 'string', 'in:mon,sun'],
+            'cal_default_view' => ['sometimes', 'string', 'in:month,week,day'],
+            'cal_day_start' => ['sometimes', 'integer', 'min:0', 'max:23'],
+            'cal_day_end' => ['sometimes', 'integer', 'min:1', 'max:24'],
         ]);
 
         $map = [
@@ -37,6 +42,8 @@ class PreferencesController extends Controller
             'temp' => 'unit_temp',
             'glucose' => 'unit_glucose',
             'time_format' => 'time_format',
+            'cal_week_start' => 'cal_week_start',
+            'cal_default_view' => 'cal_default_view',
         ];
         $update = [];
         foreach ($map as $key => $column) {
@@ -44,9 +51,14 @@ class PreferencesController extends Controller
                 $update[$column] = $request->string($key)->value();
             }
         }
-        foreach (['mail_remote' => 'mail_load_remote', 'mail_scripts' => 'mail_allow_scripts'] as $key => $column) {
+        foreach (['mail_remote' => 'mail_load_remote', 'mail_scripts' => 'mail_allow_scripts', 'cal_week_numbers' => 'cal_week_numbers'] as $key => $column) {
             if ($request->has($key)) {
                 $update[$column] = $request->boolean($key);
+            }
+        }
+        foreach (['cal_day_start' => 'cal_day_start', 'cal_day_end' => 'cal_day_end'] as $key => $column) {
+            if ($request->has($key)) {
+                $update[$column] = $request->integer($key);
             }
         }
 

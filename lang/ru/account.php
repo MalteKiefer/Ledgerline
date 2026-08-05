@@ -31,6 +31,8 @@ return [
     'twofa_disable' => 'Отключить двухфакторную',
     'nav_appearance' => 'Внешний вид',
     'nav_appearance_desc' => 'Тема и язык',
+    'nav_calendar' => 'Календарь',
+    'nav_calendar_desc' => 'Номера недель, день начала, вид по умолчанию, рабочие часы',
     'nav_admin' => 'Администрирование',
     'nav_admin_desc' => 'Общие настройки рабочего пространства',
     'appearance_heading' => 'Внешний вид',

@@ -31,6 +31,8 @@ return [
     'twofa_disable' => 'Disable two-factor',
     'nav_appearance' => 'Appearance',
     'nav_appearance_desc' => 'Theme and language',
+    'nav_calendar' => 'Calendar',
+    'nav_calendar_desc' => 'Week numbers, start day, default view, working hours',
     'nav_admin' => 'Administration',
     'nav_admin_desc' => 'Workspace-wide settings',
     'appearance_heading' => 'Appearance',

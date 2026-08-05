@@ -52,13 +52,16 @@
 
       {{-- Month grid --}}
       <div class="ll-card !p-0 overflow-hidden">
-        <div class="grid grid-cols-7 border-b border-black/[0.06] dark:border-white/10 text-center text-[11px] font-medium uppercase tracking-wide text-gray-500">
+        <div class="grid border-b border-black/[0.06] dark:border-white/10 text-center text-[11px] font-medium uppercase tracking-wide text-gray-500"
+             :style="{ gridTemplateColumns: showWeekNumbers ? '2.25rem repeat(7, minmax(0,1fr))' : 'repeat(7, minmax(0,1fr))' }">
+          <div x-show="showWeekNumbers" class="px-1 py-2 text-[10px] text-gray-400">{{ __('calendar.wk_abbr') }}</div>
           <template x-for="(wd, i) in weekdayLabels" :key="i">
             <div class="px-2 py-2" x-text="wd"></div>
           </template>
         </div>
         <template x-for="(week, wi) in monthWeeks" :key="wi">
-          <div class="grid grid-cols-7">
+          <div class="grid" :style="{ gridTemplateColumns: showWeekNumbers ? '2.25rem repeat(7, minmax(0,1fr))' : 'repeat(7, minmax(0,1fr))' }">
+            <div x-show="showWeekNumbers" class="flex items-center justify-center border-b border-r border-black/[0.06] dark:border-white/10 text-[10px] text-gray-400" x-text="weekNumber(week)"></div>
             <template x-for="cell in week" :key="cell.iso">
               <button type="button" @click="openDay(cell.iso)"
                       class="min-h-[92px] border-b border-r border-black/[0.06] dark:border-white/10 p-1.5 text-left align-top hover:bg-accent/5 focus:outline-none"

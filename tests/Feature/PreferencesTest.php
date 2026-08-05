@@ -16,7 +16,7 @@ class PreferencesTest extends TestCase
     {
         $user = $this->signIn();
         $prefs = UserSetting::for($user->id)->displayPrefs();
-        $this->assertSame(['distance' => 'km', 'elevation' => 'm', 'weight' => 'kg', 'temp' => 'c', 'glucose' => 'mgdl', 'time_format' => '24h', 'mail_remote' => false, 'mail_scripts' => false], $prefs);
+        $this->assertSame(['distance' => 'km', 'elevation' => 'm', 'weight' => 'kg', 'temp' => 'c', 'glucose' => 'mgdl', 'time_format' => '24h', 'mail_remote' => false, 'mail_scripts' => false, 'cal_week_numbers' => false, 'cal_week_start' => 'mon', 'cal_default_view' => 'month', 'cal_day_start' => 8, 'cal_day_end' => 17], $prefs);
     }
 
     public function test_mail_display_prefs_can_be_toggled(): void
@@ -28,6 +28,25 @@ class PreferencesTest extends TestCase
         $prefs = UserSetting::for($user->id)->displayPrefs();
         $this->assertTrue($prefs['mail_remote']);
         $this->assertTrue($prefs['mail_scripts']);
+    }
+
+    public function test_calendar_prefs_can_be_updated(): void
+    {
+        $user = $this->signIn();
+
+        $this->post(route('preferences.update'), [
+            'cal_week_numbers' => '1', 'cal_week_start' => 'sun',
+            'cal_default_view' => 'week', 'cal_day_start' => '9', 'cal_day_end' => '18',
+        ])->assertRedirect();
+
+        $prefs = UserSetting::for($user->id)->displayPrefs();
+        $this->assertTrue($prefs['cal_week_numbers']);
+        $this->assertSame('sun', $prefs['cal_week_start']);
+        $this->assertSame('week', $prefs['cal_default_view']);
+        $this->assertSame(9, $prefs['cal_day_start']);
+        $this->assertSame(18, $prefs['cal_day_end']);
+
+        $this->post(route('preferences.update'), ['cal_default_view' => 'nope'])->assertSessionHasErrors('cal_default_view');
     }
 
     public function test_a_single_preference_can_be_updated(): void

@@ -70,6 +70,9 @@
         if (auth()->user()?->canModule('mail')) {
             $personal[] = ['url' => route('profile.mail-keys'), 'icon' => 'key', 'tint' => '#3fae9f', 'title' => __('mailkeys.title'), 'desc' => __('mailkeys.nav_desc')];
         }
+        if (auth()->user()?->canModule('calendar')) {
+            $personal[] = ['url' => route('profile.calendar'), 'icon' => 'calendar', 'tint' => '#7066f5', 'title' => __('account.nav_calendar'), 'desc' => __('account.nav_calendar_desc')];
+        }
         $data = [
             ['url' => route('profile.export'), 'icon' => 'arrow-down-tray', 'tint' => '#3fae9f', 'title' => __('account.export_heading'), 'desc' => __('account.export_hint')],
             ['url' => route('passwords.index').'?reset=1', 'icon' => 'key', 'tint' => '#ef4444', 'title' => __('passwords.reset'), 'desc' => __('settings.passwords_reset_desc'), 'danger' => true],

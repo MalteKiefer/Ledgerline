@@ -11,9 +11,10 @@ import { parseIcs, buildIcs } from '../shared/ical';
 import { getJson, postForm } from '../shared/api';
 import { collectReminders, REMINDER_PRESETS } from '../shared/calendar-reminders';
 import {
-    ymd, monthMatrix, eventsOnDay, timeLabel, CALENDAR_COLORS,
+    ymd, monthMatrix, eventsOnDay, timeLabel, weekNumberOf, CALENDAR_COLORS,
 } from '../shared/calendar-utils';
 import { CALENDAR_ICONS, calIconPath } from '../shared/calendar-icons';
+import { calWeekNumbers, calWeekStart } from '../shared/prefs';
 import {
     expandEvent, buildRRuleString, parseRRuleString, rruleSummary, RRULE_FREQS, RRULE_WEEKDAYS,
 } from '../shared/calendar-rrule';
@@ -115,16 +116,20 @@ export default (labels = {}) => ({
     },
 
     // ---- month grid ----
+    _weekStartNum() { return calWeekStart() === 'sun' ? 0 : 1; },
+    get showWeekNumbers() { return calWeekNumbers(); },
     get monthWeeks() {
         void this._mut;
-        return monthMatrix(this.viewY, this.viewM, this.todayIso);
+        return monthMatrix(this.viewY, this.viewM, this.todayIso, this._weekStartNum());
     },
+    weekNumber(week) { return week && week[0] ? weekNumberOf(week[0].iso) : ''; },
     get monthLabel() {
         return new Date(this.viewY, this.viewM, 1).toLocaleDateString(document.documentElement.lang || 'en', { month: 'long', year: 'numeric' });
     },
     get weekdayLabels() {
-        // Monday-first short weekday names in the UI locale.
-        const base = new Date(2026, 5, 1); // a Monday
+        // Short weekday names in the UI locale, starting on the chosen week-start.
+        // Jun 1 2026 is a Monday; Jun 7 2026 is a Sunday.
+        const base = new Date(2026, 5, this._weekStartNum() === 0 ? 7 : 1);
         const out = [];
         for (let i = 0; i < 7; i++) {
             const d = new Date(base);
