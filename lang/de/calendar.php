@@ -68,4 +68,10 @@ return [
     'hours_to' => 'Bis',
     'set_saved' => 'Gespeichert',
     'wk_abbr' => 'KW',
+    'system_cal' => 'Systemkalender',
+    'sys_birthdays' => 'Geburtstage',
+    'sys_holidays' => 'Feiertage',
+    'holidays_off' => 'Aus',
+    'feed_birthday' => ':name (Geburtstag)',
+    'feed_anniversary' => ':name (Jahrestag)',
 ];

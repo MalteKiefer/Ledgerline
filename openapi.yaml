@@ -1277,6 +1277,16 @@ components:
         v: { type: integer, example: 3 }
         calendars: { type: array, items: { $ref: '#/components/schemas/Calendar' } }
         events: { type: array, items: { $ref: '#/components/schemas/CalendarEvent' } }
+        settings:
+          type: object
+          description: >
+            Client display feeds. `birthdays` (bool) overlays contact birthdays/
+            anniversaries (read from the ZK contacts store, client-side). `holidays`
+            is false or a country code (DE/AT/CH/GB/US) overlaying computed public
+            holidays. Both are virtual read-only events, never stored as records.
+          properties:
+            birthdays: { type: boolean }
+            holidays: { oneOf: [{ type: boolean }, { type: string, enum: [DE, AT, CH, GB, US] }] }
 
     Calendar:
       type: object

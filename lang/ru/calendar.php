@@ -68,4 +68,10 @@ return [
     'hours_to' => 'До',
     'set_saved' => 'Сохранено',
     'wk_abbr' => 'Нед',
+    'system_cal' => 'Системные календари',
+    'sys_birthdays' => 'Дни рождения',
+    'sys_holidays' => 'Праздники',
+    'holidays_off' => 'Выкл',
+    'feed_birthday' => ':name (день рождения)',
+    'feed_anniversary' => ':name (годовщина)',
 ];

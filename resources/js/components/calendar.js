@@ -4,8 +4,10 @@
 // Recurrence, reminders, OSM locations, iCal and sharing are layered on in later
 // slices. Store-derived getters reference `void this._mut` because the mapped
 // arrays are the (non-Alpine-reactive) store data.
-import { zkModule } from '../shared/zk-module';
+import { zkModule, bootStore } from '../shared/zk-module';
 import { newId } from '../shared/sealed-store';
+import { birthdayEvents, holidayEvents, yearsInRange, FEED_COLORS, FEED_ICONS } from '../shared/calendar-feeds';
+import { HOLIDAY_COUNTRIES } from '../shared/holidays';
 import { formatDate, saveBlobAs } from '../shared/dom';
 import { parseIcs, buildIcs } from '../shared/ical';
 import { getJson, postForm } from '../shared/api';
@@ -45,7 +47,7 @@ const BLANK_FORM = () => ({
 export default (labels = {}) => ({
     ...zkModule({
         store: 'calendar',
-        map: { calendars: 'calendars', events: 'events' },
+        map: { calendars: 'calendars', events: 'events', settings: 'settings' },
         afterLoad: (self, ms) => self._ensureDefault(ms),
         onLock: (self) => {
             self.editorOpen = false;
@@ -60,6 +62,9 @@ export default (labels = {}) => ({
     labels,
     calendars: [],
     events: [],
+    settings: { birthdays: false, holidays: false },
+    _contacts: [],
+    holidayCountries: HOLIDAY_COUNTRIES,
     _mut: 0,
 
     // View + cursor. `anchorIso` is a date within the visible month/week/day.
@@ -98,19 +103,54 @@ export default (labels = {}) => ({
     calIconPath(name) { return calIconPath(name); },
     calIcon(id) {
         void this._mut;
-        return (this.calendars.find((c) => c.id === id) || {}).icon || 'calendar';
+        return (this.calendars.find((c) => c.id === id) || {}).icon || FEED_ICONS[id] || 'calendar';
     },
 
     async init() {
         this.view = calDefaultView();
         await this._initZk();
-        if (this.state === 'ready') this._startRemClock();
+        if (this.state === 'ready') { this._startRemClock(); if (this.settings?.birthdays) this._loadContacts(); }
         this.$watch('state', (s) => { if (s === 'ready') this._startRemClock(); else this._stopRemClock(); });
     },
+
+    // ---- virtual feeds (birthdays + holidays) ----
+    async _loadContacts() {
+        try {
+            const ok = await bootStore(this.$store, 'contacts');
+            if (ok) { this._contacts = window.LLModuleStore.contacts.data.contacts || []; this._mut++; }
+        } catch { /* contacts unavailable */ }
+    },
+    get feedBirthdays() { void this._mut; return !!(this.settings && this.settings.birthdays); },
+    get feedHolidays() { void this._mut; return (this.settings && this.settings.holidays) || false; },
+    toggleBirthdays() {
+        if (!this.settings) this.settings = {};
+        this.settings.birthdays = !this.settings.birthdays;
+        if (this.settings.birthdays && (!this._contacts || !this._contacts.length)) this._loadContacts();
+        this._mut++; this._save();
+    },
+    setHolidays(country) {
+        if (!this.settings) this.settings = {};
+        this.settings.holidays = country || false;
+        this._mut++; this._save();
+    },
+    _virtualEvents(rangeStart, rangeEnd) {
+        const out = [];
+        const { start, end } = yearsInRange(rangeStart, rangeEnd);
+        if (this.settings?.birthdays && this._contacts?.length) {
+            out.push(...birthdayEvents(this._contacts, start, end, this.labels.feed || {}));
+        }
+        if (this.settings?.holidays) {
+            out.push(...holidayEvents(this.settings.holidays, start, end));
+        }
+        return out;
+    },
+    feedColor(id) { return FEED_COLORS[id]; },
+    feedIcon(id) { return FEED_ICONS[id]; },
 
     // Seed a default calendar on first use so events always have a home.
     _ensureDefault(ms) {
         const data = ms.data;
+        if (!data.settings || typeof data.settings !== 'object') data.settings = { birthdays: false, holidays: false };
         if (!Array.isArray(data.calendars)) data.calendars = [];
         if (data.calendars.length === 0) {
             data.calendars.push({ id: newId(), name: this.labels.default_calendar || 'Personal', color: CALENDAR_COLORS[0], icon: 'calendar', isDefault: true });
@@ -160,7 +200,7 @@ export default (labels = {}) => ({
     },
     dayEvents(iso) {
         void this._mut;
-        return eventsOnDay(this._expandRange(iso, iso), iso);
+        return eventsOnDay([...this._expandRange(iso, iso), ...this._virtualEvents(iso, iso)], iso);
     },
     timedEventsForDay(iso) { return this.dayEvents(iso).filter((e) => !e.allDay); },
     allDayEventsForDay(iso) { return this.dayEvents(iso).filter((e) => e.allDay); },
@@ -173,7 +213,7 @@ export default (labels = {}) => ({
     timeLabel(ev) { return timeLabel(ev); },
     calColor(id) {
         void this._mut;
-        return (this.calendars.find((c) => c.id === id) || {}).color || CALENDAR_COLORS[8];
+        return (this.calendars.find((c) => c.id === id) || {}).color || FEED_COLORS[id] || CALENDAR_COLORS[8];
     },
     calName(id) {
         void this._mut;
@@ -265,6 +305,7 @@ export default (labels = {}) => ({
         this.editorOpen = true;
     },
     openEvent(ev) {
+        if (ev && ev.virtual) return; // birthdays/holidays are read-only feeds
         // An expanded occurrence carries `_base`; edit the underlying master.
         const master = ev._base ? (this.events.find((e) => e.id === ev._base) || ev) : ev;
         const s = ev.allDay ? { d: (ev.start || '').slice(0, 10), t: '09:00' } : splitDt(ev.start);
