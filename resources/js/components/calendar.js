@@ -12,6 +12,7 @@ import { formatDate, saveBlobAs } from '../shared/dom';
 import { parseIcs, buildIcs } from '../shared/ical';
 import { getJson, postForm } from '../shared/api';
 import { collectReminders, REMINDER_PRESETS } from '../shared/calendar-reminders';
+import { loadLeaflet } from '../shared/lazy-loaders';
 import {
     ymd, dayStart, monthMatrix, eventsOnDay, timeLabel, weekNumberOf, CALENDAR_COLORS,
 } from '../shared/calendar-utils';
@@ -89,6 +90,7 @@ export default (labels = {}) => ({
     geoResults: [],
     geoSearching: false,
     _geoTimer: null,
+    _evMap: null,
 
     // Local notification scheduler.
     _remClock: null,
@@ -331,12 +333,13 @@ export default (labels = {}) => ({
         this.editScope = this._occRid ? 'this' : 'all';
         this._saveAttempted = false;
         this.editorOpen = true;
+        if (this._form.locationLat != null && this._form.locationLng != null) this._mountEventMap(this._form.locationLat, this._form.locationLng);
     },
     toggleByday(wd) {
         const i = this._form.byday.indexOf(wd);
         if (i >= 0) this._form.byday.splice(i, 1); else this._form.byday.push(wd);
     },
-    closeEditor() { this.editorOpen = false; this.editing = null; this._occRid = null; },
+    closeEditor() { this.editorOpen = false; this.editing = null; this._occRid = null; this._destroyEventMap(); },
 
     get formValid() {
         const f = this._form;
@@ -447,6 +450,7 @@ export default (labels = {}) => ({
         clearTimeout(this._geoTimer);
         this._form.locationLat = null;
         this._form.locationLng = null;
+        this._destroyEventMap();
         const q = (this._form.location || '').trim();
         if (q.length < 3) { this.geoResults = []; return; }
         this._geoTimer = setTimeout(() => this.searchLocation(q), 350);
@@ -467,7 +471,24 @@ export default (labels = {}) => ({
         this._form.locationLat = r.lat;
         this._form.locationLng = r.lng;
         this.geoResults = [];
+        this._mountEventMap(r.lat, r.lng);
     },
+
+    // Read-only mini-map for the picked location (like the gallery viewer map).
+    get hasLocationPin() { return this._form.locationLat != null && this._form.locationLng != null; },
+    async _mountEventMap(lat, lng) {
+        const L = await loadLeaflet();
+        this.$nextTick(() => {
+            const el = this.$refs.evmap;
+            if (!el || !this.editorOpen || lat == null || lng == null) return;
+            if (this._evMap) { this._evMap.remove(); this._evMap = null; }
+            this._evMap = L.map(el, { attributionControl: false, zoomControl: false }).setView([lat, lng], 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this._evMap);
+            L.marker([lat, lng]).addTo(this._evMap);
+            setTimeout(() => { if (this._evMap) this._evMap.invalidateSize(); }, 120);
+        });
+    },
+    _destroyEventMap() { if (this._evMap) { this._evMap.remove(); this._evMap = null; } },
 
     // ---- reminders ----
     hasReminder(min) { return (this._form.reminders || []).some((r) => Number(r.minutesBefore) === Number(min)); },

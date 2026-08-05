@@ -281,6 +281,7 @@
                   <button type="button" @click="pickLocation(r)" class="block w-full truncate px-3 py-2 text-left text-sm hover:bg-accent/5" x-text="r.display"></button>
                 </template>
               </div>
+              <div x-show="hasLocationPin" x-cloak x-ref="evmap" class="mt-2 h-40 w-full overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/10"></div>
             </div>
 
             <div>
