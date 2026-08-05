@@ -10,6 +10,9 @@ import { formatDate } from '../shared/dom';
 import {
     ymd, monthMatrix, eventsOnDay, timeLabel, CALENDAR_COLORS,
 } from '../shared/calendar-utils';
+import {
+    expandEvent, buildRRuleString, parseRRuleString, rruleSummary, RRULE_FREQS, RRULE_WEEKDAYS,
+} from '../shared/calendar-rrule';
 
 const BLANK_FORM = () => ({
     id: null,
@@ -22,6 +25,13 @@ const BLANK_FORM = () => ({
     startTime: '09:00',
     endDate: '',
     endTime: '10:00',
+    // Recurrence editor state.
+    repeat: 'none', // none | DAILY | WEEKLY | MONTHLY | YEARLY
+    interval: 1,
+    byday: [],
+    ends: 'never', // never | count | until
+    count: 10,
+    until: '',
 });
 
 export default (labels = {}) => ({
@@ -49,9 +59,13 @@ export default (labels = {}) => ({
 
     selectedDay: null, // iso of the open day agenda, or null
     editorOpen: false,
-    editing: null,     // the event being edited (null = closed)
-    _form: BLANK_FORM(),
+    editing: null,      // the (master or single) event being edited (null = closed)
+    _occRid: null,      // recurrenceId when editing one occurrence of a series
+    editScope: 'all',   // 'all' | 'this' — for recurring occurrences
     _saveAttempted: false,
+    freqs: RRULE_FREQS,
+    weekdays: RRULE_WEEKDAYS,
+    _form: BLANK_FORM(),
 
     calMgrOpen: false,
     _calForm: null,    // { id, name, color } or null
@@ -91,9 +105,34 @@ export default (labels = {}) => ({
         return out;
     },
 
+    // Non-recurring events + expanded occurrences of recurring ones (minus any
+    // occurrence that a per-occurrence override replaces) across the visible range.
+    get visibleEvents() {
+        void this._mut; void this.viewY; void this.viewM;
+        const rangeStart = ymd(new Date(this.viewY, this.viewM, 1 - 7));
+        const rangeEnd = ymd(new Date(this.viewY, this.viewM + 1, 7));
+        const overrides = new Set(this.events.filter((e) => e.overrideOf).map((e) => `${e.overrideOf}@${e.recurrenceId || ''}`));
+        const out = [];
+        for (const ev of this.events) {
+            if (ev.rrule) {
+                for (const occ of expandEvent(ev, rangeStart, rangeEnd)) {
+                    if (!overrides.has(`${ev.id}@${occ.recurrenceId}`)) out.push(occ);
+                }
+            } else {
+                out.push(ev);
+            }
+        }
+        return out;
+    },
     dayEvents(iso) {
         void this._mut;
-        return eventsOnDay(this.events, iso);
+        return eventsOnDay(this.visibleEvents, iso);
+    },
+    isRecurring(ev) { return !!(ev && (ev.rrule || ev._base)); },
+    rruleLabel(ev) {
+        void this._mut;
+        const master = ev._base ? this.events.find((e) => e.id === ev._base) : ev;
+        return master && master.rrule ? rruleSummary(master.rrule, this.labels.rrule || {}) : '';
     },
     timeLabel(ev) { return timeLabel(ev); },
     calColor(id) {
@@ -122,14 +161,19 @@ export default (labels = {}) => ({
         const day = iso || this.selectedDay || this.todayIso;
         this._form = { ...BLANK_FORM(), calendarId: this._defaultCalendarId(), startDate: day, endDate: day };
         this.editing = null;
+        this._occRid = null;
+        this.editScope = 'all';
         this._saveAttempted = false;
         this.editorOpen = true;
     },
     openEvent(ev) {
+        // An expanded occurrence carries `_base`; edit the underlying master.
+        const master = ev._base ? (this.events.find((e) => e.id === ev._base) || ev) : ev;
         const s = ev.allDay ? { d: (ev.start || '').slice(0, 10), t: '09:00' } : splitDt(ev.start);
         const e = ev.allDay ? { d: (ev.end || ev.start || '').slice(0, 10), t: '10:00' } : splitDt(ev.end || ev.start);
+        const rr = parseRRuleString(master.rrule || '');
         this._form = {
-            id: ev.id,
+            id: master.id,
             calendarId: ev.calendarId || this._defaultCalendarId(),
             title: ev.title || '',
             description: ev.description || '',
@@ -137,12 +181,20 @@ export default (labels = {}) => ({
             allDay: !!ev.allDay,
             startDate: s.d, startTime: s.t,
             endDate: e.d, endTime: e.t,
+            repeat: rr.freq === 'none' ? 'none' : rr.freq,
+            interval: rr.interval, byday: rr.byday, ends: rr.ends, count: rr.count, until: rr.until,
         };
-        this.editing = ev;
+        this.editing = master;
+        this._occRid = ev._base ? (ev.recurrenceId || ev.start.slice(0, 10)) : null;
+        this.editScope = this._occRid ? 'this' : 'all';
         this._saveAttempted = false;
         this.editorOpen = true;
     },
-    closeEditor() { this.editorOpen = false; this.editing = null; },
+    toggleByday(wd) {
+        const i = this._form.byday.indexOf(wd);
+        if (i >= 0) this._form.byday.splice(i, 1); else this._form.byday.push(wd);
+    },
+    closeEditor() { this.editorOpen = false; this.editing = null; this._occRid = null; },
 
     get formValid() {
         const f = this._form;
@@ -155,28 +207,39 @@ export default (labels = {}) => ({
         this._saveAttempted = true;
         if (!this.formValid) return;
         const f = this._form;
+        const now = new Date().toISOString();
         const start = f.allDay ? f.startDate : `${f.startDate}T${f.startTime || '00:00'}`;
         const endDate = f.endDate || f.startDate;
         const end = f.allDay ? endDate : `${endDate}T${f.endTime || f.startTime || '00:00'}`;
-        const patch = {
+        const rrule = buildRRuleString({ freq: f.repeat, interval: f.interval, byday: f.byday, ends: f.ends, count: f.count, until: f.until }) || null;
+        const props = {
             calendarId: f.calendarId || this._defaultCalendarId(),
             title: f.title.trim(),
             description: f.description.trim(),
             location: f.location.trim() ? { label: f.location.trim(), lat: null, lng: null } : null,
             allDay: !!f.allDay,
-            start,
-            end,
-            tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-            rrule: null,
-            exdates: [],
-            reminders: [],
-            status: 'confirmed',
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
         };
-        if (this.editing) {
-            Object.assign(this.editing, patch);
+        const temporal = { start, end, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' };
+
+        if (!this.editing) {
+            this.events.push({ id: newId(), createdAt: now, ...props, ...temporal, rrule, exdates: [], reminders: [], status: 'confirmed' });
+        } else if (this._occRid && this.editScope === 'this' && this.editing.rrule) {
+            // Override just this occurrence: exclude it from the master + add a
+            // standalone override record carrying the edited fields.
+            if (!Array.isArray(this.editing.exdates)) this.editing.exdates = [];
+            if (!this.editing.exdates.includes(this._occRid)) this.editing.exdates.push(this._occRid);
+            this.events.push({
+                id: newId(), createdAt: now, ...props, ...temporal,
+                rrule: null, exdates: [], reminders: this.editing.reminders || [],
+                status: 'confirmed', overrideOf: this.editing.id, recurrenceId: this._occRid,
+            });
+        } else if (this._occRid && this.editScope === 'all') {
+            // Whole series: edit properties + recurrence, keep the master anchor time.
+            Object.assign(this.editing, props, { rrule });
         } else {
-            this.events.push({ id: newId(), createdAt: patch.updatedAt, ...patch });
+            // Plain edit of a single event (or an override record).
+            Object.assign(this.editing, props, temporal, { rrule });
         }
         this._mut++;
         this._save();
@@ -184,9 +247,17 @@ export default (labels = {}) => ({
     },
 
     deleteEvent(ev) {
-        const i = this.events.findIndex((e) => e.id === ev.id);
-        if (i < 0) return;
-        this.events.splice(i, 1);
+        // ev may be the master in the editor. When deleting one occurrence of a
+        // series, add an EXDATE instead of removing the master.
+        if (this._occRid && this.editScope === 'this' && this.editing && this.editing.rrule) {
+            if (!Array.isArray(this.editing.exdates)) this.editing.exdates = [];
+            if (!this.editing.exdates.includes(this._occRid)) this.editing.exdates.push(this._occRid);
+            // Drop any override for that occurrence too.
+            this.events = this.events.filter((e) => !(e.overrideOf === this.editing.id && e.recurrenceId === this._occRid));
+        } else {
+            const id = (this.editing || ev).id;
+            this.events = this.events.filter((e) => e.id !== id && e.overrideOf !== id);
+        }
         this._mut++;
         this._save();
         this.closeEditor();
