@@ -188,6 +188,12 @@ tags:
       cloud-metadata addresses).
   - name: Status
     description: Application availability / health check (the site-root /up up-check).
+  - name: Calendar
+    description: >
+      Zero-knowledge calendar. Calendars + events live in the sealed
+      `/store/calendar` module store (see the Store tag); the only dedicated
+      endpoint is the opaque reminder queue, which carries fire timestamps only —
+      never event content.
   - name: TwoFactor
     description: >
       Self-service TOTP two-factor + app-password management for a paired device
@@ -7251,6 +7257,48 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { updated: { type: integer } } }
+        "403": { description: Module disabled. }
+        "429": { description: Rate limit exceeded. }
+
+  /calendar/reminders:
+    put:
+      tags: [Calendar]
+      operationId: calendarRemindersReplace
+      summary: Register the upcoming calendar reminder fire-times (opaque)
+      description: >
+        Zero-knowledge reminder queue. The calendar records themselves live in the
+        sealed `/store/calendar` module store; only the REMINDER fire-times need a
+        server row so a notification can be pushed when the app is closed. The client
+        expands recurrences LOCALLY and PUTs the FULL upcoming set of absolute UTC
+        timestamps (plus the opaque event/occurrence ids) — NEVER the event title or
+        content. This REPLACES the caller's future, undelivered reminders (delivered
+        rows are history and left untouched). The scheduler pushes a GENERIC
+        notification at each time (the server never learns what the reminder is for).
+        Owner-scoped. Throttle 60/min. Max 2000 entries; past timestamps are ignored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reminders]
+              properties:
+                reminders:
+                  type: array
+                  maxItems: 2000
+                  items:
+                    type: object
+                    required: [event_id, remind_at]
+                    properties:
+                      event_id: { type: string, maxLength: 64, description: 'Opaque client event id.' }
+                      recurrence_id: { type: string, nullable: true, maxLength: 32, description: 'Opaque occurrence date (recurring events).' }
+                      remind_at: { type: string, format: date-time, description: 'Absolute UTC instant to fire.' }
+      responses:
+        "200":
+          description: Number of future, undelivered reminders now registered.
+          content:
+            application/json:
+              schema: { type: object, properties: { count: { type: integer } } }
         "403": { description: Module disabled. }
         "429": { description: Rate limit exceeded. }
 
