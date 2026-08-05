@@ -126,16 +126,25 @@ export default (labels = {}) => ({
         } catch { /* contacts unavailable */ }
     },
     get feedBirthdays() { void this._mut; return !!(this.settings && this.settings.birthdays); },
-    get feedHolidays() { void this._mut; return (this.settings && this.settings.holidays) || false; },
+    get holidayCountriesOn() { void this._mut; return (this.settings && this.settings.holidayCountries) || []; },
+    get birthdaysColor() { void this._mut; return (this.settings && this.settings.birthdaysColor) || FEED_COLORS.birthdays; },
+    get holidaysColor() { void this._mut; return (this.settings && this.settings.holidaysColor) || FEED_COLORS.holidays; },
     toggleBirthdays() {
         if (!this.settings) this.settings = {};
         this.settings.birthdays = !this.settings.birthdays;
         if (this.settings.birthdays && (!this._contacts || !this._contacts.length)) this._loadContacts();
         this._mut++; this._save();
     },
-    setHolidays(country) {
+    toggleHolidayCountry(cc) {
         if (!this.settings) this.settings = {};
-        this.settings.holidays = country || false;
+        if (!Array.isArray(this.settings.holidayCountries)) this.settings.holidayCountries = [];
+        const i = this.settings.holidayCountries.indexOf(cc);
+        if (i >= 0) this.settings.holidayCountries.splice(i, 1); else this.settings.holidayCountries.push(cc);
+        this._mut++; this._save();
+    },
+    setFeedColor(feed, color) {
+        if (!this.settings) this.settings = {};
+        this.settings[feed === 'birthdays' ? 'birthdaysColor' : 'holidaysColor'] = color;
         this._mut++; this._save();
     },
     _virtualEvents(rangeStart, rangeEnd) {
@@ -144,8 +153,8 @@ export default (labels = {}) => ({
         if (this.settings?.birthdays && this._contacts?.length) {
             out.push(...birthdayEvents(this._contacts, start, end, this.labels.feed || {}));
         }
-        if (this.settings?.holidays) {
-            out.push(...holidayEvents(this.settings.holidays, start, end));
+        for (const cc of this.holidayCountriesOn) {
+            out.push(...holidayEvents(cc, start, end));
         }
         if (this._subRaw?.length) {
             out.push(...this._expandEventsList(this._subRaw, rangeStart, rangeEnd, new Set()));
@@ -199,7 +208,12 @@ export default (labels = {}) => ({
     // Seed a default calendar on first use so events always have a home.
     _ensureDefault(ms) {
         const data = ms.data;
-        if (!data.settings || typeof data.settings !== 'object') data.settings = { birthdays: false, holidays: false };
+        if (!data.settings || typeof data.settings !== 'object') data.settings = { birthdays: false };
+        const s = data.settings;
+        // Migrate the single-country holiday setting → a multi-country list.
+        if (!Array.isArray(s.holidayCountries)) s.holidayCountries = (typeof s.holidays === 'string' && s.holidays) ? [s.holidays] : [];
+        if (!s.birthdaysColor) s.birthdaysColor = FEED_COLORS.birthdays;
+        if (!s.holidaysColor) s.holidaysColor = FEED_COLORS.holidays;
         if (!Array.isArray(data.calendars)) data.calendars = [];
         if (data.calendars.length === 0) {
             data.calendars.push({ id: newId(), name: this.labels.default_calendar || 'Personal', color: CALENDAR_COLORS[0], icon: 'calendar', isDefault: true });
@@ -276,6 +290,8 @@ export default (labels = {}) => ({
     timeLabel(ev) { return timeLabel(ev); },
     calColor(id) {
         void this._mut;
+        if (id === 'birthdays') return this.birthdaysColor;
+        if (id === 'holidays') return this.holidaysColor;
         return (this.calendars.find((c) => c.id === id) || {}).color
             || (this.subscriptions.find((s) => s.id === id) || {}).color
             || FEED_COLORS[id] || CALENDAR_COLORS[8];
