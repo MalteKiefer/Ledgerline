@@ -62,5 +62,26 @@
                 <x-button type="submit" variant="primary" size="sm">{{ __('common.save') }}</x-button>
             </form>
         </div>
+
+        {{-- System calendars + subscriptions (zero-knowledge — read from the sealed
+             calendar store; the calendar() component + vault unlock manage them). --}}
+        <h2 class="mt-6 mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('calendar.system_cal') }} · {{ __('calendar.sub_heading') }}</h2>
+        <div class="ll-card" x-data="calendar({
+                default_calendar: @js(__('calendar.default_calendar')),
+                contactsUrl: '{{ route('contacts.index') }}',
+                icsFetchUrl: '{{ route('calendar.ics-fetch') }}',
+                remindersUrl: '{{ route('calendar.reminders') }}',
+             })">
+            @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
+            <template x-if="state === 'locked'">
+                <div class="py-4 text-center">
+                    <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('vault.unlock_hint') }}</p>
+                    <x-button variant="primary" class="mt-3" icon="lock-open" @click="$dispatch('vault-panel')">{{ __('vault.unlock') }}</x-button>
+                </div>
+            </template>
+            <div x-show="state === 'ready'" x-cloak>
+                @include('calendar._feeds')
+            </div>
+        </div>
     </div>
 </x-layouts.app>
