@@ -110,6 +110,32 @@ describe('parseMessage', () => {
         expect(new TextDecoder().decode(msg.attachments[0].bytes)).toBe('hi');
     });
 
+    it('captures an inline cid image with its Content-ID', () => {
+        const raw = [
+            'Content-Type: multipart/related; boundary="R"',
+            '',
+            '--R',
+            'Content-Type: text/html; charset=utf-8',
+            '',
+            '<p>hi <img src="cid:logo@x"></p>',
+            '--R',
+            'Content-Type: image/png; name="logo.png"',
+            'Content-ID: <logo@x>',
+            'Content-Disposition: inline',
+            'Content-Transfer-Encoding: base64',
+            '',
+            'aGk=',
+            '--R--',
+            '',
+        ].join('\r\n');
+        const msg = parseMessage(raw);
+        expect(msg.htmlBody).toContain('cid:logo@x');
+        expect(msg.attachments).toHaveLength(1);
+        expect(msg.attachments[0].contentId).toBe('logo@x');
+        expect(msg.attachments[0].inline).toBe(true);
+        expect(msg.attachments[0].contentType).toBe('image/png');
+    });
+
     it('decodes a quoted-printable text body', () => {
         const raw = 'Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\nGr=C3=BC=C3=9Fe';
         expect(parseMessage(raw).textBody).toBe('Grüße');

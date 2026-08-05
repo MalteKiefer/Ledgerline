@@ -203,7 +203,7 @@ function headerParam(value, key) {
 }
 
 // Recursively collect leaf MIME parts from a raw (latin1) message string.
-// Returns { textBody, htmlBody, attachments:[{filename,contentType,size,bytes}] }.
+// Returns { textBody, htmlBody, attachments:[{filename,contentType,contentId,inline,size,bytes}] }.
 function walkParts(latin1, depth, acc) {
     if (depth > 20) return; // pathological nesting guard
     const { headers, body } = splitMessage(latin1);
@@ -228,6 +228,10 @@ function walkParts(latin1, depth, acc) {
     // Leaf part.
     const encoding = headers['content-transfer-encoding'] || '7bit';
     const filename = headerParam(disposition, 'filename') || headerParam(headers['content-type'], 'name');
+    // Content-ID identifies an inline (cid:) part referenced from the HTML body;
+    // strip the surrounding angle brackets so it matches a `cid:...` reference.
+    const contentId = (headers['content-id'] || '').trim().replace(/^<|>$/g, '');
+    const isInline = contentId !== '' || disposition.startsWith('inline');
     const isAttachment = disposition.startsWith('attachment') || (filename !== '' && !ctype.startsWith('multipart/'));
 
     if (!isAttachment && ctype.startsWith('text/plain') && !acc.textBody) {
@@ -238,11 +242,15 @@ function walkParts(latin1, depth, acc) {
         acc.htmlBody = decodeBytes(decodeTransfer(body, encoding), headerParam(headers['content-type'], 'charset'));
         return;
     }
-    if (isAttachment) {
+    // Capture real attachments AND inline (cid) images — the latter carry a
+    // Content-ID and are resolved into the body as data: URIs at render time.
+    if (isAttachment || (isInline && !ctype.startsWith('text/'))) {
         const bytes = decodeTransfer(body, encoding);
         acc.attachments.push({
-            filename: filename || 'attachment',
+            filename: filename || (contentId ? contentId.split('@')[0] : 'attachment'),
             contentType: ctype.split(';')[0].trim() || 'application/octet-stream',
+            contentId,
+            inline: contentId !== '',
             size: bytes.length,
             bytes,
         });

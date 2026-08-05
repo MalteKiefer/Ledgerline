@@ -246,11 +246,11 @@
                         <template x-if="msg && !openLoading">
                         <div>
                             {{-- Attachments --}}
-                            <template x-if="msg.attachments.length">
+                            <template x-if="realAttachments.length">
                             <div class="mb-5">
-                                <p class="mb-2 text-[11px] uppercase tracking-wide text-gray-500"><span x-text="msg.attachments.length"></span> {{ __('mail.attachments') }}</p>
+                                <p class="mb-2 text-[11px] uppercase tracking-wide text-gray-500"><span x-text="realAttachments.length"></span> {{ __('mail.attachments') }}</p>
                                 <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                    <template x-for="(att, i) in msg.attachments" :key="i">
+                                    <template x-for="(att, i) in realAttachments" :key="i">
                                         <div class="flex items-center gap-2.5 rounded-xl border border-black/[0.06] dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] px-3 py-2">
                                             <span class="ll-chip flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style="background:#6b7280">
                                                 <x-icon name="paper-clip" class="h-4 w-4 text-white" />
@@ -281,7 +281,7 @@
                             <pre x-show="showHeaders" x-cloak x-text="rawHead" class="mb-4 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-black/[0.06] dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] p-3 font-mono text-[11px] text-gray-700 dark:text-gray-300"></pre>
 
                             {{-- Body: sandboxed iframe (scripts on), sanitized HTML (scripts off), else plain text --}}
-                            <iframe x-show="bodyFrame" x-cloak :srcdoc="bodyFrame" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" class="h-[62vh] w-full rounded-lg border border-black/[0.06] dark:border-white/10 bg-white"></iframe>
+                            <iframe x-show="bodyFrame" x-cloak :srcdoc="bodyFrame" :sandbox="frameSandbox" referrerpolicy="no-referrer" class="h-[62vh] w-full rounded-lg border border-black/[0.06] dark:border-white/10 bg-white"></iframe>
                             <div x-show="bodyHtml && !bodyFrame" x-html="bodyHtml" class="ll-mail-body text-sm text-gray-800 dark:text-gray-200"></div>
                             <pre x-show="!bodyHtml && !bodyFrame" class="whitespace-pre-wrap break-words font-sans text-sm text-gray-800 dark:text-gray-200" x-text="bodyText || @js(__('mail.no_body'))"></pre>
                         </div>
