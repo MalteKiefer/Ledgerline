@@ -13,6 +13,7 @@ import { collectReminders, REMINDER_PRESETS } from '../shared/calendar-reminders
 import {
     ymd, monthMatrix, eventsOnDay, timeLabel, CALENDAR_COLORS,
 } from '../shared/calendar-utils';
+import { CALENDAR_ICONS, calIconPath } from '../shared/calendar-icons';
 import {
     expandEvent, buildRRuleString, parseRRuleString, rruleSummary, RRULE_FREQS, RRULE_WEEKDAYS,
 } from '../shared/calendar-rrule';
@@ -88,8 +89,14 @@ export default (labels = {}) => ({
     _remSyncTimer: null,
 
     calMgrOpen: false,
-    _calForm: null,    // { id, name, color } or null
+    _calForm: null,    // { id, name, color, icon } or null
     colors: CALENDAR_COLORS,
+    calIcons: CALENDAR_ICONS,
+    calIconPath(name) { return calIconPath(name); },
+    calIcon(id) {
+        void this._mut;
+        return (this.calendars.find((c) => c.id === id) || {}).icon || 'calendar';
+    },
 
     async init() {
         await this._initZk();
@@ -102,7 +109,7 @@ export default (labels = {}) => ({
         const data = ms.data;
         if (!Array.isArray(data.calendars)) data.calendars = [];
         if (data.calendars.length === 0) {
-            data.calendars.push({ id: newId(), name: this.labels.default_calendar || 'Personal', color: CALENDAR_COLORS[0], isDefault: true });
+            data.calendars.push({ id: newId(), name: this.labels.default_calendar || 'Personal', color: CALENDAR_COLORS[0], icon: 'calendar', isDefault: true });
             ms.touch();
         }
     },
@@ -294,16 +301,16 @@ export default (labels = {}) => ({
     // ---- calendars ----
     openCalMgr() { this.calMgrOpen = true; this._calForm = null; },
     closeCalMgr() { this.calMgrOpen = false; this._calForm = null; },
-    newCalendar() { this._calForm = { id: null, name: '', color: CALENDAR_COLORS[this.calendars.length % CALENDAR_COLORS.length] }; },
-    editCalendar(c) { this._calForm = { id: c.id, name: c.name, color: c.color }; },
+    newCalendar() { this._calForm = { id: null, name: '', color: CALENDAR_COLORS[this.calendars.length % CALENDAR_COLORS.length], icon: 'calendar' }; },
+    editCalendar(c) { this._calForm = { id: c.id, name: c.name, color: c.color, icon: c.icon || 'calendar' }; },
     saveCalendar() {
         const f = this._calForm;
         if (!f || !f.name.trim()) return;
         if (f.id) {
             const c = this.calendars.find((x) => x.id === f.id);
-            if (c) { c.name = f.name.trim(); c.color = f.color; }
+            if (c) { c.name = f.name.trim(); c.color = f.color; c.icon = f.icon || 'calendar'; }
         } else {
-            this.calendars.push({ id: newId(), name: f.name.trim(), color: f.color, isDefault: this.calendars.length === 0 });
+            this.calendars.push({ id: newId(), name: f.name.trim(), color: f.color, icon: f.icon || 'calendar', isDefault: this.calendars.length === 0 });
         }
         this._mut++;
         this._save();
