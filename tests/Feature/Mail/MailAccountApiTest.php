@@ -111,6 +111,62 @@ class MailAccountApiTest extends TestCase
         $this->assertFalse($account->fresh()->delete_after_import);
     }
 
+    public function test_sync_interval_persists_and_null_falls_back_to_default(): void
+    {
+        config(['mail_archive.sync_interval_minutes' => 30]);
+        $user = User::factory()->create();
+
+        $this->withHeaders($this->bearer($user))
+            ->postJson('/api/v1/mail/accounts', [
+                'name' => 'Work',
+                'host' => 'imap.example.com',
+                'port' => 993,
+                'username' => 'me@example.com',
+                'password' => 'pw',
+                'encryption' => 'ssl',
+                'sync_interval_minutes' => 5,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('account.sync_interval_minutes', 5);
+
+        $account = MailAccount::query()->firstOrFail();
+        $this->assertSame(5, $account->sync_interval_minutes);
+        $this->assertSame(5, $account->effectiveSyncIntervalMinutes());
+
+        // Clearing the override falls back to the workspace default.
+        $this->withHeaders($this->bearer($user))
+            ->putJson("/api/v1/mail/accounts/{$account->id}", [
+                'name' => 'Work',
+                'host' => 'imap.example.com',
+                'port' => 993,
+                'username' => 'me@example.com',
+                'encryption' => 'ssl',
+                'sync_interval_minutes' => null,
+            ])
+            ->assertOk()
+            ->assertJsonPath('account.sync_interval_minutes', null);
+
+        $this->assertNull($account->fresh()->sync_interval_minutes);
+        $this->assertSame(30, $account->fresh()->effectiveSyncIntervalMinutes());
+    }
+
+    public function test_is_due_for_sync_honours_the_effective_interval(): void
+    {
+        $user = User::factory()->create();
+        $account = MailAccount::factory()->create([
+            'user_id' => $user->id,
+            'sync_interval_minutes' => 15,
+            'last_synced_at' => now()->subMinutes(10),
+        ]);
+
+        $this->assertFalse($account->isDueForSync(now()));
+        $this->assertTrue($account->isDueForSync(now()->addMinutes(6)));
+
+        // Never synced → always due.
+        $account->forceFill(['last_synced_at' => null])->save();
+        $this->assertTrue($account->fresh()->isDueForSync(now()));
+    }
+
     public function test_create_stamps_the_owner_server_side_never_from_request(): void
     {
         $user = User::factory()->create();

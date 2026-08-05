@@ -316,6 +316,7 @@ components:
         backfill_since: { type: string, format: date, nullable: true, description: "Earliest arrival date to ARCHIVE (Option B). mbsync has no server-side date filter, so a sync still DOWNLOADS the whole mailbox — but only messages that arrived on/after this date are sealed + ledgered; older ones are dropped from the local scratch (origin mailbox untouched). Empty = archive everything." }
         delete_after_import: { type: boolean, description: "When true, each freshly archived message is deleted from the ORIGIN IMAP mailbox immediately after it is durably archived (UID STORE \\Deleted + EXPUNGE, one session per ingest chunk). Off by default — a destructive write-to-origin. Only newly archived (not previously-imported) messages are removed by this; use the manual bulk delete for already-archived mail still on the server." }
         skip_spam: { type: boolean, description: "When true (default), messages the origin server has flagged as spam are NOT archived — they never enter the immutable archive. The origin mailbox is untouched." }
+        sync_interval_minutes: { type: integer, minimum: 1, maximum: 1440, nullable: true, description: "Per-account fetch interval in minutes. Null = use the workspace default (config mail_archive.sync_interval_minutes). The scheduler runs every minute; each account is fetched when its last sync is at least this many minutes ago." }
         enabled: { type: boolean }
         status: { type: string, enum: [idle, syncing, error], readOnly: true }
         last_error: { type: string, nullable: true, readOnly: true }
@@ -6749,6 +6750,7 @@ paths:
                 backfill_since: { type: string, format: date, nullable: true }
                 delete_after_import: { type: boolean, description: "Auto-delete newly archived messages from the origin server (destructive)." }
                 skip_spam: { type: boolean, description: "Do not archive spam (default true)." }
+                sync_interval_minutes: { type: integer, minimum: 1, maximum: 1440, nullable: true, description: "Per-account fetch interval in minutes (null = workspace default)." }
                 enabled: { type: boolean, description: "Default true when omitted." }
       responses:
         "201":
@@ -6797,6 +6799,7 @@ paths:
                 backfill_since: { type: string, format: date, nullable: true }
                 delete_after_import: { type: boolean, description: "Auto-delete newly archived messages from the origin server (destructive)." }
                 skip_spam: { type: boolean, description: "Do not archive spam (default true)." }
+                sync_interval_minutes: { type: integer, minimum: 1, maximum: 1440, nullable: true, description: "Per-account fetch interval in minutes (null = workspace default)." }
                 enabled: { type: boolean }
       responses:
         "200":

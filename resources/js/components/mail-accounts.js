@@ -112,7 +112,7 @@ export default (config) => ({
     },
 
     openCreate() {
-        this.form = { id: null, name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', backfill_since: '', delete_after_import: false, skip_spam: true, enabled: true };
+        this.form = { id: null, name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', backfill_since: '', delete_after_import: false, skip_spam: true, enabled: true, sync_interval_minutes: null };
         this.tagsValue = '';
         this.tagDraft = '';
         this.saveError = '';
@@ -123,6 +123,7 @@ export default (config) => ({
         this.form = {
             id: a.id, name: a.name, host: a.host, port: a.port, username: a.username,
             password: '', encryption: a.encryption, backfill_since: a.backfill_since || '', delete_after_import: !! a.delete_after_import, skip_spam: a.skip_spam !== false, enabled: !! a.enabled,
+            sync_interval_minutes: a.sync_interval_minutes ?? null,
         };
         this.tagsValue = (a.folders ?? []).join(', ');
         this.tagDraft = '';
@@ -151,6 +152,7 @@ export default (config) => ({
             delete_after_import: !! this.form.delete_after_import,
             skip_spam: !! this.form.skip_spam,
             enabled: !! this.form.enabled,
+            sync_interval_minutes: (this.form.sync_interval_minutes === '' || this.form.sync_interval_minutes == null) ? null : Number(this.form.sync_interval_minutes),
         };
         try {
             if (this.form.id) {

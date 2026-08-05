@@ -166,6 +166,8 @@ class MailAccountController extends Controller
             'delete_after_import' => ['nullable', 'boolean'],
             'skip_spam' => ['nullable', 'boolean'],
             'enabled' => ['nullable', 'boolean'],
+            // Per-account fetch interval in minutes; null/absent = workspace default.
+            'sync_interval_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'],
         ])->validate();
 
         $data = [
@@ -191,6 +193,10 @@ class MailAccountController extends Controller
         if ($request->has('enabled')) {
             $data['enabled'] = $request->boolean('enabled');
         }
+        if ($request->has('sync_interval_minutes')) {
+            $value = $request->input('sync_interval_minutes');
+            $data['sync_interval_minutes'] = ($value === null || $value === '') ? null : $request->integer('sync_interval_minutes');
+        }
 
         return $data;
     }
@@ -210,6 +216,7 @@ class MailAccountController extends Controller
             'delete_after_import' => $account->delete_after_import,
             'skip_spam' => $account->skip_spam,
             'enabled' => $account->enabled,
+            'sync_interval_minutes' => $account->sync_interval_minutes,
             'status' => $account->status,
             'last_error' => $account->last_error,
             'last_synced_at' => $account->last_synced_at?->toIso8601String(),

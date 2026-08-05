@@ -27,11 +27,13 @@ use Illuminate\Support\Carbon;
  * @property bool $skip_spam
  * @property ?Carbon $last_synced_at
  * @property ?string $sync_batch_id
+ * @property ?int $sync_interval_minutes
  * @property string $status
  */
 #[Fillable([
     'name', 'host', 'port', 'username', 'password', 'encryption',
     'folders', 'backfill_since', 'delete_after_import', 'skip_spam', 'enabled', 'status', 'last_error', 'last_synced_at',
+    'sync_interval_minutes',
 ])]
 class MailAccount extends Model
 {
@@ -64,6 +66,7 @@ class MailAccount extends Model
             'skip_spam' => 'boolean',
             'enabled' => 'boolean',
             'last_synced_at' => 'datetime',
+            'sync_interval_minutes' => 'integer',
         ];
     }
 
@@ -77,5 +80,35 @@ class MailAccount extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(MailMessage::class, 'account_id');
+    }
+
+    /**
+     * Effective fetch interval in minutes: the per-account override when set,
+     * otherwise the workspace default (config('mail_archive.sync_interval_minutes')).
+     */
+    public function effectiveSyncIntervalMinutes(): int
+    {
+        $override = $this->sync_interval_minutes;
+        if (is_int($override) && $override > 0) {
+            return $override;
+        }
+
+        $default = config('mail_archive.sync_interval_minutes', 30);
+
+        return max(1, is_numeric($default) ? (int) $default : 30);
+    }
+
+    /**
+     * True when this account is due for a fetch — never synced, or the last
+     * sync is at least its effective interval ago.
+     */
+    public function isDueForSync(\DateTimeInterface $now): bool
+    {
+        $last = $this->last_synced_at;
+        if ($last === null) {
+            return true;
+        }
+
+        return $last->copy()->addMinutes($this->effectiveSyncIntervalMinutes())->lessThanOrEqualTo($now);
     }
 }

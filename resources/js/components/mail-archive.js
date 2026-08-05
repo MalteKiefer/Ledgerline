@@ -55,7 +55,7 @@ export default (config) => ({
     bulkBusy: false,
     // filters
     fAccount: '',
-    fFolder: '',
+    fFolder: 'INBOX', // default the archive view to the INBOX folder
     fText: '',
     fFrom: '',
     fTo: '',
@@ -128,6 +128,9 @@ export default (config) => ({
             if (fresh.length) putEnvelopes(fresh);
 
             this.cache = ledger.map((m) => this._buildRow(m, cached.get(m.id)));
+            // Default-to-INBOX only holds if the mailbox actually has an INBOX
+            // folder; otherwise fall back to "all folders" so nothing is hidden.
+            if (this.fFolder === 'INBOX' && !this.cache.some((r) => r.folder === 'INBOX')) this.fFolder = '';
             this.page = 1;
             this.selected = [];
         } catch (e) {
@@ -319,7 +322,10 @@ export default (config) => ({
         try {
             await postForm(this.config.seenBase, { ids, seen: seen ? 1 : 0 });
             const set = new Set(ids);
-            for (const r of this.cache) if (set.has(r.id)) r.seen = seen;
+            // Reassign with fresh identities for the changed rows so the x-for
+            // (keyed by id) re-renders them and the bold/normal :class re-evaluates.
+            this.cache = this.cache.map((r) => (set.has(r.id) ? { ...r, seen } : r));
+            if (this.open && set.has(this.open.id)) this.open = { ...this.open, seen };
         } catch { window.llToast?.(this.config.seenFailed); }
     },
     async bulkMarkSeen(seen) {
