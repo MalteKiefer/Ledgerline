@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\ModuleStore;
 use App\Models\StoreHistory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -44,6 +45,19 @@ class StoreHistoryTest extends TestCase
         $this->actingAs($user)->getJson(route('module-store.history.version', ['module' => 'notes', 'version' => 1]))
             ->assertOk()
             ->assertJson(['version' => 1, 'ciphertext' => 'original']);
+    }
+
+    public function test_every_persisted_version_has_an_atomic_history_snapshot(): void
+    {
+        // The snapshot is written inside the same write transaction as the live root
+        // (not post-commit), so a live version can never exist without its recovery
+        // snapshot — the fix for the 2026-08-05 large-write-with-no-history incident.
+        $user = User::factory()->create();
+        $this->save($user, 'sealed-root-bytes', 0);
+
+        $live = ModuleStore::where('user_id', $user->id)->where('module', 'notes')->firstOrFail();
+        $snap = StoreHistory::where('user_id', $user->id)->where('module', 'store:notes')->where('version', $live->version)->firstOrFail();
+        $this->assertSame($live->ciphertext, $snap->ciphertext);
     }
 
     public function test_history_is_capped_to_the_retention_depth(): void
