@@ -198,4 +198,6 @@ return [
     'share_err_no_key' => 'This link is missing its key and cannot be opened.',
     'share_err_bad_key' => 'This link’s key is invalid — the album cannot be decrypted.',
     'share_err_wrong_password' => 'Wrong password.',
+    'download' => 'Download',
+    'download_failed' => 'Download failed.',
 ];
