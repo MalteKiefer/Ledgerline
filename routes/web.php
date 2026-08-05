@@ -390,6 +390,8 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/passwords/tfa-directory', [TwoFactorDirectoryController::class, 'index'])->middleware('throttle:120,1')->name('passwords.tfa');
     // Health: zero-knowledge, records (measurements + profile) in the opaque /store manifest.
     Route::view('/health', 'health.index')->middleware('module:health')->name('health.index');
+    // Calendar: zero-knowledge, calendars + events in the opaque /store manifest.
+    Route::view('/calendar', 'calendar.index')->middleware('module:calendar')->name('calendar.index');
     // Invoices: zero-knowledge, records in the opaque /store manifest. The per-user
     // company profile (printed on invoices) is plaintext in the user's settings.
     Route::view('/finance', 'invoices.index')->middleware('module:finance')->name('finance.index');

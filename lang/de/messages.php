@@ -17,6 +17,7 @@ return [
         'todos' => 'Aufgaben',
         'health' => 'Gesundheit',
         'explore' => 'Entdecken',
+        'calendar' => 'Kalender',
         'more' => 'Mehr',
     ],
     'menu' => [

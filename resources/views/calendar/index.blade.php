@@ -1,0 +1,223 @@
+<x-layouts.app :title="__('calendar.title')">
+  <div class="mx-auto max-w-[1700px]" x-data="calendar({
+        default_calendar: @js(__('calendar.default_calendar')),
+     })">
+
+    {{-- Zero-knowledge gate: calendar data decrypts with the vault key. --}}
+    @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
+
+    <template x-if="state === 'locked'">
+      <div class="mx-auto mt-16 max-w-md ll-card !p-8 text-center">
+        <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
+        <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
+           x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
+        <x-button variant="primary" class="mt-5" icon="lock-open" @click="$dispatch('vault-panel')">
+          <span x-show="$store.vault.configured">{{ __('vault.unlock') }}</span>
+          <span x-show="!$store.vault.configured" x-cloak>{{ __('vault.setup') }}</span>
+        </x-button>
+      </div>
+    </template>
+
+    <div x-show="state === 'ready'" x-cloak>
+      {{-- Header: month nav + actions --}}
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <x-icon-button name="chevron-left" tone="gray" @click="prevMonth()" :aria-label="__('calendar.prev_month')" />
+          <h1 class="min-w-[10rem] text-center text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="monthLabel"></h1>
+          <x-icon-button name="chevron-right" tone="gray" @click="nextMonth()" :aria-label="__('calendar.next_month')" />
+          <x-button variant="secondary" size="sm" @click="goToday()">{{ __('calendar.today') }}</x-button>
+        </div>
+        <div class="flex items-center gap-2">
+          <x-button variant="secondary" size="sm" icon="cog-6-tooth" @click="openCalMgr()">{{ __('calendar.calendars') }}</x-button>
+          <x-button variant="primary" size="sm" icon="plus" @click="openNew()">{{ __('calendar.add_event') }}</x-button>
+        </div>
+      </div>
+
+      {{-- Month grid --}}
+      <div class="ll-card !p-0 overflow-hidden">
+        <div class="grid grid-cols-7 border-b border-black/[0.06] dark:border-white/10 text-center text-[11px] font-medium uppercase tracking-wide text-gray-500">
+          <template x-for="(wd, i) in weekdayLabels" :key="i">
+            <div class="px-2 py-2" x-text="wd"></div>
+          </template>
+        </div>
+        <template x-for="(week, wi) in monthWeeks" :key="wi">
+          <div class="grid grid-cols-7">
+            <template x-for="cell in week" :key="cell.iso">
+              <button type="button" @click="openDay(cell.iso)"
+                      class="min-h-[92px] border-b border-r border-black/[0.06] dark:border-white/10 p-1.5 text-left align-top hover:bg-accent/5 focus:outline-none"
+                      :class="cell.inMonth ? '' : 'bg-black/[0.02] dark:bg-white/[0.02]'">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs"
+                        :class="cell.isToday ? 'flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white' : (cell.inMonth ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400')"
+                        x-text="cell.day"></span>
+                </div>
+                <div class="mt-1 space-y-0.5">
+                  <template x-for="ev in dayEvents(cell.iso).slice(0, 3)" :key="ev.id">
+                    <div class="flex items-center gap-1 truncate rounded px-1 py-0.5 text-[11px] text-white"
+                         :style="{ background: calColor(ev.calendarId) }" :title="ev.title">
+                      <span x-show="!ev.allDay" class="tabular-nums opacity-90" x-text="timeLabel(ev)"></span>
+                      <span class="truncate" x-text="ev.title || '{{ __('calendar.untitled') }}'"></span>
+                    </div>
+                  </template>
+                  <div x-show="dayEvents(cell.iso).length > 3" class="px-1 text-[10px] text-gray-500"
+                       x-text="`+${dayEvents(cell.iso).length - 3}`"></div>
+                </div>
+              </button>
+            </template>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    {{-- Day agenda modal --}}
+    <template x-teleport="body">
+      <div x-show="selectedDay" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeDay()">
+        <div class="absolute inset-0 bg-gray-900/40" @click="closeDay()"></div>
+        <div class="relative flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+          <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="selectedDay ? fmtDay(selectedDay) : ''"></h3>
+            <x-icon-button name="plus" tone="accent" @click="openNew(selectedDay)" :aria-label="__('calendar.add_event')" />
+          </div>
+          <div class="flex-1 overflow-y-auto p-3">
+            <template x-if="selectedDay && dayEvents(selectedDay).length === 0">
+              <x-empty-state class="py-8">{{ __('calendar.no_events') }}</x-empty-state>
+            </template>
+            <div class="space-y-1.5">
+              <template x-for="ev in (selectedDay ? dayEvents(selectedDay) : [])" :key="ev.id">
+                <button type="button" @click="openEvent(ev)" class="flex w-full items-start gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2 text-left hover:bg-accent/5">
+                  <span class="mt-1 h-3 w-3 shrink-0 rounded-full" :style="{ background: calColor(ev.calendarId) }"></span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="ev.title || '{{ __('calendar.untitled') }}'"></span>
+                    <span class="block text-xs text-gray-500">
+                      <span x-show="ev.allDay">{{ __('calendar.all_day') }}</span>
+                      <span x-show="!ev.allDay" x-text="timeLabel(ev)"></span>
+                      <span x-show="ev.location" x-text="ev.location ? ' · ' + ev.location.label : ''"></span>
+                    </span>
+                  </span>
+                </button>
+              </template>
+            </div>
+          </div>
+          <div class="border-t border-black/[0.06] dark:border-white/10 px-5 py-3 text-right">
+            <x-button variant="secondary" size="sm" @click="closeDay()">{{ __('common.close') }}</x-button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    {{-- Event editor modal --}}
+    <template x-teleport="body">
+      <div x-show="editorOpen" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeEditor()">
+        <div class="absolute inset-0 bg-gray-900/40" @click="closeEditor()"></div>
+        <div class="relative flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+          <div class="border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="editing ? '{{ __('calendar.edit_event') }}' : '{{ __('calendar.add_event') }}'"></h3>
+          </div>
+          <div class="flex-1 space-y-3 overflow-y-auto p-5">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('calendar.event_title') }}</label>
+              <input type="text" x-model="_form.title" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm" :class="_saveAttempted && !_form.title.trim() ? 'border-red-400 ring-1 ring-red-400' : ''">
+              <p x-show="_saveAttempted && !_form.title.trim()" x-cloak class="mt-1 text-xs text-red-600">{{ __('calendar.title_required') }}</p>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('calendar.calendar') }}</label>
+              <select x-model="_form.calendarId" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                <template x-for="c in calendars" :key="c.id">
+                  <option :value="c.id" x-text="c.name"></option>
+                </template>
+              </select>
+            </div>
+
+            <label class="flex items-center gap-2">
+              <input type="checkbox" x-model="_form.allDay" class="rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ __('calendar.all_day') }}</span>
+            </label>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('calendar.starts') }}</label>
+                <input type="date" x-model="_form.startDate" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+              </div>
+              <div x-show="!_form.allDay">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">&nbsp;</label>
+                <input type="time" x-model="_form.startTime" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('calendar.ends') }}</label>
+                <input type="date" x-model="_form.endDate" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+              </div>
+              <div x-show="!_form.allDay">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">&nbsp;</label>
+                <input type="time" x-model="_form.endTime" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('calendar.location') }}</label>
+              <input type="text" x-model="_form.location" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('calendar.description') }}</label>
+              <textarea x-model="_form.description" rows="3" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm"></textarea>
+            </div>
+          </div>
+          <div class="flex items-center justify-between border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+            <div>
+              <x-button x-show="editing" x-cloak variant="danger" size="sm" @click="deleteEvent(editing)">{{ __('calendar.delete_event') }}</x-button>
+            </div>
+            <div class="flex gap-2">
+              <x-button variant="secondary" @click="closeEditor()">{{ __('common.cancel') }}</x-button>
+              <x-button variant="primary" @click="saveEvent()">{{ __('common.save') }}</x-button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    {{-- Calendars manager modal --}}
+    <template x-teleport="body">
+      <div x-show="calMgrOpen" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeCalMgr()">
+        <div class="absolute inset-0 bg-gray-900/40" @click="closeCalMgr()"></div>
+        <div class="relative flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+          <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('calendar.manage_calendars') }}</h3>
+            <x-icon-button name="plus" tone="accent" @click="newCalendar()" :aria-label="__('calendar.new_calendar')" />
+          </div>
+          <div class="flex-1 space-y-1.5 overflow-y-auto p-3">
+            {{-- Inline calendar form --}}
+            <template x-if="_calForm">
+              <div class="rounded-xl border border-accent/40 bg-accent/5 p-3">
+                <input type="text" x-model="_calForm.name" placeholder="{{ __('calendar.calendar_name') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                  <template x-for="col in colors" :key="col">
+                    <button type="button" @click="_calForm.color = col" class="h-6 w-6 rounded-full ring-offset-1" :style="{ background: col }" :class="_calForm.color === col ? 'ring-2 ring-accent' : ''"></button>
+                  </template>
+                </div>
+                <div class="mt-2 flex justify-end gap-2">
+                  <x-button variant="secondary" size="sm" @click="_calForm = null">{{ __('common.cancel') }}</x-button>
+                  <x-button variant="primary" size="sm" @click="saveCalendar()">{{ __('common.save') }}</x-button>
+                </div>
+              </div>
+            </template>
+            <template x-for="c in calendars" :key="c.id">
+              <div class="flex items-center gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
+                <span class="h-3.5 w-3.5 shrink-0 rounded-full" :style="{ background: c.color }"></span>
+                <span class="min-w-0 flex-1 truncate text-sm text-gray-900 dark:text-gray-100" x-text="c.name"></span>
+                <x-badge x-show="c.isDefault" x-cloak variant="accent">{{ __('calendar.default') }}</x-badge>
+                <x-icon-button name="star" tone="gray" size="sm" x-show="!c.isDefault" @click="setDefaultCalendar(c)" :aria-label="__('calendar.set_default')" />
+                <x-icon-button name="pencil" tone="gray" size="sm" @click="editCalendar(c)" :aria-label="__('common.edit')" />
+                <x-icon-button name="trash" tone="red" size="sm" x-show="calendars.length > 1" @click="deleteCalendar(c)" :aria-label="__('common.delete')" />
+              </div>
+            </template>
+          </div>
+          <div class="border-t border-black/[0.06] dark:border-white/10 px-5 py-3 text-right">
+            <x-button variant="secondary" size="sm" @click="closeCalMgr()">{{ __('common.close') }}</x-button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+  </div>
+</x-layouts.app>

@@ -194,6 +194,7 @@ export const MODULE_BLANKS = {
     sharing: () => ({ v: 3, knownFingerprints: {} }),
     explore: () => ({ v: 3, tracks: [], couplings: {}, settings: { couplingTimeToleranceS: 3600, couplingDistanceToleranceM: 100 } }),
     mailkeys: () => ({ v: 3, keys: [] }),
+    calendar: () => ({ v: 3, calendars: [], events: [] }),
 };
 
 /** Build the window-global registry of per-module stores. */

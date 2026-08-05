@@ -28,5 +28,6 @@ return [
         ['label' => 'messages.nav.finance', 'route' => 'finance.index', 'pattern' => 'finance.*', 'icon' => 'banknotes', 'module' => 'finance'],
         ['label' => 'messages.nav.health', 'route' => 'health.index', 'pattern' => 'health.*', 'icon' => 'heart', 'module' => 'health'],
         ['label' => 'messages.nav.explore', 'route' => 'explore', 'pattern' => 'explore', 'icon' => 'map', 'module' => 'explore'],
+        ['label' => 'messages.nav.calendar', 'route' => 'calendar.index', 'pattern' => 'calendar.*', 'icon' => 'calendar', 'module' => 'calendar'],
     ],
 ];

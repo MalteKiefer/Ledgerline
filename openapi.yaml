@@ -53,6 +53,7 @@ tags:
         • explore → ExploreStoreModel {tracks:[ExploreTrack], couplings:{photoId→ExploreCoupling}(OBJECT MAP, not an array — remove a coupling by DELETING its key, never by nulling it), settings:ExploreSettings}
         • sharing → SharingStoreModel {knownFingerprints:{userId→hex}} (TOFU, shared by passwords+files)
         • mailkeys → MailKeysStoreModel {keys:[MailKey]} (sealed PGP/S-MIME private+public keys for the mail archive; single-blob /store/mailkeys)
+        • calendar → CalendarStoreModel {calendars:[Calendar], events:[CalendarEvent]} (single-blob /store/calendar)
         • files → {v:3, files:[FileRecord], fileFolders:[FileFolder]} (sharded /files/store)
         • gallery → {v:3, photos:[GalleryPhoto], people:[GalleryPerson], albums:[GalleryAlbum]} (sharded /gallery/store)
         • shared vaults → SharedVaultManifest (GET/PUT /vaults/{vault}/store)
@@ -1254,6 +1255,66 @@ components:
         passphrase: { type: string, description: "Optional passphrase protecting the private key (empty string if none). Sealed like the key." }
         createdAt: { type: string, format: date-time }
 
+    CalendarStoreModel:
+      type: object
+      description: >
+        Decrypted `calendar` module store (GET/PUT /store/calendar). Zero-knowledge
+        — the server never sees event times or content. Reminders are registered
+        separately as opaque timestamp rows (see the reminders endpoint, added in a
+        later slice). Preserve unknown keys on write.
+      properties:
+        v: { type: integer, example: 3 }
+        calendars: { type: array, items: { $ref: '#/components/schemas/Calendar' } }
+        events: { type: array, items: { $ref: '#/components/schemas/CalendarEvent' } }
+
+    Calendar:
+      type: object
+      description: One named calendar (a colour-tagged grouping of events).
+      required: [id, name, color]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        color: { type: string, description: 'Hex colour, e.g. #7066f5.' }
+        isDefault: { type: boolean, description: 'The calendar new events default into (exactly one).' }
+
+    CalendarEvent:
+      type: object
+      description: >
+        One event. Single (non-recurring) in slice 1; rrule/exdates/recurrenceId
+        carry RFC 5545 recurrence in a later slice. Times are local wall-clock ISO
+        strings with a tz hint (all-day uses date-only yyyy-mm-dd).
+      required: [id, calendarId, title, start]
+      properties:
+        id: { type: string }
+        calendarId: { type: string }
+        title: { type: string }
+        description: { type: string }
+        location:
+          type: object
+          nullable: true
+          properties:
+            label: { type: string }
+            lat: { type: number, nullable: true }
+            lng: { type: number, nullable: true }
+        allDay: { type: boolean }
+        start: { type: string, description: 'ISO datetime, or yyyy-mm-dd for all-day.' }
+        end: { type: string, description: 'ISO datetime, or yyyy-mm-dd (inclusive date) for all-day.' }
+        tz: { type: string, description: 'IANA timezone hint for the wall-clock times.' }
+        rrule: { type: string, nullable: true, description: 'RFC 5545 RRULE (no DTSTART); null = single event.' }
+        exdates: { type: array, items: { type: string }, description: 'Excluded occurrence dates.' }
+        recurrenceId: { type: string, nullable: true, description: 'This record overrides one occurrence of overrideOf.' }
+        overrideOf: { type: string, nullable: true }
+        reminders:
+          type: array
+          items:
+            type: object
+            properties:
+              minutesBefore: { type: integer }
+              method: { type: string, enum: [push, local] }
+        status: { type: string, enum: [confirmed, cancelled] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
     HealthProfile:
       type: object
       description: "Personal health profile (health store key healthProfile). Canonical storage; units drive display only."
@@ -2253,11 +2314,11 @@ paths:
         required: true
         description: >
           Module key. One of: notes, todos, bookmarks, contacts, invoices,
-          passwords, health, sharing, explore, mailkeys. Any other value is a 404.
+          passwords, health, sharing, explore, mailkeys, calendar. Any other value is a 404.
           (mailkeys holds the sealed PGP private/public keys for the mail archive.)
         schema:
           type: string
-          enum: [notes, todos, bookmarks, contacts, invoices, passwords, health, sharing, explore, mailkeys]
+          enum: [notes, todos, bookmarks, contacts, invoices, passwords, health, sharing, explore, mailkeys, calendar]
     get:
       tags: [Store]
       operationId: moduleStoreShow

@@ -25,5 +25,6 @@ return [
         'finance' => ['label' => 'messages.nav.finance', 'route' => 'finance.index'],
         'health' => ['label' => 'messages.nav.health', 'route' => 'health.index'],
         'explore' => ['label' => 'messages.nav.explore', 'route' => 'explore'],
+        'calendar' => ['label' => 'messages.nav.calendar', 'route' => 'calendar.index'],
     ],
 ];
