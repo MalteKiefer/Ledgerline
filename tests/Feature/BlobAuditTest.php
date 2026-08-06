@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\BlobAuditLog;
-use App\Models\GalleryBlob;
+use App\Models\FileBlob;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -31,10 +31,10 @@ class BlobAuditTest extends TestCase
     {
         $user = User::factory()->create();
         $this->actingAs($user)
-            ->post(route('gallery.upload'), ['file' => UploadedFile::fake()->create('enc.bin', 8)])
+            ->post(route('files.upload'), ['file' => UploadedFile::fake()->create('enc.bin', 8)])
             ->assertCreated();
 
-        $row = BlobAuditLog::where('action', 'create')->where('module', 'gallery')->first();
+        $row = BlobAuditLog::where('action', 'create')->where('module', 'files')->first();
         $this->assertNotNull($row);
         $this->assertSame($user->id, $row->user_id);
         $this->assertSame('upload', $row->reason);
@@ -48,10 +48,10 @@ class BlobAuditTest extends TestCase
         $user = User::factory()->create();
         $disk = Storage::disk(config('files.disk'));
         $blob = (string) Str::uuid();
-        $disk->put('gallery/'.$blob, 'x');
-        GalleryBlob::create(['blob' => $blob, 'user_id' => $user->id, 'size' => 10, 'created_at' => now()]);
+        $disk->put('files/'.$blob, 'x');
+        FileBlob::create(['blob' => $blob, 'user_id' => $user->id, 'size' => 10, 'created_at' => now()]);
 
-        $this->actingAs($user)->deleteJson(route('gallery.blob.destroy', ['blob' => $blob]))->assertOk();
+        $this->actingAs($user)->deleteJson(route('files.blob.destroy', ['blob' => $blob]))->assertOk();
 
         $row = BlobAuditLog::where('action', 'delete')->where('blob', $blob)->first();
         $this->assertNotNull($row);
@@ -66,12 +66,12 @@ class BlobAuditTest extends TestCase
         $live = (string) Str::uuid();
         $orphan = (string) Str::uuid();
         foreach ([$live, $orphan] as $b) {
-            $disk->put('gallery/'.$b, 'x');
+            $disk->put('files/'.$b, 'x');
         }
-        GalleryBlob::create(['blob' => $live, 'user_id' => $user->id, 'size' => 10, 'created_at' => now()->subDays(3)]);
-        GalleryBlob::create(['blob' => $orphan, 'user_id' => $user->id, 'size' => 10, 'created_at' => now()->subDays(3)]);
+        FileBlob::create(['blob' => $live, 'user_id' => $user->id, 'size' => 10, 'created_at' => now()->subDays(3)]);
+        FileBlob::create(['blob' => $orphan, 'user_id' => $user->id, 'size' => 10, 'created_at' => now()->subDays(3)]);
 
-        $this->actingAs($user)->postJson(route('gallery.blobs.reconcile'), ['blobs' => [$live]])->assertOk();
+        $this->actingAs($user)->postJson(route('files.blobs.reconcile'), ['blobs' => [$live]])->assertOk();
 
         $this->assertDatabaseHas('blob_audit_log', [
             'action' => 'reconcile_delete',
@@ -86,13 +86,13 @@ class BlobAuditTest extends TestCase
     {
         $user = User::factory()->create();
         $blob = (string) Str::uuid();
-        GalleryBlob::create(['blob' => $blob, 'user_id' => $user->id, 'size' => 10, 'created_at' => now()]);
+        FileBlob::create(['blob' => $blob, 'user_id' => $user->id, 'size' => 10, 'created_at' => now()]);
 
         $this->actingAs($user)
-            ->putJson(route('gallery.store.save'), ['ciphertext' => 'sealed-root', 'version' => 0, 'shards' => [$blob]])
+            ->putJson(route('files.store.save'), ['ciphertext' => 'sealed-root', 'version' => 0, 'shards' => [$blob]])
             ->assertOk();
 
-        $row = BlobAuditLog::where('action', 'root_write')->where('module', 'gallery')->first();
+        $row = BlobAuditLog::where('action', 'root_write')->where('module', 'files')->first();
         $this->assertNotNull($row);
         $this->assertSame($user->id, $row->user_id);
         $this->assertNotNull($row->sha256);                    // hash of the sealed root
@@ -107,10 +107,10 @@ class BlobAuditTest extends TestCase
         $ghost = (string) Str::uuid();
 
         $this->actingAs($user)
-            ->putJson(route('gallery.store.save'), ['ciphertext' => 'x', 'version' => 0, 'shards' => [$ghost]])
+            ->putJson(route('files.store.save'), ['ciphertext' => 'x', 'version' => 0, 'shards' => [$ghost]])
             ->assertStatus(422);
 
-        $row = BlobAuditLog::where('action', 'root_reject')->where('module', 'gallery')->first();
+        $row = BlobAuditLog::where('action', 'root_reject')->where('module', 'files')->first();
         $this->assertNotNull($row);
         $this->assertSame('missing_shard', $row->reason);
         $this->assertSame('rejected', $row->result);
@@ -121,7 +121,7 @@ class BlobAuditTest extends TestCase
     {
         $user = User::factory()->create();
         $this->actingAs($user)
-            ->post(route('gallery.upload'), ['file' => UploadedFile::fake()->create('enc.bin', 8)])
+            ->post(route('files.upload'), ['file' => UploadedFile::fake()->create('enc.bin', 8)])
             ->assertCreated();
 
         // The only content-derived field is a hex sha256 — never the bytes themselves.
@@ -132,7 +132,7 @@ class BlobAuditTest extends TestCase
 
     public function test_entries_are_append_only(): void
     {
-        $row = BlobAuditLog::create(['module' => 'gallery', 'action' => 'create', 'result' => 'ok', 'created_at' => now()]);
+        $row = BlobAuditLog::create(['module' => 'files', 'action' => 'create', 'result' => 'ok', 'created_at' => now()]);
         $this->expectExceptionMessage('append-only');
         $row->update(['action' => 'delete']);
     }

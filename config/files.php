@@ -46,4 +46,9 @@ return [
     */
     'blob_orphan_grace_hours' => (int) env('FILES_BLOB_ORPHAN_GRACE_HOURS', 24),
 
+    // Public-share (PublicShare /s/) manifest + blob caps. Shared by the file/folder
+    // share links (moved here from the removed gallery config).
+    'share_max_manifest_bytes' => (int) env('SHARE_MAX_MANIFEST_BYTES', 16777216),
+    'share_max_blobs' => (int) env('SHARE_MAX_BLOBS', 16000),
+
 ];

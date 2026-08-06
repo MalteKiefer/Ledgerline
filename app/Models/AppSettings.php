@@ -14,13 +14,6 @@ use Illuminate\Database\Eloquent\Model;
  */
 #[Fillable([
     'allow_registration',
-    'gallery_trip_gap_days',
-    'gallery_trip_radius_km',
-    'gallery_filename_template',
-    'gallery_map_zoom',
-    'gallery_max_upload_mb',
-    'gallery_video_frame',
-    'gallery_geocode_grid_km',
     'vault_remember_days',
     'vault_public_idle_minutes',
     'max_connected_devices',
@@ -40,7 +33,6 @@ use Illuminate\Database\Eloquent\Model;
     'webhook_url',
     'webhook_secret',
     'export_files_max_zip_mb',
-    'export_gallery_max_zip_mb',
     'export_notify_desktop',
     'export_notify_ntfy',
     'export_notify_mail',
@@ -48,18 +40,6 @@ use Illuminate\Database\Eloquent\Model;
     'files_quota_mb',
     'files_max_upload_mb',
     'files_blob_orphan_grace_hours',
-    'gallery_ml_enabled',
-    'gallery_ml_url',
-    'gallery_ml_clip_model',
-    'gallery_face_enabled',
-    'gallery_face_model',
-    'gallery_duplicate_threshold',
-    'gallery_phash_max_distance',
-    'gallery_face_min_score',
-    'gallery_face_min_size',
-    'gallery_face_cluster_threshold',
-    'gallery_face_min_per_person',
-    'gallery_geocode_interval_ms',
 ])]
 class AppSettings extends Model
 {
@@ -71,12 +51,6 @@ class AppSettings extends Model
     protected function casts(): array
     {
         return [
-            'gallery_trip_gap_days' => 'integer',
-            'gallery_trip_radius_km' => 'integer',
-            'gallery_map_zoom' => 'integer',
-            'gallery_max_upload_mb' => 'integer',
-            'gallery_video_frame' => 'integer',
-            'gallery_geocode_grid_km' => 'float',
             'vault_remember_days' => 'integer',
             'vault_public_idle_minutes' => 'integer',
             'max_connected_devices' => 'integer',
@@ -98,7 +72,6 @@ class AppSettings extends Model
             'webhook_url' => 'encrypted',
             'webhook_secret' => 'encrypted',
             'export_files_max_zip_mb' => 'integer',
-            'export_gallery_max_zip_mb' => 'integer',
             'export_notify_desktop' => 'boolean',
             'export_notify_ntfy' => 'boolean',
             'export_notify_mail' => 'boolean',
@@ -106,15 +79,6 @@ class AppSettings extends Model
             'files_quota_mb' => 'integer',
             'files_max_upload_mb' => 'integer',
             'files_blob_orphan_grace_hours' => 'integer',
-            'gallery_ml_enabled' => 'boolean',
-            'gallery_face_enabled' => 'boolean',
-            'gallery_duplicate_threshold' => 'float',
-            'gallery_phash_max_distance' => 'integer',
-            'gallery_face_min_score' => 'float',
-            'gallery_face_min_size' => 'integer',
-            'gallery_face_cluster_threshold' => 'float',
-            'gallery_face_min_per_person' => 'integer',
-            'gallery_geocode_interval_ms' => 'integer',
         ];
     }
 

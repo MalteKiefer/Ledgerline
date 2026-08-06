@@ -271,8 +271,6 @@ class PublicShareController extends Controller
     /** @return array{string, class-string<Model>} */
     private function blobSource(PublicShare $share): array
     {
-        $module = $share->kind === 'gallery_album' ? 'gallery' : 'files';
-
-        return [BlobRegistry::prefix($module), BlobRegistry::model($module)];
+        return [BlobRegistry::prefix('files'), BlobRegistry::model('files')];
     }
 }

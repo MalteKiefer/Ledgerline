@@ -7,7 +7,6 @@ namespace App\Support;
 use App\Models\ContactBlob;
 use App\Models\ExploreBlob;
 use App\Models\FileBlob;
-use App\Models\GalleryBlob;
 use App\Models\InvoiceBlob;
 use App\Models\MailBlob;
 use App\Models\NoteBlob;
@@ -26,7 +25,6 @@ final class BlobRegistry
 {
     /** @var array<string, array{model: class-string<Model>, prefix: string}> */
     private const MAP = [
-        'gallery' => ['model' => GalleryBlob::class, 'prefix' => 'gallery'],
         'files' => ['model' => FileBlob::class,    'prefix' => 'files'],
         'notes' => ['model' => NoteBlob::class,   'prefix' => 'notes'],
         'passwords' => ['model' => PasswordBlob::class, 'prefix' => 'passwords'],

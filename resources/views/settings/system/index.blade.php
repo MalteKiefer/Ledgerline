@@ -35,7 +35,7 @@
 
         <h3 class="mt-5 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('settings.system_storage') }}</h3>
         <dl class="mt-2 space-y-1.5 text-sm">
-            @foreach (['files' => __('settings.system_storage_files'), 'gallery' => __('settings.system_storage_gallery'), 'database' => __('settings.system_storage_database')] as $key => $label)
+            @foreach (['files' => __('settings.system_storage_files'), 'database' => __('settings.system_storage_database')] as $key => $label)
                 <div class="flex items-center justify-between">
                     <dt class="text-gray-600 dark:text-gray-400">{{ $label }}</dt>
                     <dd class="font-mono text-gray-800 dark:text-gray-200">{{ \Illuminate\Support\Number::fileSize($status['storage'][$key]) }}</dd>

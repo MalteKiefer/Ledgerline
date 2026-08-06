@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Api;
 
-use App\Models\GalleryBlob;
+use App\Models\FileBlob;
 use App\Models\PublicShare;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -35,7 +35,7 @@ class PublicShareApiTest extends TestCase
         return PublicShare::create(array_merge([
             'token' => Str::random(22),
             'user_id' => $owner->id,
-            'kind' => 'gallery_album',
+            'kind' => 'file',
             'sealed_manifest' => 'enc_manifest_placeholder',
             'blob_refs' => [],
             'allow_download' => true,
@@ -44,19 +44,19 @@ class PublicShareApiTest extends TestCase
         ], $attrs));
     }
 
-    /** Create a real gallery blob record + fake disk file, returns the blob UUID. */
-    private function makeGalleryBlob(User $owner, PublicShare $share): string
+    /** Create a real file blob record + fake disk file, returns the blob UUID. */
+    private function makeFileBlob(User $owner, PublicShare $share): string
     {
         Storage::fake(config('files.disk'));
         $ref = (string) Str::uuid();
 
-        GalleryBlob::create([
+        FileBlob::create([
             'blob' => $ref,
             'user_id' => $owner->id,
             'size' => 16,
         ]);
 
-        Storage::disk(config('files.disk'))->put('gallery/'.$ref, 'ciphertext_bytes');
+        Storage::disk(config('files.disk'))->put('files/'.$ref, 'ciphertext_bytes');
 
         $share->forceFill(['blob_refs' => [$ref]])->saveQuietly();
 
@@ -75,7 +75,7 @@ class PublicShareApiTest extends TestCase
         $resp->assertOk()->assertJson([
             'found' => true,
             'expired' => false,
-            'kind' => 'gallery_album',
+            'kind' => 'file',
             'needs_password' => false,
             'allow_download' => true,
         ]);
@@ -145,7 +145,7 @@ class PublicShareApiTest extends TestCase
     {
         $owner = $this->makeUser();
         $share = $this->makeShare($owner);
-        $ref = $this->makeGalleryBlob($owner, $share);
+        $ref = $this->makeFileBlob($owner, $share);
 
         $resp = $this->get("/api/v1/s/{$share->token}/blob/{$ref}");
 
@@ -175,8 +175,8 @@ class PublicShareApiTest extends TestCase
         $ref = (string) Str::uuid();
 
         // Blob exists but belongs to $other, NOT $owner
-        GalleryBlob::create(['blob' => $ref, 'user_id' => $other->id, 'size' => 8]);
-        Storage::disk(config('files.disk'))->put('gallery/'.$ref, 'secret');
+        FileBlob::create(['blob' => $ref, 'user_id' => $other->id, 'size' => 8]);
+        Storage::disk(config('files.disk'))->put('files/'.$ref, 'secret');
         $share->forceFill(['blob_refs' => [$ref]])->saveQuietly();
 
         $this->get("/api/v1/s/{$share->token}/blob/{$ref}")->assertNotFound();
@@ -186,7 +186,7 @@ class PublicShareApiTest extends TestCase
     {
         $owner = $this->makeUser();
         $share = $this->makeShare($owner, ['allow_download' => false]);
-        $ref = $this->makeGalleryBlob($owner, $share);
+        $ref = $this->makeFileBlob($owner, $share);
 
         $this->get("/api/v1/s/{$share->token}/blob/{$ref}")->assertForbidden();
     }
@@ -244,7 +244,7 @@ class PublicShareApiTest extends TestCase
     {
         $owner = $this->makeUser();
         $share = $this->makeShare($owner, ['password_hash' => Hash::make('x')]);
-        $ref = $this->makeGalleryBlob($owner, $share);
+        $ref = $this->makeFileBlob($owner, $share);
 
         $grant = $this->postJson("/api/v1/s/{$share->token}/unlock", ['password' => 'x'])
             ->json('grant');

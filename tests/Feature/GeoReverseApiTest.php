@@ -9,7 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
-class GalleryReverseApiTest extends TestCase
+class GeoReverseApiTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -17,10 +17,10 @@ class GalleryReverseApiTest extends TestCase
     {
         parent::setUp();
         config([
-            'gallery.photon_url' => 'http://photon.internal:2322',
-            'gallery.geocoder_url' => 'https://nominatim.openstreetmap.org',
-            'gallery.geocode_grid_km' => 0,
-            'gallery.geocode_interval_ms' => 0,
+            'geo.photon_url' => 'http://photon.internal:2322',
+            'geo.geocoder_url' => 'https://nominatim.openstreetmap.org',
+            'geo.geocode_grid_km' => 0,
+            'geo.geocode_interval_ms' => 0,
         ]);
     }
 
@@ -43,7 +43,7 @@ class GalleryReverseApiTest extends TestCase
             ], 200),
         ]);
 
-        $this->getJson('/api/v1/gallery/reverse?lat=52.516&lng=13.377', $this->bearer())
+        $this->getJson('/api/v1/geo/reverse?lat=52.516&lng=13.377', $this->bearer())
             ->assertOk()
             ->assertJsonPath('address.country_code', 'de')
             ->assertJson(fn ($json) => $json->where('place', fn ($p) => str_contains((string) $p, 'Berlin'))->etc());
@@ -51,13 +51,13 @@ class GalleryReverseApiTest extends TestCase
 
     public function test_it_validates_coordinate_bounds(): void
     {
-        $this->getJson('/api/v1/gallery/reverse?lat=999&lng=0', $this->bearer())->assertStatus(422);
-        $this->getJson('/api/v1/gallery/reverse?lat=0&lng=999', $this->bearer())->assertStatus(422);
-        $this->getJson('/api/v1/gallery/reverse?lat=0', $this->bearer())->assertStatus(422); // missing lng
+        $this->getJson('/api/v1/geo/reverse?lat=999&lng=0', $this->bearer())->assertStatus(422);
+        $this->getJson('/api/v1/geo/reverse?lat=0&lng=999', $this->bearer())->assertStatus(422);
+        $this->getJson('/api/v1/geo/reverse?lat=0', $this->bearer())->assertStatus(422); // missing lng
     }
 
     public function test_it_requires_authentication(): void
     {
-        $this->getJson('/api/v1/gallery/reverse?lat=52.5&lng=13.3')->assertUnauthorized();
+        $this->getJson('/api/v1/geo/reverse?lat=52.5&lng=13.3')->assertUnauthorized();
     }
 }

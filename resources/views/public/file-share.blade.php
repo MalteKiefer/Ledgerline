@@ -37,17 +37,17 @@
         <div class="mx-auto mt-16 flex max-w-md flex-col items-center rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-12 text-center">
           <div class="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"><x-icon name="lock-closed" class="h-7 w-7 text-gray-400" /></div>
           <p class="mt-4 text-sm text-gray-600 dark:text-gray-300"
-             x-text="state === 'expired' ? @js(__('gallery.share_expired')) : (state === 'notfound' ? @js(__('gallery.share_not_found')) : (error || @js(__('files.share_error'))))"></p>
+             x-text="state === 'expired' ? @js(__('shares.share_expired')) : (state === 'notfound' ? @js(__('shares.share_not_found')) : (error || @js(__('files.share_error'))))"></p>
         </div>
       </template>
 
       <template x-if="state === 'password'">
         <form @submit.prevent="unlock()" class="mx-auto mt-16 flex max-w-sm flex-col items-center rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-8 text-center shadow-sm">
           <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"><x-icon name="lock-closed" class="h-6 w-6 text-gray-400" /></div>
-          <p class="mt-4 text-sm text-gray-600 dark:text-gray-300">{{ __('gallery.share_password_prompt') }}</p>
+          <p class="mt-4 text-sm text-gray-600 dark:text-gray-300">{{ __('shares.share_password_prompt') }}</p>
           <input type="password" x-model="password" autocomplete="current-password" class="mt-4 w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
           <p x-show="error" x-cloak class="mt-2 text-xs text-red-600 dark:text-red-400" x-text="error"></p>
-          <x-button variant="primary" type="submit" ::disabled="unlocking || ! password" class="mt-4 w-full">{{ __('gallery.share_unlock') }}</x-button>
+          <x-button variant="primary" type="submit" ::disabled="unlocking || ! password" class="mt-4 w-full">{{ __('shares.share_unlock') }}</x-button>
         </form>
       </template>
 
@@ -65,7 +65,7 @@
         </nav>
 
         <template x-if="! allFiles.length"><x-empty-state class="mt-16">{{ __('files.share_empty') }}</x-empty-state></template>
-        <template x-if="allFiles.length && ! subfolders.length && ! filesHere.length"><x-empty-state class="mt-16">{{ __('gallery.album_empty') }}</x-empty-state></template>
+        <template x-if="allFiles.length && ! subfolders.length && ! filesHere.length"><x-empty-state class="mt-16">{{ __('shares.album_empty') }}</x-empty-state></template>
 
         <ul x-show="subfolders.length || filesHere.length" class="divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e]">
           {{-- Subfolders first --}}

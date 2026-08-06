@@ -7,7 +7,6 @@ namespace Tests\Feature\Backup;
 use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\ExploreBlobController;
 use App\Http\Controllers\FileController;
-use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\InvoiceBlobController;
 use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\NoteBlobController;
@@ -16,7 +15,6 @@ use App\Http\Controllers\SharedFolderBlobController;
 use App\Models\BackupJob;
 use App\Services\Backup\BackupManager;
 use App\Services\Backup\Sources\FilesSource;
-use App\Services\Backup\Sources\GallerySource;
 use App\Services\Backup\Sources\MirrorableSource;
 use App\Services\Backup\Sources\ModuleBlobSource;
 use App\Support\BlobRegistry;
@@ -45,14 +43,8 @@ class BackupSourcePrefixTest extends TestCase
             'FilesSource must mirror the same disk prefix FileController writes to.',
         );
 
-        $this->assertSame(
-            $this->protectedString(new GalleryBlobController, 'module'),
-            $this->protectedString(new GallerySource, 'prefix'),
-            'GallerySource must mirror the same disk prefix GalleryBlobController writes to.',
-        );
-
         // Guard the concrete values too, so a rename of both in lockstep still trips.
-        $this->assertSame('gallery', $this->protectedString(new GalleryBlobController, 'module'));
+        $this->assertSame('files', $this->protectedString(new FileController, 'module'));
         $this->assertSame('contacts', $this->protectedString(new ContactBlobController, 'module'));
     }
 
@@ -60,13 +52,12 @@ class BackupSourcePrefixTest extends TestCase
      * Every registered blob prefix MUST be backed up, otherwise a database-only
      * restore points at ciphertext that no source ever captured — total loss of
      * that module's content (the C1 finding). Locks BlobRegistry ↔ backup sources
-     * ↔ blob-controller prefixes together for all nine modules.
+     * ↔ blob-controller prefixes together for all eight modules.
      */
     public function test_every_blob_module_has_a_backup_source_with_a_matching_prefix(): void
     {
         $controllers = [
             'files' => FileController::class,
-            'gallery' => GalleryBlobController::class,
             'notes' => NoteBlobController::class,
             'passwords' => PasswordBlobController::class,
             'invoices' => InvoiceBlobController::class,

@@ -42,7 +42,7 @@ class ReverseGeocoder
         [$lat, $lon] = $this->snapToGrid($lat, $lon);
 
         // In-boundary first; only fall through to OSM when Photon has no match.
-        $photonUrl = config('gallery.photon_url', '');
+        $photonUrl = config('geo.photon_url', '');
         if (is_string($photonUrl) && $photonUrl !== '') {
             $viaPhoton = $this->viaPhoton($photonUrl, $lat, $lon);
             if ($viaPhoton['display'] !== null) {
@@ -209,9 +209,9 @@ class ReverseGeocoder
     {
         try {
             $configured = AppSettings::current()->gallery_geocode_grid_km
-                ?? config('gallery.geocode_grid_km', 0.5);
+                ?? config('geo.geocode_grid_km', 0.5);
         } catch (Throwable) {
-            $configured = config('gallery.geocode_grid_km', 0.5);
+            $configured = config('geo.geocode_grid_km', 0.5);
         }
 
         // A non-numeric value casts to 0.0 (the old (float) semantics), which the

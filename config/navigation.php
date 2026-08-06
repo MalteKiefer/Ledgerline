@@ -15,7 +15,6 @@ return [
     'primary' => [
         ['label' => 'messages.nav.dashboard', 'route' => 'dashboard', 'pattern' => 'dashboard', 'icon' => 'home', 'module' => 'dashboard'],
         ['label' => 'messages.nav.files', 'route' => 'files.index', 'pattern' => 'files.*', 'icon' => 'files', 'module' => 'files'],
-        ['label' => 'messages.nav.gallery', 'route' => 'gallery.index', 'pattern' => 'gallery.*', 'icon' => 'photo', 'module' => 'gallery'],
         ['label' => 'messages.nav.passwords', 'route' => 'passwords.index', 'pattern' => 'passwords.*', 'icon' => 'key', 'module' => 'passwords'],
     ],
     // The rest: a "More" dropdown on desktop, the "More" sheet on mobile.

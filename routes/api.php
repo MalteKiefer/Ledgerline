@@ -27,10 +27,7 @@ use App\Http\Controllers\ExploreBlobController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileShareController;
 use App\Http\Controllers\FilesStoreController;
-use App\Http\Controllers\GalleryBlobController;
-use App\Http\Controllers\GalleryProcessController;
-use App\Http\Controllers\GalleryShareController;
-use App\Http\Controllers\GalleryStoreController;
+use App\Http\Controllers\GeoController;
 use App\Http\Controllers\InvoiceBlobController;
 use App\Http\Controllers\InvoiceMailController;
 use App\Http\Controllers\InvoicesStoreController;
@@ -120,8 +117,6 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/store/{module}/history/{version}', [ModuleStoreController::class, 'historyVersion'])->whereAlpha('module')->whereNumber('version')->middleware('module')->name('api.module-store.history.version');
         Route::get('/files/store/history', [FilesStoreController::class, 'history'])->middleware('module:files')->name('api.files.store.history');
         Route::get('/files/store/history/{version}', [FilesStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:files')->name('api.files.store.history.version');
-        Route::get('/gallery/store/history', [GalleryStoreController::class, 'history'])->middleware('module:gallery')->name('api.gallery.store.history');
-        Route::get('/gallery/store/history/{version}', [GalleryStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:gallery')->name('api.gallery.store.history.version');
         Route::get('/notes/store/history', [NotesStoreController::class, 'history'])->middleware('module:notes')->name('api.notes.store.history');
         Route::get('/notes/store/history/{version}', [NotesStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:notes')->name('api.notes.store.history.version');
         Route::get('/passwords/store/history', [PasswordsStoreController::class, 'history'])->middleware('module:passwords')->name('api.passwords.store.history');
@@ -222,32 +217,12 @@ Route::prefix('v1')->group(function (): void {
         Route::delete('/files/shares/{token}', [FileShareController::class, 'destroy'])->middleware('throttle:60,1')->name('api.files.shares.destroy');
 
         // Gallery: sealed index + opaque photo blobs + the stateless transform.
-        Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->middleware('module:gallery')->name('api.gallery.store.show');
-        Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:1200,1', 'module:gallery'])->name('api.gallery.store.save');
-        Route::get('/gallery/usage', [GalleryBlobController::class, 'usage'])->name('api.gallery.usage');
-        Route::post('/gallery/blobs/reconcile', [GalleryBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('api.gallery.reconcile');
-        Route::post('/gallery/upload', [GalleryBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('api.gallery.upload');
-        Route::post('/gallery/upload/init', [GalleryBlobController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.gallery.upload.init');
-        Route::post('/gallery/upload/part', [GalleryBlobController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.gallery.upload.part');
-        Route::post('/gallery/upload/complete', [GalleryBlobController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.gallery.upload.complete');
-        Route::post('/gallery/upload/abort', [GalleryBlobController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.gallery.upload.abort');
-        Route::get('/gallery/raw/{blob}', [GalleryBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.gallery.raw');
-        Route::post('/gallery/raw-batch', [GalleryBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.gallery.raw-batch');
-        Route::delete('/gallery/blob/{blob}', [GalleryBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.gallery.blob.destroy');
-        Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('module:gallery', 'throttle:1200,1')->name('api.gallery.process');
         // Deferred vision pass: client POSTs a photo's medium rendition (plaintext, discarded
         // after) and gets back the CLIP embedding + faces to merge into the sealed metadata.
-        Route::post('/gallery/analyze', [GalleryProcessController::class, 'analyze'])->middleware('module:gallery', 'throttle:1200,1')->name('api.gallery.analyze');
-        Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('module:gallery', 'throttle:300,1')->name('api.gallery.embed-text');
         // Reverse-geocode a photo coordinate to a place name (viewer display). Self-hosted
         // Photon first (ZK), snap-to-grid before egress, never cached server-side.
-        Route::get('/gallery/reverse', [GalleryProcessController::class, 'reverse'])->middleware('module:gallery', 'throttle:60,1')->name('api.gallery.reverse');
         // Forward geocode: address/place search for photo location tagging (reverse is above).
-        Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('module:gallery', 'throttle:60,1')->name('api.gallery.geocode');
         // Album public share links (parity with files.shares): create, update metadata, revoke.
-        Route::post('/gallery/shares', [GalleryShareController::class, 'store'])->middleware('throttle:60,1')->name('api.gallery.shares.store');
-        Route::put('/gallery/shares/{token}', [GalleryShareController::class, 'update'])->middleware('throttle:60,1')->name('api.gallery.shares.update');
-        Route::delete('/gallery/shares/{token}', [GalleryShareController::class, 'destroy'])->middleware('throttle:60,1')->name('api.gallery.shares.destroy');
 
         // Contacts: the records themselves live in the workspace manifest above
         // (GET/PUT /store). These are only the optional avatar content blobs, so
@@ -277,8 +252,11 @@ Route::prefix('v1')->group(function (): void {
         // Explore tour-planner auto-routing: snap clicked waypoints to real paths via
         // an OSRM-compatible upstream. SSRF-guarded, coordinates never logged/persisted,
         // clean {geometry:null} when the upstream is unset/unreachable. User-initiated,
-        // opt-in egress — same class as /gallery/geocode.
+        // opt-in egress — same class as /geo/geocode.
         Route::get('/maps/route', [MapController::class, 'route'])->middleware('throttle:180,1')->name('api.maps.route');
+        // Module-independent geocoding (Explore/Contacts/Calendar): forward + reverse.
+        Route::get('/geo/geocode', [GeoController::class, 'geocode'])->middleware('throttle:60,1')->name('api.geo.geocode');
+        Route::get('/geo/reverse', [GeoController::class, 'reverse'])->middleware('throttle:60,1')->name('api.geo.reverse');
         // Resolve a Google-Maps short link to coordinates for the Explore search.
         // Google-hosts-only egress, link never logged; same opt-in class.
         Route::get('/maps/resolve', [MapController::class, 'resolve'])->middleware('throttle:30,1')->name('api.maps.resolve');

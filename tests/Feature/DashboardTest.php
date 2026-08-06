@@ -31,7 +31,6 @@ class DashboardTest extends TestCase
 
         $this->get(route('dashboard'))
             ->assertOk()
-            ->assertSee(route('gallery.index'))
             ->assertSee(route('files.index'))
             ->assertSee(route('notes.index'))
             ->assertSee(route('bookmarks.index'));

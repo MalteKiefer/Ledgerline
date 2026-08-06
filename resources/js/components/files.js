@@ -9,16 +9,14 @@ import { parseTags, addTags, removeTagFrom, popTag } from '../shared/tag-chips';
 import { padBlob, padmeSize } from '../shared/padme';
 import { saveBlobAs, formatDate } from '../shared/dom';
 import { fileCategory, CATEGORY_ICON, categoryTint, fileTypeLabel, FOLDER_TINT, formatBytes } from '../shared/file-categories';
-import { normVec as _normVec, dotVec as _dotVec } from '../shared/vector-math';
 import { extractDocText } from '../shared/doc-text';
 import { loadCodeMirror, cmModule } from '../shared/lazy-loaders';
 
 // Heroicon path for the folder chip glyph (24-outline folder).
 const FOLDER_ICON_PATH = 'M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z';
 
-// Files-only module state (fulltext + CLIP-embedding search caches + reconcile dedupe).
+// Files-only module state (fulltext/OCR search cache + reconcile dedupe).
 const fileText = {};
-const fileEmb = {};
 let _filesReconAt = 0;
 
 export default (config = {}, labels = {}) => ({
@@ -36,7 +34,6 @@ export default (config = {}, labels = {}) => ({
     query: '',
     _q: '',            // debounced search term the row filter actually uses
     _searchTimer: null,
-    _semanticHits: null, // Set of image-file ids matching the query via CLIP, or null
     sortDir: 'asc',
     sortKey: 'name', // name | size | date
     layout: (typeof localStorage !== 'undefined' && localStorage.getItem('ll-files-layout')) || 'list', // list | grid
@@ -759,7 +756,6 @@ export default (config = {}, labels = {}) => ({
     get rows() {
         const q = (this._q || '').trim(); // debounced + lowercased search term
         void this._contentReady; // re-filter as file content decrypts into the index
-        const sem = this._semanticHits; // CLIP image-file matches for this query
         const tag = this.activeTag;
         const factor = this.sortDir === 'desc' ? -1 : 1;
         const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
@@ -769,7 +765,7 @@ export default (config = {}, labels = {}) => ({
         const cmp = (a, b) => factor * (base(a, b) || byName(a, b));
         // Match the filename OR the extracted file content (lazily decrypted into
         // the module-scoped fileText index; warmed in the background on load).
-        const search = (list) => q === '' ? list : list.filter((x) => x.name.toLowerCase().includes(q) || (fileText[x.id] || '').includes(q) || (sem && sem.has(x.id)));
+        const search = (list) => q === '' ? list : list.filter((x) => x.name.toLowerCase().includes(q) || (fileText[x.id] || '').includes(q));
 
         const activeFiles = this._activeFiles();
         const activeFolders = this._activeFolders();
@@ -804,7 +800,7 @@ export default (config = {}, labels = {}) => ({
                 : list;
             // Match filename OR extracted content (folders have no content, so
             // fileText[id] is '' and they fall back to a name match).
-            if (q !== '') scoped = scoped.filter((x) => x.name.toLowerCase().includes(q) || (fileText[x.id] || '').includes(q) || (sem && sem.has(x.id)));
+            if (q !== '') scoped = scoped.filter((x) => x.name.toLowerCase().includes(q) || (fileText[x.id] || '').includes(q));
             if (tag !== '') scoped = scoped.filter((x) => (x.tags ?? []).includes(tag));
             return scoped;
         };
@@ -1696,41 +1692,12 @@ export default (config = {}, labels = {}) => ({
         const id = await this._uploadOne(cipher, {});
         return { ref: id, key: enc.encFileKey };
     },
-    _isImage(f) {
-        return /^image\//.test(f.mime || '') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff'].includes(((f.name || '').split('.').pop() || '').toLowerCase());
-    },
-    // CLIP-embed an image file via the gallery vision endpoint (transient
-    // plaintext window, like /gallery/process). Returns the raw vector or null.
-    async _embedImage(bytes, f) {
-        if (! config.semanticEnabled || ! config.analyzeUrl) return null; // opt-out: keeps Files fully in-browser
-        try {
-            const fd = new FormData();
-            fd.append('_token', config.token);
-            fd.append('file', new File([bytes], f.name || 'image', { type: f.mime || 'image/jpeg' }));
-            const res = await fetch(config.analyzeUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
-            if (! res.ok) return null;
-            const d = await res.json();
-            return Array.isArray(d.embedding) ? d.embedding : null;
-        } catch (e) { return null; }
-    },
-    async _storeEmbedding(embedding) {
-        const bytes = new TextEncoder().encode(JSON.stringify(embedding));
-        const enc = await window.Vault.encryptFile(new File([bytes], 'emb.json', { type: 'application/json' }));
-        const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
-        const id = await this._uploadOne(cipher, {});
-        return { ref: id, key: enc.encFileKey };
-    },
     async _extractInto(f) {
         const buf = await fetchDecrypt(config.rawBase, f.blob, f.encFileKey);
         const bytes = new Uint8Array(buf);
         let indexed = false;
         const text = await this._extractText(bytes, f.mime, f.name);
         if (text && text.trim()) { const s = await this._storeText(text); f.textRef = s.ref; f.textKey = s.key; fileText[f.id] = text.toLowerCase(); indexed = true; }
-        // Image files also get a CLIP embedding for semantic ("photo of X") search.
-        if (this._isImage(f)) {
-            const emb = await this._embedImage(bytes, f);
-            if (emb) { const e = await this._storeEmbedding(emb); f.embRef = e.ref; f.embKey = e.key; fileEmb[f.id] = _normVec(emb); indexed = true; }
-        }
         if (! indexed) f.textSkip = true; // nothing extractable — don't retry
         return indexed;
     },
@@ -1799,26 +1766,8 @@ export default (config = {}, labels = {}) => ({
         clearTimeout(this._searchTimer);
         this._searchTimer = setTimeout(() => {
             this._q = this.query.trim().toLowerCase();
-            if (this._q) { this._ensureContentIndex(); this._semanticSearch(this._q); }
-            else this._semanticHits = null;
+            if (this._q) this._ensureContentIndex();
         }, 250);
-    },
-    // Semantic image-file search: embed the query in CLIP space and cosine it
-    // against the (warmed) image-file embeddings, so "a photo of a passport"
-    // finds the scan even when the filename/text don't contain the words.
-    async _semanticSearch(q) {
-        try {
-            if (! config.semanticEnabled) return; // server-assisted; disabled → no query egress
-            if (! Object.keys(fileEmb).length) return; // nothing embedded yet
-            const res = await fetch(config.embedTextUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ q }) });
-            if (! res.ok) return;
-            const qv = (await res.json()).embedding;
-            if (! Array.isArray(qv)) return;
-            const qn = _normVec(qv);
-            const hits = new Set();
-            for (const id in fileEmb) { if (_dotVec(qn, fileEmb[id]) > 0.22) hits.add(id); }
-            if (this._q === q) { this._semanticHits = hits; this._contentReady++; } // ignore stale
-        } catch (e) { /* ignore */ }
     },
     async _ensureContentIndex() {
         if (this._warming || this._contentWarmed) return;
@@ -1831,11 +1780,7 @@ export default (config = {}, labels = {}) => ({
                     try { const buf = await fetchDecrypt(config.rawBase, f.textRef, f.textKey); fileText[f.id] = new TextDecoder().decode(buf).toLowerCase(); }
                     catch (e) { /* skip */ }
                 }
-                if (f.embRef && fileEmb[f.id] == null) {
-                    try { const buf = await fetchDecrypt(config.rawBase, f.embRef, f.embKey); fileEmb[f.id] = _normVec(JSON.parse(new TextDecoder().decode(buf))); }
-                    catch (e) { /* skip */ }
-                }
-                if ((f.textRef || f.embRef) && ++n % 10 === 0) { this._contentReady++; await new Promise((r) => setTimeout(r, 150)); }
+                if (f.textRef && ++n % 10 === 0) { this._contentReady++; await new Promise((r) => setTimeout(r, 150)); }
             }
             this._contentWarmed = true;
             this._contentReady++;

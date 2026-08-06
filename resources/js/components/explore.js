@@ -1,23 +1,16 @@
-// Explore map module (ZK). Tracks, photo↔track couplings and the coupling
-// tolerances live in the sealed `explore` module store (window.LLModuleStore.
-// explore); the server only ever sees ciphertext. Gallery photos are read from
-// the already-decrypted gallery index (window.LLGalleryStore.data.photos) —
-// their sealed EXIF lat/lng place a pin, and photos without GPS are placed by
-// matching their capture time against an imported track (matchPhotoToTracks +
-// interpolatePosition). Leaflet renders raster OpenStreetMap tiles as <img>
-// (allowed by the CSP img-src) — same tile layer the gallery location-picker
-// and viewer mini-map use; no tile relay / tileserver is involved.
+// Explore map module (ZK). GPS tracks live in the sealed `explore` module store
+// (window.LLModuleStore.explore); the server only ever sees ciphertext. Leaflet
+// renders raster OpenStreetMap tiles as <img> (allowed by the CSP img-src) — the
+// same tile layer the location picker uses; no tile relay / tileserver involved.
 //
 // Everything heavy is lazy: Leaflet (loadLeaflet()), uPlot (loadUplot()) and the
 // KMZ unzip (fflate, dynamic import) are only pulled when the view needs them,
 // so none of them touch the startup bundle.
 
-import { bootStore, bootGalleryStore } from '../shared/zk-module';
+import { bootStore } from '../shared/zk-module';
 import { parseTrack, parseTrackBinary, smoothedAscentDescent } from '../shared/track-parse';
-import { matchPhotoToTracks, interpolatePosition } from '../shared/photo-track-match';
 import { loadLeaflet } from '../shared/lazy-loaders';
 import { loadUplot } from '../shared/uplot-loader';
-import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
 import { padBlob } from '../shared/padme';
 import { buildPlannedTrack, hasElevation, downsampleProfile, normalizeRouteElevation, aggregateSurfaces } from '../shared/explore-detail';
 import { haversineM } from '../shared/track-parse';
@@ -35,14 +28,12 @@ const TRACK_COLORS = ['#7066f5', '#3b9fd6', '#59ad6b', '#e2915a', '#d9a441', '#3
 
 export default (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | ready | error
-    view: 'media', // media | tracks | detail
+    view: 'tracks', // tracks | detail
     error: '',
-    busy: false,
     importing: false,
 
     // Client-side search over the decrypted data (never leaves the browser).
     trackQuery: '',
-    mediaQuery: '',
 
     // Map search box: place / POI / coordinates / Google-Maps link. Coordinates
     // and long Google links resolve locally (no egress); a place query hits the
@@ -80,36 +71,26 @@ export default (config = {}, labels = {}) => ({
     // Store-bound collections (aliased to the sealed store's own objects so
     // mutations persist through touch()). `_mut` is bumped on every save so
     // store-derived getters recompute (the store data is NOT an Alpine proxy).
+    // `couplings`/`settings` are kept bound to preserve the sealed store shape
+    // (they held photo↔track couplings, now unused) but are never read/written.
     tracks: [],
     couplings: {},
-    settings: { couplingTimeToleranceS: 3600, couplingDistanceToleranceM: 100 },
+    settings: {},
     _mut: 0,
 
-    photos: [],          // gallery photos (best-effort; [] when gallery empty/locked)
-    thumbs: {},          // photoId -> decrypted object URL (for media pins/popups)
-    _thumbPending: {},
     healthProfile: null, // { heightCm, sex, ... } from the sealed health store (best-effort)
     latestWeightKg: null, // most recent weight entry (kg), for the calorie estimate
 
     selectedTrackId: null,
-    settingsOpen: false,
-    assignFor: null,     // mediaId currently choosing a manual track (modal open), or null
-    assignQuery: '',     // autocomplete search in the assign modal
-    assignSource: 'all', // assign-modal source filter: all | imported | planned | recorded
-    photoPickerFor: null, // trackId whose "add photos" picker is open, or null
-    photoPickerQuery: '', // search inside the photo picker
 
-    // Persisted map camera ([lat, lng] + zoom) so it survives the media↔tracks
-    // view toggle. The Leaflet map itself is never torn down on toggle.
+    // Persisted map camera ([lat, lng] + zoom) so it survives the view toggle.
+    // The Leaflet map itself is never torn down on toggle.
     _cam: { center: null, zoom: null },
     _map: null,
     _mapReady: false,
-    _markers: [],        // Leaflet media-pin marker layers
     _trackLayers: [],    // Leaflet polyline layers currently on the map
     heatOn: false,       // tracks view: aggregate route-frequency heatmap of ALL tours
     _hoverMarker: null,  // elevation-profile hover position marker (circleMarker)
-    _photoMarkers: {},   // id → { marker, photo } thumbnail markers on the detail map
-    focusedPhotoId: null, // id of the coupled photo currently pinned on the route
     _L: null,            // resolved Leaflet module (sync access for draw helpers)
     _chart: null,        // uPlot elevation instance
     _chartAbort: null,
@@ -127,7 +108,7 @@ export default (config = {}, labels = {}) => ({
             if (this.view === 'detail') { this.$nextTick(() => { this.fitToData(); this.renderElevation(); }); }
         });
         this.$watch('_mut', () => this._renderView());
-        this.$watch('selectedTrackId', () => { this.focusedPhotoId = null; this._renderView(); this.$nextTick(() => this.renderElevation()); });
+        this.$watch('selectedTrackId', () => { this._renderView(); this.$nextTick(() => this.renderElevation()); });
     },
 
     async _boot() {
@@ -141,13 +122,6 @@ export default (config = {}, labels = {}) => ({
         this.couplings = data.couplings;
         this.settings = data.settings;
         this._healAscent();
-
-        // Gallery photos are best-effort — Explore still works with none.
-        try {
-            if (await bootGalleryStore(this.$store)) {
-                this.photos = (window.LLGalleryStore.data.photos || []).filter((p) => ! p.trashed);
-            }
-        } catch (e) { this.photos = []; }
 
         // Health profile is best-effort too — drives the optional calorie estimate,
         // only when height + sex + latest weight are all on file. Read-only.
@@ -173,14 +147,9 @@ export default (config = {}, labels = {}) => ({
         this.state = 'locked';
         this.tracks = [];
         this.couplings = {};
-        this.photos = [];
         this.trackQuery = '';
-        this.mediaQuery = '';
         this.renamingId = null;
-        this.focusedPhotoId = null;
-        this._photoMarkers = {};
         this._exitPlan();
-        this._revokeThumbs();
         this._destroyChart();
         this._destroyMap();
         window.LLModuleStore.explore.reset();
@@ -243,20 +212,10 @@ export default (config = {}, labels = {}) => ({
 
     _destroyMap() {
         this._clearTrackLayers();
-        this._clearMarkers();
         this._hideHover();
         this._hoverMarker = null;
         if (this._map) { try { this._map.remove(); } catch (e) { /* ignore */ } this._map = null; }
         this._mapReady = false;
-    },
-
-    _clearMarkers() {
-        for (const m of this._markers) { try { m.remove(); } catch (e) { /* ignore */ } }
-        this._markers = [];
-        this._photoMarkers = {}; // the marker layers themselves were in _markers (removed above)
-        // NB: focusedPhotoId is NOT reset here — it must survive incidental re-renders
-        // (a data save bumps _mut → _renderView) so the highlight persists; it is reset
-        // only on track switch / lock.
     },
 
     _clearTrackLayers() {
@@ -269,15 +228,10 @@ export default (config = {}, labels = {}) => ({
         void this._mut;
         if (! this._map || ! this._mapReady) return;
         this._clearTrackLayers();
-        this._clearMarkers();
         // While planning a route only the plan polyline is shown — never redraw
         // the existing tracks over it (the plan layer is managed by _drawPlan).
         if (this.planning) return;
-        if (this.view === 'tracks' || this.view === 'detail') this._drawTracks();
-        else this._drawMediaPins();
-        // In the tour detail, place the coupled photos directly on the route (not
-        // only on click) — clicking one just highlights it.
-        if (this.view === 'detail') this._drawDetailPhotos();
+        this._drawTracks();
     },
 
     // Toggle the aggregate route-frequency heatmap over all tours (tracks view only).
@@ -382,70 +336,8 @@ export default (config = {}, labels = {}) => ({
         }
     },
 
-    // Thumbnail divIcon for a coupled photo; larger + accent-ringed when focused.
-    _photoIcon(focused) {
-        const L = this._L;
-        const size = focused ? 46 : 30;
-        const radius = focused ? 12 : 9;
-        const border = focused ? '3px solid #7066f5' : '2px solid #fff';
-        const shadow = focused ? '0 2px 10px rgba(0,0,0,.5)' : '0 1px 4px rgba(0,0,0,.4)';
-        return L.divIcon({
-            className: 'explore-pin',
-            html: `<span style="display:block;width:${size}px;height:${size}px;border-radius:${radius}px;border:${border};box-shadow:${shadow};background:#7066f5 center/cover no-repeat;"></span>`,
-            iconSize: [size, size],
-            iconAnchor: [size / 2, size / 2],
-        });
-    },
-
-    _applyThumb(marker, photo) {
-        this._thumbFor(photo).then((url) => {
-            if (! url) return;
-            const span = marker.getElement()?.querySelector('span');
-            if (span) span.style.backgroundImage = `url("${url}")`;
-        });
-    },
-
-    // Draw every coupled photo that has a position directly onto the detail map.
-    _drawDetailPhotos() {
-        const L = this._L;
-        if (! L || this.view !== 'detail') return;
-        this._photoMarkers = {};
-        for (const p of this.coupledPhotos) {
-            const pos = this._photoPosition(p);
-            if (! pos) continue;
-            const focused = this.focusedPhotoId === p.id;
-            try {
-                const marker = L.marker(pos, { icon: this._photoIcon(focused), zIndexOffset: focused ? 1000 : 500 }).addTo(this._map);
-                marker.on('click', () => this.focusPhoto(p));
-                this._photoMarkers[p.id] = { marker, photo: p };
-                this._markers.push(marker);
-                this._applyThumb(marker, p);
-            } catch (e) { /* ignore */ }
-        }
-    },
-
-    _drawMediaPins() {
-        const L = this._L;
-        if (! L) return;
-        for (const p of this.placedMedia) {
-            const icon = L.divIcon({
-                className: 'explore-pin',
-                html: '<span style="display:block;width:34px;height:34px;border-radius:9px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);background:#7066f5 center/cover no-repeat;"></span>',
-                iconSize: [34, 34],
-                iconAnchor: [17, 17],
-            });
-            const marker = L.marker([p._lat, p._lng], { icon }).addTo(this._map);
-            this._markers.push(marker);
-            // Lazy thumbnail into the pin background (bounded worker lane).
-            this._thumbFor(p).then((url) => {
-                if (! url) return;
-                const span = marker.getElement()?.querySelector('span');
-                if (span) span.style.backgroundImage = `url("${url}")`;
-            });
-        }
-    },
-
-    // Recenter/zoom to fit everything currently placed.
+    // Recenter/zoom to fit the tracks currently shown (all of them, or just the
+    // selected one in the detail view).
     fitToData() {
         const L = this._L;
         if (! this._map || ! this._mapReady || ! L) return;
@@ -453,10 +345,8 @@ export default (config = {}, labels = {}) => ({
         if (this.view === 'detail') {
             const t = this.selectedTrack;
             if (t) for (const p of (t.points || [])) pts.push([p.lat, p.lng]);
-        } else if (this.view === 'tracks') {
-            for (const t of this.tracks) for (const p of (t.points || [])) pts.push([p.lat, p.lng]);
         } else {
-            for (const m of this.placedMedia) pts.push([m._lat, m._lng]);
+            for (const t of this.tracks) for (const p of (t.points || [])) pts.push([p.lat, p.lng]);
         }
         if (pts.length === 0) return;
         try { this._map.fitBounds(L.latLngBounds(pts), { padding: [48, 48], maxZoom: 15 }); } catch (e) { /* ignore */ }
@@ -521,38 +411,7 @@ export default (config = {}, labels = {}) => ({
         this.searchMsg = (labels.searchResult || 'Found: :place').replace(':place', title);
     },
 
-    /* -------------------------------------------------------- Media placement */
-
-    // Photos with a resolved map position: EXIF GPS first, else the coupling's
-    // interpolated lat/lng. Returns copies carrying _lat/_lng/_source.
-    get placedMedia() {
-        void this._mut;
-        const out = [];
-        for (const p of this.photos) {
-            const lat = p.lat != null ? parseFloat(p.lat) : null;
-            const lng = p.lng != null ? parseFloat(p.lng) : null;
-            if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
-                out.push({ ...p, _lat: lat, _lng: lng, _source: 'exif' });
-                continue;
-            }
-            const c = this.couplings[p.id];
-            if (c && c.lat != null && c.lng != null) {
-                const cl = parseFloat(c.lat), cg = parseFloat(c.lng);
-                if (Number.isFinite(cl) && Number.isFinite(cg)) out.push({ ...p, _lat: cl, _lng: cg, _source: c.source || 'interpolated' });
-            }
-        }
-        return out;
-    },
-    placedCount() { return this.placedMedia.length; },
-
-    // Placed media filtered by the client-side filename search (case-insensitive).
-    get filteredMedia() {
-        void this._mut;
-        const q = this.mediaQuery.trim().toLowerCase();
-        const all = this.placedMedia;
-        if (! q) return all;
-        return all.filter((m) => String(m.name || m.id || '').toLowerCase().includes(q));
-    },
+    /* -------------------------------------------------------- Track filtering */
 
     // Tracks filtered by the client-side name search (case-insensitive substring).
     get filteredTracks() {
@@ -565,7 +424,7 @@ export default (config = {}, labels = {}) => ({
     /* --------------------------------------------------------------- Import */
 
     // File input change handler: read + parse each file, push the track, seal
-    // the raw bytes (best-effort), then re-match photos.
+    // the raw bytes (best-effort).
     async onImport(event) {
         const files = [...(event.target.files || [])];
         event.target.value = ''; // allow re-picking the same file
@@ -577,7 +436,6 @@ export default (config = {}, labels = {}) => ({
                 try { await this._importOne(file); }
                 catch (e) { this.error = (labels.importFailed || 'Import failed') + ': ' + ((e && e.message) || e); }
             }
-            await this.matchPhotos();
         } finally {
             this.importing = false;
         }
@@ -648,145 +506,6 @@ export default (config = {}, labels = {}) => ({
         return { id: d.id, key: enc.encFileKey };
     },
 
-    /* ------------------------------------------------------- Photo coupling */
-
-    // Match every gallery photo against the imported tracks using the current
-    // tolerances, writing results into data.couplings. A photo already given a
-    // manual coupling is left untouched.
-    async matchPhotos(silent = false) {
-        if (! this.tracks.length || ! this.photos.length) return;
-        if (! silent) this.busy = true;
-        // Observe manual couplings pinned on ANOTHER device before we auto-(re)match:
-        // matchPhotos deletes/rewrites non-manual couplings, and the module-store merge
-        // is delete-wins — so without a refresh a stale auto-coupling here would 409-drop
-        // a concurrent manual pin. refresh() merges the server state in place (couplings
-        // object identity preserved), so line "source === 'manual'" then skips it. (#30)
-        try { await window.LLModuleStore.explore.refresh(); } catch (e) { /* offline — keep local */ }
-        try {
-            const matchTracks = this.tracks.map((t) => ({ id: t.id, points: t.points || [] }));
-            const opts = { timeToleranceS: this.settings.couplingTimeToleranceS, distanceToleranceM: this.settings.couplingDistanceToleranceM };
-            let n = 0;
-            for (const p of this.photos) {
-                if (this.couplings[p.id] && this.couplings[p.id].source === 'manual') continue;
-                const photoLat = p.lat != null ? parseFloat(p.lat) : null;
-                const photoLng = p.lng != null ? parseFloat(p.lng) : null;
-                const photoTime = p.taken_at ? Date.parse(p.taken_at) : (p.created ? Date.parse(p.created) : null);
-                const m = matchPhotoToTracks(
-                    { photoLat, photoLng, photoTime: Number.isFinite(photoTime) ? photoTime : null },
-                    matchTracks, opts,
-                );
-                if (m.source === 'none') { delete this.couplings[p.id]; continue; }
-                this.couplings[p.id] = { trackId: m.trackId, source: m.source, lat: m.lat ?? null, lng: m.lng ?? null };
-                n++;
-            }
-            if (n > 0) this._save();
-            if (! silent) window.llToast?.((labels.matched || ':n matched').replace(':n', n));
-        } finally {
-            if (! silent) this.busy = false;
-        }
-    },
-
-    // Open the assign-to-tour modal for a photo (search + filter over tracks).
-    openAssign(mediaId) {
-        this.assignFor = mediaId;
-        this.assignQuery = '';
-        this.assignSource = 'all';
-    },
-    closeAssign() { this.assignFor = null; },
-
-    // Tracks offered in the assign modal: name autocomplete + source filter.
-    get assignCandidates() {
-        void this._mut;
-        const q = (this.assignQuery || '').trim().toLowerCase();
-        const src = this.assignSource || 'all';
-        return this.tracks.filter((t) => {
-            if (src !== 'all') {
-                const kind = t.sourceFormat === 'planned' || t.sourceFormat === 'recorded' ? t.sourceFormat : 'imported';
-                if (kind !== src) return false;
-            }
-            return ! q || (t.name || '').toLowerCase().includes(q);
-        });
-    },
-
-    // Manually pin a photo to a specific track (interpolated position by time),
-    // marking the coupling as 'manual' so a re-match won't overwrite it.
-    assignToTrack(mediaId, trackId) {
-        const p = this.photos.find((x) => x.id === mediaId);
-        const track = this.tracks.find((t) => t.id === trackId);
-        if (! p || ! track) return;
-        const photoTime = p.taken_at ? Date.parse(p.taken_at) : (p.created ? Date.parse(p.created) : null);
-        const matchTracks = [{ id: track.id, points: track.points || [] }];
-        const m = matchPhotoToTracks(
-            { photoLat: null, photoLng: null, photoTime: Number.isFinite(photoTime) ? photoTime : null },
-            matchTracks,
-            { timeToleranceS: Number.MAX_SAFE_INTEGER / 2000, distanceToleranceM: 0 },
-        );
-        const lat = p.lat != null ? parseFloat(p.lat) : (m.lat ?? null);
-        const lng = p.lng != null ? parseFloat(p.lng) : (m.lng ?? null);
-        this.couplings[mediaId] = { trackId, source: 'manual', lat, lng };
-        this.assignFor = null;
-        this._save();
-    },
-
-    clearCoupling(mediaId) {
-        delete this.couplings[mediaId];
-        this._save();
-    },
-
-    // Track-detail "add photos" picker: choose from ALL gallery photos (including
-    // ones with no GPS, which never appear in the map media list) and toggle their
-    // coupling to this track. This is the entry point for manually attaching
-    // photos to a tour — the map list only shows already-placed media.
-    openPhotoPicker(trackId) {
-        this.photoPickerFor = trackId || this.selectedTrackId;
-        this.photoPickerQuery = '';
-    },
-    closePhotoPicker() { this.photoPickerFor = null; },
-    get pickerPhotos() {
-        void this._mut;
-        const q = this.photoPickerQuery.trim().toLowerCase();
-        let list = this.photos;
-        if (q) list = list.filter((p) => String(p.name || p.id || '').toLowerCase().includes(q));
-        // Show the newest first (by capture time, else upload time).
-        const ts = (p) => {
-            const v = p.taken_at ? Date.parse(p.taken_at) : (p.created ? Date.parse(p.created) : NaN);
-            return Number.isFinite(v) ? v : 0;
-        };
-        return list.slice().sort((a, b) => ts(b) - ts(a));
-    },
-    // Whether a photo is already coupled to the picker's track.
-    pickerCoupled(mediaId) {
-        const c = this.couplings[mediaId];
-        return !! (c && c.trackId === this.photoPickerFor);
-    },
-    // Toggle a photo's coupling to the picker's track (add / remove).
-    togglePickerPhoto(mediaId) {
-        if (! this.photoPickerFor) return;
-        const trackId = this.photoPickerFor;
-        if (this.pickerCoupled(mediaId)) this.clearCoupling(mediaId);
-        else this.assignToTrack(mediaId, trackId);
-        // assignToTrack clears assignFor (the other modal); the picker stays open.
-    },
-
-    couplingLabel(mediaId) {
-        const c = this.couplings[mediaId];
-        const src = c ? c.source : 'none';
-        return {
-            exif: labels.sourceExif, interpolated: labels.sourceInterpolated,
-            manual: labels.sourceManual, none: labels.sourceNone,
-        }[src] || labels.sourceNone || 'Unplaced';
-    },
-
-    /* -------------------------------------------------------- Settings */
-
-    saveSettings() {
-        this.settings.couplingTimeToleranceS = Math.max(0, parseInt(this.settings.couplingTimeToleranceS, 10) || 0);
-        this.settings.couplingDistanceToleranceM = Math.max(0, parseInt(this.settings.couplingDistanceToleranceM, 10) || 0);
-        this._save();
-        this.settingsOpen = false;
-        this.matchPhotos();
-    },
-
     /* -------------------------------------------------------- Track actions */
 
     selectTrack(id) { this.selectedTrackId = this.selectedTrackId === id ? null : id; },
@@ -798,10 +517,6 @@ export default (config = {}, labels = {}) => ({
         this.selectedTrackId = id;
         this.renamingId = null;
         this.view = 'detail';
-        // Auto-match photos to this (and every) track on open so a photo taken on
-        // the tour shows up without the user hunting for a match button. Silent +
-        // idempotent (skips manual couplings, only saves when something changed).
-        this.matchPhotos(true);
     },
 
     // Return to the tracks list from the detail view.
@@ -812,8 +527,6 @@ export default (config = {}, labels = {}) => ({
 
     async deleteTrack(track) {
         if (! await this.$store.confirm.ask(labels.deleteTrackConfirm || 'Delete this track?')) return;
-        // Drop couplings that pointed at this track.
-        for (const [mid, c] of Object.entries(this.couplings)) if (c.trackId === track.id) delete this.couplings[mid];
         // Best-effort cleanup of the sealed raw-track blob (orphan sweep is the
         // backstop; a failed delete just leaves an orphan the sweep collects).
         if (track.rawBlobId) {
@@ -882,9 +595,8 @@ export default (config = {}, labels = {}) => ({
         this._routeSeq++;            // invalidate any in-flight route from a prior session
         if (this._routeTimer) { clearTimeout(this._routeTimer); this._routeTimer = null; }
         this._destroyPlanChart();
-        // Clear whatever route/pins were on the map so only the new plan shows.
+        // Clear whatever route was on the map so only the new plan shows.
         this._clearTrackLayers();
-        this._clearMarkers();
         this._hideHover();
         this._planClick = (e) => this._addWaypoint(e.latlng.lat, e.latlng.lng);
         this._map.on('click', this._planClick);
@@ -1251,25 +963,6 @@ export default (config = {}, labels = {}) => ({
         return !! t && hasElevation((t.stats && t.stats.elevationProfile) || []);
     },
 
-    // The selected track's coupled photos, chronologically ordered (by capture
-    // time, falling back to filename). Used by the detail-view thumbnail strip.
-    get coupledPhotos() {
-        void this._mut;
-        const t = this.selectedTrack;
-        if (! t) return [];
-        const out = [];
-        for (const p of this.photos) {
-            const c = this.couplings[p.id];
-            if (c && c.trackId === t.id) out.push(p);
-        }
-        const ts = (p) => {
-            const v = p.taken_at ? Date.parse(p.taken_at) : (p.created ? Date.parse(p.created) : NaN);
-            return Number.isFinite(v) ? v : Infinity;
-        };
-        out.sort((a, b) => (ts(a) - ts(b)) || String(a.name || '').localeCompare(String(b.name || '')));
-        return out;
-    },
-
     // Whether the health profile is complete enough to show a calorie estimate
     // (height + sex + a recorded weight, per the user's opt-in condition).
     get hasHealthForCalories() {
@@ -1405,73 +1098,4 @@ export default (config = {}, labels = {}) => ({
         this._hoverMarker.addTo(this._map);
     },
     _hideHover() { if (this._hoverMarker) { try { this._hoverMarker.remove(); } catch (e) { /* ignore */ } } },
-
-    // Position of a coupled photo ON the route. Prefer the coupling's stored lat/lng
-    // (computed at assign time — real GPS, or time-interpolated), then the photo's
-    // own hot-record GPS, then a live interpolation of the track by capture time.
-    _photoPosition(photo) {
-        if (! photo) return null;
-        const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
-        const c = this.couplings[photo.id];
-        let lat = c ? num(c.lat) : null;
-        let lng = c ? num(c.lng) : null;
-        if (lat === null || lng === null) { lat = num(photo.lat); lng = num(photo.lng); }
-        if ((lat === null || lng === null) && this.selectedTrack) {
-            const when = photo.taken_at ? Date.parse(photo.taken_at) : (photo.created ? Date.parse(photo.created) : NaN);
-            const pos = Number.isFinite(when) ? interpolatePosition(this.selectedTrack.points || [], when) : null;
-            if (pos) { lat = pos.lat; lng = pos.lng; }
-        }
-        return (lat !== null && lng !== null) ? [lat, lng] : null;
-    },
-
-    // Photos are already drawn on the route; clicking one (on the map or in the list)
-    // just HIGHLIGHTS it — enlarge + accent-ring the focused marker, reset the rest —
-    // and flies the map to it.
-    focusPhoto(photo) {
-        const L = this._L;
-        if (! this._map || ! this._mapReady || ! L) return;
-        const pos = this._photoPosition(photo);
-        if (! pos) { window.llToast?.(labels.photoNoPosition || 'This photo has no position on the route.'); return; }
-        this.focusedPhotoId = photo.id;
-        // Restyle the drawn markers (setIcon rebuilds the element → re-apply the thumb).
-        for (const [id, entry] of Object.entries(this._photoMarkers || {})) {
-            const isF = id === photo.id;
-            try { entry.marker.setIcon(this._photoIcon(isF)); entry.marker.setZIndexOffset(isF ? 1000 : 500); } catch (e) { /* ignore */ }
-            this._applyThumb(entry.marker, entry.photo);
-        }
-        // If it wasn't drawn (e.g. list-only edge case), add a focused marker now.
-        if (! this._photoMarkers?.[photo.id]) {
-            try {
-                const marker = L.marker(pos, { icon: this._photoIcon(true), zIndexOffset: 1000 }).addTo(this._map);
-                marker.on('click', () => this.focusPhoto(photo));
-                (this._photoMarkers ||= {})[photo.id] = { marker, photo };
-                this._markers.push(marker);
-                this._applyThumb(marker, photo);
-            } catch (e) { /* ignore */ }
-        }
-        this._map.flyTo(pos, Math.max(this._map.getZoom() || 0, 15), { duration: 0.6 });
-    },
-
-    /* --------------------------------------------------------- Thumbnails */
-
-    async _thumbFor(p) {
-        if (! p.thumbRef) return '';
-        if (this.thumbs[p.id]) return this.thumbs[p.id];
-        if (this._thumbPending[p.id]) return this._thumbPending[p.id];
-        const job = thumbLane(async () => {
-            // Photo thumbnails are GALLERY blobs (thumbRef), not explore raw files —
-            // fetch from the gallery raw base, not /explore/raw.
-            const bytes = await fetchDecryptWorker(config.galleryRawBase, p.thumbRef, p.thumbKey);
-            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
-            this.thumbs[p.id] = url;
-            return url;
-        }).catch(() => '').finally(() => { delete this._thumbPending[p.id]; });
-        this._thumbPending[p.id] = job;
-        return job;
-    },
-    _revokeThumbs() {
-        for (const k in this.thumbs) URL.revokeObjectURL(this.thumbs[k]);
-        this.thumbs = {};
-        this._thumbPending = {};
-    },
 });

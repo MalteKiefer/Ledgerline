@@ -16,7 +16,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $captured_on
  */
 #[Fillable([
-    'captured_on', 'files_bytes', 'gallery_bytes', 'database_bytes', 'total_bytes',
+    'captured_on', 'files_bytes', 'database_bytes', 'total_bytes',
 ])]
 class StorageSnapshot extends Model
 {
@@ -25,7 +25,6 @@ class StorageSnapshot extends Model
         return [
             'captured_on' => 'date',
             'files_bytes' => 'integer',
-            'gallery_bytes' => 'integer',
             'database_bytes' => 'integer',
             'total_bytes' => 'integer',
         ];

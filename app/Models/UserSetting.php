@@ -56,7 +56,6 @@ use Illuminate\Database\Eloquent\Model;
     'paperless_url',
     'paperless_token',
     'paperless_synced_at',
-    'gallery_columns',
     'file_max_versions',
     'theme',
     'contact_birthday_channels',
@@ -96,7 +95,6 @@ class UserSetting extends Model
     /** In-memory defaults so a freshly-created row reads correctly without a reload. */
     protected $attributes = [
         'paperless_enabled' => false,
-        'gallery_columns' => 6,
         'file_max_versions' => 10,
         'theme' => 'system',
         'unit_distance' => 'km',
@@ -144,7 +142,6 @@ class UserSetting extends Model
             'paperless_url' => 'encrypted',
             'paperless_token' => 'encrypted',
             'paperless_synced_at' => 'datetime',
-            'gallery_columns' => 'integer',
             'file_max_versions' => 'integer',
             'contact_birthday_channels' => 'array',
             'contact_anniversary_channels' => 'array',

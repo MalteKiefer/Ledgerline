@@ -15,7 +15,6 @@
     <meta name="vault-user" content="{{ auth()->id() ? sha1('vault-user|'.auth()->id()) : '' }}">
     <meta name="vault-idle-minutes" content="{{ (int) (\App\Models\AppSettings::current()->vault_public_idle_minutes ?: config('files.vault_idle_minutes', 10)) }}">
     <meta name="vault-remember-days" content="{{ (int) (\App\Models\AppSettings::current()->vault_remember_days ?: 7) }}">
-    <meta name="gallery-columns" content="{{ (int) ($llCal->gallery_columns ?? 6) }}">
     <meta name="ll-prefs" content="{{ json_encode($llCal->displayPrefs()) }}">
     <title>{{ $title }} — Ledgerline</title>
     <link rel="manifest" href="/manifest.webmanifest">
@@ -121,7 +120,7 @@
             </template>
         </div>
 
-        {{-- Shared square-crop modal (window.llCrop) — used by contacts + gallery --}}
+        {{-- Shared square-crop modal (window.llCrop) — used by contacts --}}
         <div x-data="cropModal()" x-show="open" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" @keydown.escape.window="cancel()">
             <div class="absolute inset-0 bg-gray-900/60" @click="cancel()"></div>
             <div class="relative w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 p-4 shadow-xl">

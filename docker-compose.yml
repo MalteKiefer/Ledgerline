@@ -216,46 +216,11 @@ services:
       timeout: 5s
       retries: 5
 
-  # Machine-learning sidecar for image recognition: object/scene tagging + smart
-  # search (CLIP) and facial recognition — the same engine Immich uses. The app
-  # reaches it over the internal network at http://ml:3003 (ML_URL). Models are
-  # downloaded on first use into the ml-cache volume. Enable with:
-  #   docker compose --profile ml up -d
-  ml:
-    # Plain digest-pinned (no ${VAR:-default} wrapper) so Dependabot's docker
-    # ecosystem can parse and bump it like the other services; tag + digest move
-    # together on every bump.
-    image: ghcr.io/immich-app/immich-machine-learning:v3.0.3@sha256:d76fe88b69282c09a97eac4f82dafa82cfd77bce274bc742591cde974f87dacb
-    profiles: ["ml"]
-    environment:
-      MACHINE_LEARNING_WORKERS: "1"
-      MACHINE_LEARNING_MODEL_TTL: "300"
-    volumes:
-      - ml-cache:/cache
-    networks:
-      - internal
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - NET_RAW
-    deploy:
-      resources:
-        limits:
-          cpus: "${ML_CPU_LIMIT:-4}"
-          memory: ${ML_MEMORY_LIMIT:-8g}
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request;urllib.request.urlopen('http://localhost:3003/ping')\" || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-
-  # Optional self-hosted Photon reverse-geocoder, so photo coordinates for the
-  # imported regions never leave the host. Enable with:
+  # Optional self-hosted Photon reverse-geocoder, so place coordinates for the
+  # imported regions never leave the host (used by Explore/Contacts/Calendar geo).
+  # Enable with:
   #   docker compose --profile geocode up -d
-  # then set PHOTON_URL=http://photon:2322 in .env (and, for automatic on-upload
-  # geocoding, GALLERY_GEOCODE_ON_UPLOAD=true). PHOTON_REGION picks the coverage;
+  # then set PHOTON_URL=http://photon:2322 in .env. PHOTON_REGION picks the coverage;
   # the default "germany" pulls a PREBUILT index (db mode: a light ~few-GB
   # download into photon-data, ~2 GB heap, no heavy build) to fit a modest box.
   # Points OUTSIDE the imported region
@@ -382,7 +347,6 @@ volumes:
   pgdata:
   valkey-data:
   app-storage:
-  ml-cache:
   photon-data:
   graphhopper-data:
 

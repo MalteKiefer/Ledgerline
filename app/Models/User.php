@@ -46,7 +46,6 @@ class User extends Authenticatable implements MustVerifyEmail
             'password' => 'hashed',
             'groups' => 'array',
             'files_quota_mb' => 'integer',
-            'gallery_quota_mb' => 'integer',
             'max_connected_devices' => 'integer',
             'modules' => 'array',
         ];
@@ -100,14 +99,6 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->files_quota_mb
             ?? $this->maxGroupLimit('files_quota_mb')
             ?? self::configInt('files.quota_mb');
-    }
-
-    /** Effective gallery storage quota in MB (0 = unlimited). */
-    public function effectiveGalleryQuotaMb(): int
-    {
-        return $this->gallery_quota_mb
-            ?? $this->maxGroupLimit('gallery_quota_mb')
-            ?? self::configInt('gallery.quota_mb');
     }
 
     /** Effective connected-device cap: per-user override, else group, else workspace, else config. */

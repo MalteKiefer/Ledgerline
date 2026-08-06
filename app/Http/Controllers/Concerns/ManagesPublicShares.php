@@ -24,8 +24,8 @@ trait ManagesPublicShares
     /** @return array<string, mixed> */
     protected function shareRules(): array
     {
-        $maxManifest = config('gallery.share_max_manifest_bytes');
-        $maxBlobs = config('gallery.share_max_blobs');
+        $maxManifest = config('files.share_max_manifest_bytes');
+        $maxBlobs = config('files.share_max_blobs');
 
         return [
             'sealed_manifest' => ['required', 'string', 'max:'.(is_numeric($maxManifest) ? (int) $maxManifest : 0)],

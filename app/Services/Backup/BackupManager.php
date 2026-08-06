@@ -9,7 +9,6 @@ use App\Models\BackupRun;
 use App\Services\Backup\Sources\BackupSource;
 use App\Services\Backup\Sources\DatabaseSource;
 use App\Services\Backup\Sources\FilesSource;
-use App\Services\Backup\Sources\GallerySource;
 use App\Services\Backup\Sources\MirrorableSource;
 use App\Services\Backup\Sources\ModuleBlobSource;
 use App\Support\BlobRegistry;
@@ -297,7 +296,6 @@ final class BackupManager
         return match ($source) {
             'database' => app(DatabaseSource::class),
             'files' => app(FilesSource::class),
-            'gallery' => app(GallerySource::class),
             // Every other registered blob prefix (notes/passwords/invoices/
             // contacts/explore/shared-folders) mirrors/archives through the
             // generalised source; an unknown key still throws below.
