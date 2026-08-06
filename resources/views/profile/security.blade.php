@@ -2,9 +2,6 @@
     <div class="mx-auto w-full max-w-3xl">
         @include('profile._header', ['title' => __('account.nav_security'), 'subtitle' => __('account.twofa_hint')])
 
-        @if (session('status'))
-            <div class="mt-4 rounded-xl border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 px-3 py-2 text-sm text-green-700 dark:text-green-300" role="status">{{ session('status') }}</div>
-        @endif
         @if ($errors->any())
             <div class="mt-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">{{ $errors->first() }}</div>
         @endif
@@ -15,9 +12,6 @@
                 <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.password_title') }}</h2>
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ __('account.password_desc') }}</p>
             </div>
-            @if (session('status') === 'password-updated')
-                <x-alert variant="success">{{ __('account.password_updated') }}</x-alert>
-            @endif
             @if ($errors->updatePassword->any())
                 <x-alert variant="error">{{ $errors->updatePassword->first() }}</x-alert>
             @endif

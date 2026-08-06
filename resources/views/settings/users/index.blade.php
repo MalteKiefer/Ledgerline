@@ -11,9 +11,6 @@
     <div class="mx-auto w-full max-w-3xl" x-data="{ open: null }">
         @include('profile._header', ['title' => __('settings.users_section'), 'subtitle' => __('settings.users_desc')])
 
-        @if (session('status'))
-            <div class="mt-4 rounded-xl border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 px-3 py-2 text-sm text-green-700 dark:text-green-300" role="status">{{ session('status') }}</div>
-        @endif
         @if ($errors->any())
             <div class="mt-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">{{ $errors->first() }}</div>
         @endif

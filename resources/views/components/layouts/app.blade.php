@@ -67,8 +67,26 @@
              that clips absolutely-positioned dropdowns (e.g. the payment "Add" menu)
              below the fold. `clip` prevents horizontal scroll without that side effect. --}}
         <main class="mx-auto w-full max-w-[1700px] overflow-x-clip px-4 py-8 sm:w-[92%] sm:px-6">
-            @if (session('status'))
-                <x-alert variant="success" class="mb-6" role="status">{{ session('status') }}</x-alert>
+            @php
+                // Fortify emits machine status SLUGS (e.g. "password-updated"); translate
+                // the known ones to a localized message and NEVER dump a raw slug. A
+                // human-readable flash (a controller message with spaces) shows as-is.
+                $status = session('status');
+                $fortifyStatus = [
+                    'password-updated' => __('account.password_updated'),
+                    'two-factor-authentication-enabled' => __('account.twofa_enabled'),
+                    'two-factor-authentication-confirmed' => __('account.twofa_enabled'),
+                    'two-factor-authentication-disabled' => __('account.twofa_disabled'),
+                    'recovery-codes-generated' => __('account.twofa_recovery_regenerated'),
+                    'two-factor-recovery-codes-generated' => __('account.twofa_recovery_regenerated'),
+                    'verification-link-sent' => __('account.verify_sent'),
+                    'profile-information-updated' => __('account.saved'),
+                ];
+                $statusMsg = $status === null ? null
+                    : ($fortifyStatus[$status] ?? (preg_match('/^[a-z0-9-]+$/', (string) $status) ? null : $status));
+            @endphp
+            @if ($statusMsg)
+                <x-alert variant="success" class="mb-6" role="status">{{ $statusMsg }}</x-alert>
             @endif
 
             @if (session('error'))
