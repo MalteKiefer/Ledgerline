@@ -29,7 +29,6 @@ class StorageHistory
             ['captured_on' => Carbon::today()],
             [
                 'files_bytes' => $storage['files'],
-                'gallery_bytes' => $storage['gallery'],
                 'database_bytes' => $storage['database'],
                 'total_bytes' => $storage['total'],
             ],

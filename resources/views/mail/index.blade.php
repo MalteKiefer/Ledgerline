@@ -46,11 +46,8 @@
             csrf: '{{ csrf_token() }}',
             filesUploadUrl: '{{ url('/files/upload') }}',
             filesReconcileUrl: '{{ url('/files/blobs/reconcile') }}',
-            galleryUploadUrl: '{{ url('/gallery/upload') }}',
-            galleryReconcileUrl: '{{ url('/gallery/blobs/reconcile') }}',
             reindexDoneMsg: @js(__('mail.reindex_done')),
             savedToFiles: @js(__('mail.saved_to_files')),
-            savedToGallery: @js(__('mail.saved_to_gallery')),
             saveFailed: @js(__('mail.save_failed')),
          })">
 
@@ -261,7 +258,6 @@
                                             </div>
                                             <x-icon-button name="eye" tone="gray" size="sm" x-show="canView(att)" @click="viewAttachment(att)" :aria-label="__('mail.att_view')" />
                                             <x-icon-button name="folder-plus" tone="gray" size="sm" @click="saveAttachmentToFiles(att)" ::disabled="_savingAtt" :aria-label="__('mail.save_to_files')" title="{{ __('mail.save_to_files') }}" />
-                                            <x-icon-button name="photo" tone="gray" size="sm" x-show="canGallery(att)" @click="saveAttachmentToGallery(att)" ::disabled="_savingAtt" :aria-label="__('mail.save_to_gallery')" title="{{ __('mail.save_to_gallery') }}" />
                                             <x-icon-button name="inbox-arrow-down" tone="gray" size="sm" x-show="canPaperless(att)" @click="attachmentToPaperless(att)" :aria-label="__('paperless.send_to_paperless')" title="{{ __('paperless.send_to_paperless') }}" />
                                             <x-icon-button name="arrow-down-tray" tone="gray" size="sm" @click="downloadAttachment(att)" :aria-label="__('mail.att_download')" />
                                         </div>

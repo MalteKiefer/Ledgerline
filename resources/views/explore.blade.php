@@ -2,11 +2,10 @@
   <div x-data="explore({
         uploadUrl: '{{ url('/explore/upload') }}',
         rawBase: '{{ url('/explore/raw') }}',
-        galleryRawBase: '{{ url('/gallery/raw') }}',
         usageUrl: '{{ url('/explore/usage') }}',
         deleteUrl: '{{ url('/explore/blob') }}',
         routeUrl: '{{ url('/maps/route') }}',
-        geocodeUrl: '{{ url('/gallery/geocode') }}',
+        geocodeUrl: '{{ url('/geo/geocode') }}',
         resolveUrl: '{{ url('/maps/resolve') }}',
         token: '{{ csrf_token() }}',
      }, {
@@ -14,13 +13,7 @@
         mapUnavailable: @js(__('explore.map_unavailable')),
         importFailed: @js(__('explore.import_failed')),
         kmzNoKml: @js(__('explore.kmz_no_kml')),
-        matched: @js(__('explore.matched')),
         deleteTrackConfirm: @js(__('explore.delete_track_confirm')),
-        sourceExif: @js(__('explore.source_exif')),
-        sourceInterpolated: @js(__('explore.source_interpolated')),
-        sourceManual: @js(__('explore.source_manual')),
-        sourceNone: @js(__('explore.source_none')),
-        photoNoPosition: @js(__('explore.photo_no_position')),
         elevation: @js(__('explore.elevation')),
         surfaces: @js(__('explore.surface')),
         unitKm: @js(__('explore.unit_km')),
@@ -37,38 +30,18 @@
         searchResult: @js(__('explore.search_result')),
      })">
 
-    {{-- Zero-knowledge gate: tracks + couplings decrypt with the vault key. --}}
+    {{-- Zero-knowledge gate: GPS tracks decrypt with the vault key. --}}
     @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
 
     <x-page-heading :title="__('explore.title')" :subtitle="__('explore.subtitle')">
       <x-slot:actions>
         <template x-if="state === 'ready'">
           <div class="flex flex-wrap items-center gap-2">
-            {{-- View toggle (iOS segmented control) --}}
-            <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/10 p-0.5">
-              <button type="button" @click="view = 'media'"
-                class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-                :class="view === 'media' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-600 dark:text-gray-400'">
-                <x-icon name="photo" class="h-4 w-4" />
-                <span>{{ __('explore.view_media') }}</span>
-              </button>
-              <button type="button" @click="view = 'tracks'"
-                class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-                :class="view === 'tracks' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-600 dark:text-gray-400'">
-                <x-icon name="route" class="h-4 w-4" />
-                <span>{{ __('explore.view_tracks') }}</span>
-              </button>
-            </div>
-
             {{-- Import --}}
             <x-button variant="primary" size="sm" icon="arrow-up-tray" @click="$refs.file.click()" ::disabled="importing">
               <span x-text="importing ? @js(__('explore.importing')) : @js(__('explore.import'))"></span>
             </x-button>
             <input type="file" x-ref="file" class="hidden" accept=".gpx,.kml,.kmz,.tcx,.fit" multiple @change="onImport($event)">
-
-            {{-- Settings --}}
-            <x-icon-button name="clock" size="sm" @click="settingsOpen = true"
-              title="{{ __('explore.settings') }}" aria-label="{{ __('explore.settings') }}" />
           </div>
         </template>
       </x-slot:actions>
@@ -131,60 +104,8 @@
             <div x-ref="map" class="relative z-0 isolate h-[calc(100dvh-19rem)] min-h-80 w-full"></div>
           </div>
 
-          {{-- Sidebar: media list (media view) or tracks list + elevation (tracks view) --}}
+          {{-- Sidebar: tracks list + detail (elevation, stats, planning) --}}
           <div class="min-w-0 space-y-4">
-
-            {{-- ===== MEDIA VIEW ===== --}}
-            <div x-show="view === 'media'" class="ll-card !p-0 overflow-hidden">
-              <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-4 py-3">
-                <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  {{ __('explore.view_media') }}
-                  <span class="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400" x-text="'(' + placedCount() + ')'"></span>
-                </h2>
-                <button type="button" @click="matchPhotos()" :disabled="busy || ! tracks.length"
-                  class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent/5 disabled:opacity-40">
-                  <x-icon name="arrow-path" class="h-3.5 w-3.5" />
-                  <span x-text="busy ? @js(__('explore.matching')) : @js(__('explore.match_photos'))"></span>
-                </button>
-              </div>
-
-              {{-- Search --}}
-              <div x-show="placedMedia.length" class="border-b border-black/[0.06] dark:border-white/10 px-3 py-2">
-                <div class="relative">
-                  <x-icon name="magnifying-glass" class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  <input type="search" x-model="mediaQuery" placeholder="{{ __('explore.search_media') }}"
-                    class="w-full rounded-lg border-0 bg-black/[0.04] dark:bg-white/10 py-1.5 pl-8 pr-3 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:ring-2 focus:ring-accent">
-                </div>
-              </div>
-
-              <template x-if="! placedMedia.length">
-                <x-empty-state class="px-4 py-8">{{ __('explore.empty_media') }}</x-empty-state>
-              </template>
-              <template x-if="placedMedia.length && ! filteredMedia.length">
-                <x-empty-state class="px-4 py-8">{{ __('explore.no_search_results') }}</x-empty-state>
-              </template>
-
-              <div class="max-h-[calc(100dvh-22rem)] overflow-y-auto divide-y divide-black/[0.06] dark:divide-white/10">
-                <template x-for="m in filteredMedia" :key="m.id">
-                  <div class="flex items-center gap-3 px-4 py-2.5">
-                    <div class="h-10 w-10 shrink-0 rounded-lg bg-black/[0.06] dark:bg-white/10 bg-cover bg-center"
-                         :style="thumbs[m.id] ? ('background-image:url(\'' + thumbs[m.id] + '\')') : ''"
-                         x-init="$nextTick(() => _thumbFor(m))"></div>
-                    <div class="min-w-0 flex-1">
-                      <p class="truncate text-sm text-gray-900 dark:text-gray-100" x-text="m.name || m.id"></p>
-                      <p class="text-xs text-gray-500 dark:text-gray-400" x-text="couplingLabel(m.id)"></p>
-                    </div>
-                    <div class="flex shrink-0 items-center gap-1">
-                      <x-icon-button name="route" size="sm" @click="openAssign(m.id)"
-                        title="{{ __('explore.assign_to_track') }}" aria-label="{{ __('explore.assign_to_track') }}" />
-                      <x-icon-button name="x-mark" tone="red" size="sm" x-show="couplings[m.id]" @click="clearCoupling(m.id)"
-                        title="{{ __('explore.clear_coupling') }}" aria-label="{{ __('explore.clear_coupling') }}" />
-                    </div>
-                  </div>
-                </template>
-
-              </div>
-            </div>
 
             {{-- ===== TRACKS VIEW ===== --}}
             <div x-show="view === 'tracks'" class="space-y-4">
@@ -452,153 +373,12 @@
                       :value="selectedTrack.note || ''" @change="saveNote(selectedTrack, $event.target.value)"
                       class="w-full rounded-lg border-0 bg-black/[0.04] dark:bg-white/10 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:ring-2 focus:ring-accent"></textarea>
                   </div>
-
-                  {{-- Coupled photos, chronological + an "add photos" entry point --}}
-                  <div class="mt-5">
-                    <div class="mb-2 flex items-center justify-between">
-                      <p class="text-xs font-medium text-gray-700 dark:text-gray-300">
-                        {{ __('explore.coupled_photos') }}
-                        <span class="text-gray-400" x-text="'(' + coupledPhotos.length + ')'"></span>
-                      </p>
-                      <x-button variant="secondary" size="sm" icon="plus" @click="openPhotoPicker(selectedTrackId)">{{ __('explore.add_photos') }}</x-button>
-                    </div>
-                    <div class="flex flex-wrap gap-2" x-show="coupledPhotos.length">
-                      <template x-for="p in coupledPhotos" :key="p.id">
-                        <button type="button"
-                             class="h-14 w-14 shrink-0 rounded-lg bg-black/[0.06] dark:bg-white/10 bg-cover bg-center ring-offset-1 ring-offset-white dark:ring-offset-[#1c1c1e] transition hover:opacity-90 focus:outline-none"
-                             :class="focusedPhotoId === p.id ? 'ring-2 ring-accent' : ''"
-                             :title="(p.name || p.id) + ' — ' + @js(__('explore.show_on_route'))"
-                             @click="focusPhoto(p)"
-                             :style="thumbs[p.id] ? ('background-image:url(\'' + thumbs[p.id] + '\')') : ''"
-                             x-init="$nextTick(() => _thumbFor(p))"></button>
-                      </template>
-                    </div>
-                    <p x-show="! coupledPhotos.length" class="text-xs text-gray-400 dark:text-gray-500">{{ __('explore.no_coupled_photos') }}</p>
-                  </div>
                 </div>
               </template>
             </div>
 
           </div>
         </div>
-
-        {{-- Settings modal --}}
-        <template x-teleport="body">
-          <div x-show="settingsOpen" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="settingsOpen = false">
-            <div class="absolute inset-0 bg-gray-900/40" @click="settingsOpen = false"></div>
-            <div class="relative w-full w-[50vw] max-w-[50vw] rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
-              <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('explore.settings') }}</h3>
-              <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ __('explore.settings_hint') }}</p>
-              <div class="mt-4 space-y-3">
-                <label class="block">
-                  <span class="text-sm text-gray-700 dark:text-gray-300">{{ __('explore.time_tolerance') }}</span>
-                  <input type="number" min="0" x-model.number="settings.couplingTimeToleranceS" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                </label>
-                <label class="block">
-                  <span class="text-sm text-gray-700 dark:text-gray-300">{{ __('explore.distance_tolerance') }}</span>
-                  <input type="number" min="0" x-model.number="settings.couplingDistanceToleranceM" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                </label>
-              </div>
-              <div class="mt-5 flex justify-end gap-3">
-                <x-button variant="secondary" @click="settingsOpen = false">{{ __('explore.close') }}</x-button>
-                <x-button variant="primary" @click="saveSettings()">{{ __('explore.save') }}</x-button>
-              </div>
-            </div>
-          </div>
-        </template>
-
-        {{-- Assign-to-tour modal: search/autocomplete + source filter over tracks --}}
-        <template x-teleport="body">
-          <div x-show="assignFor" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeAssign()">
-            <div class="absolute inset-0 bg-gray-900/40" @click="closeAssign()"></div>
-            <div class="relative flex max-h-[80vh] w-full w-[50vw] max-w-[50vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
-              <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-4">
-                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('explore.assign_to_track') }}</h3>
-                <x-icon-button name="x-mark" size="sm" @click="closeAssign()" aria-label="{{ __('explore.close') }}" />
-              </div>
-              <div class="space-y-3 px-5 py-4">
-                {{-- Autocomplete search --}}
-                <input type="search" x-model="assignQuery" x-ref="assignSearch"
-                  x-effect="if (assignFor) $nextTick(() => $refs.assignSearch && $refs.assignSearch.focus())"
-                  placeholder="{{ __('explore.search_tracks') }}"
-                  class="block w-full rounded-lg border-gray-300 dark:border-white/10 dark:bg-white/5 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                {{-- Source filter chips --}}
-                <div class="flex flex-wrap gap-1.5">
-                  @foreach (['all','imported','planned','recorded'] as $src)
-                    <button type="button" @click="assignSource = '{{ $src }}'"
-                      class="rounded-full px-2.5 py-1 text-xs font-medium"
-                      :class="assignSource === '{{ $src }}' ? 'll-accent' : 'bg-black/[0.04] dark:bg-white/10 text-gray-600 dark:text-gray-300 hover:bg-accent/10'">
-                      {{ __('explore.filter_' . $src) }}
-                    </button>
-                  @endforeach
-                </div>
-              </div>
-              {{-- Track list --}}
-              <div class="min-h-0 flex-1 overflow-y-auto border-t border-black/[0.06] dark:border-white/10 px-2 py-2">
-                <template x-for="t in assignCandidates" :key="t.id">
-                  <button type="button" @click="assignToTrack(assignFor, t.id)"
-                    class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-accent/5"
-                    :class="assignFor && couplings[assignFor] && couplings[assignFor].trackId === t.id ? 'bg-accent/10' : ''">
-                    <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="'background:' + trackColor(t)"></span>
-                    <span class="min-w-0 flex-1">
-                      <span class="block truncate text-sm text-gray-900 dark:text-gray-100" x-text="t.name"></span>
-                      <span class="block truncate text-xs text-gray-500 dark:text-gray-400" x-text="fmtDistance(t.stats && t.stats.distanceM)"></span>
-                    </span>
-                    <x-icon name="check" class="h-4 w-4 shrink-0 text-accent"
-                      x-show="assignFor && couplings[assignFor] && couplings[assignFor].trackId === t.id" />
-                  </button>
-                </template>
-                <p x-show="! assignCandidates.length" class="px-3 py-6 text-center text-xs text-gray-500 dark:text-gray-400">{{ __('explore.no_search_results') }}</p>
-              </div>
-              {{-- Footer: clear coupling --}}
-              <div class="flex items-center justify-between border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
-                <button type="button" x-show="assignFor && couplings[assignFor]" @click="clearCoupling(assignFor); closeAssign()"
-                  class="text-xs font-medium text-red-500 hover:text-red-600">{{ __('explore.clear_coupling') }}</button>
-                <span x-show="! (assignFor && couplings[assignFor])"></span>
-                <x-button variant="secondary" @click="closeAssign()">{{ __('explore.close') }}</x-button>
-              </div>
-            </div>
-          </div>
-        </template>
-
-        {{-- Photo picker (track detail → add photos): choose from ALL photos,
-             including ones with no GPS that never show in the map media list. --}}
-        <template x-teleport="body">
-          <div x-show="photoPickerFor" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closePhotoPicker()">
-            <div class="absolute inset-0 bg-gray-900/40" @click="closePhotoPicker()"></div>
-            <div class="relative flex max-h-[80vh] w-full w-[50vw] max-w-[50vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
-              <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-4">
-                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('explore.add_photos') }}</h3>
-                <x-icon-button name="x-mark" size="sm" @click="closePhotoPicker()" aria-label="{{ __('explore.close') }}" />
-              </div>
-              <div class="px-5 py-4">
-                <input type="search" x-model="photoPickerQuery"
-                  placeholder="{{ __('explore.search_photos') }}"
-                  class="block w-full rounded-lg border-gray-300 dark:border-white/10 dark:bg-white/5 text-sm shadow-sm focus:border-accent focus:ring-accent">
-              </div>
-              <div class="min-h-0 flex-1 overflow-y-auto border-t border-black/[0.06] dark:border-white/10 p-3">
-                <div class="grid grid-cols-4 gap-2 sm:grid-cols-5">
-                  <template x-for="p in pickerPhotos" :key="p.id">
-                    <button type="button" @click="togglePickerPhoto(p.id)"
-                      class="relative aspect-square overflow-hidden rounded-lg bg-black/[0.06] dark:bg-white/10 bg-cover bg-center ring-2 ring-transparent transition"
-                      :class="pickerCoupled(p.id) ? '!ring-accent' : ''"
-                      :title="p.name || p.id"
-                      :style="thumbs[p.id] ? ('background-image:url(\'' + thumbs[p.id] + '\')') : ''"
-                      x-init="$nextTick(() => _thumbFor(p))">
-                      <span x-show="pickerCoupled(p.id)" class="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full ll-accent shadow">
-                        <x-icon name="check" class="h-3 w-3 text-white" />
-                      </span>
-                    </button>
-                  </template>
-                </div>
-                <p x-show="! pickerPhotos.length" class="px-3 py-8 text-center text-xs text-gray-500 dark:text-gray-400">{{ __('explore.no_photos') }}</p>
-              </div>
-              <div class="flex justify-end border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
-                <x-button variant="primary" @click="closePhotoPicker()">{{ __('explore.done') }}</x-button>
-              </div>
-            </div>
-          </div>
-        </template>
 
       </div>
     </template>

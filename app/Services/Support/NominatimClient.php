@@ -26,7 +26,7 @@ class NominatimClient
 {
     private function base(): string
     {
-        $url = config('gallery.geocoder_url', 'https://nominatim.openstreetmap.org');
+        $url = config('geo.geocoder_url', 'https://nominatim.openstreetmap.org');
 
         return is_string($url) && $url !== '' ? $url : 'https://nominatim.openstreetmap.org';
     }
@@ -67,7 +67,7 @@ class NominatimClient
      */
     private function throttle(): void
     {
-        $intervalCfg = config('gallery.geocode_interval_ms', 1100);
+        $intervalCfg = config('geo.geocode_interval_ms', 1100);
         $interval = is_numeric($intervalCfg) ? (int) $intervalCfg : 1100;
         if ($interval <= 0) {
             return;

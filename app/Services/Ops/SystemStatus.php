@@ -7,7 +7,6 @@ namespace App\Services\Ops;
 use App\Models\BackupRun;
 use App\Models\ErrorEvent;
 use App\Models\FileBlob;
-use App\Models\GalleryBlob;
 use App\Providers\AppServiceProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
@@ -26,7 +25,7 @@ class SystemStatus
      * @return array{
      *   version: string,
      *   queue: array{pending: int, failed: int},
-     *   storage: array{files: int, gallery: int, database: int, total: int},
+     *   storage: array{files: int, database: int, total: int},
      *   errors: array{unresolved: int, total: int, lastAt: ?string},
      *   backup: array{lastSuccessAt: ?string},
      *   scheduler: array{lastRunAt: ?string},
@@ -36,7 +35,6 @@ class SystemStatus
     public function snapshot(): array
     {
         $files = (int) FileBlob::sum('size');
-        $gallery = (int) GalleryBlob::sum('size');
         $database = $this->databaseBytes();
 
         $lastError = ErrorEvent::whereNull('resolved_at')->max('last_seen_at');
@@ -53,9 +51,8 @@ class SystemStatus
             ],
             'storage' => [
                 'files' => $files,
-                'gallery' => $gallery,
                 'database' => $database,
-                'total' => $files + $gallery + $database,
+                'total' => $files + $database,
             ],
             'errors' => [
                 'unresolved' => ErrorEvent::whereNull('resolved_at')->count(),

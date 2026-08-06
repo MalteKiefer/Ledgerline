@@ -23,7 +23,7 @@ class GroupManagementTest extends TestCase
         $this->actingAs(User::factory()->admin()->create());
 
         $this->post(route('settings.groups.store'), [
-            'name' => 'Family', 'files_quota_mb' => 5000, 'gallery_quota_mb' => 3000,
+            'name' => 'Family', 'files_quota_mb' => 5000,
             'max_connected_devices' => 4, 'shareable' => '1',
         ])->assertRedirect();
 

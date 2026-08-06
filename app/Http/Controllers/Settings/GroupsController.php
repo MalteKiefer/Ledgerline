@@ -66,7 +66,6 @@ class GroupsController extends Controller
         $request->validate([
             'name' => ['required', 'string', 'max:100', 'unique:groups,name'.($ignoreId !== null ? ','.$ignoreId : '')],
             'files_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
-            'gallery_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'max_connected_devices' => ['nullable', 'integer', 'min:1', 'max:50'],
             'shareable' => ['nullable', 'boolean'],
             'modules' => ['nullable', 'array'],
@@ -80,7 +79,6 @@ class GroupsController extends Controller
         return [
             'name' => $request->string('name')->value(),
             'files_quota_mb' => $limit('files_quota_mb'),
-            'gallery_quota_mb' => $limit('gallery_quota_mb'),
             'max_connected_devices' => $limit('max_connected_devices'),
             'shareable' => $request->boolean('shareable'),
             'modules' => self::modulesFromRequest($request),

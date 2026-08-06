@@ -13,7 +13,6 @@ return [
         'mail' => 'Mail',
         'finance' => 'Finance',
         'files' => 'Files',
-        'gallery' => 'Gallery',
         'todos' => 'To-dos',
         'health' => 'Health',
         'explore' => 'Explore',

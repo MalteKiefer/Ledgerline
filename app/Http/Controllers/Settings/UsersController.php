@@ -9,7 +9,6 @@ use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
 use App\Models\FileBlob;
-use App\Models\GalleryBlob;
 use App\Models\Group;
 use App\Models\User;
 use App\Support\BlobStore;
@@ -36,20 +35,18 @@ class UsersController extends Controller
     {
         $users = User::with('memberGroups')->orderBy('id')->get();
 
-        // Per-user storage usage (files + gallery bytes), shown for every user
-        // regardless of whether they have a quota set. One grouped query each.
+        // Per-user storage usage (files bytes), shown for every user regardless of
+        // whether they have a quota set. One grouped query.
         $filesBy = FileBlob::query()->groupBy('user_id')->selectRaw('user_id, SUM(size) AS bytes')->pluck('bytes', 'user_id');
-        $galleryBy = GalleryBlob::query()->groupBy('user_id')->selectRaw('user_id, SUM(size) AS bytes')->pluck('bytes', 'user_id');
 
         $int = static fn (mixed $v): int => is_numeric($v) ? (int) $v : 0;
-        $usage = $users->mapWithKeys(function (User $u) use ($filesBy, $galleryBy, $int): array {
+        $usage = $users->mapWithKeys(function (User $u) use ($filesBy, $int): array {
             $files = $int($filesBy[$u->id] ?? 0);
-            $gallery = $int($galleryBy[$u->id] ?? 0);
-            $quotaMb = $u->effectiveFilesQuotaMb() + $u->effectiveGalleryQuotaMb();
-            $unlimited = $u->effectiveFilesQuotaMb() <= 0 || $u->effectiveGalleryQuotaMb() <= 0;
+            $quotaMb = $u->effectiveFilesQuotaMb();
+            $unlimited = $u->effectiveFilesQuotaMb() <= 0;
 
             return [$u->id => [
-                'used' => $files + $gallery,
+                'used' => $files,
                 'quota' => $unlimited ? null : $quotaMb * 1024 * 1024,
             ]];
         });
@@ -172,7 +169,6 @@ class UsersController extends Controller
             'role' => ['required', Rule::in(['admin', 'user'])],
             'password' => [$creating ? 'nullable' : 'prohibited', 'string', 'min:12'],
             'files_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
-            'gallery_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'max_connected_devices' => ['nullable', 'integer', 'min:1', 'max:50'],
             'groups' => ['nullable', 'array'],
             'groups.*' => ['integer', 'exists:groups,id'],
@@ -214,7 +210,6 @@ class UsersController extends Controller
         return [
             'role' => $request->string('role')->value() === 'admin' ? 'admin' : 'user',
             'files_quota_mb' => $limit('files_quota_mb'),
-            'gallery_quota_mb' => $limit('gallery_quota_mb'),
             'max_connected_devices' => $limit('max_connected_devices'),
             'modules' => GroupsController::modulesFromRequest($request),
         ];

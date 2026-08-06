@@ -17,11 +17,7 @@ use App\Http\Controllers\ExploreController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileShareController;
 use App\Http\Controllers\FilesStoreController;
-use App\Http\Controllers\GalleryBlobController;
-use App\Http\Controllers\GalleryController;
-use App\Http\Controllers\GalleryProcessController;
-use App\Http\Controllers\GalleryShareController;
-use App\Http\Controllers\GalleryStoreController;
+use App\Http\Controllers\GeoController;
 use App\Http\Controllers\InviteLinkController;
 use App\Http\Controllers\InvoiceBlobController;
 use App\Http\Controllers\InvoiceMailController;
@@ -79,11 +75,11 @@ Route::get('/', static fn () => redirect()->route('dashboard'));
 // token (OPS_METRICS_TOKEN) and disabled when unset. Rate-limited.
 Route::get('/metrics', [MetricsController::class, 'index'])->middleware('throttle:60,1')->name('metrics');
 
-// Public, unauthenticated gallery-album share links. Zero-knowledge: the server
+// Public, unauthenticated file/folder share links. Zero-knowledge: the server
 // only serves the sealed manifest + opaque ciphertext blobs on the owner's
 // allow-list; the decryption key rides in the URL fragment and never arrives
 // here. The optional password gate is hard-throttled; blob/manifest reads are
-// generous (a shared album loads many thumbnails).
+// generous (a shared folder loads many files).
 // Public share token is Str::random(22) → [A-Za-z0-9]. Constrain the param so a
 // crafted token (quotes/percent-encodings) 404s instead of being reflected into the
 // share view — defence in depth against reflected XSS through the token.
@@ -224,7 +220,6 @@ Route::middleware('auth')->group(function (): void {
     // Zero-knowledge gallery: the client holds all keys and renders entirely
     // from the sealed index + decrypted blobs. The server ships only the shell
     // here; upload/process/blob/store live in the dedicated routes below.
-    Route::get('/gallery', [GalleryController::class, 'index'])->middleware('module:gallery')->name('gallery.index');
 
     // Zero-knowledge encryption vault (Files): the server only stores ciphertext
     // and KDF params — never the passphrase, recovery code or vault key.
@@ -332,8 +327,6 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/store/{module}/history/{version}', [ModuleStoreController::class, 'historyVersion'])->whereAlpha('module')->whereNumber('version')->middleware('module')->name('module-store.history.version');
     Route::get('/files/store/history', [FilesStoreController::class, 'history'])->middleware('module:files')->name('files.store.history');
     Route::get('/files/store/history/{version}', [FilesStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:files')->name('files.store.history.version');
-    Route::get('/gallery/store/history', [GalleryStoreController::class, 'history'])->middleware('module:gallery')->name('gallery.store.history');
-    Route::get('/gallery/store/history/{version}', [GalleryStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:gallery')->name('gallery.store.history.version');
     Route::get('/notes/store/history', [NotesStoreController::class, 'history'])->middleware('module:notes')->name('notes.store.history');
     Route::get('/notes/store/history/{version}', [NotesStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:notes')->name('notes.store.history.version');
     Route::get('/passwords/store/history', [PasswordsStoreController::class, 'history'])->middleware('module:passwords')->name('passwords.store.history');
@@ -342,35 +335,16 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/invoices/store/history/{version}', [InvoicesStoreController::class, 'historyVersion'])->whereNumber('version')->middleware('module:finance')->name('invoices.store.history.version');
 
     // Opaque zero-knowledge gallery index (photo/album/people structure sealed).
-    Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->middleware('module:gallery')->name('gallery.store.show');
-    Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware(['throttle:1200,1', 'module:gallery'])->name('gallery.store.save');
     // Public share links for an album: the client seals the share manifest (photo
     // list + per-blob keys re-wrapped under the link's fragment key) before it
     // arrives, so these only ever carry ciphertext + coarse access controls.
-    Route::post('/gallery/shares', [GalleryShareController::class, 'store'])->middleware('throttle:60,1')->name('gallery.shares.store');
-    Route::put('/gallery/shares/{token}', [GalleryShareController::class, 'update'])->middleware('throttle:60,1')->name('gallery.shares.update');
-    Route::delete('/gallery/shares/{token}', [GalleryShareController::class, 'destroy'])->middleware('throttle:60,1')->name('gallery.shares.destroy');
     // Zero-knowledge transform: the browser POSTs one photo's PLAINTEXT, we return
     // its derived data (renditions/exif/embedding/faces/place) and discard the
     // bytes — nothing is persisted server-side. embed-text embeds a search query.
-    Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('module:gallery', 'throttle:1200,1')->name('gallery.process');
-    Route::post('/gallery/analyze', [GalleryProcessController::class, 'analyze'])->middleware('module:gallery', 'throttle:1200,1')->name('gallery.analyze');
-    Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('module:gallery', 'throttle:300,1')->name('gallery.embed-text');
-    Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('module:gallery', 'throttle:60,1')->name('gallery.geocode');
 
     // Opaque zero-knowledge gallery content blobs (ciphertext bytes only).
-    Route::get('/gallery/usage', [GalleryBlobController::class, 'usage'])->name('gallery.usage');
-    Route::post('/gallery/blobs/reconcile', [GalleryBlobController::class, 'reconcile'])->middleware('throttle:600,1')->name('gallery.blobs.reconcile');
-    Route::post('/gallery/upload', [GalleryBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('gallery.upload');
-    Route::post('/gallery/upload/init', [GalleryBlobController::class, 'chunkInit'])->middleware('throttle:600,1')->name('gallery.upload.init');
-    Route::post('/gallery/upload/part', [GalleryBlobController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('gallery.upload.part');
-    Route::post('/gallery/upload/complete', [GalleryBlobController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('gallery.upload.complete');
-    Route::post('/gallery/upload/abort', [GalleryBlobController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('gallery.upload.abort');
-    Route::get('/gallery/raw/{blob}', [GalleryBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('gallery.raw');
-    Route::post('/gallery/raw-batch', [GalleryBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('gallery.raw-batch');
     // Generous limit: emptying a large trash frees hundreds of blobs at once, and
     // each delete is owner-scoped, idempotent and cheap (unlink + ledger row).
-    Route::delete('/gallery/blob/{blob}', [GalleryBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('gallery.blob.destroy');
 
     // Notes live entirely in the zero-knowledge store now; only the page shell
     // remains here (all data flows through GET/PUT /store).
@@ -395,9 +369,11 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/health', 'health.index')->middleware('module:health')->name('health.index');
     // Calendar: zero-knowledge, calendars + events in the opaque /store manifest.
     Route::view('/calendar', 'calendar.index')->middleware('module:calendar')->name('calendar.index');
-    // Calendar location search reuses the generic Nominatim geocoder, but under the
-    // calendar module gate (so it works without the gallery module).
-    Route::get('/calendar/geocode', [GalleryProcessController::class, 'geocode'])->middleware('module:calendar', 'throttle:60,1')->name('calendar.geocode');
+    // Calendar location search uses the generic geocoder under the calendar gate.
+    Route::get('/calendar/geocode', [GeoController::class, 'geocode'])->middleware('module:calendar', 'throttle:60,1')->name('calendar.geocode');
+    // Module-independent geocoding (Explore place search, Contacts address lookup).
+    Route::get('/geo/geocode', [GeoController::class, 'geocode'])->middleware('throttle:60,1')->name('geo.geocode');
+    Route::get('/geo/reverse', [GeoController::class, 'reverse'])->middleware('throttle:60,1')->name('geo.reverse');
     // Opaque reminder registration (client PUTs upcoming fire timestamps only).
     Route::put('/calendar/reminders', [CalendarReminderController::class, 'update'])->middleware('module:calendar', 'throttle:60,1')->name('calendar.reminders');
     // Fetch a subscribed PUBLIC .ics feed (SSRF-guarded) so the client can overlay it read-only.

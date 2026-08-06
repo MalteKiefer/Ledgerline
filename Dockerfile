@@ -2,7 +2,7 @@
 #
 # Ledgerline production image: nginx + PHP-FPM (serversideup base), with the
 # extensions the app needs (pgsql, gd, imagick, intl, bcmath, exif, zip; sodium
-# + opcache are built in) plus ffmpeg and libheif for gallery/HEIC processing.
+# + opcache are built in). ImageMagick backs imagick (avatar re-encode).
 # Assets are built with Node in a separate stage. Runs as non-root (www-data),
 # listens on :8080. TLS + routing are handled by Caddy on the host.
 
@@ -30,14 +30,10 @@ FROM ${PHP_BASE} AS runtime
 USER root
 RUN apk add --no-cache \
       curl ca-certificates gnupg gzip \
-      # HEIC/HEIF decode (libde265) AND encode (x265 for HEIC, aom for AVIF) so
-      # edited exports can be re-saved in format; imagemagick-heic wires the HEIC
-      # delegate into ImageMagick (the imagick extension reads/writes HEIC).
-      libheif libde265 x265-libs aom-libs imagemagick imagemagick-heic \
-      # video / Apple Motion + Live Photos (HEVC, MOV, ProRes) + thumbnails
-      ffmpeg \
-      # rich media metadata (EXIF/XMP, Motion-Photo + Live-Photo detection)
-      exiftool \
+      # ImageMagick backs the imagick PHP extension (avatar re-encode via
+      # intervention/image). HEIC/video/EXIF tooling was gallery-only and dropped
+      # with the gallery module (v1.540.0).
+      imagemagick \
       # database backups shell out to pg_dump + gzip; the client MAJOR must be >=
       # the server major (an older pg_dump refuses a newer server). DB is pg18
       # (pgvector:pg18) → pin the pg18 client. Bump this in lockstep with the DB.

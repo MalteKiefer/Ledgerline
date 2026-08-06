@@ -24,14 +24,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class PublicShareController extends Controller
 {
-    /** The share landing page (shell only; the browser fetches the rest). The
-     *  gallery and file/folder shares use different viewer shells. */
+    /** The share landing page (shell only; the browser fetches the rest). All
+     *  public shares are file/folder shares (the gallery module was removed). */
     public function show(string $token): View
     {
         $share = $this->resolve($token);
-        $view = $share !== null && $share->kind !== 'gallery_album' ? 'public.file-share' : 'public.share';
 
-        return view($view, [
+        return view('public.file-share', [
             'token' => $share?->token ?? $token,
             'found' => $share !== null,
             'expired' => $share !== null && $share->isExpired(),
@@ -136,9 +135,7 @@ class PublicShareController extends Controller
      */
     private function blobSource(PublicShare $share): array
     {
-        $module = $share->kind === 'gallery_album' ? 'gallery' : 'files';
-
-        return [BlobRegistry::prefix($module), BlobRegistry::model($module)];
+        return [BlobRegistry::prefix('files'), BlobRegistry::model('files')];
     }
 
     private function unlocked(Request $request, PublicShare $share): bool

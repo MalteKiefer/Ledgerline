@@ -1,9 +1,8 @@
 // Self-contained rich-text editor for HTML mail (headings, bold/italic/underline/
 // strike, font family, font size in pt, colour, alignment, lists, quote, link,
-// image [URL / gallery / upload], divider). No external dependency. Dialogs are
+// image [URL / upload], divider). No external dependency. Dialogs are
 // real in-editor modals (no window.prompt). Output DOMPurify-sanitised client side;
 // the server re-sanitises (HtmlMailSanitizer).
-import { fetchBlobBuffer } from '../shared/blob-io';
 
 export default () => ({
     _dp: null,
@@ -11,7 +10,7 @@ export default () => ({
     // link modal
     linkOpen: false, linkUrl: '', linkText: '',
     // image modal
-    imgOpen: false, imgTab: 'url', imgUrl: '', imgBusy: false, imgGallery: [], imgGalleryLoaded: false,
+    imgOpen: false, imgTab: 'url', imgUrl: '', imgBusy: false,
 
     async init() {
         try { document.execCommand('styleWithCSS', false, true); } catch (e) { /* ignore */ }
@@ -94,44 +93,11 @@ export default () => ({
         if (! /^image\//.test(file.type)) return;
         this.imgBusy = true;
         try {
-            // Embed as a data: URI so the image is self-contained in the e-mail. Also
-            // add it to the zero-knowledge gallery when that store is available.
+            // Embed as a data: URI so the image is self-contained in the e-mail.
             const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
             this._insertImg(dataUrl);
         } catch (e) { /* ignore */ }
         this.imgBusy = false;
         ev.target.value = '';
-    },
-    async loadGallery() {
-        if (this.imgGalleryLoaded) return;
-        this.imgBusy = true;
-        try {
-            const g = window.LLGalleryStore;
-            if (g && this.$store.vault?.unlocked) {
-                if (! g.loaded) await g.load();
-                const photos = (g.data?.photos || []).filter((p) => ! p.trashed && (p.thumbRef || p.mediumRef)).slice(0, 60);
-                this.imgGallery = photos.map((p) => ({ id: p.id, ref: p.thumbRef || p.mediumRef, key: p.thumbKey || p.mediumKey, thumb: null }));
-                // Fetch + decrypt thumbnails lazily.
-                for (const it of this.imgGallery) { this._thumb(it); }
-            }
-        } catch (e) { /* leave empty */ }
-        this.imgGalleryLoaded = true; this.imgBusy = false;
-    },
-    async _thumb(it) {
-        try {
-            const buf = await fetchBlobBuffer(`/gallery/raw/${it.ref}`);
-            const bytes = window.Vault.decryptFile(buf, it.key);
-            it.thumb = URL.createObjectURL(new Blob([bytes]));
-        } catch (e) { /* skip */ }
-    },
-    async pickGallery(it) {
-        this.imgBusy = true;
-        try {
-            const buf = await fetchBlobBuffer(`/gallery/raw/${it.ref}`);
-            const bytes = window.Vault.decryptFile(buf, it.key);
-            const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(new Blob([bytes])); });
-            this._insertImg(dataUrl);
-        } catch (e) { /* ignore */ }
-        this.imgBusy = false;
     },
 });

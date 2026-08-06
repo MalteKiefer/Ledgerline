@@ -6,7 +6,6 @@ namespace Tests\Feature;
 
 use App\Models\ContactBlob;
 use App\Models\FileBlob;
-use App\Models\GalleryStore;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -27,7 +26,6 @@ class ApiDataTest extends TestCase
     {
         $this->getJson('/api/v1/vault')->assertStatus(401);
         $this->getJson('/api/v1/store/notes')->assertStatus(401);
-        $this->getJson('/api/v1/gallery/store')->assertStatus(401);
         $this->getJson('/api/v1/files/raw/'.Str::uuid())->assertStatus(401);
     }
 
@@ -88,19 +86,6 @@ class ApiDataTest extends TestCase
         ], $this->bearer($user))->assertCreated()->json('id');
 
         $this->assertSame($user->id, (int) FileBlob::find($blob)->user_id);
-    }
-
-    public function test_gallery_store_is_opaque_and_private(): void
-    {
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
-
-        $this->putJson('/api/v1/gallery/store', ['ciphertext' => 'alice-gallery', 'version' => 0], $this->bearer($alice))->assertOk();
-
-        $this->app['auth']->forgetGuards();
-        $this->getJson('/api/v1/gallery/store', $this->bearer($bob))
-            ->assertOk()->assertJson(['ciphertext' => null, 'version' => 0]);
-        $this->assertSame($alice->id, GalleryStore::query()->where('ciphertext', 'alice-gallery')->value('user_id'));
     }
 
     public function test_usage_endpoints_report_the_token_users_bytes(): void

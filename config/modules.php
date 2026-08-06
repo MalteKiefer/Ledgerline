@@ -15,7 +15,6 @@ return [
     'list' => [
         'dashboard' => ['label' => 'messages.nav.dashboard', 'route' => 'dashboard'],
         'files' => ['label' => 'messages.nav.files', 'route' => 'files.index'],
-        'gallery' => ['label' => 'messages.nav.gallery', 'route' => 'gallery.index'],
         'passwords' => ['label' => 'messages.nav.passwords', 'route' => 'passwords.index'],
         'notes' => ['label' => 'messages.nav.notes', 'route' => 'notes.index'],
         'todos' => ['label' => 'messages.nav.todos', 'route' => 'todos.index'],

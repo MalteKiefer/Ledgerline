@@ -6,7 +6,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\FileBlob;
-use App\Models\GalleryBlob;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Auth\Pairing;
@@ -73,10 +72,8 @@ class AuthController extends Controller
             'user' => $this->userPayload($user),
             'usage' => [
                 'files' => (int) FileBlob::query()->where('user_id', $user->id)->sum('size'),
-                'gallery' => (int) GalleryBlob::query()->where('user_id', $user->id)->sum('size'),
-                // Combined storage limit in bytes (files + gallery), or null when
-                // unlimited. Null if EITHER dimension is unlimited (0) — the pool has
-                // no finite cap then. Lets a client render a used/limit ring.
+                // Storage limit in bytes (files quota), or null when unlimited. Lets a
+                // client render a used/limit ring.
                 'quota' => $this->combinedQuotaBytes($user),
             ],
             // Kill switch: the owner asked to wipe this client from the web.
@@ -85,19 +82,14 @@ class AuthController extends Controller
     }
 
     /**
-     * The user's total storage limit in bytes (effective files quota + gallery
-     * quota), or null when unlimited. If either dimension is unlimited (0), the
-     * combined pool is unbounded → null.
+     * The user's storage limit in bytes (effective files quota), or null when
+     * unlimited (0).
      */
     private function combinedQuotaBytes(User $user): ?int
     {
         $files = $user->effectiveFilesQuotaMb();
-        $gallery = $user->effectiveGalleryQuotaMb();
-        if ($files <= 0 || $gallery <= 0) {
-            return null;
-        }
 
-        return ($files + $gallery) * 1024 * 1024;
+        return $files <= 0 ? null : $files * 1024 * 1024;
     }
 
     /** Whether the presented token has been flagged for a remote wipe. */

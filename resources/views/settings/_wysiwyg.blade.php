@@ -79,8 +79,8 @@
     <div class="relative flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
       <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.wysiwyg_image_title') }}</h3>
       <div class="mt-3 flex gap-1 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] p-0.5 text-xs">
-        @foreach (['url' => 'wysiwyg_img_url', 'gallery' => 'wysiwyg_img_gallery', 'upload' => 'wysiwyg_img_upload'] as $t => $lk)
-          <button type="button" @click="imgTab = '{{ $t }}'; if ('{{ $t }}' === 'gallery') loadGallery()" class="flex-1 rounded-md px-2 py-1 font-medium transition" :class="imgTab === '{{ $t }}' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-600 dark:text-gray-400'">{{ __('settings.' . $lk) }}</button>
+        @foreach (['url' => 'wysiwyg_img_url', 'upload' => 'wysiwyg_img_upload'] as $t => $lk)
+          <button type="button" @click="imgTab = '{{ $t }}'" class="flex-1 rounded-md px-2 py-1 font-medium transition" :class="imgTab === '{{ $t }}' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-600 dark:text-gray-400'">{{ __('settings.' . $lk) }}</button>
         @endforeach
       </div>
       <div class="mt-3 flex-1 overflow-auto">
@@ -94,17 +94,6 @@
             <input type="file" accept="image/*" class="sr-only" @change="uploadImage($event)">
           </label>
           <p class="mt-2 text-xs text-gray-400">{{ __('settings.wysiwyg_img_upload_hint') }}</p>
-        </div>
-        <div x-show="imgTab === 'gallery'">
-          <div x-show="imgBusy && ! imgGallery.length" class="py-8 text-center text-sm text-gray-400"><x-icon name="arrow-path" class="mx-auto h-5 w-5 animate-spin" /></div>
-          <template x-if="! imgBusy && imgGalleryLoaded && ! imgGallery.length"><p class="py-8 text-center text-sm text-gray-400">{{ __('settings.wysiwyg_img_gallery_empty') }}</p></template>
-          <div class="grid grid-cols-4 gap-1.5">
-            <template x-for="it in imgGallery" :key="it.id">
-              <button type="button" @click="pickGallery(it)" class="aspect-square overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800 hover:ring-2 hover:ring-accent">
-                <img x-show="it.thumb" :src="it.thumb" class="h-full w-full object-cover">
-              </button>
-            </template>
-          </div>
         </div>
       </div>
       <div class="mt-4 flex justify-end gap-2">

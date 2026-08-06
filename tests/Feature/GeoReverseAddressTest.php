@@ -11,11 +11,11 @@ use Mockery;
 use Tests\TestCase;
 
 /**
- * GET /gallery/reverse must serialise `address` as a JSON OBJECT ({}) even when
+ * GET /geo/reverse must serialise `address` as a JSON OBJECT ({}) even when
  * empty — PHP would otherwise json_encode an empty array as [] (a JSON array),
  * which breaks a strictly-typed native client (iOS/Android).
  */
-class GalleryReverseAddressTest extends TestCase
+class GeoReverseAddressTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -32,7 +32,7 @@ class GalleryReverseAddressTest extends TestCase
         $user = User::factory()->create();
         $token = $user->createToken('t', ['device'])->plainTextToken;
 
-        $res = $this->getJson('/api/v1/gallery/reverse?lat=52.5&lng=13.4', ['Authorization' => 'Bearer '.$token])
+        $res = $this->getJson('/api/v1/geo/reverse?lat=52.5&lng=13.4', ['Authorization' => 'Bearer '.$token])
             ->assertOk()
             ->assertJsonPath('place', null);
 
@@ -47,7 +47,7 @@ class GalleryReverseAddressTest extends TestCase
         $user = User::factory()->create();
         $token = $user->createToken('t', ['device'])->plainTextToken;
 
-        $this->getJson('/api/v1/gallery/reverse?lat=52.5&lng=13.4', ['Authorization' => 'Bearer '.$token])
+        $this->getJson('/api/v1/geo/reverse?lat=52.5&lng=13.4', ['Authorization' => 'Bearer '.$token])
             ->assertOk()
             ->assertJsonPath('address.city', 'Berlin')
             ->assertJsonPath('address.country', 'Germany');

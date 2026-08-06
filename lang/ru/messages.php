@@ -13,7 +13,6 @@ return [
         'mail' => 'Почта',
         'finance' => 'Финансы',
         'files' => 'Файлы',
-        'gallery' => 'Галерея',
         'todos' => 'Задачи',
         'health' => 'Здоровье',
         'explore' => 'Карта',

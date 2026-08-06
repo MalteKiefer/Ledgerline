@@ -6,7 +6,6 @@ namespace App\Http\Controllers;
 
 use App\Models\AppSettings;
 use App\Models\FileBlob;
-use App\Models\GalleryBlob;
 use App\Models\User;
 use App\Models\UserSetting;
 use Illuminate\Contracts\View\View;
@@ -178,20 +177,15 @@ class ProfileController extends Controller
      */
     private function storageUsedBytes(User $user): int
     {
-        return (int) FileBlob::query()->where('user_id', $user->id)->sum('size')
-            + (int) GalleryBlob::query()->where('user_id', $user->id)->sum('size');
+        return (int) FileBlob::query()->where('user_id', $user->id)->sum('size');
     }
 
     /** Combined files+gallery quota in bytes, or 0 when either module is unlimited. */
     private function storageQuotaBytes(User $user): int
     {
         $filesQuota = $user->files_quota_mb ?: config('files.quota_mb', 0);
-        $galleryQuota = $user->gallery_quota_mb ?: config('gallery.quota_mb', 0);
         $filesQuotaMb = is_numeric($filesQuota) ? (int) $filesQuota : 0;
-        $galleryQuotaMb = is_numeric($galleryQuota) ? (int) $galleryQuota : 0;
 
-        return ($filesQuotaMb > 0 && $galleryQuotaMb > 0)
-            ? ($filesQuotaMb + $galleryQuotaMb) * 1024 * 1024
-            : 0;
+        return $filesQuotaMb > 0 ? $filesQuotaMb * 1024 * 1024 : 0;
     }
 }

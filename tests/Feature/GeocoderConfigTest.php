@@ -18,20 +18,20 @@ class GeocoderConfigTest extends TestCase
         parent::setUp();
         // No coordinate blurring / rate limiting in the test so the faked URLs
         // and coordinates are deterministic.
-        config(['gallery.geocode_grid_km' => 0, 'gallery.geocode_interval_ms' => 0]);
+        config(['geo.geocode_grid_km' => 0, 'geo.geocode_interval_ms' => 0]);
     }
 
     public function test_automatic_on_upload_geocoding_is_off_by_default(): void
     {
         // The privacy-safe default: no coordinate leaves the host automatically.
-        $this->assertFalse((bool) config('gallery.geocode_on_upload'));
+        $this->assertFalse((bool) config('geo.geocode_on_upload'));
     }
 
     public function test_photon_is_queried_first_and_keeps_the_lookup_in_boundary(): void
     {
         config([
-            'gallery.photon_url' => 'http://photon.internal:2322',
-            'gallery.geocoder_url' => 'https://nominatim.openstreetmap.org',
+            'geo.photon_url' => 'http://photon.internal:2322',
+            'geo.geocoder_url' => 'https://nominatim.openstreetmap.org',
         ]);
         Http::fake([
             'photon.internal:2322/reverse*' => Http::response([
@@ -55,8 +55,8 @@ class GeocoderConfigTest extends TestCase
     public function test_falls_back_to_nominatim_when_photon_has_no_coverage(): void
     {
         config([
-            'gallery.photon_url' => 'http://photon.internal:2322',
-            'gallery.geocoder_url' => 'https://nominatim.openstreetmap.org',
+            'geo.photon_url' => 'http://photon.internal:2322',
+            'geo.geocoder_url' => 'https://nominatim.openstreetmap.org',
         ]);
         Http::fake([
             'photon.internal:2322/reverse*' => Http::response(['features' => []], 200), // outside imported regions
@@ -73,7 +73,7 @@ class GeocoderConfigTest extends TestCase
 
     public function test_without_photon_only_the_configured_nominatim_endpoint_is_used(): void
     {
-        config(['gallery.photon_url' => '', 'gallery.geocoder_url' => 'https://geo.internal.example']);
+        config(['geo.photon_url' => '', 'geo.geocoder_url' => 'https://geo.internal.example']);
         Http::fake([
             'geo.internal.example/*' => Http::response(['display_name' => 'Somewhere', 'address' => []], 200),
         ]);

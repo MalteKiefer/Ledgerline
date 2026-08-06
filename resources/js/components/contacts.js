@@ -3,7 +3,7 @@ import { getJson, postForm } from '../shared/api';
 import { fetchDecrypt, queueBlobDelete } from '../shared/blob-io';
 import { padBlob } from '../shared/padme';
 import { loadLeaflet } from '../shared/lazy-loaders';
-import { zkModule, bootGalleryStore } from '../shared/zk-module';
+import { zkModule } from '../shared/zk-module';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
 
 /**
@@ -201,7 +201,7 @@ const VCard = {
     _blank() { return { fn: '', first: '', last: '', middle: '', prefix: '', suffix: '', nickname: '', org: '', department: '', title: '', role: '', vatId: '', emails: [], phones: [], impp: [], addresses: [], urls: [], bday: '', anniversary: '', note: '', categories: [], _x: [] }; },
 };
 
-// Dedupe the gallery-link reconcile across component mounts.
+// Dedupe the avatar-blob reconcile across component mounts.
 let _contactsReconAt = 0;
 
 // One-time dual-read migration: move contact records from the old single-blob
@@ -243,7 +243,7 @@ export default (config = {}, labels = {}) => ({
         await this._initZk();
         this.reconcileBlobs();
         this._checkAnniversaries();
-        // Deep link from a linked gallery person (?c=<id>) → open that contact.
+        // Deep link to a contact by id (?c=<id>) → open that contact.
         const cid = new URLSearchParams(location.search).get('c');
         if (cid && this.contacts.some((c) => c.id === cid)) this.open(this.contacts.find((c) => c.id === cid));
     },
@@ -357,7 +357,7 @@ export default (config = {}, labels = {}) => ({
         let pt = this._geoCache[q];
         if (pt === undefined) {
             try {
-                const geoData = await getJson('/gallery/geocode?q=' + encodeURIComponent(q));
+                const geoData = await getJson('/geo/geocode?q=' + encodeURIComponent(q));
                 const r = (geoData.results || [])[0];
                 pt = r && r.lat != null ? { lat: r.lat, lng: r.lng } : null;
             } catch (e) { pt = null; }
@@ -398,7 +398,7 @@ export default (config = {}, labels = {}) => ({
             org: '', department: '', title: '', role: '', vatId: '',
             emails: [], phones: [], impp: [], addresses: [], urls: [],
             bday: '', anniversary: '', note: '', categories: [], favorite: false,
-            avatarRef: null, avatarKey: null, personId: null, _x: [],
+            avatarRef: null, avatarKey: null, _x: [],
             trashed: false, updated: new Date().toISOString(),
         };
         this.contacts.unshift(c);
@@ -561,69 +561,6 @@ export default (config = {}, labels = {}) => ({
         } catch (e) { window.llToast?.(labels.avatarFailed || 'Failed'); }
     },
 
-    /* ---- Avatar source 3: pick from Gallery (lazy-boot the gallery manifest) ---- */
-    galleryPicker: false,
-    galleryLoading: false,
-    gTab: 'all',            // 'all' | 'people' | 'albums'
-    gSel: null,             // drilled person/album id
-    _galleryPhotos: [],
-    _galleryPeople: [],
-    _galleryAlbums: [],
-    _galleryById: {},
-    _galleryThumbs: {},
-    async openGalleryPicker() {
-        this.avatarMenu = false;
-        this.galleryLoading = true;
-        try {
-            if (! await bootGalleryStore(this.$store)) { window.llToast?.(labels.avatarFailed || 'Vault locked'); return; }
-            const d = window.LLGalleryStore.data || {};
-            this._galleryPhotos = (d.photos || []).filter((p) => ! p.trashed && p.media_type !== 'video' && p.thumbRef);
-            this._galleryById = Object.fromEntries(this._galleryPhotos.map((p) => [p.id, p]));
-            this._galleryPeople = (d.people || []).filter((pp) => ! pp.hidden && (pp.faces || []).length);
-            this._galleryAlbums = (d.albums || []).filter((a) => (a.photoIds || []).length);
-            this.gTab = 'all'; this.gSel = null;
-            this.galleryPicker = true;
-        } finally { this.galleryLoading = false; }
-    },
-    closeGalleryPicker() { this.galleryPicker = false; this.gSel = null; },
-    gSetTab(t) { this.gTab = t; this.gSel = null; },
-    gShowChooser() { return (this.gTab === 'people' || this.gTab === 'albums') && ! this.gSel; },
-    gGridPhotos() {
-        if (this.gTab === 'all') return this._galleryPhotos;
-        if (this.gTab === 'people') {
-            const pp = this._galleryPeople.find((x) => x.id === this.gSel);
-            if (! pp) return [];
-            const ids = [...new Set((pp.faces || []).map((f) => f.photoId))];
-            return ids.map((id) => this._galleryById[id]).filter(Boolean);
-        }
-        const al = this._galleryAlbums.find((x) => x.id === this.gSel);
-        return al ? (al.photoIds || []).map((id) => this._galleryById[id]).filter(Boolean) : [];
-    },
-    gInitials(name) { return (name || '?').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || '?'; },
-    async gPersonCover(pp) {
-        const f = (pp.faces || [])[0];
-        if (! f?.cropRef) return '';
-        if (this._galleryThumbs[f.cropRef]) return this._galleryThumbs[f.cropRef];
-        try { const b = await fetchDecrypt('/gallery/raw', f.cropRef, f.cropKey); const u = URL.createObjectURL(new Blob([b], { type: 'image/jpeg' })); this._galleryThumbs[f.cropRef] = u; return u; } catch (e) { return ''; }
-    },
-    async gAlbumCover(al) {
-        const p = this._galleryById[al.cover] || this._galleryById[(al.photoIds || [])[0]];
-        return p ? this.galleryThumb(p) : '';
-    },
-    async galleryThumb(p) {
-        if (this._galleryThumbs[p.thumbRef]) return this._galleryThumbs[p.thumbRef];
-        try { const b = await fetchDecrypt('/gallery/raw', p.thumbRef, p.thumbKey); const u = URL.createObjectURL(new Blob([b], { type: 'image/jpeg' })); this._galleryThumbs[p.thumbRef] = u; return u; } catch (e) { return ''; }
-    },
-    async pickFromGallery(p) {
-        this.galleryPicker = false;
-        try {
-            const ref = p.mediumRef || p.originalRef || p.thumbRef;
-            const key = p.mediumKey || p.originalKey || p.thumbKey;
-            const bytes = await fetchDecrypt('/gallery/raw', ref, key);
-            const out = await window.llCrop(new Blob([bytes], { type: 'image/jpeg' }));
-            if (out) await this._setAvatarFromBytes(out);
-        } catch (e) { window.llToast?.(labels.avatarFailed || 'Failed'); }
-    },
     async avatarFor(c) {
         if (! c?.avatarRef) return '';
         if (this.avatarUrls[c.avatarRef]) return this.avatarUrls[c.avatarRef];
@@ -722,7 +659,7 @@ export default (config = {}, labels = {}) => ({
                     org: parsed.org, department: parsed.department, title: parsed.title, role: parsed.role,
                     emails: parsed.emails, phones: parsed.phones, impp: parsed.impp, addresses: parsed.addresses, urls: parsed.urls,
                     bday: parsed.bday, anniversary: parsed.anniversary, note: parsed.note, categories: parsed.categories, favorite: false,
-                    avatarRef: null, avatarKey: null, personId: null, _x: parsed._x,
+                    avatarRef: null, avatarKey: null, _x: parsed._x,
                     trashed: false, updated: new Date().toISOString(),
                 };
                 if (photo) {
@@ -744,78 +681,5 @@ export default (config = {}, labels = {}) => ({
             this._save();
             window.llToast?.((labels.imported || ':n imported').replace(':n', added));
         } catch (e) { window.llToast?.(labels.importFailed || 'Import failed'); } finally { this.importing = false; }
-    },
-
-    /* ---- Link to a Gallery person (cross-manifest: /store + /gallery/store) ---- */
-    personPicker: false,
-    personLoading: false,
-    personQuery: '',
-    _people: [],
-    _personCovers: {},
-    get linkedPersonName() { return this.current?.personName || ''; },
-    galleryHref(c) { return c?.personId ? ('/gallery?person=' + encodeURIComponent(c.personId)) : '#'; },
-    async openPersonPicker() {
-        if (! this.current) return;
-        this.personLoading = true;
-        this.personQuery = '';
-        try {
-            if (! await bootGalleryStore(this.$store)) return;
-            this._people = (window.LLGalleryStore.data.people || []).filter((p) => ! p.hidden && (p.faces || []).length);
-            this.personPicker = true;
-        } finally { this.personLoading = false; }
-    },
-    closePersonPicker() { this.personPicker = false; },
-    personSuggestions() {
-        const q = this.personQuery.trim().toLowerCase();
-        const name = this.displayName(this.current).toLowerCase();
-        let list = this._people;
-        if (q) list = list.filter((p) => (p.name || '').toLowerCase().includes(q));
-        return [...list].sort((a, b) => {
-            const am = name && (a.name || '').toLowerCase().includes(name) ? 0 : 1;
-            const bm = name && (b.name || '').toLowerCase().includes(name) ? 0 : 1;
-            return (am - bm) || (a.name || '').localeCompare(b.name || '');
-        });
-    },
-    personInitials(pp) { const n = (pp.name || '').trim(); return n ? n.split(/\s+/).slice(0, 2).map((s) => s[0].toUpperCase()).join('') : '?'; },
-    linkPerson(pp) {
-        const c = this.current;
-        if (! c || ! pp) { this.personPicker = false; return; }
-        c.personId = pp.id; c.personName = pp.name || ''; c.updated = new Date().toISOString();
-        // Write the gallery-person snapshot so the gallery shows the link too.
-        pp.contactId = c.id;
-        // Store the natural "First Last" order so the gallery snapshot matches
-        // what the People picker shows (displayName is "Last, First").
-        const np = this._nameParts(c);
-        pp.contactName = (np.first || np.last) ? [np.first, np.last].filter(Boolean).join(' ') : (c.fn || c.org || '').trim();
-        pp.contactFirst = np.first; pp.contactLast = np.last; // snapshot for "Last, First" gallery display
-        pp.contactAvatarRef = c.avatarRef || null;
-        pp.contactAvatarKey = c.avatarKey || null;
-        window.LLGalleryStore.touch();
-        this._save();
-        this.personPicker = false;
-    },
-    async unlinkPerson() {
-        const c = this.current;
-        if (! c?.personId) return;
-        const pid = c.personId;
-        c.personId = null; c.personName = null;
-        this._save();
-        try {
-            if (await bootGalleryStore(this.$store)) {
-                const pp = (window.LLGalleryStore.data?.people || []).find((x) => x.id === pid);
-                if (pp && pp.contactId === c.id) { pp.contactId = null; pp.contactName = null; pp.contactFirst = null; pp.contactLast = null; pp.contactAvatarRef = null; pp.contactAvatarKey = null; window.LLGalleryStore.touch(); }
-            }
-        } catch (e) { /* best effort */ }
-    },
-    async personCoverUrl(pp) {
-        const cover = (pp.faces || [])[0];
-        if (! cover?.cropRef) return '';
-        if (this._personCovers[cover.cropRef]) return this._personCovers[cover.cropRef];
-        try {
-            const bytes = await fetchDecrypt('/gallery/raw', cover.cropRef, cover.cropKey);
-            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
-            this._personCovers[cover.cropRef] = url;
-            return url;
-        } catch (e) { return ''; }
     },
 });

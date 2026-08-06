@@ -17,14 +17,6 @@ export async function bootStore(store, moduleName) {
     return true;
 }
 
-// Same gate for the separate gallery index store (LLGalleryStore).
-export async function bootGalleryStore(store) {
-    while (! store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
-    if (! store.vault.unlocked) return false;
-    if (! window.LLGalleryStore.loaded) await window.LLGalleryStore.load();
-    return true;
-}
-
 export function zkModule(cfg) {
     const moduleName = cfg.store;
     return {

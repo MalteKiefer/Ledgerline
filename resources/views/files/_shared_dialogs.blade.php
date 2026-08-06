@@ -223,23 +223,23 @@
 
                     {{-- Existing link display --}}
                     <div x-show="share.link" x-cloak class="rounded-xl border border-black/[0.06] dark:border-white/10 p-3">
-                        <label class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.share_link_label') }}</label>
+                        <label class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('shares.share_link_label') }}</label>
                         <div class="mt-1 flex items-center gap-2">
                             <input type="text" readonly :value="share.link" @focus="$event.target.select()"
                                 class="w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-xs text-gray-700 dark:text-gray-300">
-                            <x-icon-button name="clipboard" size="sm" @click="copyShareLink()" title="{{ __('gallery.share_copy') }}" aria-label="{{ __('gallery.share_copy') }}" class="shrink-0" />
+                            <x-icon-button name="clipboard" size="sm" @click="copyShareLink()" title="{{ __('shares.share_copy') }}" aria-label="{{ __('shares.share_copy') }}" class="shrink-0" />
                         </div>
-                        <p class="mt-2 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">{{ __('gallery.share_active_hint') }}</p>
+                        <p class="mt-2 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">{{ __('shares.share_active_hint') }}</p>
                     </div>
 
                     {{-- Password + expiry --}}
                     <div class="space-y-3">
-                        <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.share_password') }}
+                        <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('shares.share_password') }}
                             <input type="password" x-model="share.password" autocomplete="new-password"
-                                :placeholder="share.hasPassword ? '{{ __('gallery.share_password_set') }}' : '{{ __('gallery.share_password_hint') }}'"
+                                :placeholder="share.hasPassword ? '{{ __('shares.share_password_set') }}' : '{{ __('shares.share_password_hint') }}'"
                                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
                         </label>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.share_expiry') }}
+                        <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('shares.share_expiry') }}
                             <input type="datetime-local" x-model="share.expiresAt"
                                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
                         </label>
@@ -253,15 +253,15 @@
                             @click="revokeShare()"
                             :disabled="share.busy"
                             class="rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50">
-                            {{ __('gallery.share_revoke') }}
+                            {{ __('shares.share_revoke') }}
                         </button>
                         <div class="ml-auto flex gap-2">
                             <button type="button" @click="closeUnifiedShare()"
-                                class="rounded-md px-3 py-2 text-sm font-medium text-gray-500 hover:bg-accent/5">{{ __('gallery.share_close') }}</button>
+                                class="rounded-md px-3 py-2 text-sm font-medium text-gray-500 hover:bg-accent/5">{{ __('shares.share_close') }}</button>
                             <x-button variant="primary" icon="link" x-show="! _shareSrc()?.share"
-                                @click="createShare()" ::disabled="share.busy">{{ __('gallery.share_create_link') }}</x-button>
+                                @click="createShare()" ::disabled="share.busy">{{ __('shares.share_create_link') }}</x-button>
                             <x-button variant="primary" x-show="_shareSrc()?.share" x-cloak
-                                @click="updateShare()" ::disabled="share.busy">{{ __('gallery.share_update') }}</x-button>
+                                @click="updateShare()" ::disabled="share.busy">{{ __('shares.share_update') }}</x-button>
                         </div>
                     </div>
                 </div>

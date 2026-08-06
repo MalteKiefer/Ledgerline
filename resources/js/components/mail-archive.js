@@ -15,7 +15,6 @@ import { loadEnvelopes, putEnvelopes } from '../shared/mail-cache.js';
 import { isPgpEncrypted, extractPgpMessage, decrypt as pgpDecrypt } from '../shared/pgp.js';
 import { isSmimeEncrypted, decryptSmime } from '../shared/smime.js';
 import { padBlob } from '../shared/padme.js';
-import { fileSig } from '../shared/file-sig.js';
 
 const DECRYPT_CONCURRENCY = 8;
 
@@ -849,92 +848,6 @@ export default (config) => ({
             if (!res.ok) throw new Error('upload failed');
             return res.json();
         }).then((j) => j.id);
-    },
-
-    // Whether the "save to Gallery" action applies (image or video attachment).
-    canGallery(att) {
-        const t = (att.contentType || '').toLowerCase();
-        return t.startsWith('image/') || t.startsWith('video/');
-    },
-
-    // Save an image/video attachment into the Gallery (zero-knowledge): encrypt
-    // the original under the personal VK, upload the ciphertext to /gallery/upload,
-    // register a photo record. Thumbnails/medium + ML are derived by the Gallery's
-    // own pipeline the next time it opens (the record has no thumbRef → pending),
-    // exactly as a deferred (HEIC/video) upload would. A full reconcile protects
-    // the fresh blob from the orphan sweep.
-    async saveAttachmentToGallery(att) {
-        if (this._savingAtt) return;
-        this._savingAtt = true;
-        try {
-            if (!window.Vault?.unlocked) { this.unlock(); return; }
-            if (!window.LLGalleryStore.loaded) await window.LLGalleryStore.load();
-            if (window.LLGalleryStore.degraded) { window.llToast?.(this.config.saveFailed); return; }
-
-            const bytes = att.bytes instanceof Uint8Array ? att.bytes : new Uint8Array(att.bytes);
-            const name = att.filename || 'attachment';
-            const mime = att.contentType || 'application/octet-stream';
-            const sig = await fileSig(bytes).catch(() => null);
-            // Skip if this exact content is already in the library.
-            if (sig && window.LLGalleryStore.data.photos.some((p) => p.sig === sig)) {
-                window.llToast?.(this.config.savedToGallery);
-                return;
-            }
-            const enc = window.Vault.encryptContent(bytes, { name, mime });
-            const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
-            const id = await this._uploadGalleryBlob(cipher);
-
-            window.LLGalleryStore.data.photos.unshift({
-                id: window.LLGalleryStore.newId(),
-                originalRef: id,
-                originalKey: enc.encFileKey,
-                name,
-                mime,
-                size: bytes.length,
-                media_type: mime.toLowerCase().startsWith('video/') ? 'video' : 'image',
-                sig,
-                created: new Date().toISOString(),
-            });
-            await window.LLGalleryStore.flush();
-            await this._reconcileGallery();
-            window.llToast?.(this.config.savedToGallery);
-        } catch {
-            window.llToast?.(this.config.saveFailed);
-        } finally {
-            this._savingAtt = false;
-        }
-    },
-
-    _uploadGalleryBlob(cipherFile) {
-        const fd = new FormData();
-        fd.append('_token', this.config.csrf);
-        fd.append('file', cipherFile, cipherFile.name);
-        return fetch(this.config.galleryUploadUrl, {
-            method: 'POST',
-            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            body: fd,
-        }).then((res) => {
-            if (!res.ok) throw new Error('upload failed');
-            return res.json();
-        }).then((j) => j.id);
-    },
-
-    // Full Gallery live-set (every photo's blob refs + shard refs) so the fresh
-    // blob survives the orphan sweep. Mirrors gallery.js reconcileBlobs.
-    async _reconcileGallery() {
-        const blobs = [];
-        for (const p of window.LLGalleryStore.data.photos) {
-            for (const ref of [p.originalRef, p.thumbRef, p.mediumRef, p.motionRef, p.metaRef]) if (ref) blobs.push(ref);
-            for (const ref of (p.faceCropRefs || [])) if (ref) blobs.push(ref);
-        }
-        for (const ref of window.LLGalleryStore.shardRefs()) blobs.push(ref);
-        try {
-            await fetch(this.config.galleryReconcileUrl, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': this.config.csrf },
-                body: JSON.stringify({ blobs: [...new Set(blobs)], allow_empty: 1 }),
-            });
-        } catch { /* best effort */ }
     },
 
     // Report the FULL Files live-set (every file blob + text/emb/version refs +

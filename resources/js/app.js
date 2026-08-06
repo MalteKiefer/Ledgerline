@@ -10,7 +10,6 @@ import calendar from './components/calendar';
 import mailKeys from './components/mail-keys';
 import passwords from './components/passwords';
 import vaultFiles from './components/files';
-import vaultGallery from './components/gallery';
 import publicShare from './components/public-share';
 import fileShare from './components/file-share';
 import invoices from './components/invoices';
@@ -61,20 +60,6 @@ window.ShareCrypto = ShareCrypto;
  * stays as separate opaque blobs.
  */
 window.LLModuleStore = buildModuleStores();
-
-// Separate sealed store for the gallery index (photos/albums/people), kept apart
-// from the module stores so gallery churn never re-seals notes/todos.
-// Store v3 (spec §4.1/§5.1): a small sealed pointer-table root + content-addressed
-// id-bucketed photo shards + albums/people collection blobs. Same sharded engine
-// as Files (shared/sharded-store.js) — see there for the full mechanics.
-window.LLGalleryStore = makeShardedStore({
-    prefix: '/gallery',
-    recordKey: 'photos',
-    collections: [
-        { key: 'albums', rootRef: 'albumsRef', rootKey: 'albumsKey', rootHash: 'albumsHash' },
-        { key: 'people', rootRef: 'peopleRef', rootKey: 'peopleKey', rootHash: 'peopleHash' },
-    ],
-});
 
 // Files sharded store (Store v3 §4.2/A10b): Files graduates out of the monolith
 // into its own sharded sealed store, identical engine to the gallery — root
@@ -238,7 +223,7 @@ document.addEventListener('alpine:init', () => {
             const stores = [];
             const reg = window.LLModuleStore;
             if (reg) for (const k of Object.keys(reg)) stores.push(reg[k]);
-            for (const name of ['LLFilesStore', 'LLGalleryStore', 'LLNotesStore', 'LLPasswordsStore', 'LLInvoicesStore']) {
+            for (const name of ['LLFilesStore', 'LLNotesStore', 'LLPasswordsStore', 'LLInvoicesStore']) {
                 if (window[name]) stores.push(window[name]);
             }
             await Promise.all(stores.map(async (s) => {
@@ -311,14 +296,6 @@ Alpine.data('mailArchive', mailArchive);
  *
  * @param {number[]} allIds  Ids of the files currently listed.
  */
-/* ---- Zero-knowledge gallery (client-driven) ----
- *
- * The whole library lives in a sealed index (LLGalleryStore); photo bytes +
- * renditions + a per-photo metadata blob are opaque blobs. Nothing is server-
- * readable. On unlock the client processes any un-processed uploads through the
- * transient /gallery/process endpoint (plaintext in, derived out, discarded),
- * re-seals the derived data, and renders the grid from decrypted thumbnails.
- */
 /**
  * Public album share viewer (/s/{token}). Runs WITHOUT a vault: the share key
  * comes from the URL fragment and unwraps each blob's per-file key from the
@@ -333,7 +310,6 @@ Alpine.data('publicShare', publicShare);
  */
 Alpine.data('fileShare', fileShare);
 
-Alpine.data('vaultGallery', vaultGallery);
 
 /* ---- Zero-knowledge file browser (manifest model) ----
  *

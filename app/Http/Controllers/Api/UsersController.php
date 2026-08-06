@@ -10,7 +10,6 @@ use App\Http\Controllers\Settings\GroupsController;
 use App\Models\AppSettings;
 use App\Models\AuditLog;
 use App\Models\FileBlob;
-use App\Models\GalleryBlob;
 use App\Models\Group;
 use App\Models\InviteLink;
 use App\Models\User;
@@ -44,12 +43,8 @@ class UsersController extends Controller
     {
         $users = User::with('memberGroups')->orderBy('id')->get();
 
-        // Per-user storage (files + gallery bytes), one grouped query each.
+        // Per-user storage (files bytes), one grouped query.
         $filesBy = FileBlob::query()
-            ->groupBy('user_id')
-            ->selectRaw('user_id, SUM(size) AS bytes')
-            ->pluck('bytes', 'user_id');
-        $galleryBy = GalleryBlob::query()
             ->groupBy('user_id')
             ->selectRaw('user_id, SUM(size) AS bytes')
             ->pluck('bytes', 'user_id');
@@ -60,9 +55,8 @@ class UsersController extends Controller
         $rows = [];
         foreach ($users as $u) {
             $files = $int($filesBy[$u->id] ?? 0);
-            $gallery = $int($galleryBy[$u->id] ?? 0);
-            $quotaMb = $u->effectiveFilesQuotaMb() + $u->effectiveGalleryQuotaMb();
-            $unlimited = $u->effectiveFilesQuotaMb() <= 0 || $u->effectiveGalleryQuotaMb() <= 0;
+            $quotaMb = $u->effectiveFilesQuotaMb();
+            $unlimited = $u->effectiveFilesQuotaMb() <= 0;
             $loginAt = $u->last_login_at;
 
             /** @var list<array{id: int, name: string}> $groups */
@@ -77,7 +71,6 @@ class UsersController extends Controller
                 'email' => $u->email,
                 'role' => $u->role,
                 'files_quota_mb' => $u->files_quota_mb,
-                'gallery_quota_mb' => $u->gallery_quota_mb,
                 'max_connected_devices' => $u->max_connected_devices,
                 'modules' => $u->modules,  // null = all; else the per-user allow-list
                 'groups' => $groups,
@@ -85,7 +78,7 @@ class UsersController extends Controller
                 'two_factor' => $u->two_factor_confirmed_at !== null,
                 'last_login_at' => $loginAt instanceof Carbon ? $loginAt->toIso8601String() : null,
                 'usage' => [
-                    'used' => $files + $gallery,
+                    'used' => $files,
                     'quota' => $unlimited ? null : $quotaMb * 1024 * 1024,
                 ],
             ];
@@ -291,7 +284,6 @@ class UsersController extends Controller
             'email' => $user->email,
             'role' => $user->role,
             'files_quota_mb' => $user->files_quota_mb,
-            'gallery_quota_mb' => $user->gallery_quota_mb,
             'max_connected_devices' => $user->max_connected_devices,
             'modules' => $user->modules,
             'groups' => $groupList,
@@ -309,7 +301,6 @@ class UsersController extends Controller
             'role' => ['required', Rule::in(['admin', 'user'])],
             'password' => [$creating ? 'nullable' : 'prohibited', 'string', 'min:12'],
             'files_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
-            'gallery_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'max_connected_devices' => ['nullable', 'integer', 'min:1', 'max:50'],
             'groups' => ['nullable', 'array'],
             'groups.*' => ['integer', 'exists:groups,id'],
@@ -331,7 +322,6 @@ class UsersController extends Controller
         return [
             'role' => $request->string('role')->value() === 'admin' ? 'admin' : 'user',
             'files_quota_mb' => $limit('files_quota_mb'),
-            'gallery_quota_mb' => $limit('gallery_quota_mb'),
             'max_connected_devices' => $limit('max_connected_devices'),
             'modules' => GroupsController::modulesFromRequest($request),
         ];

@@ -1,8 +1,6 @@
-// Dashboard component — reads the decrypted per-module stores and gallery store
-// to populate widgets (todos, counters, recent notes, birthdays, health).
-// Gallery is best-effort: the widget degrades gracefully if unavailable.
-import { bootGalleryStore } from '../shared/zk-module';
-import { sortTodos, upcomingBirthdays, yearsAgoPhotos } from '../shared/dashboard-utils';
+// Dashboard component — reads the decrypted per-module stores to populate
+// widgets (todos, counters, recent notes, birthdays, health).
+import { sortTodos, upcomingBirthdays } from '../shared/dashboard-utils';
 import { contactDisplayName } from '../shared/contact-utils';
 import { getJson } from '../shared/api';
 import {
@@ -10,19 +8,15 @@ import {
     kgToLb, lbToKg, cToF, fToC, mgdlToMmoll, mmollToMgdl,
 } from '../shared/health-metrics';
 import { loadUplot } from '../shared/uplot-loader';
-import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
 import { formatBytes } from '../shared/file-categories';
 import { activeFast, fastProgress, formatDuration, formatDurationHMS, templateLabel } from '../shared/health-fasting';
 
 export default (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | ready
     _mut: 0,
-    galleryReady: false,
-    usage: { files: null, gallery: null },
+    usage: { files: null },
     quickAdd: { metric: 'weight', v: '', v2: '' },
     _sparkInst: null,
-    _thumbCache: {}, // photoId -> objectURL
-    _thumbPending: {}, // photoId -> in-flight promise
     _fastNow: Date.now(), // clock for the running-fast widget
     _fastClock: null,
 
@@ -30,7 +24,7 @@ export default (config = {}, labels = {}) => ({
         await this._boot();
         this.$watch('$store.vault.unlocked', async (on) => {
             if (on && this.state !== 'ready') await this._boot();
-            if (! on) { this.state = 'locked'; this._revokeThumbCache(); this._stopFastClock(); }
+            if (! on) { this.state = 'locked'; this._stopFastClock(); }
         });
         this.$watch('_mut', () => this.renderSpark());
         // Start/stop the 1s clock off the reactive activeFast getter (not a one-shot
@@ -43,7 +37,6 @@ export default (config = {}, labels = {}) => ({
     },
 
     destroy() {
-        this._revokeThumbCache();
         this._stopFastClock();
     },
 
@@ -71,8 +64,7 @@ export default (config = {}, labels = {}) => ({
 
     async _boot() {
         // Multi-module dashboard: wait for the vault, then load every per-module
-        // store the widgets read (each is its own sealed manifest). Gallery + files
-        // are best-effort (their widgets degrade gracefully if unavailable).
+        // store the widgets read (each is its own sealed manifest).
         const vault = this.$store.vault;
         while (! vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
         if (! vault.unlocked) { this.state = 'locked'; return; }
@@ -86,17 +78,8 @@ export default (config = {}, labels = {}) => ({
         if (! window.LLInvoicesStore.loaded) await window.LLInvoicesStore.load();
 
         this.state = 'ready';
-        try { this.galleryReady = await bootGalleryStore(this.$store); } catch (_e) { this.galleryReady = false; }
         this._loadUsage();
         this.$nextTick(() => this.renderSpark());
-    },
-
-    _revokeThumbCache() {
-        for (const url of Object.values(this._thumbCache)) {
-            try { URL.revokeObjectURL(url); } catch (_e) { /* ignore */ }
-        }
-        this._thumbCache = {};
-        this._thumbPending = {};
     },
 
     // Per-module data getters (store v3 split — each module owns its sealed store).
@@ -107,7 +90,6 @@ export default (config = {}, labels = {}) => ({
     get _health() { return window.LLModuleStore.health?.data ?? null; },
     get _invoices() { return window.LLInvoicesStore?.data ?? null; },
     get _files() { return window.LLFilesStore?.data ?? null; },
-    get _g() { return this.galleryReady ? (window.LLGalleryStore?.data ?? null) : null; },
 
     // --- Todos widget ---
     get todos() {
@@ -285,32 +267,6 @@ export default (config = {}, labels = {}) => ({
 
     async _loadUsage() {
         try { this.usage.files = await getJson('/files/usage'); } catch (_e) { /* widget shows — */ }
-        try { this.usage.gallery = await getJson('/gallery/usage'); } catch (_e) { /* — */ }
-    },
-
-    // --- On This Day widget ---
-    // Groups past-year photos whose month+day match today, sorted nearest first.
-    get onThisDay() {
-        return this._g ? yearsAgoPhotos(this._g.photos ?? [], new Date().toISOString().slice(0, 10)) : [];
-    },
-
-    // Decrypt and cache a photo thumbnail. Reuses the same decrypt path as gallery.js
-    // (thumbLane + fetchDecryptWorker, photo.thumbRef + photo.thumbKey).
-    // Capped at 12 total decrypts; returns '' when photo has no thumb or cap is reached.
-    async thumbUrl(photo) {
-        if (! photo?.thumbRef) return '';
-        if (this._thumbCache[photo.id]) return this._thumbCache[photo.id];
-        if (this._thumbPending[photo.id]) return this._thumbPending[photo.id];
-        // Cap total: once 12 object URLs are cached, stop decrypting more.
-        if (Object.keys(this._thumbCache).length >= 12) return '';
-        const job = thumbLane(async () => {
-            const bytes = await fetchDecryptWorker(config.rawBase, photo.thumbRef, photo.thumbKey);
-            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
-            this._thumbCache[photo.id] = url;
-            return url;
-        }).catch(() => '').finally(() => { delete this._thumbPending[photo.id]; });
-        this._thumbPending[photo.id] = job;
-        return job;
     },
 
     // --- Storage widget ---

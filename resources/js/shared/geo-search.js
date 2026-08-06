@@ -103,7 +103,7 @@ export function isShortMapsLink(input) {
  * Classify a raw search box value into an action the caller should take:
  *   { kind:'coords', lat, lng }        — parsed locally, place a pin
  *   { kind:'resolve', url }            — Google short link → GET /maps/resolve
- *   { kind:'geocode', q }              — free-text place/POI → GET /gallery/geocode
+ *   { kind:'geocode', q }              — free-text place/POI → GET /geo/geocode
  * Returns null for empty input.
  */
 export function classifySearch(input) {
