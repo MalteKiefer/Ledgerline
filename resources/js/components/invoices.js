@@ -17,6 +17,7 @@ import { fileSig } from '../shared/file-sig';
 import { autoPick, suggestBookings } from '../shared/receipt-match';
 import { projectTree as buildProjectTree, rolledTotal as projectRolled, ownTotal as projectOwn, projectReceipts as receiptsForProject } from '../shared/finance-projects';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary, discountAmount } from '../shared/finance-stats';
+import { buildRevenueCsv, buildExpenseCsv, withBom } from '../shared/datev-export';
 import { matchInvoice } from '../shared/invoice-match';
 import { extractDocText } from '../shared/doc-text';
 import { analyzeReceiptText } from '../shared/receipt-ocr';
@@ -482,6 +483,17 @@ export default (config = {}, labels = {}, initial = {}) => ({
     get statsMonths() { return monthlyRevenue(this.invoices, this.statsYear); },
     get statsVat() { return vatReturn(this.invoices, this.statsYear); },
     get statsMonthPeak() { return Math.max(1, ...this.statsMonths.map((m) => m.net)); },
+    // GoBD accounting export (Rechnungsausgangsbuch / Belege) as semicolon CSV with a
+    // UTF-8 BOM — universally importable (Steuerberater / DATEV generic mapping / Excel).
+    // German column headers (GoBD/accountant-oriented) come from the builder defaults.
+    exportRevenueCsv() {
+        const csv = withBom(buildRevenueCsv(this.invoices, this.statsYear));
+        saveBlobAs(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `umsatz-${this.statsYear}.csv`, 'text/csv');
+    },
+    exportExpenseCsv() {
+        const csv = withBom(buildExpenseCsv(this.transactions, this.projects, this.statsYear));
+        saveBlobAs(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `belege-${this.statsYear}.csv`, 'text/csv');
+    },
     monthLabel(m) {
         const loc = document.documentElement.lang || 'de';
         try { return new Intl.DateTimeFormat(loc, { month: 'short' }).format(new Date(2000, (m || 1) - 1, 1)); }

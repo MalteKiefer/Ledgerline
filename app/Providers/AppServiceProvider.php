@@ -19,8 +19,6 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
-use SocialiteProviders\Manager\SocialiteWasCalled;
-use SocialiteProviders\PocketID\Provider as PocketIdProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -42,14 +40,6 @@ class AppServiceProvider extends ServiceProvider
         // and never in the test env, so it can't mask a real failure with a
         // lazy-load error.
         Model::preventLazyLoading(app()->environment('local'));
-
-        // Register the optional Pocket-ID OIDC driver with Socialite. Laravel 11+
-        // has no EventServiceProvider, so the listener is wired up here. The driver
-        // is only usable when its POCKETID_* env vars are configured (see
-        // PocketIdController::configured); registering it unconditionally is inert.
-        Event::listen(function (SocialiteWasCalled $event): void {
-            $event->extendSocialite('pocketid', PocketIdProvider::class);
-        });
 
         // Only admins may manage the non-personal, workspace-wide settings.
         Gate::define('manage-global-settings', fn (User $user): bool => $user->managesGlobalSettings());

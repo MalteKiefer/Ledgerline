@@ -1196,6 +1196,13 @@
           </template>
           <template x-if="statsKpis.count || statsYear !== {{ (int) date('Y') }} || projects.length">
             <div>
+              {{-- GoBD accounting export (revenue + expense journals as CSV for the Steuerberater) --}}
+              <div class="mb-6 flex flex-wrap items-center gap-2 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] px-3 py-2">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.datev_export') }}</span>
+                <x-button variant="secondary" size="sm" icon="arrow-down-tray" @click="exportRevenueCsv()">{{ __('invoices.datev_revenue') }}</x-button>
+                <x-button variant="secondary" size="sm" icon="arrow-down-tray" @click="exportExpenseCsv()">{{ __('invoices.datev_expense') }}</x-button>
+                <span class="text-[11px] text-gray-400 dark:text-gray-500" x-text="statsYear"></span>
+              </div>
               {{-- EÜR: simplified cash-basis income − expenses = profit (server-computed) --}}
               <template x-if="euer">
                 <div class="mb-6">
