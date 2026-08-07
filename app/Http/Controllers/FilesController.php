@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FileEntry;
 use App\Models\FileFolder;
+use App\Models\FileLabel;
 use App\Models\FileVersion;
 use App\Models\UserSetting;
 use App\Support\DiskTempFile;
@@ -109,9 +110,10 @@ class FilesController extends Controller
 
         return view('files.index', [
             'folders' => FileFolder::query()->orderBy('name')->get(),
-            'files' => FileEntry::query()->orderByDesc('updated_at')->get(),
+            'files' => FileEntry::query()->with('labels')->orderByDesc('updated_at')->get(),
             'maxVersions' => $this->maxVersions($uid),
             'usage' => $this->usage($uid),
+            'labels' => FileLabel::query()->orderBy('name')->get(),
         ]);
     }
 
@@ -121,15 +123,16 @@ class FilesController extends Controller
 
         return response()->json([
             'folders' => FileFolder::query()->orderBy('name')->get(),
-            'files' => FileEntry::query()->orderByDesc('updated_at')->get(),
+            'files' => FileEntry::query()->with('labels')->orderByDesc('updated_at')->get(),
             'usage' => $this->usage($uid),
+            'labels' => FileLabel::query()->orderBy('name')->get(),
         ]);
     }
 
     public function trashed(): JsonResponse
     {
         return response()->json([
-            'files' => FileEntry::onlyTrashed()->orderByDesc('deleted_at')->get(),
+            'files' => FileEntry::onlyTrashed()->with('labels')->orderByDesc('deleted_at')->get(),
             'folders' => FileFolder::onlyTrashed()->orderByDesc('deleted_at')->get(),
         ]);
     }
@@ -737,5 +740,66 @@ class FilesController extends Controller
         $hash = hash_file('sha256', $real);
 
         return $hash !== false ? $hash : null;
+    }
+
+    // ---- Labels (coloured, user-defined taxonomy) ----
+
+    public function labels(): JsonResponse
+    {
+        return response()->json(['labels' => FileLabel::query()->orderBy('name')->get()]);
+    }
+
+    public function storeLabel(Request $request): JsonResponse
+    {
+        $request->validate($this->labelRules());
+        $label = FileLabel::create([
+            'name' => $request->string('name')->value(),
+            'color' => $request->filled('color') ? $request->string('color')->value() : '#6b7280',
+        ]);
+
+        return response()->json(['label' => $label], 201);
+    }
+
+    public function updateLabel(Request $request, FileLabel $label): JsonResponse
+    {
+        $request->validate($this->labelRules());
+        $label->update([
+            'name' => $request->string('name')->value(),
+            'color' => $request->filled('color') ? $request->string('color')->value() : $label->color,
+        ]);
+
+        return response()->json(['label' => $label]);
+    }
+
+    public function destroyLabel(FileLabel $label): JsonResponse
+    {
+        $label->delete(); // pivot rows cascade
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Replace a file's label set (owner-scoped ids only). */
+    public function setFileLabels(Request $request, FileEntry $file): JsonResponse
+    {
+        $request->validate([
+            'label_ids' => ['present', 'array', 'max:100'],
+            'label_ids.*' => ['integer'],
+        ]);
+        $ids = FileLabel::query()->whereIn('id', $request->array('label_ids'))->pluck('id')->all();
+        $file->labels()->sync($ids);
+        $file->load('labels');
+
+        return response()->json(['file' => $file]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function labelRules(): array
+    {
+        return [
+            'name' => ['required', 'string', 'max:120'],
+            'color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+        ];
     }
 }

@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\UsersController as ApiUsersController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesController;
+use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\LocaleController;
@@ -127,6 +128,12 @@ Route::prefix('v1')->group(function (): void {
         Route::middleware('module:files')->group(function (): void {
             Route::get('/files/data', [FilesController::class, 'index'])->name('api.files.index');
             Route::get('/files/trash', [FilesController::class, 'trashed'])->name('api.files.trash');
+            Route::get('/files/search', [FileSearchController::class, 'search'])->middleware('throttle:120,1')->name('api.files.search');
+            Route::get('/files/labels', [FilesController::class, 'labels'])->name('api.files.labels');
+            Route::post('/files/labels', [FilesController::class, 'storeLabel'])->middleware('throttle:600,1')->name('api.files.labels.store');
+            Route::put('/files/labels/{label}', [FilesController::class, 'updateLabel'])->whereNumber('label')->middleware('throttle:600,1')->name('api.files.labels.update');
+            Route::delete('/files/labels/{label}', [FilesController::class, 'destroyLabel'])->whereNumber('label')->middleware('throttle:600,1')->name('api.files.labels.destroy');
+            Route::post('/files/entries/{file}/labels', [FilesController::class, 'setFileLabels'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entry.labels');
             Route::post('/files/entries', [FilesController::class, 'upload'])->middleware('throttle:1200,1')->name('api.files.upload');
             Route::post('/files/entries/trash/empty', [FilesController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('api.files.empty');
             Route::put('/files/entries/{file}', [FilesController::class, 'update'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.update');

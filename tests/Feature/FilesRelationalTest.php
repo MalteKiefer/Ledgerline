@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use App\Models\FileEntry;
 use App\Models\FileFolder;
+use App\Models\FileLabel;
 use App\Models\User;
 use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -167,5 +168,43 @@ class FilesRelationalTest extends TestCase
     {
         $this->actingAs(User::factory()->create());
         $this->get(route('files.index'))->assertOk()->assertSee('x-data="files(', false);
+    }
+
+    public function test_label_crud_assign_and_search(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        // Create a label.
+        $lid = (int) $this->postJson(route('files.rel.labels.store'), ['name' => 'Steuer', 'color' => '#e2915a'])
+            ->assertCreated()->json('label.id');
+        $this->assertSame('Steuer', FileLabel::findOrFail($lid)->name);
+
+        // Upload a file, then assign the label.
+        $fid = (int) $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->createWithContent('a.txt', 'x')])->json('file.id');
+        $this->postJson(route('files.rel.entry.labels', $fid), ['label_ids' => [$lid]])
+            ->assertOk()->assertJsonPath('file.labels.0.id', $lid);
+
+        // The listing eager-loads labels.
+        $this->getJson(route('files.rel.index'))->assertOk()->assertJsonPath('files.0.labels.0.id', $lid);
+
+        // Rename search finds by name (content search falls back to LIKE on sqlite).
+        $this->getJson(route('files.rel.search', ['q' => 'a.txt']))->assertOk()->assertJsonCount(1, 'files');
+        $this->getJson(route('files.rel.search', ['q' => 'zzzznope']))->assertOk()->assertJsonCount(0, 'files');
+
+        // Delete the label → pivot cascades, file keeps existing.
+        $this->deleteJson(route('files.rel.labels.destroy', $lid))->assertOk();
+        $this->assertSame(0, FileLabel::count());
+        $this->assertNotNull(FileEntry::find($fid));
+    }
+
+    public function test_labels_are_owner_scoped(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $lid = (int) $this->postJson(route('files.rel.labels.store'), ['name' => 'Mine'])->json('label.id');
+
+        $this->actingAs(User::factory()->create());
+        $this->getJson(route('files.rel.labels'))->assertOk()->assertJsonCount(0, 'labels');
+        $this->putJson(route('files.rel.labels.update', $lid), ['name' => 'x'])->assertNotFound();
     }
 }

@@ -225,4 +225,11 @@ return [
     'sf_rename' => 'Переименовать',
     'sf_delete' => 'Удалить',
     'sf_save' => 'Сохранить',
+    'labels_manage' => 'Управление метками',
+    'searching' => 'Поиск…',
+    'info_labels' => 'Метки',
+    'labels_title' => 'Метки',
+    'labels_none' => 'Меток пока нет.',
+    'label_name' => 'Название метки',
+    'label_add' => 'Добавить',
 ];
