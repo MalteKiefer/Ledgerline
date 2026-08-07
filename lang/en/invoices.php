@@ -82,6 +82,8 @@ return [
 
     'finalize' => 'Finalize & assign number',
     'mark_sent' => 'Mark as sent',
+    'version_status' => 'Status',
+    'status_draft_blocked' => 'A numbered invoice cannot go back to draft.',
     'mark_paid' => 'Mark as paid',
     'print' => 'Print / PDF',
     'trash' => 'Move to trash',

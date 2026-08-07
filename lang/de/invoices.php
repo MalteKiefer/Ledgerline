@@ -82,6 +82,8 @@ return [
 
     'finalize' => 'Finalisieren & Nummer vergeben',
     'mark_sent' => 'Als gesendet markieren',
+    'version_status' => 'Status',
+    'status_draft_blocked' => 'Eine nummerierte Rechnung kann nicht zurück auf Entwurf.',
     'mark_paid' => 'Als bezahlt markieren',
     'print' => 'Drucken / PDF',
     'trash' => 'In den Papierkorb',

@@ -559,6 +559,13 @@ class FinanceController extends Controller
     public function updateInvoice(Request $request, Invoice $invoice): JsonResponse
     {
         $request->validate($this->invoiceRules($request, false) + ['version' => ['sometimes', 'integer', 'min:0']]);
+        // GoBD: a numbered (issued) invoice can never revert to draft — the number is
+        // permanent. Reject a status→draft on a numbered invoice server-side (the client
+        // guards too, but the server is authoritative for the gapless numbering trail).
+        if ($request->filled('status') && $request->string('status')->value() === 'draft'
+            && is_string($invoice->number) && $invoice->number !== '') {
+            return response()->json(['error' => 'status_draft_blocked'], 422);
+        }
         $expected = $request->has('version') ? $request->integer('version') : null;
         $result = $this->optimistic(Invoice::class, $invoice->id, $this->invoicePatch($request, false), $expected);
 

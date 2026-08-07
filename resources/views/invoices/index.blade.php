@@ -50,6 +50,8 @@
         statusFinal: @js(__('invoices.status_final')),
         statusSent: @js(__('invoices.status_sent')),
         statusPaid: @js(__('invoices.status_paid')),
+        version_status: @js(__('invoices.version_status')),
+        status_draft_blocked: @js(__('invoices.status_draft_blocked')),
         csvImported: @js(__('invoices.csv_imported')),
         csvBadFormat: @js(__('invoices.csv_bad_format')),
         importSummaryLabel: @js(__('invoices.import_summary_label')),
@@ -2534,9 +2536,19 @@
             <div class="flex items-center gap-3">
               <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
               <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
-              <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+              <span x-show="current?.imported" class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                 :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-amber-500/15 text-amber-600 dark:text-amber-400': current?.status === 'final', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
                 x-text="statusLabel(current?.status)"></span>
+              {{-- Manual status override (non-imported). GoBD: a numbered invoice hides the
+                   Draft option; setStatus finalizes forward + blocks numbered→draft. --}}
+              <select x-show="! current?.imported" @change="setStatus(current, $event.target.value)"
+                class="rounded-full border-0 px-2.5 py-1 text-xs font-medium ring-1 ring-inset appearance-none cursor-pointer focus:ring-2 focus:ring-accent"
+                :class="{ 'bg-green-500/15 text-green-600 ring-green-500/20': current?.status === 'paid', 'bg-accent/15 text-accent ring-accent/20': current?.status === 'sent', 'bg-amber-500/15 text-amber-600 ring-amber-500/20': current?.status === 'final', 'bg-gray-500/15 text-gray-500 ring-gray-500/20': current?.status === 'draft' }">
+                <option value="draft" x-show="! current?.number" :selected="current?.status === 'draft'">{{ __('invoices.status_draft') }}</option>
+                <option value="final" :selected="current?.status === 'final'">{{ __('invoices.status_final') }}</option>
+                <option value="sent" :selected="current?.status === 'sent'">{{ __('invoices.status_sent') }}</option>
+                <option value="paid" :selected="current?.status === 'paid'">{{ __('invoices.status_paid') }}</option>
+              </select>
               <template x-if="isOverdue(current)"><x-badge variant="error"><span x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(current))"></span></x-badge></template>
               <template x-if="isCreditNote(current)"><x-badge variant="warning">{{ __('invoices.credit_note_badge') }}</x-badge></template>
               <template x-if="isCancelled(current)"><x-badge variant="gray">{{ __('invoices.cancelled_badge') }}</x-badge></template>
@@ -2554,7 +2566,8 @@
                 <x-action-menu-item icon="printer" x-show="! current?.imported || ! current?.pdf" @click="printInvoice(current)">{{ __('invoices.print') }}</x-action-menu-item>
                 <x-action-menu-item icon="arrow-down-tray" @click="downloadZugferd(current)" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-action-menu-item>
                 <x-action-menu-item icon="check" x-show="! current?.imported && current?.status === 'draft'" @click="finalize(current)">{{ __('invoices.finalize') }}</x-action-menu-item>
-                <x-action-menu-item icon="check-circle" x-show="! current?.imported && current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-action-menu-item>
+                <x-action-menu-item icon="arrow-up-right" x-show="! current?.imported && (current?.status === 'draft' || current?.status === 'final')" @click="setStatus(current, 'sent')">{{ __('invoices.mark_sent') }}</x-action-menu-item>
+                <x-action-menu-item icon="check-circle" x-show="! current?.imported && current?.status !== 'paid'" @click="setStatus(current, 'paid')">{{ __('invoices.mark_paid') }}</x-action-menu-item>
                 <x-action-menu-item icon="envelope" x-show="canEmail(current)" @click="emailInvoice(current)">{{ __('invoices.email_send') }}</x-action-menu-item>
                 <x-action-menu-item icon="envelope" x-show="! canEmail(current)" disabled class="opacity-50 cursor-not-allowed" title="{{ __('invoices.email_disabled_hint') }}">{{ __('invoices.email_send') }}</x-action-menu-item>
                 <x-action-menu-item icon="envelope" x-show="canDun(current)" @click="dun(current)">{{ __('invoices.dun_send') }}</x-action-menu-item>

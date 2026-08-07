@@ -291,6 +291,27 @@ class FinanceRelationalTest extends TestCase
         $this->assertSame('final', Invoice::find($id)->status);
     }
 
+    public function test_numbered_invoice_cannot_revert_to_draft(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        UserSetting::for((int) $user->id)->update(['invoice_number_format' => 'YYYY-NNNN', 'invoice_next_number' => 1]);
+
+        $id = $this->postJson(route('finance.invoices.store'), ['issue_date' => '2026-05-01'])->json('invoice.id');
+        $this->postJson(route('finance.invoices.finalize', $id))->assertOk(); // now numbered + final
+
+        // GoBD: a numbered (issued) invoice can never go back to draft.
+        $this->putJson(route('finance.invoices.update', $id), ['status' => 'draft'])
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'status_draft_blocked');
+        $this->assertSame('final', Invoice::find($id)->status);
+
+        // A forward status change on a numbered invoice IS allowed.
+        $this->putJson(route('finance.invoices.update', $id), ['status' => 'paid', 'paid_at' => '2026-05-10'])
+            ->assertOk();
+        $this->assertSame('paid', Invoice::find($id)->status);
+    }
+
     public function test_partner_stores_hourly_rate_and_currency(): void
     {
         $user = User::factory()->create();

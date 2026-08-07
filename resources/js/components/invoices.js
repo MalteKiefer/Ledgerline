@@ -2462,6 +2462,25 @@ export default (config = {}, labels = {}, initial = {}) => ({
         await this._lockCommit(i, labels.version_finalized || 'Finalized');
     },
     async markPaid(inv) { inv.status = 'paid'; if (! inv.paidAt) inv.paidAt = this._today(); await this._lockCommit(inv, labels.version_paid || 'Marked paid'); },
+    // Manual status override (e.g. "sent by other means" / "paid" without the finalize
+    // or email flow). GoBD: forward to a numbered status assigns the number first (server
+    // finalize); a numbered invoice can NEVER go back to draft (client + server guard).
+    async setStatus(inv, status) {
+        if (! inv || inv.imported || inv.status === status) return;
+        if (status === 'draft' && inv.number) { window.llToast?.(labels.status_draft_blocked || labels.statusFinal); return; }
+        let i = inv;
+        if (status !== 'draft' && ! i.number) {
+            const r = await this._req('POST', `/finance/invoices/${i.id}/finalize`);
+            if (r.ok && r.data.invoice) {
+                const row = normInvoice(r.data.invoice);
+                Object.assign(i, { number: row.number, seq: row.seq, year: row.year, status: row.status, version: row.version });
+            }
+        }
+        i.status = status;
+        if (status === 'paid') { if (! i.paidAt) i.paidAt = this._today(); }
+        else { i.paidAt = null; }
+        await this._lockCommit(i, (labels.version_status || 'Status') + ': ' + this.statusLabel(status));
+    },
     async markSent(inv) {
         let i = inv;
         if (! i.number) {
