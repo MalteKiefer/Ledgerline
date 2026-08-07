@@ -24,6 +24,8 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
+use App\Http\Controllers\SharedFolderController;
+use App\Http\Controllers\SharedWithMeController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Middleware\UpdateTokenIp;
 use Illuminate\Support\Facades\Route;
@@ -156,6 +158,22 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/files/upload/chunk/part', [FilesController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.files.chunk.part');
             Route::post('/files/upload/chunk/complete', [FilesController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.files.chunk.complete');
             Route::post('/files/upload/chunk/abort', [FilesController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.files.chunk.abort');
+
+            // Sharing: public-link owner side + cross-user folder shares + shared-with-me.
+            Route::post('/files/rel-shares', [FilesController::class, 'storeShare'])->middleware('throttle:60,1')->name('api.files.shares.store');
+            Route::put('/files/rel-shares/{share}', [FilesController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.shares.update');
+            Route::delete('/files/rel-shares/{share}', [FilesController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.shares.destroy');
+            Route::get('/files/folder-shares', [SharedFolderController::class, 'index'])->name('api.files.folder-shares.index');
+            Route::post('/files/folder-shares', [SharedFolderController::class, 'store'])->middleware('throttle:60,1')->name('api.files.folder-shares.store');
+            Route::put('/files/folder-shares/{share}/members', [SharedFolderController::class, 'updateMember'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.folder-shares.members.update');
+            Route::delete('/files/folder-shares/{share}/members', [SharedFolderController::class, 'removeMember'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.folder-shares.members.remove');
+            Route::delete('/files/folder-shares/{share}', [SharedFolderController::class, 'destroy'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.folder-shares.destroy');
+            Route::get('/shared-with-me', [SharedWithMeController::class, 'index'])->name('api.shared-with-me.index');
+            Route::get('/shared-with-me/{share}', [SharedWithMeController::class, 'browse'])->whereNumber('share')->name('api.shared-with-me.browse');
+            Route::get('/shared-with-me/{share}/files/{file}/raw', [SharedWithMeController::class, 'raw'])->whereNumber(['share', 'file'])->middleware('throttle:3000,1')->name('api.shared-with-me.raw');
+            Route::post('/shared-with-me/{share}/upload', [SharedWithMeController::class, 'upload'])->whereNumber('share')->middleware('throttle:1200,1')->name('api.shared-with-me.upload');
+            Route::put('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'rename'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('api.shared-with-me.rename');
+            Route::delete('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'destroy'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('api.shared-with-me.destroy');
         });
 
         // Per-user Paperless-ngx integration: cached term quick-picks, live term

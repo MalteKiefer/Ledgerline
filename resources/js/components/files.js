@@ -1119,4 +1119,32 @@ export default (config = {}, labels = {}, initial = {}) => ({
         delete this._shareCache[this._shareKey(this.share.kind, this.share.id)];
         this.share.current = null; this.share.link = ''; this.share.busy = false;
     },
+
+    // ---- Cross-user folder sharing (owner side) + shared-with-me (member side) ----
+    swm: { open: false, view: 'list', shares: [], current: null, files: [], folders: [], role: 'viewer' },
+
+    async shareFolderWithUser(row) {
+        if (! row || row.kind !== 'folder') return;
+        const email = await this.$store.confirm.prompt(labels.folderShareEmail || 'Recipient e-mail', { value: '' });
+        if (! email || ! email.trim()) return;
+        try {
+            const res = await this._req('POST', '/files/folder-shares', { file_folder_id: row.id, email: email.trim(), role: 'editor' });
+            if (res.status === 422) { window.llToast?.(labels.folderShareNotFound || 'No such user.'); return; }
+            if (! res.ok) { window.llToast?.(labels.saveFailed); return; }
+            window.llToast?.(labels.folderShareDone || 'Folder shared.');
+        } catch (e) { window.llToast?.(labels.saveFailed); }
+    },
+    async openSharedWithMe() {
+        this.swm.open = true; this.swm.view = 'list';
+        try { const d = await getJson('/shared-with-me'); this.swm.shares = d.shares || []; } catch (e) { this.swm.shares = []; }
+    },
+    async browseShare(share) {
+        this.swm.current = share; this.swm.view = 'browse';
+        try {
+            const d = await getJson('/shared-with-me/' + share.id);
+            this.swm.files = d.files || []; this.swm.folders = d.folders || []; this.swm.role = d.role || 'viewer';
+        } catch (e) { this.swm.files = []; this.swm.folders = []; }
+    },
+    swmRawUrl(share, file) { return '/shared-with-me/' + share.id + '/files/' + file.id + '/raw'; },
+    closeSwm() { this.swm.open = false; this.swm.view = 'list'; this.swm.current = null; this.swm.files = []; this.swm.folders = []; },
 });

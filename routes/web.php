@@ -17,6 +17,7 @@ use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
@@ -28,6 +29,8 @@ use App\Http\Controllers\Settings\SecurityLogController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
 use App\Http\Controllers\Settings\UsersController as SettingsUsersController;
+use App\Http\Controllers\SharedFolderController;
+use App\Http\Controllers\SharedWithMeController;
 use App\Http\Controllers\ThemeController;
 use Illuminate\Support\Facades\Route;
 
@@ -47,6 +50,14 @@ Route::get('/metrics', [MetricsController::class, 'index'])->middleware('throttl
 // verifies it in constant time. Consuming it sets the user's password.
 Route::get('/invite/{invite}/{token}', [InviteLinkController::class, 'show'])->middleware('throttle:20,1')->name('invite.show');
 Route::post('/invite/{invite}/{token}', [InviteLinkController::class, 'store'])->middleware('throttle:10,1')->name('invite.store');
+
+// Public, unauthenticated plaintext file-share links (optional password gate).
+Route::prefix('file-share/{token}')->name('public.file-share.')->group(function (): void {
+    Route::get('/', [PublicFileShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
+    Route::post('/unlock', [PublicFileShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
+    Route::get('/manifest', [PublicFileShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
+    Route::get('/file/{file}/raw', [PublicFileShareController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('file.raw');
+});
 
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {
@@ -268,6 +279,24 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/files/upload/chunk/part', [FilesController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('files.rel.chunk.part');
         Route::post('/files/upload/chunk/complete', [FilesController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('files.rel.chunk.complete');
         Route::post('/files/upload/chunk/abort', [FilesController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('files.rel.chunk.abort');
+
+        // Public share links (owner side) — plaintext /file-share/{token}.
+        Route::post('/files/rel-shares', [FilesController::class, 'storeShare'])->middleware('throttle:60,1')->name('files.rel.shares.store');
+        Route::put('/files/rel-shares/{share}', [FilesController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('files.rel.shares.update');
+        Route::delete('/files/rel-shares/{share}', [FilesController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('files.rel.shares.destroy');
+
+        // Cross-user folder sharing (owner side + shared-with-me member side).
+        Route::get('/files/folder-shares', [SharedFolderController::class, 'index'])->name('files.folder-shares.index');
+        Route::post('/files/folder-shares', [SharedFolderController::class, 'store'])->middleware('throttle:60,1')->name('files.folder-shares.store');
+        Route::put('/files/folder-shares/{share}/members', [SharedFolderController::class, 'updateMember'])->whereNumber('share')->middleware('throttle:60,1')->name('files.folder-shares.members.update');
+        Route::delete('/files/folder-shares/{share}/members', [SharedFolderController::class, 'removeMember'])->whereNumber('share')->middleware('throttle:60,1')->name('files.folder-shares.members.remove');
+        Route::delete('/files/folder-shares/{share}', [SharedFolderController::class, 'destroy'])->whereNumber('share')->middleware('throttle:60,1')->name('files.folder-shares.destroy');
+        Route::get('/shared-with-me', [SharedWithMeController::class, 'index'])->name('shared-with-me.index');
+        Route::get('/shared-with-me/{share}', [SharedWithMeController::class, 'browse'])->whereNumber('share')->name('shared-with-me.browse');
+        Route::get('/shared-with-me/{share}/files/{file}/raw', [SharedWithMeController::class, 'raw'])->whereNumber(['share', 'file'])->middleware('throttle:3000,1')->name('shared-with-me.raw');
+        Route::post('/shared-with-me/{share}/upload', [SharedWithMeController::class, 'upload'])->whereNumber('share')->middleware('throttle:1200,1')->name('shared-with-me.upload');
+        Route::put('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'rename'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('shared-with-me.rename');
+        Route::delete('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'destroy'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('shared-with-me.destroy');
     });
 
     // Per-user company profile + invoice defaults (printed on every invoice).
