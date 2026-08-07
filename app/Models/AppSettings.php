@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -41,6 +42,12 @@ use Illuminate\Database\Eloquent\Model;
     'files_max_upload_mb',
     'files_blob_orphan_grace_hours',
     'gallery_geocode_interval_ms',
+])]
+// Defense-in-depth: keep the operative-secret columns (SMTP / ntfy / webhook creds)
+// out of any wholesale toArray()/toJson() as well as the encrypted-cast at-rest layer.
+#[Hidden([
+    'smtp_host', 'smtp_username', 'smtp_password', 'smtp_from_address', 'smtp_from_name',
+    'ntfy_url', 'ntfy_topic', 'ntfy_token', 'webhook_url', 'webhook_secret',
 ])]
 class AppSettings extends Model
 {

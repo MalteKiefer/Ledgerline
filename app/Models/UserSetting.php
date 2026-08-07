@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -76,6 +77,15 @@ use Illuminate\Database\Eloquent\Model;
     // an operational secret (encrypted cast); never a fillable plaintext leak.
     'company_smtp_enabled', 'company_smtp_host', 'company_smtp_port', 'company_smtp_encryption',
     'company_smtp_username', 'company_smtp_password', 'company_smtp_from_address', 'company_smtp_from_name',
+])]
+// Defense-in-depth: the operative-secret columns (Paperless + company SMTP creds) are
+// encrypted-cast, but that only protects them at rest. $hidden keeps them out of any
+// wholesale toArray()/toJson() serialization too, so a future generic response can never
+// leak them (the CompanyController API already whitelists its output — this backstops it).
+#[Hidden([
+    'paperless_url', 'paperless_token',
+    'company_smtp_host', 'company_smtp_username', 'company_smtp_password',
+    'company_smtp_from_address', 'company_smtp_from_name',
 ])]
 class UserSetting extends Model
 {
