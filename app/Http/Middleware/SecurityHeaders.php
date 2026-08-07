@@ -41,9 +41,6 @@ final class SecurityHeaders
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', 'DENY');
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
-        // Isolate this browsing context group from cross-origin openers/popups
-        // (mitigates cross-window attacks; harmless for a same-origin SPA).
-        $response->headers->set('Cross-Origin-Opener-Policy', 'same-origin');
         // No resource of this single-origin app is meant to be embedded/read by
         // another origin. Blocks cross-site hotlinking/embedding of the now-
         // plaintext user blobs (photos/files/PDFs) that COOP does not cover.
@@ -62,6 +59,12 @@ final class SecurityHeaders
         // closing the first-visit downgrade window on the passphrase page.
         if (config('session.secure')) {
             $response->headers->set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+            // COOP is only honoured on a trustworthy (HTTPS) origin — browsers
+            // ignore it on plaintext HTTP and log a console warning. Emit it only
+            // when the deployment is served over TLS (same signal as HSTS) so a
+            // plaintext LAN box stays quiet; it isolates this browsing context
+            // group from cross-origin openers/popups on real HTTPS deployments.
+            $response->headers->set('Cross-Origin-Opener-Policy', 'same-origin');
         }
 
         // A route that streams untrusted bytes (file/blob downloads) sets its own
