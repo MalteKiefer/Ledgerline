@@ -83,10 +83,12 @@ class BackupApiTest extends TestCase
     {
         return [
             'name' => 'Nightly DB',
-            'source' => 'database',
+            'source' => 'database', // legacy column, kept in sync
+            'sources' => ['database'],
+            'mode' => 'full',
             'backup_destination_id' => $destId,
             'cron' => '0 3 * * *',
-            'retention' => 7,
+            'keep_daily' => 7,
             'encrypt' => true,
             'passphrase' => 'a-very-long-passphrase-for-testing',
             'enabled' => true,
@@ -255,10 +257,10 @@ class BackupApiTest extends TestCase
 
         $this->postJson('/api/v1/backup/jobs', [
             'name' => 'Unencrypted DB',
-            'source' => 'database',
+            'sources' => ['database'],
             'backup_destination_id' => $dest->id,
             'cron' => '0 3 * * *',
-            'retention' => 3,
+            'keep_daily' => 3,
             'encrypt' => false,
         ], ['Authorization' => 'Bearer '.$this->adminToken()])
             ->assertCreated();
@@ -347,7 +349,7 @@ class BackupApiTest extends TestCase
             'started_at' => now()->subHour(),
             'finished_at' => now(),
             'bytes' => 1024,
-            'filename' => 'backup-2026-07-29.sql.gz.enc',
+            'filename' => 'backup-2026-07-29/2026-07-29_030000',
         ]);
 
         $response = $this->getJson('/api/v1/backup/runs', [
@@ -356,11 +358,11 @@ class BackupApiTest extends TestCase
 
         $response->assertJsonStructure(['runs' => [[
             'id', 'job', 'status', 'startedIso', 'size',
-            'downloadable', 'encrypted', 'cancellable', 'verifiable',
+            'archives', 'cancellable',
         ]]]);
         $response->assertJsonPath('runs.0.status', 'success');
-        $response->assertJsonPath('runs.0.encrypted', true);
-        $response->assertJsonPath('runs.0.downloadable', true);
+        $response->assertJsonPath('runs.0.archives.0.source', 'database');
+        $response->assertJsonPath('runs.0.archives.0.encrypted', true);
     }
 
     /* ------------------------------------------------------------------ */

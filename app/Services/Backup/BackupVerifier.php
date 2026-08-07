@@ -33,11 +33,13 @@ final class BackupVerifier
     ) {}
 
     /**
+     * @param  string|null  $archivePath  the specific archive within a run's batch
+     *                                    to verify; defaults to run->filename.
      * @return array{ok: bool, message: string}
      */
-    public function verify(BackupRun $run, ?string $passphrase): array
+    public function verify(BackupRun $run, ?string $passphrase, ?string $archivePath = null): array
     {
-        $result = $this->run($run, $passphrase);
+        $result = $this->run($run, $passphrase, $archivePath);
 
         $run->update([
             'verified_at' => Carbon::now(),
@@ -51,7 +53,7 @@ final class BackupVerifier
     /**
      * @return array{ok: bool, message: string}
      */
-    private function run(BackupRun $run, ?string $passphrase): array
+    private function run(BackupRun $run, ?string $passphrase, ?string $archivePath = null): array
     {
         $job = $run->job;
         if ($run->status !== 'success' || $run->filename === null || $job === null || $job->destination === null) {
@@ -59,21 +61,22 @@ final class BackupVerifier
         }
 
         $fs = $this->factory->make($job->destination);
+        // A run is a batch folder holding one archive per source; verify the
+        // specific archive requested (defaults to the whole filename for legacy
+        // single-file runs).
+        $target = $archivePath ?? $run->filename;
 
-        // Every backup source now writes a single archive file (prefix/Y-m-d_His.ext);
-        // the removed files/gallery folder-mirror was the only producer of trailing-slash
-        // filenames, so no live run reaches a mirror-verification path.
-        if (! $fs->fileExists($run->filename)) {
+        if (! $fs->fileExists($target)) {
             return ['ok' => false, 'message' => 'The archive is missing from its destination.'];
         }
 
         $encHandle = DiskTempFile::create('llvenc');
         $decHandle = null;
         try {
-            $this->download($fs, $run->filename, $encHandle->path());
+            $this->download($fs, $target, $encHandle->path());
             $storedBytes = (int) (filesize($encHandle->path()) ?: 0);
 
-            $encrypted = str_ends_with($run->filename, '.enc');
+            $encrypted = str_ends_with($target, '.enc');
             if ($encrypted) {
                 if (($passphrase ?? '') === '') {
                     return ['ok' => false, 'message' => 'A passphrase is required to verify an encrypted archive.'];
@@ -87,7 +90,7 @@ final class BackupVerifier
             }
 
             $inspectPath = $decHandle !== null ? $decHandle->path() : $encHandle->path();
-            $inner = $this->inspect($inspectPath, (string) $run->filename);
+            $inner = $this->inspect($inspectPath, $target);
 
             $parts = ['Downloaded '.Bytes::format($storedBytes).'.'];
             if ($encrypted) {

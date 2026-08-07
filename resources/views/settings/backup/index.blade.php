@@ -83,7 +83,7 @@
                         <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ $job->name }}</span>
                         @unless ($job->enabled)<span class="ml-2 inline-flex items-center rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-xs text-gray-500 dark:text-gray-400"><x-icon name="x-mark" class="h-3.5 w-3.5" /></span>@endunless
                         <p class="text-xs text-gray-500 dark:text-gray-400">
-                            {{ __('settings.backup_source_'.$job->source) }} → {{ $job->destination?->name }} · <code>{{ $job->cron }}</code> ·
+                            {{ collect($job->effectiveSources())->map(fn ($s) => __('settings.backup_source_'.$s))->join(', ') }}@if (($job->mode ?? 'full') === 'incremental') <span class="text-gray-400">({{ __('settings.backup_mode_incremental') }})</span>@endif → {{ $job->destination?->name }} · <code>{{ $job->cron }}</code> ·
                             @if ($s['lastStatus'])
                                 <span class="{{ $s['lastStatus'] === 'success' ? 'text-green-600' : 'text-red-600 dark:text-red-400' }}">{{ $s['lastStatus'] }}</span>
                                 {{ $s['lastRun']?->diffForHumans() }}
@@ -167,7 +167,18 @@
 
     {{-- Recent runs — live-updating (no page reload) --}}
     <section class="mt-6 ll-card"
-        x-data="backupRuns({ runsUrl: '{{ route('settings.backup.runs') }}', downloadBase: '{{ route('settings.backup.runs.download', ['run' => '__id__']) }}', decryptBase: '{{ route('settings.backup.runs.decrypt', ['run' => '__id__']) }}', verifyBase: '{{ route('settings.backup.runs.verify', ['run' => '__id__']) }}', cancelBase: '{{ route('settings.backup.runs.cancel', ['run' => '__id__']) }}' })">
+        x-data="backupRuns({
+            runsUrl: '{{ route('settings.backup.runs') }}',
+            downloadBase: '{{ route('settings.backup.runs.download', ['run' => '__id__']) }}',
+            decryptBase: '{{ route('settings.backup.runs.decrypt', ['run' => '__id__']) }}',
+            verifyBase: '{{ route('settings.backup.runs.verify', ['run' => '__id__']) }}',
+            restoreBase: '{{ route('settings.backup.runs.restore', ['run' => '__id__']) }}',
+            cancelBase: '{{ route('settings.backup.runs.cancel', ['run' => '__id__']) }}',
+            sourceLabels: {{ Illuminate\Support\Js::from(collect(\App\Models\BackupJob::SOURCES)->mapWithKeys(fn ($s) => [$s => __('settings.backup_source_'.$s)])) }},
+            restoreConfirm: @js(__('settings.backup_restore_confirm')),
+            restoreDone: @js(__('settings.backup_restore_done')),
+            restoreFailed: @js(__('settings.backup_restore_failed')),
+        })">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_runs_heading') }}</h2>
         @error('passphrase')<p class="mt-2 rounded-md bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300">{{ $message }}</p>@enderror
 
@@ -177,6 +188,7 @@
                 <div class="absolute inset-0 bg-gray-900/40" @click="decrypt.open = false"></div>
                 <form method="POST" :action="decryptAction" class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
                     @csrf
+                    <input type="hidden" name="source" :value="decrypt.source">
                     <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_decrypt') }}</h3>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.backup_decrypt_hint') }}</p>
                     <input type="password" name="passphrase" required autocomplete="off" placeholder="{{ __('settings.backup_passphrase') }}"
@@ -189,57 +201,6 @@
             </div>
         </template>
 
-        {{-- Guided restore: verify integrity (dry run), then recover the archive. Nothing is applied to live data. --}}
-        <template x-teleport="body">
-            <div x-show="restore.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeRestore()">
-                <div class="absolute inset-0 bg-gray-900/40" @click="closeRestore()"></div>
-                <div class="relative w-full max-w-lg rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
-                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_restore_heading') }}</h3>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.backup_restore_intro') }}</p>
-
-                    {{-- Step 1: verify (dry run) --}}
-                    <div class="mt-4 rounded-md border border-gray-200 dark:border-gray-800 p-3">
-                        <p class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('settings.backup_verify_step') }}</p>
-                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.backup_verify_hint') }}</p>
-                        <input x-show="restore.run && restore.run.needsPassphrase" type="password" x-model="verifyPass" autocomplete="off" placeholder="{{ __('settings.backup_passphrase') }}"
-                            class="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                        <x-button variant="secondary" size="sm" icon="shield" @click="runVerify()" ::disabled="verifyBusy" class="mt-2">
-                            <span x-text="verifyBusy ? '{{ __('settings.backup_verifying') }}' : '{{ __('settings.backup_verify') }}'"></span>
-                        </x-button>
-                        <p x-show="verifyResult" x-cloak class="mt-2 rounded-md px-3 py-2 text-xs" :class="verifyResult && verifyResult.ok ? 'bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300'" x-text="verifyResult ? verifyResult.message : ''"></p>
-                    </div>
-
-                    {{-- Step 2: recover --}}
-                    <div class="mt-3 rounded-md border border-gray-200 dark:border-gray-800 p-3">
-                        <p class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('settings.backup_recover_step') }}</p>
-                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.backup_recover_hint') }}</p>
-                        <div class="mt-2 flex flex-wrap gap-2">
-                            <a x-show="restore.run && restore.run.downloadable && ! restore.run.needsPassphrase" :href="restoreDownloadUrl()" class="inline-flex items-center gap-1.5 rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300"><x-icon name="arrow-down-tray" class="h-4 w-4" />{{ __('settings.backup_download') }}</a>
-                            <x-button variant="secondary" size="sm" icon="lock-open" x-show="restore.run && restore.run.needsPassphrase" @click="openDecrypt(restore.run.id); closeRestore()">{{ __('settings.backup_decrypt_download') }}</x-button>
-                        </div>
-                    </div>
-
-                    <div class="mt-4 flex justify-end">
-                        <x-button variant="secondary" @click="closeRestore()">{{ __('common.close') }}</x-button>
-                    </div>
-                </div>
-            </div>
-        </template>
-
-        {{-- Per-run action menu (teleported so the table's scroll can't clip it) --}}
-        <template x-teleport="body">
-            <div x-show="menuRunId" x-cloak @click.outside="closeMenu()" @keydown.escape.window="closeMenu()"
-                 :style="`position:fixed; top:${menuY}px; left:${menuX}px; transform:translateX(-100%)`"
-                 class="z-50 w-52 rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-1 shadow-lg">
-                <template x-if="menuRun">
-                    <div>
-                        <button x-show="menuRun.verifiable" type="button" @click="openRestore(menuRun); closeMenu()" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5"><x-icon name="arrow-uturn-left" class="h-4 w-4" />{{ __('settings.backup_restore') }}</button>
-                        <a x-show="menuRun.downloadable" :href="downloadUrl(menuRun.id)" @click="closeMenu()" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5"><x-icon name="arrow-down-tray" class="h-4 w-4" />{{ __('settings.backup_download') }}</a>
-                        <button x-show="menuRun.encrypted" type="button" @click="openDecrypt(menuRun.id); closeMenu()" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5"><x-icon name="lock-open" class="h-4 w-4" />{{ __('settings.backup_decrypt') }}</button>
-                    </div>
-                </template>
-            </div>
-        </template>
         <p x-show="runs.length === 0" class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.backup_no_runs') }}</p>
         <div class="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <table x-show="runs.length > 0" x-cloak class="mt-3 w-full text-left text-sm">
@@ -279,14 +240,42 @@
                                 <span class="text-xs text-gray-400 dark:text-gray-500">{{ __('settings.backup_cancelling') }}</span>
                                 <button type="button" @click="cancel(r.id)" title="{{ __('settings.backup_force_stop') }}" :aria-label="'{{ __('settings.backup_force_stop') }}'" class="rounded p-1 text-gray-500 hover:bg-red-50 hover:text-red-600"><x-icon name="stop" class="h-4 w-4" /></button>
                             </span>
-                            {{-- Success-run actions live behind a 3-dot menu --}}
-                            <button x-show="r.verifiable || r.downloadable || r.encrypted" type="button" @click.stop="toggleMenu(r, $event)" title="{{ __('common.actions') }}" :aria-label="'{{ __('common.actions') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="ellipsis" class="h-4 w-4" /></button>
+                            {{-- Per-archive actions live in the expandable detail row --}}
+                            <button x-show="hasArchives(r)" type="button" @click="toggle(r.id)" title="{{ __('common.actions') }}" :aria-label="'{{ __('common.actions') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="ellipsis" class="h-4 w-4" /></button>
                           </div>
                         </td>
                     </tr>
                     <tr x-show="expanded[r.id]" x-cloak>
                         <td></td>
                         <td colspan="5" class="pb-3 pr-3">
+                            {{-- Per-archive actions: one row per backed-up source --}}
+                            <div x-show="hasArchives(r)" class="mb-3 space-y-2">
+                                <template x-for="a in r.archives" :key="a.source">
+                                    <div class="rounded-md border border-gray-200 dark:border-gray-800 p-2">
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <span class="text-sm font-medium text-gray-800 dark:text-gray-200" x-text="sourceLabel(a.source)"></span>
+                                            <span x-show="a.encrypted" class="inline-flex items-center gap-1 text-xs text-gray-400"><x-icon name="lock-closed" class="h-3.5 w-3.5" />{{ __('settings.backup_encrypt') }}</span>
+                                            <span class="flex-1"></span>
+                                            {{-- Download (plaintext archives) --}}
+                                            <a x-show="! a.encrypted" :href="downloadUrl(r.id, a.source)" class="inline-flex items-center gap-1.5 rounded-md bg-gray-100 dark:bg-gray-800 px-2.5 py-1 text-xs text-gray-700 dark:text-gray-300 hover:bg-accent/5"><x-icon name="arrow-down-tray" class="h-3.5 w-3.5" />{{ __('settings.backup_download') }}</a>
+                                            {{-- Decrypt → plaintext download (encrypted archives) --}}
+                                            <button x-show="a.encrypted" type="button" @click="openDecrypt(r.id, a.source)" class="inline-flex items-center gap-1.5 rounded-md bg-gray-100 dark:bg-gray-800 px-2.5 py-1 text-xs text-gray-700 dark:text-gray-300 hover:bg-accent/5"><x-icon name="lock-open" class="h-3.5 w-3.5" />{{ __('settings.backup_decrypt') }}</button>
+                                            {{-- Restore blob sources (files/invoices) onto live data --}}
+                                            <button x-show="a.restorable" type="button" @click="restore(r.id, a.source)" class="inline-flex items-center gap-1.5 rounded-md bg-gray-100 dark:bg-gray-800 px-2.5 py-1 text-xs text-gray-700 dark:text-gray-300 hover:bg-accent/5"><x-icon name="arrow-uturn-left" class="h-3.5 w-3.5" />{{ __('settings.backup_restore_source') }}</button>
+                                        </div>
+                                        {{-- Verify (dry run) — needs the passphrase for an encrypted archive --}}
+                                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                                            <input x-show="a.encrypted" type="password" x-model="vstate(r.id, a.source).pass" autocomplete="off" placeholder="{{ __('settings.backup_passphrase') }}"
+                                                class="rounded-md border-gray-300 dark:border-gray-700 text-xs shadow-sm focus:border-accent focus:ring-accent">
+                                            <x-button variant="secondary" size="sm" icon="shield" @click="runVerify(r.id, a.source)" ::disabled="vstate(r.id, a.source).busy">
+                                                <span x-text="vstate(r.id, a.source).busy ? '{{ __('settings.backup_verifying') }}' : '{{ __('settings.backup_verify') }}'"></span>
+                                            </x-button>
+                                            <span x-show="vstate(r.id, a.source).result" x-cloak class="rounded-md px-2 py-1 text-xs" :class="vstate(r.id, a.source).result && vstate(r.id, a.source).result.ok ? 'bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300'" x-text="vstate(r.id, a.source).result ? vstate(r.id, a.source).result.message : ''"></span>
+                                        </div>
+                                        <p x-show="a.source === 'database'" class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{{ __('settings.backup_restore_db_hint') }}</p>
+                                    </div>
+                                </template>
+                            </div>
                             <pre x-show="r.log" class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-gray-900 p-3 font-mono text-[11px] leading-relaxed text-gray-100" x-text="r.log"></pre>
                             <p x-show="! r.log" class="text-xs text-gray-400 dark:text-gray-500">{{ __('settings.backup_no_log') }}</p>
                         </td>

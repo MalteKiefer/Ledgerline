@@ -20,13 +20,19 @@ use Illuminate\Support\Carbon;
  * @property list<string>|null $notify_channels
  */
 #[Fillable([
-    'name', 'source', 'backup_destination_id', 'cron', 'retention',
+    'name', 'source', 'sources', 'mode', 'backup_destination_id', 'cron', 'retention',
+    'keep_daily', 'keep_weekly', 'keep_monthly',
     'encrypt', 'passphrase', 'notify_channels', 'enabled',
 ])]
 #[Hidden(['passphrase'])] // archive encryption passphrase — never serialize
 class BackupJob extends Model
 {
     public const SOURCES = ['database', 'invoices', 'files'];
+
+    public const MODES = ['full', 'incremental'];
+
+    /** Blob (disk-prefix) sources support incremental mode; the DB dump is always full. */
+    public const INCREMENTAL_SOURCES = ['invoices', 'files'];
 
     /** Notification channels a job may fire on completion (any combination). */
     public const NOTIFY_CHANNELS = ['desktop', 'mail', 'ntfy', 'webhook'];
@@ -35,11 +41,48 @@ class BackupJob extends Model
     {
         return [
             'retention' => 'integer',
+            'sources' => 'array',
+            'keep_daily' => 'integer',
+            'keep_weekly' => 'integer',
+            'keep_monthly' => 'integer',
             'encrypt' => 'boolean',
             'passphrase' => 'encrypted',
             'enabled' => 'boolean',
             'notify_channels' => 'array',
             'last_run_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * The sources this job backs up — the multi-select list, falling back to the
+     * legacy single `source` column. Only known sources.
+     *
+     * @return list<string>
+     */
+    public function effectiveSources(): array
+    {
+        $list = is_array($this->sources) && $this->sources !== []
+            ? $this->sources
+            : [$this->source];
+        $valid = array_values(array_filter($list, fn ($s): bool => is_string($s) && in_array($s, self::SOURCES, true)));
+
+        return $valid !== [] ? array_values(array_unique($valid)) : ['database'];
+    }
+
+    /**
+     * GFS retention tiers (son/father/grandfather). Falls back to the flat
+     * `retention` as keep_daily when the tiers are unset.
+     *
+     * @return array{daily: int, weekly: int, monthly: int}
+     */
+    public function retentionTiers(): array
+    {
+        $daily = $this->keep_daily ?? $this->retention ?? 7;
+
+        return [
+            'daily' => max(0, (int) $daily),
+            'weekly' => max(0, (int) ($this->keep_weekly ?? 0)),
+            'monthly' => max(0, (int) ($this->keep_monthly ?? 0)),
         ];
     }
 

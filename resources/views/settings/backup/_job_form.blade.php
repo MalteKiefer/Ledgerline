@@ -8,28 +8,55 @@
     }" class="space-y-3">
     @csrf
     @if ($j) @method('PUT') @endif
+    @php
+        $selSources = (array) old('sources', $j ? $j->effectiveSources() : ['database']);
+        $tiers = $j ? $j->retentionTiers() : ['daily' => 7, 'weekly' => 0, 'monthly' => 0];
+    @endphp
     <div class="grid gap-3 sm:grid-cols-2">
         <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.backup_name') }}</label>
             <input type="text" name="name" value="{{ old('name', $j->name ?? '') }}" required class="{{ $input }}">
             @error('name')<p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>@enderror</div>
-        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.backup_source') }}</label>
-            <select name="source" class="{{ $input }}">
-                @foreach (\App\Models\BackupJob::SOURCES as $src)
-                    <option value="{{ $src }}" @selected(old('source', $j->source ?? '') === $src)>{{ __('settings.backup_source_'.$src) }}</option>
-                @endforeach
-            </select></div>
         <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.backup_destination') }}</label>
             <select name="backup_destination_id" class="{{ $input }}">
                 @foreach ($destinations as $dest)
                     <option value="{{ $dest->id }}" @selected(old('backup_destination_id', $j->backup_destination_id ?? '') == $dest->id)>{{ $dest->name }}</option>
                 @endforeach
             </select></div>
+        <div class="sm:col-span-2">
+            <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.backup_sources') }}</span>
+            <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                @foreach (\App\Models\BackupJob::SOURCES as $src)
+                    <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <input type="checkbox" name="sources[]" value="{{ $src }}" @checked(in_array($src, $selSources, true)) class="rounded border-gray-300 dark:border-gray-700 focus:ring-accent">
+                        {{ __('settings.backup_source_'.$src) }}
+                    </label>
+                @endforeach
+            </div>
+            @error('sources')<p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>@enderror
+        </div>
+        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.backup_mode') }}</label>
+            <select name="mode" class="{{ $input }}">
+                <option value="full" @selected(old('mode', $j->mode ?? 'full') === 'full')>{{ __('settings.backup_mode_full') }}</option>
+                <option value="incremental" @selected(old('mode', $j->mode ?? 'full') === 'incremental')>{{ __('settings.backup_mode_incremental') }}</option>
+            </select>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.backup_mode_hint') }}</p></div>
         <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.backup_cron') }}</label>
             <input type="text" name="cron" value="{{ old('cron', $j->cron ?? '0 3 * * *') }}" class="{{ $input }}">
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.backup_cron_hint') }} {{ __('settings.backup_cron_tz', ['tz' => config('app.timezone')]) }}</p>
             @error('cron')<p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>@enderror</div>
-        <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.backup_retention') }}</label>
-            <input type="number" name="retention" min="1" value="{{ old('retention', $j->retention ?? 7) }}" class="{{ $input }}"></div>
+        <div class="sm:col-span-2">
+            <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.backup_retention_gfs') }}</span>
+            <p class="text-xs text-gray-500 dark:text-gray-400">{{ __('settings.backup_retention_gfs_hint') }}</p>
+            <div class="mt-1 grid gap-3 sm:grid-cols-3">
+                <div><label class="block text-xs text-gray-600 dark:text-gray-400">{{ __('settings.backup_keep_daily') }}</label>
+                    <input type="number" name="keep_daily" min="0" value="{{ old('keep_daily', $tiers['daily']) }}" class="{{ $input }}">
+                    @error('keep_daily')<p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>@enderror</div>
+                <div><label class="block text-xs text-gray-600 dark:text-gray-400">{{ __('settings.backup_keep_weekly') }}</label>
+                    <input type="number" name="keep_weekly" min="0" value="{{ old('keep_weekly', $tiers['weekly']) }}" class="{{ $input }}"></div>
+                <div><label class="block text-xs text-gray-600 dark:text-gray-400">{{ __('settings.backup_keep_monthly') }}</label>
+                    <input type="number" name="keep_monthly" min="0" value="{{ old('keep_monthly', $tiers['monthly']) }}" class="{{ $input }}"></div>
+            </div>
+        </div>
         @php $sel = (array) old('notify_channels', $j->notify_channels ?? []); @endphp
         <div class="sm:col-span-2">
             <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.backup_notify') }}</span>

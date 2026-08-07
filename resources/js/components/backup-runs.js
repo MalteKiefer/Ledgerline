@@ -1,88 +1,24 @@
 import { csrfToken, getJson, postForm } from '../shared/api';
 
-// Live backup run list: loads recent runs as JSON, refreshes after "back up
-// now" (no page reload) and polls while any run is still running. Each finished
-// run can be expanded to its log or downloaded.
+// Live backup run list. A run is one timestamped BATCH holding one archive per
+// selected source; each archive has its own download / verify / decrypt /
+// restore actions, shown in the run's expanded detail row.
 export default (labels = {}) => ({
     runs: [],
     expanded: {},
-    pollUntil: 0, // keep polling until this timestamp (covers queue lag + run time)
+    pollUntil: 0,
     _timer: null,
-    decrypt: { open: false, id: null },
-    // Guided restore + non-destructive verify (dry run).
-    restore: { open: false, run: null },
-    verifyPass: '',
-    verifyBusy: false,
-    verifyResult: null, // { ok, message }
-    // Per-row actions live in a 3-dot menu, teleported to <body> and positioned
-    // by the trigger's rect so the runs table's horizontal scroll can't clip it.
-    menuRunId: null,
-    menuX: 0,
-    menuY: 0,
-    get menuRun() { return this.runs.find((r) => r.id === this.menuRunId) || null; },
-    toggleMenu(r, ev) {
-        if (this.menuRunId === r.id) { this.menuRunId = null; return; }
-        const rect = ev.currentTarget.getBoundingClientRect();
-        this.menuX = Math.round(rect.right);
-        this.menuY = Math.round(rect.bottom + 4);
-        this.menuRunId = r.id;
-    },
-    closeMenu() { this.menuRunId = null; },
-
-    openDecrypt(id) {
-        this.decrypt = { open: true, id };
-    },
-    get decryptAction() {
-        return (labels.decryptBase || '').replace('__id__', this.decrypt.id);
-    },
-
-    openRestore(r) {
-        this.restore = { open: true, run: r };
-        this.verifyPass = '';
-        this.verifyBusy = false;
-        this.verifyResult = null;
-    },
-    closeRestore() {
-        this.restore = { open: false, run: null };
-    },
-    restoreDecryptAction() {
-        return this.restore.run ? (labels.decryptBase || '').replace('__id__', this.restore.run.id) : '';
-    },
-    restoreDownloadUrl() {
-        return this.restore.run ? this.downloadUrl(this.restore.run.id) : '';
-    },
-    async runVerify() {
-        const r = this.restore.run;
-        if (! r) return;
-        this.verifyBusy = true;
-        this.verifyResult = null;
-        try {
-            const body = new URLSearchParams();
-            if (this.verifyPass) body.set('passphrase', this.verifyPass);
-            const res = await fetch((labels.verifyBase || '').replace('__id__', r.id), {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: body.toString(),
-            });
-            const data = res.ok ? await res.json() : { ok: false, message: 'Request failed.' };
-            this.verifyResult = { ok: !! data.ok, message: data.message || '' };
-            this.load(); // refresh the row's stored verify badge
-        } catch (e) {
-            this.verifyResult = { ok: false, message: 'Verification could not be started.' };
-        } finally {
-            this.verifyBusy = false;
-        }
-    },
+    // Decrypt modal (carries which run + source archive to decrypt).
+    decrypt: { open: false, id: null, source: null },
+    // Per-archive verify state, keyed `${runId}:${source}`.
+    verify: {}, // { [key]: { pass, busy, result } }
 
     init() {
         this.load();
-        // A job was triggered (here or elsewhere): poll for a window so the new
-        // run appears and updates even if the queue is slow to pick it up.
         window.addEventListener('backup-ran', () => {
             this.pollUntil = Date.now() + 180000; // 3 min
             this.load();
         });
-        // Poll while something is running, or within a post-trigger window.
         this._timer = setInterval(() => {
             if (! document.hidden && (this.anyRunning() || Date.now() < this.pollUntil)) {
                 this.load();
@@ -105,18 +41,87 @@ export default (labels = {}) => ({
         this.expanded[id] = ! this.expanded[id];
     },
 
-    downloadUrl(id) {
-        return labels.downloadBase.replace('__id__', id);
+    hasArchives(r) {
+        return Array.isArray(r.archives) && r.archives.length > 0;
+    },
+
+    sourceLabel(source) {
+        return (labels.sourceLabels && labels.sourceLabels[source]) || source;
+    },
+
+    // --- Download ---
+    downloadUrl(id, source) {
+        const base = labels.downloadBase.replace('__id__', id);
+        return `${base}?source=${encodeURIComponent(source)}`;
+    },
+
+    // --- Verify (dry run, per archive) ---
+    vkey(id, source) { return `${id}:${source}`; },
+    vstate(id, source) {
+        const k = this.vkey(id, source);
+        if (! this.verify[k]) this.verify[k] = { pass: '', busy: false, result: null };
+        return this.verify[k];
+    },
+    async runVerify(id, source) {
+        const st = this.vstate(id, source);
+        st.busy = true;
+        st.result = null;
+        try {
+            const body = new URLSearchParams();
+            body.set('source', source);
+            if (st.pass) body.set('passphrase', st.pass);
+            const res = await fetch(labels.verifyBase.replace('__id__', id), {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+            });
+            const data = res.ok ? await res.json() : { ok: false, message: 'Request failed.' };
+            st.result = { ok: !! data.ok, message: data.message || '' };
+            this.load();
+        } catch (e) {
+            st.result = { ok: false, message: 'Verification could not be started.' };
+        } finally {
+            st.busy = false;
+        }
+    },
+
+    // --- Decrypt (encrypted archive → plaintext download) ---
+    openDecrypt(id, source) {
+        this.decrypt = { open: true, id, source };
+    },
+    get decryptAction() {
+        return (labels.decryptBase || '').replace('__id__', this.decrypt.id);
+    },
+
+    // --- Restore a blob archive (files/invoices) onto live data ---
+    async restore(id, source) {
+        const ok = await this.$store.confirm.ask(
+            (labels.restoreConfirm || 'Restore :source onto live data?').replace(':source', this.sourceLabel(source)),
+        );
+        if (! ok) return;
+        try {
+            const res = await fetch(labels.restoreBase.replace('__id__', id), {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ source }).toString(),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.ok) {
+                window.llToast?.((labels.restoreDone || 'Restored :count file(s).').replace(':count', data.files ?? 0));
+            } else {
+                window.llToast?.((labels.restoreFailed || 'Restore failed: :error').replace(':error', data.message || res.status), 'error');
+            }
+        } catch (e) {
+            window.llToast?.((labels.restoreFailed || 'Restore failed: :error').replace(':error', 'network'), 'error');
+        }
     },
 
     async cancel(id) {
-        // Flip the flag optimistically so the button turns into "cancelling…"
-        // right away; the manager stops at its next checkpoint.
         const run = this.runs.find((r) => r.id === id);
         if (run) { run.cancellable = false; run.cancelling = true; }
         try {
             await postForm(labels.cancelBase.replace('__id__', id), null, 'POST');
-        } catch (e) { /* poll will reconcile */ }
+        } catch (e) { /* poll reconciles */ }
         this.pollUntil = Date.now() + 60000;
         this.load();
     },

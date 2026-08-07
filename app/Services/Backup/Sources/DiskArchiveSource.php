@@ -25,6 +25,14 @@ abstract class DiskArchiveSource implements BackupSource
     /** Base name for the produced archive (e.g. "files", "gallery"). */
     abstract protected function name(): string;
 
+    /** When set (incremental mode), only stage objects modified at or after this unix ts. */
+    private ?int $sinceTs = null;
+
+    public function onlySince(int $ts): void
+    {
+        $this->sinceTs = $ts;
+    }
+
     public function build(string $workDir): BackupArtifact
     {
         $disk = BlobStore::disk();
@@ -33,6 +41,13 @@ abstract class DiskArchiveSource implements BackupSource
 
         $staged = 0;
         foreach ($disk->allFiles($this->prefix()) as $file) {
+            // Incremental: skip objects unchanged since the given timestamp.
+            if ($this->sinceTs !== null) {
+                $mtime = (int) $disk->lastModified($file);
+                if ($mtime > 0 && $mtime < $this->sinceTs) {
+                    continue;
+                }
+            }
             // Object keys come from the disk; refuse any that would escape the
             // staging directory (defence-in-depth against a crafted key).
             $real = ArchiveName::safe($staging, $file);
