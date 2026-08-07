@@ -207,4 +207,23 @@ class FilesRelationalTest extends TestCase
         $this->getJson(route('files.rel.labels'))->assertOk()->assertJsonCount(0, 'labels');
         $this->putJson(route('files.rel.labels.update', $lid), ['name' => 'x'])->assertNotFound();
     }
+
+    public function test_image_thumbnail_is_generated_and_cached(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $fid = (int) $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->image('pic.png', 800, 600)])->json('file.id');
+
+        $res = $this->get(route('files.rel.thumb', $fid))->assertOk()
+            ->assertHeader('Content-Type', 'image/webp')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->assertNotEmpty($res->streamedContent());
+
+        // Cached on the files disk under files/thumb/.
+        $file = FileEntry::findOrFail($fid);
+        Storage::disk(config('files.disk'))->assertExists('files/thumb/'.$fid.'-'.$file->version.'.webp');
+
+        // A non-image file has no thumbnail → 404.
+        $tid = (int) $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->createWithContent('t.txt', 'x')])->json('file.id');
+        $this->get(route('files.rel.thumb', $tid))->assertNotFound();
+    }
 }

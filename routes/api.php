@@ -139,6 +139,7 @@ Route::prefix('v1')->group(function (): void {
             Route::put('/files/entries/{file}', [FilesController::class, 'update'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.update');
             Route::delete('/files/entries/{file}', [FilesController::class, 'destroy'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.destroy');
             Route::get('/files/entries/{file}/raw', [FilesController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('api.files.raw');
+            Route::get('/files/entries/{file}/thumb', [FilesController::class, 'thumb'])->whereNumber('file')->middleware('throttle:3000,1')->name('api.files.thumb');
             Route::post('/files/entries/{file}/content', [FilesController::class, 'replaceContent'])->whereNumber('file')->middleware('throttle:1200,1')->name('api.files.content');
             Route::post('/files/entries/{file}/toggle', [FilesController::class, 'toggle'])->whereNumber('file')->middleware('throttle:1200,1')->name('api.files.toggle');
             Route::get('/files/entries/{file}/versions', [FilesController::class, 'versions'])->whereNumber('file')->name('api.files.versions');
