@@ -238,7 +238,7 @@ class BackupApiTest extends TestCase
         ])->assertOk();
 
         $response->assertJsonStructure(['jobs' => [[
-            'id', 'name', 'source', 'mode', 'destination_id',
+            'id', 'name', 'source', 'destination_id',
             'cron', 'retention', 'encrypt', 'enabled',
             'statistics' => ['runs', 'ok', 'failed'],
         ]]]);

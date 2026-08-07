@@ -211,7 +211,7 @@ return [
     'notify_test_hint' => 'Отправляет тестовое сообщение с использованием сохранённых выше настроек — сначала сохраните.',
     'notify_test_send' => 'Тест :channel',
     'backup_section' => 'Резервное копирование',
-    'backup_desc' => 'Запланированные резервные копии базы данных, файлов и галереи на S3, B2, SFTP или WebDAV.',
+    'backup_desc' => 'Запланированные резервные копии базы данных и PDF-счетов/чеков на S3, B2, SFTP или WebDAV.',
     'backup_heading' => 'Резервное копирование',
     'backup_destinations_heading' => 'Назначения',
     'backup_jobs_heading' => 'Задания',
@@ -256,8 +256,6 @@ return [
     'backup_delete_confirm' => 'Удалить это? Действие необратимо.',
     'backup_never_run' => 'никогда',
     'backup_source_database' => 'База данных',
-    'backup_source_files' => 'Файлы',
-    'backup_source_gallery' => 'Галерея',
     'backup_source_invoices' => 'Счета и квитанции',
     'backup_test' => 'Проверить соединение',
     'backup_stat_runs' => 'Запуски',
@@ -299,10 +297,6 @@ return [
     'paperless_correspondents' => 'Корреспонденты',
     'paperless_synced_at' => 'Последнее обновление: :time.',
     'paperless_never_synced' => 'Ещё не обновлялось.',
-    'backup_mirror_hint' => 'Инкрементное зеркалирование: передаются только изменённые файлы; версии, хранение и шифрование архива не применяются.',
-    'backup_mode' => 'Режим резервного копирования',
-    'backup_mode_mirror' => 'Инкрементное зеркало (только изменения)',
-    'backup_mode_archive' => 'Полный архив (tar.gz)',
     'safe_url' => ':attribute должен быть http(s) URL и не должен указывать на локальный или служебный адрес.',
 
     // Company profile (invoices)

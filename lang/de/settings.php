@@ -211,7 +211,7 @@ return [
     'notify_test_hint' => 'Sendet eine Testnachricht mit den oben gespeicherten Einstellungen — bitte erst speichern.',
     'notify_test_send' => ':channel testen',
     'backup_section' => 'Backup',
-    'backup_desc' => 'Zeitgesteuerte Sicherungen von Datenbank, Dateien und Galerie nach S3, B2, SFTP oder WebDAV.',
+    'backup_desc' => 'Zeitgesteuerte Sicherungen von Datenbank + Rechnungs-PDFs/Belegen nach S3, B2, SFTP oder WebDAV.',
     'backup_heading' => 'Backup',
     'backup_destinations_heading' => 'Ziele',
     'backup_jobs_heading' => 'Aufgaben',
@@ -256,8 +256,6 @@ return [
     'backup_delete_confirm' => 'Dies löschen? Kann nicht rückgängig gemacht werden.',
     'backup_never_run' => 'nie',
     'backup_source_database' => 'Datenbank',
-    'backup_source_files' => 'Dateien',
-    'backup_source_gallery' => 'Galerie',
     'backup_source_invoices' => 'Rechnungen & Belege',
     'backup_test' => 'Verbindung testen',
     'backup_stat_runs' => 'Läufe',
@@ -299,10 +297,6 @@ return [
     'paperless_correspondents' => 'Korrespondenten',
     'paperless_synced_at' => 'Zuletzt aktualisiert :time.',
     'paperless_never_synced' => 'Noch nicht aktualisiert.',
-    'backup_mirror_hint' => 'Inkrementeller Spiegel: nur geänderte Dateien werden übertragen; Versionen, Aufbewahrung und Archiv-Verschlüsselung entfallen.',
-    'backup_mode' => 'Backup-Modus',
-    'backup_mode_mirror' => 'Inkrementeller Spiegel (nur Änderungen)',
-    'backup_mode_archive' => 'Vollständiges Archiv (tar.gz)',
     'safe_url' => ':attribute muss eine http(s)-URL sein und darf nicht auf eine Link-local- oder Metadaten-Adresse zeigen.',
 
     // Firmenprofil (Rechnungen)

@@ -211,7 +211,7 @@ return [
     'notify_test_hint' => 'Sends a test message using the saved settings above — save first.',
     'notify_test_send' => 'Test :channel',
     'backup_section' => 'Backup',
-    'backup_desc' => 'Scheduled backups of the database, files and gallery to S3, B2, SFTP or WebDAV.',
+    'backup_desc' => 'Scheduled backups of the database + invoice PDFs/receipts to S3, B2, SFTP or WebDAV.',
     'backup_heading' => 'Backup',
     'backup_destinations_heading' => 'Destinations',
     'backup_jobs_heading' => 'Jobs',
@@ -256,8 +256,6 @@ return [
     'backup_delete_confirm' => 'Delete this? This cannot be undone.',
     'backup_never_run' => 'never',
     'backup_source_database' => 'Database',
-    'backup_source_files' => 'Files',
-    'backup_source_gallery' => 'Gallery',
     'backup_source_invoices' => 'Invoices & receipts',
     'backup_test' => 'Test connection',
     'backup_stat_runs' => 'Runs',
@@ -299,10 +297,6 @@ return [
     'paperless_correspondents' => 'Correspondents',
     'paperless_synced_at' => 'Last refreshed :time.',
     'paperless_never_synced' => 'Not refreshed yet.',
-    'backup_mirror_hint' => 'Incremental mirror: only changed files are transferred; versions, retention and archive encryption do not apply.',
-    'backup_mode' => 'Backup mode',
-    'backup_mode_mirror' => 'Incremental mirror (only changes)',
-    'backup_mode_archive' => 'Full archive (tar.gz)',
     'safe_url' => 'The :attribute must be an http(s) URL and must not point at a link-local or metadata address.',
 
     // Company profile (invoices)

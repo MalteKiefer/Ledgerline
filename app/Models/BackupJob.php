@@ -16,20 +16,15 @@ use Illuminate\Support\Carbon;
  * versions to keep, optional archive encryption and a notification channel.
  *
  * @property Carbon|null $last_run_at
- * @property Carbon|null $mirror_cursor
- * @property Carbon|null $last_full_mirror_at
  * @property list<string>|null $notify_channels
  */
 #[Fillable([
-    'name', 'source', 'mode', 'backup_destination_id', 'cron', 'retention',
+    'name', 'source', 'backup_destination_id', 'cron', 'retention',
     'encrypt', 'passphrase', 'notify_channels', 'enabled',
 ])]
 class BackupJob extends Model
 {
     public const SOURCES = ['database', 'invoices'];
-
-    /** Backup mode for the file-based sources (database is always a full dump). */
-    public const MODES = ['mirror', 'archive'];
 
     /** Notification channels a job may fire on completion (any combination). */
     public const NOTIFY_CHANNELS = ['desktop', 'mail', 'ntfy', 'webhook'];
@@ -43,8 +38,6 @@ class BackupJob extends Model
             'enabled' => 'boolean',
             'notify_channels' => 'array',
             'last_run_at' => 'datetime',
-            'mirror_cursor' => 'datetime',
-            'last_full_mirror_at' => 'datetime',
         ];
     }
 

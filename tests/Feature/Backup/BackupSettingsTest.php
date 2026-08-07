@@ -91,15 +91,17 @@ class BackupSettingsTest extends TestCase
         $this->assertSame(['desktop', 'mail'], $job->notify_channels);
     }
 
-    public function test_an_invalid_backup_mode_is_rejected(): void
+    public function test_an_invalid_backup_source_is_rejected(): void
     {
         $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
+        // The mirror `mode` was removed (finance-only: every source is a full archive).
+        // Source is now the validated enum — a removed module like `gallery` is rejected.
         $this->post(route('settings.backup.jobs.store'), [
-            'name' => 'Bad mode', 'source' => 'database', 'mode' => 'wat',
+            'name' => 'Bad source', 'source' => 'gallery',
             'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 3,
-        ])->assertSessionHasErrors('mode');
+        ])->assertSessionHasErrors('source');
     }
 
     public function test_an_invalid_cron_is_rejected(): void

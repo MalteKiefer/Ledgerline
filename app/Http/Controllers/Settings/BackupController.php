@@ -415,7 +415,6 @@ class BackupController extends Controller
         $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'source' => ['required', Rule::in(BackupJob::SOURCES)],
-            'mode' => ['sometimes', Rule::in(BackupJob::MODES)],
             'backup_destination_id' => ['required', 'exists:backup_destinations,id'],
             'cron' => ['required', 'string', 'max:64'],
             'retention' => ['required', 'integer', 'min:1', 'max:9999'],
@@ -444,7 +443,6 @@ class BackupController extends Controller
         $data = [
             'name' => $request->string('name')->value(),
             'source' => $source,
-            'mode' => $request->input('mode') !== null ? $request->string('mode')->value() : 'mirror',
             'backup_destination_id' => $request->integer('backup_destination_id'),
             'cron' => $cron,
             'retention' => $request->integer('retention'),

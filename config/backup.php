@@ -19,8 +19,6 @@ return [
     |
     */
 
-    'reconcile_hours' => (int) env('BACKUP_RECONCILE_HOURS', 24),
-
     /*
     |--------------------------------------------------------------------------
     | Backup archive passphrase
