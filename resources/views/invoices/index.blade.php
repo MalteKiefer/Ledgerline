@@ -336,7 +336,7 @@
         <div x-show="section === 'receipts'" class="mt-6 relative" x-data="{ drag: false }"
              @dragover.prevent="drag = true" @dragenter.prevent="drag = true"
              @dragleave.prevent="if ($event.target === $el) drag = false"
-             @drop.prevent="drag = false; if ($event.dataTransfer?.files?.length && (transactions || []).length) uploadReceiptsAuto($event.dataTransfer.files)">
+             @drop.prevent="drag = false; if ($event.dataTransfer?.files?.length) uploadStandaloneReceipts($event.dataTransfer.files)">
           {{-- Drop receipts anywhere on the tab to upload + auto-match them by amount --}}
           <div x-show="drag" x-cloak class="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-accent bg-accent/10">
             <span class="rounded-xl bg-white/90 px-4 py-2 text-sm font-medium text-accent shadow dark:bg-[#1c1c1e]/90">{{ __('invoices.receipts_drop_hint') }}</span>
@@ -354,15 +354,13 @@
                   <span x-show="reanalyzeBusy" x-text="reanalyzeProgress + ' / ' + reanalyzeTotal"></span>
                 </x-button>
               </template>
-              <template x-if="(transactions || []).length">
-                <span>
-                  <input type="file" x-ref="autoReceipt" accept="application/pdf,image/*" multiple class="hidden" @change="uploadReceiptsAuto($event.target.files); $event.target.value = ''">
-                  <x-button variant="primary" size="sm" icon="arrow-up-tray" ::disabled="autoUploadBusy" @click="$refs.autoReceipt.click()">
-                    <span x-show="! autoUploadBusy">{{ __('invoices.receipts_add') }}</span>
-                    <span x-show="autoUploadBusy">{{ __('invoices.receipts_uploading') }}</span>
-                  </x-button>
-                </span>
-              </template>
+              <span>
+                <input type="file" x-ref="autoReceipt" accept="application/pdf,image/*" multiple class="hidden" @change="uploadStandaloneReceipts($event.target.files); $event.target.value = ''">
+                <x-button variant="primary" size="sm" icon="arrow-up-tray" ::disabled="autoUploadBusy" @click="$refs.autoReceipt.click()">
+                  <span x-show="! autoUploadBusy">{{ __('invoices.receipts_add') }}</span>
+                  <span x-show="autoUploadBusy">{{ __('invoices.receipts_uploading') }}</span>
+                </x-button>
+              </span>
             </div>
           </div>
 
@@ -482,9 +480,11 @@
                     <div class="min-w-0 flex-1">
                       <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="doc.r.name || '{{ __('invoices.receipt') }}'"></p>
                       <p class="truncate text-xs text-gray-500 dark:text-gray-400">
-                        <span x-text="doc.tx.date"></span> · <span x-text="doc.tx.counterparty || doc.tx.purpose || '—'"></span> · <span class="tabular-nums" x-text="fmtMoney(doc.tx.amount, doc.tx.currency)"></span>
+                        <template x-if="doc.tx"><span><span x-text="doc.tx.date"></span> · <span x-text="doc.tx.counterparty || doc.tx.purpose || '—'"></span> · <span class="tabular-nums" x-text="fmtMoney(doc.tx.amount, doc.tx.currency)"></span></span></template>
+                        <template x-if="! doc.tx"><span>{{ __('invoices.receipt_standalone') }}<span x-show="doc.r.uploadedAt"> · <span class="tabular-nums" x-text="fmtDate(doc.r.uploadedAt)"></span></span></span></template>
                       </p>
                     </div>
+                    <template x-if="! doc.tx"><x-badge variant="accent">{{ __('invoices.receipt_standalone_badge') }}</x-badge></template>
                     <template x-if="doc.r.category"><x-badge variant="gray"><span x-text="doc.r.category"></span></x-badge></template>
                     <template x-if="doc.r.partnerId"><x-icon name="user" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" /></template>
                     <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
@@ -548,7 +548,8 @@
                       </div>
                     </div>
                     <div class="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4 md:w-1/2">
-                    {{-- Linkage --}}
+                    {{-- Linkage: only for receipts tied to a bank booking --}}
+                    <template x-if="receiptDoc.tx">
                     <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2.5">
                       <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_linked') }}</p>
                       <p class="mt-1 text-sm text-gray-800 dark:text-gray-200">
@@ -571,6 +572,14 @@
                         </div>
                       </template>
                     </div>
+                    </template>
+                    {{-- Standalone receipt ("Fremdbeleg"): no booking --}}
+                    <template x-if="! receiptDoc.tx">
+                      <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2.5">
+                        <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_standalone_badge') }}</p>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_standalone_hint') }}<span x-show="receiptDoc.r.uploadedAt"> · <span x-text="fmtDate(receiptDoc.r.uploadedAt)"></span></span></p>
+                      </div>
+                    </template>
 
                     {{-- Category (with suggestions) --}}
                     <div>
@@ -582,15 +591,27 @@
                     {{-- Tax rate (VAT) — stored on the linked booking; the receipt's detected rate is shown as a hint --}}
                     <div>
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_vat_label') }}</label>
-                      <select x-model="receiptDoc.tx.vatCat" @change="_persistTx(receiptDoc.tx)" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                        <option value="">{{ __('invoices.vatcat_none') }}</option>
-                        <option value="19">{{ __('invoices.vatcat_19') }}</option>
-                        <option value="16">{{ __('invoices.vatcat_16') }}</option>
-                        <option value="7">{{ __('invoices.vatcat_7') }}</option>
-                        <option value="0">{{ __('invoices.vatcat_0') }}</option>
-                        <option value="private">{{ __('invoices.vatcat_private') }}</option>
-                      </select>
-                      <template x-if="receiptDoc.r.vat">
+                      {{-- Embedded: VAT stored on the linked booking; standalone: on the receipt itself. --}}
+                      <template x-if="receiptDoc.tx">
+                        <select x-model="receiptDoc.tx.vatCat" @change="_persistTx(receiptDoc.tx)" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                          <option value="">{{ __('invoices.vatcat_none') }}</option>
+                          <option value="19">{{ __('invoices.vatcat_19') }}</option>
+                          <option value="16">{{ __('invoices.vatcat_16') }}</option>
+                          <option value="7">{{ __('invoices.vatcat_7') }}</option>
+                          <option value="0">{{ __('invoices.vatcat_0') }}</option>
+                          <option value="private">{{ __('invoices.vatcat_private') }}</option>
+                        </select>
+                      </template>
+                      <template x-if="! receiptDoc.tx">
+                        <select x-model="receiptDoc.r.vat" @change="saveReceiptDoc()" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                          <option value="">{{ __('invoices.vatcat_none') }}</option>
+                          <option value="19">{{ __('invoices.vatcat_19') }}</option>
+                          <option value="16">{{ __('invoices.vatcat_16') }}</option>
+                          <option value="7">{{ __('invoices.vatcat_7') }}</option>
+                          <option value="0">{{ __('invoices.vatcat_0') }}</option>
+                        </select>
+                      </template>
+                      <template x-if="receiptDoc.tx && receiptDoc.r.vat">
                         <p class="mt-1.5 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                           <span>{{ __('invoices.receipt_vat_detected') }}</span>
                           <x-badge variant="accent"><span x-text="receiptDoc.r.vat + ' %'"></span></x-badge>
@@ -799,7 +820,7 @@
                             <x-icon name="document" class="h-4 w-4 text-gray-400" />
                             <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="d.r.name || '{{ __('invoices.receipt') }}'"></span>
                             <template x-if="d.r.category"><x-badge variant="gray"><span x-text="d.r.category"></span></x-badge></template>
-                            <span class="text-xs tabular-nums text-gray-500" x-text="fmtMoney(d.r.total != null ? d.r.total : Math.abs(d.tx.amount || 0))"></span>
+                            <span class="text-xs tabular-nums text-gray-500" x-text="fmtMoney(d.r.total != null ? d.r.total : (d.tx ? Math.abs(d.tx.amount || 0) : 0))"></span>
                           </button>
                         </template>
                         <template x-if="! projectReceiptList(openProject?.id).length">
@@ -930,12 +951,12 @@
                     </span>
                     <div class="min-w-0 flex-1">
                       <p class="truncate text-sm text-gray-800 dark:text-gray-200" x-text="d.r.name || '{{ __('invoices.receipt') }}'"></p>
-                      <p class="truncate text-xs text-gray-500 dark:text-gray-400"><span x-text="d.tx.date"></span> · <span x-text="d.tx.counterparty || d.tx.purpose || '—'"></span></p>
+                      <p class="truncate text-xs text-gray-500 dark:text-gray-400"><template x-if="d.tx"><span><span x-text="d.tx.date"></span> · <span x-text="d.tx.counterparty || d.tx.purpose || '—'"></span></span></template><template x-if="! d.tx"><span x-text="d.r.uploadedAt ? fmtDate(d.r.uploadedAt) : ''"></span></template></p>
                     </div>
                     <template x-if="d.r.projectId && d.r.projectId !== openProjectId">
                       <x-badge variant="warning"><span x-text="projectName(d.r.projectId)"></span></x-badge>
                     </template>
-                    <span class="shrink-0 text-xs tabular-nums text-gray-500" x-text="fmtMoney(d.r.total != null ? d.r.total : Math.abs(d.tx.amount || 0))"></span>
+                    <span class="shrink-0 text-xs tabular-nums text-gray-500" x-text="fmtMoney(d.r.total != null ? d.r.total : (d.tx ? Math.abs(d.tx.amount || 0) : 0))"></span>
                   </button>
                 </template>
                 <template x-if="! pickerReceipts().length">
@@ -1077,8 +1098,8 @@
                       <template x-for="d in receiptsForPartner(openPartnerRec.id)" :key="d.r.id">
                         <button type="button" @click="openReceiptDoc(d)" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-accent/5">
                           <span class="ll-chip h-8 w-8 shrink-0" style="--chip: #e2915a"><x-icon name="paper-clip" class="h-4 w-4" /></span>
-                          <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="d.r.name || d.r.merchant || '{{ __('invoices.receipt') }}'"></span><span class="block text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="d.tx.date || ''"></span></span>
-                          <span class="shrink-0 text-sm tabular-nums text-gray-700 dark:text-gray-300" x-text="fmtMoney(d.tx.amount, 'EUR', 'de')"></span>
+                          <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="d.r.name || d.r.merchant || '{{ __('invoices.receipt') }}'"></span><span class="block text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="d.tx ? (d.tx.date || '') : (d.r.uploadedAt ? fmtDate(d.r.uploadedAt) : '')"></span></span>
+                          <span class="shrink-0 text-sm tabular-nums text-gray-700 dark:text-gray-300" x-text="d.tx ? fmtMoney(d.tx.amount, 'EUR', 'de') : (d.r.total != null ? fmtMoney(d.r.total) : '')"></span>
                         </button>
                       </template>
                       <template x-if="! receiptsForPartner(openPartnerRec.id).length"><p class="px-4 py-3 text-sm text-gray-400 dark:text-gray-500">—</p></template>

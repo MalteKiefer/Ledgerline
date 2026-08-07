@@ -154,6 +154,29 @@ const normProject = (row) => ({
 
 const normCategory = (row) => ({ id: row.id, name: row.name || '', color: row.color ?? null, icon: row.icon ?? null });
 
+// A standalone receipt ("Fremdbeleg"): a finance_receipts row (no bank transaction
+// required). Mapped to the same client shape the embedded-receipt UI expects, so
+// one detail modal / list handles both — source is tracked on the {r,tx,src} pair.
+const normStandalone = (row) => ({
+    id: row.id,
+    blob_path: row.blob_path || '',
+    name: row.name || 'receipt',
+    mime: row.mime ?? null,
+    size: row.size ?? 0,
+    kind: row.kind || 'receipt',
+    category: row.category ?? null,
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    vat: row.vat ?? null,
+    note: row.note ?? null,
+    ocr: row.ocr ?? null,
+    sig: row.sig ?? null,
+    partnerId: row.partner_id ?? null,
+    projectId: row.finance_project_id ?? null,
+    txId: row.bank_transaction_id ?? null,
+    uploadedAt: row.created_at ?? '',
+    version: row.version ?? 0,
+});
+
 export default (config = {}, labels = {}, initial = {}) => ({
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -167,6 +190,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
     transactions: (initial.transactions || []).map(normTx),
     projects: (initial.projects || []).map(normProject),
     financeCategories: (initial.financeCategories || []).map(normCategory),
+    standaloneReceipts: (initial.standaloneReceipts || []).map(normStandalone), // "Fremdbelege" (no bank transaction)
     invTrash: [], // trashed invoices (loaded on demand from /finance/trash)
 
     // Read-only server insights (additive; best-effort, never block the page).
@@ -360,13 +384,19 @@ export default (config = {}, labels = {}, initial = {}) => ({
             this.transactions = (d.transactions || []).map(normTx);
             this.projects = (d.projects || []).map(normProject);
             this.financeCategories = (d.financeCategories || []).map(normCategory);
+            this.standaloneReceipts = (d.standaloneReceipts || []).map(normStandalone);
             // Re-find open detail refs by id so views stay coherent.
             if (this.current) this.current = this.invoices.find((i) => i.id === this.current.id) || null;
             if (this.payAccount) this.payAccount = this.paymentMethods.find((p) => p.id === this.payAccount.id) || null;
             if (this.receiptDoc) {
-                const tx = this.transactions.find((t) => t.id === this.receiptDoc.tx.id);
-                const r = tx ? (tx.receipts || []).find((x) => x.id === this.receiptDoc.r.id) : null;
-                this.receiptDoc = (tx && r) ? { r, tx } : null;
+                if (this.receiptDoc.src === 'std') {
+                    const r = this.standaloneReceipts.find((x) => x.id === this.receiptDoc.r.id);
+                    this.receiptDoc = r ? { r, tx: null, src: 'std' } : null;
+                } else {
+                    const tx = this.transactions.find((t) => t.id === this.receiptDoc.tx.id);
+                    const r = tx ? (tx.receipts || []).find((x) => x.id === this.receiptDoc.r.id) : null;
+                    this.receiptDoc = (tx && r) ? { r, tx, src: 'tx' } : null;
+                }
             }
         } catch (e) { /* keep in-memory state */ }
     },
@@ -676,6 +706,13 @@ export default (config = {}, labels = {}, initial = {}) => ({
 
     // The raw (plaintext) URL of a stored receipt file (no decryption).
     _receiptRawUrl(tx, r) { return `/finance/transactions/${tx.id}/receipts/${r.id}/raw`; },
+    // Raw-URL / bytes for a receipt doc, source-aware (standalone vs. transaction-embedded).
+    _docRawUrl(doc) { return doc?.src === 'std' ? `/finance/receipts/${doc.r.id}/raw` : this._receiptRawUrl(doc.tx, doc.r); },
+    async _docBytes(doc) {
+        const res = await fetch(this._docRawUrl(doc), { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        if (! res.ok) throw new Error('fetch failed');
+        return new Uint8Array(await res.arrayBuffer());
+    },
     _invoicePdfUrl(inv) { return `/finance/invoices/${inv.id}/pdf`; },
     // The transaction a receipt object belongs to.
     _txOf(r) { return (this.transactions || []).find((t) => (t.receipts || []).some((x) => x === r || (x.id && x.id === r.id))) || null; },
@@ -764,7 +801,45 @@ export default (config = {}, labels = {}, initial = {}) => ({
     _existingReceiptSigs() {
         const set = new Set();
         for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) if (r.sig) set.add(r.sig);
+        for (const r of (this.standaloneReceipts || [])) if (r.sig) set.add(r.sig);
         return set;
+    },
+    // Upload STANDALONE receipts ("Fremdbelege") — no bank transaction required.
+    // The Belege tab uses this so receipts can be filed even with no imported
+    // statement. If a booking matches the amount, it is linked (informational).
+    async uploadStandaloneReceipts(fileList) {
+        const files = [...(fileList || [])];
+        if (! files.length) return;
+        this.autoUploadBusy = true;
+        const seen = this._existingReceiptSigs();
+        let added = 0, dupes = 0;
+        for (const file of files) {
+            try {
+                const bytes = new Uint8Array(await file.arrayBuffer());
+                const sig = await fileSig(bytes.slice(0));
+                if (sig && seen.has(sig)) { dupes++; continue; }
+                const mime = file.type || 'application/octet-stream';
+                const { ocr, a } = await this._analyze(bytes.slice(0), mime, file.name);
+                const rcpt = { total: a ? a.total : null, date: a ? a.date : undefined, currency: a ? a.currency : undefined };
+                const link = (this.transactions || []).length ? autoPick(rcpt, this.transactions, 3) : null;
+                const fd = new FormData();
+                fd.append('file', new File([bytes], file.name || 'receipt', { type: mime }));
+                if (file.name) fd.append('name', file.name);
+                if (a?.category) fd.append('category', a.category);
+                for (const t of (a?.tags || [])) fd.append('tags[]', t);
+                if (a?.vat) fd.append('vat', a.vat);
+                if (ocr) fd.append('ocr', ocr);
+                if (sig) fd.append('sig', sig);
+                if (link) fd.append('bank_transaction_id', link.id);
+                const res = await fetch('/finance/receipts', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() }, body: fd });
+                if (! res.ok) continue;
+                const data = await res.json();
+                if (data?.receipt) { this.standaloneReceipts.unshift(normStandalone(data.receipt)); if (sig) seen.add(sig); added++; }
+            } catch (e) { /* skip */ }
+        }
+        this.autoUploadBusy = false;
+        if (added) window.llToast?.((labels.receipt_uploaded || ':n receipt(s) uploaded.').replace(':n', added));
+        if (dupes) window.llToast?.((labels.receipt_dupes_skipped || ':n duplicate(s) skipped.').replace(':n', dupes));
     },
     // Extract text + analysis from receipt bytes (client-side; ZK-free plaintext pivot).
     async _analyze(bytes, mime, name) {
@@ -815,26 +890,56 @@ export default (config = {}, labels = {}, initial = {}) => ({
     },
     receiptDoc: null,     // the { r, tx } currently edited in the detail modal
     _receiptContacts: [],
+    _docSortKey(d) { return d.src === 'std' ? (d.r.uploadedAt || '') : (d.tx?.date || ''); },
     get allReceipts() {
         const out = [];
-        for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) if (! r.trashed) out.push({ r, tx });
-        return out.sort((a, b) => (b.tx.date || '').localeCompare(a.tx.date || ''));
+        for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) if (! r.trashed) out.push({ r, tx, src: 'tx' });
+        for (const r of (this.standaloneReceipts || [])) out.push({ r, tx: null, src: 'std' });
+        return out.sort((a, b) => this._docSortKey(b).localeCompare(this._docSortKey(a)));
     },
     showReceiptTrash: false,
     get trashedReceipts() {
+        // Standalone receipts trash server-side (removed from the active snapshot),
+        // so only embedded (transaction) receipts appear in the client trash view.
         const out = [];
-        for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) if (r.trashed) out.push({ r, tx });
+        for (const tx of (this.transactions || [])) for (const r of (tx.receipts || [])) if (r.trashed) out.push({ r, tx, src: 'tx' });
         return out.sort((a, b) => String(b.r.trashed).localeCompare(String(a.r.trashed)));
     },
-    async restoreReceipt(d) { if (d?.r) { d.r.trashed = false; await this._persistTx(d.tx); } },
+    // Persist a receipt doc to the right store (embedded → its transaction; standalone → /finance/receipts).
+    async _persistDoc(doc) {
+        if (! doc) return;
+        if (doc.src === 'std') { await this._persistStandalone(doc.r); return; }
+        await this._persistTx(doc.tx);
+    },
+    async _persistStandalone(r) {
+        if (! r) return;
+        const body = { name: r.name, category: r.category, tags: r.tags || [], vat: r.vat, note: r.note, partner_id: r.partnerId, finance_project_id: r.projectId, bank_transaction_id: r.txId, version: r.version };
+        const res = await this._req('PUT', '/finance/receipts/' + r.id, body);
+        if (res.status === 409) { await this.reload(); window.llToast?.(labels.save_failed || 'Saved on another device — reloaded.'); return; }
+        if (! res.ok || ! res.data?.receipt) { window.llToast?.(labels.save_failed || 'Save failed.'); return; }
+        Object.assign(r, normStandalone(res.data.receipt));
+    },
+    async restoreReceipt(d) {
+        if (! d?.r) return;
+        if (d.src === 'std') { await this._req('POST', '/finance/receipts/' + d.r.id + '/restore'); return; }
+        d.r.trashed = false; await this._persistTx(d.tx);
+    },
     async deleteReceiptForever(d) {
         if (! d?.r || ! await this.$store.confirm.ask(labels.receipt_delete_confirm || 'Remove this receipt?')) return;
+        if (d.src === 'std') { await this._removeStandalone(d.r, true); return; }
         await this._deleteReceiptEntry(d.tx, d.r);
     },
     async emptyReceiptTrash() {
         if (! this.trashedReceipts.length) return;
         if (! await this.$store.confirm.ask(labels.trash_empty_confirm || 'Permanently delete all receipts in the trash?')) return;
         for (const { r, tx } of [...this.trashedReceipts]) await this._deleteReceiptEntry(tx, r);
+    },
+    // Soft-delete (or force-delete) a standalone receipt server-side + drop it from the list.
+    async _removeStandalone(r, force = false) {
+        try {
+            await this._req('DELETE', '/finance/receipts/' + r.id + (force ? '/force' : ''));
+        } catch (e) { /* */ }
+        this.standaloneReceipts = (this.standaloneReceipts || []).filter((x) => x.id !== r.id);
     },
     get filteredReceipts() {
         const q = this.receiptQuery.trim().toLowerCase();
@@ -858,9 +963,9 @@ export default (config = {}, labels = {}, initial = {}) => ({
     docPreview: null, // { url, mime, name }
     _loadDocPreview() {
         this.closeDocPreview();
-        const r = this.receiptDoc?.r, tx = this.receiptDoc?.tx;
-        if (! r || ! tx || ! r.blob_path) return; // invoice-linked receipts have no stored file
-        this.docPreview = { url: this._receiptRawUrl(tx, r), mime: r.mime || '', name: r.name || '' };
+        const doc = this.receiptDoc, r = doc?.r;
+        if (! r || ! r.blob_path) return; // invoice-linked receipts have no stored file
+        this.docPreview = { url: this._docRawUrl(doc), mime: r.mime || '', name: r.name || '' };
     },
     closeDocPreview() { this.docPreview = null; },
     get docPreviewIsImage() { return /^image\//.test(this.docPreview?.mime || '') || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(this.docPreview?.name || ''); },
@@ -869,8 +974,8 @@ export default (config = {}, labels = {}, initial = {}) => ({
     async saveReceiptDoc() {
         if (! this.receiptDoc) return;
         this.receiptDoc.r.tags = (this.tagsValue || '').split(',').map((t) => t.trim()).filter(Boolean);
-        await this._learnFromReceipt(this.receiptDoc.r, this.receiptDoc.tx);
-        await this._persistTx(this.receiptDoc.tx);
+        if (this.receiptDoc.tx) await this._learnFromReceipt(this.receiptDoc.r, this.receiptDoc.tx);
+        await this._persistDoc(this.receiptDoc);
     },
     // Move a receipt to another booking (re-link) — move the entry between receipts[] lists.
     async relinkReceiptTo(tx) {
@@ -891,15 +996,16 @@ export default (config = {}, labels = {}, initial = {}) => ({
     relinkQuery: '',
     renameReceiptDoc() {
         if (! this.receiptDoc) return;
-        const cur = this.receiptDoc.r.name || '';
+        const doc = this.receiptDoc, cur = doc.r.name || '';
         this.$store.confirm.prompt(labels.receipt_rename || 'Rename receipt', { value: cur }).then((v) => {
-            if (v != null && v.trim()) { this.receiptDoc.r.name = v.trim(); this._persistTx(this.receiptDoc.tx); }
+            if (v != null && v.trim()) { doc.r.name = v.trim(); this._persistDoc(doc); }
         });
     },
     async deleteReceiptDoc() {
         const doc = this.receiptDoc; if (! doc || doc.r.locked) return;
         if (! await this.$store.confirm.ask(labels.receipt_delete_confirm || 'Remove this receipt?')) return;
-        await this._deleteReceiptEntry(doc.tx, doc.r);
+        if (doc.src === 'std') await this._removeStandalone(doc.r);
+        else await this._deleteReceiptEntry(doc.tx, doc.r);
         this.receiptDoc = null;
     },
 
@@ -908,17 +1014,19 @@ export default (config = {}, labels = {}, initial = {}) => ({
     async reanalyzeReceipt(doc, save = true) {
         const r = doc?.r; if (! r || r.kind === 'invoice' || ! r.blob_path) return false;
         try {
-            const bytes = await this._receiptBytes(doc.tx, r);
+            const bytes = await this._docBytes(doc);
             const text = await extractDocText(bytes, r.mime, r.name);
             if (text && text.replace(/\s+/g, '').length >= 8) {
                 r.ocr = text.slice(0, 200000);
                 this._applyAnalysis(r, analyzeReceiptText(text));
             }
-            await this._ensureContactsLoaded();
-            await this._autoPartner(r, doc.tx);
-            this._renameReceipt(r, doc.tx);
-            this._applyReceiptVat(r, doc.tx);
-            if (save) { await this._persistTx(doc.tx); if (this.receiptDoc === doc) this.tagsValue = (r.tags || []).join(', '); }
+            if (doc.tx) { // learning + auto-fill only makes sense against a booking
+                await this._ensureContactsLoaded();
+                await this._autoPartner(r, doc.tx);
+                this._renameReceipt(r, doc.tx);
+                this._applyReceiptVat(r, doc.tx);
+            }
+            if (save) { await this._persistDoc(doc); if (this.receiptDoc === doc) this.tagsValue = (r.tags || []).join(', '); }
             return true;
         } catch (e) { return false; }
     },
@@ -931,12 +1039,14 @@ export default (config = {}, labels = {}, initial = {}) => ({
         this.reanalyzeBusy = true;
         this.reanalyzeTotal = docs.length; this.reanalyzeProgress = 0;
         let n = 0;
-        const changed = new Set();
+        const changedTx = new Set();
+        const changedStd = [];
         for (const doc of docs) {
-            if (await this.reanalyzeReceipt(doc, false)) { n++; changed.add(doc.tx); }
+            if (await this.reanalyzeReceipt(doc, false)) { n++; if (doc.src === 'std') changedStd.push(doc); else changedTx.add(doc.tx); }
             this.reanalyzeProgress++;
         }
-        for (const tx of changed) await this._persistTx(tx);
+        for (const tx of changedTx) await this._persistTx(tx);
+        for (const doc of changedStd) await this._persistStandalone(doc.r);
         this.reanalyzeBusy = false;
         window.llToast?.((labels.reanalyze_done || ':n receipts recognised.').replace(':n', n));
     },
@@ -1166,7 +1276,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
         const p = this.projects.find((x) => x.id === project.id); if (! p) return;
         const i = (p.expenses || []).indexOf(exp); if (i >= 0) { p.expenses.splice(i, 1); await this._persistProject(p); }
     },
-    async setReceiptProject(id) { const r = this.receiptDoc?.r; if (! r) return; r.projectId = id || null; await this._persistTx(this.receiptDoc.tx); },
+    async setReceiptProject(id) { const r = this.receiptDoc?.r; if (! r) return; r.projectId = id || null; await this._persistDoc(this.receiptDoc); },
     openProjectDetail(id) { this.openProjectId = id; this.subPage = 1; this.expPage = 1; this.prcPage = 1; },
     get projectKindSummary() {
         let business = 0, priv = 0;
@@ -1234,7 +1344,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
         else { r.partnerId = opt.id; r.contactId = null; r.partnerName = opt.name; }
         r.partnerQuery = '';
         if (! r.category && opt && opt.name) { const learned = this._learnedCategory(opt.name); if (learned) r.category = learned; }
-        await this._persistTx(this.receiptDoc.tx);
+        await this._persistDoc(this.receiptDoc);
     },
     receiptPartnerName(r) {
         if (r.partnerName) return r.partnerName;

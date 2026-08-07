@@ -35,10 +35,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *   2. BackupJob.passphrase (encrypted — the only thing protecting the vault-key
  *      material inside a database dump) is NEVER serialised into any GET/list response.
  *
- * The one additional server-side guard that must be preserved here:
- *   source === 'database' && !encrypt  →  422
- * A database backup carries the wrapped vault keys in plaintext. Writing it
- * unencrypted to an off-box destination is an unconditional security violation.
+ * Encryption of a database dump is recommended (cleartext financial PII) but no
+ * longer forced — the ZK/vault-key oracle is gone (plaintext pivot) and a local
+ * FDE server may back up unencrypted by choice. Still 422 if encryption is
+ * requested without an available passphrase.
  */
 class BackupController extends Controller
 {
@@ -145,10 +145,8 @@ class BackupController extends Controller
     /**
      * Create a job.
      *
-     * PRESERVED INVARIANT: source === 'database' && !encrypt  →  422.
-     * A database dump carries the non-ZK rows in plaintext AND the wrapped
-     * vault-key material (an offline passphrase-cracking oracle). Writing it
-     * unencrypted to an off-box destination is never permitted.
+     * Encryption of a database dump is recommended (cleartext financial PII) but
+     * optional; 422 only if encryption is requested without an available passphrase.
      */
     public function storeJob(Request $request): JsonResponse
     {
@@ -523,14 +521,10 @@ class BackupController extends Controller
             'enabled' => $request->boolean('enabled'),
         ];
 
-        // CRITICAL INVARIANT — must never be relaxed:
-        // A database dump carries the non-ZK rows in plaintext PLUS the wrapped
-        // vault-key material (an offline passphrase-cracking oracle). Writing it
-        // to an off-box destination without encryption is unconditionally forbidden.
-        if ($source === 'database' && ! $encrypt) {
-            throw ValidationException::withMessages(['encrypt' => __('settings.backup_db_encrypt_required')]);
-        }
-
+        // Encryption is strongly recommended for a database dump (cleartext financial
+        // PII) but no longer forced — the ZK/vault-key material that made an
+        // unencrypted dump an offline cracking oracle is gone (plaintext pivot), and
+        // a local FDE-encrypted server may back up unencrypted by choice.
         $envPassphrase = config('backup.passphrase', '');
         if ($requirePassphrase && $encrypt
             && $passphrase === '' && (is_string($envPassphrase) ? $envPassphrase : '') === '') {

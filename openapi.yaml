@@ -613,6 +613,30 @@ components:
         key: { type: string }
         ids: { type: array, items: { type: integer } }
 
+    FinanceReceipt:
+      type: object
+      description: "Standalone receipt (relational finance_receipts) — a receipt document WITHOUT a bank transaction (\"Fremdbeleg\"). Bytes plaintext on the files disk; blob_path/size/sig server-owned. Optional bank_transaction_id links it to a booking."
+      properties:
+        id: { type: integer }
+        user_id: { type: integer, description: "Owner (stamped server-side; read-only)." }
+        bank_transaction_id: { type: integer, nullable: true, description: "Optional link to a bank booking." }
+        finance_project_id: { type: integer, nullable: true }
+        blob_path: { type: string, description: "Server-owned storage path (files disk)." }
+        name: { type: string }
+        mime: { type: string, nullable: true }
+        size: { type: integer }
+        sig: { type: string, nullable: true, description: "Content dedup signature." }
+        kind: { type: string }
+        category: { type: string, nullable: true }
+        tags: { type: array, items: { type: string } }
+        vat: { type: string, nullable: true }
+        note: { type: string, nullable: true }
+        partner_id: { type: integer, nullable: true }
+        ocr: { type: string, nullable: true }
+        version: { type: integer }
+        created_at: { type: string, format: date-time, nullable: true }
+        updated_at: { type: string, format: date-time, nullable: true }
+        deleted_at: { type: string, format: date-time, nullable: true }
     BankTransaction:
       type: object
       description: "Bank-statement line (relational bank_transactions). All columns plaintext at rest since v1.516.0. Amount/date/vat_cat drive stats + VAT."
@@ -1868,6 +1892,7 @@ paths:
                   projects: { type: array, items: { $ref: "#/components/schemas/FinanceProject" } }
                   financeCategories: { type: array, items: { $ref: "#/components/schemas/FinanceCategory" } }
                   transactions: { type: array, items: { $ref: "#/components/schemas/BankTransaction" } }
+                  standaloneReceipts: { type: array, items: { $ref: "#/components/schemas/FinanceReceipt" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /finance/reports:
@@ -2750,6 +2775,124 @@ paths:
         "200": { description: Receipt bytes., content: { application/octet-stream: { schema: { type: string, format: binary } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/receipts:
+    post:
+      tags: [Finance]
+      operationId: financeStandaloneReceiptStore
+      summary: Upload a standalone receipt ("Fremdbeleg") without a bank transaction
+      description: >
+        Files a receipt document that is NOT tied to a bank booking (documentation
+        that must be kept even with no imported statement). Multipart; the file is
+        stored plaintext on the files disk (blob_path/size/sig server-set). An
+        optional bank_transaction_id links it to a booking. Throttle 1200/min.
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                name: { type: string, maxLength: 500 }
+                kind: { type: string, maxLength: 24 }
+                category: { type: string, maxLength: 160 }
+                tags: { type: array, items: { type: string, maxLength: 100 } }
+                vat: { type: string, maxLength: 16 }
+                note: { type: string, maxLength: 2000 }
+                ocr: { type: string, maxLength: 200000 }
+                sig: { type: string, maxLength: 128 }
+                partner_id: { type: integer }
+                bank_transaction_id: { type: integer }
+                finance_project_id: { type: integer }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { receipt: { $ref: "#/components/schemas/FinanceReceipt" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/receipts/{receipt}:
+    put:
+      tags: [Finance]
+      operationId: financeStandaloneReceiptUpdate
+      summary: Update a standalone receipt (optimistic version)
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: receipt, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 500 }
+                category: { type: string, nullable: true }
+                tags: { type: array, items: { type: string } }
+                vat: { type: string, nullable: true }
+                note: { type: string, nullable: true }
+                partner_id: { type: integer, nullable: true }
+                bank_transaction_id: { type: integer, nullable: true }
+                finance_project_id: { type: integer, nullable: true }
+                version: { type: integer, minimum: 0 }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { receipt: { $ref: "#/components/schemas/FinanceReceipt" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/VersionConflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Finance]
+      operationId: financeStandaloneReceiptDestroy
+      summary: Soft-delete a standalone receipt
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: receipt, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Trashed., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/receipts/{id}/restore:
+    post:
+      tags: [Finance]
+      operationId: financeStandaloneReceiptRestore
+      summary: Restore a soft-deleted standalone receipt
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, properties: { receipt: { $ref: "#/components/schemas/FinanceReceipt" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/receipts/{id}/force:
+    delete:
+      tags: [Finance]
+      operationId: financeStandaloneReceiptForce
+      summary: Permanently delete a standalone receipt (removes the stored file)
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/receipts/{receipt}/raw:
+    get:
+      tags: [Finance]
+      operationId: financeStandaloneReceiptRaw
+      summary: Stream a standalone receipt file (sandboxed)
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: receipt, in: path, required: true, schema: { type: integer } }
+        - { name: download, in: query, required: false, schema: { type: boolean } }
+      responses:
+        "200": { description: Receipt bytes., content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /invoices/ocr:

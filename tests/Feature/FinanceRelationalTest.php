@@ -8,6 +8,7 @@ use App\Models\BankTransaction;
 use App\Models\FinanceCategory;
 use App\Models\FinancePartner;
 use App\Models\FinanceProject;
+use App\Models\FinanceReceipt;
 use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use App\Models\User;
@@ -350,5 +351,50 @@ class FinanceRelationalTest extends TestCase
         $settings->update(['invoice_vat_ist' => false]);
         $soll = $this->getJson(route('finance.reports.vat-advance', ['year' => 2026]))->assertOk()->json();
         $this->assertSame(57.0, (float) $soll['outputVat']);
+    }
+
+    public function test_standalone_receipt_upload_without_a_transaction(): void
+    {
+        // "Fremdbelege": a receipt document filed with no bank transaction.
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $res = $this->post(route('finance.receipts.store'), [
+            'file' => UploadedFile::fake()->create('beleg.pdf', 20, 'application/pdf'),
+            'category' => 'Büro',
+            'tags' => ['2026', 'quittung'],
+        ])->assertCreated();
+        $id = $res->json('receipt.id');
+        $this->assertIsInt($id);
+        $this->assertNull($res->json('receipt.bank_transaction_id'));
+
+        $r = FinanceReceipt::find($id);
+        $this->assertNotNull($r);
+        $this->assertSame($user->id, $r->user_id);
+        $this->assertStringStartsWith('invoices/', (string) $r->blob_path);
+        $this->assertTrue(Storage::disk(config('files.disk'))->exists($r->blob_path));
+
+        // Appears in the snapshot the page hydrates from.
+        $this->getJson(route('finance.data'))->assertOk()->assertJsonPath('standaloneReceipts.0.id', $id);
+
+        // Update (optimistic) + serve + soft-delete.
+        $this->putJson(route('finance.receipts.update', $id), ['category' => 'Reise', 'version' => 0])
+            ->assertOk()->assertJsonPath('receipt.category', 'Reise');
+        $this->get(route('finance.receipts.raw', $id))->assertOk();
+        $this->deleteJson(route('finance.receipts.destroy', $id))->assertOk();
+        $this->assertSoftDeleted('finance_receipts', ['id' => $id]);
+    }
+
+    public function test_standalone_receipt_is_owner_scoped(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $id = $this->post(route('finance.receipts.store'), [
+            'file' => UploadedFile::fake()->create('x.pdf', 10, 'application/pdf'),
+        ])->assertCreated()->json('receipt.id');
+
+        $this->actingAs(User::factory()->create());
+        $this->get(route('finance.receipts.raw', $id))->assertNotFound();
+        $this->putJson(route('finance.receipts.update', $id), ['category' => 'x'])->assertNotFound();
     }
 }

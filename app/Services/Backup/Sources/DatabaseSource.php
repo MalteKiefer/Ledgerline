@@ -15,9 +15,11 @@ use Spatie\DbDumper\Databases\PostgreSql;
  * gzipped copy of the database file). The dump contains ALL user data in
  * plaintext: invoices, bank imports, receipts, and partner/customer PII (no
  * zero-knowledge ciphertext remains after the plaintext-relational pivot). The
- * dump artifact is therefore full cleartext financial PII and MUST be encrypted
- * before it leaves the host — enforcement lives in BackupManager::run() and
- * Settings\BackupController; do not remove those gates.
+ * dump artifact is therefore full cleartext financial PII: encryption is strongly
+ * recommended before it leaves the host, but no longer forced (a local,
+ * FDE-encrypted, non-internet-facing server may back up unencrypted by choice —
+ * see the Security register). BackupManager still fails closed if encryption is
+ * requested without a passphrase.
  */
 final class DatabaseSource implements BackupSource
 {

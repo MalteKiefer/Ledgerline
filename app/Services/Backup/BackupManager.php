@@ -68,13 +68,13 @@ final class BackupManager
 
         try {
             $step(sprintf('Backup "%s" started (source: %s).', $job->name, $job->source));
-            // A database dump now contains ALL user financial data in plaintext
-            // (invoices, bank imports, receipts, partner/customer PII — no
-            // zero-knowledge ciphertext remains). It must never leave the box
-            // unencrypted — enforce here, not only in the controller, so a job
-            // created via seeder/console/legacy can't ship a cleartext dump.
-            if ($job->source === 'database' && (! $job->encrypt || ! $job->effectivePassphrase())) {
-                throw new RuntimeException('A database backup must be encrypted (set encryption + a passphrase).');
+            // Encryption for a database dump is recommended (cleartext financial PII)
+            // but optional (plaintext pivot removed the vault-key oracle; a local
+            // FDE server may back up unencrypted by choice). Still fail closed if
+            // encryption was REQUESTED but no key is available — silently shipping a
+            // cleartext dump when the user asked for encryption would be worse.
+            if ($job->encrypt && ! $job->effectivePassphrase()) {
+                throw new RuntimeException('Encryption is enabled for this backup but no passphrase is set (job or BACKUP_PASSPHRASE).');
             }
             if ($job->destination === null) {
                 throw new RuntimeException('No destination configured for this backup job.');
