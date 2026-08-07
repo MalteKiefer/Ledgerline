@@ -3043,6 +3043,18 @@ paths:
         "200": { description: File bytes., content: { application/octet-stream: { schema: { type: string, format: binary } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{file}/thumb:
+    get:
+      tags: [Files]
+      operationId: filesThumb
+      summary: Cached square WebP thumbnail for an image file
+      description: "Generated on first request (cached, keyed by file id + version). 404 for non-image / undecodable files (client falls back to a type icon). Sandboxed."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: WebP thumbnail., content: { image/webp: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /files/entries/{file}/toggle:
     post:
       tags: [Files]

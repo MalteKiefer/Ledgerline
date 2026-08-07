@@ -10,6 +10,7 @@ use App\Models\FileLabel;
 use App\Models\FileVersion;
 use App\Models\UserSetting;
 use App\Support\DiskTempFile;
+use App\Support\ImageManagerFactory;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Intervention\Image\Encoders\WebpEncoder;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -740,6 +742,42 @@ class FilesController extends Controller
         $hash = hash_file('sha256', $real);
 
         return $hash !== false ? $hash : null;
+    }
+
+    /**
+     * Serve a cached square WebP thumbnail for an image file (generated on first
+     * request, keyed by file id + version so a content-replace regenerates it).
+     * Non-images / undecodable files → 404 (the client falls back to a type icon).
+     */
+    public function thumb(Request $request, FileEntry $file, ImageManagerFactory $images): StreamedResponse
+    {
+        $mime = (string) $file->mime;
+        abort_unless(str_starts_with($mime, 'image/'), 404);
+
+        $thumbPath = 'files/thumb/'.$file->id.'-'.$file->version.'.webp';
+        if (! $this->fs()->exists($thumbPath)) {
+            $src = (string) $file->storage_path; // server-owned (files/{uuid})
+            abort_if($src === '' || ! $this->fs()->exists($src), 404);
+            try {
+                // Stage the source bytes to a temp file (RAII-unlinked) and decode
+                // from a path — the same pattern the avatar re-encoder uses.
+                $bytes = (string) $this->fs()->get($src);
+                $tmp = DiskTempFile::create('llthumb')->withExtension('img');
+                file_put_contents($tmp->path(), $bytes);
+                $webp = (string) $images->make()->decodePath($tmp->path())
+                    ->cover(400, 400)->encode(new WebpEncoder(quality: 78));
+                $this->fs()->put($thumbPath, $webp);
+            } catch (\Throwable $e) {
+                abort(404);
+            }
+        }
+
+        return $this->fs()->response($thumbPath, 'thumb.webp', [
+            'Content-Type' => 'image/webp',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+            'Cache-Control' => 'private, max-age=86400',
+        ], 'inline');
     }
 
     // ---- Labels (coloured, user-defined taxonomy) ----

@@ -248,8 +248,9 @@
                             @dragover.prevent="row.kind === 'folder' && dragItem && $event.currentTarget.classList.add('ring-2','ring-gray-400')"
                             @dragleave="$event.currentTarget.classList.remove('ring-2','ring-gray-400')"
                             @drop.prevent="$event.currentTarget.classList.remove('ring-2','ring-gray-400'); if (row.kind === 'folder' && dragItem) { dropInto(row.id); dragItem = null; }">
-                            <button type="button" @click="row.kind === 'folder' ? (view = 'files', cwd = row.id) : openFile(row)" class="flex aspect-square items-center justify-center bg-gray-50 dark:bg-gray-800">
-                                <span class="relative flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-sm" :style="'background:' + rowTint(row)">
+                            <button type="button" x-data="{ thumbOk: true }" @click="row.kind === 'folder' ? (view = 'files', cwd = row.id) : openFile(row)" class="flex aspect-square items-center justify-center overflow-hidden bg-gray-50 dark:bg-gray-800">
+                                <img x-show="isImageRow(row) && thumbOk" :src="thumbUrl(row)" x-on:error="thumbOk = false" loading="lazy" alt="" class="h-full w-full object-cover">
+                                <span x-show="! (isImageRow(row) && thumbOk)" class="relative flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-sm" :style="'background:' + rowTint(row)">
                                     <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" :d="rowIconPath(row)" /></svg>
                                 </span>
                             </button>

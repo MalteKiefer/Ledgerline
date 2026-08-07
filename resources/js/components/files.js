@@ -259,6 +259,8 @@ export default (config = {}, labels = {}, initial = {}) => ({
     },
 
     // Rich category (uses the filename extension + MIME) for a row.
+    isImageRow(row) { return row?.kind === 'file' && /^image\//.test(row?.mime || ''); },
+    thumbUrl(row) { return '/files/entries/' + row.id + '/thumb'; },
     fileCat(row) { return fileCategory(row?.name, row?.mime); },
     typeLabel(file) { return labels.types?.[this.fileCat(file)] ?? file?.mime ?? ''; },
     fileIconPath(row) { return CATEGORY_ICON[this.fileCat(row)] ?? CATEGORY_ICON.OTHER; },
