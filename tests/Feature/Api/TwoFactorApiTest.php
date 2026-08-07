@@ -130,12 +130,25 @@ class TwoFactorApiTest extends TestCase
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
         $response = $this->withToken($token)
-            ->getJson('/api/v1/user/two-factor/recovery-codes')
+            ->json('GET', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'password'])
             ->assertOk();
 
         $codes = $response->json('recovery_codes');
         $this->assertIsArray($codes);
         $this->assertCount(8, $codes);
+    }
+
+    public function test_recovery_codes_read_requires_the_current_password(): void
+    {
+        $user = User::factory()->create();
+        $token = $this->deviceToken($user);
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable');
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
+
+        // A stolen device token alone cannot exfiltrate the standing recovery codes.
+        $this->withToken($token)
+            ->json('GET', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'wrong'])
+            ->assertUnprocessable()->assertJsonValidationErrors(['current_password']);
     }
 
     public function test_recovery_codes_returns_404_when_not_active(): void
@@ -144,8 +157,19 @@ class TwoFactorApiTest extends TestCase
         $token = $this->deviceToken($user);
 
         $this->withToken($token)
-            ->getJson('/api/v1/user/two-factor/recovery-codes')
+            ->json('GET', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'password'])
             ->assertNotFound();
+    }
+
+    public function test_qr_returns_404_once_2fa_is_confirmed(): void
+    {
+        $user = User::factory()->create();
+        $token = $this->deviceToken($user);
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable');
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
+
+        // Enrollment-only: the secret is never handed out again after confirmation.
+        $this->withToken($token)->getJson('/api/v1/user/two-factor/qr')->assertNotFound();
     }
 
     public function test_regenerate_recovery_codes_returns_fresh_codes(): void
@@ -157,7 +181,7 @@ class TwoFactorApiTest extends TestCase
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
         $firstCodes = $this->withToken($token)
-            ->getJson('/api/v1/user/two-factor/recovery-codes')
+            ->json('GET', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'password'])
             ->json('recovery_codes');
 
         $newCodes = $this->withToken($token)

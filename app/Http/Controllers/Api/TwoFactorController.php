@@ -48,15 +48,18 @@ class TwoFactorController extends Controller
     /**
      * Return the QR code SVG, plain-text TOTP secret and otpauth URI.
      *
-     * Only meaningful between enable and confirm; returns 404 when 2FA has not
-     * been enabled yet (no secret stored).
+     * ENROLLMENT-ONLY: available only in the window between enable and confirm.
+     * Once 2FA is confirmed the secret is never handed out again — otherwise a
+     * stolen device token could read the live TOTP secret and reproduce the second
+     * factor on another device (surviving a token revoke). 404 when not enabled,
+     * or already confirmed.
      */
     public function qr(Request $request): JsonResponse
     {
         $user = $this->requireUser($request);
 
-        if (is_null($user->two_factor_secret)) {
-            abort(404, 'Two-factor authentication has not been enabled.');
+        if (is_null($user->two_factor_secret) || ! is_null($user->two_factor_confirmed_at)) {
+            abort(404, 'Two-factor authentication QR is only available during setup.');
         }
 
         $secret = Fortify::currentEncrypter()->decrypt((string) $user->two_factor_secret);
@@ -110,13 +113,13 @@ class TwoFactorController extends Controller
         }
     }
 
-    // NOTE: the GET read is gated only by the device token + 2FA-confirmed state.
-    // The web viewer adds a session password-confirm, but a stateless GET cannot
-    // carry a password without leaking it into URLs/logs — so the destructive ops
-    // (regenerate, disable) get the password step-up instead; this read does not.
+    // Reading the recovery codes exposes a standing second factor, so it takes the
+    // same password step-up as regenerate/disable. The password travels in the JSON
+    // body (NOT a query string), so it does not leak into URLs/access logs.
     public function recoveryCodes(Request $request): JsonResponse
     {
         $user = $this->requireUser($request);
+        $this->requireCurrentPassword($request, $user);
 
         if (is_null($user->two_factor_secret) || is_null($user->two_factor_confirmed_at)) {
             abort(404, 'Two-factor authentication is not active.');

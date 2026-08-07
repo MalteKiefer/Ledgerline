@@ -6,6 +6,7 @@ namespace App\Models;
 
 use Cron\CronExpression;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -22,6 +23,7 @@ use Illuminate\Support\Carbon;
     'name', 'source', 'backup_destination_id', 'cron', 'retention',
     'encrypt', 'passphrase', 'notify_channels', 'enabled',
 ])]
+#[Hidden(['passphrase'])] // archive encryption passphrase — never serialize
 class BackupJob extends Model
 {
     public const SOURCES = ['database', 'invoices'];

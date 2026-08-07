@@ -25,11 +25,12 @@ class SettingsData implements UserDataContributor
      */
     public function export(User $user): array
     {
+        // Export the user's real settings (display prefs + company/invoice identity).
+        // toArray() honours the model's #[Hidden], so the operative secrets (paperless
+        // token, company SMTP creds) are never included in the GDPR export.
         $setting = UserSetting::withoutGlobalScopes()
             ->where('user_id', $user->id)
-            ->first([
-                'gallery_columns',
-            ]);
+            ->first();
 
         return [
             'setting' => $setting?->toArray(),

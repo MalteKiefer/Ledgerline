@@ -2093,7 +2093,7 @@ paths:
         company SMTP (settings.company company_smtp_*), deliberately independent of
         the workspace notification SMTP. Only finalized invoices (status sent|paid or
         already numbered) may be sent. Stamps sent_at without bumping the optimistic
-        version. Throttled 30/min.
+        version. Throttled 10/min.
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
       requestBody:
@@ -2178,7 +2178,7 @@ paths:
         due_date < today) with a recipient + PDF may be dunned. Increments the
         dunning level (reminder_count) and stamps reminded_at (does not bump the
         optimistic version). Distinct from the owner-facing invoices:remind command.
-        Throttled 30/min.
+        Throttled 10/min.
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: invoice, in: path, required: true, schema: { type: integer } } ]
       requestBody:
@@ -2962,11 +2962,11 @@ paths:
       tags: [TwoFactor]
       operationId: twoFactorQr
       summary: Get the TOTP QR + secret + otpauth URI
-      description: "For the window between enable and confirm. 404 if 2FA not enabled. Throttle 30/min."
+      description: "ENROLLMENT-ONLY: available only in the window between enable and confirm. Once 2FA is confirmed the secret is never handed out again (a stolen device token must not be able to reproduce the second factor). 404 if 2FA not enabled OR already confirmed. Throttle 30/min."
       responses:
         "200": { description: "QR data.", content: { application/json: { schema: { type: object, required: [svg, secret, uri], properties: { svg: { type: string }, secret: { type: string }, uri: { type: string } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { description: 2FA not enabled. }
+        "404": { description: 2FA not enabled, or already confirmed. }
   /user/two-factor/confirm:
     post:
       tags: [TwoFactor]
@@ -2984,11 +2984,15 @@ paths:
       tags: [TwoFactor]
       operationId: twoFactorRecoveryCodes
       summary: List recovery codes
-      description: "Only after 2FA is confirmed (else 404). Gated by the device token + 2FA-confirmed state; the destructive regenerate/disable ops add a password step-up, this read does not (a stateless GET cannot carry a password without leaking it). Throttle 30/min."
+      description: "Only after 2FA is confirmed (else 404). Requires a fresh `current_password` step-up (in the JSON body, not a query string) so a stolen device token cannot exfiltrate a standing second factor. Throttle 30/min."
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password } } } } }
       responses:
         "200": { description: "Codes.", content: { application/json: { schema: { type: object, required: [recovery_codes], properties: { recovery_codes: { type: array, items: { type: string } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: 2FA not active. }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /user/two-factor/recovery-codes/regenerate:
     post:
       tags: [TwoFactor]

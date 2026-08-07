@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property array<string, mixed>|null $config
  */
 #[Fillable(['name', 'driver', 'config'])]
+#[Hidden(['config'])] // cloud creds (bucket keys / SFTP/WebDAV host+password) — never serialize
 class BackupDestination extends Model
 {
     public const DRIVERS = ['s3', 'b2', 'sftp', 'webdav'];
