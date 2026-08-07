@@ -8,6 +8,7 @@ use App\Models\BackupJob;
 use App\Models\BackupRun;
 use App\Services\Backup\Sources\BackupSource;
 use App\Services\Backup\Sources\DatabaseSource;
+use App\Services\Backup\Sources\FilesSource;
 use App\Services\Backup\Sources\InvoiceBlobSource;
 use App\Support\Bytes;
 use App\Support\Redactor;
@@ -198,6 +199,7 @@ final class BackupManager
         return match ($source) {
             'database' => app(DatabaseSource::class),
             'invoices' => app(InvoiceBlobSource::class),
+            'files' => app(FilesSource::class),
             default => throw new RuntimeException("Unknown backup source: {$source}"),
         };
     }

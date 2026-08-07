@@ -7,6 +7,22 @@
 <nav class="mx-auto hidden w-full max-w-[1700px] items-center justify-between px-4 py-3 sm:flex sm:w-[92%] sm:px-6">
     <div class="flex items-center gap-8">
         <a href="{{ route('finance.index') }}" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Ledgerline</a>
+        @auth
+            @php
+                $allowed = $currentUser?->allowedModules() ?? [];
+                $navIcons = ['finance' => 'banknotes', 'files' => 'folder'];
+            @endphp
+            <div class="flex items-center gap-1">
+                @foreach (config('modules.list', []) as $key => $mod)
+                    @continue(! in_array($key, $allowed, true))
+                    @php $active = request()->routeIs($mod['route']) || request()->routeIs(explode('.', $mod['route'])[0].'.*'); @endphp
+                    <a href="{{ route($mod['route']) }}"
+                        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition {{ $active ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-300 hover:bg-accent/5 hover:text-accent' }}">
+                        <x-icon name="{{ $navIcons[$key] ?? 'squares-2x2' }}" class="h-4 w-4" />{{ __($mod['label']) }}
+                    </a>
+                @endforeach
+            </div>
+        @endauth
     </div>
 
     @auth

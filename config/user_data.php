@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\UserData\FilesData;
 use App\Support\UserData\PaperlessData;
 use App\Support\UserData\SettingsData;
 
@@ -7,6 +8,7 @@ use App\Support\UserData\SettingsData;
 // Each class implements App\Support\UserData\UserDataContributor.
 return [
     'contributors' => [
+        FilesData::class,
         PaperlessData::class,
         SettingsData::class,
     ],
