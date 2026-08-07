@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Models\AppSettings;
+use App\Models\FileEntry;
 use App\Models\User;
+use App\Observers\FileEntryObserver;
 use App\Support\OutboundUrl;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -41,6 +43,9 @@ class AppServiceProvider extends ServiceProvider
         // and never in the test env, so it can't mask a real failure with a
         // lazy-load error.
         Model::preventLazyLoading(app()->environment('local'));
+
+        // Keep a file's searchable text (search_text/indexed_at) in sync with its bytes.
+        FileEntry::observe(FileEntryObserver::class);
 
         // Only admins may manage the non-personal, workspace-wide settings.
         Gate::define('manage-global-settings', fn (User $user): bool => $user->managesGlobalSettings());

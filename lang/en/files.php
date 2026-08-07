@@ -225,4 +225,11 @@ return [
     'sf_rename' => 'Rename',
     'sf_delete' => 'Delete',
     'sf_save' => 'Save',
+    'labels_manage' => 'Manage labels',
+    'searching' => 'Searching…',
+    'info_labels' => 'Labels',
+    'labels_title' => 'Labels',
+    'labels_none' => 'No labels yet.',
+    'label_name' => 'Label name',
+    'label_add' => 'Add',
 ];

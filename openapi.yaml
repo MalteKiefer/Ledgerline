@@ -669,6 +669,16 @@ components:
         deleted_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time, nullable: true }
         updated_at: { type: string, format: date-time, nullable: true }
+    FileLabel:
+      type: object
+      description: "A coloured, user-defined label (file_labels). Many-to-many with files."
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        name: { type: string }
+        color: { type: string }
+        created_at: { type: string, format: date-time, nullable: true }
+        updated_at: { type: string, format: date-time, nullable: true }
     FileVersion:
       type: object
       description: "A previous revision of a file (file_versions). Bytes at storage_path; kept up to the per-user cap."
@@ -3195,6 +3205,71 @@ paths:
       responses:
         "200": { description: Aborted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /files/search:
+    get:
+      tags: [Files]
+      operationId: filesSearch
+      summary: Full-text / OCR content search over the user's files
+      description: "Matches extracted content (search_text) via the pgsql GIN index (LIKE fallback on sqlite) plus filename. Throttle 120/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: q, in: query, required: true, schema: { type: string } } ]
+      responses:
+        "200": { description: Matches., content: { application/json: { schema: { type: object, properties: { files: { type: array, items: { $ref: "#/components/schemas/FileEntry" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /files/labels:
+    get:
+      tags: [Files]
+      operationId: filesLabels
+      summary: List the user's coloured labels
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Labels., content: { application/json: { schema: { type: object, properties: { labels: { type: array, items: { $ref: "#/components/schemas/FileLabel" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Files]
+      operationId: filesStoreLabel
+      summary: Create a coloured label
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 120 }, color: { type: string, pattern: "^#[0-9a-fA-F]{6}$" } } } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { label: { $ref: "#/components/schemas/FileLabel" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /files/labels/{label}:
+    put:
+      tags: [Files]
+      operationId: filesUpdateLabel
+      summary: Rename / recolor a label
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: label, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 120 }, color: { type: string } } } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { label: { $ref: "#/components/schemas/FileLabel" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Files]
+      operationId: filesDestroyLabel
+      summary: Delete a label (pivot rows cascade)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: label, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{file}/labels:
+    post:
+      tags: [Files]
+      operationId: filesSetLabels
+      summary: Replace a file's label set
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [label_ids], properties: { label_ids: { type: array, items: { type: integer } } } } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /invoices/ocr:
     post:
       tags: [Finance]

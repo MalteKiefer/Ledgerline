@@ -33,11 +33,14 @@ const normFile = (f) => ({
     tags: Array.isArray(f.tags) ? f.tags : [],
     note: f.note ?? '',
     favorite: !! f.favorite,
+    labelIds: Array.isArray(f.labels) ? f.labels.map((l) => l.id) : [],
     version: f.version ?? 0,
     created: f.created_at ?? null,
     updated: f.updated_at ?? null,
     trashed: f.deleted_at ?? null,
 });
+
+const normLabel = (l) => ({ id: l.id, name: l.name ?? '', color: l.color ?? '#6b7280' });
 
 // Server share row → client shape (never carries the password hash).
 const normShare = (s) => ({
@@ -57,6 +60,14 @@ export default (config = {}, labels = {}, initial = {}) => ({
     trashLoaded: false,
     usage: initial.usage || { used: 0, quota: 0 },
     maxVersions: initial.maxVersions || 10,
+
+    // Labels (coloured taxonomy) + server content-search state (stage 2).
+    fileLabels: (initial.labels || []).map(normLabel),
+    activeLabel: null,       // filter files by a label id (null = off)
+    contentHits: null,       // Set<id> of server content-search matches (null = no active content search)
+    contentSearching: false,
+    labelModal: false,       // label manager open
+    labelDraft: { id: null, name: '', color: '#6b7280' },
 
     cwd: null,
     query: '',
@@ -140,6 +151,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
             const d = await getJson('/files/entries');
             this.folders = (d.folders || []).map(normFolder);
             this.files = (d.files || []).map(normFile);
+            if (d.labels) this.fileLabels = d.labels.map(normLabel);
             if (d.usage) this.usage = d.usage;
         } catch (e) { /* keep the inlined initial data */ }
     },
@@ -202,7 +214,11 @@ export default (config = {}, labels = {}, initial = {}) => ({
             : this.sortKey === 'date' ? ((a, b) => new Date(a.created || 0) - new Date(b.created || 0))
                 : byName;
         const cmp = (a, b) => factor * (base(a, b) || byName(a, b));
-        const search = (list) => q === '' ? list : list.filter((x) => x.name.toLowerCase().includes(q) || (x.tags ?? []).some((t) => t.toLowerCase().includes(q)));
+        // A file matches the query by name/tag OR (for content search) if the server
+        // full-text search returned its id. A label filter narrows to that label.
+        const hit = (x) => x.name.toLowerCase().includes(q) || (x.tags ?? []).some((t) => t.toLowerCase().includes(q)) || (this.contentHits ? this.contentHits.has(x.id) : false);
+        const labelOk = (x) => this.activeLabel == null || (x.labelIds || []).includes(this.activeLabel);
+        const search = (list) => (q === '' ? list : list.filter(hit)).filter(labelOk);
 
         if (this.view === 'trash') {
             return search(this.trash).map((f) => ({ ...f, kind: 'file' })).sort(cmp);
@@ -219,16 +235,19 @@ export default (config = {}, labels = {}, initial = {}) => ({
         // A text search or an active tag switches from folder browsing to a flat,
         // tree-wide result set; otherwise scope to the current folder.
         const inScope = (list) => {
-            let scoped = (q === '' && tag === '')
-                ? list.filter((x) => (x.parent ?? x.folder ?? null) === this.cwd)
-                : list;
-            if (q !== '') scoped = scoped.filter((x) => x.name.toLowerCase().includes(q) || (x.tags ?? []).some((t) => t.toLowerCase().includes(q)));
+            // A query, a tag, a label filter or an active content search all flatten
+            // the view (tree-wide) instead of scoping to the current folder.
+            const flat = q !== '' || tag !== '' || this.activeLabel != null;
+            let scoped = flat ? list : list.filter((x) => (x.parent ?? x.folder ?? null) === this.cwd);
+            if (q !== '') scoped = scoped.filter((x) => x.name.toLowerCase().includes(q) || (x.tags ?? []).some((t) => t.toLowerCase().includes(q)) || (this.contentHits ? this.contentHits.has(x.id) : false));
             if (tag !== '') scoped = scoped.filter((x) => (x.tags ?? []).includes(tag));
             return scoped;
         };
 
-        const folders = inScope(this.folders.map((f) => ({ ...f, kind: 'folder' })));
-        const files = inScope(this.files.filter((f) => ! f.trashed).map((f) => ({ ...f, kind: 'file' })));
+        // Folders carry no labels; when a label filter is active, show only matching files.
+        const folders = this.activeLabel != null ? [] : inScope(this.folders.map((f) => ({ ...f, kind: 'folder' })));
+        const labelOkF = (x) => this.activeLabel == null || (x.labelIds || []).includes(this.activeLabel);
+        const files = inScope(this.files.filter((f) => ! f.trashed).map((f) => ({ ...f, kind: 'file' }))).filter(labelOkF);
         return [...folders.sort(cmp), ...files.sort(cmp)];
     },
 
@@ -964,7 +983,62 @@ export default (config = {}, labels = {}, initial = {}) => ({
     },
     _debounceSearch() {
         clearTimeout(this._searchTimer);
-        this._searchTimer = setTimeout(() => { this._q = this.query.trim().toLowerCase(); }, 250);
+        this._searchTimer = setTimeout(() => { this._q = this.query.trim().toLowerCase(); this._runContentSearch(); }, 250);
+    },
+
+    // Server full-text/OCR content search: folds matching file ids into the row
+    // filter so a query finds text INSIDE pdfs/images/text, not just names/tags.
+    async _runContentSearch() {
+        const q = (this.query || '').trim();
+        if (q.length < 2) { this.contentHits = null; return; }
+        this.contentSearching = true;
+        try {
+            const d = await getJson('/files/search?q=' + encodeURIComponent(q));
+            this.contentHits = new Set((d.files || []).map((f) => f.id));
+        } catch (e) { this.contentHits = null; }
+        this.contentSearching = false;
+    },
+
+    // ---- Labels (coloured taxonomy) ----
+    toggleLabelFilter(id) { this.activeLabel = this.activeLabel === id ? null : id; },
+    labelById(id) { return this.fileLabels.find((l) => l.id === id) || null; },
+    fileLabelObjects(row) { return (row.labelIds || []).map((id) => this.labelById(id)).filter(Boolean); },
+    openLabelModal() { this.labelDraft = { id: null, name: '', color: '#6b7280' }; this.labelModal = true; },
+    editLabel(l) { this.labelDraft = { id: l.id, name: l.name, color: l.color }; this.labelModal = true; },
+    async saveLabel() {
+        const d = this.labelDraft;
+        if (! (d.name || '').trim()) return;
+        try {
+            const body = { name: d.name.trim(), color: d.color || '#6b7280' };
+            const res = d.id
+                ? await postForm('/files/labels/' + d.id, body, 'PUT')
+                : await postForm('/files/labels', body);
+            if (res.label) {
+                const lbl = normLabel(res.label);
+                const i = this.fileLabels.findIndex((x) => x.id === lbl.id);
+                if (i >= 0) this.fileLabels[i] = lbl; else this.fileLabels.push(lbl);
+                this.fileLabels.sort((a, b) => a.name.localeCompare(b.name));
+            }
+            this.labelModal = false;
+        } catch (e) { window.llToast?.(labels.saveFailed); }
+    },
+    async deleteLabel(l) {
+        if (! await this.$store.confirm.ask(labels.labelDeleteConfirm || labels.purgeConfirm || '')) return;
+        try {
+            await apiRequest('DELETE', '/files/labels/' + l.id);
+            this.fileLabels = this.fileLabels.filter((x) => x.id !== l.id);
+            if (this.activeLabel === l.id) this.activeLabel = null;
+            for (const f of this.files) f.labelIds = (f.labelIds || []).filter((id) => id !== l.id);
+        } catch (e) { window.llToast?.(labels.saveFailed); }
+    },
+    async toggleFileLabel(row, id) {
+        const f = this.files.find((x) => x.id === row.id) || row;
+        const has = (f.labelIds || []).includes(id);
+        const next = has ? f.labelIds.filter((x) => x !== id) : [...(f.labelIds || []), id];
+        try {
+            const res = await postForm('/files/entries/' + f.id + '/labels', { label_ids: next });
+            if (res.file) { const nf = normFile(res.file); Object.assign(f, nf); if (row !== f) Object.assign(row, nf); }
+        } catch (e) { window.llToast?.(labels.saveFailed); }
     },
 
     /* ---- Paperless (plaintext bytes fetched from the raw URL) ---- */

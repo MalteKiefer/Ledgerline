@@ -6,6 +6,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesController;
+use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\InviteLinkController;
@@ -239,6 +240,12 @@ Route::middleware('auth')->group(function (): void {
     Route::middleware('module:files')->group(function (): void {
         Route::get('/files/trash', [FilesController::class, 'trashed'])->name('files.rel.trash');
         Route::get('/files/entries', [FilesController::class, 'index'])->name('files.rel.index');
+        Route::get('/files/search', [FileSearchController::class, 'search'])->middleware('throttle:120,1')->name('files.rel.search');
+        Route::get('/files/labels', [FilesController::class, 'labels'])->name('files.rel.labels');
+        Route::post('/files/labels', [FilesController::class, 'storeLabel'])->middleware('throttle:600,1')->name('files.rel.labels.store');
+        Route::put('/files/labels/{label}', [FilesController::class, 'updateLabel'])->whereNumber('label')->middleware('throttle:600,1')->name('files.rel.labels.update');
+        Route::delete('/files/labels/{label}', [FilesController::class, 'destroyLabel'])->whereNumber('label')->middleware('throttle:600,1')->name('files.rel.labels.destroy');
+        Route::post('/files/entries/{file}/labels', [FilesController::class, 'setFileLabels'])->whereNumber('file')->middleware('throttle:600,1')->name('files.rel.entry.labels');
         Route::post('/files/entries', [FilesController::class, 'upload'])->middleware('throttle:1200,1')->name('files.rel.upload');
         Route::post('/files/entries/trash/empty', [FilesController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('files.rel.empty');
         Route::put('/files/entries/{file}', [FilesController::class, 'update'])->whereNumber('file')->middleware('throttle:600,1')->name('files.rel.update');

@@ -213,6 +213,22 @@
                 {{ __('files.filtered_by') }}: <span x-text="activeTag"></span>
                 <button type="button" @click="activeTag = ''" aria-label="{{ __('common.clear') }}" class="text-blue-500 hover:text-blue-700"><x-icon name="x-mark" class="h-3 w-3" /></button>
             </span>
+            <span x-show="contentSearching" x-cloak class="inline-flex items-center gap-1.5 text-xs text-gray-400"><x-icon name="arrow-path" class="h-3.5 w-3.5 animate-spin" />{{ __('files.searching') }}</span>
+        </div>
+
+        {{-- Label filter bar (coloured taxonomy) --}}
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+            <template x-for="l in fileLabels" :key="l.id">
+                <button type="button" @click="toggleLabelFilter(l.id)"
+                    class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition"
+                    :class="activeLabel === l.id ? 'text-white' : 'ring-black/10 dark:ring-white/15 text-gray-600 dark:text-gray-300 hover:bg-black/[0.03] dark:hover:bg-white/5'"
+                    :style="activeLabel === l.id ? ('background:' + l.color + ';box-shadow: inset 0 0 0 1px ' + l.color) : ('')">
+                    <span class="h-2.5 w-2.5 rounded-full" :style="'background:' + l.color"></span><span x-text="l.name"></span>
+                </button>
+            </template>
+            <button type="button" @click="openLabelModal()" class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent/5">
+                <x-icon name="plus" class="h-3.5 w-3.5" />{{ __('files.labels_manage') }}
+            </button>
         </div>
 
         <x-alert variant="warning" x-show="error" x-cloak class="mt-4" x-text="error" />
@@ -594,6 +610,19 @@
                     <textarea x-model="infoNote" @blur="saveNote()" rows="3" placeholder="{{ __('files.note_placeholder') }}"
                         class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
                 </div>
+                <div x-show="infoRow?.kind === 'file' && fileLabels.length" class="mt-4">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">{{ __('files.info_labels') }}</label>
+                    <div class="mt-1.5 flex flex-wrap gap-1.5">
+                        <template x-for="l in fileLabels" :key="l.id">
+                            <button type="button" @click="toggleFileLabel(infoRow, l.id)"
+                                class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ring-1 ring-inset transition"
+                                :class="(infoRow?.labelIds || []).includes(l.id) ? 'text-white' : 'ring-black/10 dark:ring-white/15 text-gray-500 dark:text-gray-400'"
+                                :style="(infoRow?.labelIds || []).includes(l.id) ? ('background:' + l.color) : ''">
+                                <span class="h-2 w-2 rounded-full" :style="'background:' + l.color"></span><span x-text="l.name"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
                 <div class="mt-5 flex justify-end">
                     <x-button variant="secondary" @click="infoOpen = false">{{ __('common.close') }}</x-button>
                 </div>
@@ -658,6 +687,38 @@
                 <div class="flex justify-end gap-2 pt-1">
                     <x-button variant="secondary" @click="newFolderModal = false">{{ __('common.cancel') }}</x-button>
                     <x-button variant="primary" @click="submitNewFolder()" ::disabled="! newFolderName.trim()">{{ __('files.new_folder') }}</x-button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Label manager (create / rename / recolor / delete coloured labels) --}}
+    <template x-teleport="body">
+        <div x-show="labelModal" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="labelModal = false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="labelModal = false"></div>
+            <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.labels_title') }}</h3>
+                <div class="mt-4 max-h-60 space-y-1 overflow-auto">
+                    <template x-for="l in fileLabels" :key="l.id">
+                        <div class="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-black/[0.03] dark:hover:bg-white/5">
+                            <span class="h-3.5 w-3.5 shrink-0 rounded-full" :style="'background:' + l.color"></span>
+                            <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="l.name"></span>
+                            <x-icon-button name="pencil" size="sm" @click="editLabel(l)" aria-label="{{ __('common.details') }}" />
+                            <x-icon-button name="trash" tone="red" size="sm" @click="deleteLabel(l)" aria-label="{{ __('common.delete') }}" />
+                        </div>
+                    </template>
+                    <p x-show="! fileLabels.length" x-cloak class="px-2 py-3 text-center text-xs text-gray-400">{{ __('files.labels_none') }}</p>
+                </div>
+                <div class="mt-4 border-t border-black/[0.06] dark:border-white/10 pt-4">
+                    <div class="flex items-center gap-2">
+                        <input type="color" x-model="labelDraft.color" class="h-9 w-10 shrink-0 cursor-pointer rounded-md border border-gray-300 dark:border-gray-700 bg-transparent p-0.5">
+                        <input type="text" x-model="labelDraft.name" maxlength="120" placeholder="{{ __('files.label_name') }}" @keydown.enter="saveLabel()"
+                            class="min-w-0 flex-1 rounded-xl border-gray-300 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                        <x-button variant="primary" size="sm" @click="saveLabel()" ::disabled="! labelDraft.name.trim()"><span x-text="labelDraft.id ? @js(__('files.save')) : @js(__('files.label_add'))"></span></x-button>
+                    </div>
+                </div>
+                <div class="mt-5 flex justify-end">
+                    <x-button variant="secondary" @click="labelModal = false">{{ __('common.close') }}</x-button>
                 </div>
             </div>
         </div>
