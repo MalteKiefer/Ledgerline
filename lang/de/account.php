@@ -123,4 +123,13 @@ return [
     'delete_confirm_label' => 'Gib zur Bestätigung deine E-Mail-Adresse ein:',
     'delete_confirm_mismatch' => 'Die Bestätigung stimmt nicht mit deiner E-Mail-Adresse überein.',
     'deleted' => 'Dein Konto und alle deine Daten wurden gelöscht.',
+    'webdav_title' => 'WebDAV-Zugang',
+    'webdav_desc' => 'Dateien als Netzlaufwerk einbinden (Finder, Explorer, Mobil). Nutzt ein separates, widerrufbares Passwort — nicht dein Login-Passwort.',
+    'webdav_url' => 'Server-URL',
+    'webdav_user' => 'Benutzername',
+    'webdav_password' => 'WebDAV-Passwort (mind. 12 Zeichen)',
+    'webdav_save' => 'Speichern',
+    'webdav_disable' => 'WebDAV-Zugang deaktivieren',
+    'webdav_set' => 'WebDAV-Passwort gesetzt.',
+    'webdav_cleared' => 'WebDAV-Zugang deaktiviert.',
 ];

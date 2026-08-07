@@ -79,6 +79,7 @@ class ProfileController extends Controller
         }
 
         return view('profile.security', [
+            'user' => $user,
             'enabled' => $enabled,
             'pending' => $pending,
             'qr' => $qr,

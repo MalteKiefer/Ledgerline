@@ -103,5 +103,39 @@
                 </form>
             @endif
         </div>
+
+        {{-- WebDAV access: mount the Files tree as a network drive --}}
+        <div class="mt-5 ll-card">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.webdav_title') }}</h2>
+            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ __('account.webdav_desc') }}</p>
+            <div class="mt-3 rounded-xl bg-black/[0.03] dark:bg-white/5 px-3 py-2 text-xs">
+                <span class="text-gray-500 dark:text-gray-400">{{ __('account.webdav_url') }}:</span>
+                <code class="ml-1 select-all text-gray-800 dark:text-gray-200">{{ rtrim(config('app.url'), '/') }}/dav/</code>
+                <span class="mt-1 block text-gray-500 dark:text-gray-400">{{ __('account.webdav_user') }}: <code class="text-gray-800 dark:text-gray-200">{{ $user->email }}</code></span>
+            </div>
+            @if (session('status') === 'webdav-set')
+                <x-alert variant="success" class="mt-3">{{ __('account.webdav_set') }}</x-alert>
+            @elseif (session('status') === 'webdav-cleared')
+                <x-alert variant="neutral" class="mt-3">{{ __('account.webdav_cleared') }}</x-alert>
+            @endif
+            <form method="POST" action="{{ route('profile.webdav.update') }}" class="mt-3 flex flex-wrap items-end gap-2">
+                @csrf
+                @method('PUT')
+                <div class="min-w-0 flex-1">
+                    <label for="webdav_password" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('account.webdav_password') }}</label>
+                    <input id="webdav_password" name="webdav_password" type="password" autocomplete="new-password" required minlength="12"
+                        class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                    @error('webdav_password')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                </div>
+                <x-button type="submit">{{ __('account.webdav_save') }}</x-button>
+            </form>
+            @if ($user->webdav_password)
+                <form method="POST" action="{{ route('profile.webdav.destroy') }}" class="mt-2">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="text-xs text-gray-500 hover:text-red-600">{{ __('account.webdav_disable') }}</button>
+                </form>
+            @endif
+        </div>
     </div>
 </x-layouts.app>
