@@ -226,4 +226,23 @@ class FilesRelationalTest extends TestCase
         $tid = (int) $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->createWithContent('t.txt', 'x')])->json('file.id');
         $this->get(route('files.rel.thumb', $tid))->assertNotFound();
     }
+
+    public function test_zip_download_and_storage_stats_with_duplicates(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $a = (int) $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->createWithContent('a.txt', 'same-bytes')])->json('file.id');
+        $b = (int) $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->createWithContent('b.txt', 'same-bytes')])->json('file.id');
+        $c = (int) $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->createWithContent('c.txt', 'other')])->json('file.id');
+
+        // ZIP a selection.
+        $this->post(route('files.zip'), ['ids' => [$a, $b, $c]])->assertOk()->assertHeader('Content-Type', 'application/zip');
+
+        // Empty selection → 422.
+        $this->postJson(route('files.zip'), [])->assertStatus(422);
+
+        // Stats: a.txt + b.txt share a sha256 → one duplicate group.
+        $res = $this->getJson(route('files.stats'))->assertOk();
+        $this->assertGreaterThanOrEqual(1, count($res->json('duplicates')));
+        $this->assertArrayHasKey('TEXT', $res->json('by_type'));
+    }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\FileType;
 use App\Models\FileEntry;
 use App\Models\FileFolder;
 use App\Models\FileLabel;
@@ -18,6 +19,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -25,6 +27,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Intervention\Image\Encoders\WebpEncoder;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -780,6 +783,100 @@ class FilesController extends Controller
             'Content-Security-Policy' => "default-src 'none'; sandbox",
             'Cache-Control' => 'private, max-age=86400',
         ], 'inline');
+    }
+
+    /**
+     * Stream a ZIP of a selection of files and/or a folder subtree. Names are
+     * de-duplicated + path-safe; bytes are read from the files disk. Owner-scoped
+     * through the model global scope.
+     */
+    public function downloadZip(Request $request): StreamedResponse|BinaryFileResponse
+    {
+        $this->requireUser($request);
+        $request->validate([
+            'ids' => ['nullable', 'array', 'max:5000'],
+            'ids.*' => ['integer'],
+            'folder_id' => ['nullable', 'integer'],
+        ]);
+
+        $ids = array_values(array_filter($request->array('ids'), 'is_numeric'));
+        $query = FileEntry::query();
+        if ($request->filled('folder_id')) {
+            $folderIds = $this->descendantFolderIds($request->integer('folder_id'));
+            $query->whereIn('file_folder_id', $folderIds);
+        } elseif ($ids !== []) {
+            $query->whereIn('id', $ids);
+        } else {
+            abort(422);
+        }
+        /** @var Collection<int, FileEntry> $files */
+        $files = $query->get();
+        abort_if($files->isEmpty(), 404);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'llzip');
+        if ($tmp === false) {
+            abort(500);
+        }
+        $zip = new \ZipArchive;
+        if ($zip->open($tmp, \ZipArchive::OVERWRITE) !== true) {
+            abort(500);
+        }
+        $used = [];
+        foreach ($files as $f) {
+            $path = (string) $f->storage_path;
+            if ($path === '' || ! $this->fs()->exists($path)) {
+                continue;
+            }
+            // Path-safe, collision-free entry name.
+            $name = $this->safeName((string) $f->name);
+            $entry = $name;
+            $n = 1;
+            while (isset($used[$entry])) {
+                $dot = strrpos($name, '.');
+                $entry = $dot === false ? $name.' ('.$n.')' : substr($name, 0, $dot).' ('.$n.')'.substr($name, $dot);
+                $n++;
+            }
+            $used[$entry] = true;
+            $zip->addFromString($entry, (string) $this->fs()->get($path));
+        }
+        $zip->close();
+
+        return response()->download($tmp, 'files-'.now()->format('Ymd-His').'.zip', [
+            'Content-Type' => 'application/zip',
+            'X-Content-Type-Options' => 'nosniff',
+        ])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * Storage stats: size-by-category breakdown + suspected duplicates (same
+     * sha256 across ≥2 live files). Owner-scoped.
+     */
+    public function stats(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+        $files = FileEntry::query()->get(['id', 'name', 'mime', 'size', 'sha256', 'file_folder_id']);
+
+        $byType = [];
+        foreach ($files as $f) {
+            $cat = FileType::fromMime((string) $f->mime)->value;
+            $byType[$cat] = ($byType[$cat] ?? 0) + (int) $f->size;
+        }
+
+        $groups = [];
+        foreach ($files as $f) {
+            $h = (string) $f->sha256;
+            if ($h === '') {
+                continue;
+            }
+            $groups[$h][] = ['id' => $f->id, 'name' => $f->name, 'size' => (int) $f->size];
+        }
+        $dupes = array_values(array_filter($groups, fn (array $g): bool => count($g) >= 2));
+
+        return response()->json([
+            'used' => $this->usedBytes((int) $this->requireUser($request)->id),
+            'by_type' => $byType,
+            'duplicates' => $dupes,
+        ]);
     }
 
     // ---- Labels (coloured, user-defined taxonomy) ----

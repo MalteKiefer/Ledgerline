@@ -259,6 +259,70 @@ export default (config = {}, labels = {}, initial = {}) => ({
     },
 
     // Rich category (uses the filename extension + MIME) for a row.
+    // ---- ZIP download + storage stats (stage 5) ----
+    stats: { open: false, used: 0, byType: {}, duplicates: [] },
+    async _zip(body) {
+        try {
+            const res = await fetch('/files/zip', { method: 'POST', headers: { Accept: 'application/zip', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': this._token(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            if (! res.ok) { window.llToast?.(labels.saveFailed); return; }
+            const blob = await res.blob();
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'files-' + Date.now() + '.zip';
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        } catch (e) { window.llToast?.(labels.saveFailed); }
+    },
+    downloadSelectionZip() {
+        const ids = this.selectionRefs.filter((r) => r.kind === 'file').map((r) => r.id);
+        if (! ids.length) return;
+        this._zip({ ids });
+    },
+    downloadFolderZip() { if (this.cwd != null) this._zip({ folder_id: this.cwd }); },
+    async openStats() {
+        this.stats.open = true;
+        try { const d = await getJson('/files/stats'); this.stats.used = d.used || 0; this.stats.byType = d.by_type || {}; this.stats.duplicates = d.duplicates || []; }
+        catch (e) { this.stats.byType = {}; this.stats.duplicates = []; }
+    },
+    get statsRows() { return Object.entries(this.stats.byType || {}).map(([k, v]) => ({ type: k, size: v })).sort((a, b) => b.size - a.size); },
+
+    // ---- Folder (directory) upload: recreate the tree, then upload each file ----
+    async uploadDirectory(fileList) {
+        const files = [...(fileList || [])];
+        if (! files.length) return;
+        const folderCache = {}; // relative dir path -> folder id
+        const ensureFolder = async (parts) => {
+            let parentId = this.cwd;
+            let path = '';
+            for (const part of parts) {
+                path = path ? path + '/' + part : part;
+                if (folderCache[path] != null) { parentId = folderCache[path]; continue; }
+                try {
+                    const d = await postForm('/files/folders', { name: part, parent_id: parentId });
+                    const id = d.folder?.id;
+                    if (id != null) { this.folders.push(normFolder(d.folder)); folderCache[path] = id; parentId = id; }
+                } catch (e) { /* keep going */ }
+            }
+            return parentId;
+        };
+        for (const file of files) {
+            const rel = (file.webkitRelativePath || file.name).split('/');
+            const dirs = rel.slice(0, -1).slice(1); // drop the top-level chosen dir name
+            const folderId = dirs.length ? await ensureFolder(dirs) : this.cwd;
+            await this._uploadOne(file, folderId);
+        }
+        await this.load();
+    },
+    async _uploadOne(file, folderId) {
+        try {
+            const fd = new FormData();
+            fd.append('file', file);
+            if (folderId != null) fd.append('file_folder_id', folderId);
+            const res = await fetch('/files/entries', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': this._token() }, body: fd });
+            if (res.status === 413) window.llToast?.(labels.quotaExceeded || labels.saveFailed);
+        } catch (e) { /* skip */ }
+    },
+
     isImageRow(row) { return row?.kind === 'file' && /^image\//.test(row?.mime || ''); },
     thumbUrl(row) { return '/files/entries/' + row.id + '/thumb'; },
     fileCat(row) { return fileCategory(row?.name, row?.mime); },

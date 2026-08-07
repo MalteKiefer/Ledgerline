@@ -235,4 +235,10 @@ return [
     'folder_share_add' => 'Share with a user',
     'shared_with_me' => 'Shared with me',
     'shared_none' => 'Nothing shared with you yet.',
+    'upload_folder' => 'Upload a folder',
+    'download_zip' => 'Download as ZIP',
+    'storage' => 'Storage',
+    'storage_by_type' => 'By type',
+    'duplicates' => 'Possible duplicates',
+    'duplicates_none' => 'No duplicates found.',
 ];

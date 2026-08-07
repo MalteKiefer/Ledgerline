@@ -235,4 +235,10 @@ return [
     'folder_share_add' => 'Поделиться с пользователем',
     'shared_with_me' => 'Поделились со мной',
     'shared_none' => 'С вами пока ничем не поделились.',
+    'upload_folder' => 'Загрузить папку',
+    'download_zip' => 'Скачать ZIP',
+    'storage' => 'Хранилище',
+    'storage_by_type' => 'По типу',
+    'duplicates' => 'Возможные дубликаты',
+    'duplicates_none' => 'Дубликаты не найдены.',
 ];

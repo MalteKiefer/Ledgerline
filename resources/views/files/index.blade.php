@@ -184,6 +184,16 @@
                     </label>
                 </template>
                 <template x-if="view === 'files'">
+                    <label title="{{ __('files.upload_folder') }}" aria-label="{{ __('files.upload_folder') }}"
+                        class="cursor-pointer rounded-xl p-2 text-gray-500 hover:bg-black/[0.04] dark:hover:bg-white/10">
+                        <x-icon name="folder-plus" class="h-5 w-5" />
+                        <input type="file" webkitdirectory multiple class="hidden" @change="uploadDirectory($event.target.files); $event.target.value = ''">
+                    </label>
+                </template>
+                <x-icon-button name="archive-box-arrow-down" x-show="selected.length" x-cloak @click="downloadSelectionZip()" :aria-label="__('files.download_zip')" title="{{ __('files.download_zip') }}" />
+                <x-icon-button name="archive-box" x-show="! selected.length && view === 'files' && cwd !== null" x-cloak @click="downloadFolderZip()" :aria-label="__('files.download_zip')" title="{{ __('files.download_zip') }}" />
+                <x-icon-button name="circle-stack" @click="openStats()" :aria-label="__('files.storage')" title="{{ __('files.storage') }}" />
+                <template x-if="view === 'files'">
                     <x-icon-button name="folder-plus" variant="solid" @click="openNewFolder()"
                         title="{{ __('files.new_folder') }}" aria-label="{{ __('files.new_folder') }}" />
                 </template>
@@ -747,6 +757,42 @@
                         <x-button variant="secondary" @click="closeShare()">{{ __('files.share_close') }}</x-button>
                         <x-button variant="primary" x-show="! share.current" @click="createShare()" ::disabled="share.busy"><x-icon name="link" class="h-4 w-4" />{{ __('files.share_create_link') }}</x-button>
                         <x-button variant="primary" x-show="share.current" x-cloak @click="updateShare()" ::disabled="share.busy">{{ __('files.share_update') }}</x-button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Storage stats: size-by-type breakdown + suspected duplicates --}}
+    <template x-teleport="body">
+        <div x-show="stats.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="stats.open = false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="stats.open = false"></div>
+            <div class="relative flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.storage') }}</h3>
+                    <x-icon-button name="x-mark" @click="stats.open = false" aria-label="{{ __('files.share_close') }}" />
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" x-text="'{{ __('files.storage_used') }}: ' + fmtSize(stats.used)"></p>
+                <div class="mt-4 min-h-0 flex-1 overflow-auto">
+                    <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('files.storage_by_type') }}</h4>
+                    <div class="mt-2 space-y-1">
+                        <template x-for="r in statsRows" :key="r.type">
+                            <div class="flex items-center justify-between gap-3 text-sm">
+                                <span class="text-gray-700 dark:text-gray-300" x-text="(labels.types?.[r.type] ?? r.type)"></span>
+                                <span class="tabular-nums text-gray-500" x-text="fmtSize(r.size)"></span>
+                            </div>
+                        </template>
+                    </div>
+                    <h4 class="mt-5 text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('files.duplicates') }} <span x-text="'(' + stats.duplicates.length + ')'"></span></h4>
+                    <div class="mt-2 space-y-2">
+                        <template x-for="(g, gi) in stats.duplicates" :key="gi">
+                            <div class="rounded-lg border border-black/[0.06] dark:border-white/10 p-2">
+                                <template x-for="f in g" :key="f.id">
+                                    <div class="flex items-center justify-between gap-2 text-xs"><span class="min-w-0 truncate text-gray-700 dark:text-gray-300" x-text="f.name"></span><span class="shrink-0 tabular-nums text-gray-400" x-text="fmtSize(f.size)"></span></div>
+                                </template>
+                            </div>
+                        </template>
+                        <p x-show="! stats.duplicates.length" x-cloak class="text-xs text-gray-400">{{ __('files.duplicates_none') }}</p>
                     </div>
                 </div>
             </div>
