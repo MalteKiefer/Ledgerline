@@ -11,7 +11,7 @@ namespace App\Services\Backup\Sources;
  * invoice PDFs (GoBD-relevant records) would be unbacked-up. Plaintext at rest,
  * so the archive can optionally be encrypted by the backup job like the DB dump.
  *
- * A plain archive source (not a MirrorableSource): the finance blob set is small
+ * A plain archive source: the finance blob set is small
  * and there is no single-column blob ledger to drive an incremental delta, so it
  * is tarred whole on each run.
  */

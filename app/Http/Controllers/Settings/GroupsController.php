@@ -15,9 +15,9 @@ use Illuminate\Validation\Rule;
 
 /**
  * Admin group management (workspace-wide, gated by manage-global-settings): create,
- * edit and delete groups. A group is a reusable limit template (files/gallery quota
- * + device cap) plus a shareable flag. Limits are non-secret metadata — zero-knowledge
- * is unaffected. Membership is assigned per user on the user-management page.
+ * edit and delete groups. A group is a reusable limit template (device cap) plus a
+ * shareable flag. Limits are non-secret metadata. Membership is assigned per user on
+ * the user-management page.
  */
 class GroupsController extends Controller
 {
@@ -65,8 +65,6 @@ class GroupsController extends Controller
     {
         $request->validate([
             'name' => ['required', 'string', 'max:100', 'unique:groups,name'.($ignoreId !== null ? ','.$ignoreId : '')],
-            'files_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
-            'gallery_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'max_connected_devices' => ['nullable', 'integer', 'min:1', 'max:50'],
             'shareable' => ['nullable', 'boolean'],
             'modules' => ['nullable', 'array'],
@@ -79,8 +77,6 @@ class GroupsController extends Controller
 
         return [
             'name' => $request->string('name')->value(),
-            'files_quota_mb' => $limit('files_quota_mb'),
-            'gallery_quota_mb' => $limit('gallery_quota_mb'),
             'max_connected_devices' => $limit('max_connected_devices'),
             'shareable' => $request->boolean('shareable'),
             'modules' => self::modulesFromRequest($request),

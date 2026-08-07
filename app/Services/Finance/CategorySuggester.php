@@ -16,6 +16,14 @@ use App\Models\FinancePartner;
  */
 class CategorySuggester
 {
+    /**
+     * Memoised {normalised merchant name => taught category} lookup, built from a
+     * SINGLE load of the owner's partners (was re-queried per transaction).
+     *
+     * @var array<string, string>|null
+     */
+    private ?array $partnerMap = null;
+
     /** Normalise a merchant name (drop legal forms + punctuation) — mirrors normMerchant(). */
     public function normMerchant(?string $s): string
     {
@@ -26,6 +34,30 @@ class CategorySuggester
         return trim($s);
     }
 
+    /**
+     * The {normalised name => category} rule map, loaded from finance_partners
+     * once and cached. First partner wins for a given normalised name (mirrors
+     * the original first-match loop, including a taught empty category).
+     *
+     * @return array<string, string>
+     */
+    private function partnerMap(): array
+    {
+        if ($this->partnerMap !== null) {
+            return $this->partnerMap;
+        }
+        $map = [];
+        foreach (FinancePartner::query()->get() as $partner) {
+            $nk = $this->normMerchant($partner->name);
+            if ($nk === '' || array_key_exists($nk, $map)) {
+                continue;
+            }
+            $map[$nk] = is_string($partner->category ?? null) ? $partner->category : '';
+        }
+
+        return $this->partnerMap = $map;
+    }
+
     /** The taught category for a merchant name, or '' — mirrors learnedCategoryFor(). */
     public function learnedCategoryFor(string $name): string
     {
@@ -33,15 +65,8 @@ class CategorySuggester
         if (mb_strlen($nk) < 2) {
             return '';
         }
-        foreach (FinancePartner::query()->get() as $partner) {
-            if ($this->normMerchant($partner->name) === $nk) {
-                $cat = is_string($partner->category ?? null) ? $partner->category : '';
 
-                return $cat;
-            }
-        }
-
-        return '';
+        return $this->partnerMap()[$nk] ?? '';
     }
 
     /**

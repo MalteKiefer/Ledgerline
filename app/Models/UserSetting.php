@@ -126,7 +126,12 @@ class UserSetting extends Model
             'paperless_synced_at' => 'datetime',
             'company_smtp_enabled' => 'boolean',
             'company_smtp_port' => 'integer',
+            // Encrypted at rest (parity with the workspace SMTP fields on AppSettings)
+            // so an unencrypted DB dump does not leak the company mail endpoint/identity.
+            'company_smtp_host' => 'encrypted',
+            'company_smtp_username' => 'encrypted',
             'company_smtp_password' => 'encrypted',
+            'company_smtp_from_address' => 'encrypted',
             'gallery_columns' => 'integer',
             'file_max_versions' => 'integer',
             'invoice_number_padding' => 'integer',

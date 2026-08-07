@@ -9,8 +9,20 @@ import { invoiceTotals, realizedInvoices } from './finance-stats.js';
 const yearOf = (s) => String(s || '').slice(0, 4);
 /** German decimal (comma), fixed 2 places. */
 export function num(n) { return (Number(n) || 0).toFixed(2).replace('.', ','); }
-/** RFC-4180-ish cell, semicolon/quote/newline safe. */
-export function cell(v) { const s = String(v ?? ''); return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+/** A plain German/integer number (num() output or a bare rate) — left intact below. */
+const NUMERIC = /^-?\d[\d.,]*$/;
+/**
+ * RFC-4180-ish cell, semicolon/quote/newline safe, with spreadsheet formula-injection
+ * neutralization. A TEXT cell whose first char is a formula trigger (= + - @ TAB CR) is
+ * executed by Excel/LibreOffice even when quoted (they strip the quotes) — prefix it with
+ * an apostrophe so it is treated as text (mirrors SecurityLogController::csvSafe()). Numeric
+ * cells (amounts incl. negative credit-note totals, VAT rates) are left intact.
+ */
+export function cell(v) {
+    let s = String(v ?? '');
+    if (/^[=+\-@\t\r]/.test(s) && ! NUMERIC.test(s)) s = "'" + s;
+    return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
 const line = (arr) => arr.map(cell).join(';');
 /** Prepend a UTF-8 BOM so Excel/DATEV detect encoding. */
 export function withBom(text) { return '﻿' + text; }

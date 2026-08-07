@@ -40,6 +40,20 @@ class ReceiptOcr
 
     private const RASTER_DPI = 200;
 
+    /**
+     * Hard cap on a rasterised page's longer edge (px). pdftoppm `-scale-to`
+     * takes priority over `-r`, so a giant-MediaBox PDF can't render to a
+     * multi-gigapixel bitmap (decompression-bomb / OOM DoS). 5000px bounds a page
+     * to ≤~35 MPixel regardless of its declared physical size.
+     */
+    private const MAX_RASTER_PX = 5000;
+
+    /**
+     * Reject a decoded image above this pixel budget before handing it to
+     * Leptonica/tesseract — a tiny file can declare enormous dimensions.
+     */
+    private const MAX_IMAGE_PIXELS = 40_000_000;
+
     private const TIMEOUT = 60;
 
     /**
@@ -98,8 +112,11 @@ class ReceiptOcr
 
         try {
             $prefix = $dir.'/page';
+            // `-scale-to` bounds the output pixel dimensions (takes priority over
+            // `-r`), so a giant-MediaBox page can't rasterise to a gigapixel bomb.
             BinaryProcess::run([
                 'pdftoppm', '-png', '-r', (string) self::RASTER_DPI,
+                '-scale-to', (string) self::MAX_RASTER_PX,
                 '-f', '1', '-l', (string) self::MAX_PDF_PAGES, $path, $prefix,
             ], self::TIMEOUT);
 
@@ -119,10 +136,34 @@ class ReceiptOcr
 
     private function ocrImage(string $path, string $lang): string
     {
+        // Guard against a decompression bomb before Leptonica decodes the whole
+        // bitmap into memory (a tiny file can declare huge dimensions).
+        if ($this->exceedsPixelBudget($path)) {
+            return '';
+        }
+
         // Default PSM (block layout) preserves lines; -l selects the language(s).
         $out = BinaryProcess::run(['tesseract', $path, 'stdout', '-l', $lang], self::TIMEOUT);
 
         return $out ?? '';
+    }
+
+    /**
+     * True when the image's declared pixel count exceeds {@see MAX_IMAGE_PIXELS}.
+     * Undeterminable dimensions (getimagesize returns false, e.g. some AVIF
+     * builds) are allowed through — the pdftoppm `-scale-to` cap already bounds
+     * the PDF path, and Leptonica applies its own size limits.
+     */
+    private function exceedsPixelBudget(string $path): bool
+    {
+        $info = @getimagesize($path);
+        if ($info === false) {
+            return false;
+        }
+        $w = (int) $info[0];
+        $h = (int) $info[1];
+
+        return $w > 0 && $h > 0 && ($w * $h) > self::MAX_IMAGE_PIXELS;
     }
 
     /** Normalise line endings to \n (keeping line structure), strip form-feeds, trim. */

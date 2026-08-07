@@ -486,7 +486,7 @@
                       </p>
                     </div>
                     <template x-if="doc.r.category"><x-badge variant="gray"><span x-text="doc.r.category"></span></x-badge></template>
-                    <template x-if="doc.r.contactId || doc.r.partnerId"><x-icon name="user" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" /></template>
+                    <template x-if="doc.r.partnerId"><x-icon name="user" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" /></template>
                     <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
                   </button>
                 </template>
@@ -607,21 +607,21 @@
                     {{-- Business partner (a contact, or a standalone partner) --}}
                     <div x-data="{ open: false }">
                       <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_partner') }}</label>
-                      <template x-if="receiptDoc.r.contactId || receiptDoc.r.partnerId">
+                      <template x-if="receiptDoc.r.partnerId">
                         <div class="flex items-center gap-2 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
                           <x-icon name="user" class="h-4 w-4 text-gray-400" />
                           <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="receiptPartnerName(receiptDoc.r) || '—'"></span>
                           <x-icon-button name="x-mark" tone="gray" size="sm" @click="setReceiptPartner(null)" :aria-label="__('common.delete')" />
                         </div>
                       </template>
-                      <template x-if="! (receiptDoc.r.contactId || receiptDoc.r.partnerId)">
+                      <template x-if="! receiptDoc.r.partnerId">
                         <div class="relative">
                           <input type="search" x-model="receiptDoc.r.partnerQuery" @focus="open = true" placeholder="{{ __('invoices.receipt_partner_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
                           <div x-show="open && partnerOptions().length" @click.outside="open = false" class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-lg">
                             <template x-for="o in partnerOptions()" :key="o.kind + o.id">
                               <button type="button" @click="setReceiptPartner(o); open = false" class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-accent/5">
                                 <span class="min-w-0 truncate" x-text="o.name"></span>
-                                <span class="shrink-0 text-[10px] uppercase tracking-wide text-gray-400" x-text="o.kind === 'contact' ? '{{ __('invoices.partner_contact') }}' : '{{ __('invoices.partner_partner') }}'"></span>
+                                <span class="shrink-0 text-[10px] uppercase tracking-wide text-gray-400">{{ __('invoices.partner_partner') }}</span>
                               </button>
                             </template>
                           </div>
@@ -1035,7 +1035,7 @@
                     <div x-show="openPartnerRec.email"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.email" class="text-accent hover:underline" x-text="openPartnerRec.email"></a></dd></div>
                     <div x-show="openPartnerRec.invoiceEmail"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_invoice_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.invoiceEmail" class="text-accent hover:underline" x-text="openPartnerRec.invoiceEmail"></a></dd></div>
                     <div x-show="openPartnerRec.phone"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_phone') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.phone"></dd></div>
-                    <div x-show="openPartnerRec.url"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_url') }}</dt><dd><a :href="openPartnerRec.url" target="_blank" rel="noopener" class="text-accent hover:underline break-all" x-text="openPartnerRec.url"></a></dd></div>
+                    <div x-show="openPartnerRec.url"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_url') }}</dt><dd><a :href="safeHref(openPartnerRec.url)" target="_blank" rel="noopener" class="text-accent hover:underline break-all" x-text="openPartnerRec.url"></a></dd></div>
                     <div x-show="openPartnerRec.address"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_address') }}</dt><dd class="whitespace-pre-line text-gray-800 dark:text-gray-200" x-text="openPartnerRec.address"></dd></div>
                     <div x-show="openPartnerRec.category"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_category') }}</dt><dd class="text-gray-800 dark:text-gray-200" x-text="openPartnerRec.category"></dd></div>
                     <div x-show="openPartnerRec.note"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_note') }}</dt><dd class="whitespace-pre-line text-gray-800 dark:text-gray-200" x-text="openPartnerRec.note"></dd></div>

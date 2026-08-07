@@ -32,8 +32,6 @@
                             </div>
                             <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-gray-400 dark:text-gray-500">
                                 <span>{{ trans_choice('settings.groups_member_count', $g->members_count, ['count' => $g->members_count]) }}</span>
-                                @if ($g->files_quota_mb)<span>{{ __('settings.users_quota_files') }}: {{ $g->files_quota_mb }} MB</span>@endif
-                                @if ($g->gallery_quota_mb)<span>{{ __('settings.users_quota_gallery') }}: {{ $g->gallery_quota_mb }} MB</span>@endif
                                 @if ($g->max_connected_devices)<span>{{ __('settings.users_devices') }}: {{ $g->max_connected_devices }}</span>@endif
                             </div>
                         </div>

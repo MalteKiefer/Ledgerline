@@ -7,8 +7,10 @@ namespace Tests\Feature\Auth;
 use App\Models\User;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class PasswordResetTest extends TestCase
@@ -67,5 +69,65 @@ class PasswordResetTest extends TestCase
 
             return true;
         });
+    }
+
+    public function test_reset_revokes_the_users_device_tokens(): void
+    {
+        Notification::fake();
+        $user = User::factory()->create();
+
+        // A paired device / API bearer that an attacker might hold.
+        $user->createToken('device');
+        $this->assertSame(1, $user->tokens()->count());
+
+        $this->post(route('password.email'), ['email' => $user->email]);
+        Notification::assertSentTo($user, ResetPassword::class, function (ResetPassword $notification) use ($user) {
+            $this->post(route('password.update'), [
+                'token' => $notification->token,
+                'email' => $user->email,
+                'password' => 'a-brand-new-passphrase',
+                'password_confirmation' => 'a-brand-new-passphrase',
+            ])->assertSessionHasNoErrors();
+
+            return true;
+        });
+
+        // The reset acts as a kill switch: stolen device tokens are gone.
+        $this->assertSame(0, $user->tokens()->count());
+    }
+
+    public function test_reset_purges_persisted_database_sessions(): void
+    {
+        // The default (prod) session driver is `database`; the test env uses
+        // `array`, so force the DB path to exercise revokeAllAccess()'s session
+        // purge. The `sessions` table is provided by the app's migrations.
+        config(['session.driver' => 'database', 'session.table' => 'sessions']);
+        $this->assertTrue(Schema::hasTable('sessions'));
+
+        Notification::fake();
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+
+        DB::table('sessions')->insert([
+            ['id' => 'victim-a', 'user_id' => $user->id, 'payload' => '', 'last_activity' => time()],
+            ['id' => 'victim-b', 'user_id' => $user->id, 'payload' => '', 'last_activity' => time()],
+            ['id' => 'bystander', 'user_id' => $other->id, 'payload' => '', 'last_activity' => time()],
+        ]);
+
+        $this->post(route('password.email'), ['email' => $user->email]);
+        Notification::assertSentTo($user, ResetPassword::class, function (ResetPassword $notification) use ($user) {
+            $this->post(route('password.update'), [
+                'token' => $notification->token,
+                'email' => $user->email,
+                'password' => 'a-brand-new-passphrase',
+                'password_confirmation' => 'a-brand-new-passphrase',
+            ])->assertSessionHasNoErrors();
+
+            return true;
+        });
+
+        // The victim's sessions are gone; another user's is untouched.
+        $this->assertSame(0, DB::table('sessions')->where('user_id', $user->id)->count());
+        $this->assertSame(1, DB::table('sessions')->where('user_id', $other->id)->count());
     }
 }

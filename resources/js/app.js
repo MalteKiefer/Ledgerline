@@ -12,7 +12,7 @@ import tagSelect from './components/tag-select';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
-// imports a chunk (map/leaflet, markdown, libsodium…). Reload once to pick up
+// imports a chunk (e.g. the invoice PDF/QR/OCR lazy chunks). Reload once to pick up
 // the fresh assets. A short cooldown prevents a reload loop if the failure is
 // genuinely persistent.
 window.addEventListener('vite:preloadError', () => {

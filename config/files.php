@@ -37,8 +37,9 @@ return [
     'quota_mb' => (int) env('FILES_QUOTA_MB', 0),
 
     /*
-    | Grace window before an orphaned (never-synced) blob is swept by
-    | files:prune-trash. Was read by the command but previously undeclared.
+    | Grace window (hours) before an orphaned (never-synced) blob is eligible
+    | for sweeping. No active sweeper command currently runs; the value is an
+    | AppSettings-backed default (see AppServiceProvider SETTING_OVERRIDES).
     */
     'blob_orphan_grace_hours' => (int) env('FILES_BLOB_ORPHAN_GRACE_HOURS', 24),
 

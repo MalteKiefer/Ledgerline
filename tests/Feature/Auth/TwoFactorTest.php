@@ -21,10 +21,22 @@ class TwoFactorTest extends TestCase
         return app(Google2FA::class)->getCurrentOtp($secret);
     }
 
+    /**
+     * Two-factor management now requires a fresh password confirmation
+     * (config/fortify.php `confirmPassword => true`). Prime the session via the
+     * real confirm-password endpoint so the guarded 2FA routes proceed.
+     */
+    private function confirmPassword(string $password = 'password'): void
+    {
+        $this->post(route('password.confirm.store'), ['password' => $password])
+            ->assertSessionHasNoErrors();
+    }
+
     public function test_a_user_can_enable_confirm_and_disable_two_factor(): void
     {
         $user = User::factory()->create();
         $this->actingAs($user);
+        $this->confirmPassword();
 
         // Enable — generates a pending secret + recovery codes, not yet confirmed.
         $this->post(route('two-factor.enable'))->assertSessionHasNoErrors();
@@ -48,11 +60,32 @@ class TwoFactorTest extends TestCase
         $this->assertNull($user->refresh()->two_factor_secret);
     }
 
+    public function test_two_factor_management_requires_a_fresh_password_confirmation(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        // Without a prior password confirmation the guarded 2FA routes must NOT
+        // act — Fortify's RequirePassword middleware redirects to the
+        // confirm-password screen. Defends a stolen/hijacked web session from
+        // silently weakening the second factor.
+        $this->post(route('two-factor.enable'))->assertRedirect(route('password.confirm'));
+        $this->assertNull($user->refresh()->two_factor_secret);
+
+        $this->delete(route('two-factor.disable'))->assertRedirect(route('password.confirm'));
+
+        // After confirming the password, the same op proceeds.
+        $this->confirmPassword();
+        $this->post(route('two-factor.enable'))->assertSessionHasNoErrors();
+        $this->assertNotNull($user->refresh()->two_factor_secret);
+    }
+
     public function test_login_with_two_factor_enabled_requires_the_challenge(): void
     {
         $user = User::factory()->create(['password' => Hash::make('a-very-strong-passphrase')]);
         // Simulate a fully-enabled 2FA account.
         $this->actingAs($user);
+        $this->confirmPassword('a-very-strong-passphrase');
         $this->post(route('two-factor.enable'));
         $user->refresh();
         $this->post(route('two-factor.confirm'), ['code' => $this->currentOtp($user)]);
@@ -71,6 +104,7 @@ class TwoFactorTest extends TestCase
     {
         $user = User::factory()->create(['password' => Hash::make('a-very-strong-passphrase')]);
         $this->actingAs($user);
+        $this->confirmPassword('a-very-strong-passphrase');
         $this->post(route('two-factor.enable'));
         $user->refresh();
         $this->post(route('two-factor.confirm'), ['code' => $this->currentOtp($user)]);

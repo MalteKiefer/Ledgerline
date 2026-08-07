@@ -10,12 +10,13 @@ return [
     |--------------------------------------------------------------------------
     |
     | Server-side password hashing uses Argon2id (PHP's PASSWORD_ARGON2ID via
-    | libsodium). This app is zero-knowledge, so the only server-side password
-    | hash is the optional public-share password gate (a rate-limited access
-    | control, never the encryption root). We still prefer a memory-hard KDF
-    | over bcrypt for that gate. Hash::check() auto-detects the algorithm from
-    | the stored hash prefix, so pre-existing bcrypt hashes keep verifying and
-    | only NEWLY created hashes use Argon2id.
+    | libsodium). These parameters protect the PRIMARY credential at rest: the
+    | first-party Fortify email+password login hash (User::casts() maps
+    | `password => 'hashed'`). If the database ever leaks, this is the main
+    | offline-cracking target, so a memory-hard KDF is chosen deliberately over
+    | bcrypt — do NOT lower the cost. Hash::check() auto-detects the algorithm
+    | from the stored hash prefix, so any pre-existing bcrypt hashes keep
+    | verifying and only NEWLY created hashes use Argon2id.
     |
     | Supported: "bcrypt", "argon", "argon2id"
     |
@@ -54,8 +55,9 @@ return [
     | Rehash On Login
     |--------------------------------------------------------------------------
     |
-    | Not used by this app (no server-side login password; OIDC handles auth).
-    | Kept for framework completeness.
+    | Enabled so Fortify transparently re-hashes the login password with the
+    | current Argon2id parameters on the user's next successful login whenever
+    | those parameters change. Keeps stored hashes at the current cost.
     |
     */
 

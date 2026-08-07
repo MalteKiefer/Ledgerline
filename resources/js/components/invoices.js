@@ -17,7 +17,7 @@ import { fileSig } from '../shared/file-sig';
 import { autoPick, suggestBookings } from '../shared/receipt-match';
 import { projectTree as buildProjectTree, rolledTotal as projectRolled, ownTotal as projectOwn, projectReceipts as receiptsForProject } from '../shared/finance-projects';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary, discountAmount } from '../shared/finance-stats';
-import { buildRevenueCsv, buildExpenseCsv, withBom } from '../shared/datev-export';
+import { buildRevenueCsv, buildExpenseCsv } from '../shared/datev-export';
 import { matchInvoice } from '../shared/invoice-match';
 import { extractDocText } from '../shared/doc-text';
 import { analyzeReceiptText } from '../shared/receipt-ocr';
@@ -473,7 +473,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
     },
 
     // ---- VAT advance return (Umsatzsteuer-Voranmeldung), current year ----
-    get vatReturn() { return vatReturn(this.invoices, new Date().getFullYear()); },
+    get vatReturn() { return vatReturn(this.invoices, new Date().getFullYear(), this.smallBusiness); },
 
     // ---- Statistics tab (year-scoped; the year is selectable) ----
     statsYear: new Date().getFullYear(),
@@ -481,17 +481,17 @@ export default (config = {}, labels = {}, initial = {}) => ({
     get statsKpis() { return yearKpis(this.invoices, this.statsYear); },
     get statsCustomers() { return revenueByCustomer(this.invoices, this.statsYear); },
     get statsMonths() { return monthlyRevenue(this.invoices, this.statsYear); },
-    get statsVat() { return vatReturn(this.invoices, this.statsYear); },
+    get statsVat() { return vatReturn(this.invoices, this.statsYear, this.smallBusiness); },
     get statsMonthPeak() { return Math.max(1, ...this.statsMonths.map((m) => m.net)); },
     // GoBD accounting export (Rechnungsausgangsbuch / Belege) as semicolon CSV with a
     // UTF-8 BOM — universally importable (Steuerberater / DATEV generic mapping / Excel).
     // German column headers (GoBD/accountant-oriented) come from the builder defaults.
     exportRevenueCsv() {
-        const csv = withBom(buildRevenueCsv(this.invoices, this.statsYear));
+        const csv = buildRevenueCsv(this.invoices, this.statsYear);
         saveBlobAs(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `umsatz-${this.statsYear}.csv`, 'text/csv');
     },
     exportExpenseCsv() {
-        const csv = withBom(buildExpenseCsv(this.transactions, this.projects, this.statsYear));
+        const csv = buildExpenseCsv(this.transactions, this.projects, this.statsYear);
         saveBlobAs(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `belege-${this.statsYear}.csv`, 'text/csv');
     },
     monthLabel(m) {
@@ -571,7 +571,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
         pm.business = on; changed.push(pm);
         for (const p of changed) await this._persistPayment(p);
     },
-    get businessAccount() { return (this.paymentMethods || []).find((p) => p.business) || null; },
 
     // ---- Account detail + bank-statement import ----
     payView: 'list',        // 'list' | 'account'
@@ -666,30 +665,14 @@ export default (config = {}, labels = {}, initial = {}) => ({
     // ---- Receipts (Belege) — files attached to bank transactions ----
     receiptTx: null,        // the transaction whose receipts panel is open
     receiptBusy: false,
-    get outgoingTx() { return this.accountTx.filter((t) => t.amount < 0); },
     get documentableTx() { return this.accountTx.filter((t) => t.vatCat !== 'private'); },
     get unlinkedIncomeCount() { const id = this.payAccount?.id; return (this.transactions || []).filter((t) => t.account === id && t.amount > 0 && ! t.invoiceId).length; },
     get missingReceipts() { return this.documentableTx.filter((t) => ! (t.receipts && t.receipts.length)).length; },
     receiptCount(tx) { return (tx.receipts || []).filter((r) => ! r.trashed).length; },
-    get receiptOverview() {
-        return sortedPaymentMethods(this.paymentMethods).filter((p) => p.type === 'bank').map((pm) => {
-            const docs = (this.transactions || []).filter((t) => t.account === pm.id && t.vatCat !== 'private');
-            return { pm, outgoing: docs.length, missing: docs.filter((t) => ! (t.receipts && t.receipts.length)).length };
-        });
-    },
 
     // ---- Belege document manager (flattened receipts across all bookings) ----
     receiptCatSuggestions: ['Geschäftsessen', 'Bewirtung', 'Bürobedarf', 'Reisekosten', 'Fortbildung', 'Software', 'Hardware', 'Marketing', 'Miete', 'Versicherung', 'Kfz', 'Telekommunikation', 'Sonstiges'],
     receiptQuery: '',
-    receiptAddPick: false,
-    addBookingQuery: '',
-    get addBookingCandidates() {
-        const q = this.addBookingQuery.trim().toLowerCase();
-        let list = (this.transactions || []);
-        if (q) list = list.filter((t) => (t.counterparty || '').toLowerCase().includes(q) || (t.purpose || '').toLowerCase().includes(q) || (t.date || '').includes(q));
-        return list.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 25);
-    },
-    pickBookingForReceipt(tx) { this.receiptAddPick = false; this.openReceipts(tx); },
 
     // The raw (plaintext) URL of a stored receipt file (no decryption).
     _receiptRawUrl(tx, r) { return `/finance/transactions/${tx.id}/receipts/${r.id}/raw`; },
@@ -882,12 +865,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
     closeDocPreview() { this.docPreview = null; },
     get docPreviewIsImage() { return /^image\//.test(this.docPreview?.mime || '') || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(this.docPreview?.name || ''); },
     get docPreviewIsPdf() { return this.docPreview?.mime === 'application/pdf' || /\.pdf$/i.test(this.docPreview?.name || ''); },
-    receiptContacts() {
-        const q = (this.receiptDoc?.r.contactQuery || '').trim().toLowerCase();
-        let list = this._receiptContacts;
-        if (q) list = list.filter((c) => (contactDisplayName(c) || '').toLowerCase().includes(q));
-        return [...list].sort((a, b) => (contactDisplayName(a) || '').localeCompare(contactDisplayName(b) || '')).slice(0, 8);
-    },
     contactName(id) { const c = (this._receiptContacts || []).find((x) => x.id === id); return c ? contactDisplayName(c) : ''; },
     async setReceiptContact(c) { if (this.receiptDoc) { this.receiptDoc.r.contactId = c ? c.id : null; this.receiptDoc.r.contactName = c ? contactDisplayName(c) : ''; await this.saveReceiptDoc(); } },
     async saveReceiptDoc() {
@@ -964,7 +941,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
         this.reanalyzeBusy = false;
         window.llToast?.((labels.reanalyze_done || ':n receipts recognised.').replace(':n', n));
     },
-    get unrecognisedReceipts() { return this.allReceipts.filter((d) => d.r.kind !== 'invoice' && ! d.r.ocr).length; },
 
     // ---- Business partners (Geschäftspartner) ----
     partnerEditing: null,
@@ -1013,6 +989,9 @@ export default (config = {}, labels = {}, initial = {}) => ({
         } catch (e) { /* best effort */ }
     },
     partnerLogoSrc(p) { const v = p && p.logo; return (typeof v === 'string' && /^(data:|https?:)/.test(v)) ? v : ''; },
+    // Guard a user-entered URL used as a link href: only http(s) is clickable,
+    // any other scheme (e.g. javascript:) collapses to '#' — no script sink.
+    safeHref(u) { return (typeof u === 'string' && /^https?:\/\//i.test(u.trim())) ? u : '#'; },
     async removePartner(p) {
         if (! await this.$store.confirm.ask(labels.partner_delete_confirm || 'Delete this business partner?')) return;
         await this._destroy('partners', p.id);
@@ -1034,7 +1013,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
     openPartner(p) { this.openPartnerId = p.id; this.partnersView = 'detail'; this.partnerEditMode = false; },
     backToPartners() { this.partnersView = 'list'; this.openPartnerId = null; this.partnerEditMode = false; },
     get openPartnerRec() { return (this.partners || []).find((p) => p.id === this.openPartnerId) || null; },
-    editOpenPartner() { this.partnerEditMode = true; },
     async deleteOpenPartner() {
         const p = this.openPartnerRec; if (! p) return;
         if (! await this.$store.confirm.ask(labels.partner_delete_confirm || 'Delete this business partner?')) return;
@@ -2085,7 +2063,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
     get partnerNames() { return (this.partners || []).map((p) => p.name).filter(Boolean).sort((a, b) => a.localeCompare(b)); },
     filteredPartnerNames(q) { const s = String(q || '').toLowerCase(); return this.partnerNames.filter((n) => ! s || n.toLowerCase().includes(s)).slice(0, 50); },
     filteredPartnerContacts(name, q) { const s = String(q || '').toLowerCase(); return this.partnerContactsFor(name).filter((c) => ! s || String(c.name || '').toLowerCase().includes(s)).slice(0, 50); },
-    importVatOptions: [19, 16, 7, 0],
     importVatChoices() { const s = new Set([19, 16, 7, 0]); const v = this.importCurrent?.vatRate; if (v != null) s.add(Number(v)); return [...s].sort((a, b) => b - a); },
     importNet(row) { const g = parseFloat(row?.gross) || 0; const r = parseFloat(row?.vatRate) || 0; return this._round2(g / (1 + r / 100)); },
     importVat(row) { const g = parseFloat(row?.gross) || 0; return this._round2(g - this.importNet(row)); },
@@ -2223,8 +2200,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
         t.gross = t.net + t.vat;
         return t;
     },
-    // The signed discount amount for the current/given invoice (for the totals panel + print).
-    discountFor(inv) { const i = inv || this.current; return discountAmount(i, this.computeTotals(i).grossNet ?? 0); },
     hasDiscount(inv) { const i = inv || this.current; return !! (i && i.discountType && Number(i.discountValue) > 0); },
     // Skonto "pay by" date = issue date + skonto days (for the printed early-payment note).
     skontoDate(inv) {
@@ -2273,7 +2248,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
         if (q) list = list.filter((p) => (p.name || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q) || (p.invoiceEmail || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q));
         return [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     },
-    _custAddress(p) { return (p && p.address) || ''; },
     pickCustomer(p) {
         const attn = (Array.isArray(p.contacts) && p.contacts[0] && p.contacts[0].name) || '';
         this.current.customer = {
@@ -2295,7 +2269,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
         this.customerPicker = false;
         this.saveSoon();
     },
-    clearCustomer() { this.current.customer = { name: '', attn: '', address: '', email: '', invoiceEmail: '', vatId: '', contactId: null, partnerId: null }; this.saveSoon(); },
 
     // ---- Finalize / status ----
     _formatNumber(fmt, seq, issueDate) {

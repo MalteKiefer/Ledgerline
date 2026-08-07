@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Actions\ConfirmTwoFactorAuthentication;
 use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
 use Laravel\Fortify\Actions\EnableTwoFactorAuthentication;
@@ -90,6 +93,27 @@ class TwoFactorController extends Controller
      * Only available after 2FA has been confirmed. Returns 404 if 2FA is not
      * fully set up.
      */
+    /**
+     * Password step-up for sensitive 2FA operations (disable / view or regenerate
+     * recovery codes). Mirrors the web confirmPassword gate: a stolen device token
+     * cannot disable 2FA or read recovery codes without the account password.
+     *
+     * @throws ValidationException
+     */
+    private function requireCurrentPassword(Request $request, User $user): void
+    {
+        $pw = $request->string('current_password')->value();
+        if ($pw === '' || ! Hash::check($pw, (string) $user->password)) {
+            throw ValidationException::withMessages([
+                'current_password' => [__('The provided password does not match your current password.')],
+            ]);
+        }
+    }
+
+    // NOTE: the GET read is gated only by the device token + 2FA-confirmed state.
+    // The web viewer adds a session password-confirm, but a stateless GET cannot
+    // carry a password without leaking it into URLs/logs — so the destructive ops
+    // (regenerate, disable) get the password step-up instead; this read does not.
     public function recoveryCodes(Request $request): JsonResponse
     {
         $user = $this->requireUser($request);
@@ -111,6 +135,7 @@ class TwoFactorController extends Controller
     public function regenerateRecoveryCodes(Request $request, GenerateNewRecoveryCodes $generate): JsonResponse
     {
         $user = $this->requireUser($request);
+        $this->requireCurrentPassword($request, $user);
 
         ($generate)($user);
 
@@ -127,6 +152,7 @@ class TwoFactorController extends Controller
     public function disable(Request $request, DisableTwoFactorAuthentication $disable): JsonResponse
     {
         $user = $this->requireUser($request);
+        $this->requireCurrentPassword($request, $user);
 
         ($disable)($user);
 

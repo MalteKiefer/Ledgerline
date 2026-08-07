@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Models\AppSettings;
 use App\Models\User;
+use App\Support\OutboundUrl;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Events\ScheduledTaskFailed;
@@ -105,20 +106,16 @@ class AppServiceProvider extends ServiceProvider
      *
      * @var array<string, array{0: string, 1: string}>
      */
+    /**
+     * DB app_settings column → config key. Both current overrides are integer
+     * settings, so applySettingOverrides() int-casts every value. (The finance-only
+     * app only exposes these two file limits to the admin UI.)
+     *
+     * @var array<string, string>
+     */
     public const SETTING_OVERRIDES = [
-        'files_quota_mb' => ['files.quota_mb', 'int'],
-        'files_max_upload_mb' => ['files.max_upload_mb', 'int'],
-        'files_blob_orphan_grace_hours' => ['files.blob_orphan_grace_hours', 'int'],
-        'gallery_ml_enabled' => ['gallery.ml_enabled', 'bool'],
-        'gallery_ml_url' => ['gallery.ml_url', 'string'],
-        'gallery_ml_clip_model' => ['gallery.ml_clip_model', 'string'],
-        'gallery_face_enabled' => ['gallery.face_enabled', 'bool'],
-        'gallery_face_model' => ['gallery.face_model', 'string'],
-        // NB: the ffmpeg/exiftool BINARY paths are intentionally NOT overridable
-        // from the DB/UI — a settable executable path is a remote-code-execution
-        // lever. They stay env/config-only.
-        'gallery_face_min_score' => ['gallery.face_min_score', 'float'],
-        'gallery_geocode_interval_ms' => ['gallery.geocode_interval_ms', 'int'],
+        'files_max_upload_mb' => 'files.max_upload_mb',
+        'files_blob_orphan_grace_hours' => 'files.blob_orphan_grace_hours',
     ];
 
     public const OVERRIDES_CACHE_KEY = 'app-settings:overrides';
@@ -145,17 +142,12 @@ class AppServiceProvider extends ServiceProvider
             return;
         }
 
-        foreach (self::SETTING_OVERRIDES as $col => [$cfg, $type]) {
+        foreach (self::SETTING_OVERRIDES as $col => $cfg) {
             if (! isset($values[$col])) {
                 continue;
             }
             $v = $values[$col];
-            config([$cfg => match ($type) {
-                'int' => is_numeric($v) ? (int) $v : 0,
-                'float' => is_numeric($v) ? (float) $v : 0.0,
-                'bool' => (bool) $v,
-                default => is_scalar($v) ? (string) $v : '',
-            }]);
+            config([$cfg => is_numeric($v) ? (int) $v : 0]);
         }
     }
 
@@ -173,6 +165,17 @@ class AppServiceProvider extends ServiceProvider
             }
             $s = AppSettings::current();
             if (! $s->mail_enabled || ! filled($s->smtp_host)) {
+                return;
+            }
+            // Egress-guard the SMTP host before wiring it into the mailer that
+            // Fortify's password-reset / email-verification notifications use
+            // (that path goes through the Mail facade, bypassing ChannelNotifier's
+            // send-time guard). Refuse the cloud-metadata surface / link-local /
+            // hardened-blocked ranges even if such a host was persisted before the
+            // guard existed. Fails closed: keep the config default (`log`) mailer
+            // rather than connecting to a disallowed host. Mirrors
+            // ChannelNotifier::mailTo() and NotificationsController's SafeHost.
+            if (! OutboundUrl::hostAllowed((string) $s->smtp_host)) {
                 return;
             }
             $str = static fn (mixed $v, string $default = ''): string => is_scalar($v) ? (string) $v : $default;

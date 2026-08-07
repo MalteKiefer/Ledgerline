@@ -12,14 +12,12 @@ use Spatie\DbDumper\Databases\PostgreSql;
 
 /**
  * Dumps the application database to a gzipped SQL file (or, for SQLite, a
- * gzipped copy of the database file). The dump contains ALL data: the sealed
- * zero-knowledge manifest rows are ciphertext, but the non-ZK rows
- * (blob-ownership ledgers, user + workspace settings) and — critically — the
- * wrapped-vault-key material are present in plaintext (the latter is an offline
- * passphrase-cracking oracle). The dump artifact is therefore NOT ciphertext and
- * MUST be encrypted before it leaves the host —
- * enforcement lives in BackupManager::run() and Settings\BackupController; do
- * not remove those gates.
+ * gzipped copy of the database file). The dump contains ALL user data in
+ * plaintext: invoices, bank imports, receipts, and partner/customer PII (no
+ * zero-knowledge ciphertext remains after the plaintext-relational pivot). The
+ * dump artifact is therefore full cleartext financial PII and MUST be encrypted
+ * before it leaves the host — enforcement lives in BackupManager::run() and
+ * Settings\BackupController; do not remove those gates.
  */
 final class DatabaseSource implements BackupSource
 {

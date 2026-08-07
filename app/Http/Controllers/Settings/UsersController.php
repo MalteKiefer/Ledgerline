@@ -150,8 +150,6 @@ class UsersController extends Controller
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique(User::class)->ignore($ignoreId)],
             'role' => ['required', Rule::in(['admin', 'user'])],
             'password' => [$creating ? 'nullable' : 'prohibited', 'string', 'min:12'],
-            'files_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
-            'gallery_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'max_connected_devices' => ['nullable', 'integer', 'min:1', 'max:50'],
             'groups' => ['nullable', 'array'],
             'groups.*' => ['integer', 'exists:groups,id'],
@@ -192,8 +190,6 @@ class UsersController extends Controller
 
         return [
             'role' => $request->string('role')->value() === 'admin' ? 'admin' : 'user',
-            'files_quota_mb' => $limit('files_quota_mb'),
-            'gallery_quota_mb' => $limit('gallery_quota_mb'),
             'max_connected_devices' => $limit('max_connected_devices'),
             'modules' => GroupsController::modulesFromRequest($request),
         ];

@@ -9,6 +9,20 @@ describe('datev-export', () => {
         expect(cell('a;b')).toBe('"a;b"');
         expect(cell('he said "hi"')).toBe('"he said ""hi"""');
     });
+    it('neutralizes spreadsheet formula injection in text cells, keeps numbers intact', () => {
+        // Formula-trigger text cells get an apostrophe prefix (then RFC-4180 quoted if needed).
+        expect(cell('=HYPERLINK("http://evil","x")')).toBe('"\'=HYPERLINK(""http://evil"",""x"")"');
+        expect(cell('=cmd|calc')).toBe("'=cmd|calc");
+        expect(cell('@SUM(A1)')).toBe("'@SUM(A1)");
+        expect(cell('+49 30 123')).toBe("'+49 30 123");
+        expect(cell('-Foo Bar')).toBe("'-Foo Bar");
+        expect(cell('\t=1')).toBe("'\t=1"); // leading TAB → apostrophe-prefixed
+        // Numeric cells (num() output incl. negative credit-note totals, bare rates) untouched.
+        expect(cell(num(-119))).toBe('-119,00');
+        expect(cell(num(1234.5))).toBe('1234,50');
+        expect(cell('19')).toBe('19');
+        expect(cell('0,00')).toBe('0,00');
+    });
     it('revenue CSV: BOM, header, one row per realized invoice in the year', () => {
         const csv = buildRevenueCsv([
             inv({ issueDate: '2026-03-01', number: '2026-0001' }),

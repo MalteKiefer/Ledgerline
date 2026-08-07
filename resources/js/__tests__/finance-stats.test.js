@@ -28,6 +28,16 @@ describe('finance stats', () => {
     it('realized = issued and not trashed', () => {
         expect(realizedInvoices(data).map((i) => i.number)).toEqual(['2026-001', '2026-002', '2026-003', '2025-009']);
     });
+    it("realized set matches the server (final|sent|paid), excludes draft/trashed", () => {
+        const set = [
+            inv({ number: 'f', status: 'final' }),
+            inv({ number: 's', status: 'sent' }),
+            inv({ number: 'p', status: 'paid' }),
+            inv({ number: 'd', status: 'draft' }),
+            inv({ number: 't', status: 'sent', trashed: true }),
+        ];
+        expect(realizedInvoices(set).map((i) => i.number)).toEqual(['f', 's', 'p']);
+    });
     it('VAT advance return: net/VAT by rate and by quarter', () => {
         const r = vatReturn(data, 2026);
         expect(r.net).toBe(1557.5);   // 157.5 + 900 + 500
@@ -41,6 +51,16 @@ describe('finance stats', () => {
         expect(q3.net).toBe(500);
         expect(r.byRate.map((b) => b.rate)).toEqual([7, 19]);
         expect(r.byRate.find((b) => b.rate === 7).vat).toBe(35);
+    });
+    it('VAT advance return: §19 Kleinunternehmer books turnover GROSS into the 0% bucket, zero VAT', () => {
+        const r = vatReturn(data, 2026, true);
+        expect(r.net).toBe(1793.43);   // sum of gross: 187.43 + 1071 + 535
+        expect(r.vat).toBe(0);
+        expect(r.gross).toBe(1793.43);
+        expect(r.byRate).toEqual([{ rate: 0, net: 1793.43, vat: 0 }]);
+        const q3 = r.quarters.find((q) => q.q === 3);
+        expect(q3.net).toBe(535);      // gross of the 7% invoice
+        expect(q3.vat).toBe(0);
     });
     it('revenue by customer, highest first', () => {
         const c = revenueByCustomer(data, 2026);

@@ -21,8 +21,6 @@ class GroupFactory extends Factory
     {
         return [
             'name' => 'Group '.$this->faker->unique()->word(),
-            'files_quota_mb' => null,
-            'gallery_quota_mb' => null,
             'max_connected_devices' => null,
             'shareable' => false,
         ];

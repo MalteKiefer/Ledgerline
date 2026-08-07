@@ -28,14 +28,30 @@ final class ArchiveCipher
 
     private const CHUNK = 65536; // plaintext bytes per secretstream chunk
 
+    /**
+     * Accepted bounds for the header-supplied Argon2id KDF parameters. The V2
+     * header carries opslimit/memlimit as plain framing OUTSIDE the AEAD (the
+     * secretstream PHP init has no additional-authenticated-data channel), so on
+     * untrusted remote storage they are attacker-influenceable and MUST be
+     * bounded BEFORE the (expensive) KDF runs — otherwise a tampered opslimit
+     * hangs the process and a tampered memlimit OOM-kills it, a pre-auth
+     * resource-exhaustion DoS on the `backups:decrypt` recovery tool. The
+     * encryptor only ever writes the SENSITIVE preset, so that is the ceiling
+     * (ops=4, mem=1 GiB); the floor rejects nonsense (libsodium's own minimums).
+     */
+    private const KDF_OPS_MIN = 1;
+
+    private const KDF_MEM_MIN = 8192;
+
     public function encryptFile(string $inPath, string $outPath, string $passphrase): void
     {
         $in = $this->open($inPath, 'rb');
         $out = $this->open($outPath, 'wb');
+        $key = '';
         try {
-            // Argon2id at SENSITIVE cost — this passphrase protects the DB dump +
-            // wrapped vault-key material at rest on untrusted remote storage, so it
-            // is an offline-cracking target and warrants the strongest KDF preset.
+            // Argon2id at SENSITIVE cost — this passphrase protects a full-plaintext
+            // financial-PII DB dump at rest on untrusted remote storage, so it is an
+            // offline-cracking target and warrants the strongest KDF preset.
             $ops = SODIUM_CRYPTO_PWHASH_OPSLIMIT_SENSITIVE;
             $mem = SODIUM_CRYPTO_PWHASH_MEMLIMIT_SENSITIVE;
             $salt = random_bytes(SODIUM_CRYPTO_PWHASH_SALTBYTES);
@@ -62,6 +78,12 @@ final class ArchiveCipher
                 $this->write($out, $cipher);
             }
         } finally {
+            // Wipe the derived key and the passphrase copy from memory (libsodium
+            // key hygiene) so a core dump / swap can't expose them afterwards.
+            if ($key !== '') {
+                sodium_memzero($key);
+            }
+            sodium_memzero($passphrase);
             fclose($in);
             fclose($out);
         }
@@ -71,6 +93,7 @@ final class ArchiveCipher
     {
         $in = $this->open($inPath, 'rb');
         $out = $this->open($outPath, 'wb');
+        $key = '';
         try {
             $magic = fread($in, strlen(self::MAGIC_V2));
             if ($magic === self::MAGIC_V2) {
@@ -84,6 +107,9 @@ final class ArchiveCipher
             } else {
                 throw new RuntimeException('Not a Ledgerline backup archive.');
             }
+            // Bound the (unauthenticated, attacker-influenceable) KDF params before
+            // deriveKey() — see the KDF_*_MIN docblock: this is a pre-auth DoS gate.
+            $this->assertKdfParams($ops, $mem);
             $salt = $this->readExactly($in, SODIUM_CRYPTO_PWHASH_SALTBYTES, 'salt');
             $header = $this->readExactly($in, SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_HEADERBYTES, 'stream header');
             $key = $this->deriveKey($passphrase, $salt, $ops, $mem);
@@ -106,6 +132,12 @@ final class ArchiveCipher
                 $len = is_numeric($lenValue) ? (int) $lenValue : 0;
                 if ($len < 1) {
                     throw new RuntimeException('Corrupt archive (chunk length).');
+                }
+                // Cap the (unauthenticated) chunk length before fread() so a
+                // tampered u32 (~4 GiB) cannot drive a huge allocation. A legit
+                // chunk is at most CHUNK plaintext bytes plus the AEAD tag.
+                if ($len > self::CHUNK + SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_ABYTES) {
+                    throw new RuntimeException('Corrupt archive (chunk length too large).');
                 }
                 $cipher = fread($in, $len);
                 if ($cipher === false || strlen($cipher) !== $len) {
@@ -131,8 +163,30 @@ final class ArchiveCipher
                 throw new RuntimeException('Archive is incomplete (missing final marker).');
             }
         } finally {
+            // Wipe the derived key and the passphrase copy from memory (libsodium
+            // key hygiene) so a core dump / swap can't expose them afterwards.
+            if ($key !== '') {
+                sodium_memzero($key);
+            }
+            sodium_memzero($passphrase);
             fclose($in);
             fclose($out);
+        }
+    }
+
+    /**
+     * Reject header-supplied Argon2id parameters outside the accepted range
+     * before they reach sodium_crypto_pwhash(). The ceiling is the SENSITIVE
+     * preset (the only value the encryptor writes); anything larger is a
+     * tampered header aimed at hanging/OOM-killing the recovery tool.
+     */
+    private function assertKdfParams(int $opslimit, int $memlimit): void
+    {
+        if ($opslimit < self::KDF_OPS_MIN || $opslimit > SODIUM_CRYPTO_PWHASH_OPSLIMIT_SENSITIVE) {
+            throw new RuntimeException('Archive KDF opslimit is out of the accepted range.');
+        }
+        if ($memlimit < self::KDF_MEM_MIN || $memlimit > SODIUM_CRYPTO_PWHASH_MEMLIMIT_SENSITIVE) {
+            throw new RuntimeException('Archive KDF memlimit is out of the accepted range.');
         }
     }
 

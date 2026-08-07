@@ -32,7 +32,7 @@ class ApiGroupTest extends TestCase
 
         $this->getJson('/api/v1/groups', ['Authorization' => 'Bearer '.$this->admin()])
             ->assertOk()
-            ->assertJsonStructure(['groups' => [['id', 'name', 'files_quota_mb', 'shareable', 'members']]])
+            ->assertJsonStructure(['groups' => [['id', 'name', 'max_connected_devices', 'shareable', 'members']]])
             ->assertJsonPath('groups.0.name', 'Family');
     }
 
@@ -49,13 +49,13 @@ class ApiGroupTest extends TestCase
         $a = User::factory()->create();
 
         $res = $this->postJson('/api/v1/groups', [
-            'name' => 'Team', 'files_quota_mb' => 2000, 'shareable' => true, 'members' => [$a->id],
+            'name' => 'Team', 'max_connected_devices' => 6, 'shareable' => true, 'members' => [$a->id],
         ], ['Authorization' => 'Bearer '.$token])->assertCreated();
 
         $res->assertJsonPath('group.name', 'Team');
         $res->assertJsonPath('group.shareable', true);
         $res->assertJsonPath('group.members.0.id', $a->id);
-        $this->assertSame(2000, Group::where('name', 'Team')->first()->files_quota_mb);
+        $this->assertSame(6, Group::where('name', 'Team')->first()->max_connected_devices);
     }
 
     public function test_admin_can_update_and_sync_members(): void

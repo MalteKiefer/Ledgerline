@@ -8,12 +8,6 @@
     <script>{!! \App\Support\ThemeBootstrap::SCRIPT !!}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    {{-- Binds the cached vault key to this login so it can't outlive a logout/re-login. --}}
-    <meta name="vault-owner" content="{{ auth()->id() ? sha1(auth()->id().'|'.session()->getId()) : '' }}">
-    {{-- Trusted-device binding: userId-only so a persisted key survives a session
-         refresh (7-day stay-unlocked), but never a different login on the browser. --}}
-    <meta name="vault-user" content="{{ auth()->id() ? sha1('vault-user|'.auth()->id()) : '' }}">
-    <meta name="gallery-columns" content="{{ (int) ($llCal->gallery_columns ?? 6) }}">
     <meta name="ll-prefs" content="{{ json_encode($llCal->displayPrefs()) }}">
     <title>{{ $title }} — Ledgerline</title>
     <link rel="manifest" href="/manifest.webmanifest">

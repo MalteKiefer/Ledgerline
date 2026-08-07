@@ -47,11 +47,13 @@ class FinanceReportController extends Controller
         $accountId = $request->integer('account_id');
         $year = $request->integer('year') ?: (int) date('Y');
 
+        // Push the year predicate to the DB (range over the indexed
+        // (user_id, payment_method_id, date) column) instead of loading the
+        // account's whole history and filtering the year in PHP.
         $tx = BankTransaction::query()
             ->where('payment_method_id', $accountId)
-            ->get()
-            ->filter(fn (BankTransaction $t): bool => (int) substr((string) $t->date, 0, 4) === $year)
-            ->values();
+            ->whereBetween('date', ["{$year}-01-01", "{$year}-12-31"])
+            ->get();
 
         return response()->json($reports->accountVatSummary($tx));
     }

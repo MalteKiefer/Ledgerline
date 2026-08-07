@@ -56,6 +56,18 @@ describe('zugferd CII XML', () => {
         expect(x).toContain('<ram:CategoryCode>E</ram:CategoryCode>');
         expect(x).toContain('Kleinunternehmer');
     });
+    it('mixed-rate: the 0% tax group basis is only the 0%-rate net, and per-category bases reconcile to TaxBasisTotalAmount', () => {
+        // 100 net @19% + 50 net @0% → net 150, vat 19. The 0% BasisAmount must be 50, not 150.
+        const x = buildZugferdXml(
+            { number: 'M1', issueDate: '2026-01-02', currency: 'EUR', customer: { name: 'Mix' },
+                lines: [{ desc: 'a', qty: 1, unit: '', unitPrice: 100, vatRate: 19 }, { desc: 'b', qty: 1, unit: '', unitPrice: 50, vatRate: 0 }] },
+            company, { net: 150, vat: 19, gross: 169, vatByRate: { 19: 19, 0: 0 } },
+        );
+        expect(x).toContain('<ram:BasisAmount>100.00</ram:BasisAmount>'); // 19% group
+        expect(x).toContain('<ram:BasisAmount>50.00</ram:BasisAmount>');  // 0% group = 0%-net only
+        expect(x).not.toContain('<ram:BasisAmount>150.00</ram:BasisAmount>'); // never the whole invoice net
+        expect(x).toContain('<ram:TaxBasisTotalAmount>150.00</ram:TaxBasisTotalAmount>');
+    });
     it('escapes XML-special characters', () => {
         const x = buildZugferdXml({ number: 'A&B', currency: 'EUR', customer: { name: '<x>' }, lines: [] }, company, totals);
         expect(x).toContain('<ram:ID>A&amp;B</ram:ID>');

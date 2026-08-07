@@ -15,12 +15,16 @@ use Symfony\Component\HttpFoundation\Response;
  * origin, it could not load remote scripts, be framed, or post elsewhere.
  *
  * 'unsafe-eval' is required by Alpine.js (it evaluates x-* expressions via the
- * Function constructor). No inline <script> or inline event handlers are
- * emitted anywhere in the app, so script-src omits 'unsafe-inline'. This is a
- * defence-in-depth policy for the application shell only: script-src still
- * forbids loading scripts from other origins, and the real untrusted-content
- * surface — email bodies — renders in separate sandboxed iframes with their
- * own strict, script-less CSP.
+ * Function constructor) and is an accepted defence-in-depth reduction; drop it
+ * if Alpine is ever built in CSP-safe mode. No inline <script> or inline event
+ * handlers are emitted anywhere in the app, so script-src omits 'unsafe-inline'
+ * (the sole inline script — the theme bootstrap — is allowed via its exact
+ * sha256 hash). This is a defence-in-depth policy for the application shell
+ * only: script-src still forbids loading scripts from other origins. The real
+ * untrusted-content surface — user-uploaded bytes (receipts / logos / avatars /
+ * PDFs) — is streamed on its own responses with a strict
+ * `default-src 'none'; sandbox` CSP, which this middleware detects and never
+ * clobbers (see the sandbox check below).
  *
  * The CSP is skipped in local development so the Vite dev server / HMR (which
  * injects an inline client and connects to its own origin) keeps working.

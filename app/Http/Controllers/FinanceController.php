@@ -15,9 +15,11 @@ use App\Models\FinanceProject;
 use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use App\Models\UserSetting;
+use App\Support\OutboundUrl;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -567,7 +569,7 @@ class FinanceController extends Controller
             return response()->json(['error' => 'status_draft_blocked'], 422);
         }
         $expected = $request->has('version') ? $request->integer('version') : null;
-        $result = $this->optimistic(Invoice::class, $invoice->id, $this->invoicePatch($request, false), $expected);
+        $result = $this->optimistic(Invoice::class, $invoice->id, $this->invoicePatch($request, false, $invoice), $expected);
 
         return $this->optimisticJson($result, Invoice::class, $invoice->id, 'invoice');
     }
@@ -586,23 +588,14 @@ class FinanceController extends Controller
         $fmt = is_string($settings->invoice_number_format) ? $settings->invoice_number_format : null;
         $floor = max(1, (int) $settings->invoice_next_number);
 
-        $fresh = DB::transaction(function () use ($invoice, $fmt, $floor): Invoice {
+        $fresh = $this->withNumberRetry(fn (): Invoice => DB::transaction(function () use ($invoice, $fmt, $floor): Invoice {
             $current = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
             if (is_string($current->number) && $current->number !== '') {
                 return $current; // already numbered → idempotent
             }
 
             $year = $current->year ?? ($current->issue_date instanceof Carbon ? (int) $current->issue_date->format('Y') : (int) Carbon::now()->format('Y'));
-
-            // Lock the user's numbered rows for this year to serialise concurrent finalises.
-            $seqs = Invoice::query()->where('year', $year)->whereNotNull('seq')->lockForUpdate()->pluck('seq');
-            $maxSeq = 0;
-            foreach ($seqs as $s) {
-                if (is_numeric($s)) {
-                    $maxSeq = max($maxSeq, (int) $s);
-                }
-            }
-            $seq = max($floor, $maxSeq + 1);
+            $seq = $this->nextSeqForYear($year, $floor);
 
             $current->forceFill([
                 'number' => $this->formatNumber($fmt, $seq, $current->issue_date),
@@ -616,9 +609,69 @@ class FinanceController extends Controller
             $current->save();
 
             return $current;
-        });
+        }));
+
+        if ($fresh === false) {
+            return response()->json(['error' => 'number_conflict'], 409);
+        }
 
         return response()->json(['invoice' => $fresh]);
+    }
+
+    /**
+     * The next gapless per-year sequence number (never below the floor). Counts
+     * SOFT-DELETED numbered invoices too (withTrashed) so a trashed invoice's
+     * number can NEVER be reused — GoBD forbids reusing a burned number even
+     * across a soft delete. The partial unique index deliberately excludes
+     * trashed rows (a hard-deleted row leaves no trace), so this numbering path
+     * is the authoritative reuse guard. Locks the year's numbered rows to
+     * serialise concurrent finalisations.
+     */
+    private function nextSeqForYear(int $year, int $floor): int
+    {
+        $seqs = Invoice::withTrashed()->where('year', $year)->whereNotNull('seq')->lockForUpdate()->pluck('seq');
+        $maxSeq = 0;
+        foreach ($seqs as $s) {
+            if (is_numeric($s)) {
+                $maxSeq = max($maxSeq, (int) $s);
+            }
+        }
+
+        return max($floor, $maxSeq + 1);
+    }
+
+    /**
+     * Run a numbering transaction, retrying on the unique-number constraint. The
+     * per-year lock only covers rows that already match (FOR UPDATE takes no
+     * predicate/gap lock at READ COMMITTED), so the FIRST invoice of a new year
+     * can still race two concurrent finalisations onto the same number; the
+     * partial unique index catches the loser. Rather than surfacing that as a raw
+     * 500, retry a bounded number of times (each attempt re-reads max(seq)+1),
+     * then return false so the caller responds 409 (retriable).
+     *
+     * @param  \Closure(): Invoice  $fn
+     */
+    private function withNumberRetry(\Closure $fn): Invoice|false
+    {
+        for ($attempt = 0; $attempt <= 4; $attempt++) {
+            try {
+                return $fn();
+            } catch (QueryException $e) {
+                if (! $this->isUniqueNumberViolation($e)) {
+                    throw $e;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /** Whether a QueryException is a unique-constraint violation (pgsql 23505 / sqlite 23000). */
+    private function isUniqueNumberViolation(QueryException $e): bool
+    {
+        $sqlState = is_string($e->getCode()) ? $e->getCode() : '';
+
+        return in_array($sqlState, ['23505', '23000'], true);
     }
 
     /**
@@ -666,18 +719,9 @@ class FinanceController extends Controller
         $floor = max(1, (int) $settings->invoice_next_number);
         $issueDate = Carbon::today();
 
-        $credit = DB::transaction(function () use ($invoice, $lines, $fmt, $floor, $issueDate): Invoice {
+        $credit = $this->withNumberRetry(fn (): Invoice => DB::transaction(function () use ($invoice, $lines, $fmt, $floor, $issueDate): Invoice {
             $year = (int) $issueDate->format('Y');
-
-            // Lock the user's numbered rows for this year to serialise concurrent numbering.
-            $seqs = Invoice::query()->where('year', $year)->whereNotNull('seq')->lockForUpdate()->pluck('seq');
-            $maxSeq = 0;
-            foreach ($seqs as $s) {
-                if (is_numeric($s)) {
-                    $maxSeq = max($maxSeq, (int) $s);
-                }
-            }
-            $seq = max($floor, $maxSeq + 1);
+            $seq = $this->nextSeqForYear($year, $floor);
 
             $credit = Invoice::create([
                 'status' => 'sent',
@@ -709,7 +753,11 @@ class FinanceController extends Controller
             $credit->save();
 
             return $credit;
-        });
+        }));
+
+        if ($credit === false) {
+            return response()->json(['error' => 'number_conflict'], 409);
+        }
 
         AuditLog::record('invoice.storno', $credit, ['cancels' => $invoice->id]);
 
@@ -847,6 +895,15 @@ class FinanceController extends Controller
             return null;
         }
 
+        // Egress-guard the per-user SMTP host (mirrors ChannelNotifier::mailTo,
+        // ntfy/webhook/backup): refuse the cloud-metadata surface (169.254.169.254)
+        // and, in hardened mode, private/loopback ranges — a blind SMTP-SSRF /
+        // internal port-probe primitive otherwise reachable by any finance user.
+        // Fails closed (→ null → 'no_smtp' 422 at the call site).
+        if (! OutboundUrl::hostAllowed($host)) {
+            return null;
+        }
+
         $enc = is_string($s->company_smtp_encryption) && $s->company_smtp_encryption !== ''
             ? $s->company_smtp_encryption
             : null;
@@ -894,6 +951,17 @@ class FinanceController extends Controller
     public function restoreInvoice(int $id): JsonResponse
     {
         $invoice = Invoice::onlyTrashed()->findOrFail($id);
+
+        // Restoring re-enters the row into the partial unique index
+        // (user_id, year, number) WHERE number IS NOT NULL AND deleted_at IS NULL.
+        // If the number was reused by a live invoice while this one was trashed
+        // (legacy data from before the withTrashed() numbering fix), the restore
+        // would violate the index and 500. Refuse gracefully with a 422 instead.
+        if (is_string($invoice->number) && $invoice->number !== '' && $invoice->year !== null
+            && Invoice::query()->where('year', $invoice->year)->where('number', $invoice->number)->exists()) {
+            return response()->json(['error' => 'number_conflict'], 422);
+        }
+
         $invoice->restore();
 
         return response()->json(['invoice' => $invoice]);
@@ -948,13 +1016,18 @@ class FinanceController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function invoicePatch(Request $request, bool $create): array
+    private function invoicePatch(Request $request, bool $create, ?Invoice $existing = null): array
     {
         $patch = [];
-        foreach (['number', 'payment_account'] as $field) {
-            if ($create || $request->has($field)) {
-                $patch[$field] = $request->filled($field) ? $request->string($field)->value() : null;
-            }
+        if ($create || $request->has('payment_account')) {
+            $patch['payment_account'] = $request->filled('payment_account') ? $request->string('payment_account')->value() : null;
+        }
+        // GoBD: `number` is server-authoritative — finalizeInvoice owns the gapless
+        // per-year sequence. Accept a client-supplied number ONLY when CREATING an
+        // imported (historical) invoice; never on a normal create or on any update,
+        // so the finalize path stays the sole numbering authority.
+        if ($create && $request->boolean('imported')) {
+            $patch['number'] = $request->filled('number') ? $request->string('number')->value() : null;
         }
         if ($create || $request->has('status')) {
             $patch['status'] = $request->filled('status') ? $request->string('status')->value() : 'draft';
@@ -1004,13 +1077,62 @@ class FinanceController extends Controller
         if ($create || $request->has('note')) {
             $patch['note'] = $request->filled('note') ? $request->string('note')->value() : null;
         }
-        foreach (['customer', 'lines', 'versions'] as $field) {
+        foreach (['customer', 'lines'] as $field) {
             if ($create || $request->has($field)) {
                 $patch[$field] = $request->filled($field) ? $request->array($field) : null;
             }
         }
+        if ($create || $request->has('versions')) {
+            // SECURITY (mirrors sanitizeReceipts): the per-version `pdf` blob path is
+            // SERVER-owned — only uploadInvoicePdf ever assigns it (matched by seq).
+            // A client-supplied `pdf` is always dropped + restored from the stored row
+            // by seq, so a version can't point at another invoice/user's blob (an
+            // arbitrary-file read via invoicePdf and a destructive delete via
+            // forceDeleteInvoice on the shared, non-per-user `invoices/` namespace).
+            $incoming = $request->filled('versions') ? $request->array('versions') : [];
+            $patch['versions'] = $this->sanitizeVersions($incoming, $create ? null : $existing) ?: null;
+        }
 
         return $patch;
+    }
+
+    /**
+     * Merge client version entries against the stored invoice: a version's `pdf`
+     * blob path is SERVER-owned (only ever set by uploadInvoicePdf, matched by
+     * seq). Any client-supplied `pdf` is dropped and restored from the stored row
+     * by seq; all other version metadata (seq/label/reason/…) passes through.
+     * Prevents pointing a version at a blob outside this invoice.
+     *
+     * @param  array<array-key, mixed>  $incoming
+     * @return list<array<array-key, mixed>>
+     */
+    private function sanitizeVersions(array $incoming, ?Invoice $existing): array
+    {
+        $storedPdfBySeq = [];
+        foreach (is_array($existing?->versions) ? $existing->versions : [] as $v) {
+            if (is_array($v) && isset($v['seq']) && is_numeric($v['seq'])) {
+                $safe = $this->safeBlobPath($v['pdf'] ?? null);
+                if ($safe !== null) {
+                    $storedPdfBySeq[(int) $v['seq']] = $safe;
+                }
+            }
+        }
+        $out = [];
+        foreach ($incoming as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            unset($entry['pdf']); // never from the client
+            if (isset($entry['seq']) && is_numeric($entry['seq'])) {
+                $seq = (int) $entry['seq'];
+                if (isset($storedPdfBySeq[$seq])) {
+                    $entry['pdf'] = $storedPdfBySeq[$seq]; // server-owned path
+                }
+            }
+            $out[] = $entry;
+        }
+
+        return $out;
     }
 
     // ---- Invoice PDF (plaintext blob on disk) ----
@@ -1030,48 +1152,57 @@ class FinanceController extends Controller
         $path = 'invoices/'.Str::uuid()->toString();
         $this->fs()->putFileAs('invoices', $upload, basename($path));
 
-        $fresh = DB::transaction(function () use ($invoice, $path, $versionSeq): Invoice {
-            $current = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+        try {
+            $fresh = DB::transaction(function () use ($invoice, $path, $versionSeq): Invoice {
+                $current = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
 
-            // Per-version PDF: attach the uploaded document to the matching versions[]
-            // entry (GoBD correction trail — each version keeps its own PDF). The shared
-            // pdf_path is left untouched so historical versions never clobber each other.
-            if ($versionSeq !== null) {
-                $versions = is_array($current->versions) ? $current->versions : [];
-                $matched = false;
-                foreach ($versions as &$entry) {
-                    if (is_array($entry) && isset($entry['seq']) && is_numeric($entry['seq']) && (int) $entry['seq'] === $versionSeq) {
-                        $old = $this->safeBlobPath($entry['pdf'] ?? null);
-                        if ($old !== null && $old !== $path) {
-                            $this->fs()->delete($old);
+                // Per-version PDF: attach the uploaded document to the matching versions[]
+                // entry (GoBD correction trail — each version keeps its own PDF). The shared
+                // pdf_path is left untouched so historical versions never clobber each other.
+                if ($versionSeq !== null) {
+                    $versions = is_array($current->versions) ? $current->versions : [];
+                    $matched = false;
+                    foreach ($versions as &$entry) {
+                        if (is_array($entry) && isset($entry['seq']) && is_numeric($entry['seq']) && (int) $entry['seq'] === $versionSeq) {
+                            $old = $this->safeBlobPath($entry['pdf'] ?? null);
+                            if ($old !== null && $old !== $path) {
+                                $this->fs()->delete($old);
+                            }
+                            $entry['pdf'] = $path;
+                            $matched = true;
+                            break;
                         }
-                        $entry['pdf'] = $path;
-                        $matched = true;
-                        break;
                     }
-                }
-                unset($entry);
-                if (! $matched) {
-                    // No such version yet → nothing to attach; drop the orphan blob.
-                    $this->fs()->delete($path);
+                    unset($entry);
+                    if (! $matched) {
+                        // No such version yet → nothing to attach; drop the orphan blob.
+                        $this->fs()->delete($path);
+
+                        return $current;
+                    }
+                    $current->versions = $versions;
+                    $current->save();
 
                     return $current;
                 }
-                $current->versions = $versions;
+
+                // No version_seq → the invoice's current/original PDF (unchanged behaviour).
+                if (is_string($current->pdf_path) && $current->pdf_path !== '' && $current->pdf_path !== $path) {
+                    $this->fs()->delete($current->pdf_path);
+                }
+                $current->forceFill(['pdf_path' => $path]);
                 $current->save();
 
                 return $current;
-            }
+            });
+        } catch (\Throwable $e) {
+            // The blob was written before the row lock; if the txn failed (e.g. the
+            // invoice was deleted between binding and the lock → 404) unlink it so it
+            // is not orphaned on the shared `invoices/` disk with no sweep.
+            $this->fs()->delete($path);
 
-            // No version_seq → the invoice's current/original PDF (unchanged behaviour).
-            if (is_string($current->pdf_path) && $current->pdf_path !== '' && $current->pdf_path !== $path) {
-                $this->fs()->delete($current->pdf_path);
-            }
-            $current->forceFill(['pdf_path' => $path]);
-            $current->save();
-
-            return $current;
-        });
+            throw $e;
+        }
 
         return response()->json(['invoice' => $fresh]);
     }
@@ -1435,16 +1566,25 @@ class FinanceController extends Controller
             'trashed' => false,
         ];
 
-        $fresh = DB::transaction(function () use ($transaction, $entry): BankTransaction {
-            $current = BankTransaction::query()->lockForUpdate()->findOrFail($transaction->id);
-            $receipts = is_array($current->receipts) ? $current->receipts : [];
-            $receipts[] = $entry;
-            $current->receipts = $receipts;
-            $current->version = $current->version + 1;
-            $current->save();
+        try {
+            $fresh = DB::transaction(function () use ($transaction, $entry): BankTransaction {
+                $current = BankTransaction::query()->lockForUpdate()->findOrFail($transaction->id);
+                $receipts = is_array($current->receipts) ? $current->receipts : [];
+                $receipts[] = $entry;
+                $current->receipts = $receipts;
+                $current->version = $current->version + 1;
+                $current->save();
 
-            return $current;
-        });
+                return $current;
+            });
+        } catch (\Throwable $e) {
+            // Blob written before the row lock; unlink it if the txn failed (e.g. the
+            // transaction was deleted between binding and the lock → 404) so it isn't
+            // orphaned on the shared `invoices/` disk.
+            $this->fs()->delete($path);
+
+            throw $e;
+        }
 
         return response()->json(['transaction' => $fresh], 201);
     }

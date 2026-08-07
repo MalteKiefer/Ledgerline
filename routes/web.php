@@ -39,12 +39,6 @@ Route::get('/metrics', [MetricsController::class, 'index'])->middleware('throttl
 // First-party auth (login, registration, password reset, email verification,
 // two-factor) is owned by Laravel Fortify — see FortifyServiceProvider.
 
-// Optional Pocket-ID (OIDC) sign-in — an ADDITIONAL login option alongside the
-// first-party auth. Guest-only + throttled; the controller gates itself off
-// (redirects to /login) when POCKETID_* is unconfigured, and the login view
-// hides the button. GET /login + POST /login|/logout stay owned by Fortify.
-Route::middleware('guest')->group(function (): void {});
-
 // Mail-independent invite / password-reset links: public consumption. The token
 // is a hashed, single-use, expiring secret in the URL; the route is throttled and
 // verifies it in constant time. Consuming it sets the user's password.
@@ -141,7 +135,7 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/settings/backup/jobs', [SettingsBackupController::class, 'storeJob'])->name('settings.backup.jobs.store');
         Route::put('/settings/backup/jobs/{job}', [SettingsBackupController::class, 'updateJob'])->name('settings.backup.jobs.update');
         Route::delete('/settings/backup/jobs/{job}', [SettingsBackupController::class, 'destroyJob'])->name('settings.backup.jobs.destroy');
-        Route::post('/settings/backup/jobs/{job}/run', [SettingsBackupController::class, 'runNow'])->name('settings.backup.jobs.run');
+        Route::post('/settings/backup/jobs/{job}/run', [SettingsBackupController::class, 'runNow'])->middleware('throttle:10,1')->name('settings.backup.jobs.run');
         Route::get('/settings/backup/runs', [SettingsBackupController::class, 'runs'])->name('settings.backup.runs');
         Route::get('/settings/backup/runs/{run}/download', [SettingsBackupController::class, 'downloadRun'])->name('settings.backup.runs.download');
         Route::post('/settings/backup/runs/{run}/decrypt', [SettingsBackupController::class, 'decryptRun'])->middleware('throttle:10,1')->name('settings.backup.runs.decrypt');
@@ -154,7 +148,7 @@ Route::middleware('auth')->group(function (): void {
     // Login/bank site-icon (BIMI/favicon) proxy: domain sent transiently, never
     // stored; SSRF-guarded. Retained for the Finance module (bank logos / partner
     // favicons).
-    Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:1200,1')->name('passwords.icon');
+    Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:300,1')->name('passwords.icon');
 
     // Plaintext-relational Finance: invoices + partners + payment methods + bank
     // transactions + projects + categories as owner-scoped rows. The per-user
@@ -231,7 +225,7 @@ Route::middleware('auth')->group(function (): void {
 
     // Paperless transfer modal: cached quick-pick terms, term creation and
     // document upload (used from the Finance receipt browser).
-    Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');
-    Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->name('paperless.terms.create');
-    Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->name('paperless.documents');
+    Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->middleware('throttle:60,1')->name('paperless.terms');
+    Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->middleware('throttle:30,1')->name('paperless.terms.create');
+    Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->middleware('throttle:20,1')->name('paperless.documents');
 });

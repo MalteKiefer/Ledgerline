@@ -58,31 +58,48 @@ export function discountAmount(inv, grossNet) {
     return d;
 }
 
-/** Invoices that count as revenue: issued (sent or paid) and not trashed. */
+/**
+ * Invoices that count as revenue: issued (final, sent or paid) and not trashed.
+ * MUST match the server FinanceReports::realizedInvoices() status set
+ * (['final','sent','paid']) cent-for-cent — 'final' (Offen) is an issued invoice
+ * per Soll-taxation and its VAT/turnover is already established.
+ */
 export function realizedInvoices(invoices) {
-    return (invoices || []).filter((i) => ! i.trashed && (i.status === 'paid' || i.status === 'sent'));
+    return (invoices || []).filter((i) => ! i.trashed && (i.status === 'final' || i.status === 'paid' || i.status === 'sent'));
 }
 
 /**
  * VAT advance return (Umsatzsteuer-Voranmeldung) figures for a year: net turnover and
  * VAT owed, broken down by rate and by quarter.
+ *
+ * `small` = §19 Kleinunternehmer: output VAT is forced to 0 and turnover is booked
+ * GROSS into the 0% bucket — cent-identical to FinanceReports::vatReturn()'s
+ * smallBusiness() handling so the client card never contradicts the server figure.
+ * The caller passes the company's small-business flag (defaults false → VAT-liable).
  */
-export function vatReturn(invoices, year) {
+export function vatReturn(invoices, year, small = false) {
     const list = realizedInvoices(invoices).filter((i) => yearOf(i) === year);
     const quarters = [1, 2, 3, 4].map((q) => ({ q, net: 0, vat: 0 }));
     const byRate = {}; // rate -> { rate, net, vat }
     let net = 0, vat = 0;
     for (const inv of list) {
         const t = invoiceTotals(inv);
-        net += t.net; vat += t.vat;
-        for (const [r, v] of Object.entries(t.vatByRate)) {
-            const rate = Number(r);
-            byRate[rate] = byRate[rate] || { rate, net: 0, vat: 0 };
-            byRate[rate].vat += v;
-            byRate[rate].net += rate > 0 ? v / (rate / 100) : t.net;
+        // KU: turnover = gross, no VAT, everything falls in the 0% bucket.
+        const rowNet = small ? t.gross : t.net;
+        net += rowNet; vat += small ? 0 : t.vat;
+        if (small) {
+            byRate[0] = byRate[0] || { rate: 0, net: 0, vat: 0 };
+            byRate[0].net += rowNet;
+        } else {
+            for (const [r, v] of Object.entries(t.vatByRate)) {
+                const rate = Number(r);
+                byRate[rate] = byRate[rate] || { rate, net: 0, vat: 0 };
+                byRate[rate].vat += v;
+                byRate[rate].net += rate > 0 ? v / (rate / 100) : t.net;
+            }
         }
         const q = Math.ceil(monthOf(inv) / 3);
-        if (q >= 1 && q <= 4) { quarters[q - 1].net += t.net; quarters[q - 1].vat += t.vat; }
+        if (q >= 1 && q <= 4) { quarters[q - 1].net += rowNet; quarters[q - 1].vat += small ? 0 : t.vat; }
     }
     return {
         year,

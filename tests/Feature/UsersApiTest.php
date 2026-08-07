@@ -92,14 +92,14 @@ class UsersApiTest extends TestCase
         $resp = $this->postJson('/api/v1/users', [
             'name' => 'Bob', 'email' => 'bob@example.com',
             'role' => 'user', 'password' => 'correct-horse-battery',
-            'files_quota_mb' => 1000,
+            'max_connected_devices' => 4,
         ], $this->auth($token))->assertCreated();
 
         $resp->assertJsonPath('user.name', 'Bob');
         $resp->assertJsonPath('user.role', 'user');
         $bob = User::where('email', 'bob@example.com')->first();
         $this->assertNotNull($bob);
-        $this->assertSame(1000, $bob->files_quota_mb);
+        $this->assertSame(4, $bob->max_connected_devices);
     }
 
     public function test_store_creates_admin_user_when_role_is_admin(): void

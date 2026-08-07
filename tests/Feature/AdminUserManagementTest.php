@@ -24,13 +24,12 @@ class AdminUserManagementTest extends TestCase
 
         $this->post(route('settings.users.store'), [
             'name' => 'Bob', 'email' => 'bob@example.com', 'role' => 'user',
-            'password' => 'super-secret-123', 'files_quota_mb' => 500, 'max_connected_devices' => 2,
+            'password' => 'super-secret-123', 'max_connected_devices' => 2,
         ])->assertRedirect();
 
         $bob = User::where('email', 'bob@example.com')->first();
         $this->assertNotNull($bob);
         $this->assertSame('user', $bob->role);
-        $this->assertSame(500, $bob->files_quota_mb);
         $this->assertSame(2, $bob->max_connected_devices);
         $this->assertTrue(str_starts_with((string) $bob->password, '$'));
     }

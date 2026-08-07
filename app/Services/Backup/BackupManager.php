@@ -9,7 +9,6 @@ use App\Models\BackupRun;
 use App\Services\Backup\Sources\BackupSource;
 use App\Services\Backup\Sources\DatabaseSource;
 use App\Services\Backup\Sources\InvoiceBlobSource;
-use App\Services\Backup\Sources\MirrorableSource;
 use App\Support\Bytes;
 use App\Support\Redactor;
 use Carbon\Carbon;
@@ -30,7 +29,6 @@ final class BackupManager
         private readonly BackupDestinationFactory $destinations,
         private readonly ArchiveCipher $cipher,
         private readonly BackupNotifier $notifier,
-        private readonly DiskMirror $mirror,
     ) {}
 
     public function run(BackupJob $job): BackupRun
@@ -64,17 +62,17 @@ final class BackupManager
         };
 
         // Archive uploaded to the destination this run — removed on cancel so a
-        // cancelled run leaves nothing behind. (Mirror uploads clean themselves.)
+        // cancelled run leaves nothing behind.
         $uploadedArchive = null;
         $fs = null;
 
         try {
             $step(sprintf('Backup "%s" started (source: %s).', $job->name, $job->source));
-            // A database dump carries every non-zero-knowledge module in plaintext
-            // AND the wrapped vault-key material (an offline passphrase-cracking
-            // oracle). It must never leave the box unencrypted — enforce here, not
-            // only in the controller, so a job created via seeder/console/legacy
-            // can't ship a cleartext dump.
+            // A database dump now contains ALL user financial data in plaintext
+            // (invoices, bank imports, receipts, partner/customer PII — no
+            // zero-knowledge ciphertext remains). It must never leave the box
+            // unencrypted — enforce here, not only in the controller, so a job
+            // created via seeder/console/legacy can't ship a cleartext dump.
             if ($job->source === 'database' && (! $job->encrypt || ! $job->effectivePassphrase())) {
                 throw new RuntimeException('A database backup must be encrypted (set encryption + a passphrase).');
             }
@@ -89,102 +87,53 @@ final class BackupManager
             // yet, so a fresh target does not fail the first backup.
             $this->destinations->ensureRoot($fs, $job->destination->driver, $job->destination->config ?? []);
 
-            // Files/Gallery can be either an incremental mirror (default) or a
-            // full archive; the database is always a full archive.
+            // Both real sources (database, invoices) are full archives: the source
+            // builds a single artifact, which is optionally encrypted and uploaded.
             $sourceObj = $this->source($job->source);
-            $useMirror = ($sourceObj instanceof MirrorableSource) && ($job->mode ?? 'mirror') !== 'archive';
 
-            if ($useMirror) {
-                /** @var MirrorableSource $sourceObj */
-                $diskPrefix = $sourceObj->diskPrefix();
-                $ledger = $sourceObj->ledgerModel();
-                // Total stored size comes straight from the blob ledger (one SQL
-                // sum) instead of a size() HEAD per object — the metric no longer
-                // costs tens of thousands of storage calls per run.
-                $bytes = (int) $ledger::query()->sum('size');
-                $filename = $prefix.'/'; // a folder mirror, not a single archive
+            $step('Building '.$job->source.' archive…');
+            $artifact = $sourceObj->build($workDir);
+            $uploadPath = $artifact->path;
+            $extension = $artifact->extension;
+            $step('Archive built: '.Bytes::format((int) (filesize($uploadPath) ?: 0)).'.');
 
-                // Full list-and-prune reconcile only once per window; every other
-                // run is a fast delta of just the blobs added since the cursor.
-                $reconcileHoursCfg = config('backup.reconcile_hours', 24);
-                $reconcileHours = max(0, is_numeric($reconcileHoursCfg) ? (int) $reconcileHoursCfg : 24);
-                $needFull = ! $sourceObj->supportsLedgerDelta()
-                    || $reconcileHours === 0
-                    || $job->last_full_mirror_at === null
-                    || $job->last_full_mirror_at->lt(Carbon::now()->subHours($reconcileHours));
-
-                if ($needFull) {
-                    $step('Full reconcile of '.$job->source.' → '.$prefix.'…');
-                    $r = $this->mirror->mirror($fs, $diskPrefix, $prefix, $step, $checkCancel);
-                    $cursor = $ledger::query()->max('created_at');
-                    $job->forceFill([
-                        'last_full_mirror_at' => Carbon::now(),
-                        'mirror_cursor' => $cursor,
-                    ])->save();
-                    $summary = sprintf('%s → %s (%s, %d uploaded, %d removed, full reconcile)', $job->source, $prefix, Bytes::format($bytes), $r['uploaded'], $r['removed']);
-                } else {
-                    $step('Incremental mirror of '.$job->source.' → '.$prefix.'…');
-                    $newBlobs = $ledger::query()
-                        ->when($job->mirror_cursor !== null, fn ($q) => $q->where('created_at', '>', $job->mirror_cursor))
-                        ->orderBy('created_at')
-                        ->pluck('blob')
-                        ->map(static fn (mixed $b): string => is_scalar($b) ? (string) $b : '')
-                        ->all();
-                    $r = $this->mirror->delta($fs, $diskPrefix, $prefix, $newBlobs, $step, $checkCancel);
-                    // Advance the cursor to the newest blob we considered.
-                    $cursor = $ledger::query()
-                        ->when($job->mirror_cursor !== null, fn ($q) => $q->where('created_at', '>', $job->mirror_cursor))
-                        ->max('created_at') ?? $job->mirror_cursor;
-                    if ($cursor !== null) {
-                        $job->forceFill(['mirror_cursor' => $cursor])->save();
-                    }
-                    $summary = sprintf('%s → %s (%s, %d new)', $job->source, $prefix, Bytes::format($bytes), $r['uploaded']);
+            if ($job->encrypt) {
+                $passphrase = $job->effectivePassphrase();
+                if ($passphrase === null) {
+                    throw new RuntimeException('Encryption is enabled but no passphrase is set.');
                 }
-            } else {
-                $step('Building '.$job->source.' archive…');
-                $artifact = $sourceObj->build($workDir);
-                $uploadPath = $artifact->path;
-                $extension = $artifact->extension;
-                $step('Archive built: '.Bytes::format((int) (filesize($uploadPath) ?: 0)).'.');
-
-                if ($job->encrypt) {
-                    $passphrase = $job->effectivePassphrase();
-                    if ($passphrase === null) {
-                        throw new RuntimeException('Encryption is enabled but no passphrase is set.');
-                    }
-                    $step('Encrypting archive…');
-                    $encPath = $artifact->path.'.enc';
-                    $this->cipher->encryptFile($artifact->path, $encPath, $passphrase);
-                    @unlink($artifact->path);
-                    $uploadPath = $encPath;
-                    $extension .= '.enc';
-                    $step('Encrypted: '.Bytes::format((int) (filesize($uploadPath) ?: 0)).'.');
-                }
-
-                $filename = $prefix.'/'.Carbon::now()->format('Y-m-d_His').'.'.$extension;
-                $step('Uploading to '.$filename.'…');
-                $stream = fopen($uploadPath, 'rb');
-                if ($stream === false) {
-                    throw new RuntimeException('Could not open the staged archive for upload.');
-                }
-                try {
-                    $fs->writeStream($filename, $stream);
-                } finally {
-                    if (is_resource($stream)) {
-                        fclose($stream);
-                    }
-                }
-                $uploadedArchive = $filename;
-                $step('Upload complete.');
-
-                $bytes = (int) (filesize($uploadPath) ?: 0);
-                $deleted = $this->prune($fs, $prefix, $job->retention);
-                $step($deleted > 0
-                    ? sprintf('Retention: kept %d, removed %d old version(s).', $job->retention, $deleted)
-                    : sprintf('Retention: keeping up to %d version(s).', $job->retention));
-
-                $summary = sprintf('%s → %s (%s)', $job->source, $filename, Bytes::format($bytes));
+                $step('Encrypting archive…');
+                $encPath = $artifact->path.'.enc';
+                $this->cipher->encryptFile($artifact->path, $encPath, $passphrase);
+                @unlink($artifact->path);
+                $uploadPath = $encPath;
+                $extension .= '.enc';
+                $step('Encrypted: '.Bytes::format((int) (filesize($uploadPath) ?: 0)).'.');
             }
+
+            $filename = $prefix.'/'.Carbon::now()->format('Y-m-d_His').'.'.$extension;
+            $step('Uploading to '.$filename.'…');
+            $stream = fopen($uploadPath, 'rb');
+            if ($stream === false) {
+                throw new RuntimeException('Could not open the staged archive for upload.');
+            }
+            try {
+                $fs->writeStream($filename, $stream);
+            } finally {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            }
+            $uploadedArchive = $filename;
+            $step('Upload complete.');
+
+            $bytes = (int) (filesize($uploadPath) ?: 0);
+            $deleted = $this->prune($fs, $prefix, $job->retention);
+            $step($deleted > 0
+                ? sprintf('Retention: kept %d, removed %d old version(s).', $job->retention, $deleted)
+                : sprintf('Retention: keeping up to %d version(s).', $job->retention));
+
+            $summary = sprintf('%s → %s (%s)', $job->source, $filename, Bytes::format($bytes));
 
             // Log the completion directly (not via $step) so a cancel requested
             // at the very end can't flip an already-finished run to cancelled.
@@ -199,8 +148,7 @@ final class BackupManager
             $job->update(['last_run_at' => Carbon::now(), 'last_status' => 'success']);
             $this->notifier->notify($job, true, $summary);
         } catch (BackupCancelled $e) {
-            // Remove any complete archive already pushed this run. (Mirror runs
-            // roll back their own partial uploads inside DiskMirror.)
+            // Remove any complete archive already pushed this run.
             if ($uploadedArchive !== null && $fs !== null) {
                 try {
                     $fs->delete($uploadedArchive);

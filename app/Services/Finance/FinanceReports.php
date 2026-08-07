@@ -24,10 +24,34 @@ use Illuminate\Support\Facades\Auth;
  */
 class FinanceReports
 {
+    /**
+     * Reporting currency. GoBD figures (USt-Voranmeldung, EÜR) must be in EUR;
+     * we do NOT hold booking-date FX rates, so foreign-currency documents are
+     * EXCLUDED from the summed reports rather than blended into a meaningless
+     * mixed-currency total. (Bank transactions have no currency column and are
+     * assumed to be in the account's — i.e. the reporting — currency.)
+     */
+    private const REPORTING_CURRENCY = 'EUR';
+
+    /**
+     * Memoised per-request realized-invoice set (reports() calls it ~6× / request).
+     *
+     * @var Collection<int, Invoice>|null
+     */
+    private ?Collection $realizedCache = null;
+
     /** round2 mirror of the JS `Math.round((n + EPSILON) * 100) / 100` for the currency domain. */
     private function r2(float $n): float
     {
         return round($n, 2);
+    }
+
+    /** Whether an invoice is booked in the reporting currency (null/empty ≙ EUR legacy). */
+    private function isReportingCurrency(Invoice $inv): bool
+    {
+        $c = is_string($inv->currency) && $inv->currency !== '' ? strtoupper($inv->currency) : self::REPORTING_CURRENCY;
+
+        return $c === self::REPORTING_CURRENCY;
     }
 
     private function yearOf(Invoice $inv): int
@@ -122,13 +146,19 @@ class FinanceReports
     }
 
     /**
-     * Invoices that count as revenue: issued (sent|paid), not trashed.
+     * Invoices that count as revenue: issued (final|sent|paid), not trashed, in
+     * the reporting currency. Memoised per request (every report method consumes
+     * it, so reports() would otherwise re-run the full query ~6×).
      *
      * @return Collection<int, Invoice>
      */
     public function realizedInvoices(): Collection
     {
-        return Invoice::query()->whereIn('status', ['final', 'sent', 'paid'])->get();
+        return $this->realizedCache ??= Invoice::query()
+            ->whereIn('status', ['final', 'sent', 'paid'])
+            ->get()
+            ->filter(fn (Invoice $i): bool => $this->isReportingCurrency($i))
+            ->values();
     }
 
     /**
@@ -287,7 +317,7 @@ class FinanceReports
         $openCount = 0;
         $openGross = 0.0;
 
-        foreach (Invoice::query()->where('status', 'sent')->get() as $inv) {
+        foreach (Invoice::query()->where('status', 'sent')->get()->filter(fn (Invoice $i): bool => $this->isReportingCurrency($i)) as $inv) {
             $gross = $this->invoiceTotals($inv)['gross'];
             $due = $inv->due_date;
             if (! $due instanceof Carbon) {
@@ -419,7 +449,7 @@ class FinanceReports
         // VAT scheme: Ist (cash-basis) → only PAID invoices, booked to the payment date;
         // Soll (accrual) → every issued (final/sent/paid) invoice, booked to the issue date.
         $outputList = $ist
-            ? Invoice::query()->where('status', 'paid')->get()
+            ? Invoice::query()->where('status', 'paid')->get()->filter(fn (Invoice $i): bool => $this->isReportingCurrency($i))->values()
             : $this->realizedInvoices();
         $taxDate = function (Invoice $i) use ($ist): ?Carbon {
             $d = $ist ? ($i->paid_at ?? $i->issue_date) : $i->issue_date;
@@ -604,8 +634,12 @@ class FinanceReports
      */
     private function expenseTransactions(int $year): Collection
     {
-        return BankTransaction::query()->where('amount', '<', 0)->get()
-            ->filter(fn (BankTransaction $t): bool => (int) substr((string) $t->date?->format('Y-m-d'), 0, 4) === $year)
+        // Push the year predicate to the DB (range over the indexed `date` column)
+        // instead of loading every historical negative row and filtering in PHP.
+        return BankTransaction::query()
+            ->where('amount', '<', 0)
+            ->whereBetween('date', ["{$year}-01-01", "{$year}-12-31"])
+            ->get()
             ->values();
     }
 

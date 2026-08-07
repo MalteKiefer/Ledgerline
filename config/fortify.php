@@ -171,7 +171,16 @@ return [
         Features::updatePasswords(),
         Features::twoFactorAuthentication([
             'confirm' => true,
-            'confirmPassword' => false,
+            // Require a fresh password confirmation before ANY two-factor
+            // management op (enable / confirm / view+regenerate recovery codes /
+            // disable). Fortify adds the `password.confirm` middleware to the web
+            // /user/two-factor-* routes; a stolen device-token or hijacked session
+            // alone can no longer weaken the second factor. The confirm-password
+            // screen (auth.confirm-password) is wired in FortifyServiceProvider,
+            // so the redirect degrades safely. NB: this only guards the WEB routes;
+            // the Sanctum API mirror (Api\TwoFactorController) needs its own
+            // current-password check — tracked separately (out of this change set).
+            'confirmPassword' => true,
         ]),
         // First-party WebAuthn login is out of scope for v1 (email+password+TOTP).
     ],

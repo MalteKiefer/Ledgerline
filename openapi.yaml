@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.541.0
+  version: 1.542.0
   license:
     name: Proprietary
   description: >
@@ -234,8 +234,6 @@ components:
       properties:
         id: { type: integer }
         name: { type: string, maxLength: 100 }
-        files_quota_mb: { type: [integer, "null"], description: "Files quota in MB (null = no group cap)." }
-        gallery_quota_mb: { type: [integer, "null"], description: "Gallery quota in MB (null = no group cap)." }
         max_connected_devices: { type: [integer, "null"], description: "Device cap (null = no group cap)." }
         shareable: { type: boolean, description: "Members may offer this group as a share target." }
         modules:
@@ -790,8 +788,6 @@ components:
         name: { type: string }
         email: { type: string, format: email }
         role: { type: string, enum: [admin, user] }
-        files_quota_mb: { type: [integer, "null"] }
-        gallery_quota_mb: { type: [integer, "null"] }
         max_connected_devices: { type: [integer, "null"] }
         modules: { type: [array, "null"], items: { type: string } }
         groups: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
@@ -807,8 +803,6 @@ components:
         email: { type: string, format: email, maxLength: 255 }
         role: { type: string, enum: [admin, user] }
         password: { type: string, minLength: 12, description: "Create only (prohibited on update); omit to trigger a reset mail." }
-        files_quota_mb: { type: [integer, "null"], minimum: 0, maximum: 100000000 }
-        gallery_quota_mb: { type: [integer, "null"], minimum: 0, maximum: 100000000 }
         max_connected_devices: { type: [integer, "null"], minimum: 1, maximum: 50 }
         modules: { type: [array, "null"], items: { type: string, enum: [finance] } }
         modules_marker: { type: string, enum: ['set'], description: "Send with an (empty) modules[] to set an explicit list rather than 'no change'." }
@@ -1729,8 +1723,6 @@ paths:
               required: [name]
               properties:
                 name: { type: string, maxLength: 100 }
-                files_quota_mb: { type: [integer, "null"], minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
-                gallery_quota_mb: { type: [integer, "null"], minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
                 max_connected_devices: { type: [integer, "null"], minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
                 modules: { type: [array, "null"], items: { type: string, enum: [finance] }, description: "Enabled module keys (null = all)." }
@@ -1772,8 +1764,6 @@ paths:
               required: [name]
               properties:
                 name: { type: string, maxLength: 100 }
-                files_quota_mb: { type: [integer, "null"], minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
-                gallery_quota_mb: { type: [integer, "null"], minimum: 1, maximum: 100000000, description: "MB; omit / 0 / null = no group cap." }
                 max_connected_devices: { type: [integer, "null"], minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
                 modules: { type: [array, "null"], items: { type: string, enum: [finance] }, description: "Enabled module keys (null = all)." }
@@ -2004,7 +1994,7 @@ paths:
       summary: Trashed finance rows
       security: [ { bearerAuth: [] } ]
       responses:
-        "200": { description: "Trashed sets — same keys as /finance/data, each an array of soft-deleted rows.", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "200": { description: "Trashed sets — same keys as /finance/data EXCEPT financeCategories (categories are hard-deleted, not trashable), each an array of soft-deleted rows.", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /finance/invoices:
@@ -2880,7 +2870,7 @@ paths:
       summary: Read the caller's per-user settings
       description: >
         Non-secret per-user settings a mobile client needs beyond display prefs:
-        the birthday/anniversary notification channels and the personal file version cap.
+        the personal file version cap.
       responses:
         "200": { description: "Settings.", content: { application/json: { schema: { $ref: "#/components/schemas/UserSettings" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -2994,7 +2984,7 @@ paths:
       tags: [TwoFactor]
       operationId: twoFactorRecoveryCodes
       summary: List recovery codes
-      description: "Only after 2FA is confirmed (else 404). Throttle 30/min."
+      description: "Only after 2FA is confirmed (else 404). Gated by the device token + 2FA-confirmed state; the destructive regenerate/disable ops add a password step-up, this read does not (a stateless GET cannot carry a password without leaking it). Throttle 30/min."
       responses:
         "200": { description: "Codes.", content: { application/json: { schema: { type: object, required: [recovery_codes], properties: { recovery_codes: { type: array, items: { type: string } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -3004,20 +2994,28 @@ paths:
       tags: [TwoFactor]
       operationId: twoFactorRegenerateRecoveryCodes
       summary: Regenerate recovery codes
-      description: "Invalidates the old set and returns a fresh one. Throttle 10/min."
+      description: "Invalidates the old set and returns a fresh one. Requires a fresh `current_password` step-up. Throttle 10/min."
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password } } } } }
       responses:
         "200": { description: "New codes.", content: { application/json: { schema: { type: object, required: [recovery_codes], properties: { recovery_codes: { type: array, items: { type: string } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
         "429": { description: Rate limit exceeded. }
   /user/two-factor:
     delete:
       tags: [TwoFactor]
       operationId: twoFactorDisable
       summary: Disable 2FA
-      description: "Clears the TOTP secret, recovery codes, and confirmed flag. Idempotent. Throttle 10/min."
+      description: "Clears the TOTP secret, recovery codes, and confirmed flag. Idempotent. Requires a fresh `current_password` step-up so a stolen device token cannot disable 2FA. Throttle 10/min."
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password } } } } }
       responses:
         "200": { description: "Disabled.", content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean, enum: [false] } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /user/password:
     put:
       tags: [TwoFactor]
@@ -3200,6 +3198,7 @@ paths:
       responses:
         "200": { description: "Terms.", content: { application/json: { schema: { type: object, required: [configured, tags, document_types, correspondents], properties: { configured: { type: boolean }, tags: { type: array, items: { $ref: "#/components/schemas/PaperlessTerm" } }, document_types: { type: array, items: { $ref: "#/components/schemas/PaperlessTerm" } }, correspondents: { type: array, items: { $ref: "#/components/schemas/PaperlessTerm" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
     post:
       tags: [Paperless]
       operationId: paperlessCreateTerm
@@ -3210,6 +3209,7 @@ paths:
         "200": { description: "Created/found.", content: { application/json: { schema: { type: object, required: [ok, id, name], properties: { ok: { type: boolean }, id: { type: integer }, name: { type: string } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "422": { description: Not configured / validation / Paperless error. }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /paperless/documents:
     post:
       tags: [Paperless]
@@ -3230,6 +3230,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "413": { description: File exceeds 50 MB. }
         "422": { description: Not configured / validation / Paperless error. }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /paperless/sync:
     post:
       tags: [Paperless]
@@ -3240,6 +3241,7 @@ paths:
         "200": { description: "Synced.", content: { application/json: { schema: { type: object, required: [ok, counts], properties: { ok: { type: boolean }, counts: { type: object, properties: { tag: { type: integer }, document_type: { type: integer }, correspondent: { type: integer } } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "422": { description: Paperless error. }
+        "429": { $ref: "#/components/responses/RateLimited" }
 
   # ── Admin: backup ──
   /backup/destinations:

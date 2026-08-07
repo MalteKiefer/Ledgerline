@@ -76,11 +76,22 @@ export function buildZugferdXml(inv, company, totals) {
     </ram:IncludedSupplyChainTradeLineItem>`;
     }).join('\n');
 
-    // One ApplicableTradeTax per VAT rate.
-    const taxes = Object.keys(t.vatByRate || {}).map((rate) => {
+    // One ApplicableTradeTax per VAT rate. For a positive rate the basis is derived from
+    // that group's VAT. On a mixed-rate invoice the 0%/exempt group's BasisAmount must be
+    // ONLY the 0%-rate net, NOT the whole invoice net — otherwise the per-category bases
+    // exceed TaxBasisTotalAmount and the Factur-X fails EN-16931 (BR-CO-10 / BR-S-08 /
+    // BR-E-08). Derive the 0% basis as the tax-basis remainder after the positive-rate
+    // bases, which reconciles to TaxBasisTotalAmount (t.net) exactly.
+    const rateKeysAll = Object.keys(t.vatByRate || {});
+    const positiveBasis = rateKeysAll.reduce((sum, rate) => {
+        const r = Number(rate);
+        return r > 0 ? sum + Math.round((t.vatByRate[rate] / (r / 100)) * 100) / 100 : sum;
+    }, 0);
+    const zeroBasis = Math.round((Number(t.net) - positiveBasis) * 100) / 100;
+    const taxes = rateKeysAll.map((rate) => {
         const r = Number(rate);
         const vat = t.vatByRate[rate];
-        const basis = r > 0 ? Math.round((vat / (r / 100)) * 100) / 100 : t.net;
+        const basis = r > 0 ? Math.round((vat / (r / 100)) * 100) / 100 : zeroBasis;
         const cat = r > 0 ? 'S' : 'E';
         return `      <ram:ApplicableTradeTax>
         <ram:CalculatedAmount>${dec(vat)}</ram:CalculatedAmount>

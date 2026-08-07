@@ -8,9 +8,12 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Plaintext-relational pivot (Finance): business partners (Geschäftspartner).
- * One row per partner. name/category/kind + url/logo/note stay plaintext so the
- * server can list/search. Contact PII (address/email/phone/vat_id) plus the list
- * of contact people carry an `encrypted` cast → kept out of DB dumps.
+ * One row per partner. All columns are PLAINTEXT at rest (encryption removed in
+ * v1.516.0 — confidentiality-at-rest is an infra concern: LUKS + encrypted
+ * backups). name/category/kind + url/logo/note are listed/searched server-side;
+ * the contact PII (address/email/phone/vat_id) and the contact-people list are
+ * likewise stored plaintext (the FinancePartner model casts them as string /
+ * `array`, NOT `encrypted`).
  */
 return new class extends Migration
 {
@@ -25,12 +28,12 @@ return new class extends Migration
             $table->text('url')->nullable();
             $table->text('logo')->nullable();
             $table->text('note')->nullable();
-            // Encrypted PII:
-            $table->text('address')->nullable();    // encrypted cast
-            $table->text('email')->nullable();      // encrypted cast
-            $table->text('phone')->nullable();      // encrypted cast
-            $table->text('vat_id')->nullable();     // encrypted cast
-            $table->longText('contacts')->nullable(); // encrypted:array — [{id,name,email,phone,role}]
+            // Contact PII — PLAINTEXT (no `encrypted` cast on the model):
+            $table->text('address')->nullable();
+            $table->text('email')->nullable();
+            $table->text('phone')->nullable();
+            $table->text('vat_id')->nullable();
+            $table->longText('contacts')->nullable(); // array cast — [{id,name,email,phone,role}]
             $table->unsignedInteger('version')->default(0);
             $table->softDeletes();
             $table->timestamps();

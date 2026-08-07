@@ -52,7 +52,7 @@ Route::prefix('v1')->group(function (): void {
 
         // Transient server-side OCR of a raw receipt: returns line-structured text
         // only (recognition is client-side). Nothing is persisted/logged.
-        Route::post('/invoices/ocr', [InvoiceOcrController::class, 'ocr'])->middleware(['throttle:120,1', 'module:finance'])->name('api.invoices.ocr');
+        Route::post('/invoices/ocr', [InvoiceOcrController::class, 'ocr'])->middleware(['throttle:20,1', 'module:finance'])->name('api.invoices.ocr');
 
         // Plaintext-relational Finance: invoices + partners + payment methods +
         // bank transactions + projects + categories as owner-scoped rows.
@@ -129,7 +129,7 @@ Route::prefix('v1')->group(function (): void {
         // Site-icon (BIMI/favicon) proxy: guard-agnostic, SSRF-guarded, nothing
         // stored server-side. Retained for the Finance module (bank logos /
         // partner favicons).
-        Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:1200,1')->name('api.passwords.icon');
+        Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:300,1')->name('api.passwords.icon');
 
         // Connected devices: list, revoke a device's token, request a remote wipe of a
         // lost device (the wipe flag is delivered on that device's next heartbeat).

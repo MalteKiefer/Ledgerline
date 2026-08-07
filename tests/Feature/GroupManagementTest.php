@@ -23,25 +23,24 @@ class GroupManagementTest extends TestCase
         $this->actingAs(User::factory()->admin()->create());
 
         $this->post(route('settings.groups.store'), [
-            'name' => 'Family', 'files_quota_mb' => 5000, 'gallery_quota_mb' => 3000,
-            'max_connected_devices' => 4, 'shareable' => '1',
+            'name' => 'Family', 'max_connected_devices' => 4, 'shareable' => '1',
         ])->assertRedirect();
 
         $group = Group::where('name', 'Family')->first();
         $this->assertNotNull($group);
-        $this->assertSame(5000, $group->files_quota_mb);
+        $this->assertSame(4, $group->max_connected_devices);
         $this->assertTrue($group->shareable);
     }
 
     public function test_a_blank_limit_clears_that_dimension(): void
     {
         $this->actingAs(User::factory()->admin()->create());
-        $group = Group::factory()->create(['files_quota_mb' => 5000]);
+        $group = Group::factory()->create(['max_connected_devices' => 5]);
 
-        $this->put(route('settings.groups.update', $group), ['name' => $group->name, 'files_quota_mb' => ''])
+        $this->put(route('settings.groups.update', $group), ['name' => $group->name, 'max_connected_devices' => ''])
             ->assertRedirect();
 
-        $this->assertNull($group->fresh()->files_quota_mb);
+        $this->assertNull($group->fresh()->max_connected_devices);
     }
 
     public function test_admin_can_delete_a_group(): void
@@ -88,24 +87,24 @@ class GroupManagementTest extends TestCase
 
     public function test_the_most_generous_group_limit_applies(): void
     {
-        config(['files.quota_mb' => 100]);
+        config(['devices.max' => 3]);
         $user = User::factory()->create();
-        $small = Group::factory()->create(['files_quota_mb' => 500]);
-        $big = Group::factory()->create(['files_quota_mb' => 2000]);
+        $small = Group::factory()->create(['max_connected_devices' => 4]);
+        $big = Group::factory()->create(['max_connected_devices' => 9]);
         $user->memberGroups()->attach([$small->id, $big->id]);
 
-        // Most generous group limit (2000) beats the workspace default (100).
-        $this->assertSame(2000, $user->fresh()->effectiveFilesQuotaMb());
+        // Most generous group limit (9) beats the workspace default (3).
+        $this->assertSame(9, $user->fresh()->effectiveMaxDevices());
     }
 
     public function test_a_per_user_override_beats_the_group_limit(): void
     {
-        config(['files.quota_mb' => 100]);
-        $user = User::factory()->create(['files_quota_mb' => 300]);
-        $group = Group::factory()->create(['files_quota_mb' => 2000]);
+        config(['devices.max' => 3]);
+        $user = User::factory()->create(['max_connected_devices' => 5]);
+        $group = Group::factory()->create(['max_connected_devices' => 9]);
         $user->memberGroups()->attach($group->id);
 
-        $this->assertSame(300, $user->fresh()->effectiveFilesQuotaMb());
+        $this->assertSame(5, $user->fresh()->effectiveMaxDevices());
     }
 
     public function test_the_group_device_cap_applies_when_no_override(): void

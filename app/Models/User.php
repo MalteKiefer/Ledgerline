@@ -17,11 +17,7 @@ use Laravel\Sanctum\HasApiTokens;
 
 /**
  * An authenticated user. Identity is first-party (email + password, optional TOTP
- * two-factor via Fortify), with optional Pocket-ID (OIDC) sign-in bound to the
- * `oidc_sub` column. Privilege is a first-party `role` (admin|user) and is never
- * derived from OIDC claims. App login is independent of any vault passphrase.
- *
- * @property ?string $oidc_sub Stable Pocket-ID subject identifier (set server-side only)
+ * two-factor via Fortify). Privilege is a first-party `role` (admin|user).
  */
 // `role` and `groups` are deliberately NOT fillable — `role` is the privilege
 // boundary (drives the admin gate), so it is only ever set server-side, never
@@ -46,8 +42,6 @@ class User extends Authenticatable implements MustVerifyEmail
             'two_factor_confirmed_at' => 'datetime',
             'password' => 'hashed',
             'groups' => 'array',
-            'files_quota_mb' => 'integer',
-            'gallery_quota_mb' => 'integer',
             'max_connected_devices' => 'integer',
             'modules' => 'array',
         ];
@@ -89,26 +83,6 @@ class User extends Authenticatable implements MustVerifyEmail
     public function canModule(string $key): bool
     {
         return in_array($key, $this->allowedModules(), true);
-    }
-
-    /**
-     * Effective files storage quota in MB (0 = unlimited): the per-user override
-     * if set, else the workspace default. Single source of truth for every quota
-     * check (blob upload, usage endpoints, /me, admin list).
-     */
-    public function effectiveFilesQuotaMb(): int
-    {
-        return $this->files_quota_mb
-            ?? $this->maxGroupLimit('files_quota_mb')
-            ?? self::configInt('files.quota_mb');
-    }
-
-    /** Effective gallery storage quota in MB (0 = unlimited). */
-    public function effectiveGalleryQuotaMb(): int
-    {
-        return $this->gallery_quota_mb
-            ?? $this->maxGroupLimit('gallery_quota_mb')
-            ?? self::configInt('gallery.quota_mb');
     }
 
     /** Effective connected-device cap: per-user override, else group, else workspace, else config. */

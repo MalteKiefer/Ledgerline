@@ -7,11 +7,16 @@ export function normalizeIban(iban) {
     return String(iban || '').replace(/\s+/g, '').toUpperCase();
 }
 
-/** True if a GiroCode can be built (valid-ish IBAN, positive EUR amount within range). */
-export function canEpcQr({ iban, amount, currency } = {}) {
+/**
+ * True if a GiroCode can be built: valid-ish IBAN, non-empty beneficiary name, and a
+ * positive EUR amount within range. Per EPC069-12 field 6 "Name of the Beneficiary" is
+ * MANDATORY (1..70 chars), so a blank name must suppress the QR rather than emit an
+ * invalid SCT payload that the payer's banking app rejects.
+ */
+export function canEpcQr({ name, iban, amount, currency } = {}) {
     const ib = normalizeIban(iban);
     const amt = Number(amount);
-    return /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(ib) && (currency || 'EUR') === 'EUR' && amt >= 0.01 && amt <= 999999999.99;
+    return String(name ?? '').trim() !== '' && /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(ib) && (currency || 'EUR') === 'EUR' && amt >= 0.01 && amt <= 999999999.99;
 }
 
 /**
@@ -20,7 +25,7 @@ export function canEpcQr({ iban, amount, currency } = {}) {
  */
 export function buildEpcPayload({ name, iban, bic, amount, currency = 'EUR', reference = '' } = {}) {
     const amt = Number(amount);
-    if (! canEpcQr({ iban, amount: amt, currency })) return null;
+    if (! canEpcQr({ name, iban, amount: amt, currency })) return null;
     const clip = (s, n) => String(s || '').replace(/[\r\n]+/g, ' ').trim().slice(0, n);
     return [
         'BCD',
