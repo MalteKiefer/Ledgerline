@@ -26,7 +26,7 @@ use Illuminate\Support\Carbon;
 #[Hidden(['passphrase'])] // archive encryption passphrase — never serialize
 class BackupJob extends Model
 {
-    public const SOURCES = ['database', 'invoices'];
+    public const SOURCES = ['database', 'invoices', 'files'];
 
     /** Notification channels a job may fire on completion (any combination). */
     public const NOTIFY_CHANNELS = ['desktop', 'mail', 'ntfy', 'webhook'];

@@ -3,7 +3,19 @@
      section tabs, so this drawer holds only the account actions. --}}
 @auth
     <x-sheet side="left" store="navOpen" title="Ledgerline">
+        @php
+            $allowed = auth()->user()?->allowedModules() ?? [];
+            $navIcons = ['finance' => 'banknotes', 'files' => 'folder'];
+        @endphp
         <div class="space-y-1">
+            @foreach (config('modules.list', []) as $key => $mod)
+                @continue(! in_array($key, $allowed, true))
+                @php $active = request()->routeIs(explode('.', $mod['route'])[0].'.*'); @endphp
+                <a href="{{ route($mod['route']) }}" @click="$store.nav.closeAll()" class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium {{ $active ? 'bg-accent/10 text-accent' : 'text-gray-700 dark:text-gray-300 hover:bg-accent/5' }}">
+                    <x-icon name="{{ $navIcons[$key] ?? 'squares-2x2' }}" class="h-5 w-5" />{{ __($mod['label']) }}
+                </a>
+            @endforeach
+            <div class="my-1 border-t border-gray-100 dark:border-gray-800"></div>
             <a href="{{ route('profile') }}" @click="$store.nav.closeAll()" class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">
                 <x-icon name="contacts" class="h-5 w-5 text-gray-400 dark:text-gray-500" />{{ __('messages.menu.profile') }}
             </a>

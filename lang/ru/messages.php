@@ -6,6 +6,7 @@ return [
     'nav' => [
         'invoices' => 'Счета',
         'finance' => 'Финансы',
+        'files' => 'Файлы',
         'more' => 'Ещё',
     ],
     'menu' => [

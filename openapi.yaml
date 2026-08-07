@@ -42,6 +42,7 @@ tags:
   - name: Me/Device
     description: Authenticated user info, avatar, and device heartbeat
   - name: Finance
+  - name: Files
     description: >
       Plaintext-relational finance (pivot). Invoices, bank transactions, payment
       methods, business partners, cost projects and receipt categories as
@@ -637,6 +638,54 @@ components:
         created_at: { type: string, format: date-time, nullable: true }
         updated_at: { type: string, format: date-time, nullable: true }
         deleted_at: { type: string, format: date-time, nullable: true }
+    FileFolder:
+      type: object
+      description: "A folder in the plaintext file tree (file_folders). Owner-scoped; parent_id forms the nested tree."
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        parent_id: { type: integer, nullable: true }
+        name: { type: string }
+        version: { type: integer }
+        deleted_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+        updated_at: { type: string, format: date-time, nullable: true }
+    FileEntry:
+      type: object
+      description: "A file (files table). Bytes live plaintext on the files disk at storage_path; this row holds metadata. search_text is never serialized."
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        file_folder_id: { type: integer, nullable: true }
+        name: { type: string }
+        mime: { type: string, nullable: true }
+        size: { type: integer }
+        storage_path: { type: string }
+        sha256: { type: string, nullable: true }
+        tags: { type: array, items: { type: string } }
+        note: { type: string, nullable: true }
+        favorite: { type: boolean }
+        version: { type: integer }
+        deleted_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+        updated_at: { type: string, format: date-time, nullable: true }
+    FileVersion:
+      type: object
+      description: "A previous revision of a file (file_versions). Bytes at storage_path; kept up to the per-user cap."
+      properties:
+        id: { type: integer }
+        file_id: { type: integer }
+        storage_path: { type: string }
+        size: { type: integer }
+        mime: { type: string, nullable: true }
+        sha256: { type: string, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+    FilesUsage:
+      type: object
+      description: "Combined storage usage (current files + version history) vs. the effective quota."
+      properties:
+        used: { type: integer, description: "Bytes occupied." }
+        quota: { type: integer, nullable: true, description: "Byte cap, or null when unlimited." }
     BankTransaction:
       type: object
       description: "Bank-statement line (relational bank_transactions). All columns plaintext at rest since v1.516.0. Amount/date/vat_cat drive stats + VAT."
@@ -2895,6 +2944,257 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /files/data:
+    get:
+      tags: [Files]
+      operationId: filesData
+      summary: All folders + files for the current user (+ usage)
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: "Folders, files and usage snapshot.", content: { application/json: { schema: { type: object, properties: { folders: { type: array, items: { $ref: "#/components/schemas/FileFolder" } }, files: { type: array, items: { $ref: "#/components/schemas/FileEntry" } }, usage: { $ref: "#/components/schemas/FilesUsage" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /files/trash:
+    get:
+      tags: [Files]
+      operationId: filesTrash
+      summary: Soft-deleted files + folders
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: "Trashed files + folders.", content: { application/json: { schema: { type: object, properties: { files: { type: array, items: { $ref: "#/components/schemas/FileEntry" } }, folders: { type: array, items: { $ref: "#/components/schemas/FileFolder" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /files/entries:
+    post:
+      tags: [Files]
+      operationId: filesUpload
+      summary: Upload a file (whole; multipart)
+      description: "Stores bytes plaintext on the files disk (files/{uuid}); size/sha256 server-computed. 413 when over quota. Throttle 1200/min."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary }, file_folder_id: { type: integer, nullable: true }, name: { type: string } } } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { description: "Over storage quota (error=quota)." }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /files/entries/trash/empty:
+    post:
+      tags: [Files]
+      operationId: filesEmptyTrash
+      summary: Permanently delete all trashed files + folders
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Emptied., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /files/entries/{file}:
+    put:
+      tags: [Files]
+      operationId: filesUpdate
+      summary: Rename / move / tag / note / favorite (optimistic version)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { name: { type: string }, file_folder_id: { type: integer, nullable: true }, tags: { type: array, items: { type: string } }, note: { type: string, nullable: true }, favorite: { type: boolean }, version: { type: integer, minimum: 0 } } } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/VersionConflict" }
+    delete:
+      tags: [Files]
+      operationId: filesDestroy
+      summary: Soft-delete a file (to trash)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Trashed., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{file}/content:
+    post:
+      tags: [Files]
+      operationId: filesReplaceContent
+      summary: Replace file bytes (archives the current bytes as a version)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
+      responses:
+        "200": { description: Replaced., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { description: "Over storage quota." }
+  /files/entries/{file}/raw:
+    get:
+      tags: [Files]
+      operationId: filesRaw
+      summary: Stream a file's bytes (sandboxed)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } }, { name: download, in: query, required: false, schema: { type: boolean } } ]
+      responses:
+        "200": { description: File bytes., content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{file}/toggle:
+    post:
+      tags: [Files]
+      operationId: filesToggleFavorite
+      summary: Toggle favorite
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Toggled., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{file}/versions:
+    get:
+      tags: [Files]
+      operationId: filesVersions
+      summary: A file's version history
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Versions., content: { application/json: { schema: { type: object, properties: { versions: { type: array, items: { $ref: "#/components/schemas/FileVersion" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{file}/versions/{version}/raw:
+    get:
+      tags: [Files]
+      operationId: filesVersionRaw
+      summary: Stream a historical version's bytes (sandboxed)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } }, { name: version, in: path, required: true, schema: { type: integer } }, { name: download, in: query, required: false, schema: { type: boolean } } ]
+      responses:
+        "200": { description: Version bytes., content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{file}/versions/{version}/restore:
+    post:
+      tags: [Files]
+      operationId: filesRestoreVersion
+      summary: Restore a historical version as the current bytes
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } }, { name: version, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{id}/restore:
+    post:
+      tags: [Files]
+      operationId: filesRestore
+      summary: Restore a soft-deleted file from trash
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{id}/force:
+    delete:
+      tags: [Files]
+      operationId: filesForceDelete
+      summary: Permanently delete a file (removes bytes + versions)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /files/folders:
+    get:
+      tags: [Files]
+      operationId: filesFolders
+      summary: All folders
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Folders., content: { application/json: { schema: { type: object, properties: { folders: { type: array, items: { $ref: "#/components/schemas/FileFolder" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Files]
+      operationId: filesStoreFolder
+      summary: Create a folder
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 500 }, parent_id: { type: integer, nullable: true } } } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { folder: { $ref: "#/components/schemas/FileFolder" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /files/folders/{folder}:
+    put:
+      tags: [Files]
+      operationId: filesRenameFolder
+      summary: Rename a folder
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: folder, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 500 } } } } } }
+      responses:
+        "200": { description: Renamed., content: { application/json: { schema: { type: object, properties: { folder: { $ref: "#/components/schemas/FileFolder" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Files]
+      operationId: filesDestroyFolder
+      summary: Soft-delete a folder + its whole subtree
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: folder, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Trashed., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /files/folders/{folder}/move:
+    post:
+      tags: [Files]
+      operationId: filesMoveFolder
+      summary: Move a folder under another (cycle-guarded)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: folder, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { parent_id: { type: integer, nullable: true } } } } } }
+      responses:
+        "200": { description: Moved., content: { application/json: { schema: { type: object, properties: { folder: { $ref: "#/components/schemas/FileFolder" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Move would create a cycle (error=cycle)." }
+  /files/upload/chunk/init:
+    post:
+      tags: [Files]
+      operationId: filesChunkInit
+      summary: Begin a chunked upload session
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name, size], properties: { name: { type: string }, size: { type: integer }, file_folder_id: { type: integer, nullable: true } } } } } }
+      responses:
+        "201": { description: "Session opened.", content: { application/json: { schema: { type: object, properties: { id: { type: string }, partSize: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { description: "Over storage quota." }
+  /files/upload/chunk/part:
+    post:
+      tags: [Files]
+      operationId: filesChunkPart
+      summary: Upload one chunk part
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [id, index, file], properties: { id: { type: string }, index: { type: integer }, file: { type: string, format: binary } } } } } }
+      responses:
+        "200": { description: "Part stored.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /files/upload/chunk/complete:
+    post:
+      tags: [Files]
+      operationId: filesChunkComplete
+      summary: Assemble the uploaded parts into a file
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: string } } } } } }
+      responses:
+        "201": { description: Assembled., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { description: "Over storage quota." }
+  /files/upload/chunk/abort:
+    post:
+      tags: [Files]
+      operationId: filesChunkAbort
+      summary: Abort a chunked upload session (discard parts)
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: string } } } } } }
+      responses:
+        "200": { description: Aborted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /invoices/ocr:
     post:
       tags: [Finance]

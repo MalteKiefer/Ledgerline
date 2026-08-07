@@ -14,5 +14,6 @@ declare(strict_types=1);
 return [
     'list' => [
         'finance' => ['label' => 'messages.nav.finance', 'route' => 'finance.index'],
+        'files' => ['label' => 'messages.nav.files', 'route' => 'files.index'],
     ],
 ];
