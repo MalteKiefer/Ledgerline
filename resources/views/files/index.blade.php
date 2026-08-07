@@ -17,6 +17,9 @@
         uploadUnreadable: @js(__('files.upload_unreadable')),
         types: @js($typeLabels),
         saveFailed: @js(__('files.save_failed')),
+        folderShareEmail: @js(__('files.folder_recipient')),
+        folderShareNotFound: @js(__('files.folder_recipient_not_found')),
+        folderShareDone: @js(__('files.folder_shared')),
         uploadFailed: @js(__('files.upload_failed')),
         downloadFailed: @js(__('files.download_failed')),
         rootFolder: @js(__('files.all_files')),
@@ -229,6 +232,9 @@
             <button type="button" @click="openLabelModal()" class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent/5">
                 <x-icon name="plus" class="h-3.5 w-3.5" />{{ __('files.labels_manage') }}
             </button>
+            <button type="button" @click="openSharedWithMe()" class="ml-auto inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent/5">
+                <x-icon name="share" class="h-3.5 w-3.5" />{{ __('files.shared_with_me') }}
+            </button>
         </div>
 
         <x-alert variant="warning" x-show="error" x-cloak class="mt-4" x-text="error" />
@@ -271,6 +277,8 @@
                                             <button type="button" @click="startRename(row); menu = false" class="{{ $c }}"><x-icon name="pencil" />{{ __('files.rename') }}</button>
                                             <button type="button" @click="openMove(row); menu = false" class="{{ $c }}"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
                                             <button type="button" @click="openTags(row); menu = false" class="{{ $c }}"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
+                                            <button type="button" @click="openShare(row); menu = false" class="{{ $c }}"><x-icon name="link" />{{ __('files.share_public') }}</button>
+                                            <button type="button" x-show="row.kind === 'folder'" @click="shareFolderWithUser(row); menu = false" class="{{ $c }}"><x-icon name="share" />{{ __('files.folder_share_add') }}</button>
                                             
                                             <button type="button" x-show="row.kind !== 'folder'" @click="openVersions(row); menu = false" class="{{ $c }}"><x-icon name="arrow-path" />{{ __('files.versions') }}</button>
                                             <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="{{ $c }}"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
@@ -382,6 +390,8 @@
                                             <button type="button" @click="startRename(row); menu = false" class="{{ $c }}"><x-icon name="pencil" />{{ __('files.rename') }}</button>
                                             <button type="button" @click="openMove(row); menu = false" class="{{ $c }}"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
                                             <button type="button" @click="openTags(row); menu = false" class="{{ $c }}"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
+                                            <button type="button" @click="openShare(row); menu = false" class="{{ $c }}"><x-icon name="link" />{{ __('files.share_public') }}</button>
+                                            <button type="button" x-show="row.kind === 'folder'" @click="shareFolderWithUser(row); menu = false" class="{{ $c }}"><x-icon name="share" />{{ __('files.folder_share_add') }}</button>
                                             
                                             <button type="button" x-show="row.kind !== 'folder'" @click="openVersions(row); menu = false" class="{{ $c }}"><x-icon name="arrow-path" />{{ __('files.versions') }}</button>
                                             <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="{{ $c }}"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
@@ -688,6 +698,95 @@
                 <div class="flex justify-end gap-2 pt-1">
                     <x-button variant="secondary" @click="newFolderModal = false">{{ __('common.cancel') }}</x-button>
                     <x-button variant="primary" @click="submitNewFolder()" ::disabled="! newFolderName.trim()">{{ __('files.new_folder') }}</x-button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Public share link modal (plaintext bytes; optional password gate) --}}
+    <template x-teleport="body">
+        <div x-show="share.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeShare()">
+            <div class="absolute inset-0 bg-gray-900/40" @click="closeShare()"></div>
+            <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
+                <div class="flex items-start justify-between gap-2">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.share_dialog_title') }}</h3>
+                    <x-icon-button name="x-mark" @click="closeShare()" aria-label="{{ __('files.share_close') }}" />
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('files.share_intro') }}</p>
+                <p class="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300 truncate" x-text="share.name"></p>
+
+                <div x-show="share.link" x-cloak class="mt-4 rounded-xl border border-gray-200 dark:border-gray-800 p-3">
+                    <label class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('files.share_link_label') }}</label>
+                    <div class="mt-1 flex items-center gap-2">
+                        <input type="text" readonly :value="share.link" @focus="$event.target.select()" class="w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-xs text-gray-700 dark:text-gray-300">
+                        <x-icon-button name="clipboard" @click="copyShareLink()" title="{{ __('files.share_copy') }}" aria-label="{{ __('files.share_copy') }}" />
+                    </div>
+                    <p class="mt-2 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">{{ __('files.share_active_hint') }}</p>
+                </div>
+
+                <div class="mt-4 space-y-3">
+                    <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <input type="checkbox" x-model="share.allowDownload" class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-0">
+                        {{ __('files.share_allow_download') }}
+                    </label>
+                    <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('files.share_password') }}
+                        <input type="password" x-model="share.password" autocomplete="new-password" :placeholder="share.current?.needsPassword ? '{{ __('files.share_password_set') }}' : '{{ __('files.share_password_hint') }}'"
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                    </label>
+                    <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('files.share_expiry') }}
+                        <input type="datetime-local" x-model="share.expiresAt"
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                    </label>
+                </div>
+
+                <p x-show="share.error" x-cloak class="mt-3 text-sm text-red-600 dark:text-red-400" x-text="share.error"></p>
+
+                <div class="mt-5 flex items-center justify-between gap-2">
+                    <x-button variant="danger" x-show="share.current" x-cloak @click="revokeShare()" ::disabled="share.busy">{{ __('files.share_revoke') }}</x-button>
+                    <div class="ml-auto flex gap-2">
+                        <x-button variant="secondary" @click="closeShare()">{{ __('files.share_close') }}</x-button>
+                        <x-button variant="primary" x-show="! share.current" @click="createShare()" ::disabled="share.busy"><x-icon name="link" class="h-4 w-4" />{{ __('files.share_create_link') }}</x-button>
+                        <x-button variant="primary" x-show="share.current" x-cloak @click="updateShare()" ::disabled="share.busy">{{ __('files.share_update') }}</x-button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Shared-with-me: list of folders others shared with me, browse + download --}}
+    <template x-teleport="body">
+        <div x-show="swm.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeSwm()">
+            <div class="absolute inset-0 bg-gray-900/40" @click="closeSwm()"></div>
+            <div class="relative flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">
+                        <button type="button" x-show="swm.view === 'browse'" @click="swm.view = 'list'" class="mr-1 text-accent">&larr;</button>
+                        <span x-text="swm.view === 'browse' ? (swm.current?.folder_name || '{{ __('files.shared_with_me') }}') : '{{ __('files.shared_with_me') }}'"></span>
+                    </h3>
+                    <x-icon-button name="x-mark" @click="closeSwm()" aria-label="{{ __('files.share_close') }}" />
+                </div>
+                {{-- List of shares --}}
+                <div x-show="swm.view === 'list'" class="mt-4 min-h-0 flex-1 overflow-auto">
+                    <template x-for="s in swm.shares" :key="s.id">
+                        <button type="button" @click="browseShare(s)" class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-accent/5">
+                            <span class="ll-chip h-9 w-9 shrink-0 rounded-xl" style="--chip:#3b9fd6"><x-icon name="folder" class="h-4.5 w-4.5 text-white" /></span>
+                            <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="s.folder_name"></span><span class="block text-xs text-gray-500" x-text="(s.owner?.name || s.owner?.email || '') + ' · ' + s.role"></span></span>
+                            <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300" />
+                        </button>
+                    </template>
+                    <p x-show="! swm.shares.length" x-cloak class="px-3 py-6 text-center text-xs text-gray-400">{{ __('files.shared_none') }}</p>
+                </div>
+                {{-- Browse a shared folder (read + download) --}}
+                <div x-show="swm.view === 'browse'" x-cloak class="mt-4 min-h-0 flex-1 overflow-auto">
+                    <div class="divide-y divide-black/[0.06] dark:divide-white/10">
+                        <template x-for="f in swm.files" :key="f.id">
+                            <div class="flex items-center gap-3 px-2 py-2">
+                                <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="f.name"></span>
+                                <a :href="swmRawUrl(swm.current, f) + '?download=1'" class="shrink-0 text-accent hover:underline"><x-icon name="arrow-down-tray" class="h-4 w-4" /></a>
+                            </div>
+                        </template>
+                        <p x-show="! swm.files.length" x-cloak class="px-3 py-6 text-center text-xs text-gray-400">{{ __('files.sf_empty_folder') }}</p>
+                    </div>
                 </div>
             </div>
         </div>

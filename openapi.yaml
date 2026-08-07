@@ -669,6 +669,18 @@ components:
         deleted_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time, nullable: true }
         updated_at: { type: string, format: date-time, nullable: true }
+    FileShare:
+      type: object
+      description: "A public share link (file_shares) to a file or folder subtree; optional password gate + expiry. Never serializes the password hash."
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [file, folder] }
+        token: { type: string }
+        url: { type: string }
+        needs_password: { type: boolean }
+        allow_download: { type: boolean }
+        expires_at: { type: string, format: date-time, nullable: true }
+        version: { type: integer }
     FileLabel:
       type: object
       description: "A coloured, user-defined label (file_labels). Many-to-many with files."
@@ -3282,6 +3294,30 @@ paths:
         "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /files/rel-shares:
+    post: { tags: [Files], operationId: filesStoreShare, summary: Create a public share link for a file or folder, security: [ { bearerAuth: [] } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [kind, id], properties: { kind: { type: string, enum: [file, folder] }, id: { type: integer }, password: { type: string }, expires_at: { type: string, nullable: true }, allow_download: { type: boolean } } } } } }, responses: { "201": { description: Created., content: { application/json: { schema: { $ref: "#/components/schemas/FileShare" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "422": { $ref: "#/components/responses/ValidationError" } } }
+  /files/rel-shares/{share}:
+    put: { tags: [Files], operationId: filesUpdateShare, summary: Update a share (password / expiry / download / version), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Updated., content: { application/json: { schema: { $ref: "#/components/schemas/FileShare" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/VersionConflict" } } }
+    delete: { tags: [Files], operationId: filesDestroyShare, summary: Revoke a public share, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Revoked. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
+  /files/folder-shares:
+    get: { tags: [Files], operationId: filesFolderShares, summary: List folder shares I own, security: [ { bearerAuth: [] } ], responses: { "200": { description: Shares. }, "401": { $ref: "#/components/responses/Unauthorized" } } }
+    post: { tags: [Files], operationId: filesStoreFolderShare, summary: Share a folder with a registered user (viewer|editor), security: [ { bearerAuth: [] } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [file_folder_id, email, role], properties: { file_folder_id: { type: integer }, email: { type: string, format: email }, role: { type: string, enum: [viewer, editor] } } } } } }, responses: { "201": { description: Shared. }, "401": { $ref: "#/components/responses/Unauthorized" }, "422": { description: "Unknown recipient / self-share (error=recipient_not_found)." } } }
+  /files/folder-shares/{share}/members:
+    put: { tags: [Files], operationId: filesUpdateFolderMember, summary: Change a member's role, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Updated. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
+    delete: { tags: [Files], operationId: filesRemoveFolderMember, summary: Remove a member (revokes access), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Removed. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
+  /files/folder-shares/{share}:
+    delete: { tags: [Files], operationId: filesDestroyFolderShare, summary: Delete a folder share, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Deleted. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
+  /shared-with-me:
+    get: { tags: [Files], operationId: sharedWithMe, summary: Folders others shared with me, security: [ { bearerAuth: [] } ], responses: { "200": { description: Shares. }, "401": { $ref: "#/components/responses/Unauthorized" } } }
+  /shared-with-me/{share}:
+    get: { tags: [Files], operationId: sharedWithMeBrowse, summary: Browse a shared folder subtree, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Files + folders + role. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
+  /shared-with-me/{share}/files/{file}/raw:
+    get: { tags: [Files], operationId: sharedWithMeRaw, summary: Stream a file from a shared folder (sandboxed), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } }, { name: download, in: query, required: false, schema: { type: boolean } } ], responses: { "200": { description: Bytes., content: { application/octet-stream: { schema: { type: string, format: binary } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
+  /shared-with-me/{share}/upload:
+    post: { tags: [Files], operationId: sharedWithMeUpload, summary: Upload into a shared folder (editor only; counts against the owner's quota), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary }, file_folder_id: { type: integer, nullable: true } } } } } }, responses: { "201": { description: Uploaded. }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "413": { description: "Over the owner's quota." } } }
+  /shared-with-me/{share}/files/{file}:
+    put: { tags: [Files], operationId: sharedWithMeRename, summary: Rename a file in a shared folder (editor only), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Renamed. }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" } } }
+    delete: { tags: [Files], operationId: sharedWithMeDestroy, summary: Delete a file in a shared folder (editor only), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Deleted. }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" } } }
   /invoices/ocr:
     post:
       tags: [Finance]

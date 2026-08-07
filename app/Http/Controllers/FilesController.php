@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\FileEntry;
 use App\Models\FileFolder;
 use App\Models\FileLabel;
+use App\Models\FileShare;
 use App\Models\FileVersion;
 use App\Models\UserSetting;
 use App\Support\DiskTempFile;
@@ -19,6 +20,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -838,6 +840,118 @@ class FilesController extends Controller
         return [
             'name' => ['required', 'string', 'max:120'],
             'color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+        ];
+    }
+    // ---- Public share links (owner side) ----
+
+    public function storeShare(Request $request): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'kind' => ['required', Rule::in(['file', 'folder'])],
+            'file_id' => ['required_if:kind,file', 'nullable', 'integer', Rule::exists('files', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'file_folder_id' => ['required_if:kind,folder', 'nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'password' => ['nullable', 'string', 'max:200'],
+            'allow_download' => ['sometimes', 'boolean'],
+            'expires_at' => ['nullable', 'date'],
+        ]);
+
+        $kind = $request->string('kind')->value();
+        $share = DB::transaction(function () use ($request, $uid, $kind): FileShare {
+            $share = new FileShare;
+            $share->forceFill([
+                'user_id' => $uid,
+                'token' => Str::random(48),
+                'kind' => $kind,
+                'file_id' => $kind === 'file' ? $request->integer('file_id') : null,
+                'file_folder_id' => $kind === 'folder' ? $request->integer('file_folder_id') : null,
+                'password_hash' => $request->filled('password') ? Hash::make($request->string('password')->value()) : null,
+                'allow_download' => $request->has('allow_download') ? $request->boolean('allow_download') : true,
+                'expires_at' => $request->filled('expires_at') ? $request->date('expires_at') : null,
+                'version' => 0,
+            ]);
+            $share->save();
+
+            return $share;
+        });
+
+        return response()->json(['share' => $this->shareView($share)], 201);
+    }
+
+    public function updateShare(Request $request, int $share): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'password' => ['nullable', 'string', 'max:200'],
+            'remove_password' => ['sometimes', 'boolean'],
+            'allow_download' => ['sometimes', 'boolean'],
+            'expires_at' => ['nullable', 'date'],
+            'version' => ['sometimes', 'integer', 'min:0'],
+        ]);
+        $expected = $request->has('version') ? $request->integer('version') : null;
+
+        $result = DB::transaction(function () use ($request, $share, $uid, $expected): FileShare|bool|null {
+            $fresh = FileShare::query()->where('id', $share)->where('user_id', $uid)->lockForUpdate()->first();
+            if ($fresh === null) {
+                return null;
+            }
+            if ($expected !== null && $fresh->version !== $expected) {
+                return false;
+            }
+            if ($request->boolean('remove_password')) {
+                $fresh->password_hash = null;
+            } elseif ($request->filled('password')) {
+                $fresh->password_hash = Hash::make($request->string('password')->value());
+            }
+            if ($request->has('allow_download')) {
+                $fresh->allow_download = $request->boolean('allow_download');
+            }
+            if ($request->has('expires_at')) {
+                $fresh->expires_at = $request->filled('expires_at') ? $request->date('expires_at') : null;
+            }
+            $fresh->version = $fresh->version + 1;
+            $fresh->save();
+
+            return $fresh;
+        });
+
+        if ($result === null) {
+            abort(404);
+        }
+        if ($result === false) {
+            $current = FileShare::query()->where('id', $share)->where('user_id', $uid)->first();
+
+            return response()->json(['error' => 'version_conflict', 'version' => (int) ($current?->version ?? 0)], 409);
+        }
+
+        return response()->json(['share' => $this->shareView($result)]);
+    }
+
+    public function destroyShare(Request $request, int $share): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        FileShare::query()->where('id', $share)->where('user_id', $uid)->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * The owner-visible share representation (never leaks the password hash).
+     *
+     * @return array<string, mixed>
+     */
+    private function shareView(FileShare $share): array
+    {
+        return [
+            'id' => $share->id,
+            'token' => $share->token,
+            'kind' => $share->kind,
+            'file_id' => $share->file_id,
+            'file_folder_id' => $share->file_folder_id,
+            'needs_password' => $share->needsPassword(),
+            'allow_download' => $share->allow_download,
+            'expires_at' => $share->expires_at?->toIso8601String(),
+            'version' => $share->version,
         ];
     }
 }

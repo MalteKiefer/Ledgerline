@@ -232,4 +232,7 @@ return [
     'labels_none' => 'Noch keine Labels.',
     'label_name' => 'Label-Name',
     'label_add' => 'Hinzufügen',
+    'folder_share_add' => 'Mit Nutzer teilen',
+    'shared_with_me' => 'Mit mir geteilt',
+    'shared_none' => 'Noch nichts mit dir geteilt.',
 ];

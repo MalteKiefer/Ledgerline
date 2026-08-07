@@ -232,4 +232,7 @@ return [
     'labels_none' => 'No labels yet.',
     'label_name' => 'Label name',
     'label_add' => 'Add',
+    'folder_share_add' => 'Share with a user',
+    'shared_with_me' => 'Shared with me',
+    'shared_none' => 'Nothing shared with you yet.',
 ];
