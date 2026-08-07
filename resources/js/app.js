@@ -3,6 +3,7 @@ import intersect from '@alpinejs/intersect';
 import { csrfToken, getJson } from './shared/api';
 import invoices from './components/invoices';
 import toastHub from './components/toast-hub';
+import cropModal from './components/crop-modal';
 import backupRuns from './components/backup-runs';
 import devicePairing from './components/device-pairing';
 import paperlessSettings from './components/paperless-settings';
@@ -106,6 +107,7 @@ window.llToast = toast;
 
 // Component registrations (definitions live in ./components/*).
 Alpine.data('toastHub', toastHub);
+Alpine.data('cropModal', cropModal);
 Alpine.data('devicePairing', devicePairing);
 Alpine.data('pwStrength', pwStrength);
 Alpine.data('tagSelect', tagSelect);
