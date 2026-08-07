@@ -257,6 +257,7 @@ return [
     'backup_never_run' => 'nie',
     'backup_source_database' => 'Datenbank',
     'backup_source_invoices' => 'Rechnungen & Belege',
+    'backup_source_files' => 'Dateien',
     'backup_test' => 'Verbindung testen',
     'backup_stat_runs' => 'Läufe',
     'backup_stat_success_rate' => 'Erfolgsquote',

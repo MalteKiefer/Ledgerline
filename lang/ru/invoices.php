@@ -393,6 +393,7 @@ return [
     'receipt_auto_attached' => 'Сопоставлено чеков по сумме: :n.',
     'receipt_dupes_skipped' => 'Пропущено дубликатов: :n.',
     'receipt_uploaded' => 'Загружено чеков: :n.',
+    'receipt_upload_failed' => 'Не удалось загрузить: :n.',
     'receipt_standalone' => 'Отдельный чек (без операции)',
     'receipt_standalone_badge' => 'Отдельный',
     'receipt_standalone_hint' => 'Не привязан к банковской операции — сохранён для документации.',

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureModule;
+use App\Http\Middleware\ScaledThrottleRequests;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Services\Ops\ErrorRecorder;
@@ -34,6 +35,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'abilities' => CheckAbilities::class,
             'ability' => CheckForAnyAbility::class,
             'module' => EnsureModule::class,
+            // Override the framework `throttle` alias so every inline limit scales
+            // by config('app.throttle_multiplier') — high on a private LAN, 1 by default.
+            'throttle' => ScaledThrottleRequests::class,
         ]);
 
         // Behind a TLS-terminating reverse proxy, honour X-Forwarded-* so

@@ -393,6 +393,7 @@ return [
     'receipt_auto_attached' => ':n receipts matched by amount.',
     'receipt_dupes_skipped' => ':n duplicate(s) skipped.',
     'receipt_uploaded' => ':n receipt(s) uploaded.',
+    'receipt_upload_failed' => ':n upload(s) failed — please try again.',
     'receipt_standalone' => 'Standalone receipt (no booking)',
     'receipt_standalone_badge' => 'Standalone',
     'receipt_standalone_hint' => 'Not linked to a bank booking — kept for documentation.',
