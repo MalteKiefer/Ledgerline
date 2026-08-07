@@ -1140,7 +1140,9 @@ class FinanceController extends Controller
     public function uploadInvoicePdf(Request $request, Invoice $invoice): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'max:'.$this->maxUploadKb()],
+            // Invoice document is always a PDF. Extension allowlist (no svg/html) is
+            // defense-in-depth on top of the sandbox CSP applied when the blob is served.
+            'file' => ['required', 'file', 'mimes:pdf', 'max:'.$this->maxUploadKb()],
             'version_seq' => ['sometimes', 'nullable', 'integer', 'min:1'],
         ]);
         $upload = $request->file('file');
@@ -1527,7 +1529,9 @@ class FinanceController extends Controller
     public function attachReceipt(Request $request, BankTransaction $transaction): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'max:'.$this->maxUploadKb()],
+            // A receipt is a PDF or a raster scan/photo. Explicitly exclude svg/html
+            // (stored-XSS vectors) — defense-in-depth on top of the serve-time sandbox CSP.
+            'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp,heic,heif,gif', 'max:'.$this->maxUploadKb()],
             'name' => ['nullable', 'string', 'max:500'],
             'kind' => ['nullable', 'string', 'max:24'],
             'category' => ['nullable', 'string', 'max:160'],

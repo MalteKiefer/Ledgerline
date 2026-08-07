@@ -866,7 +866,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
     get docPreviewIsImage() { return /^image\//.test(this.docPreview?.mime || '') || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(this.docPreview?.name || ''); },
     get docPreviewIsPdf() { return this.docPreview?.mime === 'application/pdf' || /\.pdf$/i.test(this.docPreview?.name || ''); },
     contactName(id) { const c = (this._receiptContacts || []).find((x) => x.id === id); return c ? contactDisplayName(c) : ''; },
-    async setReceiptContact(c) { if (this.receiptDoc) { this.receiptDoc.r.contactId = c ? c.id : null; this.receiptDoc.r.contactName = c ? contactDisplayName(c) : ''; await this.saveReceiptDoc(); } },
     async saveReceiptDoc() {
         if (! this.receiptDoc) return;
         this.receiptDoc.r.tags = (this.tagsValue || '').split(',').map((t) => t.trim()).filter(Boolean);
@@ -1020,12 +1019,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
         const i = this.partners.indexOf(p); if (i >= 0) this.partners.splice(i, 1);
         this.backToPartners();
     },
-    async saveOpenPartner() {
-        const p = this.openPartnerRec; if (! p || ! String(p.name || '').trim()) return;
-        this.partnerEditMode = false;
-        await this._persistPartner(p);
-        if (p.url || p.email || p.invoiceEmail) this._fetchPartnerLogo(p);
-    },
     invoicesForPartner(id) { return (this.invoices || []).filter((i) => ! i.trashed && i.customer && i.customer.partnerId === id).sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || '')); },
     receiptsForPartner(id) { return this.allReceipts.filter((d) => d.r && d.r.partnerId === id); },
     partnerLinkCount(id) { return this.invoicesForPartner(id).length + this.receiptsForPartner(id).length; },
@@ -1102,15 +1095,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
         this.catEditing = null;
     },
     // Kept for the simple add-row / programmatic callers.
-    async addFinanceCategory() {
-        const n = String(this.newCategory.name || '').trim(); if (! n) return;
-        const exists = (this.financeCategories || []).some((c) => c.name.toLowerCase() === n.toLowerCase());
-        if (! exists) {
-            const row = await this._create('categories', { name: n, color: this.newCategory.color || null, icon: this.newCategory.icon || null }, 'category', normCategory);
-            if (row) this.financeCategories.push(row);
-        }
-        this.newCategory = { name: '', color: this.catColorOptions[0], icon: 'hashtag' };
-    },
     async removeFinanceCategory(c) {
         if (! await this.$store.confirm.ask(labels.cats_delete_confirm || 'Delete this category?')) return;
         await this._destroy('categories', c.id);
@@ -2434,7 +2418,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
         i.totals = this.computeTotals(i);
         await this._lockCommit(i, labels.version_finalized || 'Finalized');
     },
-    async markPaid(inv) { inv.status = 'paid'; if (! inv.paidAt) inv.paidAt = this._today(); await this._lockCommit(inv, labels.version_paid || 'Marked paid'); },
     // Manual status override (e.g. "sent by other means" / "paid" without the finalize
     // or email flow). GoBD: forward to a numbered status assigns the number first (server
     // finalize); a numbered invoice can NEVER go back to draft (client + server guard).
@@ -2453,18 +2436,6 @@ export default (config = {}, labels = {}, initial = {}) => ({
         if (status === 'paid') { if (! i.paidAt) i.paidAt = this._today(); }
         else { i.paidAt = null; }
         await this._lockCommit(i, (labels.version_status || 'Status') + ': ' + this.statusLabel(status));
-    },
-    async markSent(inv) {
-        let i = inv;
-        if (! i.number) {
-            const r = await this._req('POST', `/finance/invoices/${i.id}/finalize`);
-            if (r.ok && r.data.invoice) {
-                const row = normInvoice(r.data.invoice);
-                Object.assign(i, { number: row.number, seq: row.seq, year: row.year, status: row.status, version: row.version });
-            }
-        }
-        i.status = 'sent';
-        await this._lockCommit(i, labels.version_sent || 'Sent');
     },
     async _lockCommit(inv, reason) {
         this.pdfBusy = true;
