@@ -74,20 +74,24 @@ class BackupSettingsTest extends TestCase
 
         $this->post(route('settings.backup.jobs.store'), [
             'name' => 'DB every 3h',
-            'source' => 'database',
+            'sources' => ['database', 'invoices'],
+            'mode' => 'full',
             'backup_destination_id' => $dest->id,
             'cron' => '0 */3 * * *',
-            'retention' => 5,
+            'keep_daily' => 5,
+            'keep_weekly' => 4,
+            'keep_monthly' => 12,
             // Encryption is recommended for a database dump; here we exercise the encrypted path.
             'encrypt' => '1',
             'passphrase' => 'a-strong-passphrase',
             'notify_channels' => ['desktop', 'mail'],
             'enabled' => '1',
-        ])->assertRedirect();
+        ])->assertRedirect()->assertSessionHasNoErrors();
 
         $job = BackupJob::firstWhere('name', 'DB every 3h');
         $this->assertNotNull($job);
-        $this->assertSame(5, $job->retention);
+        $this->assertSame(['database', 'invoices'], $job->effectiveSources());
+        $this->assertSame(['daily' => 5, 'weekly' => 4, 'monthly' => 12], $job->retentionTiers());
         $this->assertSame(['desktop', 'mail'], $job->notify_channels);
     }
 
@@ -100,10 +104,10 @@ class BackupSettingsTest extends TestCase
 
         $this->post(route('settings.backup.jobs.store'), [
             'name' => 'Plain DB',
-            'source' => 'database',
+            'sources' => ['database'],
             'backup_destination_id' => $dest->id,
             'cron' => '0 3 * * *',
-            'retention' => 3,
+            'keep_daily' => 3,
             'encrypt' => '0',
             'enabled' => '1',
         ])->assertRedirect()->assertSessionHasNoErrors();
@@ -116,12 +120,11 @@ class BackupSettingsTest extends TestCase
         $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
-        // The mirror `mode` was removed (finance-only: every source is a full archive).
-        // Source is now the validated enum — a removed module like `gallery` is rejected.
+        // sources[] is the validated enum — a removed module like `gallery` is rejected.
         $this->post(route('settings.backup.jobs.store'), [
-            'name' => 'Bad source', 'source' => 'gallery',
-            'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 3,
-        ])->assertSessionHasErrors('source');
+            'name' => 'Bad source', 'sources' => ['gallery'],
+            'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'keep_daily' => 3,
+        ])->assertSessionHasErrors('sources.0');
     }
 
     public function test_an_invalid_cron_is_rejected(): void
@@ -130,8 +133,8 @@ class BackupSettingsTest extends TestCase
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
         $this->post(route('settings.backup.jobs.store'), [
-            'name' => 'Bad', 'source' => 'database', 'backup_destination_id' => $dest->id,
-            'cron' => 'not a cron', 'retention' => 3,
+            'name' => 'Bad', 'sources' => ['database'], 'backup_destination_id' => $dest->id,
+            'cron' => 'not a cron', 'keep_daily' => 3,
         ])->assertSessionHasErrors('cron');
     }
 
@@ -141,8 +144,8 @@ class BackupSettingsTest extends TestCase
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
         $this->post(route('settings.backup.jobs.store'), [
-            'name' => 'Enc', 'source' => 'database', 'backup_destination_id' => $dest->id,
-            'cron' => '0 3 * * *', 'retention' => 3,
+            'name' => 'Enc', 'sources' => ['database'], 'backup_destination_id' => $dest->id,
+            'cron' => '0 3 * * *', 'keep_daily' => 3,
             'encrypt' => '1', 'passphrase' => '',
         ])->assertSessionHasErrors('passphrase');
     }
@@ -177,13 +180,13 @@ class BackupSettingsTest extends TestCase
     {
         $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
-        $job = BackupJob::create(['name' => 'J', 'source' => 'database', 'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 3, 'enabled' => true]);
-        BackupRun::create(['backup_job_id' => $job->id, 'status' => 'success', 'started_at' => now(), 'finished_at' => now(), 'bytes' => 1024, 'filename' => 'j-1/x.sql.gz']);
+        $job = BackupJob::create(['name' => 'J', 'source' => 'database', 'sources' => ['database'], 'keep_daily' => 3, 'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 3, 'enabled' => true]);
+        BackupRun::create(['backup_job_id' => $job->id, 'status' => 'success', 'started_at' => now(), 'finished_at' => now(), 'bytes' => 1024, 'filename' => 'j-1/2026-01-01_030000']);
 
         $this->getJson(route('settings.backup.runs'))
             ->assertOk()
             ->assertJsonPath('runs.0.status', 'success')
-            ->assertJsonPath('runs.0.downloadable', true);
+            ->assertJsonPath('runs.0.archives.0.source', 'database');
     }
 
     public function test_download_of_an_unfinished_run_is_404(): void

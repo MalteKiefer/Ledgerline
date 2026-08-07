@@ -298,6 +298,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/runs/{run}/verify', [ApiBackupController::class, 'verifyRun'])->middleware('throttle:10,1')->name('runs.verify');
             Route::post('/runs/{run}/cancel', [ApiBackupController::class, 'cancelRun'])->middleware('throttle:20,1')->name('runs.cancel');
             Route::post('/runs/{run}/decrypt', [ApiBackupController::class, 'decryptRun'])->middleware('throttle:10,1')->name('runs.decrypt');
+            Route::post('/runs/{run}/restore', [ApiBackupController::class, 'restoreRun'])->middleware('throttle:10,1')->name('runs.restore');
         });
     });
 });

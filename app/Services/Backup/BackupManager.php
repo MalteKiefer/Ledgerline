@@ -10,6 +10,7 @@ use App\Services\Backup\Sources\BackupSource;
 use App\Services\Backup\Sources\DatabaseSource;
 use App\Services\Backup\Sources\FilesSource;
 use App\Services\Backup\Sources\InvoiceBlobSource;
+use App\Support\BlobStore;
 use App\Support\Bytes;
 use App\Support\Redactor;
 use Carbon\Carbon;
@@ -88,53 +89,68 @@ final class BackupManager
             // yet, so a fresh target does not fail the first backup.
             $this->destinations->ensureRoot($fs, $job->destination->driver, $job->destination->config ?? []);
 
-            // Both real sources (database, invoices) are full archives: the source
-            // builds a single artifact, which is optionally encrypted and uploaded.
-            $sourceObj = $this->source($job->source);
-
-            $step('Building '.$job->source.' archive…');
-            $artifact = $sourceObj->build($workDir);
-            $uploadPath = $artifact->path;
-            $extension = $artifact->extension;
-            $step('Archive built: '.Bytes::format((int) (filesize($uploadPath) ?: 0)).'.');
-
+            // One RUN produces one timestamped BATCH folder holding one archive per
+            // selected source; GFS retention then rotates whole batches.
+            $batch = $prefix.'/'.Carbon::now()->format('Y-m-d_His');
+            $passphrase = null;
             if ($job->encrypt) {
                 $passphrase = $job->effectivePassphrase();
                 if ($passphrase === null) {
                     throw new RuntimeException('Encryption is enabled but no passphrase is set.');
                 }
-                $step('Encrypting archive…');
-                $encPath = $artifact->path.'.enc';
-                $this->cipher->encryptFile($artifact->path, $encPath, $passphrase);
-                @unlink($artifact->path);
-                $uploadPath = $encPath;
-                $extension .= '.enc';
-                $step('Encrypted: '.Bytes::format((int) (filesize($uploadPath) ?: 0)).'.');
             }
+            $incremental = $job->mode === 'incremental';
+            $sinceTs = $incremental ? $job->last_run_at?->getTimestamp() : null;
 
-            $filename = $prefix.'/'.Carbon::now()->format('Y-m-d_His').'.'.$extension;
-            $step('Uploading to '.$filename.'…');
-            $stream = fopen($uploadPath, 'rb');
-            if ($stream === false) {
-                throw new RuntimeException('Could not open the staged archive for upload.');
-            }
-            try {
-                $fs->writeStream($filename, $stream);
-            } finally {
-                if (is_resource($stream)) {
-                    fclose($stream);
+            $bytes = 0;
+            $done = [];
+            foreach ($job->effectiveSources() as $src) {
+                $sourceObj = $this->source($src);
+                // Incremental only narrows blob (disk-prefix) sources; the DB dump is
+                // always a full snapshot.
+                if ($sinceTs !== null && $sourceObj instanceof Sources\DiskArchiveSource && in_array($src, BackupJob::INCREMENTAL_SOURCES, true)) {
+                    $sourceObj->onlySince($sinceTs);
                 }
+                $step('Building '.$src.($sinceTs !== null && in_array($src, BackupJob::INCREMENTAL_SOURCES, true) ? ' (incremental)' : '').' archive…');
+                $artifact = $sourceObj->build($workDir);
+                $uploadPath = $artifact->path;
+                $extension = $artifact->extension;
+
+                if ($passphrase !== null) {
+                    $encPath = $artifact->path.'.enc';
+                    $this->cipher->encryptFile($artifact->path, $encPath, $passphrase);
+                    @unlink($artifact->path);
+                    $uploadPath = $encPath;
+                    $extension .= '.enc';
+                }
+
+                $filename = $batch.'/'.$src.'.'.$extension;
+                $step('Uploading '.$filename.'…');
+                $stream = fopen($uploadPath, 'rb');
+                if ($stream === false) {
+                    throw new RuntimeException('Could not open the staged archive for upload.');
+                }
+                try {
+                    $fs->writeStream($filename, $stream);
+                } finally {
+                    if (is_resource($stream)) {
+                        fclose($stream);
+                    }
+                }
+                $bytes += (int) (filesize($uploadPath) ?: 0);
+                @unlink($uploadPath);
+                $done[] = $src;
             }
-            $uploadedArchive = $filename;
-            $step('Upload complete.');
+            $uploadedArchive = $batch; // the whole batch folder, removed on cancel
+            $step('Upload complete: '.implode(', ', $done).'.');
 
-            $bytes = (int) (filesize($uploadPath) ?: 0);
-            $deleted = $this->prune($fs, $prefix, $job->retention);
+            $deleted = $this->pruneGfs($fs, $prefix, $job);
             $step($deleted > 0
-                ? sprintf('Retention: kept %d, removed %d old version(s).', $job->retention, $deleted)
-                : sprintf('Retention: keeping up to %d version(s).', $job->retention));
+                ? sprintf('GFS retention: removed %d old batch(es).', $deleted)
+                : 'GFS retention: nothing to remove.');
 
-            $summary = sprintf('%s → %s (%s)', $job->source, $filename, Bytes::format($bytes));
+            $filename = $batch;
+            $summary = sprintf('%s → %s (%s)', implode('+', $done), $batch, Bytes::format($bytes));
 
             // Log the completion directly (not via $step) so a cancel requested
             // at the very end can't flip an already-finished run to cancelled.
@@ -149,11 +165,11 @@ final class BackupManager
             $job->update(['last_run_at' => Carbon::now(), 'last_status' => 'success']);
             $this->notifier->notify($job, true, $summary);
         } catch (BackupCancelled $e) {
-            // Remove any complete archive already pushed this run.
+            // Remove the whole batch folder already pushed this run.
             if ($uploadedArchive !== null && $fs !== null) {
                 try {
-                    $fs->delete($uploadedArchive);
-                    $log[] = Carbon::now()->format('H:i:s').'  Removed uploaded archive.';
+                    $fs->deleteDirectory($uploadedArchive);
+                    $log[] = Carbon::now()->format('H:i:s').'  Removed uploaded batch.';
                 } catch (\Throwable) { /* best effort */
                 }
             }
@@ -204,26 +220,155 @@ final class BackupManager
         };
     }
 
-    /** Keep only the newest $retention objects under the job's prefix; returns how many were deleted. */
-    private function prune(Filesystem $fs, string $prefix, int $retention): int
+    /**
+     * Grandfather-father-son retention over the timestamped batch folders: keep
+     * the newest `daily` batches (son), plus one per distinct ISO week for
+     * `weekly` weeks (father), plus one per distinct month for `monthly` months
+     * (grandfather). A batch survives if any tier keeps it. Returns #deleted.
+     */
+    private function pruneGfs(Filesystem $fs, string $prefix, BackupJob $job): int
     {
-        if ($retention < 1) {
-            return 0;
-        }
-        $files = [];
+        $tiers = $job->retentionTiers();
+        $batches = [];
         foreach ($fs->listContents($prefix, false) as $item) {
-            if ($item->isFile()) {
-                // Sort by the object's actual mtime (newest first), not by the
-                // filename — robust even if the naming scheme changes.
-                $files[] = ['path' => $item->path(), 'ts' => (int) $item->lastModified()];
+            if (method_exists($item, 'isDir') ? $item->isDir() : ! $item->isFile()) {
+                $batches[] = ['path' => $item->path(), 'ts' => (int) $item->lastModified()];
             }
         }
-        usort($files, fn (array $a, array $b): int => $b['ts'] <=> $a['ts']);
-        $old = array_slice($files, $retention);
-        foreach ($old as $f) {
-            $fs->delete($f['path']);
+        if ($batches === []) {
+            return 0;
+        }
+        usort($batches, fn (array $a, array $b): int => $b['ts'] <=> $a['ts']); // newest first
+
+        $keep = [];
+        // Son: newest N batches.
+        foreach (array_slice($batches, 0, $tiers['daily']) as $b) {
+            $keep[$b['path']] = true;
+        }
+        // Father: newest batch per ISO year-week, up to N weeks.
+        $keep += $this->keepPerPeriod($batches, 'oW', $tiers['weekly']);
+        // Grandfather: newest batch per month, up to N months.
+        $keep += $this->keepPerPeriod($batches, 'Ym', $tiers['monthly']);
+
+        $deleted = 0;
+        foreach ($batches as $b) {
+            if (! isset($keep[$b['path']])) {
+                $fs->deleteDirectory($b['path']);
+                $deleted++;
+            }
         }
 
-        return count($old);
+        return $deleted;
+    }
+
+    /**
+     * @param  list<array{path: string, ts: int}>  $batches  newest-first
+     * @return array<string, bool>
+     */
+    private function keepPerPeriod(array $batches, string $fmt, int $count): array
+    {
+        if ($count < 1) {
+            return [];
+        }
+        $keep = [];
+        $seen = [];
+        foreach ($batches as $b) {
+            $period = date($fmt, $b['ts']);
+            if (isset($seen[$period])) {
+                continue; // already kept the newest batch for this period
+            }
+            if (count($seen) >= $count) {
+                break;
+            }
+            $seen[$period] = true;
+            $keep[$b['path']] = true;
+        }
+
+        return $keep;
+    }
+
+    /**
+     * Resolve the stored archive path for one source inside a batch folder,
+     * trying the known extensions (encrypted variant first). Returns null if the
+     * batch has no archive for that source.
+     */
+    public function archiveIn(Filesystem $fs, string $batch, string $source): ?string
+    {
+        $exts = match ($source) {
+            'database' => ['sql.gz', 'sqlite.gz'],
+            default => ['tar.gz'],
+        };
+        foreach ($exts as $ext) {
+            foreach (['.enc', ''] as $suffix) {
+                $path = $batch.'/'.$source.'.'.$ext.$suffix;
+                if ($fs->fileExists($path)) {
+                    return $path;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Restore a blob source (files/invoices) from a batch: download the source
+     * archive, decrypt if needed, extract it back onto the source disk (additive
+     * overwrite). Returns the number of files written. DB restore is intentionally
+     * NOT one-click (download the dump + run backup:restore-db).
+     */
+    public function restoreBlobs(BackupJob $job, string $batchPath, string $source): int
+    {
+        if (! in_array($source, ['files', 'invoices'], true)) {
+            throw new RuntimeException('Only files/invoices can be restored in-place.');
+        }
+        if ($job->destination === null) {
+            throw new RuntimeException('No destination.');
+        }
+        $fs = $this->destinations->make($job->destination);
+        $remote = $this->archiveIn($fs, $batchPath, $source);
+        if ($remote === null) {
+            throw new RuntimeException('Archive not found in batch: '.$source);
+        }
+        $enc = str_ends_with($remote, '.enc');
+
+        $work = storage_path('app/backup-tmp/'.Str::uuid()->toString());
+        File::ensureDirectoryExists($work, 0700);
+        $local = $work.'/'.$source.'.tar.gz'.($enc ? '.enc' : '');
+        $in = $fs->readStream($remote);
+        $out = fopen($local, 'wb');
+        if (! is_resource($in) || ! is_resource($out)) {
+            throw new RuntimeException('Could not stage the archive.');
+        }
+        stream_copy_to_stream($in, $out);
+        fclose($in);
+        fclose($out);
+
+        if ($enc) {
+            $pass = $job->effectivePassphrase();
+            if ($pass === null) {
+                throw new RuntimeException('Archive is encrypted but no passphrase is set.');
+            }
+            $dec = $work.'/'.$source.'.tar.gz';
+            $this->cipher->decryptFile($local, $dec, $pass);
+            @unlink($local);
+            $local = $dec;
+        }
+
+        $disk = BlobStore::disk();
+        $phar = new \PharData($local);
+        $written = 0;
+        foreach (new \RecursiveIteratorIterator($phar) as $file) {
+            /** @var \PharFileInfo $file */
+            $rel = ltrim(str_replace('phar://'.$local, '', $file->getPathname()), '/');
+            $rel = preg_replace('#^[^/]+/#', '', $rel) ?? $rel; // drop the archive's top dir
+            if ($rel === '' || str_contains($rel, '..')) {
+                continue;
+            }
+            $disk->put($source.'/'.$rel, (string) file_get_contents($file->getPathname()));
+            $written++;
+        }
+        File::deleteDirectory($work);
+
+        return $written;
     }
 }

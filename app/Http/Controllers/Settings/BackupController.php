@@ -14,6 +14,7 @@ use App\Rules\SafeHost;
 use App\Rules\SafeUrl;
 use App\Services\Backup\ArchiveCipher;
 use App\Services\Backup\BackupDestinationFactory;
+use App\Services\Backup\BackupManager;
 use App\Services\Backup\BackupVerifier;
 use Cron\CronExpression;
 use Illuminate\Contracts\View\View;
@@ -45,7 +46,10 @@ class BackupController extends Controller
 
     /* ---- Destinations ---- */
 
-    public function __construct(private readonly BackupDestinationFactory $factory) {}
+    public function __construct(
+        private readonly BackupDestinationFactory $factory,
+        private readonly BackupManager $manager,
+    ) {}
 
     public function storeDestination(Request $request): RedirectResponse
     {
@@ -166,31 +170,45 @@ class BackupController extends Controller
         $runs = BackupRun::with('job')->latest('started_at')->limit(20)->get();
 
         return response()->json([
-            'runs' => $runs->map(fn (BackupRun $r): array => [
-                'id' => $r->id,
-                'job' => $r->job?->name,
-                'status' => $r->status,
-                'message' => $r->message,
-                'log' => $r->log,
-                'startedIso' => $r->started_at?->toIso8601String(),
-                'startedHuman' => $r->started_at?->diffForHumans(),
-                'size' => $r->bytes ? Number::fileSize($r->bytes) : null,
-                // Downloadable once finished successfully and the object still exists.
-                // Every source now writes a single archive file, so a successful run with a filename is always downloadable.
-                'downloadable' => $r->status === 'success' && $r->filename !== null,
-                // Encrypted archives (.enc) can be decrypted to a plaintext download.
-                'encrypted' => $r->status === 'success' && str_ends_with((string) $r->filename, '.enc'),
-                'cancellable' => $r->status === 'running' && ! $r->cancel_requested,
-                'cancelling' => $r->status === 'running' && $r->cancel_requested,
-                // Any successful run (archive or mirror) can be integrity-checked.
-                'verifiable' => $r->status === 'success' && $r->filename !== null,
-                // Verifying an encrypted archive needs the passphrase.
-                'needsPassphrase' => $r->status === 'success' && str_ends_with((string) $r->filename, '.enc'),
-                'verifyStatus' => $r->verify_status,
-                'verifyMessage' => $r->verify_message,
-                'verifiedHuman' => $r->verified_at?->diffForHumans(),
-            ]),
+            'runs' => $runs->map(fn (BackupRun $r): array => $this->presentRun($r))->all(),
         ]);
+    }
+
+    /**
+     * A run is one timestamped BATCH folder holding one archive per selected
+     * source. The per-archive actions (download/verify/decrypt/restore) target a
+     * source within the batch.
+     *
+     * @return array<string, mixed>
+     */
+    private function presentRun(BackupRun $r): array
+    {
+        $ok = $r->status === 'success' && $r->filename !== null;
+        $encrypt = (bool) ($r->job?->encrypt);
+        $archives = $ok
+            ? array_map(fn (string $s): array => [
+                'source' => $s,
+                'encrypted' => $encrypt,
+                'restorable' => in_array($s, BackupJob::INCREMENTAL_SOURCES, true),
+            ], $r->job?->effectiveSources() ?? [])
+            : [];
+
+        return [
+            'id' => $r->id,
+            'job' => $r->job?->name,
+            'status' => $r->status,
+            'message' => $r->message,
+            'log' => $r->log,
+            'startedIso' => $r->started_at?->toIso8601String(),
+            'startedHuman' => $r->started_at?->diffForHumans(),
+            'size' => $r->bytes ? Number::fileSize($r->bytes) : null,
+            'archives' => $archives,
+            'cancellable' => $r->status === 'running' && ! $r->cancel_requested,
+            'cancelling' => $r->status === 'running' && $r->cancel_requested,
+            'verifyStatus' => $r->verify_status,
+            'verifyMessage' => $r->verify_message,
+            'verifiedHuman' => $r->verified_at?->diffForHumans(),
+        ];
     }
 
     /**
@@ -202,10 +220,14 @@ class BackupController extends Controller
     public function verifyRun(Request $request, BackupRun $run, BackupVerifier $verifier): JsonResponse
     {
         abort_unless($run->status === 'success' && $run->filename, 404);
-        $request->validate(['passphrase' => ['nullable', 'string', 'max:255']]);
+        $request->validate([
+            'passphrase' => ['nullable', 'string', 'max:255'],
+            'source' => ['required', Rule::in(BackupJob::SOURCES)],
+        ]);
+        $archive = $this->resolveArchive($run, $request->string('source')->value());
 
         $passphrase = $request->input('passphrase') !== null ? $request->string('passphrase')->value() : null;
-        $result = $verifier->verify($run, $passphrase);
+        $result = $verifier->verify($run, $passphrase, $archive);
 
         return response()->json([
             'ok' => $result['ok'],
@@ -214,26 +236,39 @@ class BackupController extends Controller
         ]);
     }
 
-    /** Stream a completed backup archive from its destination to the browser. */
-    public function downloadRun(BackupRun $run): StreamedResponse
+    /** Stream one source's archive from a run's batch to the browser. */
+    public function downloadRun(Request $request, BackupRun $run): StreamedResponse
     {
-        // Every source now writes a single archive file (no folder-mirror trailing-slash filenames remain).
         abort_unless($run->status === 'success' && $run->filename, 404);
+        $request->validate(['source' => ['required', Rule::in(BackupJob::SOURCES)]]);
         $job = $run->job;
         abort_unless($job !== null && $job->destination !== null, 404);
 
         $fs = $this->factory->make($job->destination);
-        abort_unless($fs->fileExists($run->filename), 404);
+        $path = $this->manager->archiveIn($fs, (string) $run->filename, $request->string('source')->value());
+        abort_unless($path !== null, 404);
 
-        $name = basename($run->filename);
+        $name = basename($path);
 
-        return response()->streamDownload(function () use ($fs, $run): void {
-            $stream = $fs->readStream($run->filename);
+        return response()->streamDownload(function () use ($fs, $path): void {
+            $stream = $fs->readStream($path);
             if ($stream !== null) {
                 fpassthru($stream);
                 fclose($stream);
             }
         }, $name, ['Content-Type' => 'application/octet-stream']);
+    }
+
+    /** Resolve one source's archive path inside a run's batch (404 if absent). */
+    private function resolveArchive(BackupRun $run, string $source): string
+    {
+        $job = $run->job;
+        abort_unless($job !== null && $job->destination !== null, 404);
+        $fs = $this->factory->make($job->destination);
+        $path = $this->manager->archiveIn($fs, (string) $run->filename, $source);
+        abort_unless($path !== null, 404);
+
+        return $path;
     }
 
     /**
@@ -245,18 +280,22 @@ class BackupController extends Controller
      */
     public function decryptRun(Request $request, BackupRun $run, ArchiveCipher $cipher): StreamedResponse|RedirectResponse
     {
-        abort_unless($run->status === 'success' && $run->filename && str_ends_with((string) $run->filename, '.enc'), 404);
+        abort_unless($run->status === 'success' && $run->filename, 404);
+        $request->validate([
+            'passphrase' => ['required', 'string', 'max:255'],
+            'source' => ['required', Rule::in(BackupJob::SOURCES)],
+        ]);
         $job = $run->job;
         abort_unless($job !== null && $job->destination !== null, 404);
-        $request->validate(['passphrase' => ['required', 'string', 'max:255']]);
         $passphrase = $request->string('passphrase')->value();
 
         $fs = $this->factory->make($job->destination);
-        abort_unless($fs->fileExists($run->filename), 404);
+        $encPath = $this->manager->archiveIn($fs, (string) $run->filename, $request->string('source')->value());
+        abort_unless($encPath !== null && str_ends_with($encPath, '.enc'), 404);
 
         $enc = tempnam(sys_get_temp_dir(), 'llbenc');
         $dec = tempnam(sys_get_temp_dir(), 'llbdec');
-        $stream = $fs->readStream($run->filename);
+        $stream = $fs->readStream($encPath);
         if ($stream === null) {
             @unlink($enc);
             @unlink($dec);
@@ -283,12 +322,34 @@ class BackupController extends Controller
         }
         @unlink($enc);
 
-        $name = preg_replace('/\.enc$/', '', basename((string) $run->filename)) ?: 'backup';
+        $name = preg_replace('/\.enc$/', '', basename($encPath)) ?: 'backup';
 
         return response()->streamDownload(function () use ($dec): void {
             readfile($dec);
             @unlink($dec);
         }, $name, ['Content-Type' => 'application/octet-stream']);
+    }
+
+    /**
+     * Restore a blob source (files/invoices) from a completed run's batch back
+     * onto the live disk (additive overwrite). The database is intentionally NOT
+     * restorable in one click — download the dump and run `backup:restore-db`.
+     */
+    public function restoreRun(Request $request, BackupRun $run, BackupManager $manager): JsonResponse
+    {
+        abort_unless($run->status === 'success' && $run->filename, 404);
+        $request->validate(['source' => ['required', Rule::in(BackupJob::INCREMENTAL_SOURCES)]]);
+        $job = $run->job;
+        abort_unless($job !== null && $job->destination !== null, 404);
+
+        try {
+            $written = $manager->restoreBlobs($job, (string) $run->filename, $request->string('source')->value());
+        } catch (\Throwable $e) {
+            return response()->json(['ok' => false, 'message' => Str::limit($e->getMessage(), 300)], 422);
+        }
+        AuditLog::record('backup.restored', $run, ['source' => $request->string('source')->value(), 'files' => $written]);
+
+        return response()->json(['ok' => true, 'files' => $written]);
     }
 
     /**
@@ -415,13 +476,21 @@ class BackupController extends Controller
     {
         $request->validate([
             'name' => ['required', 'string', 'max:120'],
-            'source' => ['required', Rule::in(BackupJob::SOURCES)],
+            // Multi-select sources; `source` is the legacy single field (optional now).
+            'sources' => ['required', 'array', 'min:1'],
+            'sources.*' => [Rule::in(BackupJob::SOURCES)],
+            'source' => ['nullable', Rule::in(BackupJob::SOURCES)],
+            'mode' => ['sometimes', Rule::in(BackupJob::MODES)],
             'backup_destination_id' => ['required', 'exists:backup_destinations,id'],
             'cron' => ['required', 'string', 'max:64'],
-            'retention' => ['required', 'integer', 'min:1', 'max:9999'],
+            'retention' => ['nullable', 'integer', 'min:1', 'max:9999'],
+            // Grandfather-father-son retention tiers (son/father/grandfather).
+            'keep_daily' => ['required', 'integer', 'min:0', 'max:9999'],
+            'keep_weekly' => ['nullable', 'integer', 'min:0', 'max:9999'],
+            'keep_monthly' => ['nullable', 'integer', 'min:0', 'max:9999'],
             'encrypt' => ['sometimes', 'boolean'],
             // Min length: this passphrase is the only thing standing between an
-            // offline attacker and the wrapped vault-key material in the dump.
+            // offline attacker and the cleartext financial PII in a DB dump.
             'passphrase' => ['nullable', 'string', 'min:12', 'max:255'],
             'notify_channels' => ['nullable', 'array'],
             'notify_channels.*' => [Rule::in(BackupJob::NOTIFY_CHANNELS)],
@@ -433,7 +502,15 @@ class BackupController extends Controller
             throw ValidationException::withMessages(['cron' => __('settings.backup_cron_invalid')]);
         }
 
-        $source = $request->string('source')->value();
+        $sources = array_values(array_unique(array_filter(
+            array_map(static fn (mixed $s): string => is_string($s) ? $s : '', $request->collect('sources')->all()),
+            static fn (string $s): bool => in_array($s, BackupJob::SOURCES, true),
+        )));
+        if ($sources === []) {
+            throw ValidationException::withMessages(['sources' => __('settings.backup_sources_required')]);
+        }
+        $mode = in_array($request->string('mode')->value(), BackupJob::MODES, true) ? $request->string('mode')->value() : 'full';
+        $keepDaily = $request->integer('keep_daily');
         $encrypt = $request->boolean('encrypt');
         $passphrase = $request->string('passphrase')->value();
         $notifyChannels = array_values(array_map(
@@ -443,10 +520,15 @@ class BackupController extends Controller
 
         $data = [
             'name' => $request->string('name')->value(),
-            'source' => $source,
+            'sources' => $sources,
+            'source' => $sources[0], // keep the legacy column in sync (first source)
+            'mode' => $mode,
             'backup_destination_id' => $request->integer('backup_destination_id'),
             'cron' => $cron,
-            'retention' => $request->integer('retention'),
+            'retention' => max(1, $keepDaily), // legacy mirror; NOT NULL in old schema
+            'keep_daily' => $keepDaily,
+            'keep_weekly' => $request->input('keep_weekly') !== null ? $request->integer('keep_weekly') : 0,
+            'keep_monthly' => $request->input('keep_monthly') !== null ? $request->integer('keep_monthly') : 0,
             'encrypt' => $encrypt,
             'passphrase' => $passphrase !== '' ? $passphrase : null,
             'notify_channels' => $notifyChannels,
