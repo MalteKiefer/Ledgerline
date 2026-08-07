@@ -23,7 +23,7 @@ use Laravel\Sanctum\HasApiTokens;
 // boundary (drives the admin gate), so it is only ever set server-side, never
 // mass-assigned from request input.
 #[Fillable(['name', 'email', 'password', 'email_verified_at', 'avatar', 'locale'])]
-#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
+#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes', 'webdav_password'])]
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */

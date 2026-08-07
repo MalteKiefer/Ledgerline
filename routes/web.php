@@ -32,6 +32,8 @@ use App\Http\Controllers\Settings\UsersController as SettingsUsersController;
 use App\Http\Controllers\SharedFolderController;
 use App\Http\Controllers\SharedWithMeController;
 use App\Http\Controllers\ThemeController;
+use App\Http\Controllers\WebDavAccessController;
+use App\Http\Controllers\WebDavController;
 use Illuminate\Support\Facades\Route;
 
 // The root forwards to Finance (the app is finance-only); unauthenticated
@@ -59,11 +61,23 @@ Route::prefix('file-share/{token}')->name('public.file-share.')->group(function 
     Route::get('/file/{file}/raw', [PublicFileShareController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('file.raw');
 });
 
+// WebDAV endpoint — Sabre handles auth (HTTP Basic) + the DAV protocol itself.
+// Registered for every WebDAV verb (PROPFIND/MKCOL/MOVE/… are not covered by
+// Route::any). CSRF is excluded for dav/* in bootstrap/app.php.
+Route::match(
+    ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD', 'PROPFIND', 'PROPPATCH', 'MKCOL', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'REPORT'],
+    '/dav/{path?}',
+    WebDavController::class
+)->where('path', '.*')->name('dav');
+
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {
     Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
     Route::post('/theme', [ThemeController::class, 'update'])->name('theme.update');
     Route::post('/preferences', [PreferencesController::class, 'update'])->name('preferences.update');
+    // WebDAV app-specific password (mount Files as a network drive).
+    Route::put('/profile/webdav', [WebDavAccessController::class, 'update'])->middleware('throttle:20,1')->name('profile.webdav.update');
+    Route::delete('/profile/webdav', [WebDavAccessController::class, 'destroy'])->middleware('throttle:20,1')->name('profile.webdav.destroy');
     // Profile = the iOS-style personal hub; each section is its own sub-page.
     Route::get('/profile', [ProfileController::class, 'index'])->name('profile');
     Route::get('/profile/account', [ProfileController::class, 'account'])->name('profile.account');

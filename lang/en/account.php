@@ -123,4 +123,13 @@ return [
     'delete_confirm_label' => 'Type your email address to confirm:',
     'delete_confirm_mismatch' => 'The confirmation did not match your email address.',
     'deleted' => 'Your account and all your data have been deleted.',
+    'webdav_title' => 'WebDAV access',
+    'webdav_desc' => 'Mount your files as a network drive (Finder, Explorer, mobile). Uses a separate, revocable password — not your login password.',
+    'webdav_url' => 'Server URL',
+    'webdav_user' => 'Username',
+    'webdav_password' => 'WebDAV password (min. 12 characters)',
+    'webdav_save' => 'Save',
+    'webdav_disable' => 'Disable WebDAV access',
+    'webdav_set' => 'WebDAV password set.',
+    'webdav_cleared' => 'WebDAV access disabled.',
 ];

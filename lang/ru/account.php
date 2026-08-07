@@ -123,4 +123,13 @@ return [
     'delete_confirm_label' => 'Введите ваш email для подтверждения:',
     'delete_confirm_mismatch' => 'Подтверждение не совпадает с вашим email.',
     'deleted' => 'Ваш аккаунт и все данные удалены.',
+    'webdav_title' => 'Доступ по WebDAV',
+    'webdav_desc' => 'Подключите файлы как сетевой диск (Finder, Explorer, мобильные). Отдельный отзываемый пароль — не пароль входа.',
+    'webdav_url' => 'URL сервера',
+    'webdav_user' => 'Имя пользователя',
+    'webdav_password' => 'Пароль WebDAV (мин. 12 символов)',
+    'webdav_save' => 'Сохранить',
+    'webdav_disable' => 'Отключить доступ WebDAV',
+    'webdav_set' => 'Пароль WebDAV установлен.',
+    'webdav_cleared' => 'Доступ WebDAV отключён.',
 ];
