@@ -257,6 +257,7 @@ return [
     'backup_never_run' => 'никогда',
     'backup_source_database' => 'База данных',
     'backup_source_invoices' => 'Счета и квитанции',
+    'backup_source_files' => 'Файлы',
     'backup_test' => 'Проверить соединение',
     'backup_stat_runs' => 'Запуски',
     'backup_stat_success_rate' => 'Процент успеха',

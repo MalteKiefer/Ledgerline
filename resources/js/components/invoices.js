@@ -812,16 +812,26 @@ export default (config = {}, labels = {}, initial = {}) => ({
         if (! files.length) return;
         this.autoUploadBusy = true;
         const seen = this._existingReceiptSigs();
-        let added = 0, dupes = 0;
+        let added = 0, dupes = 0, failed = 0;
         for (const file of files) {
+            let bytes, sig = '';
             try {
-                const bytes = new Uint8Array(await file.arrayBuffer());
-                const sig = await fileSig(bytes.slice(0));
+                bytes = new Uint8Array(await file.arrayBuffer());
+                try { sig = await fileSig(bytes.slice(0)); } catch (e) { sig = ''; }
                 if (sig && seen.has(sig)) { dupes++; continue; }
-                const mime = file.type || 'application/octet-stream';
-                const { ocr, a } = await this._analyze(bytes.slice(0), mime, file.name);
-                const rcpt = { total: a ? a.total : null, date: a ? a.date : undefined, currency: a ? a.currency : undefined };
-                const link = (this.transactions || []).length ? autoPick(rcpt, this.transactions, 3) : null;
+            } catch (e) { failed++; continue; }
+            const mime = file.type || 'application/octet-stream';
+
+            // Analysis (OCR / category / VAT / auto-link) is BEST-EFFORT and must
+            // never block the upload — a failing text extractor previously skipped
+            // the whole file silently ("nothing happens"). Any failure just yields
+            // an unannotated receipt.
+            let a = null, ocr = '';
+            try { const r = await this._analyze(bytes.slice(0), mime, file.name); ocr = r.ocr; a = r.a; } catch (e) { /* upload plain */ }
+            let link = null;
+            try { if ((this.transactions || []).length) link = autoPick({ total: a ? a.total : null, date: a ? a.date : undefined, currency: a ? a.currency : undefined }, this.transactions, 3); } catch (e) { /* */ }
+
+            try {
                 const fd = new FormData();
                 fd.append('file', new File([bytes], file.name || 'receipt', { type: mime }));
                 if (file.name) fd.append('name', file.name);
@@ -832,14 +842,16 @@ export default (config = {}, labels = {}, initial = {}) => ({
                 if (sig) fd.append('sig', sig);
                 if (link) fd.append('bank_transaction_id', link.id);
                 const res = await fetch('/finance/receipts', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() }, body: fd });
-                if (! res.ok) continue;
+                if (! res.ok) { failed++; continue; }
                 const data = await res.json();
                 if (data?.receipt) { this.standaloneReceipts.unshift(normStandalone(data.receipt)); if (sig) seen.add(sig); added++; }
-            } catch (e) { /* skip */ }
+                else { failed++; }
+            } catch (e) { failed++; }
         }
         this.autoUploadBusy = false;
         if (added) window.llToast?.((labels.receipt_uploaded || ':n receipt(s) uploaded.').replace(':n', added));
         if (dupes) window.llToast?.((labels.receipt_dupes_skipped || ':n duplicate(s) skipped.').replace(':n', dupes));
+        if (failed) window.llToast?.((labels.receipt_upload_failed || ':n upload(s) failed.').replace(':n', failed));
     },
     // Extract text + analysis from receipt bytes (client-side; ZK-free plaintext pivot).
     async _analyze(bytes, mime, name) {

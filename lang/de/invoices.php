@@ -393,6 +393,7 @@ return [
     'receipt_auto_attached' => ':n Belege per Betrag zugeordnet.',
     'receipt_dupes_skipped' => ':n Duplikat(e) übersprungen.',
     'receipt_uploaded' => ':n Beleg(e) hochgeladen.',
+    'receipt_upload_failed' => ':n Upload(s) fehlgeschlagen — bitte erneut versuchen.',
     'receipt_standalone' => 'Eigenständiger Beleg (kein Umsatz)',
     'receipt_standalone_badge' => 'Eigenständig',
     'receipt_standalone_hint' => 'Keinem Bank-Umsatz zugeordnet — für die Dokumentation abgelegt.',

@@ -91,6 +91,7 @@
         receipt: @js(__('invoices.receipt')),
         invoice_word: @js(__('invoices.invoice_word')),
         receipt_dupes_skipped: @js(__('invoices.receipt_dupes_skipped')),
+        receipt_upload_failed: @js(__('invoices.receipt_upload_failed')),
         vatcat_19: '19 %',
         vatcat_16: '16 %',
         vatcat_7: '7 %',
