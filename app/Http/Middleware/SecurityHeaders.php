@@ -48,10 +48,12 @@ final class SecurityHeaders
         // another origin. Blocks cross-site hotlinking/embedding of the now-
         // plaintext user blobs (photos/files/PDFs) that COOP does not cover.
         $response->headers->set('Cross-Origin-Resource-Policy', 'same-origin');
-        // Deny access to powerful browser features the app never uses.
+        // Deny access to powerful browser features the app never uses. (The
+        // deprecated FLoC `interest-cohort` token was dropped — Chrome removed
+        // FLoC and now logs "Unrecognized feature" for it.)
         $response->headers->set(
             'Permissions-Policy',
-            'geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()'
+            'geolocation=(), camera=(), microphone=(), payment=(), usb=()'
         );
 
         // Pin HTTPS only when the deployment is actually served over TLS
