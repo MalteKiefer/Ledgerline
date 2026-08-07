@@ -8,7 +8,6 @@ use App\Models\BackupRun;
 use App\Support\Bytes;
 use App\Support\DiskTempFile;
 use Carbon\Carbon;
-use League\Flysystem\FileAttributes;
 use League\Flysystem\Filesystem;
 use RuntimeException;
 use Throwable;
@@ -61,11 +60,9 @@ final class BackupVerifier
 
         $fs = $this->factory->make($job->destination);
 
-        // Folder mirror (files/gallery): confirm the objects are present.
-        if (str_ends_with($run->filename, '/')) {
-            return $this->verifyMirror($fs, $run->filename);
-        }
-
+        // Every backup source now writes a single archive file (prefix/Y-m-d_His.ext);
+        // the removed files/gallery folder-mirror was the only producer of trailing-slash
+        // filenames, so no live run reaches a mirror-verification path.
         if (! $fs->fileExists($run->filename)) {
             return ['ok' => false, 'message' => 'The archive is missing from its destination.'];
         }
@@ -183,26 +180,6 @@ final class BackupVerifier
                 ? sprintf('Valid SQL dump — decompresses to %s across %d table(s). Restorable.', Bytes::format($bytes), $tables)
                 : sprintf('Decompressed %s but found no table definitions — the dump may be incomplete.', Bytes::format($bytes)),
         ];
-    }
-
-    /**
-     * @param  Filesystem  $fs
-     * @return array{ok: bool, message: string}
-     */
-    private function verifyMirror($fs, string $prefix): array
-    {
-        $count = 0;
-        $bytes = 0;
-        foreach ($fs->listContents(rtrim($prefix, '/'), true) as $item) {
-            if ($item instanceof FileAttributes) {
-                $count++;
-                $bytes += (int) ($item->fileSize() ?? 0);
-            }
-        }
-
-        return $count > 0
-            ? ['ok' => true, 'message' => sprintf('Mirror present: %d object(s), %s.', $count, Bytes::format($bytes))]
-            : ['ok' => false, 'message' => 'The mirror folder is empty or missing.'];
     }
 
     /**

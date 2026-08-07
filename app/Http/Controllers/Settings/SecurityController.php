@@ -43,7 +43,7 @@ class SecurityController extends Controller
         $settings->update($after);
 
         // Audit the exact security-policy diff (values, never secrets) so a change
-        // to the device cap / vault-lock policy is attributable and reversible.
+        // to the device cap is attributable and reversible.
         $changes = [];
         foreach ($after as $key => $value) {
             if ((string) ($before[$key] ?? '') !== (string) $value) {

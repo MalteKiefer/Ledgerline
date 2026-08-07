@@ -589,37 +589,3 @@ export function buildImportedInvoice(f, p, opts = {}) {
     if (seq != null) rec.seq = seq; // advances the current-year number counter
     return rec;
 }
-
-/**
- * Build a draft from a parsed embedded e-invoice XML (see shared/einvoice-xml). This is
- * the RELIABLE path — the XML carries every real line item, so no text scraping is
- * needed. Same record shape + seq/warnings contract as buildImportedInvoice.
- * @param {object} p  parseEInvoiceXml result
- * @param {object} opts  { id, currency, currentYear, summaryLabel }
- */
-export function buildInvoiceFromXml(p, opts = {}) {
-    const warnings = [];
-    if (! p.number) warnings.push('number');
-    if (! p.issueDate) warnings.push('date');
-    if (p.gross == null && p.net == null) warnings.push('amount');
-    const seq = opts.currentYear ? importedSeq(p.number, opts.currentYear) : null;
-    const lines = (p.lines && p.lines.length)
-        ? p.lines.map((l) => ({ desc: l.desc || '', qty: l.qty ?? 1, unit: l.unit || '', unitPrice: l.unitPrice ?? 0, vatRate: l.vatRate ?? 0 }))
-        : [{ desc: opts.summaryLabel || 'Rechnung', qty: 1, unit: '', unitPrice: p.net ?? 0, vatRate: p.vatRate || 0 }];
-    const rec = {
-        id: opts.id,
-        number: p.number,
-        status: 'paid',
-        issueDate: p.issueDate,
-        dueDate: p.dueDate || p.issueDate,
-        currency: p.currency || opts.currency || 'EUR',
-        lang: 'de',
-        customer: { name: p.customer?.name || '', attn: '', address: p.customer?.address || '', email: p.customer?.email || '', vatId: p.customer?.vatId || '', contactId: null },
-        lines,
-        note: '', footer: '', trashed: false, imported: true,
-        _warnings: warnings,
-        _parsedGross: p.gross,
-    };
-    if (seq != null) rec.seq = seq;
-    return rec;
-}

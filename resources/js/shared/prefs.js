@@ -48,8 +48,6 @@ export function distanceLabel(meters, digits = 2) {
     const d = convertDistance(meters, digits);
     return d.value + ' ' + d.unit;
 }
-/** Distance in the user's unit as a bare number (for chart axes). */
-export function distanceValue(meters, digits = 2) { return convertDistance(meters, digits).value; }
 
 /** Elevation: canonical METERS → { value, unit } in the user's unit. */
 export function convertElevation(meters, digits = 0) {
@@ -58,11 +56,6 @@ export function convertElevation(meters, digits = 0) {
     return { value: Math.round(m * 10 ** digits) / 10 ** digits, unit: 'm' };
 }
 export function elevationUnit() { return read().elevation === 'ft' ? 'ft' : 'm'; }
-export function elevationLabel(meters, digits = 0) {
-    const e = convertElevation(meters, digits);
-    return e.value + ' ' + e.unit;
-}
-export function elevationValue(meters, digits = 1) { return convertElevation(meters, digits).value; }
 
 /** Health unit config (weight/temp/glucose) sourced from the global prefs. */
 export function healthUnits() {

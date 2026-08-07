@@ -6,8 +6,6 @@ namespace App\Models;
 
 use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -96,20 +94,4 @@ class Invoice extends Model
         'skonto_percent' => 'decimal:2',
         'skonto_days' => 'integer',
     ];
-
-    /**
-     * @return BelongsTo<FinancePartner, $this>
-     */
-    public function partner(): BelongsTo
-    {
-        return $this->belongsTo(FinancePartner::class, 'partner_id');
-    }
-
-    /**
-     * @return HasMany<BankTransaction, $this>
-     */
-    public function transactions(): HasMany
-    {
-        return $this->hasMany(BankTransaction::class);
-    }
 }

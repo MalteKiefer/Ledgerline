@@ -117,7 +117,7 @@ Route::middleware('auth')->group(function (): void {
         Route::put('/settings/groups/{group}', [SettingsGroupsController::class, 'update'])->name('settings.groups.update');
         Route::delete('/settings/groups/{group}', [SettingsGroupsController::class, 'destroy'])->name('settings.groups.destroy');
 
-        // Vault lock policy (trusted-device days + public-computer idle timeout).
+        // Workspace security policy (per-user paired-device cap).
         Route::get('/settings/security', [SettingsSecurityController::class, 'edit'])->name('settings.security.edit');
         Route::put('/settings/security', [SettingsSecurityController::class, 'update'])->name('settings.security.update');
 

@@ -7,8 +7,7 @@
         "build": "vite build",
         "dev": "vite",
         "test:js": "vitest run",
-        "build:ext": "vite build -c extension/vite.config.mjs",
-        "lint": "eslint resources/js extension/src"
+        "lint": "eslint resources/js"
     },
     "devDependencies": {
         "@tailwindcss/forms": "^0.5.11",
@@ -23,8 +22,6 @@
     },
     "dependencies": {
         "@alpinejs/intersect": "^3.15.12",
-        "@codemirror/language-data": "^6.5.2",
-        "@codemirror/state": "^6.7.1",
         "@noble/hashes": "2.2.0",
         "@noble/post-quantum": "0.6.1",
         "@zxcvbn-ts/core": "4.1.2",
@@ -32,19 +29,11 @@
         "@zxcvbn-ts/language-de": "4.1.1",
         "@zxcvbn-ts/language-en": "4.1.1",
         "alpinejs": "^3.15.12",
-        "codemirror": "^6.0.2",
-        "dompurify": "^3.4.12",
         "fflate": "0.8.3",
-        "github-markdown-css": "^5.9.0",
-        "highlight.js": "^11.11.1",
         "html2canvas": "1.4.1",
         "jspdf": "4.2.1",
         "jsqr": "^1.4.0",
-        "leaflet": "^1.9.4",
-        "leaflet.markercluster": "^1.5.3",
         "libsodium-wrappers-sumo": "^0.8.4",
-        "marked": "18.0.7",
-        "marked-highlight": "^2.2.4",
         "pdfjs-dist": "^6.1.200",
         "qrcode": "^1.5.4",
         "tesseract.js": "^7.0.0",

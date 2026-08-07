@@ -6,7 +6,6 @@ namespace App\Models;
 
 use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -57,28 +56,4 @@ class BankTransaction extends Model
         'receipts' => 'array',
         'version' => 'integer',
     ];
-
-    /**
-     * @return BelongsTo<PaymentMethod, $this>
-     */
-    public function paymentMethod(): BelongsTo
-    {
-        return $this->belongsTo(PaymentMethod::class);
-    }
-
-    /**
-     * @return BelongsTo<Invoice, $this>
-     */
-    public function invoice(): BelongsTo
-    {
-        return $this->belongsTo(Invoice::class);
-    }
-
-    /**
-     * @return BelongsTo<FinanceProject, $this>
-     */
-    public function project(): BelongsTo
-    {
-        return $this->belongsTo(FinanceProject::class, 'finance_project_id');
-    }
 }

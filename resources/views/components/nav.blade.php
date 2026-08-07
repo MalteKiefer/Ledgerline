@@ -1,66 +1,12 @@
 {{-- Desktop persistent top bar (hidden on phones; the bottom tab bar takes over
-     < sm). Consumes config/navigation.php so it never drifts from x-mobile-nav. --}}
+     < sm). Finance-only: the Finance SPA renders its own in-page section tabs,
+     so this bar carries only brand + notifications + the account menu. --}}
 @php
-    $resolve = fn ($items) => collect($items)
-        ->filter(fn ($i) => ! isset($i['module']) || (auth()->user()?->canModule($i['module']) ?? true))
-        ->map(fn ($i) => [
-            'label' => __($i['label']),
-            'url' => route($i['route']).($i['fragment'] ?? ''),
-            'active' => request()->routeIs($i['pattern']),
-            'icon' => $i['icon'],
-        ]);
-    $primary = $resolve(config('navigation.primary'));
-    $more = $resolve(config('navigation.more'));
-    $moreActive = $more->contains('active', true);
     $currentUser = auth()->user();
 @endphp
 <nav class="mx-auto hidden w-full max-w-[1700px] items-center justify-between px-4 py-3 sm:flex sm:w-[92%] sm:px-6">
     <div class="flex items-center gap-8">
         <a href="{{ route('finance.index') }}" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Ledgerline</a>
-        @auth
-            @if ($primary->isNotEmpty() || $more->isNotEmpty())
-            <div class="flex items-center gap-1">
-                @foreach ($primary as $item)
-                    <a href="{{ $item['url'] }}"
-                        @class([
-                            'flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium',
-                            'bg-accent/10 text-accent' => $item['active'],
-                            'text-gray-600 dark:text-gray-400 hover:bg-accent/5 hover:text-accent' => ! $item['active'],
-                        ])>
-                        <x-icon :name="$item['icon']" class="h-4 w-4" />
-                        {{ $item['label'] }}
-                    </a>
-                @endforeach
-                @if ($more->isNotEmpty())
-                <div class="relative" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
-                    <button type="button" @click="open = ! open"
-                        @class([
-                            'flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium',
-                            'bg-accent/10 text-accent' => $moreActive,
-                            'text-gray-600 dark:text-gray-400 hover:bg-accent/5 hover:text-accent' => ! $moreActive,
-                        ])>
-                        <x-icon name="ellipsis" class="h-4 w-4" />
-                        {{ __('messages.nav.more') }}
-                        <x-icon name="chevron-down" class="h-3.5 w-3.5 transition" x-bind:class="open && 'rotate-180'" />
-                    </button>
-                    <div x-show="open" x-cloak x-transition class="absolute left-0 z-40 mt-2 w-52 overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-lg">
-                        @foreach ($more as $item)
-                            <a href="{{ $item['url'] }}" @click="open = false"
-                                @class([
-                                    'flex items-center gap-2 px-3 py-2 text-sm font-medium',
-                                    'bg-accent/10 text-accent' => $item['active'],
-                                    'text-gray-700 dark:text-gray-300 hover:bg-accent/5' => ! $item['active'],
-                                ])>
-                                <x-icon :name="$item['icon']" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
-                                {{ $item['label'] }}
-                            </a>
-                        @endforeach
-                    </div>
-                </div>
-                @endif
-            </div>
-            @endif
-        @endauth
     </div>
 
     @auth

@@ -15,8 +15,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * The signed-in user's personal area, modelled on iOS Settings: a root hub
  * (/profile) that drills into focused sub-pages (account, devices, sessions,
- * encryption, appearance, export, danger). Identity data is owned by Pocket-ID
- * and refreshed on each login (read-only).
+ * encryption, appearance, export, danger). Identity data comes from the
+ * first-party account (email + password, optional TOTP 2FA) and is read-only here.
  */
 class ProfileController extends Controller
 {
@@ -33,7 +33,7 @@ class ProfileController extends Controller
         ]);
     }
 
-    /** Account identity (read-only, from Pocket-ID). */
+    /** Account identity (read-only, first-party account). */
     public function account(Request $request): View
     {
         return view('profile.account', ['user' => $this->requireUser($request)]);

@@ -4,7 +4,7 @@
  * Deliberately conservative for an authenticated app:
  *  - navigations are network-first and fall back to the offline page,
  *  - hashed build assets (/build/...) are cached forever, first hit wins,
- *  - everything else (JSON APIs, DAV, uploads) goes straight to the network.
+ *  - everything else (JSON APIs, uploads) goes straight to the network.
  *
  * Bump CACHE whenever the precached set changes; activate() drops old caches.
  */
@@ -29,10 +29,6 @@ self.addEventListener('fetch', (event) => {
 
     const url = new URL(req.url);
     if (url.origin !== location.origin) return;
-
-    // Public visitor pages (upload/download/share links) and DAV must never be
-    // handled by the app shell — let the browser fetch them directly.
-    if (/^\/(u|f|p|dav)\//.test(url.pathname)) return;
 
     // App navigations: try the network, fall back to the offline page. Never
     // pass a redirected response to a navigation (Chrome rejects those).

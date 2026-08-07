@@ -1,34 +1,9 @@
 {{-- Mobile navigation drawer (< sm): a left slide-over opened by the hamburger
-     in the top strip. Holds every destination + account actions. Consumes the
-     same config/navigation.php as the desktop x-nav. --}}
+     in the top strip. Finance-only: the Finance SPA renders its own in-page
+     section tabs, so this drawer holds only the account actions. --}}
 @auth
-    @php
-        $resolve = fn ($items) => collect($items)
-            ->filter(fn ($i) => ! isset($i['module']) || (auth()->user()?->canModule($i['module']) ?? true))
-            ->map(fn ($i) => [
-                'label' => __($i['label']),
-                'url' => route($i['route']).($i['fragment'] ?? ''),
-                'active' => request()->routeIs($i['pattern']),
-                'icon' => $i['icon'],
-            ]);
-        $links = $resolve(config('navigation.primary'))->concat($resolve(config('navigation.more')));
-    @endphp
     <x-sheet side="left" store="navOpen" title="Ledgerline">
-        <nav class="space-y-1">
-            @foreach ($links as $item)
-                <a href="{{ $item['url'] }}" @click="$store.nav.closeAll()"
-                    @class([
-                        'flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium',
-                        'bg-accent/10 text-accent' => $item['active'],
-                        'text-gray-700 dark:text-gray-300 hover:bg-accent/5' => ! $item['active'],
-                    ])>
-                    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#7066f5"><x-icon :name="$item['icon']" class="h-4 w-4" /></span>
-                    {{ $item['label'] }}
-                </a>
-            @endforeach
-        </nav>
-
-        <div class="mt-4 space-y-1 border-t border-gray-100 dark:border-gray-800 pt-3">
+        <div class="space-y-1">
             <a href="{{ route('profile') }}" @click="$store.nav.closeAll()" class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">
                 <x-icon name="contacts" class="h-5 w-5 text-gray-400 dark:text-gray-500" />{{ __('messages.menu.profile') }}
             </a>

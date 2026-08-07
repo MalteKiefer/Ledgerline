@@ -213,7 +213,8 @@ class BackupController extends Controller
                 'startedIso' => $r->started_at?->toIso8601String(),
                 'startedHuman' => $r->started_at?->diffForHumans(),
                 'size' => $r->bytes ? Number::fileSize($r->bytes) : null,
-                'downloadable' => $r->status === 'success' && $r->filename !== null && ! str_ends_with((string) $r->filename, '/'),
+                // Every source now writes a single archive file, so a successful run with a filename is always downloadable.
+                'downloadable' => $r->status === 'success' && $r->filename !== null,
                 'encrypted' => $r->status === 'success' && str_ends_with((string) $r->filename, '.enc'),
                 'cancellable' => $r->status === 'running' && ! $r->cancel_requested,
                 'cancelling' => $r->status === 'running' && $r->cancel_requested,
@@ -229,7 +230,8 @@ class BackupController extends Controller
     /** Stream a completed backup archive to the caller. */
     public function downloadRun(BackupRun $run): StreamedResponse
     {
-        abort_unless($run->status === 'success' && $run->filename && ! str_ends_with((string) $run->filename, '/'), 404);
+        // Every source now writes a single archive file (no folder-mirror trailing-slash filenames remain).
+        abort_unless($run->status === 'success' && $run->filename, 404);
         $job = $run->job;
         abort_unless($job !== null && $job->destination !== null, 404);
 

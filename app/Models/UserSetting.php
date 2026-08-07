@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * A user's personal preferences (Paperless, gallery, files, theme).
+ * A user's personal preferences (Paperless, files, theme).
  * One row per user; use for() to fetch (or lazily create) the current user's
  * row. Infra/workspace settings live on AppSettings instead.
  *
@@ -55,7 +55,6 @@ use Illuminate\Database\Eloquent\Model;
     'paperless_url',
     'paperless_token',
     'paperless_synced_at',
-    'gallery_columns',
     'file_max_versions',
     'theme',
     'unit_distance',
@@ -98,7 +97,6 @@ class UserSetting extends Model
         'paperless_enabled' => false,
         'small_business' => false,
         'invoice_vat_ist' => true,
-        'gallery_columns' => 6,
         'file_max_versions' => 10,
         'theme' => 'system',
         'unit_distance' => 'km',
@@ -142,7 +140,6 @@ class UserSetting extends Model
             'company_smtp_username' => 'encrypted',
             'company_smtp_password' => 'encrypted',
             'company_smtp_from_address' => 'encrypted',
-            'gallery_columns' => 'integer',
             'file_max_versions' => 'integer',
             'invoice_number_padding' => 'integer',
             'invoice_next_number' => 'integer',

@@ -105,7 +105,7 @@ class UsersController extends Controller
             return back()->withErrors(['delete' => __('settings.users_last_admin')]);
         }
 
-        $purge->handle($user); // crypto-shred + owned data + vault
+        $purge->handle($user); // purge the user's owned data (plaintext-relational)
 
         return $this->savedSettings('users', 'settings.users', 'settings.users_deleted');
     }

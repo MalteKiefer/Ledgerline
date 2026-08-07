@@ -9,13 +9,12 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The single, global workspace settings row: gallery, mail and integration options.
+ * The single, global workspace settings row: mail and integration options.
  *
  * There is only ever one row; use current() to fetch (or lazily create) it.
  */
 #[Fillable([
     'allow_registration',
-    'gallery_geocode_grid_km',
     'max_connected_devices',
     'mail_enabled',
     'smtp_host',
@@ -33,15 +32,12 @@ use Illuminate\Database\Eloquent\Model;
     'webhook_url',
     'webhook_secret',
     'export_files_max_zip_mb',
-    'export_gallery_max_zip_mb',
     'export_notify_desktop',
     'export_notify_ntfy',
     'export_notify_mail',
     'export_notify_webhook',
-    'files_quota_mb',
     'files_max_upload_mb',
     'files_blob_orphan_grace_hours',
-    'gallery_geocode_interval_ms',
 ])]
 // Defense-in-depth: keep the operative-secret columns (SMTP / ntfy / webhook creds)
 // out of any wholesale toArray()/toJson() as well as the encrypted-cast at-rest layer.
@@ -59,7 +55,6 @@ class AppSettings extends Model
     protected function casts(): array
     {
         return [
-            'gallery_geocode_grid_km' => 'float',
             'max_connected_devices' => 'integer',
             // Notification/mail credentials: usable in the clear at runtime but
             // encrypted at rest (so they are not readable in a database backup).
@@ -79,15 +74,12 @@ class AppSettings extends Model
             'webhook_url' => 'encrypted',
             'webhook_secret' => 'encrypted',
             'export_files_max_zip_mb' => 'integer',
-            'export_gallery_max_zip_mb' => 'integer',
             'export_notify_desktop' => 'boolean',
             'export_notify_ntfy' => 'boolean',
             'export_notify_mail' => 'boolean',
             'export_notify_webhook' => 'boolean',
-            'files_quota_mb' => 'integer',
             'files_max_upload_mb' => 'integer',
             'files_blob_orphan_grace_hours' => 'integer',
-            'gallery_geocode_interval_ms' => 'integer',
         ];
     }
 

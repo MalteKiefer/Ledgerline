@@ -10,11 +10,12 @@ use Illuminate\Http\Request;
 use Throwable;
 
 /**
- * Fetches a login's site icon (BIMI logo, else favicon) for the password
- * manager. This is a deliberate, user-opted boundary crossing: the domain is
- * sent here transiently to fetch the icon, never stored server-side. The fetch
- * goes through the SSRF guard; the result is returned as a data URI which the
- * client caches inside the sealed item, so it never has to ask again.
+ * Fetches a site's icon (BIMI logo, else favicon) — used by the finance module
+ * for bank / business-partner logos. This is a deliberate, user-opted boundary
+ * crossing: the domain is sent here transiently to fetch the icon, never stored
+ * server-side. The fetch goes through the SSRF guard; the result is returned as
+ * a data URI which the client stores alongside the record, so it never has to
+ * ask again.
  */
 class PasswordIconController extends Controller
 {

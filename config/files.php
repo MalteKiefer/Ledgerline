@@ -25,18 +25,6 @@ return [
     'max_upload_mb' => (int) env('FILES_MAX_UPLOAD_MB', 512),
 
     /*
-    |--------------------------------------------------------------------------
-    | Per-user storage quota (megabytes)
-    |--------------------------------------------------------------------------
-    |
-    | Maximum bytes a single user may occupy (all stored content blobs).
-    | 0 = unlimited.
-    |
-    */
-
-    'quota_mb' => (int) env('FILES_QUOTA_MB', 0),
-
-    /*
     | Grace window (hours) before an orphaned (never-synced) blob is eligible
     | for sweeping. No active sweeper command currently runs; the value is an
     | AppSettings-backed default (see AppServiceProvider SETTING_OVERRIDES).

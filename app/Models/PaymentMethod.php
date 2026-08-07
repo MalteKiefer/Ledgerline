@@ -6,7 +6,6 @@ namespace App\Models;
 
 use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -51,12 +50,4 @@ class PaymentMethod extends Model
         'business' => 'boolean',
         'version' => 'integer',
     ];
-
-    /**
-     * @return HasMany<BankTransaction, $this>
-     */
-    public function transactions(): HasMany
-    {
-        return $this->hasMany(BankTransaction::class);
-    }
 }

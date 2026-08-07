@@ -1,15 +1,11 @@
 @props(['side' => 'left', 'store' => 'sidebarOpen', 'title' => null])
 
-{{-- Generic off-canvas sheet driven by $store.nav.<store>. Used by the mobile
-     "More" menu (side=bottom) and the per-module sidebars (side=left). Teleported
-     to <body> so it escapes any positioned/overflow-hidden ancestor. --}}
+{{-- Left slide-over sheet driven by $store.nav.<store>. Teleported to <body> so
+     it escapes any positioned/overflow-hidden ancestor. Only side="left" is used
+     (the mobile nav drawer). --}}
 @php
-    $panel = match ($side) {
-        'bottom' => 'inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl pb-[calc(env(safe-area-inset-bottom)+1rem)]',
-        'right' => 'inset-y-0 right-0 h-full w-80 max-w-[85vw]',
-        default => 'inset-y-0 left-0 h-full w-80 max-w-[85vw]',
-    };
-    $enter = $side === 'bottom' ? 'translate-y-full' : ($side === 'right' ? 'translate-x-full' : '-translate-x-full');
+    $panel = 'inset-y-0 left-0 h-full w-80 max-w-[85vw]';
+    $enter = '-translate-x-full';
 @endphp
 <template x-teleport="body">
     <div x-show="$store.nav.{{ $store }}" x-cloak class="fixed inset-0 z-[70]" role="dialog" aria-modal="true"

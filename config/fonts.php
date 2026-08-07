@@ -7,7 +7,6 @@ declare(strict_types=1);
 // mail editor (where e-mail clients may fall back to a system font). CSS family
 // value => display label, sorted alphabetically by label.
 return [
-    'default' => "-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif",
     'families' => [
         'Arial, sans-serif' => 'Arial',
         'Georgia, serif' => 'Georgia',

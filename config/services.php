@@ -35,17 +35,4 @@ return [
         ],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Pocket-ID (OIDC / OAuth2) — OPTIONAL, ADDITIONAL sign-in
-    |--------------------------------------------------------------------------
-    |
-    | Optional single-sign-on that coexists with the first-party email+password
-    | auth. The credentials are issued when registering an OIDC client in the
-    | Pocket-ID admin UI. PKCE is enabled by default to harden the
-    | authorization-code exchange. Leave POCKETID_* unset to disable the feature
-    | entirely (the login button hides and the routes bounce to /login).
-    |
-    */
-
 ];

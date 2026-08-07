@@ -5,7 +5,7 @@ import globals from 'globals';
 // not imported after the app.js modularization) that the bundler wouldn't flag.
 export default [
     {
-        files: ['resources/js/**/*.js', 'extension/src/**/*.js'],
+        files: ['resources/js/**/*.js'],
         languageOptions: {
             ecmaVersion: 2023,
             sourceType: 'module',
@@ -13,7 +13,6 @@ export default [
                 ...globals.browser,
                 ...globals.worker,
                 Alpine: 'readonly',
-                chrome: 'readonly',
             },
         },
         rules: {

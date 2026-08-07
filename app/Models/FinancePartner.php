@@ -6,15 +6,14 @@ namespace App\Models;
 
 use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
 /**
  * A business partner / Geschäftspartner (plaintext-relational pivot). Rows are
- * private per user via OwnsUserData. name/category/kind + url/logo/note are
- * plaintext for listing; contact PII (address/email/phone/vat_id) plus the list
- * of contact people carry an `encrypted` cast.
+ * private per user via OwnsUserData. All columns — including the contact PII
+ * (address/email/phone/vat_id) and the list of contact people — are plaintext
+ * at rest (encryption removed in v1.516.0).
  *
  * @property int $id
  * @property int $user_id
@@ -53,12 +52,4 @@ class FinancePartner extends Model
         'version' => 'integer',
         'hourly_rate' => 'decimal:2',
     ];
-
-    /**
-     * @return HasMany<Invoice, $this>
-     */
-    public function invoices(): HasMany
-    {
-        return $this->hasMany(Invoice::class, 'partner_id');
-    }
 }
