@@ -3318,6 +3318,27 @@ paths:
   /shared-with-me/{share}/files/{file}:
     put: { tags: [Files], operationId: sharedWithMeRename, summary: Rename a file in a shared folder (editor only), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Renamed. }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" } } }
     delete: { tags: [Files], operationId: sharedWithMeDestroy, summary: Delete a file in a shared folder (editor only), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Deleted. }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" } } }
+  /files/zip:
+    post:
+      tags: [Files]
+      operationId: filesZip
+      summary: Download a selection of files and/or a folder subtree as a ZIP
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { ids: { type: array, items: { type: integer } }, folder_id: { type: integer } } } } } }
+      responses:
+        "200": { description: ZIP archive., content: { application/zip: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /files/stats:
+    get:
+      tags: [Files]
+      operationId: filesStats
+      summary: Storage stats — size by type + suspected duplicates (by sha256)
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Stats., content: { application/json: { schema: { type: object, properties: { used: { type: integer }, by_type: { type: object, additionalProperties: { type: integer } }, duplicates: { type: array, items: { type: array, items: { type: object } } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /invoices/ocr:
     post:
       tags: [Finance]
