@@ -12,6 +12,7 @@ use App\Models\BankTransaction;
 use App\Models\FinanceCategory;
 use App\Models\FinancePartner;
 use App\Models\FinanceProject;
+use App\Models\FinanceReceipt;
 use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use App\Models\UserSetting;
@@ -112,6 +113,7 @@ class FinanceController extends Controller
             'projects' => FinanceProject::query()->orderBy('name')->get(),
             'financeCategories' => FinanceCategory::query()->orderBy('name')->get(),
             'transactions' => BankTransaction::query()->orderByDesc('date')->orderByDesc('id')->get(),
+            'standaloneReceipts' => FinanceReceipt::query()->orderByDesc('created_at')->orderByDesc('id')->get(),
         ];
     }
 
@@ -1673,5 +1675,144 @@ class FinanceController extends Controller
         }
 
         return $paths;
+    }
+
+    // ---- Standalone receipts ("Fremdbelege") — a receipt WITHOUT a bank transaction ----
+
+    /**
+     * Upload a standalone receipt (documentation not tied to a booking). Bytes are
+     * stored plaintext under invoices/{uuid}; blob_path/size/sig are server-set.
+     * An optional bank_transaction_id links it to a booking when one exists.
+     */
+    public function storeReceipt(Request $request): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp,heic,heif,gif', 'max:'.$this->maxUploadKb()],
+            'name' => ['nullable', 'string', 'max:500'],
+            'kind' => ['nullable', 'string', 'max:24'],
+            'category' => ['nullable', 'string', 'max:160'],
+            'tags' => ['nullable', 'array', 'max:100'],
+            'tags.*' => ['string', 'max:100'],
+            'vat' => ['nullable', 'string', 'max:16'],
+            'note' => ['nullable', 'string', 'max:2000'],
+            'ocr' => ['nullable', 'string', 'max:200000'],
+            'sig' => ['nullable', 'string', 'max:128'],
+            'partner_id' => ['nullable', 'integer'],
+            'bank_transaction_id' => ['nullable', 'integer'],
+            'finance_project_id' => ['nullable', 'integer'],
+        ]);
+
+        $upload = $request->file('file');
+        if (! $upload instanceof UploadedFile) {
+            abort(422);
+        }
+
+        $path = 'invoices/'.Str::uuid()->toString();
+        $this->fs()->putFileAs('invoices', $upload, basename($path));
+
+        $name = $request->filled('name') ? $request->string('name')->value() : $upload->getClientOriginalName();
+        $mime = $upload->getMimeType() ?: $upload->getClientMimeType();
+        /** @var list<string> $tags */
+        $tags = array_values(array_filter($request->array('tags'), static fn ($t): bool => is_string($t)));
+
+        try {
+            $receipt = new FinanceReceipt;
+            $receipt->fill([
+                'kind' => $request->filled('kind') ? $request->string('kind')->value() : 'receipt',
+                'category' => $request->filled('category') ? $request->string('category')->value() : null,
+                'tags' => $tags,
+                'vat' => $request->filled('vat') ? $request->string('vat')->value() : null,
+                'note' => $request->filled('note') ? $request->string('note')->value() : null,
+                'ocr' => $request->filled('ocr') ? $request->string('ocr')->value() : null,
+                'name' => $name !== '' ? $name : 'receipt',
+                'partner_id' => $request->filled('partner_id') ? $request->integer('partner_id') : null,
+                'bank_transaction_id' => $request->filled('bank_transaction_id') ? $request->integer('bank_transaction_id') : null,
+                'finance_project_id' => $request->filled('finance_project_id') ? $request->integer('finance_project_id') : null,
+            ]);
+            // Server-owned columns (never from the client).
+            $receipt->forceFill([
+                'user_id' => $user->id,
+                'blob_path' => $path,
+                'mime' => $mime !== '' ? $mime : null,
+                'size' => $upload->getSize() ?: 0,
+                'sig' => $request->filled('sig') ? $request->string('sig')->value() : null,
+            ]);
+            $receipt->save();
+        } catch (\Throwable $e) {
+            $this->fs()->delete($path); // no orphan on the shared invoices/ disk
+            throw $e;
+        }
+
+        return response()->json(['receipt' => $receipt], 201);
+    }
+
+    public function updateReceipt(Request $request, FinanceReceipt $receipt): JsonResponse
+    {
+        $request->validate([
+            'name' => ['sometimes', 'string', 'max:500'],
+            'category' => ['sometimes', 'nullable', 'string', 'max:160'],
+            'tags' => ['sometimes', 'nullable', 'array', 'max:100'],
+            'tags.*' => ['string', 'max:100'],
+            'vat' => ['sometimes', 'nullable', 'string', 'max:16'],
+            'note' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'partner_id' => ['sometimes', 'nullable', 'integer'],
+            'bank_transaction_id' => ['sometimes', 'nullable', 'integer'],
+            'finance_project_id' => ['sometimes', 'nullable', 'integer'],
+            'version' => ['sometimes', 'integer', 'min:0'],
+        ]);
+        $patch = [];
+        foreach (['name', 'category', 'vat', 'note', 'partner_id', 'bank_transaction_id', 'finance_project_id', 'tags'] as $f) {
+            if ($request->has($f)) {
+                $patch[$f] = $request->input($f);
+            }
+        }
+        $expected = $request->has('version') ? $request->integer('version') : null;
+        $result = $this->optimistic(FinanceReceipt::class, $receipt->id, $patch, $expected);
+
+        return $this->optimisticJson($result, FinanceReceipt::class, $receipt->id, 'receipt');
+    }
+
+    public function destroyStandaloneReceipt(FinanceReceipt $receipt): JsonResponse
+    {
+        $receipt->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function restoreStandaloneReceipt(int $id): JsonResponse
+    {
+        $receipt = FinanceReceipt::withTrashed()->findOrFail($id);
+        $receipt->restore();
+
+        return response()->json(['receipt' => $receipt]);
+    }
+
+    public function forceDeleteStandaloneReceipt(int $id): JsonResponse
+    {
+        $receipt = FinanceReceipt::withTrashed()->findOrFail($id);
+        $path = $this->safeBlobPath($receipt->blob_path);
+        if ($path !== null && $this->fs()->exists($path)) {
+            $this->fs()->delete($path);
+        }
+        $receipt->forceDelete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function receiptFile(Request $request, FinanceReceipt $receipt): StreamedResponse
+    {
+        $path = $this->safeBlobPath($receipt->blob_path);
+        if ($path === null || ! $this->fs()->exists($path)) {
+            abort(404);
+        }
+        $mime = is_string($receipt->mime) && $receipt->mime !== '' ? $receipt->mime : 'application/octet-stream';
+
+        return $this->fs()->response($path, $this->safeName($receipt->name), [
+            'Content-Type' => $mime,
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+            'Cache-Control' => 'private, max-age=3600',
+        ], $request->boolean('download') ? 'attachment' : 'inline');
     }
 }

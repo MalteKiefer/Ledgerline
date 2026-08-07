@@ -78,7 +78,7 @@ class BackupSettingsTest extends TestCase
             'backup_destination_id' => $dest->id,
             'cron' => '0 */3 * * *',
             'retention' => 5,
-            // A database dump must be encrypted (never written off-box in plaintext).
+            // Encryption is recommended for a database dump; here we exercise the encrypted path.
             'encrypt' => '1',
             'passphrase' => 'a-strong-passphrase',
             'notify_channels' => ['desktop', 'mail'],
@@ -89,6 +89,26 @@ class BackupSettingsTest extends TestCase
         $this->assertNotNull($job);
         $this->assertSame(5, $job->retention);
         $this->assertSame(['desktop', 'mail'], $job->notify_channels);
+    }
+
+    public function test_an_unencrypted_database_job_is_allowed(): void
+    {
+        // Encryption is no longer forced for a database dump (plaintext pivot removed
+        // the vault-key oracle; a local FDE server may back up unencrypted by choice).
+        $this->signInAdmin();
+        $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
+
+        $this->post(route('settings.backup.jobs.store'), [
+            'name' => 'Plain DB',
+            'source' => 'database',
+            'backup_destination_id' => $dest->id,
+            'cron' => '0 3 * * *',
+            'retention' => 3,
+            'encrypt' => '0',
+            'enabled' => '1',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertNotNull(BackupJob::firstWhere('name', 'Plain DB'));
     }
 
     public function test_an_invalid_backup_source_is_rejected(): void

@@ -453,12 +453,11 @@ class BackupController extends Controller
             'enabled' => $request->boolean('enabled'),
         ];
 
-        // A database dump carries the non-ZK rows in plaintext plus the wrapped
-        // vault-key material (an offline passphrase-cracking oracle). It must
-        // never be written to an off-box destination unencrypted.
-        if ($source === 'database' && ! $encrypt) {
-            throw ValidationException::withMessages(['encrypt' => __('settings.backup_db_encrypt_required')]);
-        }
+        // Encryption is strongly recommended for a database dump (cleartext financial
+        // PII), but no longer forced: the ZK/vault-key material that made an
+        // unencrypted dump an offline cracking oracle is gone (plaintext pivot), and
+        // a local, FDE-encrypted, non-internet-facing server may back up unencrypted
+        // by choice (see Security register). The UI still defaults to encrypted.
         // A per-job passphrase is only required when there is no environment
         // passphrase (BACKUP_PASSPHRASE); the latter keeps the key out of the DB.
         $envPassphrase = config('backup.passphrase', '');

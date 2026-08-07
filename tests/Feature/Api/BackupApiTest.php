@@ -246,8 +246,11 @@ class BackupApiTest extends TestCase
         $response->assertJsonMissing(['do-not-leak-this-passphrase']);
     }
 
-    public function test_database_job_without_encrypt_is_rejected(): void
+    public function test_database_job_without_encrypt_is_allowed(): void
     {
+        // Encryption is recommended but no longer forced for a database dump
+        // (plaintext pivot removed the vault-key oracle; a local FDE server may
+        // back up unencrypted by choice — see the Security register).
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
         $this->postJson('/api/v1/backup/jobs', [
@@ -256,12 +259,11 @@ class BackupApiTest extends TestCase
             'backup_destination_id' => $dest->id,
             'cron' => '0 3 * * *',
             'retention' => 3,
-            'encrypt' => false,   // ← forbidden for database source
+            'encrypt' => false,
         ], ['Authorization' => 'Bearer '.$this->adminToken()])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['encrypt']);
+            ->assertCreated();
 
-        $this->assertSame(0, BackupJob::count());
+        $this->assertSame(1, BackupJob::count());
     }
 
     public function test_admin_can_create_a_job(): void
