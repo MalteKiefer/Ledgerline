@@ -47,7 +47,7 @@
     {{-- Working indicator: a spinner badge (top-right) while any file operation is in flight. --}}
     <div x-show="busy > 0" x-cloak x-transition
         class="fixed right-4 top-20 z-[950] flex items-center gap-2 rounded-full border border-black/[0.06] dark:border-white/10 bg-md-surface px-3 py-1.5 text-sm font-medium text-md-on-surface-var shadow-lg">
-        <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />
+        <span class="msym text-base animate-spin">history</span>
         {{ __('files.working') }}
     </div>
 
@@ -63,31 +63,31 @@
         <aside class="hidden w-full shrink-0 flex-col gap-1 self-start rounded-xl border border-md-outline-variant bg-md-surface-2 p-3 md:flex md:w-56">
             <nav class="space-y-1">
                 <button type="button" @click="view = 'files'; selected = []; $store.nav.closeAll && $store.nav.closeAll()"
-                    :class="view === 'files' ? 'bg-accent/10 text-accent' : 'text-md-on-surface-var hover:bg-accent/5'"
+                    :class="view === 'files' ? 'bg-md-selected text-md-primary font-semibold' : 'text-md-on-surface-var hover:bg-md-primary/8'"
                     class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium">
-                    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#3b9fd6"><x-icon name="folder" class="h-4 w-4" /></span>
+                    <span class="msym text-xl">folder</span>
                     <span>{{ __('files.all_files') }}</span>
                 </button>
                 <button type="button" @click="view = 'favorites'; selected = []; cwd = null; $store.nav.closeAll && $store.nav.closeAll()"
-                    :class="view === 'favorites' ? 'bg-accent/10 text-accent' : 'text-md-on-surface-var hover:bg-accent/5'"
+                    :class="view === 'favorites' ? 'bg-md-selected text-md-primary font-semibold' : 'text-md-on-surface-var hover:bg-md-primary/8'"
                     class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium">
-                    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#d9a441"><x-icon name="star" class="h-4 w-4" /></span>
+                    <span class="msym text-xl">star</span>
                     <span class="flex-1 text-left">{{ __('files.favorites') }}</span>
                     <span x-show="favCount > 0" x-cloak x-text="favCount" class="rounded-full bg-md-outline-variant px-1.5 text-xs text-md-on-surface-var"></span>
                 </button>
                 <button type="button" @click="view = 'recent'; selected = []; cwd = null; $store.nav.closeAll && $store.nav.closeAll()"
-                    :class="view === 'recent' ? 'bg-accent/10 text-accent' : 'text-md-on-surface-var hover:bg-accent/5'"
+                    :class="view === 'recent' ? 'bg-md-selected text-md-primary font-semibold' : 'text-md-on-surface-var hover:bg-md-primary/8'"
                     class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium">
-                    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#9e70fa"><x-icon name="clock" class="h-4 w-4" /></span>
+                    <span class="msym text-xl">history</span>
                     <span>{{ __('files.recent') }}</span>
                 </button>
                 <button type="button" @click="view = 'trash'; selected = []; cwd = null; $store.nav.closeAll && $store.nav.closeAll()"
                     @dragover.prevent="if (dragItem) $event.currentTarget.classList.add('ring-2','ring-red-400')"
                     @dragleave="$event.currentTarget.classList.remove('ring-2','ring-red-400')"
                     @drop.prevent="$event.currentTarget.classList.remove('ring-2','ring-red-400'); if (dragItem) { trashItem(dragItem); dragItem = null; }"
-                    :class="view === 'trash' ? 'bg-accent/10 text-accent' : 'text-md-on-surface-var hover:bg-accent/5'"
+                    :class="view === 'trash' ? 'bg-md-selected text-md-primary font-semibold' : 'text-md-on-surface-var hover:bg-md-primary/8'"
                     class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium">
-                    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#6b7280"><x-icon name="trash" class="h-4 w-4" /></span>
+                    <span class="msym text-xl">delete</span>
                     <span class="flex-1 text-left">{{ __('files.trash') }}</span>
                     <span x-show="trashCount > 0" x-cloak x-text="trashCount" class="rounded-full bg-md-outline-variant px-1.5 text-xs text-md-on-surface-var"></span>
                 </button>
@@ -103,7 +103,7 @@
                 </template>
                 <template x-if="! usage.quota">
                     <p class="flex items-center gap-1.5 text-xs text-md-on-surface-var">
-                        <x-icon name="server" class="h-4 w-4 shrink-0 text-md-on-surface-var" />
+                        <span class="msym text-base shrink-0 text-md-on-surface-var">hard_drive</span>
                         <span x-text="'{{ __('files.storage_used_only', ['used' => '__U__']) }}'.replace('__U__', fmtSize(usage.used))"></span>
                     </p>
                 </template>
@@ -113,31 +113,31 @@
             <div class="space-y-4">
             <nav class="space-y-1">
                 <button type="button" @click="view = 'files'; selected = []; $store.nav.closeAll && $store.nav.closeAll()"
-                    :class="view === 'files' ? 'bg-accent/10 text-accent' : 'text-md-on-surface-var hover:bg-accent/5'"
+                    :class="view === 'files' ? 'bg-md-selected text-md-primary font-semibold' : 'text-md-on-surface-var hover:bg-md-primary/8'"
                     class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium">
-                    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#3b9fd6"><x-icon name="folder" class="h-4 w-4" /></span>
+                    <span class="msym text-xl">folder</span>
                     <span>{{ __('files.all_files') }}</span>
                 </button>
                 <button type="button" @click="view = 'favorites'; selected = []; cwd = null; $store.nav.closeAll && $store.nav.closeAll()"
-                    :class="view === 'favorites' ? 'bg-accent/10 text-accent' : 'text-md-on-surface-var hover:bg-accent/5'"
+                    :class="view === 'favorites' ? 'bg-md-selected text-md-primary font-semibold' : 'text-md-on-surface-var hover:bg-md-primary/8'"
                     class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium">
-                    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#d9a441"><x-icon name="star" class="h-4 w-4" /></span>
+                    <span class="msym text-xl">star</span>
                     <span class="flex-1 text-left">{{ __('files.favorites') }}</span>
                     <span x-show="favCount > 0" x-cloak x-text="favCount" class="rounded-full bg-md-outline-variant px-1.5 text-xs text-md-on-surface-var"></span>
                 </button>
                 <button type="button" @click="view = 'recent'; selected = []; cwd = null; $store.nav.closeAll && $store.nav.closeAll()"
-                    :class="view === 'recent' ? 'bg-accent/10 text-accent' : 'text-md-on-surface-var hover:bg-accent/5'"
+                    :class="view === 'recent' ? 'bg-md-selected text-md-primary font-semibold' : 'text-md-on-surface-var hover:bg-md-primary/8'"
                     class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium">
-                    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#9e70fa"><x-icon name="clock" class="h-4 w-4" /></span>
+                    <span class="msym text-xl">history</span>
                     <span>{{ __('files.recent') }}</span>
                 </button>
                 <button type="button" @click="view = 'trash'; selected = []; cwd = null; $store.nav.closeAll && $store.nav.closeAll()"
                     @dragover.prevent="if (dragItem) $event.currentTarget.classList.add('ring-2','ring-red-400')"
                     @dragleave="$event.currentTarget.classList.remove('ring-2','ring-red-400')"
                     @drop.prevent="$event.currentTarget.classList.remove('ring-2','ring-red-400'); if (dragItem) { trashItem(dragItem); dragItem = null; }"
-                    :class="view === 'trash' ? 'bg-accent/10 text-accent' : 'text-md-on-surface-var hover:bg-accent/5'"
+                    :class="view === 'trash' ? 'bg-md-selected text-md-primary font-semibold' : 'text-md-on-surface-var hover:bg-md-primary/8'"
                     class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium">
-                    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#6b7280"><x-icon name="trash" class="h-4 w-4" /></span>
+                    <span class="msym text-xl">delete</span>
                     <span class="flex-1 text-left">{{ __('files.trash') }}</span>
                     <span x-show="trashCount > 0" x-cloak x-text="trashCount" class="rounded-full bg-md-outline-variant px-1.5 text-xs text-md-on-surface-var"></span>
                 </button>
@@ -153,7 +153,7 @@
                 </template>
                 <template x-if="! usage.quota">
                     <p class="flex items-center gap-1.5 text-xs text-md-on-surface-var">
-                        <x-icon name="server" class="h-4 w-4 shrink-0 text-md-on-surface-var" />
+                        <span class="msym text-base shrink-0 text-md-on-surface-var">hard_drive</span>
                         <span x-text="'{{ __('files.storage_used_only', ['used' => '__U__']) }}'.replace('__U__', fmtSize(usage.used))"></span>
                     </p>
                 </template>
@@ -181,15 +181,15 @@
             <div class="flex flex-wrap items-center gap-2">
                 <template x-if="view === 'files'">
                     <label title="{{ __('files.upload') }}" aria-label="{{ __('files.upload') }}"
-                        class="cursor-pointer ll-accent rounded-xl p-2">
-                        <x-icon name="arrow-up-tray" class="h-5 w-5" />
+                        class="cursor-pointer m3-state inline-flex h-10 w-10 items-center justify-center rounded-full bg-md-primary text-md-on-primary shadow-sm">
+                        <span class="msym text-xl">upload</span>
                         <input type="file" multiple class="hidden" @change="upload($event.target.files); $event.target.value = ''">
                     </label>
                 </template>
                 <template x-if="view === 'files'">
                     <label title="{{ __('files.upload_folder') }}" aria-label="{{ __('files.upload_folder') }}"
-                        class="cursor-pointer rounded-xl p-2 text-md-on-surface-var hover:bg-black/[0.04] dark:hover:bg-white/10">
-                        <x-icon name="folder-plus" class="h-5 w-5" />
+                        class="cursor-pointer m3-state inline-flex h-10 w-10 items-center justify-center rounded-full text-md-on-surface-var">
+                        <span class="msym text-xl">create_new_folder</span>
                         <input type="file" webkitdirectory multiple class="hidden" @change="uploadDirectory($event.target.files); $event.target.value = ''">
                     </label>
                 </template>
@@ -227,9 +227,9 @@
             </div>
             <span x-show="activeTag" x-cloak class="inline-flex items-center gap-2 rounded-full bg-blue-50 dark:bg-blue-950 px-3 py-1 text-xs text-blue-800 dark:text-blue-300">
                 {{ __('files.filtered_by') }}: <span x-text="activeTag"></span>
-                <button type="button" @click="activeTag = ''" aria-label="{{ __('common.clear') }}" class="text-blue-500 hover:text-blue-700"><x-icon name="x-mark" class="h-3 w-3" /></button>
+                <button type="button" @click="activeTag = ''" aria-label="{{ __('common.clear') }}" class="text-blue-500 hover:text-blue-700"><span class="msym text-sm">close</span></button>
             </span>
-            <span x-show="contentSearching" x-cloak class="inline-flex items-center gap-1.5 text-xs text-md-on-surface-var"><x-icon name="arrow-path" class="h-3.5 w-3.5 animate-spin" />{{ __('files.searching') }}</span>
+            <span x-show="contentSearching" x-cloak class="inline-flex items-center gap-1.5 text-xs text-md-on-surface-var"><span class="msym text-sm animate-spin">history</span>{{ __('files.searching') }}</span>
         </div>
 
         {{-- Label filter bar (coloured taxonomy) --}}
@@ -243,10 +243,10 @@
                 </button>
             </template>
             <button type="button" @click="openLabelModal()" class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent/5">
-                <x-icon name="plus" class="h-3.5 w-3.5" />{{ __('files.labels_manage') }}
+                <span class="msym text-sm">add</span>{{ __('files.labels_manage') }}
             </button>
             <button type="button" @click="openSharedWithMe()" class="ml-auto inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent/5">
-                <x-icon name="share" class="h-3.5 w-3.5" />{{ __('files.shared_with_me') }}
+                <span class="msym text-sm">share</span>{{ __('files.shared_with_me') }}
             </button>
         </div>
 
@@ -270,33 +270,33 @@
                             <button type="button" x-data="{ thumbOk: true }" @click="row.kind === 'folder' ? (view = 'files', cwd = row.id) : openFile(row)" class="flex aspect-square items-center justify-center overflow-hidden bg-md-surface-variant">
                                 <img x-show="isImageRow(row) && thumbOk" :src="thumbUrl(row)" x-on:error="thumbOk = false" loading="lazy" alt="" class="h-full w-full object-cover">
                                 <span x-show="! (isImageRow(row) && thumbOk)" class="relative flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-sm" :style="'background:' + rowTint(row)">
-                                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" :d="rowIconPath(row)" /></svg>
+                                    <span class="msym text-2xl" x-text="rowMsym(row)"></span>
                                 </span>
                             </button>
                             <div class="flex flex-col gap-0 px-2 py-1.5">
                                 <div class="flex items-center gap-1">
                                 <button type="button" x-show="row.kind === 'file'" @click="toggleFavorite(row)" class="shrink-0" :class="row.favorite ? 'text-amber-500' : 'text-md-on-surface-var hover:text-md-on-surface-var'" :aria-label="row.favorite ? @js(__('files.unfavorite')) : @js(__('files.favorite'))">
-                                    <span x-show="row.favorite"><x-icon name="star-solid" class="h-3.5 w-3.5" /></span>
-                                    <span x-show="! row.favorite"><x-icon name="star" class="h-3.5 w-3.5" /></span>
+                                    <span x-show="row.favorite"><span class="msym msym-fill text-sm">star</span></span>
+                                    <span x-show="! row.favorite"><span class="msym text-sm">star</span></span>
                                 </button>
                                 <span class="min-w-0 flex-1 truncate text-xs text-md-on-surface-var" :title="row.name" x-text="row.name"></span>
                                 <div class="relative shrink-0" x-data="{ menu: false, menuStyle: '', toggleMenu(e) { this.menu = ! this.menu; if (! this.menu) return; const r = e.currentTarget.getBoundingClientRect(); const left = Math.max(8, r.right - 176); this.menuStyle = `top: ${r.bottom + 4}px; left: ${left}px;`; this.$nextTick(() => { const h = this.$refs.menu?.offsetHeight ?? 0; if (r.bottom + 4 + h > window.innerHeight - 8 && r.top - h - 4 > 8) this.menuStyle = `top: ${r.top - h - 4}px; left: ${left}px;`; }); } }">
-                                    <button type="button" @click="toggleMenu($event)" class="text-md-on-surface-var hover:text-md-on-surface dark:hover:text-md-on-surface" :aria-label="@js(__('files.actions'))"><x-icon name="ellipsis" class="h-4 w-4" /></button>
+                                    <button type="button" @click="toggleMenu($event)" class="text-md-on-surface-var hover:text-md-on-surface dark:hover:text-md-on-surface" :aria-label="@js(__('files.actions'))"><span class="msym text-base">more_vert</span></button>
                                     <template x-teleport="body">
                                         <div x-ref="menu" x-show="menu" x-cloak @click.outside="menu = false" @scroll.window="menu = false" :style="menuStyle" class="fixed z-[60] w-44 rounded-xl border border-black/[0.06] dark:border-white/10 bg-md-surface py-1 text-left text-sm shadow-lg">
                                             @php $c = 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-md-on-surface-var hover:bg-accent/5'; @endphp
-                                            <button type="button" x-show="row.kind === 'file'" @click="download(row); menu = false" class="{{ $c }}"><x-icon name="arrow-down-tray" />{{ __('files.download') }}</button>
-                                            <button type="button" @click="openInfo(row); menu = false" class="{{ $c }}"><x-icon name="info" />{{ __('files.info') }}</button>
-                                            <button type="button" @click="startRename(row); menu = false" class="{{ $c }}"><x-icon name="pencil" />{{ __('files.rename') }}</button>
-                                            <button type="button" @click="openMove(row); menu = false" class="{{ $c }}"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
-                                            <button type="button" @click="openTags(row); menu = false" class="{{ $c }}"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
-                                            <button type="button" @click="openShare(row); menu = false" class="{{ $c }}"><x-icon name="link" />{{ __('files.share_public') }}</button>
-                                            <button type="button" x-show="row.kind === 'folder'" @click="shareFolderWithUser(row); menu = false" class="{{ $c }}"><x-icon name="share" />{{ __('files.folder_share_add') }}</button>
+                                            <button type="button" x-show="row.kind === 'file'" @click="download(row); menu = false" class="{{ $c }}"><span class="msym text-base">download</span>{{ __('files.download') }}</button>
+                                            <button type="button" @click="openInfo(row); menu = false" class="{{ $c }}"><span class="msym text-base">info</span>{{ __('files.info') }}</button>
+                                            <button type="button" @click="startRename(row); menu = false" class="{{ $c }}"><span class="msym text-base">edit</span>{{ __('files.rename') }}</button>
+                                            <button type="button" @click="openMove(row); menu = false" class="{{ $c }}"><span class="msym text-base">drive_file_move</span>{{ __('files.move') }}</button>
+                                            <button type="button" @click="openTags(row); menu = false" class="{{ $c }}"><span class="msym text-base">label</span>{{ __('files.edit_tags') }}</button>
+                                            <button type="button" @click="openShare(row); menu = false" class="{{ $c }}"><span class="msym text-base">link</span>{{ __('files.share_public') }}</button>
+                                            <button type="button" x-show="row.kind === 'folder'" @click="shareFolderWithUser(row); menu = false" class="{{ $c }}"><span class="msym text-base">share</span>{{ __('files.folder_share_add') }}</button>
                                             
-                                            <button type="button" x-show="row.kind !== 'folder'" @click="openVersions(row); menu = false" class="{{ $c }}"><x-icon name="arrow-path" />{{ __('files.versions') }}</button>
-                                            <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="{{ $c }}"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
-                                            <button type="button" x-show="isPdf(row) && $store.paperless.configured" @click="openPaperless(row); menu = false" class="{{ $c }}"><x-icon name="share" />{{ __('paperless.send_to_paperless') }}</button>
-                                            <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 dark:text-red-400 hover:bg-accent/5"><x-icon name="trash" />{{ __('common.delete') }}</button>
+                                            <button type="button" x-show="row.kind !== 'folder'" @click="openVersions(row); menu = false" class="{{ $c }}"><span class="msym text-base">history</span>{{ __('files.versions') }}</button>
+                                            <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="{{ $c }}"><span class="msym text-base">description</span>{{ __('files.migrate_to_note') }}</button>
+                                            <button type="button" x-show="isPdf(row) && $store.paperless.configured" @click="openPaperless(row); menu = false" class="{{ $c }}"><span class="msym text-base">share</span>{{ __('paperless.send_to_paperless') }}</button>
+                                            <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 dark:text-red-400 hover:bg-accent/5"><span class="msym text-base">delete</span>{{ __('common.delete') }}</button>
                                         </div>
                                     </template>
                                 </div>
@@ -357,7 +357,7 @@
                             <td class="px-4 py-3 font-medium text-md-on-surface">
                                 <span class="flex min-w-0 items-center gap-2.5" x-show="renaming !== row.id">
                                     <span class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" :style="'background:' + rowTint(row)">
-                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" :d="rowIconPath(row)" /></svg>
+                                        <span class="msym text-xl" x-text="rowMsym(row)"></span>
                                     </span>
                                     <span class="truncate" x-text="row.name"></span>
                                 </span>
@@ -386,8 +386,8 @@
                                 </div>
                                 <div x-show="! trashView" class="flex items-center justify-end gap-1">
                                     <button type="button" x-show="row.kind === 'file'" @click="toggleFavorite(row)" :title="row.favorite ? @js(__('files.unfavorite')) : @js(__('files.favorite'))" :aria-label="row.favorite ? @js(__('files.unfavorite')) : @js(__('files.favorite'))" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 hover:bg-accent/5" :class="row.favorite ? 'text-amber-500' : 'text-md-on-surface-var hover:text-md-on-surface'">
-                                        <span x-show="row.favorite"><x-icon name="star-solid" class="h-4 w-4" /></span>
-                                        <span x-show="! row.favorite"><x-icon name="star" class="h-4 w-4" /></span>
+                                        <span x-show="row.favorite"><span class="msym msym-fill text-base">star</span></span>
+                                        <span x-show="! row.favorite"><span class="msym text-base">star</span></span>
                                     </button>
                                     <x-icon-button name="eye" size="lg" x-show="row.kind === 'file'" @click="openFile(row)" title="{{ __('files.preview') }}" aria-label="{{ __('files.preview') }}" />
                                     <x-icon-button name="info" size="lg" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" />
@@ -398,18 +398,18 @@
                                         <template x-teleport="body">
                                         <div x-ref="menu" x-show="menu" x-cloak @click.outside="menu = false" @keydown.escape.window="menu = false" @scroll.window="menu = false" @resize.window="menu = false" :style="menuStyle" class="fixed z-[60] w-44 rounded-xl border border-black/[0.06] dark:border-white/10 bg-md-surface py-1 text-left text-sm shadow-lg">
                                             @php $c = 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-md-on-surface-var hover:bg-accent/5'; @endphp
-                                            <button type="button" x-show="row.kind === 'file'" @click="download(row); menu = false" class="{{ $c }}"><x-icon name="arrow-down-tray" />{{ __('files.download') }}</button>
-                                            <button type="button" @click="openInfo(row); menu = false" class="{{ $c }}"><x-icon name="info" />{{ __('files.info') }}</button>
-                                            <button type="button" @click="startRename(row); menu = false" class="{{ $c }}"><x-icon name="pencil" />{{ __('files.rename') }}</button>
-                                            <button type="button" @click="openMove(row); menu = false" class="{{ $c }}"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
-                                            <button type="button" @click="openTags(row); menu = false" class="{{ $c }}"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
-                                            <button type="button" @click="openShare(row); menu = false" class="{{ $c }}"><x-icon name="link" />{{ __('files.share_public') }}</button>
-                                            <button type="button" x-show="row.kind === 'folder'" @click="shareFolderWithUser(row); menu = false" class="{{ $c }}"><x-icon name="share" />{{ __('files.folder_share_add') }}</button>
+                                            <button type="button" x-show="row.kind === 'file'" @click="download(row); menu = false" class="{{ $c }}"><span class="msym text-base">download</span>{{ __('files.download') }}</button>
+                                            <button type="button" @click="openInfo(row); menu = false" class="{{ $c }}"><span class="msym text-base">info</span>{{ __('files.info') }}</button>
+                                            <button type="button" @click="startRename(row); menu = false" class="{{ $c }}"><span class="msym text-base">edit</span>{{ __('files.rename') }}</button>
+                                            <button type="button" @click="openMove(row); menu = false" class="{{ $c }}"><span class="msym text-base">drive_file_move</span>{{ __('files.move') }}</button>
+                                            <button type="button" @click="openTags(row); menu = false" class="{{ $c }}"><span class="msym text-base">label</span>{{ __('files.edit_tags') }}</button>
+                                            <button type="button" @click="openShare(row); menu = false" class="{{ $c }}"><span class="msym text-base">link</span>{{ __('files.share_public') }}</button>
+                                            <button type="button" x-show="row.kind === 'folder'" @click="shareFolderWithUser(row); menu = false" class="{{ $c }}"><span class="msym text-base">share</span>{{ __('files.folder_share_add') }}</button>
                                             
-                                            <button type="button" x-show="row.kind !== 'folder'" @click="openVersions(row); menu = false" class="{{ $c }}"><x-icon name="arrow-path" />{{ __('files.versions') }}</button>
-                                            <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="{{ $c }}"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
-                                            <button type="button" x-show="isPdf(row) && $store.paperless.configured" @click="openPaperless(row); menu = false" class="{{ $c }}"><x-icon name="share" />{{ __('paperless.send_to_paperless') }}</button>
-                                            <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 dark:text-red-400 hover:bg-accent/5"><x-icon name="trash" />{{ __('common.delete') }}</button>
+                                            <button type="button" x-show="row.kind !== 'folder'" @click="openVersions(row); menu = false" class="{{ $c }}"><span class="msym text-base">history</span>{{ __('files.versions') }}</button>
+                                            <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="{{ $c }}"><span class="msym text-base">description</span>{{ __('files.migrate_to_note') }}</button>
+                                            <button type="button" x-show="isPdf(row) && $store.paperless.configured" @click="openPaperless(row); menu = false" class="{{ $c }}"><span class="msym text-base">share</span>{{ __('paperless.send_to_paperless') }}</button>
+                                            <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 dark:text-red-400 hover:bg-accent/5"><span class="msym text-base">delete</span>{{ __('common.delete') }}</button>
                                         </div>
                                         </template>
                                     </div>
@@ -446,8 +446,8 @@
                     <div class="flex items-center justify-between gap-2 text-xs">
                         <span class="truncate text-md-on-surface-var" x-text="u.name"></span>
                         <span class="shrink-0" :class="{'text-green-600 dark:text-green-400': u.state==='done', 'text-red-600 dark:text-red-400': u.state==='error', 'text-md-on-surface-var': u.state==='uploading'||u.state==='pending'}">
-                            <template x-if="u.state==='done'"><x-icon name="check" class="h-4 w-4" /></template>
-                            <template x-if="u.state==='error'"><x-icon name="x-mark" class="h-4 w-4" /></template>
+                            <template x-if="u.state==='done'"><span class="msym text-base">check</span></template>
+                            <template x-if="u.state==='error'"><span class="msym text-base">close</span></template>
                             <span x-show="u.state==='uploading'" x-text="u.progress + '%'"></span>
                             <span x-show="u.state==='pending'">…</span>
                         </span>
@@ -511,10 +511,10 @@
                             class="mx-auto max-h-[75vh] rounded object-contain">
                         <button type="button" x-show="viewerHasGallery" @click.stop="viewerStep(-1)"
                             title="{{ __('files.prev_image') }}" aria-label="{{ __('files.prev_image') }}"
-                            class="absolute left-1 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white hover:bg-black/60"><x-icon name="chevron-left" class="h-5 w-5" /></button>
+                            class="absolute left-1 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white hover:bg-black/60"><span class="msym text-xl">chevron_left</span></button>
                         <button type="button" x-show="viewerHasGallery" @click.stop="viewerStep(1)"
                             title="{{ __('files.next_image') }}" aria-label="{{ __('files.next_image') }}"
-                            class="absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white hover:bg-black/60"><x-icon name="chevron-right" class="h-5 w-5" /></button>
+                            class="absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white hover:bg-black/60"><span class="msym text-xl">chevron_right</span></button>
                     </div>
                     <template x-if="viewer.kind === 'pdf'">
                         <iframe :src="viewer.src || 'about:blank'" class="h-[75vh] w-full rounded"></iframe>
@@ -532,7 +532,7 @@
                             class="h-[60vh] w-full rounded-lg border border-md-outline bg-md-surface p-3 font-mono text-sm leading-relaxed text-md-on-surface focus:border-accent focus:ring-accent"></textarea>
                         <div class="mt-3 flex items-center gap-3">
                             <x-button variant="primary" @click="saveText()" ::disabled="viewer.saving">{{ __('files.save') }}</x-button>
-                            <span x-show="viewer.saved" x-cloak class="text-green-600"><x-icon name="check" class="h-4 w-4" /></span>
+                            <span x-show="viewer.saved" x-cloak class="text-green-600"><span class="msym text-base">check</span></span>
                         </div>
                     </div>
                     <p x-show="viewer.kind === 'none'" x-cloak class="py-10 text-center text-sm text-md-on-surface-var">{{ __('files.encrypted_no_preview') }}</p>
@@ -585,7 +585,7 @@
                             <dd class="whitespace-pre-line break-words text-md-on-surface" x-text="viewer.row?.note"></dd>
                         </div>
                         <div x-show="viewer.row?.favorite" class="flex items-center gap-1.5 text-amber-500">
-                            <x-icon name="star-solid" class="h-4 w-4" /><span>{{ __('files.favorite') }}</span>
+                            <span class="msym msym-fill text-base">star</span><span>{{ __('files.favorite') }}</span>
                         </div>
                     </dl>
                 </aside>
@@ -812,7 +812,7 @@
                     <x-button variant="danger" x-show="share.current" x-cloak @click="revokeShare()" ::disabled="share.busy">{{ __('files.share_revoke') }}</x-button>
                     <div class="ml-auto flex gap-2">
                         <x-button variant="secondary" @click="closeShare()">{{ __('files.share_close') }}</x-button>
-                        <x-button variant="primary" x-show="! share.current" @click="createShare()" ::disabled="share.busy"><x-icon name="link" class="h-4 w-4" />{{ __('files.share_create_link') }}</x-button>
+                        <x-button variant="primary" x-show="! share.current" @click="createShare()" ::disabled="share.busy"><span class="msym text-base">link</span>{{ __('files.share_create_link') }}</x-button>
                         <x-button variant="primary" x-show="share.current" x-cloak @click="updateShare()" ::disabled="share.busy">{{ __('files.share_update') }}</x-button>
                     </div>
                 </div>
@@ -868,7 +868,7 @@
                         </div>
                         {{-- Busy overlay while duplicates are being trashed --}}
                         <div x-show="stats.trashing" x-cloak class="mb-3 flex items-center gap-2 rounded-lg bg-accent/5 px-3 py-2 text-xs text-accent">
-                            <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />
+                            <span class="msym text-base animate-spin">history</span>
                             <span x-text="'{{ __('files.dupes_trashing') }} ' + stats.trashDone + ' / ' + stats.trashTotal"></span>
                         </div>
                         <div class="space-y-3" :class="stats.trashing ? 'pointer-events-none opacity-50' : ''">
@@ -881,7 +881,7 @@
                                     <div class="divide-y divide-black/[0.04] dark:divide-white/5">
                                         <template x-for="(f, fi) in g" :key="f.id">
                                             <div class="flex items-center gap-2 px-3 py-2">
-                                                <x-icon name="document" class="h-4 w-4 shrink-0 text-md-on-surface-var" />
+                                                <span class="msym text-base shrink-0 text-md-on-surface-var">description</span>
                                                 <span class="min-w-0 flex-1 truncate font-mono text-xs text-md-on-surface-var" :title="f.path" x-text="f.path"></span>
                                                 <span x-show="fi === 0" class="shrink-0 rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400">{{ __('files.dupes_keep') }}</span>
                                                 <x-icon-button name="trash" tone="red" size="sm" @click="trashDupe(f.id)" title="{{ __('files.dupes_trash_one') }}" aria-label="{{ __('files.dupes_trash_one') }}" />
@@ -914,9 +914,9 @@
                 <div x-show="swm.view === 'list'" class="mt-4 min-h-0 flex-1 overflow-auto">
                     <template x-for="s in swm.shares" :key="s.id">
                         <button type="button" @click="browseShare(s)" class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-accent/5">
-                            <span class="ll-chip h-9 w-9 shrink-0 rounded-xl" style="--chip:#3b9fd6"><x-icon name="folder" class="h-4.5 w-4.5 text-white" /></span>
+                            <span class="ll-chip h-9 w-9 shrink-0 rounded-xl" style="--chip:#3b9fd6"><span class="msym text-base text-white">folder</span></span>
                             <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-md-on-surface" x-text="s.folder_name"></span><span class="block text-xs text-md-on-surface-var" x-text="(s.owner?.name || s.owner?.email || '') + ' · ' + s.role"></span></span>
-                            <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-md-on-surface-var" />
+                            <span class="msym text-base shrink-0 text-md-on-surface-var">chevron_right</span>
                         </button>
                     </template>
                     <p x-show="! swm.shares.length" x-cloak class="px-3 py-6 text-center text-xs text-md-on-surface-var">{{ __('files.shared_none') }}</p>
@@ -927,7 +927,7 @@
                         <template x-for="f in swm.files" :key="f.id">
                             <div class="flex items-center gap-3 px-2 py-2">
                                 <span class="min-w-0 flex-1 truncate text-sm text-md-on-surface" x-text="f.name"></span>
-                                <a :href="swmRawUrl(swm.current, f) + '?download=1'" class="shrink-0 text-accent hover:underline"><x-icon name="arrow-down-tray" class="h-4 w-4" /></a>
+                                <a :href="swmRawUrl(swm.current, f) + '?download=1'" class="shrink-0 text-accent hover:underline"><span class="msym text-base">download</span></a>
                             </div>
                         </template>
                         <p x-show="! swm.files.length" x-cloak class="px-3 py-6 text-center text-xs text-md-on-surface-var">{{ __('files.sf_empty_folder') }}</p>
