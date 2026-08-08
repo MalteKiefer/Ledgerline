@@ -388,4 +388,6 @@ return [
     'invoice_template_klassisch_hint' => 'Традиционный деловой макет: логотип, инфоблок, таблица с линиями.',
     'invoice_template_schlicht' => 'Plain',
     'invoice_template_schlicht_hint' => 'Минималистичный, монохромный, компактный.',
+    'sync_section' => 'Синхронизация (CardDAV)',
+    'sync_block_hint' => 'Подпишитесь через «Учётные записи интернета» в macOS/iOS или любой CardDAV-клиент, используя URL и пароль приложения.',
 ];

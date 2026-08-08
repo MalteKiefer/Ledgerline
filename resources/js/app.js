@@ -11,6 +11,7 @@ import paperlessSettings from './components/paperless-settings';
 import notificationBell from './components/notification-bell';
 import pwStrength from './components/pw-strength';
 import tagSelect from './components/tag-select';
+import './components/contacts'; // self-registers contactsPage/EditorPage/ViewPage/DuplicatesPage
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily

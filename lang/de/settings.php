@@ -388,4 +388,6 @@ return [
     'invoice_template_klassisch_hint' => 'Klassisches Geschäftslayout: Wortmarke, Infobox, Tabelle mit Linien.',
     'invoice_template_schlicht' => 'Schlicht',
     'invoice_template_schlicht_hint' => 'Minimal, monochrom, kompakt.',
+    'sync_section' => 'Sync (CardDAV)',
+    'sync_block_hint' => 'Abonniere über macOS/iOS Internet-Accounts oder einen beliebigen CardDAV-Client mit der URL und deinem app-spezifischen Passwort.',
 ];

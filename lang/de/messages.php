@@ -7,6 +7,7 @@ return [
         'invoices' => 'Rechnungen',
         'finance' => 'Finanzen',
         'files' => 'Dateien',
+        'contacts' => 'Kontakte',
         'more' => 'Mehr',
     ],
     'menu' => [

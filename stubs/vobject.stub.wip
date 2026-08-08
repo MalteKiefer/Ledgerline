@@ -1,0 +1,64 @@
+<?php
+
+namespace Sabre\VObject;
+
+/**
+ * Type info for the untyped sabre/vobject magic API this app uses. sabre/vobject
+ * ships no PHPStan types; a property read returns a Property (stringable, offset-
+ * and iterable-accessible), never a bare mixed. This is type information for a
+ * third-party library, not error suppression.
+ *
+ * @implements \IteratorAggregate<int, Property>
+ * @implements \ArrayAccess<string, Property|null>
+ */
+class Property implements \ArrayAccess, \IteratorAggregate
+{
+    public ?string $name;
+
+    public ?string $group;
+
+    public function __toString(): string {}
+
+    public function getValue(): string {}
+
+    /** @return array<int, string> */
+    public function getParts(): array {}
+
+    public function offsetExists(mixed $offset): bool {}
+
+    public function offsetGet(mixed $offset): ?Property {}
+
+    public function offsetSet(mixed $offset, mixed $value): void {}
+
+    public function offsetUnset(mixed $offset): void {}
+
+    /** @return \Iterator<int, Property> */
+    public function getIterator(): \Iterator {}
+}
+
+namespace Sabre\VObject\Component;
+
+/** @implements \IteratorAggregate<int, \Sabre\VObject\Property> */
+class VCard implements \IteratorAggregate
+{
+    public function __get(string $name): \Sabre\VObject\Property {}
+
+    public function __set(string $name, mixed $value): void {}
+
+    public function __isset(string $name): bool {}
+
+    public function add(mixed $a1 = null, mixed $a2 = null, array $a3 = []): \Sabre\VObject\Property {}
+
+    /** @return array<int, \Sabre\VObject\Property> */
+    public function children(): array {}
+
+    /** @return array<int, \Sabre\VObject\Property> */
+    public function select(string $name): array {}
+
+    public function remove(mixed $item): void {}
+
+    public function serialize(): string {}
+
+    /** @return \Iterator<int, \Sabre\VObject\Property> */
+    public function getIterator(): \Iterator {}
+}
