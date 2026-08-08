@@ -1,7 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureModule;
-use App\Http\Middleware\ScaledThrottleRequests;
+use App\Http\Middleware\NoThrottle;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Services\Ops\ErrorRecorder;
@@ -38,9 +38,12 @@ return Application::configure(basePath: dirname(__DIR__))
             'abilities' => CheckAbilities::class,
             'ability' => CheckForAnyAbility::class,
             'module' => EnsureModule::class,
-            // Override the framework `throttle` alias so every inline limit scales
-            // by config('app.throttle_multiplier') — high on a private LAN, 1 by default.
-            'throttle' => ScaledThrottleRequests::class,
+            // Rate limiting is disabled app-wide (private 2-user home LAN, not
+            // internet-facing) — the `throttle` alias is a no-op that ignores every
+            // limit/limiter argument, so `throttle:` route declarations stay inert.
+            // See the Security register (2026-08-08). Re-enable by pointing this at
+            // the framework ThrottleRequests + defining named limiters again.
+            'throttle' => NoThrottle::class,
         ]);
 
         // Behind a TLS-terminating reverse proxy, honour X-Forwarded-* so

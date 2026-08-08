@@ -28,21 +28,7 @@ return [
     |
     */
 
-    'version' => env('APP_VERSION', '1.552.1'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Rate-limit multiplier
-    |--------------------------------------------------------------------------
-    |
-    | Scales every inline route throttle (ScaledThrottleRequests). 1 keeps the
-    | shipped per-route limits (a public deployment). On a private, trusted,
-    | non-internet-facing LAN set THROTTLE_MULTIPLIER high (e.g. 100) so normal
-    | use never trips a cap.
-    |
-    */
-
-    'throttle_multiplier' => (int) env('THROTTLE_MULTIPLIER', 1),
+    'version' => env('APP_VERSION', '1.552.2'),
 
     /*
     |--------------------------------------------------------------------------
