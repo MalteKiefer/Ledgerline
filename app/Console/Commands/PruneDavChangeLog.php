@@ -35,7 +35,8 @@ class PruneDavChangeLog extends Command
     {
         $deleted = 0;
         foreach (DB::table($table)->select($foreignKey)->distinct()->pluck($foreignKey) as $id) {
-            $cutoff = (int) DB::table($table)->where($foreignKey, $id)->max('synctoken') - self::KEEP;
+            $max = DB::table($table)->where($foreignKey, $id)->max('synctoken');
+            $cutoff = (is_numeric($max) ? (int) $max : 0) - self::KEEP;
             if ($cutoff > 0) {
                 $deleted += DB::table($table)->where($foreignKey, $id)->where('synctoken', '<', $cutoff)->delete();
             }

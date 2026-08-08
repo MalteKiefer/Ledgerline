@@ -18,6 +18,10 @@ use Sabre\DAVACL\PrincipalBackend\BackendInterface;
  */
 class PrincipalBackend implements BackendInterface
 {
+    /**
+     * @param  string  $prefixPath
+     * @return array<int, array<string, mixed>>
+     */
     public function getPrincipalsByPrefix($prefixPath): array
     {
         $user = Auth::user();
@@ -32,12 +36,17 @@ class PrincipalBackend implements BackendInterface
         return [$principal];
     }
 
+    /**
+     * @param  string  $path
+     * @return array<string, mixed>|null
+     */
     public function getPrincipalByPath($path): ?array
     {
         $user = Auth::user();
         if (! $user instanceof User) {
             return null;
         }
+
         // Only resolve the authenticated user's own principal; a request for any
         // other principal path returns null (no cross-principal addressing).
         return basename($path) === (string) $user->email ? $this->principal($user) : null;
@@ -45,6 +54,11 @@ class PrincipalBackend implements BackendInterface
 
     public function updatePrincipal($path, PropPatch $propPatch): void {}
 
+    /**
+     * @param  string  $prefixPath
+     * @param  array<string, mixed>  $searchProperties
+     * @return array<int, string>
+     */
     public function searchPrincipals($prefixPath, array $searchProperties, $test = 'allof'): array
     {
         return [];
@@ -55,16 +69,19 @@ class PrincipalBackend implements BackendInterface
         return null;
     }
 
+    /** @return array<int, string> */
     public function getGroupMemberSet($principal): array
     {
         return [];
     }
 
+    /** @return array<int, string> */
     public function getGroupMembership($principal): array
     {
         return [];
     }
 
+    /** @param  array<int, string>  $members */
     public function setGroupMemberSet($principal, array $members): void {}
 
     /**

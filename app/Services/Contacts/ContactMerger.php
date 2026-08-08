@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\DB;
  * and group is kept, scalar fields fall back to a non-empty value, and the
  * primary's name/photo win. The other contacts are then deleted (with their
  * CardDAV tombstones) so nothing dangles.
+ *
+ * VCardService::parse() returns array<string, mixed>, so every field read is
+ * narrowed through the helpers below (str/nstr/iter) before use.
  */
 class ContactMerger
 {
@@ -55,7 +58,8 @@ class ContactMerger
 
             $groupIds = $primary->groups()->pluck('contact_groups.id')
                 ->merge($others->flatMap(fn (Contact $c) => $c->groups()->pluck('contact_groups.id')))
-                ->unique()->values()->all();
+                ->map(fn (mixed $id): string => $this->str($id))
+                ->filter()->unique()->values()->all();
 
             $this->writer->update($primary, $merged, $groupIds);
 
@@ -63,7 +67,7 @@ class ContactMerger
                 $this->writer->delete($other);
             }
 
-            return $primary->fresh();
+            return $primary->fresh() ?? $primary;
         });
     }
 
@@ -73,9 +77,9 @@ class ContactMerger
     private function firstFilled(Collection $all, string $field): ?string
     {
         foreach ($all as $c) {
-            $data = $this->vcards->parse($c->vcard);
-            if (filled($data[$field] ?? null)) {
-                return (string) $data[$field];
+            $value = $this->vcards->parse($c->vcard)[$field] ?? null;
+            if (filled($value)) {
+                return $this->str($value);
             }
         }
 
@@ -87,7 +91,7 @@ class ContactMerger
      */
     private function mergeNotes(Collection $all): ?string
     {
-        $notes = $all->map(fn (Contact $c) => trim((string) ($this->vcards->parse($c->vcard)['note'] ?? '')))
+        $notes = $all->map(fn (Contact $c) => trim($this->str($this->vcards->parse($c->vcard)['note'] ?? null)))
             ->filter()->unique()->values();
 
         return $notes->isEmpty() ? null : $notes->implode("\n\n");
@@ -104,17 +108,17 @@ class ContactMerger
         $out = [];
         $seen = [];
         foreach ($all as $c) {
-            foreach ($this->vcards->parse($c->vcard)[$field] ?? [] as $entry) {
-                $value = is_array($entry) ? trim((string) ($entry['value'] ?? '')) : trim((string) $entry);
+            foreach ($this->iter($this->vcards->parse($c->vcard)[$field] ?? null) as $entry) {
+                $value = is_array($entry) ? trim($this->str($entry['value'] ?? null)) : trim($this->str($entry));
                 if ($value === '') {
                     continue;
                 }
                 $key = $field === 'phones' ? preg_replace('/\D+/', '', $value) : strtolower($value);
-                if ($key === '' || isset($seen[$key])) {
+                if ($key === '' || $key === null || isset($seen[$key])) {
                     continue;
                 }
                 $seen[$key] = true;
-                $out[] = ['value' => $value, 'type' => is_array($entry) ? ($entry['type'] ?? null) : null];
+                $out[] = ['value' => $value, 'type' => is_array($entry) ? $this->nstr($entry['type'] ?? null) : null];
             }
         }
 
@@ -130,17 +134,20 @@ class ContactMerger
         $out = [];
         $seen = [];
         foreach ($all as $c) {
-            foreach ($this->vcards->parse($c->vcard)['anniversaries'] ?? [] as $ann) {
-                $date = trim((string) ($ann['date'] ?? ''));
+            foreach ($this->iter($this->vcards->parse($c->vcard)['anniversaries'] ?? null) as $ann) {
+                if (! is_array($ann)) {
+                    continue;
+                }
+                $date = trim($this->str($ann['date'] ?? null));
                 if ($date === '') {
                     continue;
                 }
-                $key = $date.'|'.strtolower(trim((string) ($ann['label'] ?? '')));
+                $key = $date.'|'.strtolower(trim($this->str($ann['label'] ?? null)));
                 if (isset($seen[$key])) {
                     continue;
                 }
                 $seen[$key] = true;
-                $out[] = ['date' => $date, 'label' => $ann['label'] ?? null];
+                $out[] = ['date' => $date, 'label' => $this->nstr($ann['label'] ?? null)];
             }
         }
 
@@ -149,23 +156,26 @@ class ContactMerger
 
     /**
      * @param  Collection<int, Contact>  $all
-     * @return list<array<string, ?string>>
+     * @return list<array<array-key, ?string>>
      */
     private function unionAddresses(Collection $all): array
     {
         $out = [];
         $seen = [];
         foreach ($all as $c) {
-            foreach ($this->vcards->parse($c->vcard)['addresses'] ?? [] as $a) {
+            foreach ($this->iter($this->vcards->parse($c->vcard)['addresses'] ?? null) as $a) {
+                if (! is_array($a)) {
+                    continue;
+                }
                 $key = strtolower(implode('|', [
-                    (string) ($a['street'] ?? ''), (string) ($a['zip'] ?? ''),
-                    (string) ($a['city'] ?? ''), (string) ($a['country'] ?? ''),
+                    $this->str($a['street'] ?? null), $this->str($a['zip'] ?? null),
+                    $this->str($a['city'] ?? null), $this->str($a['country'] ?? null),
                 ]));
                 if (trim($key, '|') === '' || isset($seen[$key])) {
                     continue;
                 }
                 $seen[$key] = true;
-                $out[] = $a;
+                $out[] = array_map(fn (mixed $v): ?string => $this->nstr($v), $a);
             }
         }
 
@@ -181,13 +191,18 @@ class ContactMerger
         $out = [];
         $seen = [];
         foreach ($all as $c) {
-            foreach ($this->vcards->parse($c->vcard)['related'] ?? [] as $r) {
-                $key = strtolower(((string) ($r['uid'] ?? '')).'|'.((string) ($r['value'] ?? '')));
+            foreach ($this->iter($this->vcards->parse($c->vcard)['related'] ?? null) as $r) {
+                if (! is_array($r)) {
+                    continue;
+                }
+                $uid = $this->str($r['uid'] ?? null);
+                $value = $this->str($r['value'] ?? null);
+                $key = strtolower($uid.'|'.$value);
                 if ($key === '|' || isset($seen[$key])) {
                     continue;
                 }
                 $seen[$key] = true;
-                $out[] = $r;
+                $out[] = ['type' => $this->nstr($r['type'] ?? null), 'value' => $this->nstr($r['value'] ?? null), 'uid' => $this->nstr($r['uid'] ?? null)];
             }
         }
 
@@ -203,13 +218,20 @@ class ContactMerger
         $out = [];
         $seen = [];
         foreach ($all as $c) {
-            foreach ($this->vcards->parse($c->vcard)['custom_fields'] ?? [] as $f) {
-                $key = strtolower(((string) ($f['label'] ?? '')).'|'.$f['value']);
+            foreach ($this->iter($this->vcards->parse($c->vcard)['custom_fields'] ?? null) as $f) {
+                if (! is_array($f)) {
+                    continue;
+                }
+                $value = $this->str($f['value'] ?? null);
+                if ($value === '') {
+                    continue;
+                }
+                $key = strtolower($this->str($f['label'] ?? null).'|'.$value);
                 if (isset($seen[$key])) {
                     continue;
                 }
                 $seen[$key] = true;
-                $out[] = $f;
+                $out[] = ['label' => $this->nstr($f['label'] ?? null), 'value' => $value];
             }
         }
 
@@ -229,5 +251,25 @@ class ContactMerger
         }
 
         return null;
+    }
+
+    /** Coerce any mixed to a string (empty for non-scalars). */
+    private function str(mixed $v): string
+    {
+        return is_scalar($v) || $v instanceof \Stringable ? (string) $v : '';
+    }
+
+    /** Trimmed non-empty string, or null. */
+    private function nstr(mixed $v): ?string
+    {
+        $s = trim($this->str($v));
+
+        return $s !== '' ? $s : null;
+    }
+
+    /** @return iterable<mixed> */
+    private function iter(mixed $v): iterable
+    {
+        return is_iterable($v) ? $v : [];
     }
 }
