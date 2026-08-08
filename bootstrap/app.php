@@ -34,10 +34,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // middleware preserves.
         $middleware->api(prepend: [BearerFromQuery::class], append: [SecurityHeaders::class]);
 
-        // Same-origin Vue SPA authenticates via Sanctum's cookie/session flow
-        // (no token in JS): mark first-party stateful requests so /api/v1 accepts
-        // the session cookie + XSRF. Bearer tokens (mobile/CLI) keep working.
-        $middleware->statefulApi();
+        // The SPA authenticates with a bearer TOKEN (not a session cookie), so the
+        // API stays stateless — no statefulApi()/EnsureFrontendRequestsAreStateful
+        // (which would apply session + CSRF to same-origin /api calls and 419 the
+        // token login). This keeps the API portable to a future non-Laravel host.
 
         // Sanctum ability guards for the token-scoped mobile/CLI API.
         $middleware->alias([
