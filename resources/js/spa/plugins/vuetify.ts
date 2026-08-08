@@ -3,59 +3,67 @@ import { createVuetify } from 'vuetify';
 import { md3 } from 'vuetify/blueprints';
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg';
 
-// Hacker/nerdy dark aesthetic (Proton / Tutanota vibe): deep near-black canvas,
-// low-chroma dark surfaces, a vivid violet primary + a terminal-green accent.
-// SVG icon set (@mdi/js) — treeshaken, self-hosted, no webfont, no CDN.
-const dark = {
-  dark: true,
-  colors: {
-    background: '#0b0e14',
-    surface: '#11151d',
-    'surface-bright': '#1c2230',
-    'surface-light': '#161b25',
-    'surface-variant': '#161b25',
-    'on-surface-variant': '#9aa4b2',
-    primary: '#a78bfa',            // violet (Proton)
-    'on-primary': '#1a1030',
-    secondary: '#3fb950',          // terminal green (hacker accent)
-    'on-secondary': '#06210c',
-    accent: '#3fb950',
-    error: '#ff6b6b',
-    info: '#58a6ff',
-    success: '#3fb950',
-    warning: '#e3b341',
-    'on-background': '#e6edf3',
-    'on-surface': '#e6edf3',
-    outline: '#30363d',
-    'outline-variant': '#222831',
-  },
-  variables: {
-    'border-color': '#30363d',
-    'border-opacity': 1,
-    'high-emphasis-opacity': 0.95,
-    'medium-emphasis-opacity': 0.68,
-    'theme-on-surface': '#e6edf3',
-  },
-};
-
+// Proton-fresh aesthetic: light, airy, generous whitespace, soft shadows,
+// rounded surfaces, a vibrant violet accent (#6d4aff) with a mint-green
+// secondary. Dark stays available as a toggle. SVG icon set (@mdi/js).
 const light = {
   dark: false,
   colors: {
-    background: '#fdfcff',
+    background: '#f4f4fb',
     surface: '#ffffff',
-    'surface-variant': '#f2eef8',
-    'on-surface-variant': '#5b5766',
-    primary: '#6750a4',
+    'surface-bright': '#ffffff',
+    'surface-light': '#fafaff',
+    'surface-variant': '#eeeef7',
+    'on-surface-variant': '#6b6880',
+    primary: '#6d4aff',
     'on-primary': '#ffffff',
-    secondary: '#2f855a',
-    accent: '#2f855a',
-    error: '#ba1a1a',
-    info: '#1d4ed8',
-    success: '#2f855a',
-    warning: '#8a5a00',
-    'on-surface': '#1f1d24',
-    outline: '#79747e',
-    'outline-variant': '#e7e0ec',
+    secondary: '#1ea885',
+    'on-secondary': '#ffffff',
+    accent: '#6d4aff',
+    error: '#e5484d',
+    info: '#3b82f6',
+    success: '#1ea885',
+    warning: '#e5a000',
+    'on-background': '#1a1826',
+    'on-surface': '#1a1826',
+    outline: '#e3e2ee',
+    'outline-variant': '#ededf5',
+  },
+  variables: {
+    'border-color': '#e3e2ee',
+    'border-opacity': 1,
+    'high-emphasis-opacity': 0.92,
+    'medium-emphasis-opacity': 0.60,
+    'theme-surface': '#ffffff',
+  },
+};
+
+const dark = {
+  dark: true,
+  colors: {
+    background: '#16151f',
+    surface: '#1d1c29',
+    'surface-bright': '#26243a',
+    'surface-light': '#232235',
+    'surface-variant': '#26243a',
+    'on-surface-variant': '#a5a1bd',
+    primary: '#8a6eff',
+    'on-primary': '#ffffff',
+    secondary: '#3fd0a8',
+    'on-secondary': '#04231a',
+    accent: '#8a6eff',
+    error: '#ff6b6b',
+    info: '#60a5fa',
+    success: '#3fd0a8',
+    warning: '#f0b849',
+    'on-background': '#eceaf6',
+    'on-surface': '#eceaf6',
+    outline: '#35334a',
+    'outline-variant': '#2a2940',
+  },
+  variables: {
+    'border-color': '#35334a',
+    'border-opacity': 1,
   },
 };
 
@@ -63,15 +71,17 @@ export const vuetify = createVuetify({
   blueprint: md3,
   icons: { defaultSet: 'mdi', aliases, sets: { mdi } },
   theme: {
-    // Dark by default (the requested nerdy look); users can still flip to light.
-    defaultTheme: 'dark',
-    themes: { dark, light },
+    // Fresh light look by default (Proton-style); dark stays a toggle.
+    defaultTheme: 'light',
+    themes: { light, dark },
   },
   defaults: {
-    VCard: { rounded: 'lg' },
+    global: { rounded: 'lg' },
+    VCard: { rounded: 'xl', elevation: 0 },
     VBtn: { rounded: 'lg' },
     VTextField: { variant: 'outlined', density: 'comfortable' },
     VSelect: { variant: 'outlined', density: 'comfortable' },
     VTextarea: { variant: 'outlined', density: 'comfortable' },
+    VChip: { rounded: 'md' },
   },
 });

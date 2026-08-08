@@ -11,6 +11,13 @@ export interface AddressBook { id: string; name: string; uri: string; owned: boo
 export interface ContactGroup { id: number; name: string }
 export type ContactDetail = Record<string, unknown> & { id: string; book: string; group_ids: number[] };
 
+export interface DuplicateContact {
+  id: string; book: string; fn: string | null; first_name: string | null; last_name: string | null;
+  org: string | null; emails: string[]; phones: string[]; has_photo: boolean; avatar: string | null;
+}
+export interface DuplicateGroup { signature: string; reasons: string[]; contacts: DuplicateContact[] }
+export interface ImportResult { created: number; updated: number; skipped: number }
+
 export const useContactsStore = defineStore('contacts', () => {
   const contacts = ref<ContactRow[]>([]);
   const books = ref<AddressBook[]>([]);
@@ -33,5 +40,38 @@ export const useContactsStore = defineStore('contacts', () => {
   const createBook = (name: string) => api.post('/api/v1/address-books', { name });
   const avatarUrl = (c: ContactRow) => c.avatar || (c.has_photo ? `/api/v1/contacts/${c.id}/avatar` : null);
 
-  return { contacts, books, groups, load, show, create, update, destroy, favorite, createBook, avatarUrl };
+  // Groups
+  const createGroup = (name: string) => api.post<{ id: number }>('/api/v1/contact-groups', { name });
+  const deleteGroup = (id: number) => api.delete(`/api/v1/contact-groups/${id}`);
+
+  // Duplicates
+  async function loadDuplicates() {
+    const r = await api.get<{ groups: DuplicateGroup[] }>('/api/v1/contacts/duplicates/data');
+    return r.groups;
+  }
+  const mergeDuplicates = (payload: { primary_id: string; ids: string[] }) => api.post('/api/v1/contacts/duplicates/merge', payload);
+  const dismissDuplicate = (payload: { ids: string[] }) => api.post('/api/v1/contacts/duplicates/dismiss', payload);
+
+  // Import / export
+  function importVcf(file: File, bookId: string) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('book_id', bookId);
+    return api.upload<ImportResult>('/api/v1/contacts/import', fd);
+  }
+  const exportUrl = (bookId?: string) => `/api/v1/contacts/export${bookId ? `?book=${encodeURIComponent(bookId)}` : ''}`;
+
+  // Avatar (server field is `photo`) + bulk delete
+  function uploadAvatar(id: string, file: File) {
+    const fd = new FormData();
+    fd.append('photo', file);
+    return api.upload<{ ok: boolean; avatar: string }>(`/api/v1/contacts/${id}/avatar`, fd);
+  }
+  const bulkDestroy = (ids: string[]) => api.delete<{ deleted: number }>('/api/v1/contacts/bulk-destroy', { ids });
+
+  return {
+    contacts, books, groups, load, show, create, update, destroy, favorite, createBook, avatarUrl,
+    createGroup, deleteGroup, loadDuplicates, mergeDuplicates, dismissDuplicate,
+    importVcf, exportUrl, uploadAvatar, bulkDestroy,
+  };
 });
