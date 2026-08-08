@@ -7,14 +7,19 @@ use App\Http\Controllers\AddressBookController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController as ApiBackupController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
+use App\Http\Controllers\Api\FilesLimitsController as ApiFilesLimitsController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
 use App\Http\Controllers\Api\InvoiceOcrController;
+use App\Http\Controllers\Api\NotificationsController as ApiNotificationsController;
 use App\Http\Controllers\Api\PaperlessController as ApiPaperlessController;
 use App\Http\Controllers\Api\PasswordController as ApiPasswordController;
+use App\Http\Controllers\Api\SecurityController as ApiSecurityController;
 use App\Http\Controllers\Api\SecurityLogController as ApiSecurityLogController;
 use App\Http\Controllers\Api\SettingsController as ApiSettingsController;
+use App\Http\Controllers\Api\SystemController as ApiSystemController;
 use App\Http\Controllers\Api\TwoFactorController as ApiTwoFactorController;
 use App\Http\Controllers\Api\UsersController as ApiUsersController;
+use App\Http\Controllers\Api\WebDavAccessController as ApiWebDavAccessController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactDuplicateController;
@@ -221,6 +226,11 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/paperless/terms', [ApiPaperlessController::class, 'createTerm'])->middleware('throttle:30,1')->name('api.paperless.terms.create');
         Route::post('/paperless/documents', [ApiPaperlessController::class, 'submit'])->middleware('throttle:20,1')->name('api.paperless.documents');
         Route::post('/paperless/sync', [ApiPaperlessController::class, 'sync'])->middleware('throttle:20,1')->name('api.paperless.sync');
+        // Per-user Paperless connection config (URL + enabled + token). GET/PUT
+        // never return the token (has_token bool); PUT preserves a blank token.
+        Route::get('/paperless/config', [ApiPaperlessController::class, 'config'])->middleware('throttle:60,1')->name('api.paperless.config');
+        Route::put('/paperless/config', [ApiPaperlessController::class, 'updateConfig'])->middleware('throttle:30,1')->name('api.paperless.config.update');
+        Route::post('/paperless/config/test', [ApiPaperlessController::class, 'testConfig'])->middleware('throttle:20,1')->name('api.paperless.config.test');
 
         // Per-user company profile + invoice defaults (non-secret business identity).
         Route::get('/company', [ApiCompanyController::class, 'show'])->name('api.company.show');
@@ -256,7 +266,14 @@ Route::prefix('v1')->group(function (): void {
         // JSON here via expectsJson().
         Route::get('/account/export', [AccountController::class, 'export'])->middleware('throttle:6,1')->name('api.account.export');
         Route::delete('/account', [AccountController::class, 'destroy'])->name('api.account.destroy');
+        Route::get('/account/sessions', [AccountController::class, 'sessions'])->name('api.account.sessions.index');
         Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->name('api.account.sessions.revoke');
+
+        // App-specific WebDAV mount password (set/clear); the password is stored
+        // hashed and never returned — GET reports enabled + username + mount URL.
+        Route::get('/account/webdav', [ApiWebDavAccessController::class, 'show'])->name('api.account.webdav.show');
+        Route::put('/account/webdav', [ApiWebDavAccessController::class, 'update'])->middleware('throttle:20,1')->name('api.account.webdav.update');
+        Route::delete('/account/webdav', [ApiWebDavAccessController::class, 'destroy'])->middleware('throttle:20,1')->name('api.account.webdav.destroy');
 
         Route::post('/locale', [LocaleController::class, 'update'])->name('api.locale.update');
         Route::post('/theme', [ThemeController::class, 'update'])->name('api.theme.update');
@@ -279,6 +296,28 @@ Route::prefix('v1')->group(function (): void {
 
             Route::put('/password', [ApiPasswordController::class, 'update'])->middleware('throttle:10,1')->name('password');
             Route::post('/email/verify/resend', [ApiTwoFactorController::class, 'resendVerification'])->middleware('throttle:6,1')->name('email.verify.resend');
+        });
+
+        // Admin workspace settings (JSON mirrors of the web Settings/* pages).
+        // Gated by the admin role on top of the device token. Secret values
+        // (SMTP/ntfy/webhook creds, Paperless token) are never serialised.
+        Route::middleware('can:manage-global-settings')->prefix('admin')->name('api.admin.')->group(function (): void {
+            // Notifications (SMTP / NTFY / webhook) + test send.
+            Route::get('/notifications', [ApiNotificationsController::class, 'show'])->name('notifications.show');
+            Route::put('/notifications', [ApiNotificationsController::class, 'update'])->middleware('throttle:60,1')->name('notifications.update');
+            Route::post('/notifications/test', [ApiNotificationsController::class, 'test'])->middleware('throttle:20,1')->name('notifications.test');
+
+            // Device policy (paired-device cap).
+            Route::get('/security', [ApiSecurityController::class, 'show'])->name('security.show');
+            Route::put('/security', [ApiSecurityController::class, 'update'])->middleware('throttle:60,1')->name('security.update');
+
+            // Workspace Files limits (max upload MB + orphan-blob grace hours).
+            Route::get('/files-limits', [ApiFilesLimitsController::class, 'show'])->name('files-limits.show');
+            Route::put('/files-limits', [ApiFilesLimitsController::class, 'update'])->middleware('throttle:60,1')->name('files-limits.update');
+
+            // System / maintenance overview (read-only) + resolve an error event.
+            Route::get('/system', [ApiSystemController::class, 'show'])->middleware('throttle:60,1')->name('system.show');
+            Route::post('/system/errors/{error}/resolve', [ApiSystemController::class, 'resolveError'])->whereNumber('error')->middleware('throttle:60,1')->name('system.errors.resolve');
         });
 
         // Admin group management (workspace-wide limit templates + shareable flag).

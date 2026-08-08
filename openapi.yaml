@@ -111,7 +111,16 @@ tags:
       a transient-cleartext boundary (like POST /invoices/ocr): the client posts the
       raw document bytes, the server forwards them to the user's own Paperless
       instance and stores/logs nothing. Per-user Paperless CONFIGURATION (URL / token
-      / enabled flag) is set in the web UI only — there is no /api/v1 config twin.
+      / enabled flag) is managed via GET/PUT /paperless/config + POST
+      /paperless/config/test; the API token is never returned (has_token bool).
+  - name: Settings
+    description: >
+      Admin workspace settings (requires the admin role on top of the device token —
+      `can:manage-global-settings`): outgoing notifications (SMTP/NTFY/webhook) with a
+      test send, the paired-device cap, the Files upload/orphan-grace limits, and the
+      read-only System/maintenance overview. Operative secrets (SMTP password, ntfy
+      token, webhook secret) are NEVER returned — a GET reports has_* booleans and a
+      blank submission preserves the stored secret. Non-admins get 403.
   - name: Contacts
     description: >
       CardDAV-backed contacts module (address books + contacts + groups +
@@ -206,6 +215,138 @@ components:
         vat: { type: [string, "null"] }
         locked: { type: boolean, description: "A locked receipt (e.g. an auto-linked invoice) cannot be deleted." }
         trashed: { type: boolean }
+
+    WebDavAccess:
+      type: object
+      description: >
+        WebDAV mount access status. The password is stored hashed and never returned.
+      required: [enabled, username, url]
+      properties:
+        enabled: { type: boolean, description: "Whether an app-specific WebDAV password is set." }
+        username: { type: string, description: "The username to authenticate with (the account email)." }
+        url: { type: string, format: uri, description: "The WebDAV mount URL (…/dav/)." }
+
+    PaperlessConfig:
+      type: object
+      description: >
+        Per-user Paperless connection config. The API token is never returned;
+        `has_token` reports whether one is stored.
+      required: [paperless_enabled, paperless_url, has_token, counts]
+      properties:
+        paperless_enabled: { type: boolean }
+        paperless_url: { type: [string, "null"], format: uri }
+        has_token: { type: boolean }
+        counts:
+          type: object
+          required: [tag, document_type, correspondent]
+          properties:
+            tag: { type: integer }
+            document_type: { type: integer }
+            correspondent: { type: integer }
+
+    NotificationConfig:
+      type: object
+      description: >
+        Workspace notification config with secrets masked. Secret values
+        (smtp_password / ntfy_token / webhook_secret) are represented only by
+        has_* booleans and are never returned.
+      required:
+        [mail_enabled, has_smtp_password, ntfy_enabled, has_ntfy_token, webhook_enabled, has_webhook_secret]
+      properties:
+        mail_enabled: { type: boolean }
+        smtp_host: { type: [string, "null"] }
+        smtp_port: { type: [integer, "null"] }
+        smtp_encryption: { type: [string, "null"], enum: [tls, ssl, null] }
+        smtp_username: { type: [string, "null"] }
+        smtp_from_address: { type: [string, "null"], format: email }
+        smtp_from_name: { type: [string, "null"] }
+        has_smtp_password: { type: boolean }
+        ntfy_enabled: { type: boolean }
+        ntfy_url: { type: [string, "null"], format: uri }
+        ntfy_topic: { type: [string, "null"] }
+        has_ntfy_token: { type: boolean }
+        webhook_enabled: { type: boolean }
+        webhook_url: { type: [string, "null"], format: uri }
+        has_webhook_secret: { type: boolean }
+    NotificationConfigWrite:
+      type: object
+      description: >
+        Notification config update. Only submitted fields are persisted. Secret
+        fields (smtp_password/ntfy_token/webhook_secret) preserve the stored value
+        when omitted or blank.
+      properties:
+        mail_enabled: { type: boolean }
+        smtp_host: { type: [string, "null"], maxLength: 255 }
+        smtp_port: { type: [integer, "null"], minimum: 1, maximum: 65535 }
+        smtp_encryption: { type: [string, "null"], enum: [tls, ssl, null] }
+        smtp_username: { type: [string, "null"], maxLength: 255 }
+        smtp_password: { type: [string, "null"], maxLength: 255, description: "Blank/omitted keeps the stored secret." }
+        smtp_from_address: { type: [string, "null"], format: email, maxLength: 255 }
+        smtp_from_name: { type: [string, "null"], maxLength: 255 }
+        ntfy_enabled: { type: boolean }
+        ntfy_url: { type: [string, "null"], format: uri, maxLength: 255 }
+        ntfy_topic: { type: [string, "null"], maxLength: 255 }
+        ntfy_token: { type: [string, "null"], maxLength: 255, description: "Blank/omitted keeps the stored secret." }
+        webhook_enabled: { type: boolean }
+        webhook_url: { type: [string, "null"], format: uri, maxLength: 255 }
+        webhook_secret: { type: [string, "null"], maxLength: 255, description: "Blank/omitted keeps the stored secret." }
+
+    FilesLimits:
+      type: object
+      description: "Workspace Files limits (admin override, or the config default)."
+      required: [files_max_upload_mb, files_blob_orphan_grace_hours]
+      properties:
+        files_max_upload_mb: { type: integer }
+        files_blob_orphan_grace_hours: { type: integer }
+
+    SystemOverview:
+      type: object
+      description: "Read-only operational overview (metadata only — no secrets)."
+      required: [tasks, status, trend, errors, audit]
+      properties:
+        tasks:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              expression: { type: string }
+              lastAt: { type: [string, "null"] }
+              lastOk: { type: [boolean, "null"] }
+        status:
+          type: object
+          description: "SystemStatus snapshot (version/queue/storage/errors/backup/scheduler/disk)."
+          additionalProperties: true
+        trend:
+          type: object
+          description: "Storage trend over ~30 days ({points, deltaBytes, deltaDays})."
+          additionalProperties: true
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              level: { type: [string, "null"] }
+              exception: { type: [string, "null"] }
+              message: { type: [string, "null"] }
+              file: { type: [string, "null"] }
+              line: { type: [integer, "null"] }
+              count: { type: integer }
+              first_seen_at: { type: [string, "null"] }
+              last_seen_at: { type: [string, "null"] }
+              resolved_at: { type: [string, "null"] }
+        audit:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              action: { type: string }
+              actor: { type: [string, "null"] }
+              ip: { type: [string, "null"] }
+              meta: { type: [object, "null"], additionalProperties: true }
+              created_at: { type: [string, "null"] }
 
     CompanyProfile:
       type: object
@@ -1940,6 +2081,93 @@ paths:
                 $ref: "#/components/schemas/OkResponse"
         "401":
           description: Unauthenticated.
+
+  /account/sessions:
+    get:
+      tags: [Account]
+      operationId: accountSessionsIndex
+      summary: List active web sessions
+      description: >
+        The caller's active web (browser) sessions, newest first. Only populated when
+        the server uses the database session driver (empty array otherwise). `current`
+        flags the caller's own session and is never true on a token request. No secret
+        values.
+      responses:
+        "200":
+          description: Session list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions]
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, ip, user_agent, last_active, current]
+                      properties:
+                        id: { type: string }
+                        ip: { type: [string, "null"] }
+                        user_agent: { type: [string, "null"] }
+                        last_active: { type: integer, description: "Unix timestamp of last activity." }
+                        current: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /account/webdav:
+    get:
+      tags: [Account]
+      operationId: accountWebdavShow
+      summary: WebDAV mount access status
+      description: >
+        Whether an app-specific WebDAV password is set, plus the mount URL and the
+        username (the account email) to use. The password itself is stored hashed and
+        is never returned.
+      responses:
+        "200":
+          description: WebDAV access status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebDavAccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [Account]
+      operationId: accountWebdavUpdate
+      summary: Set the WebDAV mount password
+      description: >
+        Sets the caller's app-specific WebDAV password (min 12 chars), stored hashed.
+        Distinct from the login password; revocable. Throttle: 20 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [webdav_password]
+              properties:
+                webdav_password: { type: string, minLength: 12, maxLength: 255 }
+      responses:
+        "200":
+          description: Password set — returns the updated access status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebDavAccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Account]
+      operationId: accountWebdavDestroy
+      summary: Clear the WebDAV mount password
+      description: "Removes the app-specific WebDAV password (disables WebDAV access). Throttle: 20 req/min."
+      responses:
+        "200":
+          description: Password cleared — returns the updated access status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebDavAccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
 
   # --------------------------------------------------------------------------
   # Preferences
@@ -4130,6 +4358,192 @@ paths:
         "200": { description: "Synced.", content: { application/json: { schema: { type: object, required: [ok, counts], properties: { ok: { type: boolean }, counts: { type: object, properties: { tag: { type: integer }, document_type: { type: integer }, correspondent: { type: integer } } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "422": { description: Paperless error. }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /paperless/config:
+    get:
+      tags: [Paperless]
+      operationId: paperlessConfigShow
+      summary: Per-user Paperless connection config
+      description: "Instance URL + enabled flag + has_token (the API token is never returned) + cached term counts. Throttle 60/min."
+      responses:
+        "200": { description: "Config.", content: { application/json: { schema: { $ref: "#/components/schemas/PaperlessConfig" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    put:
+      tags: [Paperless]
+      operationId: paperlessConfigUpdate
+      summary: Update the per-user Paperless config
+      description: "Sets URL / enabled / token. A blank/omitted token preserves the stored one; the token is never returned. Throttle 30/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paperless_enabled: { type: boolean }
+                paperless_url: { type: [string, "null"], format: uri, maxLength: 255 }
+                paperless_token: { type: [string, "null"], maxLength: 255, description: "Blank/omitted keeps the stored token." }
+      responses:
+        "200": { description: "Updated config.", content: { application/json: { schema: { $ref: "#/components/schemas/PaperlessConfig" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /paperless/config/test:
+    post:
+      tags: [Paperless]
+      operationId: paperlessConfigTest
+      summary: Test the Paperless connection
+      description: "Pings Paperless using the posted URL+token (falling back to the stored ones). SSRF-guarded. Throttle 20/min."
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paperless_url: { type: [string, "null"], format: uri }
+                paperless_token: { type: [string, "null"] }
+      responses:
+        "200": { description: "Result (200 even on failure; check `ok`).", content: { application/json: { schema: { type: object, required: [ok], properties: { ok: { type: boolean }, detail: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ── Admin: settings ──
+  /admin/notifications:
+    get:
+      tags: [Settings]
+      operationId: adminNotificationsShow
+      summary: Notification config (admin)
+      description: "SMTP/NTFY/webhook config. Secret values are NEVER returned — has_smtp_password / has_ntfy_token / has_webhook_secret booleans instead."
+      responses:
+        "200": { description: "Config.", content: { application/json: { schema: { $ref: "#/components/schemas/NotificationConfig" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Settings]
+      operationId: adminNotificationsUpdate
+      summary: Update notification config (admin)
+      description: "Only submitted fields are persisted. A blank secret field preserves the stored value. Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationConfigWrite" }
+      responses:
+        "200": { description: "Updated config (secrets masked).", content: { application/json: { schema: { $ref: "#/components/schemas/NotificationConfig" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/notifications/test:
+    post:
+      tags: [Settings]
+      operationId: adminNotificationsTest
+      summary: Send a test notification (admin)
+      description: "Sends a test message over one channel using the saved settings. Throttle 20/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel]
+              properties:
+                channel: { type: string, enum: [mail, ntfy, webhook] }
+      responses:
+        "200": { description: "Sent.", content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { description: "Validation failed, or the test send failed ({ ok:false, detail })." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /admin/security:
+    get:
+      tags: [Settings]
+      operationId: adminSecurityShow
+      summary: Device policy (admin)
+      description: "The workspace paired-device cap."
+      responses:
+        "200": { description: "Policy.", content: { application/json: { schema: { type: object, required: [max_connected_devices], properties: { max_connected_devices: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Settings]
+      operationId: adminSecurityUpdate
+      summary: Update device policy (admin)
+      description: "Sets the paired-device cap (1–100). Audits the diff. Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [max_connected_devices]
+              properties:
+                max_connected_devices: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        "200": { description: "Updated policy.", content: { application/json: { schema: { type: object, required: [max_connected_devices], properties: { max_connected_devices: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /admin/files-limits:
+    get:
+      tags: [Settings]
+      operationId: adminFilesLimitsShow
+      summary: Workspace Files limits (admin)
+      description: "Effective max upload size (MB) and orphan-blob grace window (hours) — the admin override, or the config default."
+      responses:
+        "200": { description: "Limits.", content: { application/json: { schema: { $ref: "#/components/schemas/FilesLimits" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Settings]
+      operationId: adminFilesLimitsUpdate
+      summary: Update workspace Files limits (admin)
+      description: "Sets either/both limits; unspecified keys are unchanged. Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                files_max_upload_mb: { type: integer, minimum: 1, maximum: 1048576 }
+                files_blob_orphan_grace_hours: { type: integer, minimum: 0, maximum: 8760 }
+      responses:
+        "200": { description: "Updated limits.", content: { application/json: { schema: { $ref: "#/components/schemas/FilesLimits" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /admin/system:
+    get:
+      tags: [Settings]
+      operationId: adminSystemShow
+      summary: System / maintenance overview (admin, read-only)
+      description: "Operational status snapshot (queue/storage/backup/scheduler/disk), scheduled-task liveness, the in-app error log and recent audit trail. Metadata only. Throttle 60/min."
+      responses:
+        "200": { description: "Overview.", content: { application/json: { schema: { $ref: "#/components/schemas/SystemOverview" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/system/errors/{error}/resolve:
+    post:
+      tags: [Settings]
+      operationId: adminSystemResolveError
+      summary: Resolve an error event (admin)
+      description: "Marks a recorded error as resolved (it reappears if it recurs). Throttle 60/min."
+      parameters: [{ name: error, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200": { description: "Resolved.", content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   # ── Admin: backup ──

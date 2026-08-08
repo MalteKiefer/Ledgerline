@@ -11,7 +11,17 @@ const routes: RouteRecordRaw[] = [
       { path: '', name: 'home', component: () => import('@spa/views/Home.vue') },
       // Finance sections drive the in-page tab via the route param (nav submenu).
       { path: 'finance/:section?', name: 'finance', component: () => import('@spa/views/Finance.vue') },
-      { path: 'profile', name: 'profile', component: () => import('@spa/views/Profile.vue') },
+      {
+        path: 'profile',
+        component: () => import('@spa/views/Profile.vue'),
+        children: [
+          { path: '', name: 'profile.account', component: () => import('@spa/views/profile/Account.vue') },
+          { path: 'appearance', name: 'profile.appearance', component: () => import('@spa/views/profile/Appearance.vue') },
+          { path: 'security', name: 'profile.security', component: () => import('@spa/views/profile/Security.vue') },
+          { path: 'devices', name: 'profile.devices', component: () => import('@spa/views/profile/Devices.vue') },
+          { path: 'data', name: 'profile.data', component: () => import('@spa/views/profile/Data.vue') },
+        ],
+      },
       { path: 'files', name: 'files', component: () => import('@spa/views/Files.vue') },
       { path: 'contacts', name: 'contacts', component: () => import('@spa/views/Contacts.vue') },
       // Settings sub-pages render directly in the main area (the Shell nav is the menu).
@@ -22,6 +32,10 @@ const routes: RouteRecordRaw[] = [
       { path: 'settings/backup', name: 'settings.backup', component: () => import('@spa/views/settings/Backup.vue') },
       { path: 'settings/security-log', name: 'settings.security-log', component: () => import('@spa/views/settings/SecurityLog.vue') },
       { path: 'settings/notifications', name: 'settings.notifications', component: () => import('@spa/views/settings/Notifications.vue') },
+      { path: 'settings/notifications-config', name: 'settings.notifications-config', component: () => import('@spa/views/settings/NotificationsConfig.vue') },
+      { path: 'settings/security', name: 'settings.security', component: () => import('@spa/views/settings/Security.vue') },
+      { path: 'settings/files-limits', name: 'settings.files-limits', component: () => import('@spa/views/settings/FilesLimits.vue') },
+      { path: 'settings/system', name: 'settings.system', component: () => import('@spa/views/settings/System.vue') },
       { path: 'settings/paperless', name: 'settings.paperless', component: () => import('@spa/views/settings/Paperless.vue') },
     ],
   },

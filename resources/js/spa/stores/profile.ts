@@ -43,6 +43,20 @@ export interface PairingStatus {
   device_name: string | null;
 }
 
+export interface Session {
+  id: string;
+  ip: string | null;
+  user_agent: string | null;
+  last_active: string | null;
+  current: boolean;
+}
+
+export interface WebDavAccess {
+  enabled: boolean;
+  username: string;
+  url: string;
+}
+
 export const useProfileStore = defineStore('profile', () => {
   const prefs = ref<DisplayPreferences | null>(null);
   const devices = ref<DeviceToken[]>([]);
@@ -183,12 +197,44 @@ export const useProfileStore = defineStore('profile', () => {
     return api.post<{ status: string }>(`/api/v1/device-pairings/${id}/reject`);
   }
 
+  // --- Web sessions -----------------------------------------------------------
+  const sessions = ref<Session[]>([]);
+
+  /** Load the browser sessions signed in to this account. */
+  async function loadSessions() {
+    const r = await api.get<{ sessions: Session[] }>('/api/v1/account/sessions');
+    sessions.value = r.sessions ?? [];
+  }
+
+  /** Revoke (sign out) a single web session. */
+  async function revokeSession(id: string) {
+    await api.delete(`/api/v1/account/sessions/${id}`);
+    sessions.value = sessions.value.filter((s) => s.id !== id);
+  }
+
+  // --- WebDAV access ----------------------------------------------------------
+  /** Read the current WebDAV access state (separate revocable credential). */
+  async function getWebdav(): Promise<WebDavAccess> {
+    return api.get<WebDavAccess>('/api/v1/account/webdav');
+  }
+
+  /** Set/rotate the WebDAV password (min 12 chars). */
+  async function setWebdav(password: string): Promise<WebDavAccess> {
+    return api.put<WebDavAccess>('/api/v1/account/webdav', { webdav_password: password });
+  }
+
+  /** Disable WebDAV access entirely. */
+  async function clearWebdav() {
+    await api.delete('/api/v1/account/webdav');
+  }
+
   return {
-    prefs, devices,
+    prefs, devices, sessions,
     loadPrefs, savePrefs, setTheme, setLocale,
     loadDevices, revokeDevice, wipeDevice,
     changePassword, uploadAvatar, removeAvatar, deleteAccount,
     twoFactorState, enable2fa, confirm2fa, recoveryCodes, regenerateRecovery, disable2fa,
     startPairing, pairingStatus, approvePairing, rejectPairing,
+    loadSessions, revokeSession, getWebdav, setWebdav, clearWebdav,
   };
 });

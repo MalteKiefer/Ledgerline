@@ -165,9 +165,12 @@ const menu = computed<NavGroup[]>(() => {
           { to: '/settings/users', label: 'settings.users_section' },
           { to: '/settings/groups', label: 'settings.groups_section' },
           { to: '/settings/company', label: 'settings.company_section' },
-          { to: '/settings/notifications', label: 'settings.notifications_section' },
+          { to: '/settings/notifications-config', label: 'settings.notifications_section' },
+          { to: '/settings/security', label: 'settings.security_section' },
+          { to: '/settings/files-limits', label: 'settings.files_limits_heading' },
           { to: '/settings/backup', label: 'settings.backup_section' },
           { to: '/settings/paperless', label: 'settings.paperless_section' },
+          { to: '/settings/system', label: 'settings.system_section' },
           { to: '/settings/security-log', label: 'settings.seclog_title' },
         ],
       }],
@@ -186,6 +189,7 @@ const routeTitles: Record<string, string> = {
 const crumbRoot = computed(() => {
   const name = String(route.name ?? '');
   if (name.startsWith('settings')) return t('settings.heading');
+  if (name.startsWith('profile')) return t('pages.profile.title');
   if (name === 'finance') return t('messages.nav.finance');
   return t(routeTitles[name] ?? 'pages.dashboard.title');
 });
@@ -195,7 +199,12 @@ const crumbLeaf = computed(() => {
     'settings.users': 'settings.users_section', 'settings.groups': 'settings.groups_section',
     'settings.company': 'settings.company_section', 'settings.backup': 'settings.backup_section',
     'settings.security-log': 'settings.seclog_title', 'settings.notifications': 'settings.notifications_section',
+    'settings.notifications-config': 'settings.notifications_section', 'settings.security': 'settings.security_section',
+    'settings.files-limits': 'settings.files_limits_heading', 'settings.system': 'settings.system_section',
     'settings.paperless': 'settings.paperless_section',
+    'profile.account': 'account.nav_account', 'profile.appearance': 'account.nav_appearance',
+    'profile.security': 'account.nav_security', 'profile.devices': 'account.nav_devices',
+    'profile.data': 'account.hub_data_heading',
   };
   if (map[name]) return t(map[name]);
   if (name === 'finance' && route.params.section) return t(`invoices.tab_${String(route.params.section)}`);
