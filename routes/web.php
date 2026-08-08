@@ -331,7 +331,7 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
         Route::post('/contacts/import', [ContactController::class, 'import'])->middleware('throttle:60,1')->name('contacts.import');
         Route::post('/contacts/settings', [ContactController::class, 'settings'])->middleware('throttle:600,1')->name('contacts.settings');
-        Route::post('/contacts/bulk-destroy', [ContactController::class, 'bulkDestroy'])->middleware('throttle:600,1')->name('contacts.bulk-destroy');
+        Route::delete('/contacts/bulk-destroy', [ContactController::class, 'bulkDestroy'])->middleware('throttle:600,1')->name('contacts.bulk-destroy');
         Route::post('/contacts', [ContactController::class, 'store'])->middleware('throttle:600,1')->name('contacts.store');
 
         // Duplicate detection + merge.
@@ -341,22 +341,22 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/contacts/duplicates/dismiss', [ContactDuplicateController::class, 'dismiss'])->middleware('throttle:120,1')->name('contacts.duplicates.dismiss');
 
         // Per-contact.
-        Route::get('/contacts/{contact}', [ContactController::class, 'show'])->whereNumber('contact')->name('contacts.show');
-        Route::get('/contacts/{contact}/view', [ContactController::class, 'view'])->whereNumber('contact')->name('contacts.view');
-        Route::get('/contacts/{contact}/edit', [ContactController::class, 'edit'])->whereNumber('contact')->name('contacts.edit');
-        Route::get('/contacts/{contact}/geo', [ContactController::class, 'geocode'])->whereNumber('contact')->middleware('throttle:120,1')->name('contacts.geo');
-        Route::get('/contacts/{contact}/avatar-image', [ContactController::class, 'avatarImage'])->whereNumber('contact')->middleware('throttle:3000,1')->name('contacts.avatar-image');
-        Route::patch('/contacts/{contact}/favorite', [ContactController::class, 'favorite'])->whereNumber('contact')->middleware('throttle:600,1')->name('contacts.favorite');
-        Route::post('/contacts/{contact}/avatar', [ContactController::class, 'avatar'])->whereNumber('contact')->middleware('throttle:120,1')->name('contacts.avatar');
-        Route::put('/contacts/{contact}', [ContactController::class, 'update'])->whereNumber('contact')->middleware('throttle:600,1')->name('contacts.update');
-        Route::delete('/contacts/{contact}', [ContactController::class, 'destroy'])->whereNumber('contact')->middleware('throttle:600,1')->name('contacts.destroy');
+        Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('contacts.show');
+        Route::get('/contacts/{contact}/view', [ContactController::class, 'view'])->name('contacts.view');
+        Route::get('/contacts/{contact}/edit', [ContactController::class, 'edit'])->name('contacts.edit');
+        Route::get('/contacts/{contact}/geo', [ContactController::class, 'geocode'])->middleware('throttle:120,1')->name('contacts.geo');
+        Route::get('/contacts/{contact}/avatar', [ContactController::class, 'avatarImage'])->middleware('throttle:3000,1')->name('contacts.avatar');
+        Route::patch('/contacts/{contact}/favorite', [ContactController::class, 'favorite'])->middleware('throttle:600,1')->name('contacts.favorite');
+        Route::post('/contacts/{contact}/avatar', [ContactController::class, 'avatar'])->middleware('throttle:120,1')->name('contacts.avatar.upload');
+        Route::put('/contacts/{contact}', [ContactController::class, 'update'])->middleware('throttle:600,1')->name('contacts.update');
+        Route::delete('/contacts/{contact}', [ContactController::class, 'destroy'])->middleware('throttle:600,1')->name('contacts.destroy');
 
         // Address books + groups.
         Route::post('/address-books', [AddressBookController::class, 'store'])->middleware('throttle:600,1')->name('address-books.store');
-        Route::put('/address-books/{addressBook}', [AddressBookController::class, 'update'])->whereNumber('addressBook')->middleware('throttle:600,1')->name('address-books.update');
-        Route::delete('/address-books/{addressBook}', [AddressBookController::class, 'destroy'])->whereNumber('addressBook')->middleware('throttle:600,1')->name('address-books.destroy');
+        Route::put('/address-books/{addressBook}', [AddressBookController::class, 'update'])->middleware('throttle:600,1')->name('address-books.update');
+        Route::delete('/address-books/{addressBook}', [AddressBookController::class, 'destroy'])->middleware('throttle:600,1')->name('address-books.destroy');
         Route::post('/contact-groups', [ContactGroupController::class, 'store'])->middleware('throttle:600,1')->name('contact-groups.store');
-        Route::delete('/contact-groups/{group}', [ContactGroupController::class, 'destroy'])->whereNumber('group')->middleware('throttle:600,1')->name('contact-groups.destroy');
+        Route::delete('/contact-groups/{group}', [ContactGroupController::class, 'destroy'])->middleware('throttle:600,1')->name('contact-groups.destroy');
 
         // CardDAV sync settings (single app-specific webdav_password + Apple profile).
         Route::get('/settings/contacts', [SettingsContactsController::class, 'edit'])->name('settings.contacts.edit');

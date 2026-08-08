@@ -4,19 +4,17 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Events\PersonNamed;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\ContactGroup;
-use App\Models\Person;
 use App\Models\User;
 use App\Services\Contacts\ContactWriter;
-use App\Services\Contacts\DavCredentialService;
 use App\Services\Contacts\VCardService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class ContactsFeatureTest extends TestCase
@@ -25,7 +23,12 @@ class ContactsFeatureTest extends TestCase
 
     private function book(int $userId): AddressBook
     {
-        return app(DavCredentialService::class)->ensureDefaultBook($userId);
+        return AddressBook::create([
+            'user_id' => $userId,
+            'name' => 'Contacts',
+            'uri' => 'contacts-'.$userId.'-'.Str::lower(Str::random(4)),
+            'synctoken' => 1,
+        ]);
     }
 
     public function test_store_creates_a_contact_and_bumps_the_sync_token(): void
@@ -158,27 +161,6 @@ class ContactsFeatureTest extends TestCase
         $this->get(route('contacts.view', $contact))->assertForbidden();
     }
 
-    public function test_show_links_a_gallery_person_when_one_is_linked(): void
-    {
-        $user = $this->signIn();
-        $book = $this->book($user->id);
-        $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Jane'])->assertStatus(201);
-        $contact = Contact::firstOrFail();
-
-        // No linked person -> null.
-        $this->getJson(route('contacts.show', $contact))->assertOk()->assertJsonPath('person', null);
-
-        $person = Person::create(['name' => 'Jane', 'contact_id' => $contact->id]);
-        $this->getJson(route('contacts.show', $contact))
-            ->assertOk()
-            ->assertJsonPath('person.id', $person->id)
-            ->assertJsonPath('person.url', route('gallery.people.show', $person));
-
-        // Hidden people do not surface.
-        $person->update(['hidden_at' => now()]);
-        $this->getJson(route('contacts.show', $contact))->assertOk()->assertJsonPath('person', null);
-    }
-
     public function test_bulk_destroy_deletes_own_contacts_and_ignores_foreign_ids(): void
     {
         $user = $this->signIn();
@@ -252,7 +234,7 @@ class ContactsFeatureTest extends TestCase
     {
         $user = $this->signIn();
         $book = $this->book($user->id);
-        $foreign = ContactGroup::create(['user_id' => 424242, 'name' => 'Victim group']);
+        $foreign = ContactGroup::create(['user_id' => User::factory()->create()->id, 'name' => 'Victim group']);
 
         $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Mallory', 'group_ids' => [$foreign->id]])
             ->assertStatus(201);
@@ -268,7 +250,7 @@ class ContactsFeatureTest extends TestCase
         $user = $this->signIn();
         $book = $this->book($user->id);
         Contact::create(['address_book_id' => $book->id, 'uri' => 'a.vcf', 'etag' => 'x', 'vcard' => "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Mine\r\nEND:VCARD\r\n", 'fn' => 'Mine']);
-        $other = AddressBook::create(['user_id' => 999, 'uri' => 'x', 'name' => 'X', 'synctoken' => 1]);
+        $other = AddressBook::create(['user_id' => User::factory()->create()->id, 'uri' => 'x', 'name' => 'X', 'synctoken' => 1]);
         Contact::create(['address_book_id' => $other->id, 'uri' => 'b.vcf', 'etag' => 'y', 'vcard' => 'x', 'fn' => 'Theirs']);
 
         $this->getJson(route('contacts.data'))->assertOk()->assertJsonCount(1, 'contacts')->assertJsonPath('contacts.0.fn', 'Mine');
@@ -337,29 +319,10 @@ class ContactsFeatureTest extends TestCase
         $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Pic'])->assertStatus(201);
         $contact = Contact::firstOrFail();
 
-        $this->post(route('contacts.avatar.upload', $contact), ['photo' => UploadedFile::fake()->image('a.jpg', 400, 400)])->assertOk();
+        $this->post(route('contacts.avatar', $contact), ['photo' => UploadedFile::fake()->image('a.jpg', 400, 400)])->assertOk();
 
         $this->assertTrue($contact->fresh()->has_photo);
         $this->assertStringContainsString('PHOTO', $contact->fresh()->vcard);
         $this->get(route('contacts.avatar', $contact))->assertOk()->assertHeader('Content-Type', 'image/jpeg');
-    }
-
-    public function test_naming_a_person_links_or_creates_a_contact(): void
-    {
-        $user = $this->signIn();
-        $this->book($user->id);
-        $person = Person::create(['name' => null]);
-
-        PersonNamed::dispatch($person->id, 'Alice Example', $user->id);
-
-        $person->refresh();
-        $this->assertNotNull($person->contact_id);
-        $this->assertDatabaseHas('contacts', ['fn' => 'Alice Example']);
-
-        // Naming another person the same name reuses the existing contact.
-        $p2 = Person::create(['name' => null]);
-        PersonNamed::dispatch($p2->id, 'Alice Example', $user->id);
-        $this->assertSame($person->contact_id, $p2->fresh()->contact_id);
-        $this->assertDatabaseCount('contacts', 1);
     }
 }

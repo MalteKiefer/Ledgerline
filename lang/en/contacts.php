@@ -141,4 +141,5 @@ return [
     'no_password' => 'No sync password set',
     'no_password_hint' => 'Set your app-specific WebDAV password to sync contacts (it also unlocks the Files drive).',
     'set_password' => 'Set sync password',
+    'default_book' => 'Contacts',
 ];

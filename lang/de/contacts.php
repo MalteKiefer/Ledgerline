@@ -141,4 +141,5 @@ return [
     'no_password' => 'Kein Sync-Passwort gesetzt',
     'no_password_hint' => 'Setze dein app-spezifisches WebDAV-Passwort, um Kontakte zu synchronisieren (es schaltet auch das Datei-Laufwerk frei).',
     'set_password' => 'Sync-Passwort setzen',
+    'default_book' => 'Kontakte',
 ];

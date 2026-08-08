@@ -7,7 +7,6 @@ namespace App\Services\Contacts;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\ContactGroup;
-use App\Services\Calendar\ContactDerivedCalendars;
 use Illuminate\Support\Str;
 use Sabre\VObject\Component\VCard;
 use Sabre\VObject\Reader;
@@ -22,7 +21,6 @@ class ContactImporter
 {
     public function __construct(
         private readonly ContactPersister $persister,
-        private readonly ContactDerivedCalendars $derived,
     ) {}
 
     /**
@@ -30,12 +28,8 @@ class ContactImporter
      */
     public function import(AddressBook $book, string $vcf): array
     {
-        // Suppress the per-save derived-calendar observer during the bulk loop and
-        // rebuild that user's calendars once at the end (avoids O(N^2)).
-        $result = Contact::withoutEvents(fn (): array => $this->importCards($book, $vcf));
-        $this->derived->sync($book->user_id);
-
-        return $result;
+        // Suppress per-save side effects during the bulk loop.
+        return Contact::withoutEvents(fn (): array => $this->importCards($book, $vcf));
     }
 
     /**

@@ -7,7 +7,6 @@ namespace App\Http\Controllers;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\ContactGroup;
-use App\Models\Person;
 use App\Models\UserSetting;
 use App\Services\Contacts\ContactImporter;
 use App\Services\Contacts\ContactWriter;
@@ -17,6 +16,7 @@ use App\Support\ImageManagerFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Intervention\Image\Encoders\JpegEncoder;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -28,9 +28,27 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ContactController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
+        $this->ensureBook($request->user()->id);
+
         return view('contacts.index');
+    }
+
+    /** Guarantee the user has at least one address book (contacts need a home). */
+    private function ensureBook(int $userId): AddressBook
+    {
+        $existing = AddressBook::query()->ownedBy($userId)->first();
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        return AddressBook::create([
+            'user_id' => $userId,
+            'name' => __('contacts.default_book'),
+            'uri' => 'contacts-'.Str::lower(Str::random(6)),
+            'synctoken' => 1,
+        ]);
     }
 
     /** Dedicated editor page for a new contact. */
@@ -58,6 +76,7 @@ class ContactController extends Controller
     public function data(Request $request, VCardService $vcards): JsonResponse
     {
         $userId = $request->user()->id;
+        $this->ensureBook($userId);
         // Owner-scoped address books (OwnsUserData global scope).
         $bookIds = AddressBook::query()->pluck('id');
         $settings = UserSetting::for($userId);
@@ -173,18 +192,12 @@ class ContactController extends Controller
         $data = $vcards->parse($contact->vcard);
         $data['related'] = $this->resolveRelated($data['related'] ?? []);
 
-        // A gallery person linked to this card (people.contact_id) lets the
-        // detail page offer "show this person's photos".
-        $person = Person::query()->where('contact_id', $contact->id)
-            ->whereNull('hidden_at')->orderByDesc('faces_count')->first();
-
         return response()->json(array_merge(
             $data,
             [
                 'id' => $contact->id,
                 'book' => $contact->address_book_id,
                 'group_ids' => $contact->groups()->pluck('contact_groups.id'),
-                'person' => $person ? ['id' => $person->id, 'url' => route('gallery.people.show', $person)] : null,
             ],
         ));
     }
