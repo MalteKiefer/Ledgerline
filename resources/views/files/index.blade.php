@@ -826,13 +826,13 @@
                     <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.storage') }}</h3>
                     <x-icon-button name="x-mark" @click="stats.open = false" aria-label="{{ __('files.share_close') }}" />
                 </div>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" x-text="'{{ __('files.storage_used') }}: ' + fmtSize(stats.used)"></p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" x-text="'{{ __('files.storage_used_only', ['used' => '__U__']) }}'.replace('__U__', fmtSize(stats.used))"></p>
                 <div class="mt-4 min-h-0 flex-1 overflow-auto">
                     <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('files.storage_by_type') }}</h4>
                     <div class="mt-2 space-y-1">
                         <template x-for="r in statsRows" :key="r.type">
                             <div class="flex items-center justify-between gap-3 text-sm">
-                                <span class="text-gray-700 dark:text-gray-300" x-text="(labels.types?.[r.type] ?? r.type)"></span>
+                                <span class="text-gray-700 dark:text-gray-300" x-text="(labels.types?.[r.type] || r.type)"></span>
                                 <span class="tabular-nums text-gray-500" x-text="fmtSize(r.size)"></span>
                             </div>
                         </template>
