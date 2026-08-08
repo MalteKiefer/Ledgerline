@@ -1,9 +1,11 @@
 <template>
   <div>
-    <v-tabs v-model="tab" color="primary" class="mb-4">
+    <v-tabs :model-value="tab" @update:model-value="go" color="primary" class="mb-4">
       <v-tab value="dashboard">{{ t('invoices.tab_dashboard') }}</v-tab>
       <v-tab value="invoices">{{ t('invoices.tab_invoices') }}</v-tab>
       <v-tab value="payments">{{ t('invoices.tab_payments') }}</v-tab>
+      <v-tab value="receipts">{{ t('invoices.tab_receipts') }}</v-tab>
+      <v-tab value="projects">{{ t('invoices.tab_projects') }}</v-tab>
       <v-tab value="partners">{{ t('invoices.tab_partners') }}</v-tab>
       <v-tab value="stats">{{ t('invoices.tab_stats') }}</v-tab>
     </v-tabs>
@@ -50,6 +52,14 @@
         </v-list-item>
         <v-list-item v-if="!f.paymentMethods.length" :title="t('common.none')" class="text-medium-emphasis" />
       </v-list>
+    </v-card>
+
+    <!-- Receipts / Projects (module views pending) -->
+    <v-card v-show="tab === 'receipts'" rounded="lg" border flat class="pa-8 text-center text-medium-emphasis">
+      <span class="msym d-block mb-2" style="font-size:40px">receipt_long</span>{{ t('invoices.coming_soon') }}
+    </v-card>
+    <v-card v-show="tab === 'projects'" rounded="lg" border flat class="pa-8 text-center text-medium-emphasis">
+      <span class="msym d-block mb-2" style="font-size:40px">account_tree</span>{{ t('invoices.coming_soon') }}
     </v-card>
 
     <!-- Partners -->
@@ -142,7 +152,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import { mdiPlus, mdiPencil, mdiDelete, mdiMagnify, mdiClose, mdiFilePdfBox } from '@mdi/js';
 import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod } from '@spa/stores/finance';
@@ -150,7 +161,14 @@ import { useToast } from '@spa/composables/useToast';
 
 const f = useFinanceStore();
 const { success, error } = useToast();
-const tab = ref('dashboard');
+const route = useRoute();
+const router = useRouter();
+const VALID = ['dashboard', 'invoices', 'payments', 'receipts', 'projects', 'partners', 'stats'];
+const tab = computed(() => {
+  const s = String(route.params.section || 'dashboard');
+  return VALID.includes(s) ? s : 'dashboard';
+});
+function go(v: unknown) { router.push(`/finance/${String(v)}`); }
 const q = ref('');
 
 const kpis = ref<{ year: number; net: number; count: number; growthPct: number | null } | null>(null);
@@ -258,5 +276,4 @@ async function savePP() {
   } catch { error(t('common.error')); } finally { saving.value = false; }
 }
 
-watch(tab, (v) => { if ((v === 'dashboard' || v === 'stats') && !kpis.value) loadReports(); });
 </script>
