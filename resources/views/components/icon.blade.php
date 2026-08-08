@@ -1,8 +1,66 @@
 @props(['name' => ''])
 
 @php
-    // Heroicons (24, outline) path data — one monochrome icon set for the whole
-    // app, always drawn in currentColor. "-solid" names render filled.
+    // Material Design migration: this icon primitive now renders Material Symbols
+    // Outlined (self-hosted font) for every mapped name, so x-icon / x-icon-button
+    // / x-button switch to Material icons app-wide with no call-site changes.
+    // Unmapped names fall back to the heroicon SVG below (nothing breaks).
+    $msym = [
+        'trash' => 'delete', 'pencil' => 'edit', 'calendar' => 'calendar_month', 'shield' => 'shield',
+        'shield-check' => 'shield', 'camera' => 'photo_camera', 'users' => 'group', 'user' => 'person',
+        'user-circle' => 'account_circle', 'x-mark' => 'close', 'check' => 'check', 'photo' => 'image',
+        'film' => 'movie', 'bell' => 'notifications', 'ellipsis' => 'more_vert', 'ellipsis-vertical' => 'more_vert',
+        'chevron-left' => 'chevron_left', 'chevron-right' => 'chevron_right', 'chevron-down' => 'expand_more',
+        'chevron-up' => 'expand_less', 'plus' => 'add', 'minus' => 'remove', 'folder' => 'folder',
+        'folder-plus' => 'create_new_folder', 'folder-open' => 'folder_open', 'star' => 'star', 'clock' => 'history',
+        'server' => 'hard_drive', 'arrow-up-tray' => 'upload', 'arrow-down-tray' => 'download',
+        'arrows-right-left' => 'swap_horiz', 'arrow-path' => 'sync', 'arrow-uturn-left' => 'undo',
+        'arrow-right-on-rectangle' => 'logout', 'arrow-left-on-rectangle' => 'login', 'arrow-top-right-on-square' => 'open_in_new',
+        'tag' => 'label', 'link' => 'link', 'share' => 'share', 'document-text' => 'description', 'document' => 'description',
+        'document-duplicate' => 'file_copy', 'magnifying-glass' => 'search', 'eye' => 'visibility', 'eye-slash' => 'visibility_off',
+        'banknotes' => 'account_balance_wallet', 'squares-2x2' => 'apps', 'bars-3' => 'menu', 'bars-4' => 'menu',
+        'circle-stack' => 'database', 'archive-box' => 'inventory_2', 'archive-box-arrow-down' => 'archive',
+        'clipboard' => 'content_copy', 'clipboard-document' => 'content_paste', 'map-pin' => 'location_on', 'map' => 'map',
+        'cog' => 'settings', 'cog-6-tooth' => 'settings', 'cog-8-tooth' => 'settings', 'adjustments-horizontal' => 'tune',
+        'trophy' => 'trophy', 'truck' => 'local_shipping', 'video-camera' => 'videocam', 'wrench' => 'build',
+        'wrench-screwdriver' => 'build', 'home' => 'home', 'inbox' => 'inbox', 'paper-clip' => 'attach_file',
+        'paper-airplane' => 'send', 'lock-closed' => 'lock', 'lock-open' => 'lock_open', 'key' => 'key',
+        'globe-alt' => 'public', 'phone' => 'call', 'envelope' => 'mail', 'at-symbol' => 'alternate_email',
+        'building-office' => 'business', 'building-office-2' => 'business', 'building-library' => 'account_balance',
+        'credit-card' => 'credit_card', 'currency-euro' => 'euro', 'receipt-percent' => 'receipt_long',
+        'receipt-refund' => 'receipt_long', 'chart-bar' => 'bar_chart', 'chart-pie' => 'pie_chart',
+        'presentation-chart-line' => 'insights', 'presentation-chart-bar' => 'insights', 'hashtag' => 'tag',
+        'wallet' => 'wallet', 'device-phone-mobile' => 'smartphone', 'computer-desktop' => 'computer',
+        'information-circle' => 'info', 'info' => 'info', 'exclamation-triangle' => 'warning',
+        'exclamation-circle' => 'error', 'check-circle' => 'check_circle', 'x-circle' => 'cancel',
+        'sun' => 'light_mode', 'moon' => 'dark_mode', 'language' => 'language', 'sparkles' => 'auto_awesome',
+        'cloud-arrow-up' => 'cloud_upload', 'cloud-arrow-down' => 'cloud_download', 'cloud' => 'cloud',
+        'printer' => 'print', 'funnel' => 'filter_list', 'bars-arrow-up' => 'sort', 'bars-arrow-down' => 'sort',
+        'qr-code' => 'qr_code_2', 'heart' => 'favorite', 'bookmark' => 'bookmark', 'flag' => 'flag',
+        'list-bullet' => 'list', 'queue-list' => 'list', 'squares-plus' => 'grid_view', 'table-cells' => 'table',
+        'calendar-days' => 'calendar_month', 'cake' => 'cake', 'gift' => 'card_giftcard', 'identification' => 'badge',
+        'newspaper' => 'article', 'book-open' => 'menu_book', 'musical-note' => 'music_note', 'microphone' => 'mic',
+        'speaker-wave' => 'volume_up', 'play' => 'play_arrow', 'pause' => 'pause', 'stop' => 'stop',
+        'ph:merge' => 'merge', 'merge' => 'merge', 'plus-circle' => 'add_circle', 'minus-circle' => 'remove_circle',
+    ];
+    $isSolidName = str_ends_with($name, '-solid');
+    $baseName = $isSolidName ? substr($name, 0, -6) : $name;
+    $msymName = $msym[$baseName] ?? null;
+    if ($msymName !== null) {
+        $iconCls = (string) ($attributes->get('class') ?? '');
+        preg_match('/\bh-(\d+(?:\.\d+)?)\b/', $iconCls, $hm);
+        $msymSize = ['3' => 'text-sm', '3.5' => 'text-lg', '4' => 'text-lg', '5' => 'text-xl', '6' => 'text-2xl', '8' => 'text-3xl'][$hm[1] ?? '4'] ?? 'text-lg';
+        // Drop sizing utilities that don't apply to a glyph; keep colours/animation.
+        $msymRest = trim(preg_replace('/\b[hw]-[\d.]+\b|\btext-(?:xs|sm|base|lg|xl|\dxl)\b|\bshrink-0\b/', ' ', $iconCls));
+    }
+@endphp
+
+@if ($msymName !== null)
+    <span {{ $attributes->except('class') }} class="msym {{ $msymSize }}{{ $isSolidName ? ' msym-fill' : '' }}{{ $msymRest ? ' '.$msymRest : '' }} shrink-0" aria-hidden="true">{{ $msymName }}</span>
+@else
+@php
+    // Heroicons (24, outline) path data — fallback for names not yet mapped to a
+    // Material Symbol. "-solid" names render filled.
     $paths = [
         'trash' => 'M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0',
         'pencil' => 'M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10',
@@ -234,3 +292,4 @@
     @unless ($solid) stroke-width="1.7" stroke="currentColor" @endunless aria-hidden="true">
     <path @unless ($solid) stroke-linecap="round" stroke-linejoin="round" @endunless d="{{ $paths[$name] ?? '' }}" />
 </svg>
+@endif

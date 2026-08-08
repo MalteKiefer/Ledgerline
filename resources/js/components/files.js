@@ -6,7 +6,7 @@
 import { getJson, apiRequest, postForm, jsonHeaders, csrfToken } from '../shared/api';
 import { parseTags, addTags, removeTagFrom, popTag } from '../shared/tag-chips';
 import { formatDate } from '../shared/dom';
-import { fileCategory, CATEGORY_ICON, categoryTint, fileTypeLabel, FOLDER_TINT, formatBytes } from '../shared/file-categories';
+import { fileCategory, CATEGORY_ICON, categoryTint, categoryMsym, FOLDER_MSYM, fileTypeLabel, FOLDER_TINT, formatBytes } from '../shared/file-categories';
 
 // Heroicon path for the folder chip glyph (24-outline folder).
 const FOLDER_ICON_PATH = 'M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z';
@@ -367,6 +367,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
     fileIconPath(row) { return CATEGORY_ICON[this.fileCat(row)] ?? CATEGORY_ICON.OTHER; },
     rowTint(row) { return row.kind === 'folder' ? FOLDER_TINT : categoryTint(row.name, row.mime || ''); },
     rowIconPath(row) { return row.kind === 'folder' ? FOLDER_ICON_PATH : (CATEGORY_ICON[fileCategory(row.name, row.mime || '')] || CATEGORY_ICON.OTHER); },
+    rowMsym(row) { return row.kind === 'folder' ? FOLDER_MSYM : categoryMsym(row.name, row.mime || ''); },
     rowLabel(row) {
         if (row.kind === 'folder') return labels.folderLabel || 'Folder';
         const tok = fileTypeLabel(row.name, row.mime || '').replace('filetype.', '');
