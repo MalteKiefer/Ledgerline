@@ -20,4 +20,21 @@ return [
 
     'block_private_hosts' => (bool) env('SECURITY_BLOCK_PRIVATE_HOSTS', false),
 
+    /*
+    |--------------------------------------------------------------------------
+    | CSP frame-ancestors (who may embed the app in a frame/iframe)
+    |--------------------------------------------------------------------------
+    |
+    | Default 'none' — the app refuses all framing (clickjacking-safe) and also
+    | emits X-Frame-Options: DENY. On a trusted, non-internet-facing LAN an
+    | operator may allow a home-dashboard/portal to embed the app by setting
+    | FRAME_ANCESTORS to a CSP source list, e.g. "'self' http://192.168.3.200:8300",
+    | or "*" to permit any embedder. When set to anything other than 'none' the
+    | X-Frame-Options header is dropped (it cannot express an allowlist) and CSP
+    | frame-ancestors is authoritative. Keep 'none' for a public deployment.
+    |
+    */
+
+    'frame_ancestors' => env('FRAME_ANCESTORS', "'none'"),
+
 ];

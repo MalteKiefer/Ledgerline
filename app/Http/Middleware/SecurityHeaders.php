@@ -39,7 +39,13 @@ final class SecurityHeaders
         $response = $next($request);
 
         $response->headers->set('X-Content-Type-Options', 'nosniff');
-        $response->headers->set('X-Frame-Options', 'DENY');
+        // Framing policy is driven by security.frame_ancestors (CSP frame-ancestors
+        // below is authoritative). X-Frame-Options can only express deny/sameorigin,
+        // not an allowlist, so emit it ONLY in the default deny case; when embedding
+        // is permitted (an allowlist or `*`) we drop XFO and let frame-ancestors rule.
+        if ($this->frameAncestors() === "'none'") {
+            $response->headers->set('X-Frame-Options', 'DENY');
+        }
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         // No resource of this single-origin app is meant to be embedded/read by
         // another origin. Blocks cross-site hotlinking/embedding of the now-
@@ -85,6 +91,21 @@ final class SecurityHeaders
     }
 
     /**
+     * The CSP `frame-ancestors` source list (who may embed this app in a frame).
+     * Defaults to `'none'` (public/safe: no framing; XFO DENY also emitted). An
+     * operator on a trusted LAN may set FRAME_ANCESTORS to a source list (e.g.
+     * "'self' http://192.168.3.200:8300") or `*` to permit a home-dashboard embed
+     * — see the Security register. Trimmed; empty falls back to 'none'.
+     */
+    private function frameAncestors(): string
+    {
+        $v = config('security.frame_ancestors', "'none'");
+        $v = is_string($v) ? trim($v) : '';
+
+        return $v !== '' ? $v : "'none'";
+    }
+
+    /**
      * Defence-in-depth CSP for the authenticated application shell.
      *
      * @return list<string>
@@ -98,7 +119,7 @@ final class SecurityHeaders
             // <object> pointing at a client-generated blob: URL); no remote
             // plugin content is allowed.
             "object-src 'self' blob:",
-            "frame-ancestors 'none'",
+            'frame-ancestors '.$this->frameAncestors(),
             "form-action 'self'",
             // The only inline script is the theme bootstrap (allowed via its
             // exact hash), so 'unsafe-inline' stays dropped. 'unsafe-eval'

@@ -901,7 +901,9 @@ class FilesController extends Controller
         $groups = [];
         foreach ($files as $f) {
             $h = (string) $f->sha256;
-            if ($h === '') {
+            // Skip empty (0-byte) files: they all share the empty-content hash and
+            // would flood the "possible duplicates" list with meaningless matches.
+            if ($h === '' || (int) $f->size === 0) {
                 continue;
             }
             $groups[$h][] = ['id' => $f->id, 'name' => $f->name, 'size' => (int) $f->size];
