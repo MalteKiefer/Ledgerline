@@ -10,6 +10,19 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: '', name: 'home', component: () => import('@spa/views/Home.vue') },
       { path: 'profile', name: 'profile', component: () => import('@spa/views/Profile.vue') },
+      {
+        path: 'settings',
+        component: () => import('@spa/views/settings/Settings.vue'),
+        children: [
+          { path: '', redirect: { name: 'settings.users' } },
+          { path: 'users', name: 'settings.users', component: () => import('@spa/views/settings/Users.vue') },
+          { path: 'groups', name: 'settings.groups', component: () => import('@spa/views/settings/Groups.vue') },
+          { path: 'company', name: 'settings.company', component: () => import('@spa/views/settings/Company.vue') },
+          { path: 'backup', name: 'settings.backup', component: () => import('@spa/views/settings/Backup.vue') },
+          { path: 'security-log', name: 'settings.security-log', component: () => import('@spa/views/settings/SecurityLog.vue') },
+          { path: 'notifications', name: 'settings.notifications', component: () => import('@spa/views/settings/Notifications.vue') },
+        ],
+      },
     ],
   },
   { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@spa/views/NotFound.vue') },
