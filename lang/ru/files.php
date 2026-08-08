@@ -66,6 +66,7 @@ return [
     'info_mime' => 'MIME-тип',
     'info_size' => 'Размер',
     'info_items' => 'Элементы',
+    'info_modified' => 'Изменён',
     'info_uploaded' => 'Загружено',
     'info_folder' => 'Папка',
     'info_tags' => 'Теги',

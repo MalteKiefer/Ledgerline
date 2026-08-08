@@ -1,6 +1,6 @@
 {{-- A row inside <x-action-menu>. Defaults to a <button>; pass `href` for a link. `danger`
      styles it red + adds a top divider. Icon optional. --}}
-@props(['icon' => null, 'danger' => false, 'href' => null])
+@props(['icon' => null, 'danger' => false, 'href' => null, 'type' => 'button'])
 @php
     $base = 'flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition';
     $tone = $danger
@@ -12,7 +12,7 @@
         @if ($icon)<x-icon :name="$icon" class="h-4 w-4 shrink-0" />@endif{{ $slot }}
     </a>
 @else
-    <button type="button" {{ $attributes->merge(['class' => $base.' '.$tone]) }}>
+    <button type="{{ $type }}" {{ $attributes->merge(['class' => $base.' '.$tone]) }}>
         @if ($icon)<x-icon :name="$icon" class="h-4 w-4 shrink-0" />@endif{{ $slot }}
     </button>
 @endif

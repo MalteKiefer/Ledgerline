@@ -66,6 +66,7 @@ return [
     'info_mime' => 'MIME-Typ',
     'info_size' => 'Größe',
     'info_items' => 'Einträge',
+    'info_modified' => 'Geändert',
     'info_uploaded' => 'Hochgeladen',
     'info_folder' => 'Ordner',
     'info_tags' => 'Tags',
