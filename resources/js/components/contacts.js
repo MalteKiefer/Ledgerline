@@ -30,6 +30,16 @@ async function apiJson(url, method, body, token) {
     return { ok: r.ok, status: r.status, ...data };
 }
 
+// Deterministic Material-style avatar tint derived from a contact's id/name, so
+// the same contact always gets the same colour (like Google/Proton contacts).
+const AVATAR_COLORS = ['#7cb342', '#5e35b1', '#00897b', '#1e88e5', '#d81b60', '#3949ab', '#8d6e63', '#e2915a', '#00acc1', '#c0392b', '#6750a4', '#7066f5'];
+function contactColor(c) {
+    const s = String((c && (c.id || c.fn || c.first_name || '')) || '');
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
 Alpine.data('contactsPage', (cfg = {}) => ({
     ...shareMixin(cfg),
     cfg,
@@ -115,6 +125,10 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         if (letters) return letters;
         const fn = (c.fn || '').trim();
         return fn ? fn[0].toUpperCase() : '';
+    },
+
+    avatarColor(c) {
+        return contactColor(c);
     },
 
     async saveSettings() {
@@ -529,6 +543,9 @@ Alpine.data('contactViewPage', (cfg = {}) => ({
     initials() {
         const letters = (((this.c.first_name || '')[0] || '') + ((this.c.last_name || '')[0] || '')).toUpperCase();
         return letters || ((this.c.fn || '').trim()[0] || '').toUpperCase();
+    },
+    avatarColor() {
+        return contactColor(this.c);
     },
     label(raw) {
         const t = (raw || '').toLowerCase();
