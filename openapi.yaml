@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.552.0
+  version: 1.560.1
   license:
     name: Proprietary
   description: >
@@ -112,6 +112,16 @@ tags:
       raw document bytes, the server forwards them to the user's own Paperless
       instance and stores/logs nothing. Per-user Paperless CONFIGURATION (URL / token
       / enabled flag) is set in the web UI only — there is no /api/v1 config twin.
+  - name: Contacts
+    description: >
+      CardDAV-backed contacts module (address books + contacts + groups +
+      duplicate detection), plaintext-relational. The same guard-agnostic
+      controllers back the web routes; these `/api/v1` mirrors are gated by
+      `module:contacts` on top of device auth. Blade-only screens
+      (index/create/edit/view) are not exposed. `GET /contacts/data` returns
+      `{contacts, books, groups}`; `GET /contacts/{id}` returns the full parsed
+      vCard (fn, org, emails/phones/urls/addresses, note, group_ids). Owner-scope
+      is enforced controller-side; avatar bytes stream from `/contacts/{id}/avatar`.
 components:
   securitySchemes:
     bearerAuth:
@@ -1028,6 +1038,226 @@ components:
         verifiedHuman: { type: [string, "null"], description: "Relative time of the last verification." }
 
 paths:
+
+  # --------------------------------------------------------------------------
+  # Contacts module (module:contacts + device auth). Mirrors the web routes.
+  # --------------------------------------------------------------------------
+  /contacts/data:
+    get:
+      tags: [Contacts]
+      operationId: contactsData
+      summary: List contacts + address books + groups
+      parameters:
+        - { name: book_id, in: query, required: false, schema: { type: string } }
+        - { name: group_id, in: query, required: false, schema: { type: integer } }
+        - { name: favorites, in: query, required: false, schema: { type: boolean } }
+        - { name: q, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Contacts snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contacts: { type: array, items: { type: object } }
+                  books: { type: array, items: { type: object } }
+                  groups: { type: array, items: { type: object } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+  /contacts:
+    post:
+      tags: [Contacts]
+      operationId: contactsStore
+      summary: Create a contact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [book_id], properties: { book_id: { type: string }, fn: { type: string }, first_name: { type: string }, last_name: { type: string }, org: { type: string }, emails: { type: array, items: { type: object } }, phones: { type: array, items: { type: object } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { id: { type: string } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /contacts/{contact}:
+    get:
+      tags: [Contacts]
+      operationId: contactsShow
+      summary: Full parsed vCard detail
+      parameters: [{ name: contact, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Contact detail (parsed vCard + id/book/group_ids)., content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Contacts]
+      operationId: contactsUpdate
+      summary: Update a contact
+      parameters: [{ name: contact, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        "200": { description: Updated. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Contacts]
+      operationId: contactsDestroy
+      summary: Delete a contact
+      parameters: [{ name: contact, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Deleted. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+  /contacts/{contact}/favorite:
+    patch:
+      tags: [Contacts]
+      operationId: contactsFavorite
+      summary: Toggle the favorite star
+      parameters: [{ name: contact, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [favorite], properties: { favorite: { type: boolean } } } } } }
+      responses:
+        "200": { description: OK. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+  /contacts/{contact}/avatar:
+    get:
+      tags: [Contacts]
+      operationId: contactsAvatar
+      summary: Stream the contact avatar (sandboxed)
+      parameters: [{ name: contact, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Image bytes., content: { image/jpeg: { schema: { type: string, format: binary } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Contacts]
+      operationId: contactsAvatarUpload
+      summary: Upload/replace the contact avatar
+      parameters: [{ name: contact, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { avatar: { type: string, format: binary } } } } } }
+      responses:
+        "200": { description: Stored. }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /contacts/bulk-destroy:
+    delete:
+      tags: [Contacts]
+      operationId: contactsBulkDestroy
+      summary: Delete multiple contacts
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { ids: { type: array, items: { type: string } } } } } } }
+      responses:
+        "200": { description: Deleted. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+  /contacts/import:
+    post:
+      tags: [Contacts]
+      operationId: contactsImport
+      summary: Import a VCF file
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary }, book_id: { type: string } } } } } }
+      responses:
+        "200": { description: Import summary. }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /contacts/export:
+    get:
+      tags: [Contacts]
+      operationId: contactsExport
+      summary: Export contacts as VCF
+      responses:
+        "200": { description: VCF file., content: { text/vcard: { schema: { type: string } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+  /contacts/suggest:
+    get:
+      tags: [Contacts]
+      operationId: contactsSuggest
+      summary: Autocomplete suggestions
+      parameters: [{ name: q, in: query, required: false, schema: { type: string } }]
+      responses:
+        "200": { description: Suggestions. }
+  /contacts/{contact}/geo:
+    get:
+      tags: [Contacts]
+      operationId: contactsGeo
+      summary: Geocode a contact address for the map preview
+      parameters: [{ name: contact, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Coordinates., content: { application/json: { schema: { type: object, properties: { lat: { type: number }, lng: { type: number } } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+  /contacts/settings:
+    post:
+      tags: [Contacts]
+      operationId: contactsSettings
+      summary: Update contacts view settings (sort/display)
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        "200": { description: Saved. }
+  /contacts/duplicates/data:
+    get:
+      tags: [Contacts]
+      operationId: contactsDuplicatesData
+      summary: Duplicate candidate groups
+      responses:
+        "200": { description: Duplicate groups. }
+  /contacts/duplicates/merge:
+    post:
+      tags: [Contacts]
+      operationId: contactsDuplicatesMerge
+      summary: Merge a duplicate set
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        "200": { description: Merged. }
+  /contacts/duplicates/dismiss:
+    post:
+      tags: [Contacts]
+      operationId: contactsDuplicatesDismiss
+      summary: Dismiss a duplicate suggestion
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        "200": { description: Dismissed. }
+  /address-books:
+    post:
+      tags: [Contacts]
+      operationId: addressBooksStore
+      summary: Create an address book
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } } }
+      responses:
+        "201": { description: Created. }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /address-books/{addressBook}:
+    put:
+      tags: [Contacts]
+      operationId: addressBooksUpdate
+      summary: Rename an address book
+      parameters: [{ name: addressBook, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: string } } } } } }
+      responses:
+        "200": { description: Updated. }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Contacts]
+      operationId: addressBooksDestroy
+      summary: Delete an address book
+      parameters: [{ name: addressBook, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Deleted. }
+        "404": { $ref: '#/components/responses/NotFound' }
+  /contact-groups:
+    post:
+      tags: [Contacts]
+      operationId: contactGroupsStore
+      summary: Create a contact group
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } } }
+      responses:
+        "201": { description: Created. }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /contact-groups/{group}:
+    delete:
+      tags: [Contacts]
+      operationId: contactGroupsDestroy
+      summary: Delete a contact group
+      parameters: [{ name: group, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200": { description: Deleted. }
+        "404": { $ref: '#/components/responses/NotFound' }
 
   # --------------------------------------------------------------------------
   # Health check (app up-check) — NOT under /api/v1; served at the site root.

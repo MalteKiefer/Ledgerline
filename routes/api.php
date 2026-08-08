@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AddressBookController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController as ApiBackupController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
@@ -15,6 +16,9 @@ use App\Http\Controllers\Api\SettingsController as ApiSettingsController;
 use App\Http\Controllers\Api\TwoFactorController as ApiTwoFactorController;
 use App\Http\Controllers\Api\UsersController as ApiUsersController;
 use App\Http\Controllers\AvatarController;
+use App\Http\Controllers\ContactController;
+use App\Http\Controllers\ContactDuplicateController;
+use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
@@ -123,6 +127,37 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/finance/receipts/{id}/restore', [FinanceController::class, 'restoreStandaloneReceipt'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.receipts.restore');
             Route::delete('/finance/receipts/{id}/force', [FinanceController::class, 'forceDeleteStandaloneReceipt'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.receipts.force');
             Route::get('/finance/receipts/{receipt}/raw', [FinanceController::class, 'receiptFile'])->whereNumber('receipt')->middleware('throttle:3000,1')->name('api.finance.receipts.raw');
+        });
+
+        // Contacts module — mirrors the web routes. The web ContactController
+        // methods already return JSON (store/update/destroy/show/data/suggest/
+        // geocode/favorite/bulkDestroy/import/export/avatar); mount the same
+        // guard-agnostic controllers under /api/v1 so the Vue SPA (and mobile)
+        // consume them via device auth. Blade-only methods (index/create/edit/
+        // view) are intentionally not exposed. Owner-scope is controller-side.
+        Route::middleware('module:contacts')->group(function (): void {
+            Route::get('/contacts/data', [ContactController::class, 'data'])->name('api.contacts.data');
+            Route::get('/contacts/suggest', [ContactController::class, 'suggest'])->name('api.contacts.suggest');
+            Route::get('/contacts/export', [ContactController::class, 'export'])->name('api.contacts.export');
+            Route::post('/contacts/import', [ContactController::class, 'import'])->middleware('throttle:60,1')->name('api.contacts.import');
+            Route::post('/contacts/settings', [ContactController::class, 'settings'])->middleware('throttle:600,1')->name('api.contacts.settings');
+            Route::delete('/contacts/bulk-destroy', [ContactController::class, 'bulkDestroy'])->middleware('throttle:600,1')->name('api.contacts.bulk-destroy');
+            Route::post('/contacts', [ContactController::class, 'store'])->middleware('throttle:600,1')->name('api.contacts.store');
+            Route::get('/contacts/duplicates/data', [ContactDuplicateController::class, 'data'])->name('api.contacts.duplicates.data');
+            Route::post('/contacts/duplicates/merge', [ContactDuplicateController::class, 'merge'])->middleware('throttle:120,1')->name('api.contacts.duplicates.merge');
+            Route::post('/contacts/duplicates/dismiss', [ContactDuplicateController::class, 'dismiss'])->middleware('throttle:120,1')->name('api.contacts.duplicates.dismiss');
+            Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('api.contacts.show');
+            Route::get('/contacts/{contact}/geo', [ContactController::class, 'geocode'])->middleware('throttle:120,1')->name('api.contacts.geo');
+            Route::get('/contacts/{contact}/avatar', [ContactController::class, 'avatarImage'])->middleware('throttle:3000,1')->name('api.contacts.avatar');
+            Route::patch('/contacts/{contact}/favorite', [ContactController::class, 'favorite'])->middleware('throttle:600,1')->name('api.contacts.favorite');
+            Route::post('/contacts/{contact}/avatar', [ContactController::class, 'avatar'])->middleware('throttle:120,1')->name('api.contacts.avatar.upload');
+            Route::put('/contacts/{contact}', [ContactController::class, 'update'])->middleware('throttle:600,1')->name('api.contacts.update');
+            Route::delete('/contacts/{contact}', [ContactController::class, 'destroy'])->middleware('throttle:600,1')->name('api.contacts.destroy');
+            Route::post('/address-books', [AddressBookController::class, 'store'])->middleware('throttle:600,1')->name('api.address-books.store');
+            Route::put('/address-books/{addressBook}', [AddressBookController::class, 'update'])->middleware('throttle:600,1')->name('api.address-books.update');
+            Route::delete('/address-books/{addressBook}', [AddressBookController::class, 'destroy'])->middleware('throttle:600,1')->name('api.address-books.destroy');
+            Route::post('/contact-groups', [ContactGroupController::class, 'store'])->middleware('throttle:600,1')->name('api.contact-groups.store');
+            Route::delete('/contact-groups/{group}', [ContactGroupController::class, 'destroy'])->middleware('throttle:600,1')->name('api.contact-groups.destroy');
         });
 
         // Files module — mirrors the web routes (plaintext-relational folders +
