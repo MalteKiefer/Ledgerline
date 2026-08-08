@@ -13,7 +13,7 @@
 ARG PHP_BASE=serversideup/php:8.5-fpm-nginx-alpine@sha256:13af81f6fb5fbb9e26c6a7cd9e8c8bf22e32dd21842ae3c587b9ac4f24da4c6e
 
 # --- Front-end assets (Vite build) -----------------------------------------
-FROM node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS assets
+FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS assets
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
