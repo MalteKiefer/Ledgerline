@@ -242,4 +242,9 @@ return [
     'storage_by_type' => 'Nach Typ',
     'duplicates' => 'Mögliche Duplikate',
     'duplicates_none' => 'Keine Duplikate gefunden.',
+    'dupes_keep' => 'Behalten',
+    'dupes_trash_one' => 'In den Papierkorb',
+    'dupes_trash_group' => 'Duplikate löschen',
+    'dupes_trash_all' => 'Alle Duplikate löschen (:n)',
+    'dupes_trash_all_confirm' => 'Alle doppelten Kopien in den Papierkorb verschieben? Pro Gruppe bleibt ein Original erhalten.',
 ];

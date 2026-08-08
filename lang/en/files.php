@@ -242,4 +242,9 @@ return [
     'storage_by_type' => 'By type',
     'duplicates' => 'Possible duplicates',
     'duplicates_none' => 'No duplicates found.',
+    'dupes_keep' => 'Keep',
+    'dupes_trash_one' => 'Move to trash',
+    'dupes_trash_group' => 'Trash duplicates',
+    'dupes_trash_all' => 'Trash all duplicates (:n)',
+    'dupes_trash_all_confirm' => 'Move all duplicate copies to the trash? One original per group is kept.',
 ];

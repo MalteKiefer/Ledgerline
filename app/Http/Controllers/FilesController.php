@@ -898,6 +898,21 @@ class FilesController extends Controller
             $byType[$cat] = ($byType[$cat] ?? 0) + (int) $f->size;
         }
 
+        // Folder id → [name, parent_id] for building each file's full path.
+        $folders = FileFolder::query()->get(['id', 'name', 'parent_id'])
+            ->keyBy('id');
+        $pathOf = function (?int $folderId) use ($folders): string {
+            $parts = [];
+            $guard = 0;
+            while ($folderId !== null && isset($folders[$folderId]) && $guard++ < 100) {
+                $node = $folders[$folderId];
+                array_unshift($parts, (string) $node->name);
+                $folderId = $node->parent_id !== null ? (int) $node->parent_id : null;
+            }
+
+            return '/'.implode('/', $parts);
+        };
+
         $groups = [];
         foreach ($files as $f) {
             $h = (string) $f->sha256;
@@ -906,7 +921,13 @@ class FilesController extends Controller
             if ($h === '' || (int) $f->size === 0) {
                 continue;
             }
-            $groups[$h][] = ['id' => $f->id, 'name' => $f->name, 'size' => (int) $f->size];
+            $dir = $pathOf($f->file_folder_id !== null ? (int) $f->file_folder_id : null);
+            $groups[$h][] = [
+                'id' => $f->id,
+                'name' => $f->name,
+                'size' => (int) $f->size,
+                'path' => rtrim($dir, '/').'/'.$f->name,
+            ];
         }
         $dupes = array_values(array_filter($groups, fn (array $g): bool => count($g) >= 2));
 
