@@ -138,4 +138,7 @@ return [
         'match_name' => 'Name',
         'merge_confirm' => 'Diese Kontakte zu einem zusammenführen? Die anderen werden gelöscht und ihre Details in die Hauptkarte übernommen.',
     ],
+    'no_password' => 'Kein Sync-Passwort gesetzt',
+    'no_password_hint' => 'Setze dein app-spezifisches WebDAV-Passwort, um Kontakte zu synchronisieren (es schaltet auch das Datei-Laufwerk frei).',
+    'set_password' => 'Sync-Passwort setzen',
 ];

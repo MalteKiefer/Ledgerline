@@ -138,4 +138,7 @@ return [
         'match_name' => 'name',
         'merge_confirm' => 'Merge these contacts into one? The others will be deleted and their details combined into the main card.',
     ],
+    'no_password' => 'No sync password set',
+    'no_password_hint' => 'Set your app-specific WebDAV password to sync contacts (it also unlocks the Files drive).',
+    'set_password' => 'Set sync password',
 ];

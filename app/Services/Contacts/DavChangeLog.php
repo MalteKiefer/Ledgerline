@@ -24,12 +24,6 @@ class DavChangeLog
         $this->append($book, 'dav_changes', 'address_book_id', $uri, $op);
     }
 
-    /** Same, for a calendar (its own change log + sync token). */
-    public function recordCalendar(Calendar $calendar, string $uri, DavChangeOperation $op): void
-    {
-        $this->append($calendar, 'calendar_changes', 'calendar_id', $uri, $op);
-    }
-
     private function append(Model $collection, string $table, string $foreignKey, string $uri, DavChangeOperation $op): void
     {
         DB::transaction(function () use ($collection, $table, $foreignKey, $uri, $op): void {

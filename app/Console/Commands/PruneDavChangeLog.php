@@ -24,8 +24,7 @@ class PruneDavChangeLog extends Command
 
     public function handle(): int
     {
-        $deleted = $this->prune('calendar_changes', 'calendar_id')
-            + $this->prune('dav_changes', 'address_book_id');
+        $deleted = $this->prune('dav_changes', 'address_book_id');
 
         $this->info("Pruned {$deleted} change-log row(s).");
 

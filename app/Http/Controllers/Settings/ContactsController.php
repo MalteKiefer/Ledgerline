@@ -5,56 +5,41 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
-use App\Services\Contacts\DavCredentialService;
-use BaconQrCode\Renderer\Image\SvgImageBackEnd;
-use BaconQrCode\Renderer\ImageRenderer;
-use BaconQrCode\Renderer\RendererStyle\RendererStyle;
-use BaconQrCode\Writer;
+use Endroid\QrCode\QrCode;
+use Endroid\QrCode\Writer\SvgWriter;
 use Illuminate\Contracts\View\View;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Str;
 
 /**
- * Contacts / CardDAV settings: enable the feature (generates the DAV login),
- * show the sync URL + username, a QR code of the URL, and a downloadable Apple
- * configuration profile for iOS/macOS. The password is shown once and only its
- * hash is stored, so the profile carries the username but not the password.
+ * Contacts / CardDAV settings: show the sync URL + username and a downloadable
+ * Apple configuration profile for iOS/macOS. Sync uses the ONE app-specific
+ * WebDAV password (users.webdav_password) that also unlocks the Files drive —
+ * set/cleared via WebDavAccessController — so this page only reflects whether
+ * that password is set and links to the shared setup. The profile carries the
+ * username but never the password (only its hash is stored).
  */
 class ContactsController extends Controller
 {
-    public function edit(DavCredentialService $credentials): View
+    public function edit(Request $request): View
     {
-        $credential = $credentials->for(auth()->id());
+        $user = $this->requireUser($request);
         $davUrl = url('/dav/');
 
         return view('settings.contacts.edit', [
-            'credential' => $credential,
             'davUrl' => $davUrl,
-            'qr' => $credential !== null ? $this->qr($davUrl) : null,
+            'username' => $user->email,
+            'hasPassword' => is_string($user->webdav_password) && $user->webdav_password !== '',
+            'qr' => (new SvgWriter)->write(new QrCode($davUrl))->getDataUri(),
         ]);
     }
 
-    public function generate(Request $request, DavCredentialService $credentials): RedirectResponse
-    {
-        $result = $credentials->generate($request->user()->id);
-
-        // Return to the page the request came from (profile or settings).
-        return redirect()->back()
-            ->with('status', __('flash.dav_password_generated'))
-            ->with('dav_username', $result['credential']->username)
-            ->with('dav_password', $result['password']);
-    }
-
     /** Downloadable Apple configuration profile (CardDAV account) for iOS/macOS. */
-    public function profile(Request $request, DavCredentialService $credentials): Response
+    public function profile(Request $request): Response
     {
-        $credential = $credentials->for($request->user()->id);
-        abort_if($credential === null, 404);
-
-        $host = $request->getHost();
-        $plist = $this->mobileconfig($host, $credential->username);
+        $user = $this->requireUser($request);
+        $plist = $this->mobileconfig($request->getHost(), $user->email);
 
         return response($plist, 200, [
             'Content-Type' => 'application/x-apple-aspen-config; charset=utf-8',
@@ -62,17 +47,9 @@ class ContactsController extends Controller
         ]);
     }
 
-    private function qr(string $text): string
-    {
-        $renderer = new ImageRenderer(new RendererStyle(220, 1), new SvgImageBackEnd);
-
-        return (new Writer($renderer))->writeString($text);
-    }
-
     private function mobileconfig(string $host, string $username): string
     {
         $accountUuid = (string) Str::uuid();
-        $calendarUuid = (string) Str::uuid();
         $profileUuid = (string) Str::uuid();
         $u = htmlspecialchars($username, ENT_XML1);
         $h = htmlspecialchars($host, ENT_XML1);
@@ -96,19 +73,6 @@ class ContactsController extends Controller
               <key>CardDAVUseSSL</key><true/>
               <key>CardDAVPort</key><integer>443</integer>
               <key>CardDAVPrincipalURL</key><string>/dav/</string>
-            </dict>
-            <dict>
-              <key>PayloadType</key><string>com.apple.caldav.account</string>
-              <key>PayloadVersion</key><integer>1</integer>
-              <key>PayloadIdentifier</key><string>de.ledgerline.caldav.{$calendarUuid}</string>
-              <key>PayloadUUID</key><string>{$calendarUuid}</string>
-              <key>PayloadDisplayName</key><string>Ledgerline Calendar</string>
-              <key>CalDAVAccountDescription</key><string>Ledgerline</string>
-              <key>CalDAVHostName</key><string>{$h}</string>
-              <key>CalDAVUsername</key><string>{$u}</string>
-              <key>CalDAVUseSSL</key><true/>
-              <key>CalDAVPort</key><integer>443</integer>
-              <key>CalDAVPrincipalURL</key><string>/dav/</string>
             </dict>
           </array>
           <key>PayloadDisplayName</key><string>Ledgerline</string>
