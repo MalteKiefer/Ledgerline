@@ -19,7 +19,7 @@ use Illuminate\Support\Collection;
 class ContactDuplicateFinder
 {
     /**
-     * @return list<array{signature: string, reasons: list<string>, contacts: list<array<string, mixed>>}>
+     * @return list<array{signature: string, reasons: list<string>, contacts: array<int, array<string, mixed>>}>
      */
     public function forUser(int $userId): array
     {
@@ -31,8 +31,9 @@ class ContactDuplicateFinder
 
         // Union-Find over contact ids (UUID strings). PHP arrays key fine by
         // string, so no numeric coercion — that would collapse all UUIDs.
+        /** @var array<string, string> $parent */
         $parent = [];
-        $find = function (string $x) use (&$parent, &$find): string {
+        $find = function (string $x) use (&$parent): string {
             while ($parent[$x] !== $x) {
                 $parent[$x] = $parent[$parent[$x]] ?? $parent[$x];
                 $x = $parent[$x];
@@ -137,21 +138,50 @@ class ContactDuplicateFinder
      */
     private function reasonsFor(Collection $members): array
     {
-        $count = fn (callable $keyer): array => collect($members)
-            ->flatMap($keyer)->filter()->countBy()->filter(fn (int $n): bool => $n > 1)->keys()->all();
+        $emails = [];
+        $phones = [];
+        $names = [];
+        foreach ($members as $c) {
+            $emails[] = array_map(fn (string $e): string => strtolower(trim($e)), $this->values($c->emails));
+            $phones[] = array_map(fn (string $p): string => (string) preg_replace('/\D+/', '', $p), $this->values($c->phones));
+            $names[] = [$this->normalName($c)];
+        }
 
         $reasons = [];
-        if ($count(fn (Contact $c): array => array_map(fn ($e): string => strtolower(trim($e)), $this->values($c->emails))) !== []) {
+        if ($this->hasSharedKey($emails)) {
             $reasons[] = 'email';
         }
-        if ($count(fn (Contact $c): array => array_map(fn ($p): string => (string) preg_replace('/\D+/', '', $p), $this->values($c->phones))) !== []) {
+        if ($this->hasSharedKey($phones)) {
             $reasons[] = 'phone';
         }
-        if ($count(fn (Contact $c): array => [$this->normalName($c)]) !== []) {
+        if ($this->hasSharedKey($names)) {
             $reasons[] = 'name';
         }
 
         return $reasons;
+    }
+
+    /**
+     * True when any non-empty key appears in more than one of the per-contact lists.
+     *
+     * @param  list<array<int, string>>  $keyLists
+     */
+    private function hasSharedKey(array $keyLists): bool
+    {
+        $seen = [];
+        foreach ($keyLists as $keys) {
+            foreach (array_unique($keys) as $k) {
+                if ($k === '') {
+                    continue;
+                }
+                if (isset($seen[$k])) {
+                    return true;
+                }
+                $seen[$k] = true;
+            }
+        }
+
+        return false;
     }
 
     /** @return array<string, mixed> */
@@ -182,7 +212,7 @@ class ContactDuplicateFinder
         $out = [];
         foreach ((array) $items as $item) {
             $value = is_array($item) ? ($item['value'] ?? '') : $item;
-            $value = trim((string) $value);
+            $value = trim(is_scalar($value) ? (string) $value : '');
             if ($value !== '') {
                 $out[] = $value;
             }

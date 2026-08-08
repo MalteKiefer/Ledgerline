@@ -13,8 +13,9 @@ class ContactGroupController extends Controller
 {
     public function store(Request $request): JsonResponse
     {
-        $name = $request->validate(['name' => ['required', 'string', 'max:255']])['name'];
-        $group = ContactGroup::firstOrCreate(['user_id' => $request->user()->id, 'name' => $name]);
+        $request->validate(['name' => ['required', 'string', 'max:255']]);
+        $name = (string) $request->string('name');
+        $group = ContactGroup::firstOrCreate(['user_id' => $this->requireUser($request)->id, 'name' => $name]);
 
         return response()->json(['id' => $group->id], 201);
     }
