@@ -164,8 +164,10 @@
         <v-card-title>{{ t('account.devices_list_heading') }}</v-card-title>
         <v-list>
           <v-list-item v-for="d in p.devices" :key="d.id" :title="d.name" :subtitle="deviceSub(d)">
+            <template #prepend><v-avatar size="34" variant="tonal" :color="d.current ? 'primary' : undefined"><span class="msym" style="font-size:18px">smartphone</span></v-avatar></template>
             <template #append>
-              <v-chip v-if="d.wipe_pending" size="small" color="warning" class="mr-2">wipe</v-chip>
+              <v-chip v-if="d.current" size="x-small" color="primary" variant="tonal" class="mr-2">{{ t('account.sessions_current') }}</v-chip>
+              <v-chip v-if="d.wipeRequested" size="small" color="warning" variant="tonal" class="mr-2">{{ t('account.devices_wipe_pending') }}</v-chip>
               <v-btn variant="text" size="small" :icon="mdiCellphoneRemove" @click="p.wipeDevice(d.id)" />
               <v-btn variant="text" size="small" color="error" :icon="mdiDelete" @click="p.revokeDevice(d.id)" />
             </template>
@@ -333,7 +335,7 @@ onMounted(async () => {
 onUnmounted(() => clearTimeout(pollTimer));
 
 function deviceSub(d: DeviceToken): string {
-  return [d.last_ip, d.version, d.last_used_at].filter(Boolean).join(' · ');
+  return [d.meta, d.version].filter(Boolean).join(' · ');
 }
 
 async function savePref(key: keyof DisplayPreferences) {

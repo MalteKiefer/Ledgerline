@@ -399,7 +399,7 @@ const rows = computed<Row[]>(() => {
   if (view.value === 'favorites') {
     files = files.filter((f) => f.favorite);
   } else {
-    folders = (s.folders as FileFolder[]).filter((fo) => fo.file_folder_id === cwd.value);
+    folders = (s.folders as FileFolder[]).filter((fo) => fo.parent_id === cwd.value);
     files = files.filter((f) => f.file_folder_id === cwd.value);
   }
   files = files.filter(labelMatch);
@@ -415,7 +415,7 @@ const crumbs = computed(() => {
   while (id != null) {
     const fo = (s.folders as FileFolder[]).find((x) => x.id === id);
     if (!fo) break;
-    stack.unshift(fo); id = fo.file_folder_id;
+    stack.unshift(fo); id = fo.parent_id;
   }
   stack.forEach((fo) => chain.push({ title: fo.name, value: fo.id }));
   return chain;

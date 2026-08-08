@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { api, ensureCsrf } from '@spa/api/client';
 
-export interface FileFolder { id: number; name: string; file_folder_id: number | null; version: number }
+export interface FileFolder { id: number; name: string; parent_id: number | null; version: number }
 export interface FileLabel { id: number; name: string; color: string }
 export interface FileEntry {
   id: number; name: string; mime: string; size: number; file_folder_id: number | null;
@@ -43,7 +43,7 @@ export const useFilesStore = defineStore('files', () => {
     return api.get<{ files: FileEntry[]; folders: FileFolder[] }>('/api/v1/files/trash');
   }
   async function createFolder(name: string, parent: number | null) {
-    await api.post('/api/v1/files/folders', { name, file_folder_id: parent });
+    await api.post('/api/v1/files/folders', { name, parent_id: parent });
     await load();
   }
   async function upload(file: File, folder: number | null) {

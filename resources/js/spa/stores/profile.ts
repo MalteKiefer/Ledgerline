@@ -14,11 +14,13 @@ export interface DisplayPreferences {
 export interface DeviceToken {
   id: number;
   name: string;
-  last_used_at: string | null;
-  last_ip: string | null;
+  meta: string;
   version: string | null;
   installId: string | null;
-  wipe_pending?: boolean;
+  syncing?: boolean;
+  syncDetail?: string | null;
+  syncSeen?: string | null;
+  wipeRequested?: boolean;
   current?: boolean;
 }
 
@@ -64,7 +66,8 @@ export const useProfileStore = defineStore('profile', () => {
   }
 
   async function loadDevices() {
-    devices.value = await api.get<DeviceToken[]>('/api/v1/devices');
+    const r = await api.get<{ devices: DeviceToken[] }>('/api/v1/devices');
+    devices.value = r.devices ?? [];
   }
 
   async function revokeDevice(id: number) {
@@ -75,7 +78,7 @@ export const useProfileStore = defineStore('profile', () => {
   async function wipeDevice(id: number) {
     await api.post(`/api/v1/devices/${id}/wipe`);
     const d = devices.value.find((x) => x.id === id);
-    if (d) d.wipe_pending = true;
+    if (d) d.wipeRequested = true;
   }
 
   async function changePassword(current_password: string, password: string, password_confirmation: string) {
