@@ -17,6 +17,7 @@ class ContactGroup extends Model
     use HasUuids;
     use OwnsUserData;
 
+    /** @return BelongsToMany<Contact, $this> */
     public function contacts(): BelongsToMany
     {
         return $this->belongsToMany(Contact::class, 'contact_group', 'group_id', 'contact_id');

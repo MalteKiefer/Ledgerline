@@ -39,7 +39,7 @@ class ContactsController extends Controller
     public function profile(Request $request): Response
     {
         $user = $this->requireUser($request);
-        $plist = $this->mobileconfig($request->getHost(), $user->email);
+        $plist = $this->mobileconfig($request->getHost(), (string) $user->email);
 
         return response($plist, 200, [
             'Content-Type' => 'application/x-apple-aspen-config; charset=utf-8',

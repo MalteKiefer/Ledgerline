@@ -31,6 +31,7 @@ class AddressBook extends Model
         return ['synctoken' => 'integer'];
     }
 
+    /** @return HasMany<Contact, $this> */
     public function contacts(): HasMany
     {
         return $this->hasMany(Contact::class);

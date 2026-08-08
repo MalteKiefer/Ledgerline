@@ -72,7 +72,10 @@ class ContactImporter
 
             try {
                 $rawUid = $card->UID ?? null;
-                $uid = is_scalar($rawUid) && (string) $rawUid !== '' ? (string) $rawUid : (string) Str::uuid();
+                $uid = is_scalar($rawUid) || $rawUid instanceof \Stringable ? trim((string) $rawUid) : '';
+                if ($uid === '') {
+                    $uid = (string) Str::uuid();
+                }
                 $card->remove('VERSION');
                 $card->add('VERSION', '4.0');
                 $card->remove('UID');

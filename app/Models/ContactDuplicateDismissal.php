@@ -14,10 +14,14 @@ use Illuminate\Database\Eloquent\Model;
 #[Fillable(['user_id', 'signature'])]
 class ContactDuplicateDismissal extends Model
 {
-    /** sha1 hex of the group's contact ids (UUID strings), sorted and joined by "-". */
+    /**
+     * sha1 hex of the group's contact ids (UUID strings), sorted and joined by "-".
+     *
+     * @param  array<array-key, mixed>  $contactIds
+     */
     public static function signatureFor(array $contactIds): string
     {
-        $ids = array_map('strval', $contactIds);
+        $ids = array_map(fn (mixed $v): string => is_scalar($v) ? (string) $v : '', $contactIds);
         sort($ids, SORT_STRING);
 
         return sha1(implode('-', $ids));
