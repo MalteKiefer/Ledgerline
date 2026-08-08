@@ -142,6 +142,7 @@
         'projects' => $projects,
         'financeCategories' => $financeCategories,
         'transactions' => $transactions,
+        'standaloneReceipts' => $standaloneReceipts,
      ]))">
 
     {{-- Shared Paperless transfer modal (send a receipt to Paperless) --}}

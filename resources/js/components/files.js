@@ -281,10 +281,34 @@ export default (config = {}, labels = {}, initial = {}) => ({
     downloadFolderZip() { if (this.cwd != null) this._zip({ folder_id: this.cwd }); },
     async openStats() {
         this.stats.open = true;
+        await this._loadStats();
+    },
+    async _loadStats() {
         try { const d = await getJson('/files/stats'); this.stats.used = d.used || 0; this.stats.byType = d.by_type || {}; this.stats.duplicates = d.duplicates || []; }
         catch (e) { this.stats.byType = {}; this.stats.duplicates = []; }
     },
     get statsRows() { return Object.entries(this.stats.byType || {}).map(([k, v]) => ({ type: k, size: v })).sort((a, b) => b.size - a.size); },
+    // Total number of extra (duplicate) copies across all groups (all but one per group).
+    get dupeExtras() { return (this.stats.duplicates || []).reduce((n, g) => n + Math.max(0, g.length - 1), 0); },
+    // Move a single duplicate file to the Papierkorb (soft-delete), then refresh the modal.
+    async trashDupe(id) {
+        await this._track(this._trashFile(id));
+        await this._loadStats();
+    },
+    // Trash the extra copies of one group (keep the first), then refresh.
+    async trashDupeGroup(group) {
+        const extras = (group || []).slice(1);
+        for (const f of extras) await this._trashFile(f.id);
+        await this._loadStats();
+    },
+    // Trash every duplicate copy across all groups (keeping one original each).
+    async trashAllDupes() {
+        if (! await this.$store.confirm.ask(labels.dupesTrashAllConfirm || 'Move all duplicate copies to the trash?')) return;
+        for (const g of (this.stats.duplicates || [])) {
+            for (const f of g.slice(1)) await this._trashFile(f.id);
+        }
+        await this._loadStats();
+    },
 
     // ---- Folder (directory) upload: recreate the tree, then upload each file ----
     async uploadDirectory(fileList) {

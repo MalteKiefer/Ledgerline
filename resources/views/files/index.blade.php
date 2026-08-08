@@ -17,6 +17,7 @@
         uploadUnreadable: @js(__('files.upload_unreadable')),
         types: @js($typeLabels),
         saveFailed: @js(__('files.save_failed')),
+        dupesTrashAllConfirm: @js(__('files.dupes_trash_all_confirm')),
         folderShareEmail: @js(__('files.folder_recipient')),
         folderShareNotFound: @js(__('files.folder_recipient_not_found')),
         folderShareDone: @js(__('files.folder_shared')),
@@ -821,33 +822,68 @@
     <template x-teleport="body">
         <div x-show="stats.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="stats.open = false">
             <div class="absolute inset-0 bg-gray-900/40" @click="stats.open = false"></div>
-            <div class="relative flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
-                <div class="flex items-center justify-between">
-                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.storage') }}</h3>
+            <div class="relative flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+                {{-- Header --}}
+                <div class="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-6 py-4">
+                    <div>
+                        <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.storage') }}</h3>
+                        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400" x-text="'{{ __('files.storage_used_only', ['used' => '__U__']) }}'.replace('__U__', fmtSize(stats.used))"></p>
+                    </div>
                     <x-icon-button name="x-mark" @click="stats.open = false" aria-label="{{ __('files.share_close') }}" />
                 </div>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" x-text="'{{ __('files.storage_used_only', ['used' => '__U__']) }}'.replace('__U__', fmtSize(stats.used))"></p>
-                <div class="mt-4 min-h-0 flex-1 overflow-auto">
-                    <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('files.storage_by_type') }}</h4>
-                    <div class="mt-2 space-y-1">
-                        <template x-for="r in statsRows" :key="r.type">
-                            <div class="flex items-center justify-between gap-3 text-sm">
-                                <span class="text-gray-700 dark:text-gray-300" x-text="typeName(r.type)"></span>
-                                <span class="tabular-nums text-gray-500" x-text="fmtSize(r.size)"></span>
-                            </div>
-                        </template>
-                    </div>
-                    <h4 class="mt-5 text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('files.duplicates') }} <span x-text="'(' + stats.duplicates.length + ')'"></span></h4>
-                    <div class="mt-2 space-y-2">
-                        <template x-for="(g, gi) in stats.duplicates" :key="gi">
-                            <div class="rounded-lg border border-black/[0.06] dark:border-white/10 p-2">
-                                <template x-for="f in g" :key="f.id">
-                                    <div class="flex items-center justify-between gap-2 text-xs"><span class="min-w-0 truncate text-gray-700 dark:text-gray-300" x-text="f.name"></span><span class="shrink-0 tabular-nums text-gray-400" x-text="fmtSize(f.size)"></span></div>
-                                </template>
-                            </div>
-                        </template>
-                        <p x-show="! stats.duplicates.length" x-cloak class="text-xs text-gray-400">{{ __('files.duplicates_none') }}</p>
-                    </div>
+
+                <div class="min-h-0 flex-1 overflow-auto px-6 py-5 space-y-6">
+                    {{-- By type: a labelled bar per category (share of total) --}}
+                    <section>
+                        <h4 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('files.storage_by_type') }}</h4>
+                        <div class="space-y-2">
+                            <template x-for="r in statsRows" :key="r.type">
+                                <div>
+                                    <div class="flex items-center justify-between gap-3 text-sm">
+                                        <span class="text-gray-700 dark:text-gray-300" x-text="typeName(r.type)"></span>
+                                        <span class="tabular-nums text-gray-500 dark:text-gray-400" x-text="fmtSize(r.size)"></span>
+                                    </div>
+                                    <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/10">
+                                        <div class="h-full rounded-full bg-accent" :style="`width:${stats.used ? Math.max(2, Math.round(r.size / stats.used * 100)) : 0}%`"></div>
+                                    </div>
+                                </div>
+                            </template>
+                            <p x-show="! statsRows.length" x-cloak class="text-xs text-gray-400">—</p>
+                        </div>
+                    </section>
+
+                    {{-- Possible duplicates: full path per copy + trash actions --}}
+                    <section>
+                        <div class="mb-2 flex items-center justify-between gap-3">
+                            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                                {{ __('files.duplicates') }} <span class="text-gray-400" x-text="'(' + stats.duplicates.length + ')'"></span>
+                            </h4>
+                            <x-button x-show="dupeExtras > 0" variant="danger" size="sm" icon="trash" @click="trashAllDupes()">
+                                <span x-text="'{{ __('files.dupes_trash_all', ['n' => '__N__']) }}'.replace('__N__', dupeExtras)"></span>
+                            </x-button>
+                        </div>
+                        <div class="space-y-3">
+                            <template x-for="(g, gi) in stats.duplicates" :key="gi">
+                                <div class="rounded-xl border border-black/[0.06] dark:border-white/10 overflow-hidden">
+                                    <div class="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 bg-black/[0.02] dark:bg-white/5 px-3 py-1.5">
+                                        <span class="text-xs text-gray-500 dark:text-gray-400" x-text="fmtSize(g[0].size) + ' · ' + g.length + '×'"></span>
+                                        <button type="button" class="text-xs text-red-600 hover:underline dark:text-red-400" @click="trashDupeGroup(g)">{{ __('files.dupes_trash_group') }}</button>
+                                    </div>
+                                    <div class="divide-y divide-black/[0.04] dark:divide-white/5">
+                                        <template x-for="(f, fi) in g" :key="f.id">
+                                            <div class="flex items-center gap-2 px-3 py-2">
+                                                <x-icon name="document" class="h-4 w-4 shrink-0 text-gray-400" />
+                                                <span class="min-w-0 flex-1 truncate font-mono text-xs text-gray-700 dark:text-gray-300" :title="f.path" x-text="f.path"></span>
+                                                <span x-show="fi === 0" class="shrink-0 rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400">{{ __('files.dupes_keep') }}</span>
+                                                <x-icon-button name="trash" tone="red" size="sm" @click="trashDupe(f.id)" title="{{ __('files.dupes_trash_one') }}" aria-label="{{ __('files.dupes_trash_one') }}" />
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                            <p x-show="! stats.duplicates.length" x-cloak class="py-6 text-center text-xs text-gray-400">{{ __('files.duplicates_none') }}</p>
+                        </div>
+                    </section>
                 </div>
             </div>
         </div>
