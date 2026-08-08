@@ -44,14 +44,14 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
+          cache: yarn
 
-      - name: npm audit (runtime deps)
+      - name: yarn audit (runtime deps)
         run: |
-          npm ci
+          yarn install --frozen-lockfile --non-interactive
           # Blocking, like composer audit: a runtime advisory fails the build
           # (project canon — a red audit is a release blocker).
-          npm audit --omit=dev --audit-level=moderate
+          yarn audit --level moderate --groups dependencies
 
       # CycloneDX SBOMs (one per build, uploaded as artifacts). Complements the
       # SPDX SBOM emitted by the trivy job. Composer plugin + npm tool pinned.
@@ -59,9 +59,14 @@ jobs:
         if: always()
         run: composer CycloneDX:make-sbom --output-format=JSON --output-file=sbom.composer.cdx.json --spec-version=1.6
 
-      - name: Generate SBOM (CycloneDX, npm)
+      - name: Generate SBOM (CycloneDX, JS deps)
         if: always()
-        run: npx --yes @cyclonedx/cyclonedx-npm@6.0.0 --output-format JSON --output-file sbom.npm.cdx.json
+        # cyclonedx-npm reads a package-lock; the project uses Yarn, so synthesize
+        # a lock from package.json (no install) just for the SBOM. Artifact-only,
+        # non-blocking.
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund || true
+          npx --yes @cyclonedx/cyclonedx-npm@6.0.0 --output-format JSON --output-file sbom.npm.cdx.json || true
 
       - name: Upload CycloneDX SBOM artifacts
         if: always()

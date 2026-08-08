@@ -33,6 +33,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // middleware preserves.
         $middleware->api(append: [SecurityHeaders::class]);
 
+        // Same-origin Vue SPA authenticates via Sanctum's cookie/session flow
+        // (no token in JS): mark first-party stateful requests so /api/v1 accepts
+        // the session cookie + XSRF. Bearer tokens (mobile/CLI) keep working.
+        $middleware->statefulApi();
+
         // Sanctum ability guards for the token-scoped mobile/CLI API.
         $middleware->alias([
             'abilities' => CheckAbilities::class,

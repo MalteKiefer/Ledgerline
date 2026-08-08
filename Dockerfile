@@ -15,10 +15,10 @@ ARG PHP_BASE=serversideup/php:8.5-fpm-nginx-alpine@sha256:13af81f6fb5fbb9e26c6a7
 # --- Front-end assets (Vite build) -----------------------------------------
 FROM node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS assets
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+COPY package.json yarn.lock .yarnrc ./
+RUN yarn install --frozen-lockfile --non-interactive
 COPY . .
-RUN npm run build
+RUN yarn build
 # Self-host the OCR (tesseract.js) worker + WASM core + eng/deu language data so
 # nothing is fetched from a CDN at runtime (our CSP is worker-src/connect-src
 # 'self'). Downloads the language data over the build network.

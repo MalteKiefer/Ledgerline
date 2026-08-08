@@ -374,3 +374,9 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->middleware('throttle:30,1')->name('paperless.terms.create');
     Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->middleware('throttle:20,1')->name('paperless.documents');
 });
+
+// Vue 3 + Vuetify SPA shell (Sanctum cookie auth; vue-router owns /spa/*).
+// Mounted under /spa during the migration so the live Blade app at / stays
+// untouched until the P7 cutover. Public: the shell itself needs no auth —
+// the SPA router redirects to its own /spa/login when /api/v1/me is 401.
+Route::get('/spa/{any?}', fn () => view('spa'))->where('any', '.*')->name('spa');
