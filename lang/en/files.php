@@ -247,4 +247,7 @@ return [
     'dupes_trash_group' => 'Trash duplicates',
     'dupes_trash_all' => 'Trash all duplicates (:n)',
     'dupes_trash_all_confirm' => 'Move all duplicate copies to the trash? One original per group is kept.',
+    'dupes_trashing' => 'Moving to trash…',
+    'dupes_trashed' => ':n moved to the trash.',
+    'dupes_trash_failed' => ':n could not be deleted.',
 ];
