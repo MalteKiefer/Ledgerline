@@ -514,7 +514,7 @@
                             class="absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-gray-900/50 p-2 text-white hover:bg-gray-900/70"><x-icon name="chevron-right" class="h-5 w-5" /></button>
                     </div>
                     <template x-if="viewer.kind === 'pdf'">
-                        <iframe :src="viewer.src" class="h-[75vh] w-full rounded"></iframe>
+                        <iframe :src="viewer.src || 'about:blank'" class="h-[75vh] w-full rounded"></iframe>
                     </template>
                     <template x-if="viewer.kind === 'video'">
                         <video :src="viewer.src" controls class="mx-auto max-h-[75vh] w-full rounded bg-black"></video>
