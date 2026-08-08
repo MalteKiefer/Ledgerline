@@ -10,6 +10,7 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: '', name: 'home', component: () => import('@spa/views/Home.vue') },
       { path: 'profile', name: 'profile', component: () => import('@spa/views/Profile.vue') },
+      { path: 'files', name: 'files', component: () => import('@spa/views/Files.vue') },
       {
         path: 'settings',
         component: () => import('@spa/views/settings/Settings.vue'),
