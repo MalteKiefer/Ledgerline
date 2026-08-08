@@ -9,7 +9,7 @@
 
 @php
     // Canonical icon-only button (row actions, toolbars, close/copy/menu triggers).
-    // Replaces the dozens of hand-rolled `<button class="rounded p-1.5 text-gray-500
+    // Replaces the dozens of hand-rolled `<button class="rounded p-1.5 text-md-on-surface-var
     // hover:bg-accent/5 …">` across the app so every icon action looks and behaves
     // the same. Touch-safe min target, iOS radius. Pass an aria-label via attributes.
     $base = 'inline-flex items-center justify-center rounded-lg transition disabled:opacity-50';
@@ -20,7 +20,7 @@
     ];
     $iconSizes = ['sm' => 'h-4 w-4', 'md' => 'h-5 w-5', 'lg' => 'h-5 w-5'];
     $tones = [
-        'gray' => 'text-gray-500 hover:bg-accent/5 hover:text-accent dark:text-gray-400',
+        'gray' => 'text-md-on-surface-var hover:bg-accent/5 hover:text-accent dark:text-md-on-surface-var',
         'accent' => 'text-accent hover:bg-accent/10',
         'red' => 'text-red-600 hover:bg-red-500/10 dark:text-red-400',
     ];

@@ -21,16 +21,16 @@
 
         @if (session('invite_url'))
             <div class="mt-4 ll-card border-accent/30" x-data="{ copied: false, url: @js(session('invite_url')) }">
-                <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ __('settings.users_invite_ready') }}</p>
+                <p class="text-sm font-medium text-md-on-surface dark:text-md-on-surface">{{ __('settings.users_invite_ready') }}</p>
                 @if (session('invite_sent'))<p class="mt-0.5 text-xs text-green-600 dark:text-green-400">{{ __('settings.users_invite_emailed') }}</p>@endif
                 <div class="mt-2 flex items-center gap-2">
-                    <input type="text" readonly :value="url" class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#1c1c1e] px-3 py-2 text-xs text-gray-700 dark:text-gray-300" onclick="this.select()">
+                    <input type="text" readonly :value="url" class="w-full rounded-lg border border-md-outline-variant dark:border-md-outline-variant bg-md-surface-2 dark:bg-md-surface px-3 py-2 text-xs text-md-on-surface-var dark:text-md-on-surface-var" onclick="this.select()">
                     <x-button variant="secondary" size="sm" class="shrink-0" @click="navigator.clipboard.writeText(url); copied = true; setTimeout(() => copied = false, 1500)">
                         <span x-show="! copied">{{ __('settings.users_invite_copy') }}</span>
                         <span x-show="copied" x-cloak>{{ __('settings.users_invite_copied') }}</span>
                     </x-button>
                 </div>
-                <p class="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">{{ __('settings.users_invite_hint') }}</p>
+                <p class="mt-1.5 text-[11px] text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.users_invite_hint') }}</p>
             </div>
         @endif
 
@@ -39,13 +39,13 @@
             <form method="POST" action="{{ route('settings.registration') }}" class="flex items-center justify-between gap-3">
                 @csrf
                 <div>
-                    <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ __('settings.users_registration') }}</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ __('settings.users_registration_hint') }}</p>
+                    <p class="text-sm font-medium text-md-on-surface dark:text-md-on-surface">{{ __('settings.users_registration') }}</p>
+                    <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.users_registration_hint') }}</p>
                 </div>
                 <label class="inline-flex items-center gap-2 text-sm">
                     <input type="hidden" name="allow_registration" value="0">
-                    <input type="checkbox" name="allow_registration" value="1" @checked($settings->allow_registration) onchange="this.form.submit()" class="rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-accent">
-                    <span class="text-gray-600 dark:text-gray-300">{{ $settings->allow_registration ? __('settings.users_registration_on') : __('settings.users_registration_off') }}</span>
+                    <input type="checkbox" name="allow_registration" value="1" @checked($settings->allow_registration) onchange="this.form.submit()" class="rounded border-md-outline-variant dark:border-md-outline-variant text-accent focus:ring-accent">
+                    <span class="text-md-on-surface-var dark:text-md-on-surface-var">{{ $settings->allow_registration ? __('settings.users_registration_on') : __('settings.users_registration_off') }}</span>
                 </label>
             </form>
         </div>
@@ -53,8 +53,8 @@
         {{-- Create a user --}}
         <div class="mt-5 ll-card">
             <button type="button" @click="open = (open === 'new' ? null : 'new')" class="flex w-full items-center justify-between">
-                <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.users_create') }}</h2>
-                <x-icon name="chevron-right" class="h-4 w-4 text-gray-400 transition" ::class="open === 'new' ? 'rotate-90' : ''" />
+                <h2 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('settings.users_create') }}</h2>
+                <x-icon name="chevron-right" class="h-4 w-4 text-md-on-surface-var transition" ::class="open === 'new' ? 'rotate-90' : ''" />
             </button>
             <form x-show="open === 'new'" x-cloak method="POST" action="{{ route('settings.users.store') }}" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 @csrf
@@ -78,13 +78,13 @@
                             </span>
                         @endif
                         <div class="min-w-0 flex-1">
-                            <div class="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+                            <div class="flex items-center gap-2 text-sm font-medium text-md-on-surface dark:text-md-on-surface">
                                 <span class="truncate">{{ $u->name }}</span>
                                 <x-badge :variant="$u->role === 'admin' ? 'accent' : 'gray'">{{ $u->role === 'admin' ? __('settings.users_role_admin') : __('settings.users_role_user') }}</x-badge>
                                 @if ($u->two_factor_confirmed_at)<span class="shrink-0 text-[11px] text-green-600 dark:text-green-400">{{ __('settings.users_2fa') }}</span>@endif
                                 @unless ($u->email_verified_at)<span class="shrink-0 text-[11px] text-amber-600 dark:text-amber-400">{{ __('settings.users_unverified') }}</span>@endunless
                             </div>
-                            <div class="truncate text-xs text-gray-500 dark:text-gray-400">{{ $u->email }}</div>
+                            <div class="truncate text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ $u->email }}</div>
                             @if ($u->memberGroups->isNotEmpty())
                                 <div class="mt-1 flex flex-wrap gap-1">
                                     @foreach ($u->memberGroups as $g)
@@ -92,7 +92,7 @@
                                     @endforeach
                                 </div>
                             @endif
-                            <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                            <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-md-on-surface-var dark:text-md-on-surface-var">
                                 <span class="inline-flex items-center gap-1"><x-icon name="clock" class="h-3 w-3" />{{ $u->last_login_at ? $u->last_login_at->diffForHumans() : __('settings.users_never_logged_in') }}</span>
                             </div>
                         </div>
@@ -111,8 +111,8 @@
                         <form method="POST" action="{{ route('settings.users.invite', $u) }}" class="mt-3 flex flex-wrap items-end gap-2 border-t border-black/[0.06] dark:border-white/10 pt-3">
                             @csrf
                             <div>
-                                <label class="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">{{ __('settings.users_invite_validity') }}</label>
-                                <select name="ttl_hours" class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                                <label class="block text-[11px] font-medium text-md-on-surface-var dark:text-md-on-surface-var mb-1">{{ __('settings.users_invite_validity') }}</label>
+                                <select name="ttl_hours" class="rounded-lg border border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface px-2 py-1.5 text-xs text-md-on-surface dark:text-md-on-surface focus:border-accent focus:ring-accent">
                                     <option value="1">{{ __('settings.users_invite_ttl_1h') }}</option>
                                     <option value="24" selected>{{ __('settings.users_invite_ttl_24h') }}</option>
                                     <option value="168">{{ __('settings.users_invite_ttl_7d') }}</option>

@@ -48,8 +48,8 @@
                 <span x-show="!has" class="flex h-full w-full items-center justify-center text-2xl font-semibold text-accent">{{ strtoupper(mb_substr($user->name ?: $user->email, 0, 1)) }}</span>
             </div>
             <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ __('pages.profile.avatar') }}</p>
-                <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ __('pages.profile.avatar_upload_hint') }}</p>
+                <p class="text-sm font-medium text-md-on-surface dark:text-md-on-surface">{{ __('pages.profile.avatar') }}</p>
+                <p class="mt-0.5 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('pages.profile.avatar_upload_hint') }}</p>
                 <x-alert variant="error" x-show="error" x-cloak x-text="error" class="mt-2 !px-2.5 !py-1.5 text-xs" />
                 <div class="mt-2 flex flex-wrap gap-2">
                     <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-accent px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:opacity-90" :class="busy ? 'pointer-events-none opacity-60' : ''">
@@ -75,11 +75,11 @@
             @foreach ($rows as $r)
                 <div class="flex items-center gap-3.5 px-4 py-3">
                     <span class="ll-chip h-8 w-8 shrink-0" style="--chip: {{ $r['tint'] }}"><x-icon name="{{ $r['icon'] }}" class="h-4 w-4" /></span>
-                    <span class="text-sm text-gray-500 dark:text-gray-400">{{ $r['label'] }}</span>
-                    <span class="ml-auto min-w-0 truncate text-right text-sm {{ ($r['mono'] ?? false) ? 'font-mono text-xs' : '' }} text-gray-900 dark:text-gray-100">{{ $r['value'] }}</span>
+                    <span class="text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ $r['label'] }}</span>
+                    <span class="ml-auto min-w-0 truncate text-right text-sm {{ ($r['mono'] ?? false) ? 'font-mono text-xs' : '' }} text-md-on-surface dark:text-md-on-surface">{{ $r['value'] }}</span>
                 </div>
             @endforeach
         </div>
-        <p class="mt-3 px-1 text-xs text-gray-400 dark:text-gray-500">{{ __('pages.profile.subtitle') }}</p>
+        <p class="mt-3 px-1 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('pages.profile.subtitle') }}</p>
     </div>
 </x-layouts.app>

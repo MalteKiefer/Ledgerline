@@ -44,7 +44,7 @@
                     <x-icon name="chevron-down" class="h-4 w-4 text-md-on-surface-var transition" x-bind:class="open && 'rotate-180'" />
                 </button>
                 <div x-show="open" x-cloak x-transition.origin.top.right @click.outside="open = false"
-                    class="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-2xl border border-md-outline-variant bg-md-surface shadow-xl shadow-black/10">
+                    class="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-md-outline-variant bg-md-surface shadow-xl shadow-black/10">
                     {{-- Account header --}}
                     <div class="flex items-center gap-3 px-4 py-3">
                         <x-user-avatar :user="$currentUser" size="h-10 w-10" />

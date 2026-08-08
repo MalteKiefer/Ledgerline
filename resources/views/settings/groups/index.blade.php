@@ -9,8 +9,8 @@
         {{-- Create a group --}}
         <div class="mt-5 ll-card">
             <button type="button" @click="open = (open === 'new' ? null : 'new')" class="flex w-full items-center justify-between">
-                <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.groups_create') }}</h2>
-                <x-icon name="chevron-right" class="h-4 w-4 text-gray-400 transition" ::class="open === 'new' ? 'rotate-90' : ''" />
+                <h2 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('settings.groups_create') }}</h2>
+                <x-icon name="chevron-right" class="h-4 w-4 text-md-on-surface-var transition" ::class="open === 'new' ? 'rotate-90' : ''" />
             </button>
             <form x-show="open === 'new'" x-cloak method="POST" action="{{ route('settings.groups.store') }}" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 @csrf
@@ -26,11 +26,11 @@
                     <div class="flex items-center gap-3">
                         <span class="ll-chip flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style="background:#3fae9f"><x-icon name="user-group" class="h-4 w-4 text-white" /></span>
                         <div class="min-w-0 flex-1">
-                            <div class="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+                            <div class="flex items-center gap-2 text-sm font-medium text-md-on-surface dark:text-md-on-surface">
                                 <span class="truncate">{{ $g->name }}</span>
                                 @if ($g->shareable)<x-badge variant="accent">{{ __('settings.groups_shareable') }}</x-badge>@endif
                             </div>
-                            <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                            <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-md-on-surface-var dark:text-md-on-surface-var">
                                 <span>{{ trans_choice('settings.groups_member_count', $g->members_count, ['count' => $g->members_count]) }}</span>
                                 @if ($g->max_connected_devices)<span>{{ __('settings.users_devices') }}: {{ $g->max_connected_devices }}</span>@endif
                             </div>
@@ -53,7 +53,7 @@
                     </div>
                 </div>
             @empty
-                <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('settings.groups_empty') }}</p>
+                <p class="text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.groups_empty') }}</p>
             @endforelse
         </div>
     </div>

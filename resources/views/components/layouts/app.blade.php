@@ -23,9 +23,9 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <link rel="stylesheet" href="{{ asset('fonts/fonts.css') }}">
 </head>
-<body class="h-full bg-gray-100 text-gray-900 antialiased dark:bg-gray-950 dark:text-gray-100" x-data>
+<body class="h-full bg-md-surface-2 text-md-on-surface antialiased dark:bg-gray-950 dark:text-md-on-surface" x-data>
     <div class="min-h-full">
-        <header class="border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+        <header class="border-b border-md-outline-variant bg-white dark:border-md-outline-variant dark:bg-md-surface-2">
             {{-- Desktop persistent top bar --}}
             <x-nav />
 
@@ -35,16 +35,16 @@
                 <div class="flex items-center gap-1">
                     @auth
                         <button type="button" @click="$store.nav.toggleNav()" aria-label="{{ __('pages.menu.toggle_menu') }}"
-                            class="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800">
+                            class="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-md-on-surface-var hover:bg-md-surface-2 dark:text-md-on-surface-var dark:hover:bg-gray-800">
                             <x-icon name="bars-3" class="h-6 w-6" />
                         </button>
                     @endauth
-                    <a href="{{ route('finance.index') }}" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Ledgerline</a>
+                    <a href="{{ route('finance.index') }}" class="text-lg font-semibold text-md-on-surface dark:text-md-on-surface">Ledgerline</a>
                 </div>
                 @auth
                     <div class="flex items-center gap-1">
                         <div class="relative" x-data="notificationBell({ now: @js(__('common.now')) })" @click.outside="open = false">
-                            <button type="button" @click="toggle()" class="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800" :aria-label="'{{ __('notifications.title') }}'" title="{{ __('notifications.title') }}">
+                            <button type="button" @click="toggle()" class="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-md-on-surface-var hover:bg-md-surface-2 dark:text-md-on-surface-var dark:hover:bg-gray-800" :aria-label="'{{ __('notifications.title') }}'" title="{{ __('notifications.title') }}">
                                 <x-icon name="bell" class="h-5 w-5" />
                                 <span x-show="unread > 0" x-cloak x-text="unread > 99 ? '99+' : unread"
                                     class="absolute right-1 top-1 min-w-[1.1rem] rounded-full bg-red-500 px-1 text-center text-[10px] font-semibold leading-4 text-white"></span>
@@ -90,7 +90,7 @@
             {{ $slot }}
         </main>
 
-        <footer class="mx-auto w-full max-w-[1700px] px-4 py-6 text-center text-xs text-gray-400 dark:text-gray-500 sm:w-[92%] sm:px-6">
+        <footer class="mx-auto w-full max-w-[1700px] px-4 py-6 text-center text-xs text-md-on-surface-var dark:text-md-on-surface-var sm:w-[92%] sm:px-6">
             Ledgerline v{{ config('app.version') }}
         </footer>
     </div>
@@ -102,18 +102,18 @@
     <div x-data x-show="$store.confirm.open" x-cloak class="fixed inset-0 z-[1700] flex items-center justify-center overflow-y-auto p-4"
         role="dialog" aria-modal="true" @keydown.escape.window="$store.confirm.no()">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="$store.confirm.no()"></div>
-        <div class="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl ring-1 ring-black/[0.06] dark:bg-[#1c1c1e] dark:ring-white/10"
+        <div class="relative w-full max-w-sm rounded-xl bg-white p-5 shadow-xl ring-1 ring-black/[0.06] dark:bg-md-surface dark:ring-white/10"
             x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
             @keydown.enter.stop="$store.confirm.isPrompt && $store.confirm.input.trim() && $store.confirm.yes()">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('common.confirm_title') }}</h3>
-            <p x-show="$store.confirm.message" class="mt-2 text-sm text-gray-600 dark:text-gray-400" x-text="$store.confirm.message || '{{ __('common.confirm_message') }}'"></p>
+            <h3 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('common.confirm_title') }}</h3>
+            <p x-show="$store.confirm.message" class="mt-2 text-sm text-md-on-surface-var dark:text-md-on-surface-var" x-text="$store.confirm.message || '{{ __('common.confirm_message') }}'"></p>
             <template x-if="$store.confirm.isPrompt">
                 <input type="text" x-model="$store.confirm.input" :placeholder="$store.confirm.placeholder"
                     x-effect="if ($store.confirm.open && $store.confirm.isPrompt) $nextTick(() => $el.focus())"
-                    class="mt-3 w-full rounded-xl border-gray-200 bg-white py-2 px-3 text-sm shadow-sm focus:border-accent focus:ring-accent dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
+                    class="mt-3 w-full rounded-xl border-md-outline-variant bg-white py-2 px-3 text-sm shadow-sm focus:border-accent focus:ring-accent dark:border-md-outline-variant dark:bg-md-surface-2 dark:text-md-on-surface">
             </template>
             <div class="mt-5 flex justify-end gap-2">
-                <button type="button" @click="$store.confirm.no()" class="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-accent hover:text-accent hover:bg-accent/5 dark:border-gray-700 dark:text-gray-300">{{ __('common.cancel') }}</button>
+                <button type="button" @click="$store.confirm.no()" class="rounded-xl border border-md-outline-variant px-4 py-2 text-sm font-medium text-md-on-surface-var transition hover:border-accent hover:text-accent hover:bg-accent/5 dark:border-md-outline-variant dark:text-md-on-surface-var">{{ __('common.cancel') }}</button>
                 <button type="button" @click="$store.confirm.yes()" :disabled="$store.confirm.isPrompt && ! $store.confirm.input.trim()"
                     :class="$store.confirm.isPrompt ? 'll-accent shadow-sm shadow-accent/30 hover:brightness-105' : 'bg-red-600 hover:bg-red-700'"
                     class="rounded-xl px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50">
@@ -126,10 +126,10 @@
     @auth
         <div x-data="toastHub({})" class="fixed bottom-4 right-4 z-[2000] space-y-2" x-cloak>
             <template x-for="t in items" :key="t.id">
-                <div class="flex items-center gap-3 rounded-2xl bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
+                <div class="flex items-center gap-3 rounded-xl bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
                     <span x-text="t.message"></span>
                     <template x-if="t.url"><a :href="t.url" class="font-medium underline" x-text="t.linkLabel"></a></template>
-                    <button type="button" @click="dismiss(t.id)" class="text-gray-400 hover:text-white" aria-label="{{ __('common.close') }}"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                    <button type="button" @click="dismiss(t.id)" class="text-md-on-surface-var hover:text-white" aria-label="{{ __('common.close') }}"><x-icon name="x-mark" class="h-4 w-4" /></button>
                 </div>
             </template>
         </div>
@@ -137,10 +137,10 @@
         {{-- Shared square-crop modal (avatar upload). window.llCrop(blob) resolves to a JPEG Uint8Array. --}}
         <div x-data="cropModal()" x-show="open" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" @keydown.escape.window="cancel()">
             <div class="absolute inset-0 bg-gray-900/60" @click="cancel()"></div>
-            <div class="relative w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 p-4 shadow-xl">
-                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('pages.profile.crop_title') }}</h3>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('pages.profile.crop_hint') }}</p>
-                <div class="mx-auto mt-3 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 select-none touch-none"
+            <div class="relative w-full max-w-sm rounded-xl bg-white dark:bg-md-surface-2 p-4 shadow-xl">
+                <h3 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('pages.profile.crop_title') }}</h3>
+                <p class="mt-1 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('pages.profile.crop_hint') }}</p>
+                <div class="mx-auto mt-3 overflow-hidden rounded-full bg-md-surface-2 dark:bg-md-surface-2 select-none touch-none"
                      style="width:300px;height:300px;position:relative;cursor:grab"
                      @pointerdown="startDrag($event); $event.target.setPointerCapture?.($event.pointerId)" @pointermove="onDrag($event)" @pointerup="endDrag()" @pointercancel="endDrag()">
                     <img :src="url" :style="'position:absolute;left:0;top:0;max-width:none;'+imgStyle()" draggable="false" alt="">

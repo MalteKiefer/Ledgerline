@@ -5,7 +5,7 @@
     $base = 'flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition';
     $tone = $danger
         ? 'border-t border-black/[0.06] dark:border-white/10 text-red-600 dark:text-red-400 hover:bg-red-500/10'
-        : 'text-gray-700 dark:text-gray-300 hover:bg-accent/5 hover:text-accent';
+        : 'text-md-on-surface-var dark:text-md-on-surface-var hover:bg-accent/5 hover:text-accent';
 @endphp
 @if ($href)
     <a href="{{ $href }}" {{ $attributes->merge(['class' => $base.' '.$tone]) }}>
