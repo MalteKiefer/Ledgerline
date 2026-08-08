@@ -111,7 +111,7 @@ final class SecurityHeaders
             // tiles, so scope to that host instead of a blanket 'https:' — this
             // closes the "any https host" exfil channel the backstop is meant to
             // contain while keeping the maps working.
-            "img-src 'self' data: blob: https://*.tile.openstreetmap.org",
+            "img-src 'self' data: blob:",
             "font-src 'self' data:",
             // blob: for client-decrypted video/audio; no remote media origin.
             "media-src 'self' blob:",

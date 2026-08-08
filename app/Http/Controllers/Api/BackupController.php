@@ -16,6 +16,8 @@ use App\Services\Backup\ArchiveCipher;
 use App\Services\Backup\BackupDestinationFactory;
 use App\Services\Backup\BackupManager;
 use App\Services\Backup\BackupVerifier;
+use App\Support\DiskTempFile;
+use App\Support\Redactor;
 use Cron\CronExpression;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -358,47 +360,34 @@ class BackupController extends Controller
         $encPath = $this->manager->archiveIn($fs, (string) $run->filename, $request->string('source')->value());
         abort_unless($encPath !== null && str_ends_with($encPath, '.enc'), 404);
 
-        $enc = tempnam(sys_get_temp_dir(), 'llbenc');
-        $dec = tempnam(sys_get_temp_dir(), 'llbdec');
-
-        if ($enc === false || $dec === false) {
-            @unlink((string) $enc);
-            @unlink((string) $dec);
-            abort(500);
-        }
+        // RAII temp handles — the decrypted plaintext dump (full financial PII) is
+        // unlinked even on throw/abort/client-disconnect; $decHandle is captured by
+        // the stream closure so it survives until streaming completes, then destructs.
+        $encHandle = DiskTempFile::create('llbenc');
+        $decHandle = DiskTempFile::create('llbdec');
 
         $stream = $fs->readStream($encPath);
-        if ($stream === null) {
-            @unlink($enc);
-            @unlink($dec);
-            abort(404);
-        }
+        abort_if($stream === null, 404);
 
-        $out = fopen($enc, 'w');
+        $out = fopen($encHandle->path(), 'w');
         if ($out === false) {
             fclose($stream);
-            @unlink($enc);
-            @unlink($dec);
-            throw new \RuntimeException("Cannot open staging file for backup decryption: {$enc}.");
+            throw new \RuntimeException('Cannot open staging file for backup decryption.');
         }
         stream_copy_to_stream($stream, $out);
         fclose($out);
         fclose($stream);
 
         try {
-            $cipher->decryptFile($enc, $dec, $passphrase);
+            $cipher->decryptFile($encHandle->path(), $decHandle->path(), $passphrase);
         } catch (\Throwable) {
-            @unlink($enc);
-            @unlink($dec);
             abort(422, 'Wrong passphrase or corrupt archive.');
         }
-        @unlink($enc);
 
         $name = preg_replace('/\.enc$/', '', basename($encPath)) ?: 'backup';
 
-        return response()->streamDownload(function () use ($dec): void {
-            readfile($dec);
-            @unlink($dec);
+        return response()->streamDownload(function () use ($decHandle): void {
+            readfile($decHandle->path());
         }, $name, ['Content-Type' => 'application/octet-stream']);
     }
 
@@ -618,7 +607,8 @@ class BackupController extends Controller
     {
         $lines = [];
         for ($cur = $e; $cur !== null; $cur = $cur->getPrevious()) {
-            $lines[] = class_basename($cur).': '.$cur->getMessage();
+            // Redact credentials a driver may echo into its error before returning.
+            $lines[] = class_basename($cur).': '.Redactor::redact($cur->getMessage());
         }
 
         return implode("\n", array_unique($lines));

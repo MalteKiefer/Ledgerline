@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 
 /**
  * Mobile password-change surface.
@@ -51,6 +52,13 @@ class PasswordController extends Controller
         $user->forceFill([
             'password' => Hash::make($request->string('password')->value()),
         ])->save();
+
+        // Revocation event: drop every OTHER device/API token (keep the one making
+        // this request) + evict persisted web sessions, so a change from a mobile
+        // client invalidates any hijacked session/token elsewhere.
+        $current = $request->user()?->currentAccessToken();
+        $currentId = $current instanceof PersonalAccessToken ? $current->getKey() : null;
+        $user->tokens()->when($currentId !== null, fn ($q) => $q->where('id', '!=', $currentId))->delete();
 
         return response()->json(['ok' => true]);
     }

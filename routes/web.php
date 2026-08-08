@@ -50,13 +50,13 @@ Route::get('/metrics', [MetricsController::class, 'index'])->middleware('throttl
 // Mail-independent invite / password-reset links: public consumption. The token
 // is a hashed, single-use, expiring secret in the URL; the route is throttled and
 // verifies it in constant time. Consuming it sets the user's password.
-Route::get('/invite/{invite}/{token}', [InviteLinkController::class, 'show'])->middleware('throttle:20,1')->name('invite.show');
-Route::post('/invite/{invite}/{token}', [InviteLinkController::class, 'store'])->middleware('throttle:10,1')->name('invite.store');
+Route::get('/invite/{invite}/{token}', [InviteLinkController::class, 'show'])->middleware('throttle:invite')->name('invite.show');
+Route::post('/invite/{invite}/{token}', [InviteLinkController::class, 'store'])->middleware('throttle:invite')->name('invite.store');
 
 // Public, unauthenticated plaintext file-share links (optional password gate).
 Route::prefix('file-share/{token}')->name('public.file-share.')->group(function (): void {
     Route::get('/', [PublicFileShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
-    Route::post('/unlock', [PublicFileShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
+    Route::post('/unlock', [PublicFileShareController::class, 'unlock'])->middleware('throttle:share-unlock')->name('unlock');
     Route::get('/manifest', [PublicFileShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
     Route::get('/file/{file}/raw', [PublicFileShareController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('file.raw');
 });
@@ -68,7 +68,7 @@ Route::match(
     ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD', 'PROPFIND', 'PROPPATCH', 'MKCOL', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'REPORT'],
     '/dav/{path?}',
     WebDavController::class
-)->where('path', '.*')->name('dav');
+)->where('path', '.*')->middleware('throttle:dav')->name('dav');
 
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {

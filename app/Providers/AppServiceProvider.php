@@ -55,6 +55,19 @@ class AppServiceProvider extends ServiceProvider
         // pairs a handful of devices by hand.
         RateLimiter::for('auth-pair', fn (Request $request) => Limit::perMinute(30)->by($request->ip()));
 
+        // Security-sensitive gates that must stay HARD regardless of the LAN
+        // convenience THROTTLE_MULTIPLIER. Named limiters are string signatures,
+        // so ScaledThrottleRequests never scales them (it only scales inline
+        // numeric limits). These guard UNAUTHENTICATED credential-guessing:
+        //   - share-unlock: the Argon2id password gate on a public file-share link
+        //   - invite:       consuming/showing a mail-independent invite (sets a password)
+        RateLimiter::for('share-unlock', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
+        RateLimiter::for('invite', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
+        // WebDAV: each failed HTTP-Basic attempt runs an Argon2id verify and clients
+        // resend on every request, so cap per-IP to bound brute-force + CPU DoS.
+        // Named (not scaled) — legit clients browse well under this.
+        RateLimiter::for('dav', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
+
         $this->applySettingOverrides();
         $this->applyMailSettings();
 

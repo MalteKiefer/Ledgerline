@@ -7,8 +7,11 @@ namespace App\Dav;
 use App\Models\FileEntry;
 use App\Models\FileVersion;
 use App\Support\BlobStore;
+use App\Support\FilesUsage;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Sabre\DAV\Exception\InsufficientStorage;
 
 /**
  * Shared blob/versioning helpers for the WebDAV nodes — the same rules as
@@ -39,6 +42,28 @@ class DavStorage
         }
 
         return [$path, $size, $sha];
+    }
+
+    /**
+     * Enforce the owner's storage quota for a WebDAV write (parity with the HTTP
+     * upload's 413). Deletes the just-written blob and throws 507 when over.
+     * quota_mb <= 0 means unlimited.
+     */
+    public static function assertWithinQuota(int $justWrittenSize, string $blobPath): void
+    {
+        $cfg = config('files.quota_mb', 0);
+        $quotaMb = is_numeric($cfg) ? (int) $cfg : 0;
+        if ($quotaMb <= 0) {
+            return; // unlimited
+        }
+        $uid = (int) (Auth::id() ?? 0);
+        $used = $uid > 0 ? FilesUsage::forUser($uid) : 0;
+        // `used` already includes the blob we just wrote (its row isn't saved yet,
+        // but FilesUsage sums file rows — so subtract nothing; compare used vs cap).
+        if ($used + $justWrittenSize > $quotaMb * 1024 * 1024) {
+            BlobStore::disk()->delete($blobPath);
+            throw new InsufficientStorage('Storage quota exceeded.');
+        }
     }
 
     /** Archive a file's current bytes as a version and prune beyond the keep cap. */

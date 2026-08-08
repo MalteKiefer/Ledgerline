@@ -1,8 +1,8 @@
 // Files module — plaintext-relational (pivot). No vault, no sealed store, no
 // per-blob crypto: the browser talks to the per-row REST endpoints (shared with
 // the mobile API) and the file bytes are plaintext, so a raw URL is directly
-// usable in <img>/<iframe>/<video> and downloads. Personal files only — the
-// cross-user shared folders + public share links were removed in this phase.
+// usable in <img>/<iframe>/<video> and downloads. Includes personal files plus
+// cross-user shared folders + public share links (restored v1.548.0).
 import { getJson, apiRequest, postForm, jsonHeaders, csrfToken } from '../shared/api';
 import { parseTags, addTags, removeTagFrom, popTag } from '../shared/tag-chips';
 import { formatDate } from '../shared/dom';

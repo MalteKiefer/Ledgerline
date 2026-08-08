@@ -21,13 +21,23 @@ use Sabre\DAV\Auth\Backend\AbstractBasic;
  */
 class WebDavAuth extends AbstractBasic
 {
+    /** A real (algorithm-valid) bogus hash to equalize timing on the miss path. */
+    private static ?string $dummyHash = null;
+
     protected function validateUserPass($username, $password): bool
     {
-        $user = User::query()->where('email', $username)->first();
-        if (! $user instanceof User || ! is_string($user->webdav_password) || $user->webdav_password === '') {
-            return false;
-        }
-        if (! Hash::check($password, $user->webdav_password)) {
+        $user = User::query()->where('email', (string) $username)->first();
+        $hash = ($user instanceof User && is_string($user->webdav_password) && $user->webdav_password !== '')
+            ? $user->webdav_password
+            : null;
+
+        // Always run a real hash verify — against a bogus-but-valid hash when the
+        // account is unknown or has no WebDAV password — so response time doesn't
+        // reveal which e-mails have WebDAV enabled (timing/enumeration oracle).
+        self::$dummyHash ??= Hash::make('webdav-timing-equalizer');
+        $ok = Hash::check((string) $password, $hash ?? self::$dummyHash);
+
+        if (! $ok || $hash === null || ! $user instanceof User) {
             return false;
         }
         Auth::login($user); // request-scoped; drives the OwnsUserData scope

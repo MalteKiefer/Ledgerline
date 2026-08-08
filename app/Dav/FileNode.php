@@ -34,6 +34,7 @@ class FileNode extends File
     public function put($data): ?string
     {
         [$path, $size, $sha] = DavStorage::writeBlob($data ?? '');
+        DavStorage::assertWithinQuota($size, $path);
         $keep = min(200, max(1, (int) UserSetting::for((int) Auth::id())->file_max_versions));
         DavStorage::archiveVersion($this->file, $keep);
         $this->file->forceFill([

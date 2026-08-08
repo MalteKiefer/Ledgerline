@@ -16,6 +16,8 @@ use App\Services\Backup\ArchiveCipher;
 use App\Services\Backup\BackupDestinationFactory;
 use App\Services\Backup\BackupManager;
 use App\Services\Backup\BackupVerifier;
+use App\Support\DiskTempFile;
+use App\Support\Redactor;
 use Cron\CronExpression;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -102,7 +104,9 @@ class BackupController extends Controller
     {
         $lines = [];
         for ($cur = $e; $cur !== null; $cur = $cur->getPrevious()) {
-            $lines[] = class_basename($cur).': '.$cur->getMessage();
+            // Redact any Bearer/token=/key= a driver echoed into its error (host,
+            // URI, credentials) before returning it to the client / a log.
+            $lines[] = class_basename($cur).': '.Redactor::redact($cur->getMessage());
         }
 
         return implode("\n", array_unique($lines));
@@ -293,40 +297,33 @@ class BackupController extends Controller
         $encPath = $this->manager->archiveIn($fs, (string) $run->filename, $request->string('source')->value());
         abort_unless($encPath !== null && str_ends_with($encPath, '.enc'), 404);
 
-        $enc = tempnam(sys_get_temp_dir(), 'llbenc');
-        $dec = tempnam(sys_get_temp_dir(), 'llbdec');
+        // RAII temp handles: the decrypted plaintext dump (full financial PII) is
+        // guaranteed to be unlinked even on a throw/abort or a client disconnect
+        // mid-download — the $decHandle is captured by the stream closure, so it is
+        // destructed (→ unlink) only after streaming finishes.
+        $encHandle = DiskTempFile::create('llbenc');
+        $decHandle = DiskTempFile::create('llbdec');
         $stream = $fs->readStream($encPath);
-        if ($stream === null) {
-            @unlink($enc);
-            @unlink($dec);
-            abort(404);
-        }
-        $out = fopen($enc, 'w');
+        abort_if($stream === null, 404);
+        $out = fopen($encHandle->path(), 'w');
         if ($out === false) {
             fclose($stream);
-            @unlink($enc);
-            @unlink($dec);
-            throw new \RuntimeException("Cannot open staging file for backup decryption: {$enc}.");
+            throw new \RuntimeException('Cannot open staging file for backup decryption.');
         }
         stream_copy_to_stream($stream, $out);
         fclose($out);
         fclose($stream);
 
         try {
-            $cipher->decryptFile($enc, $dec, $passphrase);
+            $cipher->decryptFile($encHandle->path(), $decHandle->path(), $passphrase);
         } catch (\Throwable) {
-            @unlink($enc);
-            @unlink($dec);
-
             return back()->withErrors(['passphrase' => __('settings.backup_decrypt_failed')]);
         }
-        @unlink($enc);
 
         $name = preg_replace('/\.enc$/', '', basename($encPath)) ?: 'backup';
 
-        return response()->streamDownload(function () use ($dec): void {
-            readfile($dec);
-            @unlink($dec);
+        return response()->streamDownload(function () use ($decHandle): void {
+            readfile($decHandle->path());
         }, $name, ['Content-Type' => 'application/octet-stream']);
     }
 

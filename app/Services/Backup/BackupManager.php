@@ -92,13 +92,9 @@ final class BackupManager
             // One RUN produces one timestamped BATCH folder holding one archive per
             // selected source; GFS retention then rotates whole batches.
             $batch = $prefix.'/'.Carbon::now()->format('Y-m-d_His');
-            $passphrase = null;
-            if ($job->encrypt) {
-                $passphrase = $job->effectivePassphrase();
-                if ($passphrase === null) {
-                    throw new RuntimeException('Encryption is enabled but no passphrase is set.');
-                }
-            }
+            // The fail-closed guard above already verified a passphrase exists when
+            // encryption is on, so this is non-null in the encrypted case.
+            $passphrase = $job->encrypt ? $job->effectivePassphrase() : null;
             $incremental = $job->mode === 'incremental';
             $sinceTs = $incremental ? $job->last_run_at?->getTimestamp() : null;
 
