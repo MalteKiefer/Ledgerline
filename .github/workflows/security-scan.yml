@@ -43,13 +43,15 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: npm audit (runtime deps)
         run: |
           npm ci
-          npm audit --omit=dev || true
+          # Blocking, like composer audit: a runtime advisory fails the build
+          # (project canon — a red audit is a release blocker).
+          npm audit --omit=dev --audit-level=moderate
 
       # CycloneDX SBOMs (one per build, uploaded as artifacts). Complements the
       # SPDX SBOM emitted by the trivy job. Composer plugin + npm tool pinned.

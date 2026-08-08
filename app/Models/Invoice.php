@@ -60,7 +60,10 @@ class Invoice extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'number', 'seq', 'year', 'status', 'issue_date', 'due_date', 'currency',
+        // number + seq are GoBD-authoritative and set ONLY via forceFill in
+        // finalize/storno (never from a request patch) — kept out of $fillable so
+        // no future fill($request) can tamper the gapless number sequence.
+        'year', 'status', 'issue_date', 'due_date', 'currency',
         'vat_rate', 'gross', 'net', 'vat', 'imported', 'paid_at', 'payment_account',
         'partner_id', 'customer', 'lines', 'note', 'versions',
         // Slice B: document kind + global discount + Skonto terms are user-editable.

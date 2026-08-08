@@ -17,7 +17,7 @@ import { fileSig } from '../shared/file-sig';
 import { autoPick, suggestBookings } from '../shared/receipt-match';
 import { projectTree as buildProjectTree, rolledTotal as projectRolled, ownTotal as projectOwn, projectReceipts as receiptsForProject } from '../shared/finance-projects';
 import { vatReturn, revenueByCustomer, monthlyRevenue, yearKpis, activeYears, accountVatSummary, discountAmount } from '../shared/finance-stats';
-import { buildRevenueCsv, buildExpenseCsv } from '../shared/datev-export';
+import { buildRevenueCsv, buildExpenseCsv, cell as csvCell } from '../shared/datev-export';
 import { matchInvoice } from '../shared/invoice-match';
 import { extractDocText } from '../shared/doc-text';
 import { analyzeReceiptText } from '../shared/receipt-ocr';
@@ -1504,14 +1504,13 @@ export default (config = {}, labels = {}, initial = {}) => ({
     exportDone: 0,
     exportTotal: 0,
     accountReceiptTotal(pm) { return (this.transactions || []).filter((t) => t.account === pm.id).reduce((n, t) => n + (t.receipts || []).length, 0); },
-    _csvCell(v) { const s = String(v ?? ''); return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; },
     async downloadAllReceipts(pm) {
         const txs = (this.transactions || []).filter((t) => t.account === pm.id && (t.receipts || []).length);
         const total = txs.reduce((n, t) => n + t.receipts.length, 0);
         if (! total) { window.llToast?.(labels.export_none || 'No receipts to export.'); return; }
         this.exportBusy = true; this.exportDone = 0; this.exportTotal = total;
         const files = {}; const used = new Set(); const errors = [];
-        const rows = [['Datum', 'Gegenkonto', 'Betrag', 'Waehrung', 'USt', 'Zweck', 'Datei', 'Status'].map((c) => this._csvCell(c)).join(';')];
+        const rows = [['Datum', 'Gegenkonto', 'Betrag', 'Waehrung', 'USt', 'Zweck', 'Datei', 'Status'].map((c) => csvCell(c)).join(';')];
         const clean = (s) => String(s ?? '').replace(/[/\\:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
         for (const tx of txs) {
             for (const r of tx.receipts) {
@@ -1529,7 +1528,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
                     const bytes = await this._receiptBytes(tx, r);
                     files[name] = bytes;
                 } catch (e) { status = 'FEHLER'; errors.push(name); }
-                rows.push([tx.date, tx.counterparty, (tx.amount || 0).toFixed(2), tx.currency || 'EUR', tx.vatCat || '', tx.purpose, name, status].map((c) => this._csvCell(c)).join(';'));
+                rows.push([tx.date, tx.counterparty, (tx.amount || 0).toFixed(2), tx.currency || 'EUR', tx.vatCat || '', tx.purpose, name, status].map((c) => csvCell(c)).join(';'));
                 this.exportDone++;
             }
         }

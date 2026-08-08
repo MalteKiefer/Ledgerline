@@ -56,7 +56,7 @@ class TwoFactorApiTest extends TestCase
         $token = $this->deviceToken($user);
 
         $this->withToken($token)
-            ->postJson('/api/v1/user/two-factor/enable')
+            ->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password'])
             ->assertOk()
             ->assertJson(['enabled' => true]);
 
@@ -70,7 +70,7 @@ class TwoFactorApiTest extends TestCase
         $user = User::factory()->create();
         $token = $this->deviceToken($user);
 
-        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable');
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
 
         $response = $this->withToken($token)
             ->getJson('/api/v1/user/two-factor/qr')
@@ -98,7 +98,7 @@ class TwoFactorApiTest extends TestCase
         $user = User::factory()->create();
         $token = $this->deviceToken($user);
 
-        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable');
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
 
         $this->withToken($token)
             ->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)])
@@ -113,7 +113,7 @@ class TwoFactorApiTest extends TestCase
         $user = User::factory()->create();
         $token = $this->deviceToken($user);
 
-        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable');
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
 
         $this->withToken($token)
             ->postJson('/api/v1/user/two-factor/confirm', ['code' => '000000'])
@@ -126,7 +126,7 @@ class TwoFactorApiTest extends TestCase
         $user = User::factory()->create();
         $token = $this->deviceToken($user);
 
-        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable');
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
         $response = $this->withToken($token)
@@ -142,7 +142,7 @@ class TwoFactorApiTest extends TestCase
     {
         $user = User::factory()->create();
         $token = $this->deviceToken($user);
-        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable');
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
         // A stolen device token alone cannot exfiltrate the standing recovery codes.
@@ -165,7 +165,7 @@ class TwoFactorApiTest extends TestCase
     {
         $user = User::factory()->create();
         $token = $this->deviceToken($user);
-        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable');
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
         // Enrollment-only: the secret is never handed out again after confirmation.
@@ -177,7 +177,7 @@ class TwoFactorApiTest extends TestCase
         $user = User::factory()->create();
         $token = $this->deviceToken($user);
 
-        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable');
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
         $firstCodes = $this->withToken($token)
@@ -200,7 +200,7 @@ class TwoFactorApiTest extends TestCase
         $user = User::factory()->create();
         $token = $this->deviceToken($user);
 
-        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable');
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
         $this->withToken($token)
@@ -217,7 +217,7 @@ class TwoFactorApiTest extends TestCase
     {
         $user = User::factory()->create();
         $token = $this->deviceToken($user);
-        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable');
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
         // Wrong / missing password → 422, 2FA stays active (stolen device token alone can't disable it).
@@ -286,7 +286,7 @@ class TwoFactorApiTest extends TestCase
 
     public function test_all_endpoints_require_bearer_token(): void
     {
-        $this->postJson('/api/v1/user/two-factor/enable')->assertUnauthorized();
+        $this->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password'])->assertUnauthorized();
         $this->getJson('/api/v1/user/two-factor/qr')->assertUnauthorized();
         $this->postJson('/api/v1/user/two-factor/confirm', ['code' => '123456'])->assertUnauthorized();
         $this->getJson('/api/v1/user/two-factor/recovery-codes')->assertUnauthorized();

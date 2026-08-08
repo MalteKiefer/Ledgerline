@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.551.0
+  version: 1.552.0
   license:
     name: Proprietary
   description: >
@@ -3598,10 +3598,12 @@ paths:
       tags: [TwoFactor]
       operationId: twoFactorEnable
       summary: Enable TOTP (generate secret + recovery codes)
-      description: "Generates a new TOTP secret + recovery codes (stored encrypted). NOT yet active — call /confirm with a live code. Idempotent. Throttle 10/min."
+      description: "Generates a new TOTP secret + recovery codes (stored encrypted). NOT yet active — call /confirm with a live code. Idempotent. Requires a current-password step-up (matches the web confirmPassword contract) so a stolen device token can't bind 2FA to an attacker. Throttle 10/min."
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string } } } } } }
       responses:
         "200": { description: "Secret generated.", content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean, enum: [true] } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { description: "The current password did not match." }
         "429": { description: Rate limit exceeded. }
   /user/two-factor/qr:
     get:

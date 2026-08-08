@@ -33,5 +33,11 @@ class UpdateUserPassword implements UpdatesUserPasswords
         $user->forceFill([
             'password' => Hash::make($input['password']),
         ])->save();
+
+        // A password change is a revocation event: drop every device/API bearer
+        // token (they are not tied to the web session, so AuthenticateSession's
+        // other-session eviction doesn't cover them). The acting web session is
+        // preserved by Fortify's session password-hash refresh.
+        $user->tokens()->delete();
     }
 }

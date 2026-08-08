@@ -45,6 +45,9 @@ class FilesController extends Controller
     /** Chunk size handed to the client for chunked uploads (8 MiB). */
     private const PART_SIZE = 8 * 1024 * 1024;
 
+    /** Largest source image the on-demand thumbnailer will decode in-request (40 MiB). */
+    private const THUMB_MAX_SRC_BYTES = 40 * 1024 * 1024;
+
     // ---- Storage helpers ----
 
     private function disk(): string
@@ -453,16 +456,35 @@ class FilesController extends Controller
         $request->validate([
             'id' => ['required', 'string'],
             'index' => ['required', 'integer', 'min:0'],
-            'file' => ['required', 'file'],
+            // Cap each part so an attacker can't stream unbounded bytes to disk
+            // (the part is 8 MiB + a little slack for multipart overhead).
+            'file' => ['required', 'file', 'max:'.(int) ceil(self::PART_SIZE / 1024) + 64],
         ]);
         $id = $request->string('id')->value();
-        if (Cache::get($this->sessionKey($uid, $id)) === null) {
+        $key = $this->sessionKey($uid, $id);
+        /** @var array{name:string, size:int, file_folder_id:int|null, received?:int}|null $session */
+        $session = Cache::get($key);
+        if ($session === null) {
             abort(404);
         }
         $part = $request->file('file');
         if (! $part instanceof UploadedFile) {
             abort(422);
         }
+
+        // Enforce the quota against bytes ACTUALLY received (not just the client's
+        // declared init size): a lying/omitted `size` can't slip past chunkInit's
+        // gate and fill the disk before the final chunkComplete quota check.
+        $received = (int) ($session['received'] ?? 0) + (int) $part->getSize();
+        if ($over = $this->overQuota($uid, $received)) {
+            $this->fs()->deleteDirectory($this->tmpDir($uid, $id));
+            Cache::forget($key);
+
+            return $over;
+        }
+        $session['received'] = $received;
+        Cache::put($key, $session, now()->addHours(6));
+
         $part->storeAs($this->tmpDir($uid, $id), (string) $request->integer('index'), ['disk' => $this->disk()]);
 
         return response()->json(['ok' => true, 'index' => $request->integer('index')]);
@@ -759,16 +781,28 @@ class FilesController extends Controller
         $mime = (string) $file->mime;
         abort_unless(str_starts_with($mime, 'image/'), 404);
 
+        // Don't decode arbitrarily large images in-request (memory / decompression
+        // bomb): cap the thumbnail SOURCE size — a real photo is well under this,
+        // and larger images just fall back to a type icon on the client (404).
+        abort_if((int) $file->size > self::THUMB_MAX_SRC_BYTES, 404);
+
         $thumbPath = 'files/thumb/'.$file->id.'-'.$file->version.'.webp';
         if (! $this->fs()->exists($thumbPath)) {
             $src = (string) $file->storage_path; // server-owned (files/{uuid})
             abort_if($src === '' || ! $this->fs()->exists($src), 404);
             try {
-                // Stage the source bytes to a temp file (RAII-unlinked) and decode
-                // from a path — the same pattern the avatar re-encoder uses.
-                $bytes = (string) $this->fs()->get($src);
+                // Stream the source bytes to a temp file (RAII-unlinked) and decode
+                // from a path — the same pattern the avatar re-encoder uses (no
+                // full-file (string) read into memory).
                 $tmp = DiskTempFile::create('llthumb')->withExtension('img');
-                file_put_contents($tmp->path(), $bytes);
+                $in = $this->fs()->readStream($src);
+                $dst = fopen($tmp->path(), 'wb');
+                if (! is_resource($in) || $dst === false) {
+                    abort(404);
+                }
+                stream_copy_to_stream($in, $dst);
+                fclose($in);
+                fclose($dst);
                 $webp = (string) $images->make()->decodePath($tmp->path())
                     ->cover(400, 400)->encode(new WebpEncoder(quality: 78));
                 $this->fs()->put($thumbPath, $webp);
@@ -792,11 +826,13 @@ class FilesController extends Controller
      */
     public function downloadZip(Request $request): StreamedResponse|BinaryFileResponse
     {
-        $this->requireUser($request);
+        $uid = (int) $this->requireUser($request)->id;
         $request->validate([
             'ids' => ['nullable', 'array', 'max:5000'],
             'ids.*' => ['integer'],
-            'folder_id' => ['nullable', 'integer'],
+            // Owner-scope the folder explicitly (defense-in-depth, matches every
+            // other folder param) rather than relying only on downstream scopes.
+            'folder_id' => ['nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
         ]);
 
         $ids = array_values(array_filter($request->array('ids'), 'is_numeric'));

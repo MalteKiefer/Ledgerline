@@ -67,6 +67,7 @@ class FolderNode extends Collection
     public function createFile($name, $data = null): ?string
     {
         [$path, $size, $sha] = DavStorage::writeBlob($data ?? '');
+        DavStorage::assertWithinQuota($size, $path);
         $file = new FileEntry;
         $file->fill(['name' => $name, 'file_folder_id' => $this->parentId()]);
         $file->forceFill(['storage_path' => $path, 'size' => $size, 'sha256' => $sha, 'mime' => null]);

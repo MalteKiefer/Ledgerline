@@ -1530,6 +1530,7 @@ class FinanceController extends Controller
 
     public function attachReceipt(Request $request, BankTransaction $transaction): JsonResponse
     {
+        $uid = $this->requireUser($request)->id;
         $request->validate([
             // A receipt is a PDF or a raster scan/photo. Explicitly exclude svg/html
             // (stored-XSS vectors) — defense-in-depth on top of the serve-time sandbox CSP.
@@ -1540,7 +1541,7 @@ class FinanceController extends Controller
             'tags' => ['nullable', 'array', 'max:100'],
             'tags.*' => ['string', 'max:100'],
             'contact_id' => ['nullable', 'string', 'max:64'],
-            'partner_id' => ['nullable', 'integer'],
+            'partner_id' => ['nullable', 'integer', Rule::exists('finance_partners', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
             'vat' => ['nullable', 'string', 'max:16'],
         ]);
 
@@ -1698,9 +1699,9 @@ class FinanceController extends Controller
             'note' => ['nullable', 'string', 'max:2000'],
             'ocr' => ['nullable', 'string', 'max:200000'],
             'sig' => ['nullable', 'string', 'max:128'],
-            'partner_id' => ['nullable', 'integer'],
-            'bank_transaction_id' => ['nullable', 'integer'],
-            'finance_project_id' => ['nullable', 'integer'],
+            'partner_id' => ['nullable', 'integer', Rule::exists('finance_partners', 'id')->where('user_id', $user->id)->whereNull('deleted_at')],
+            'bank_transaction_id' => ['nullable', 'integer', Rule::exists('bank_transactions', 'id')->where('user_id', $user->id)->whereNull('deleted_at')],
+            'finance_project_id' => ['nullable', 'integer', Rule::exists('finance_projects', 'id')->where('user_id', $user->id)->whereNull('deleted_at')],
         ]);
 
         $upload = $request->file('file');
@@ -1749,6 +1750,7 @@ class FinanceController extends Controller
 
     public function updateReceipt(Request $request, FinanceReceipt $receipt): JsonResponse
     {
+        $uid = $this->requireUser($request)->id;
         $request->validate([
             'name' => ['sometimes', 'string', 'max:500'],
             'category' => ['sometimes', 'nullable', 'string', 'max:160'],
@@ -1756,9 +1758,9 @@ class FinanceController extends Controller
             'tags.*' => ['string', 'max:100'],
             'vat' => ['sometimes', 'nullable', 'string', 'max:16'],
             'note' => ['sometimes', 'nullable', 'string', 'max:2000'],
-            'partner_id' => ['sometimes', 'nullable', 'integer'],
-            'bank_transaction_id' => ['sometimes', 'nullable', 'integer'],
-            'finance_project_id' => ['sometimes', 'nullable', 'integer'],
+            'partner_id' => ['sometimes', 'nullable', 'integer', Rule::exists('finance_partners', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'bank_transaction_id' => ['sometimes', 'nullable', 'integer', Rule::exists('bank_transactions', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'finance_project_id' => ['sometimes', 'nullable', 'integer', Rule::exists('finance_projects', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
             'version' => ['sometimes', 'integer', 'min:0'],
         ]);
         $patch = [];

@@ -39,6 +39,10 @@ class TwoFactorController extends Controller
     public function enable(Request $request, EnableTwoFactorAuthentication $enable): JsonResponse
     {
         $user = $this->requireUser($request);
+        // Step-up: match the web contract (Fortify confirmPassword=true). Without
+        // it a stolen device token on a 2FA-less account could bind 2FA to the
+        // attacker's authenticator (lockout/persistence) with no password.
+        $this->requireCurrentPassword($request, $user);
 
         ($enable)($user);
 
