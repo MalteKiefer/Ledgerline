@@ -51,16 +51,22 @@
         {{ __('files.working') }}
     </div>
 
-    <div class="flex flex-col gap-4 md:flex-row">
-        {{-- Sidebar: mobile trigger + desktop rail + slide-over --}}
-        <div class="md:hidden">
-            <button type="button" @click="$store.nav.toggleSidebar()"
-                class="flex min-h-11 w-full items-center gap-2 rounded-xl border border-black/[0.06] dark:border-white/10 bg-md-surface px-3 text-sm font-medium text-md-on-surface-var shadow-sm">
-                <x-icon name="bars-3" class="h-4 w-4 text-md-on-surface-var" />
-                <span x-text="({files:@js(__('files.all_files')),favorites:@js(__('files.favorites')),recent:@js(__('files.recent')),trash:@js(__('files.trash'))})[view]"></span>
-            </button>
-        </div>
-        <aside class="hidden w-full shrink-0 flex-col gap-1 self-start rounded-xl border border-md-outline-variant bg-md-surface-2 p-3 md:flex md:w-56">
+    {{-- Mobile sidebar trigger (above the framed container) --}}
+    <div class="mb-3 md:hidden">
+        <button type="button" @click="$store.nav.toggleSidebar()"
+            class="flex min-h-11 w-full items-center gap-2 rounded-xl border border-md-outline-variant bg-md-surface px-3 text-sm font-medium text-md-on-surface-var shadow-sm">
+            <x-icon name="bars-3" class="h-4 w-4 text-md-on-surface-var" />
+            <span x-text="({files:@js(__('files.all_files')),favorites:@js(__('files.favorites')),recent:@js(__('files.recent')),trash:@js(__('files.trash'))})[view]"></span>
+        </button>
+    </div>
+
+    <div class="md:flex md:overflow-hidden md:rounded-xl md:border md:border-md-outline-variant md:bg-md-surface md:h-[calc(100vh-8.5rem)]">
+        {{-- Sidebar --}}
+        <aside class="hidden w-56 shrink-0 flex-col self-stretch overflow-y-auto border-r border-md-outline-variant bg-md-surface-2 p-3 md:flex">
+            <label class="mb-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-md-primary px-4 py-2.5 text-sm font-semibold text-md-on-primary shadow-sm m3-state" title="{{ __('files.upload') }}">
+                <span class="msym text-lg">upload</span>{{ __('files.upload') }}
+                <input type="file" multiple class="hidden" @change="upload($event.target.files); $event.target.value = ''">
+            </label>
             <nav class="space-y-1">
                 <button type="button" @click="view = 'files'; selected = []; $store.nav.closeAll && $store.nav.closeAll()"
                     :class="view === 'files' ? 'bg-md-selected text-md-primary font-semibold' : 'text-md-on-surface-var hover:bg-md-primary/8'"
@@ -92,7 +98,7 @@
                     <span x-show="trashCount > 0" x-cloak x-text="trashCount" class="rounded-full bg-md-outline-variant px-1.5 text-xs text-md-on-surface-var"></span>
                 </button>
             </nav>
-            <div x-show="usage" x-cloak class="border-t border-md-outline-variant pt-3">
+            <div x-show="usage" x-cloak class="mt-auto border-t border-md-outline-variant pt-3">
                 <template x-if="usage.quota > 0">
                     <div>
                         <div class="h-1.5 w-full overflow-hidden rounded-full bg-md-outline-variant">
@@ -162,9 +168,9 @@
         </x-sheet>
 
         {{-- Main --}}
-        <div class="min-w-0 flex-1">
-        {{-- Header --}}
-        <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {{-- Toolbar --}}
+        <div class="flex flex-wrap items-start justify-between gap-3 border-b border-md-outline-variant px-4 py-3">
             <div>
                 <nav class="text-sm text-md-on-surface-var" x-show="view === 'files'">
                     <button type="button" @click="cwd = null" class="hover:underline">{{ __('files.all_files') }}</button>
@@ -175,7 +181,7 @@
                         </span>
                     </template>
                 </nav>
-                <h1 class="mt-1 text-2xl font-semibold text-md-on-surface" x-text="view === 'files' ? (currentFolderName ?? @js(__('messages.nav.files'))) : ({favorites:@js(__('files.favorites')),recent:@js(__('files.recent')),trash:@js(__('files.trash'))})[view]"></h1>
+                <h1 class="mt-0.5 text-lg font-semibold text-md-on-surface" x-text="view === 'files' ? (currentFolderName ?? @js(__('messages.nav.files'))) : ({favorites:@js(__('files.favorites')),recent:@js(__('files.recent')),trash:@js(__('files.trash'))})[view]"></h1>
             </div>
             {{-- Browser actions (hidden in the trash view); empty-trash shown there --}}
             <div class="flex flex-wrap items-center gap-2">
@@ -207,7 +213,7 @@
         </div>
 
         {{-- Search (client-side, over the loaded rows) + sort --}}
-        <div class="mt-6 flex flex-wrap items-center gap-3">
+        <div class="flex flex-wrap items-center gap-3 border-b border-md-outline-variant px-4 py-2.5">
             <input type="search" x-model="query" @input="_debounceSearch()" @search="_debounceSearch()" placeholder="{{ __('files.search') }}"
                 class="w-full sm:w-64 m3-field text-sm shadow-sm focus:border-accent focus:ring-accent">
             <div class="flex items-center gap-1 text-sm">
@@ -233,7 +239,7 @@
         </div>
 
         {{-- Label filter bar (coloured taxonomy) --}}
-        <div class="mt-3 flex flex-wrap items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2 border-b border-md-outline-variant px-4 py-2">
             <template x-for="l in fileLabels" :key="l.id">
                 <button type="button" @click="toggleLabelFilter(l.id)"
                     class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition"
@@ -250,10 +256,9 @@
             </button>
         </div>
 
-        <x-alert variant="warning" x-show="error" x-cloak class="mt-4" x-text="error" />
-
         {{-- Browser --}}
-        <div class="mt-4 rounded-xl border border-md-outline-variant bg-md-surface overflow-hidden">
+        <div class="flex-1 overflow-y-auto">
+        <x-alert variant="warning" x-show="error" x-cloak class="m-4" x-text="error" />
             <template x-if="rows.length === 0">
                 <x-empty-state class="px-4 py-10" x-text="trashView ? '{{ __('files.trash_empty') }}' : '{{ __('files.empty_explorer') }}'" />
             </template>
