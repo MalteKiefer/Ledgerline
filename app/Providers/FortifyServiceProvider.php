@@ -50,23 +50,30 @@ class FortifyServiceProvider extends ServiceProvider
         // also blocked in CreateNewUser (defence in depth).
         Fortify::registerView(fn () => self::registrationOpen() ? view('auth.register') : redirect()->route('login'));
 
-        RateLimiter::for('login', function (Request $request): Limit {
-            $email = $request->string(Fortify::username())->lower()->value();
+        // Register limiters after the whole app has booted so they land on the
+        // final RateLimiter singleton — the deferred CacheServiceProvider (which
+        // owns both `cache` and the RateLimiter) is re-resolved mid-boot when
+        // AppServiceProvider reads settings via the cache, discarding limiters
+        // registered earlier (→ 500 "Rate limiter [fortify] is not defined").
+        $this->app->booted(function (): void {
+            RateLimiter::for('login', function (Request $request): Limit {
+                $email = $request->string(Fortify::username())->lower()->value();
 
-            return Limit::perMinute(5)->by(Str::transliterate($email.'|'.$request->ip()));
+                return Limit::perMinute(5)->by(Str::transliterate($email.'|'.$request->ip()));
+            });
+
+            RateLimiter::for('two-factor', function (Request $request): Limit {
+                $id = $request->session()->get('login.id');
+
+                return Limit::perMinute(5)->by(is_scalar($id) ? (string) $id : (string) $request->ip());
+            });
+
+            // Blanket per-IP limit on the whole Fortify route group (register /
+            // forgot-password / reset-password / verification-notification). Stacks
+            // with the tighter login/two-factor buckets above; stops reset-email
+            // bombing + enumeration on the otherwise-unthrottled public auth POSTs.
+            RateLimiter::for('fortify', fn (Request $request): Limit => Limit::perMinute(20)->by((string) $request->ip()));
         });
-
-        RateLimiter::for('two-factor', function (Request $request): Limit {
-            $id = $request->session()->get('login.id');
-
-            return Limit::perMinute(5)->by(is_scalar($id) ? (string) $id : (string) $request->ip());
-        });
-
-        // Blanket per-IP limit on the whole Fortify route group (register /
-        // forgot-password / reset-password / verification-notification). Stacks
-        // with the tighter login/two-factor buckets above; stops reset-email
-        // bombing + enumeration on the otherwise-unthrottled public auth POSTs.
-        RateLimiter::for('fortify', fn (Request $request): Limit => Limit::perMinute(20)->by((string) $request->ip()));
     }
 
     /** Whether self-service registration is currently enabled workspace-wide. */
