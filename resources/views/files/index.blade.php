@@ -18,6 +18,8 @@
         types: @js($typeLabels),
         saveFailed: @js(__('files.save_failed')),
         dupesTrashAllConfirm: @js(__('files.dupes_trash_all_confirm')),
+        dupesTrashed: @js(__('files.dupes_trashed')),
+        dupesTrashFailed: @js(__('files.dupes_trash_failed')),
         folderShareEmail: @js(__('files.folder_recipient')),
         folderShareNotFound: @js(__('files.folder_recipient_not_found')),
         folderShareDone: @js(__('files.folder_shared')),
@@ -858,11 +860,18 @@
                             <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
                                 {{ __('files.duplicates') }} <span class="text-gray-400" x-text="'(' + stats.duplicates.length + ')'"></span>
                             </h4>
-                            <x-button x-show="dupeExtras > 0" variant="danger" size="sm" icon="trash" @click="trashAllDupes()">
-                                <span x-text="'{{ __('files.dupes_trash_all', ['n' => '__N__']) }}'.replace('__N__', dupeExtras)"></span>
+                            <x-button x-show="dupeExtras > 0" variant="danger" size="sm" icon="trash" @click="trashAllDupes()" ::disabled="stats.trashing">
+                                <x-icon x-show="stats.trashing" x-cloak name="arrow-path" class="h-4 w-4 animate-spin" />
+                                <span x-show="! stats.trashing" x-text="'{{ __('files.dupes_trash_all', ['n' => '__N__']) }}'.replace('__N__', dupeExtras)"></span>
+                                <span x-show="stats.trashing" x-cloak x-text="stats.trashDone + ' / ' + stats.trashTotal"></span>
                             </x-button>
                         </div>
-                        <div class="space-y-3">
+                        {{-- Busy overlay while duplicates are being trashed --}}
+                        <div x-show="stats.trashing" x-cloak class="mb-3 flex items-center gap-2 rounded-lg bg-accent/5 px-3 py-2 text-xs text-accent">
+                            <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />
+                            <span x-text="'{{ __('files.dupes_trashing') }} ' + stats.trashDone + ' / ' + stats.trashTotal"></span>
+                        </div>
+                        <div class="space-y-3" :class="stats.trashing ? 'pointer-events-none opacity-50' : ''">
                             <template x-for="(g, gi) in stats.duplicates" :key="gi">
                                 <div class="rounded-xl border border-black/[0.06] dark:border-white/10 overflow-hidden">
                                     <div class="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 bg-black/[0.02] dark:bg-white/5 px-3 py-1.5">

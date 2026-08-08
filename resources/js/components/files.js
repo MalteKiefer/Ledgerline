@@ -260,7 +260,7 @@ export default (config = {}, labels = {}, initial = {}) => ({
 
     // Rich category (uses the filename extension + MIME) for a row.
     // ---- ZIP download + storage stats (stage 5) ----
-    stats: { open: false, used: 0, byType: {}, duplicates: [] },
+    stats: { open: false, used: 0, byType: {}, duplicates: [], trashing: false, trashDone: 0, trashTotal: 0 },
     async _zip(body) {
         try {
             const res = await fetch('/files/zip', { method: 'POST', headers: { Accept: 'application/zip', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': this._token(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -290,24 +290,34 @@ export default (config = {}, labels = {}, initial = {}) => ({
     get statsRows() { return Object.entries(this.stats.byType || {}).map(([k, v]) => ({ type: k, size: v })).sort((a, b) => b.size - a.size); },
     // Total number of extra (duplicate) copies across all groups (all but one per group).
     get dupeExtras() { return (this.stats.duplicates || []).reduce((n, g) => n + Math.max(0, g.length - 1), 0); },
-    // Move a single duplicate file to the Papierkorb (soft-delete), then refresh the modal.
-    async trashDupe(id) {
-        await this._track(this._trashFile(id));
-        await this._loadStats();
+    // Trash a set of file ids to the Papierkorb (soft-delete) with a visible
+    // progress spinner; refresh the modal + usage when done. Sequential so a slow
+    // disk can't fire hundreds of parallel requests, but the UI shows progress.
+    async _trashDupeIds(ids) {
+        if (! ids.length || this.stats.trashing) return;
+        this.stats.trashing = true; this.stats.trashDone = 0; this.stats.trashTotal = ids.length;
+        let ok = 0;
+        try {
+            for (const id of ids) {
+                try { await apiRequest('DELETE', '/files/entries/' + id); this._removeFile(id); ok++; }
+                catch (e) { /* keep going; reported after */ }
+                this.stats.trashDone++;
+            }
+        } finally {
+            this.stats.trashing = false;
+            await this._loadStats();
+            this.refreshUsage();
+            if (this.trashLoaded) { this.trashLoaded = false; this._loadTrash(); }
+            if (ok) window.llToast?.((labels.dupesTrashed || ':n moved to the trash.').replace(':n', ok));
+            if (ok < ids.length) window.llToast?.((labels.dupesTrashFailed || ':n could not be deleted.').replace(':n', ids.length - ok), 'error');
+        }
     },
-    // Trash the extra copies of one group (keep the first), then refresh.
-    async trashDupeGroup(group) {
-        const extras = (group || []).slice(1);
-        for (const f of extras) await this._trashFile(f.id);
-        await this._loadStats();
-    },
-    // Trash every duplicate copy across all groups (keeping one original each).
+    trashDupe(id) { return this._trashDupeIds([id]); },
+    trashDupeGroup(group) { return this._trashDupeIds((group || []).slice(1).map((f) => f.id)); },
     async trashAllDupes() {
         if (! await this.$store.confirm.ask(labels.dupesTrashAllConfirm || 'Move all duplicate copies to the trash?')) return;
-        for (const g of (this.stats.duplicates || [])) {
-            for (const f of g.slice(1)) await this._trashFile(f.id);
-        }
-        await this._loadStats();
+        const ids = (this.stats.duplicates || []).flatMap((g) => g.slice(1).map((f) => f.id));
+        await this._trashDupeIds(ids);
     },
 
     // ---- Folder (directory) upload: recreate the tree, then upload each file ----

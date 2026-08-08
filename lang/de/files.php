@@ -247,4 +247,7 @@ return [
     'dupes_trash_group' => 'Duplikate löschen',
     'dupes_trash_all' => 'Alle Duplikate löschen (:n)',
     'dupes_trash_all_confirm' => 'Alle doppelten Kopien in den Papierkorb verschieben? Pro Gruppe bleibt ein Original erhalten.',
+    'dupes_trashing' => 'Verschiebe in den Papierkorb…',
+    'dupes_trashed' => ':n in den Papierkorb verschoben.',
+    'dupes_trash_failed' => ':n konnten nicht gelöscht werden.',
 ];
