@@ -14,9 +14,10 @@ class AddressBookController extends Controller
 {
     public function store(Request $request): JsonResponse
     {
-        $name = $request->validate(['name' => ['required', 'string', 'max:255']])['name'];
+        $request->validate(['name' => ['required', 'string', 'max:255']]);
+        $name = (string) $request->string('name');
         $book = AddressBook::create([
-            'user_id' => $request->user()->id,
+            'user_id' => $this->requireUser($request)->id,
             'name' => $name,
             'uri' => Str::slug($name).'-'.Str::lower(Str::random(4)),
             'synctoken' => 1,
@@ -28,7 +29,8 @@ class AddressBookController extends Controller
     public function update(Request $request, AddressBook $addressBook): JsonResponse
     {
         $this->authorizeBook($addressBook);
-        $addressBook->update($request->validate(['name' => ['required', 'string', 'max:255']]));
+        $request->validate(['name' => ['required', 'string', 'max:255']]);
+        $addressBook->update(['name' => (string) $request->string('name')]);
 
         return response()->json(['ok' => true]);
     }

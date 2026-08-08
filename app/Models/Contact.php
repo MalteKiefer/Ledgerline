@@ -29,11 +29,13 @@ class Contact extends Model
         ];
     }
 
+    /** @return BelongsTo<AddressBook, $this> */
     public function addressBook(): BelongsTo
     {
         return $this->belongsTo(AddressBook::class);
     }
 
+    /** @return BelongsToMany<ContactGroup, $this> */
     public function groups(): BelongsToMany
     {
         return $this->belongsToMany(ContactGroup::class, 'contact_group', 'contact_id', 'group_id');

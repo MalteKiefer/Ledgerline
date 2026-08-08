@@ -6,6 +6,7 @@ namespace App\Services\Contacts;
 
 use Illuminate\Support\Str;
 use Sabre\VObject\Component\VCard;
+use Sabre\VObject\Property;
 use Sabre\VObject\Reader;
 use Throwable;
 
@@ -13,6 +14,10 @@ use Throwable;
  * Builds and parses vCard 4.0. The raw vCard is the source of truth; build()
  * produces it from the editor's fields, parse() reads it back for the editor,
  * and denormalize() mirrors a few fields into the contacts table for list/search.
+ *
+ * sabre/vobject is untyped (every property access is mixed), so reads funnel
+ * through the small mixed-narrowing helpers below (str/arr/iter/s/part/parts)
+ * and Property instances are confirmed with instanceof before use.
  */
 class VCardService
 {
@@ -24,14 +29,20 @@ class VCardService
      */
     public function build(array $data, ?string $uid = null): string
     {
-        $card = new VCard(['VERSION' => '4.0']);
-        $card->UID = $uid ?: (string) Str::uuid();
-        $card->FN = (string) ($data['fn'] ?? trim(($data['first_name'] ?? '').' '.($data['last_name'] ?? '')) ?: 'Unnamed');
-        $card->add('N', [(string) ($data['last_name'] ?? ''), (string) ($data['first_name'] ?? ''), '', '', '']);
+        $uidValue = $uid !== null && $uid !== '' ? $uid : (string) Str::uuid();
+        $card = new VCard(['VERSION' => '4.0', 'UID' => $uidValue]);
+        $first = $this->str($data['first_name'] ?? null);
+        $last = $this->str($data['last_name'] ?? null);
+        $fn = $this->str($data['fn'] ?? null);
+        if ($fn === '') {
+            $fn = trim($first.' '.$last);
+        }
+        $card->add('FN', $fn !== '' ? $fn : 'Unnamed');
+        $card->add('N', [$last, $first, '', '', '']);
 
         foreach (['org' => 'ORG', 'title' => 'TITLE', 'nickname' => 'NICKNAME', 'bday' => 'BDAY', 'note' => 'NOTE'] as $key => $prop) {
             if (filled($data[$key] ?? null)) {
-                $card->add($prop, (string) $data[$key]);
+                $card->add($prop, $this->str($data[$key] ?? null));
             }
         }
 
@@ -39,27 +50,27 @@ class VCardService
         // ANNIVERSARY is single-valued, so store each as an Apple-style grouped
         // itemN.X-ABDATE + itemN.X-ABLabel (widely interoperable).
         $i = 0;
-        foreach ($data['anniversaries'] ?? [] as $ann) {
-            $value = is_array($ann) ? ($ann['date'] ?? '') : $ann;
-            if (! filled($value)) {
+        foreach ($this->iter($data['anniversaries'] ?? null) as $ann) {
+            $value = is_array($ann) ? $this->str($ann['date'] ?? null) : $this->str($ann);
+            if ($value === '') {
                 continue;
             }
-            $label = is_array($ann) ? trim((string) ($ann['label'] ?? '')) : '';
+            $label = is_array($ann) ? trim($this->str($ann['label'] ?? null)) : '';
             $group = 'item'.(++$i);
-            $card->add($group.'.X-ABDATE', (string) $value, ['VALUE' => 'DATE']);
+            $card->add($group.'.X-ABDATE', $value, ['VALUE' => 'DATE']);
             $card->add($group.'.X-ABLABEL', $label !== '' ? $label : 'Anniversary');
         }
 
         // Postal addresses. ADR parts (RFC 6350): PO box; extended; street;
         // locality; region; postal code; country.
-        foreach ($data['addresses'] ?? [] as $a) {
+        foreach ($this->iter($data['addresses'] ?? null) as $a) {
             if (! is_array($a)) {
                 continue;
             }
             $parts = [
-                '', (string) ($a['ext'] ?? ''), (string) ($a['street'] ?? ''),
-                (string) ($a['city'] ?? ''), (string) ($a['region'] ?? ''),
-                (string) ($a['zip'] ?? ''), (string) ($a['country'] ?? ''),
+                '', $this->str($a['ext'] ?? null), $this->str($a['street'] ?? null),
+                $this->str($a['city'] ?? null), $this->str($a['region'] ?? null),
+                $this->str($a['zip'] ?? null), $this->str($a['country'] ?? null),
             ];
             if (trim(implode('', $parts)) === '') {
                 continue;
@@ -69,15 +80,15 @@ class VCardService
 
         // Related people/contacts. A link to another contact travels as a
         // urn:uuid pointing at that card's UID; free-text names as VALUE=text.
-        foreach ($data['related'] ?? [] as $r) {
+        foreach ($this->iter($data['related'] ?? null) as $r) {
             if (! is_array($r)) {
                 continue;
             }
-            $type = trim((string) ($r['type'] ?? ''));
-            $uid = trim((string) ($r['uid'] ?? ''));
-            $value = trim((string) ($r['value'] ?? ''));
-            if ($uid !== '') {
-                $card->add('RELATED', 'urn:uuid:'.$uid, $type !== '' ? ['TYPE' => $type] : []);
+            $type = trim($this->str($r['type'] ?? null));
+            $relUid = trim($this->str($r['uid'] ?? null));
+            $value = trim($this->str($r['value'] ?? null));
+            if ($relUid !== '') {
+                $card->add('RELATED', 'urn:uuid:'.$relUid, $type !== '' ? ['TYPE' => $type] : []);
             } elseif ($value !== '') {
                 $params = ['VALUE' => 'text'] + ($type !== '' ? ['TYPE' => $type] : []);
                 $card->add('RELATED', $value, $params);
@@ -86,50 +97,55 @@ class VCardService
 
         // Free-form labelled fields, grouped like the anniversaries above so
         // the label survives round-trips (itemN.X-LL-FIELD + itemN.X-ABLabel).
-        foreach ($data['custom_fields'] ?? [] as $f) {
-            $value = is_array($f) ? trim((string) ($f['value'] ?? '')) : '';
+        foreach ($this->iter($data['custom_fields'] ?? null) as $f) {
+            $value = is_array($f) ? trim($this->str($f['value'] ?? null)) : '';
             if ($value === '') {
                 continue;
             }
             $group = 'item'.(++$i);
             $card->add($group.'.X-LL-FIELD', $value);
-            $card->add($group.'.X-ABLABEL', trim((string) ($f['label'] ?? '')) ?: 'Field');
+            $card->add($group.'.X-ABLABEL', trim($this->str(is_array($f) ? ($f['label'] ?? null) : null)) ?: 'Field');
         }
 
         if (! empty($data['favorite'])) {
             $card->add('X-LL-FAVORITE', '1');
         }
 
-        foreach ($data['emails'] ?? [] as $e) {
-            $value = is_array($e) ? ($e['value'] ?? '') : $e;
-            if (filled($value)) {
-                $card->add('EMAIL', (string) $value, $this->typeParam($e));
+        foreach ($this->iter($data['emails'] ?? null) as $e) {
+            $value = is_array($e) ? $this->str($e['value'] ?? null) : $this->str($e);
+            if ($value !== '') {
+                $card->add('EMAIL', $value, $this->typeParam($e));
             }
         }
-        foreach ($data['phones'] ?? [] as $p) {
-            $value = is_array($p) ? ($p['value'] ?? '') : $p;
-            if (filled($value)) {
-                $card->add('TEL', (string) $value, $this->typeParam($p));
+        foreach ($this->iter($data['phones'] ?? null) as $p) {
+            $value = is_array($p) ? $this->str($p['value'] ?? null) : $this->str($p);
+            if ($value !== '') {
+                $card->add('TEL', $value, $this->typeParam($p));
             }
         }
-        foreach ($data['urls'] ?? [] as $u) {
-            $value = is_array($u) ? ($u['value'] ?? '') : $u;
-            if (filled($value)) {
-                $card->add('URL', (string) $value, $this->typeParam($u));
+        foreach ($this->iter($data['urls'] ?? null) as $u) {
+            $value = is_array($u) ? $this->str($u['value'] ?? null) : $this->str($u);
+            if ($value !== '') {
+                $card->add('URL', $value, $this->typeParam($u));
             }
         }
 
-        $categories = array_values(array_filter(array_map('trim', (array) ($data['categories'] ?? []))));
+        $categories = array_values(array_filter(array_map(
+            fn (mixed $c): string => trim($this->str($c)),
+            $this->arr($data['categories'] ?? null),
+        )));
         if ($categories !== []) {
-            $card->CATEGORIES = $categories;
+            $card->add('CATEGORIES', $categories);
         }
 
         // vCard 4.0 PHOTO holds a data: URI directly.
         if (filled($data['photo'] ?? null)) {
-            $card->add('PHOTO', (string) $data['photo']);
+            $card->add('PHOTO', $this->str($data['photo'] ?? null));
         }
 
-        return $card->serialize();
+        $serialized = $card->serialize();
+
+        return is_string($serialized) ? $serialized : '';
     }
 
     /**
@@ -144,8 +160,11 @@ class VCardService
         } catch (Throwable) {
             return ['fn' => null, 'emails' => [], 'phones' => [], 'urls' => [], 'categories' => []];
         }
+        if (! $card instanceof VCard) {
+            return ['fn' => null, 'emails' => [], 'phones' => [], 'urls' => [], 'categories' => []];
+        }
 
-        $n = isset($card->N) ? $card->N->getParts() : [];
+        $n = $this->parts($card, 'N');
 
         return [
             'uid' => $this->s($card->UID ?? null),
@@ -158,10 +177,10 @@ class VCardService
             'bday' => $this->s($card->BDAY ?? null),
             'anniversaries' => $this->anniversaries($card),
             'note' => $this->s($card->NOTE ?? null),
-            'emails' => $this->multi($card->EMAIL ?? []),
-            'phones' => $this->multi($card->TEL ?? []),
-            'urls' => $this->multi($card->URL ?? []),
-            'categories' => isset($card->CATEGORIES) ? $card->CATEGORIES->getParts() : [],
+            'emails' => $this->multi($this->iter($card->EMAIL ?? null)),
+            'phones' => $this->multi($this->iter($card->TEL ?? null)),
+            'urls' => $this->multi($this->iter($card->URL ?? null)),
+            'categories' => $this->parts($card, 'CATEGORIES'),
             'photo' => $this->photoUri($card),
             'addresses' => $this->addresses($card),
             'related' => $this->related($card),
@@ -176,10 +195,13 @@ class VCardService
     private function addresses(VCard $card): array
     {
         $out = [];
-        foreach ($card->ADR ?? [] as $adr) {
-            $p = $adr->getParts();
+        foreach ($this->iter($card->ADR ?? null) as $adr) {
+            if (! $adr instanceof Property) {
+                continue;
+            }
+            $p = array_map(fn (mixed $x): string => $this->str($x), $this->arr($adr->getParts()));
             $entry = [
-                'type' => $adr['TYPE'] !== null ? (string) $adr['TYPE'] : null,
+                'type' => $this->s($adr['TYPE'] ?? null),
                 'ext' => $this->part($p, 1),
                 'street' => $this->part($p, 2),
                 'city' => $this->part($p, 3),
@@ -251,14 +273,17 @@ class VCardService
     private function related(VCard $card): array
     {
         $out = [];
-        foreach ($card->RELATED ?? [] as $rel) {
+        foreach ($this->iter($card->RELATED ?? null) as $rel) {
+            if (! $rel instanceof Property) {
+                continue;
+            }
             $raw = trim((string) $rel);
             if ($raw === '') {
                 continue;
             }
             $uid = str_starts_with(strtolower($raw), 'urn:uuid:') ? substr($raw, 9) : null;
             $out[] = [
-                'type' => $rel['TYPE'] !== null ? (string) $rel['TYPE'] : null,
+                'type' => $this->s($rel['TYPE'] ?? null),
                 'value' => $uid === null ? $raw : null,
                 'uid' => $uid,
             ];
@@ -273,31 +298,37 @@ class VCardService
     private function customFields(VCard $card): array
     {
         $out = [];
-        foreach ($card->children() as $prop) {
-            if (strtoupper($prop->name) !== 'X-LL-FIELD' || ! $prop->group) {
+        foreach ($this->iter($card->children()) as $prop) {
+            if (! $prop instanceof Property || strtoupper($this->str($prop->name)) !== 'X-LL-FIELD' || ! $prop->group) {
                 continue;
             }
             $value = $this->s($prop);
             if ($value === null) {
                 continue;
             }
-            $label = null;
-            foreach ($card->children() as $sibling) {
-                if ($sibling->group === $prop->group && strtoupper($sibling->name) === 'X-ABLABEL') {
-                    $label = $this->s($sibling);
-                    break;
-                }
-            }
-            $out[] = ['label' => $label, 'value' => $value];
+            $out[] = ['label' => $this->labelFor($card, (string) $prop->group), 'value' => $value];
         }
 
         return $out;
     }
 
+    /** The itemN.X-ABLABEL sibling text for a grouped property, if any. */
+    private function labelFor(VCard $card, string $group): ?string
+    {
+        foreach ($this->iter($card->children()) as $sibling) {
+            if ($sibling instanceof Property && $sibling->group === $group
+                && strtoupper($this->str($sibling->name)) === 'X-ABLABEL') {
+                return $this->s($sibling);
+            }
+        }
+
+        return null;
+    }
+
     private function favorite(VCard $card): bool
     {
-        foreach ($card->children() as $prop) {
-            if (strtoupper($prop->name) === 'X-LL-FAVORITE') {
+        foreach ($this->iter($card->children()) as $prop) {
+            if ($prop instanceof Property && strtoupper($this->str($prop->name)) === 'X-LL-FAVORITE') {
                 return trim((string) $prop) === '1';
             }
         }
@@ -313,10 +344,10 @@ class VCardService
      */
     private function photoUri(VCard $card): ?string
     {
-        if (! isset($card->PHOTO)) {
+        $prop = $card->PHOTO ?? null;
+        if (! $prop instanceof Property) {
             return null;
         }
-        $prop = $card->PHOTO;
         $value = trim((string) $prop);
         if ($value === '') {
             return null;
@@ -327,7 +358,7 @@ class VCardService
 
         // Binary body: infer the mime from the TYPE param (JPEG/PNG/GIF), and
         // make sure the payload is base64 (encode if sabre handed us raw bytes).
-        $type = strtolower((string) ($prop['TYPE'] ?? ''));
+        $type = strtolower($this->str($prop['TYPE'] ?? null));
         $mime = str_contains($type, 'png') ? 'image/png' : (str_contains($type, 'gif') ? 'image/gif' : 'image/jpeg');
         $compact = preg_replace('/\s+/', '', $value) ?? $value;
         $decoded = base64_decode($compact, true);
@@ -346,8 +377,11 @@ class VCardService
         } catch (Throwable) {
             return ['fn' => null, 'first_name' => null, 'last_name' => null, 'org' => null, 'emails' => [], 'phones' => [], 'has_photo' => false, 'favorite' => false];
         }
+        if (! $card instanceof VCard) {
+            return ['fn' => null, 'first_name' => null, 'last_name' => null, 'org' => null, 'emails' => [], 'phones' => [], 'has_photo' => false, 'favorite' => false];
+        }
 
-        $n = isset($card->N) ? $card->N->getParts() : [];
+        $n = $this->parts($card, 'N');
 
         return [
             'uid' => $this->s($card->UID ?? null),
@@ -355,8 +389,8 @@ class VCardService
             'last_name' => $this->part($n, 0),
             'first_name' => $this->part($n, 1),
             'org' => $this->s($card->ORG ?? null),
-            'emails' => array_map(fn ($e) => trim((string) $e), iterator_to_array($card->EMAIL ?? [])),
-            'phones' => array_map(fn ($t) => trim((string) $t), iterator_to_array($card->TEL ?? [])),
+            'emails' => $this->values($this->iter($card->EMAIL ?? null)),
+            'phones' => $this->values($this->iter($card->TEL ?? null)),
             'has_photo' => $this->photoUri($card) !== null,
             'favorite' => $this->favorite($card),
         ];
@@ -371,23 +405,17 @@ class VCardService
     private function anniversaries(VCard $card): array
     {
         $out = [];
-        foreach ($card->children() as $prop) {
-            if (strtoupper($prop->name) !== 'X-ABDATE' || ! $prop->group) {
+        foreach ($this->iter($card->children()) as $prop) {
+            if (! $prop instanceof Property || strtoupper($this->str($prop->name)) !== 'X-ABDATE' || ! $prop->group) {
                 continue;
-            }
-            $label = null;
-            foreach ($card->children() as $sibling) {
-                if ($sibling->group === $prop->group && strtoupper($sibling->name) === 'X-ABLABEL') {
-                    $label = $this->s($sibling);
-                    break;
-                }
             }
             $date = $this->s($prop);
             if ($date !== null) {
-                $out[] = ['date' => $date, 'label' => $label];
+                $out[] = ['date' => $date, 'label' => $this->labelFor($card, (string) $prop->group)];
             }
         }
-        if (isset($card->ANNIVERSARY) && ($date = $this->s($card->ANNIVERSARY)) !== null) {
+        $legacy = $card->ANNIVERSARY ?? null;
+        if ($legacy instanceof Property && ($date = $this->s($legacy)) !== null) {
             $out[] = ['date' => $date, 'label' => null];
         }
 
@@ -397,26 +425,65 @@ class VCardService
     /** @return array<string, string> */
     private function typeParam(mixed $entry): array
     {
-        $type = is_array($entry) ? trim((string) ($entry['type'] ?? '')) : '';
+        $type = is_array($entry) ? trim($this->str($entry['type'] ?? null)) : '';
 
         return $type !== '' ? ['TYPE' => $type] : [];
     }
 
-    /** @return list<array{value: string, type: ?string}> */
+    /**
+     * @param  iterable<mixed>  $props
+     * @return list<array{value: string, type: ?string}>
+     */
     private function multi(iterable $props): array
     {
         $out = [];
         foreach ($props as $prop) {
-            $type = $prop['TYPE'] !== null ? (string) $prop['TYPE'] : null;
-            $out[] = ['value' => trim((string) $prop), 'type' => $type];
+            if (! $prop instanceof Property) {
+                continue;
+            }
+            $out[] = ['value' => trim((string) $prop), 'type' => $this->s($prop['TYPE'] ?? null)];
         }
 
         return $out;
     }
 
+    /**
+     * @param  iterable<mixed>  $props
+     * @return list<string>
+     */
+    private function values(iterable $props): array
+    {
+        $out = [];
+        foreach ($props as $prop) {
+            if ($prop instanceof Property) {
+                $out[] = trim((string) $prop);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Concrete parts of a single-valued property (e.g. N, CATEGORIES).
+     *
+     * @return array<int, string>
+     */
+    private function parts(VCard $card, string $name): array
+    {
+        $prop = $card->$name ?? null;
+        if (! $prop instanceof Property) {
+            return [];
+        }
+
+        return array_map(fn (mixed $x): string => $this->str($x), $this->arr($prop->getParts()));
+    }
+
     private function s(mixed $value): ?string
     {
-        $value = $value === null ? '' : trim((string) $value);
+        if ($value === null) {
+            return null;
+        }
+        $value = is_scalar($value) || $value instanceof \Stringable ? trim((string) $value) : '';
 
         return $value !== '' ? $value : null;
     }
@@ -427,5 +494,23 @@ class VCardService
         $value = isset($parts[$i]) ? trim($parts[$i]) : '';
 
         return $value !== '' ? $value : null;
+    }
+
+    /** Coerce any mixed to a trimmed-free string (empty for non-scalars). */
+    private function str(mixed $v): string
+    {
+        return is_scalar($v) || $v instanceof \Stringable ? (string) $v : '';
+    }
+
+    /** @return array<int, mixed> */
+    private function arr(mixed $v): array
+    {
+        return is_array($v) ? array_values($v) : [];
+    }
+
+    /** @return iterable<mixed> */
+    private function iter(mixed $v): iterable
+    {
+        return is_iterable($v) ? $v : [];
     }
 }

@@ -6,7 +6,6 @@ namespace App\Services\Contacts;
 
 use App\Enums\DavChangeOperation;
 use App\Models\AddressBook;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -24,12 +23,12 @@ class DavChangeLog
         $this->append($book, 'dav_changes', 'address_book_id', $uri, $op);
     }
 
-    private function append(Model $collection, string $table, string $foreignKey, string $uri, DavChangeOperation $op): void
+    private function append(AddressBook $collection, string $table, string $foreignKey, string $uri, DavChangeOperation $op): void
     {
         DB::transaction(function () use ($collection, $table, $foreignKey, $uri, $op): void {
             // Lock the collection row so the read-modify-write of synctoken is
             // serialised against concurrent DAV writes.
-            $locked = $collection->newQuery()->lockForUpdate()->find($collection->getKey());
+            $locked = $collection->newQuery()->whereKey($collection->getKey())->lockForUpdate()->first();
             $token = (int) ($locked?->synctoken ?? $collection->synctoken);
 
             DB::table($table)->insert([

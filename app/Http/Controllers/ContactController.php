@@ -30,7 +30,7 @@ class ContactController extends Controller
 {
     public function index(Request $request): View
     {
-        $this->ensureBook($request->user()->id);
+        $this->ensureBook($this->requireUser($request)->id);
 
         return view('contacts.index');
     }
@@ -75,7 +75,7 @@ class ContactController extends Controller
 
     public function data(Request $request, VCardService $vcards): JsonResponse
     {
-        $userId = $request->user()->id;
+        $userId = $this->requireUser($request)->id;
         $this->ensureBook($userId);
         // Owner-scoped address books (OwnsUserData global scope).
         $bookIds = AddressBook::query()->pluck('id');
@@ -144,7 +144,7 @@ class ContactController extends Controller
     public function suggest(Request $request): JsonResponse
     {
         $q = trim((string) $request->query('q'));
-        $bookIds = AddressBook::where('user_id', $request->user()->id)->pluck('id');
+        $bookIds = AddressBook::where('user_id', $this->requireUser($request)->id)->pluck('id');
 
         $contacts = Contact::query()
             ->whereIn('address_book_id', $bookIds)
@@ -173,14 +173,14 @@ class ContactController extends Controller
     /** Persist the user's contacts list preferences (sort + display format). */
     public function settings(Request $request): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'sort' => ['required', 'in:first_name,last_name'],
             'display_format' => ['required', 'in:first_last,last_first'],
         ]);
 
-        UserSetting::for($request->user()->id)->update([
-            'contact_sort' => $data['sort'],
-            'contact_display_format' => $data['display_format'],
+        UserSetting::for($this->requireUser($request)->id)->update([
+            'contact_sort' => (string) $request->string('sort'),
+            'contact_display_format' => (string) $request->string('display_format'),
         ]);
 
         return response()->json(['ok' => true]);
@@ -190,7 +190,7 @@ class ContactController extends Controller
     {
         $this->authorizeContact($contact);
         $data = $vcards->parse($contact->vcard);
-        $data['related'] = $this->resolveRelated($data['related'] ?? []);
+        $data['related'] = $this->resolveRelated(is_array($data['related'] ?? null) ? $data['related'] : []);
 
         return response()->json(array_merge(
             $data,
@@ -206,13 +206,14 @@ class ContactController extends Controller
     public function favorite(Request $request, Contact $contact, ContactWriter $writer, VCardService $vcards): JsonResponse
     {
         $this->authorizeContact($contact);
-        $favorite = $request->validate(['favorite' => ['required', 'boolean']])['favorite'];
+        $request->validate(['favorite' => ['required', 'boolean']]);
+        $favorite = $request->boolean('favorite');
 
         $data = $vcards->parse($contact->vcard);
         $data['favorite'] = $favorite;
-        $writer->update($contact, $data, $contact->groups()->pluck('contact_groups.id')->all());
+        $writer->update($contact, $data, $this->contactGroupIds($contact));
 
-        return response()->json(['ok' => true, 'favorite' => (bool) $favorite]);
+        return response()->json(['ok' => true, 'favorite' => $favorite]);
     }
 
     /**
@@ -223,17 +224,18 @@ class ContactController extends Controller
     public function geocode(Request $request, Contact $contact, VCardService $vcards, ReverseGeocoder $geocoder): JsonResponse
     {
         $this->authorizeContact($contact);
-        $index = (int) $request->query('address', 0);
+        $index = $request->integer('address', 0);
 
-        $address = ($vcards->parse($contact->vcard)['addresses'] ?? [])[$index] ?? null;
+        $parsed = $vcards->parse($contact->vcard)['addresses'] ?? [];
+        $address = is_array($parsed) ? ($parsed[$index] ?? null) : null;
         abort_unless(is_array($address), 404);
 
         $query = implode(', ', array_filter([
-            trim(implode(' ', array_filter([$address['street'] ?? null, $address['ext'] ?? null]))),
-            trim(implode(' ', array_filter([$address['zip'] ?? null, $address['city'] ?? null]))),
-            $address['region'] ?? null,
-            $address['country'] ?? null,
-        ], fn (?string $v): bool => $v !== null && trim($v) !== ''));
+            trim(implode(' ', array_filter([$this->str($address['street'] ?? null), $this->str($address['ext'] ?? null)]))),
+            trim(implode(' ', array_filter([$this->str($address['zip'] ?? null), $this->str($address['city'] ?? null)]))),
+            $this->str($address['region'] ?? null),
+            $this->str($address['country'] ?? null),
+        ], fn (string $v): bool => trim($v) !== ''));
         abort_if($query === '', 404);
 
         $match = $geocoder->search($query)[0] ?? null;
@@ -246,8 +248,8 @@ class ContactController extends Controller
      * Attach the linked contact's current name (and id) to RELATED entries that
      * point at another card via urn:uuid, so the UI can render and open them.
      *
-     * @param  list<array{type: ?string, value: ?string, uid: ?string}>  $related
-     * @return list<array{type: ?string, value: ?string, uid: ?string, contact_id: ?string, name: ?string}>
+     * @param  array<array-key, mixed>  $related
+     * @return list<array<array-key, mixed>>
      */
     private function resolveRelated(array $related): array
     {
@@ -257,21 +259,28 @@ class ContactController extends Controller
             ? collect()
             : Contact::whereIn('address_book_id', $bookIds)->whereIn('uid', $uids)->get()->keyBy('uid');
 
-        return array_map(function (array $r) use ($byUid): array {
-            $match = $r['uid'] !== null ? $byUid->get($r['uid']) : null;
-
-            return $r + [
-                'contact_id' => $match?->id,
-                'name' => $match?->fn ?: ($r['value'] ?? null),
+        $out = [];
+        foreach ($related as $r) {
+            if (! is_array($r)) {
+                continue;
+            }
+            $uid = $r['uid'] ?? null;
+            $match = is_string($uid) ? $byUid->get($uid) : null;
+            $name = $match instanceof Contact ? (string) $match->fn : '';
+            $out[] = $r + [
+                'contact_id' => $match instanceof Contact ? $match->id : null,
+                'name' => $name !== '' ? $name : ($r['value'] ?? null),
             ];
-        }, $related);
+        }
+
+        return $out;
     }
 
     public function store(Request $request, ContactWriter $writer): JsonResponse
     {
         $data = $this->validated($request, creating: true);
-        $book = AddressBook::where('user_id', $request->user()->id)->findOrFail($data['book_id']);
-        $contact = $writer->create($book, $data, $data['group_ids'] ?? []);
+        $book = AddressBook::where('user_id', $this->requireUser($request)->id)->findOrFail((string) $request->string('book_id'));
+        $contact = $writer->create($book, $data, $this->dataGroupIds($data));
 
         return response()->json(['id' => $contact->id], 201);
     }
@@ -283,7 +292,7 @@ class ContactController extends Controller
         // The editor never posts the photo — carry the existing one over, or the
         // rebuilt vCard silently drops it.
         $data['photo'] = $vcards->parse($contact->vcard)['photo'] ?? null;
-        $writer->update($contact, $data, $data['group_ids'] ?? []);
+        $writer->update($contact, $data, $this->dataGroupIds($data));
 
         return response()->json(['ok' => true]);
     }
@@ -303,12 +312,13 @@ class ContactController extends Controller
      */
     public function bulkDestroy(Request $request, ContactWriter $writer): JsonResponse
     {
-        $ids = $request->validate([
+        $request->validate([
             'ids' => ['required', 'array', 'max:500'],
             'ids.*' => ['string'],
-        ])['ids'];
+        ]);
+        $ids = array_map(fn (mixed $v): string => is_scalar($v) ? (string) $v : '', array_values((array) $request->input('ids', [])));
 
-        $bookIds = AddressBook::where('user_id', $request->user()->id)->pluck('id');
+        $bookIds = AddressBook::where('user_id', $this->requireUser($request)->id)->pluck('id');
         $contacts = Contact::whereIn('id', $ids)->whereIn('address_book_id', $bookIds)->get();
 
         foreach ($contacts as $contact) {
@@ -329,7 +339,7 @@ class ContactController extends Controller
 
         $data = $vcards->parse($contact->vcard);
         $data['photo'] = $dataUri;
-        $writer->update($contact, $data, $contact->groups()->pluck('contact_groups.id')->all());
+        $writer->update($contact, $data, $this->contactGroupIds($contact));
 
         return response()->json(['ok' => true, 'avatar' => route('contacts.avatar', ['contact' => $contact])]);
     }
@@ -356,7 +366,7 @@ class ContactController extends Controller
     /** Export a book (or all the user's contacts) as one .vcf download. */
     public function export(Request $request): StreamedResponse
     {
-        $userId = $request->user()->id;
+        $userId = $this->requireUser($request)->id;
         $books = AddressBook::where('user_id', $userId)
             ->when($request->query('book'), fn ($q) => $q->where('id', $request->query('book')))
             ->pluck('id');
@@ -373,15 +383,43 @@ class ContactController extends Controller
     /** Import a .vcf (one or many cards) into a book; dedupe by UID. */
     public function import(Request $request, ContactImporter $importer): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'file' => ['required', 'file', 'max:512000'],
             'book_id' => ['required', 'string'],
         ]);
-        $book = AddressBook::where('user_id', $request->user()->id)->findOrFail($data['book_id']);
+        $book = AddressBook::where('user_id', $this->requireUser($request)->id)->findOrFail((string) $request->string('book_id'));
 
         $result = $importer->import($book, (string) file_get_contents($request->file('file')->getRealPath()));
 
         return response()->json($result);
+    }
+
+    /** Coerce any mixed to a string (empty for non-scalars). */
+    private function str(mixed $v): string
+    {
+        return is_scalar($v) || $v instanceof \Stringable ? (string) $v : '';
+    }
+
+    /**
+     * The contact's own group ids as strings.
+     *
+     * @return array<int, string>
+     */
+    private function contactGroupIds(Contact $contact): array
+    {
+        return $contact->groups()->pluck('contact_groups.id')
+            ->map(fn (mixed $v): string => $this->str($v))->values()->all();
+    }
+
+    /**
+     * The submitted group_ids as strings.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<int, string>
+     */
+    private function dataGroupIds(array $data): array
+    {
+        return array_map(fn (mixed $v): string => $this->str($v), array_values((array) ($data['group_ids'] ?? [])));
     }
 
     /**
@@ -389,7 +427,8 @@ class ContactController extends Controller
      */
     private function validated(Request $request, bool $creating = false): array
     {
-        return $request->validate([
+        /** @var array<string, mixed> $validated (validate() returns the validated data) */
+        $validated = $request->validate([
             'book_id' => [$creating ? 'required' : 'sometimes', 'string'],
             'fn' => ['nullable', 'string', 'max:255'],
             'first_name' => ['nullable', 'string', 'max:255'],
@@ -424,6 +463,8 @@ class ContactController extends Controller
             'group_ids' => ['array'],
             'group_ids.*' => ['string'],
         ]);
+
+        return $validated;
     }
 
     private function authorizeContact(Contact $contact): void

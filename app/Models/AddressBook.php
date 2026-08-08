@@ -10,7 +10,16 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** A CardDAV address book collection. */
+/**
+ * A CardDAV address book collection.
+ *
+ * @property string $id
+ * @property int $user_id
+ * @property string $name
+ * @property string $uri
+ * @property string|null $description
+ * @property int $synctoken
+ */
 #[Fillable(['user_id', 'name', 'uri', 'description', 'synctoken'])]
 class AddressBook extends Model
 {
@@ -22,6 +31,7 @@ class AddressBook extends Model
         return ['synctoken' => 'integer'];
     }
 
+    /** @return HasMany<Contact, $this> */
     public function contacts(): HasMany
     {
         return $this->hasMany(Contact::class);

@@ -42,7 +42,10 @@ class ContactPersister
             $this->vcards->denormalize($vcard),
         ))->save();
 
-        $this->changes->record($contact->addressBook, $contact->uri, DavChangeOperation::Modified);
+        $book = $contact->addressBook;
+        if ($book !== null) {
+            $this->changes->record($book, $contact->uri, DavChangeOperation::Modified);
+        }
 
         return $contact;
     }

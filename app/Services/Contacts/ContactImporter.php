@@ -9,6 +9,7 @@ use App\Models\Contact;
 use App\Models\ContactGroup;
 use Illuminate\Support\Str;
 use Sabre\VObject\Component\VCard;
+use Sabre\VObject\Property;
 use Sabre\VObject\Reader;
 use Throwable;
 
@@ -40,8 +41,11 @@ class ContactImporter
         $created = $updated = $skipped = 0;
 
         // Reader::readAll yields each VCARD in a multi-card document.
+        $stream = fopen('php://temp', 'r+');
+        if ($stream === false) {
+            return ['created' => 0, 'updated' => 0, 'skipped' => 0];
+        }
         try {
-            $stream = fopen('php://temp', 'r+');
             fwrite($stream, $vcf);
             rewind($stream);
             $splitter = new \Sabre\VObject\Splitter\VCard($stream);
@@ -67,10 +71,17 @@ class ContactImporter
             }
 
             try {
-                $card->VERSION = '4.0';
-                $uid = isset($card->UID) ? (string) $card->UID : (string) Str::uuid();
-                $card->UID = $uid;
-                $vcard = $card->serialize();
+                $rawUid = $card->UID ?? null;
+                $uid = is_scalar($rawUid) || $rawUid instanceof \Stringable ? trim((string) $rawUid) : '';
+                if ($uid === '') {
+                    $uid = (string) Str::uuid();
+                }
+                $card->remove('VERSION');
+                $card->add('VERSION', '4.0');
+                $card->remove('UID');
+                $card->add('UID', $uid);
+                $serialized = $card->serialize();
+                $vcard = is_string($serialized) ? $serialized : '';
 
                 $existing = Contact::where('address_book_id', $book->id)
                     ->where('uid', $uid)->first();
@@ -94,12 +105,14 @@ class ContactImporter
 
     private function syncGroups(Contact $contact, VCard $card, int $userId): void
     {
-        if (! isset($card->CATEGORIES)) {
+        $categories = $card->CATEGORIES ?? null;
+        if (! $categories instanceof Property) {
             return;
         }
         $ids = [];
-        foreach ($card->CATEGORIES->getParts() as $name) {
-            $name = trim((string) $name);
+        $parts = $categories->getParts();
+        foreach (is_iterable($parts) ? $parts : [] as $name) {
+            $name = trim(is_scalar($name) ? (string) $name : '');
             if ($name !== '') {
                 $ids[] = ContactGroup::firstOrCreate(['user_id' => $userId, 'name' => $name])->id;
             }

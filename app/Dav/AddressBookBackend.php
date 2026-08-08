@@ -59,6 +59,10 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
         return $userId !== null && AddressBook::query()->ownedBy($userId)->whereKey($addressBookId)->exists();
     }
 
+    /**
+     * @param  string  $principalUri
+     * @return array<int, array<string, mixed>>
+     */
     public function getAddressBooksForUser($principalUri): array
     {
         $userId = $this->userId($principalUri);
@@ -83,6 +87,7 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
         ];
     }
 
+    /** @param  string  $addressBookId */
     public function updateAddressBook($addressBookId, PropPatch $propPatch): void
     {
         if (! $this->ownsBookCollection($addressBookId)) {
@@ -95,11 +100,13 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
 
         $propPatch->handle(['{DAV:}displayname', '{urn:ietf:params:xml:ns:carddav}addressbook-description'],
             function (array $mutations) use ($book): bool {
-                if (isset($mutations['{DAV:}displayname'])) {
-                    $book->name = (string) $mutations['{DAV:}displayname'];
+                $dn = $mutations['{DAV:}displayname'] ?? null;
+                if ($dn !== null) {
+                    $book->name = is_scalar($dn) ? (string) $dn : '';
                 }
-                if (isset($mutations['{urn:ietf:params:xml:ns:carddav}addressbook-description'])) {
-                    $book->description = (string) $mutations['{urn:ietf:params:xml:ns:carddav}addressbook-description'];
+                $desc = $mutations['{urn:ietf:params:xml:ns:carddav}addressbook-description'] ?? null;
+                if ($desc !== null) {
+                    $book->description = is_scalar($desc) ? (string) $desc : '';
                 }
                 $book->save();
 
@@ -107,6 +114,11 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
             });
     }
 
+    /**
+     * @param  string  $principalUri
+     * @param  string  $url
+     * @param  array<string, mixed>  $properties
+     */
     public function createAddressBook($principalUri, $url, array $properties): void
     {
         $userId = $this->userId($principalUri);
@@ -114,17 +126,18 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
             return;
         }
 
+        $dn = $properties['{DAV:}displayname'] ?? null;
+        $desc = $properties['{urn:ietf:params:xml:ns:carddav}addressbook-description'] ?? null;
         AddressBook::create([
             'user_id' => $userId,
             'uri' => $url,
-            'name' => (string) ($properties['{DAV:}displayname'] ?? $url),
-            'description' => isset($properties['{urn:ietf:params:xml:ns:carddav}addressbook-description'])
-                ? (string) $properties['{urn:ietf:params:xml:ns:carddav}addressbook-description']
-                : null,
+            'name' => is_scalar($dn) ? (string) $dn : $url,
+            'description' => is_scalar($desc) ? (string) $desc : null,
             'synctoken' => 1,
         ]);
     }
 
+    /** @param  string  $addressBookId */
     public function deleteAddressBook($addressBookId): void
     {
         if (! $this->ownsBookCollection($addressBookId)) {
@@ -133,6 +146,10 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
         AddressBook::query()->withoutGlobalScopes()->whereKey($addressBookId)->delete();
     }
 
+    /**
+     * @param  string  $addressbookId
+     * @return array<int, array<string, mixed>>
+     */
     public function getCards($addressbookId): array
     {
         if (! $this->ownsBook($addressbookId)) {
@@ -148,6 +165,11 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
         ])->all();
     }
 
+    /**
+     * @param  string  $addressBookId
+     * @param  string  $cardUri
+     * @return array<string, mixed>|false
+     */
     public function getCard($addressBookId, $cardUri): array|false
     {
         if (! $this->ownsBook($addressBookId)) {
@@ -168,6 +190,11 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
         ];
     }
 
+    /**
+     * @param  string  $addressBookId
+     * @param  string  $cardUri
+     * @param  string  $cardData
+     */
     public function createCard($addressBookId, $cardUri, $cardData): ?string
     {
         if (! $this->canWriteBook($addressBookId)) {
@@ -182,6 +209,11 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
         return '"'.md5($cardData).'"';
     }
 
+    /**
+     * @param  string  $addressBookId
+     * @param  string  $cardUri
+     * @param  string  $cardData
+     */
     public function updateCard($addressBookId, $cardUri, $cardData): ?string
     {
         if (! $this->canWriteBook($addressBookId)) {
@@ -197,6 +229,10 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
         return '"'.md5($cardData).'"';
     }
 
+    /**
+     * @param  string  $addressBookId
+     * @param  string  $cardUri
+     */
     public function deleteCard($addressBookId, $cardUri): bool
     {
         if (! $this->canWriteBook($addressBookId)) {
@@ -210,6 +246,10 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
         return $deleted > 0;
     }
 
+    /**
+     * @param  string  $addressBookId
+     * @return array<string, mixed>|null
+     */
     public function getChangesForAddressBook($addressBookId, $syncToken, $syncLevel, $limit = null): ?array
     {
         if (! $this->ownsBook($addressBookId)) {
@@ -238,7 +278,7 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
             return null;
         }
         $oldestKept = DB::table('dav_changes')->where('address_book_id', $addressBookId)->min('synctoken');
-        if ($oldestKept !== null && (int) $syncToken < (int) $oldestKept && (int) $syncToken < $current) {
+        if (is_numeric($oldestKept) && (int) $syncToken < (int) $oldestKept && (int) $syncToken < $current) {
             return null;
         }
 
@@ -250,18 +290,20 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
             ->get(['uri', 'operation']);
 
         // Latest operation per uri wins.
+        /** @var array<string, int> $latest */
         $latest = [];
         foreach ($rows as $row) {
-            $latest[$row->uri] = $row->operation;
+            $uri = is_scalar($row->uri) ? (string) $row->uri : '';
+            $latest[$uri] = is_numeric($row->operation) ? (int) $row->operation : 0;
         }
 
         $result = ['syncToken' => (string) $current, 'added' => [], 'modified' => [], 'deleted' => []];
         foreach ($latest as $uri => $op) {
-            $result[match (DavChangeOperation::from((int) $op)) {
+            $result[match (DavChangeOperation::from($op)) {
                 DavChangeOperation::Added => 'added',
                 DavChangeOperation::Modified => 'modified',
                 DavChangeOperation::Deleted => 'deleted',
-            }][] = $uri;
+            }][] = (string) $uri;
         }
 
         return $result;
@@ -287,6 +329,8 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
             return null;
         }
 
-        return basename($principalUri) === (string) $user->email ? (int) $user->getKey() : null;
+        $key = $user->getKey();
+
+        return basename($principalUri) === (string) $user->email && is_numeric($key) ? (int) $key : null;
     }
 }

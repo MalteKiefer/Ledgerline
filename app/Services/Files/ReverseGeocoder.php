@@ -41,7 +41,7 @@ class ReverseGeocoder
         // re-reading metadata retries them and fills in places that were empty.
         $cached = Cache::get($key);
         if (is_array($cached) && ($cached['display'] ?? null) !== null) {
-            return $cached;
+            return ['display' => $this->nstr($cached['display'] ?? null), 'address' => $this->strMap($cached['address'] ?? null)];
         }
 
         $result = $this->request($lat, $lon);
@@ -71,8 +71,8 @@ class ReverseGeocoder
         }
 
         return [
-            'display' => ($json['display_name'] ?? null) ?: null,
-            'address' => array_map('strval', $json['address'] ?? []),
+            'display' => $this->nstr($json['display_name'] ?? null),
+            'address' => $this->strMap($json['address'] ?? null),
         ];
     }
 
@@ -120,7 +120,7 @@ class ReverseGeocoder
         $key = 'geocode:search:'.md5(mb_strtolower($query));
         $cached = Cache::get($key);
         if (is_array($cached)) {
-            return $cached;
+            return $this->normalizeSearch($cached);
         }
 
         $json = $this->nominatim(self::SEARCH_HOST, [
@@ -134,19 +134,34 @@ class ReverseGeocoder
             return [];
         }
 
-        $results = collect($json)
-            ->map(static fn (array $row): array => [
-                'display' => (string) ($row['display_name'] ?? ''),
-                'lat' => (float) ($row['lat'] ?? 0),
-                'lon' => (float) ($row['lon'] ?? 0),
-            ])
-            ->filter(static fn (array $r): bool => $r['display'] !== '')
-            ->values()
-            ->all();
+        $results = $this->normalizeSearch($json);
 
         Cache::put($key, $results, now()->addDays(7));
 
         return $results;
+    }
+
+    /**
+     * @return list<array{display: string, lat: float, lon: float}>
+     */
+    private function normalizeSearch(mixed $rows): array
+    {
+        if (! is_array($rows)) {
+            return [];
+        }
+        $out = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $display = $this->str($row['display_name'] ?? ($row['display'] ?? null));
+            if ($display === '') {
+                continue;
+            }
+            $out[] = ['display' => $display, 'lat' => $this->toFloat($row['lat'] ?? null), 'lon' => $this->toFloat($row['lon'] ?? null)];
+        }
+
+        return $out;
     }
 
     /**
@@ -158,10 +173,9 @@ class ReverseGeocoder
     private function snapToGrid(float $lat, float $lon): array
     {
         try {
-            $km = (float) (AppSettings::current()->gallery_geocode_grid_km
-                ?? config('gallery.geocode_grid_km', 0.5));
+            $km = $this->toFloat(AppSettings::current()->gallery_geocode_grid_km ?? config('gallery.geocode_grid_km', 0.5), 0.5);
         } catch (Throwable) {
-            $km = (float) config('gallery.geocode_grid_km', 0.5);
+            $km = $this->toFloat(config('gallery.geocode_grid_km', 0.5), 0.5);
         }
 
         if ($km <= 0) {
@@ -181,7 +195,7 @@ class ReverseGeocoder
      */
     private function throttle(): void
     {
-        $interval = (int) config('gallery.geocode_interval_ms', 1100);
+        $interval = $this->toInt(config('gallery.geocode_interval_ms', 1100), 1100);
         if ($interval <= 0) {
             return;
         }
@@ -191,7 +205,7 @@ class ReverseGeocoder
         try {
             $lock->block(30);
 
-            $last = (float) Cache::get('geocode:nominatim:last', 0.0);
+            $last = $this->toFloat(Cache::get('geocode:nominatim:last', 0.0), 0.0);
             $waitMs = $interval - (int) ((microtime(true) - $last) * 1000);
             if ($waitMs > 0 && $waitMs <= $interval) {
                 usleep($waitMs * 1000);
@@ -202,7 +216,47 @@ class ReverseGeocoder
             // Could not acquire the lock in time; proceed without spacing rather
             // than fail the whole metadata read.
         } finally {
-            optional($lock)->release();
+            $lock->release();
         }
+    }
+
+    private function nstr(mixed $v): ?string
+    {
+        $s = is_scalar($v) ? trim((string) $v) : '';
+
+        return $s !== '' ? $s : null;
+    }
+
+    private function str(mixed $v): string
+    {
+        return is_scalar($v) ? (string) $v : '';
+    }
+
+    private function toFloat(mixed $v, float $default = 0.0): float
+    {
+        return is_numeric($v) ? (float) $v : $default;
+    }
+
+    private function toInt(mixed $v, int $default = 0): int
+    {
+        return is_numeric($v) ? (int) $v : $default;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function strMap(mixed $v): array
+    {
+        if (! is_array($v)) {
+            return [];
+        }
+        $out = [];
+        foreach ($v as $k => $val) {
+            if (is_scalar($val)) {
+                $out[(string) $k] = (string) $val;
+            }
+        }
+
+        return $out;
     }
 }

@@ -25,7 +25,7 @@ class ContactWriter
 
     /**
      * @param  array<string, mixed>  $data
-     * @param  list<string>  $groupIds
+     * @param  array<int, string>  $groupIds
      */
     public function create(AddressBook $book, array $data, array $groupIds = []): Contact
     {
@@ -40,14 +40,18 @@ class ContactWriter
 
     /**
      * @param  array<string, mixed>  $data
-     * @param  list<string>  $groupIds
+     * @param  array<int, string>  $groupIds
      */
     public function update(Contact $contact, array $data, array $groupIds = []): Contact
     {
         $book = $contact->addressBook;
+        if ($book === null) {
+            throw new \RuntimeException('Contact has no address book.');
+        }
         $data['categories'] = $this->groupNames($book->user_id, $groupIds);
         $existing = $this->vcards->parse($contact->vcard);
-        $vcard = $this->vcards->build($data, $existing['uid'] ?? null);
+        $uid = $existing['uid'] ?? null;
+        $vcard = $this->vcards->build($data, is_string($uid) ? $uid : null);
 
         $this->persister->persistUpdate($contact, $vcard);
         $contact->groups()->sync($this->ownedGroupIds($book->user_id, $groupIds));
@@ -58,29 +62,34 @@ class ContactWriter
     public function delete(Contact $contact): void
     {
         $book = $contact->addressBook;
+        if ($book === null) {
+            $contact->delete();
+
+            return;
+        }
         $uri = $contact->uri;
         $contact->delete();
         $this->changes->record($book, $uri, DavChangeOperation::Deleted);
     }
 
     /**
-     * @param  list<string>  $groupIds
-     * @return list<string>
+     * @param  array<int, string>  $groupIds
+     * @return list<mixed>
      */
     private function groupNames(int $userId, array $groupIds): array
     {
-        return ContactGroup::where('user_id', $userId)->whereIn('id', $groupIds)->pluck('name')->all();
+        return array_values(ContactGroup::where('user_id', $userId)->whereIn('id', $groupIds)->pluck('name')->all());
     }
 
     /**
      * Only the caller's own group ids — never sync a contact into another user's
      * group via a forged group_id (IDOR on the pivot).
      *
-     * @param  list<string>  $groupIds
-     * @return list<string>
+     * @param  array<int, string>  $groupIds
+     * @return list<mixed>
      */
     private function ownedGroupIds(int $userId, array $groupIds): array
     {
-        return ContactGroup::where('user_id', $userId)->whereIn('id', $groupIds)->pluck('id')->all();
+        return array_values(ContactGroup::where('user_id', $userId)->whereIn('id', $groupIds)->pluck('id')->all());
     }
 }

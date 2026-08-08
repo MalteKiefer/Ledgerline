@@ -28,21 +28,23 @@ class ContactDuplicateController extends Controller
 
     public function data(Request $request, ContactDuplicateFinder $finder): JsonResponse
     {
-        return response()->json(['groups' => $finder->forUser($request->user()->id)]);
+        return response()->json(['groups' => $finder->forUser($this->requireUser($request)->id)]);
     }
 
     public function merge(Request $request, ContactMerger $merger): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'primary_id' => ['required', 'string'],
             'ids' => ['required', 'array', 'min:2'],
             'ids.*' => ['string'],
         ]);
+        $ids = array_map(fn (mixed $v): string => is_scalar($v) ? (string) $v : '', array_values((array) $request->input('ids', [])));
+        $primaryId = (string) $request->string('primary_id');
 
-        $contacts = $this->ownedContacts($request, $data['ids']);
-        abort_unless($contacts->count() === count(array_unique($data['ids'])), 403);
+        $contacts = $this->ownedContacts($request, $ids);
+        abort_unless($contacts->count() === count(array_unique($ids)), 403);
 
-        $primary = $contacts->firstWhere('id', $data['primary_id']);
+        $primary = $contacts->firstWhere('id', $primaryId);
         abort_unless($primary !== null, 422);
 
         $merger->merge($primary, $contacts->reject(fn (Contact $c): bool => $c->id === $primary->id)->values());
@@ -52,29 +54,30 @@ class ContactDuplicateController extends Controller
 
     public function dismiss(Request $request): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'ids' => ['required', 'array', 'min:2'],
             'ids.*' => ['string'],
         ]);
+        $ids = array_map(fn (mixed $v): string => is_scalar($v) ? (string) $v : '', array_values((array) $request->input('ids', [])));
 
         // Confirm every id is the caller's before persisting the dismissal.
-        abort_unless($this->ownedContacts($request, $data['ids'])->count() === count(array_unique($data['ids'])), 403);
+        abort_unless($this->ownedContacts($request, $ids)->count() === count(array_unique($ids)), 403);
 
         ContactDuplicateDismissal::firstOrCreate([
-            'user_id' => $request->user()->id,
-            'signature' => ContactDuplicateDismissal::signatureFor($data['ids']),
+            'user_id' => $this->requireUser($request)->id,
+            'signature' => ContactDuplicateDismissal::signatureFor($ids),
         ]);
 
         return response()->json(['ok' => true]);
     }
 
     /**
-     * @param  list<string>  $ids
+     * @param  array<array-key, mixed>  $ids
      * @return Collection<int, Contact>
      */
     private function ownedContacts(Request $request, array $ids)
     {
-        $bookIds = AddressBook::where('user_id', $request->user()->id)->pluck('id');
+        $bookIds = AddressBook::where('user_id', $this->requireUser($request)->id)->pluck('id');
 
         return Contact::whereIn('address_book_id', $bookIds)->whereIn('id', $ids)->get();
     }
