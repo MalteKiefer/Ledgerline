@@ -383,7 +383,7 @@
                     <div class="min-h-0 shrink-0 border-b md:border-b-0 md:border-r border-black/[0.06] dark:border-white/10 md:w-1/2">
                       <div class="h-56 w-full overflow-hidden bg-gray-50 dark:bg-[#111] md:h-full">
                         <template x-if="assignPreview && assignPreviewIsPdf">
-                          <iframe :src="assignPreview.url" class="h-full w-full" title="preview"></iframe>
+                          <iframe :src="assignPreview.url || 'about:blank'" class="h-full w-full" title="preview"></iframe>
                         </template>
                         <template x-if="assignPreview && assignPreviewIsImage">
                           <div class="flex h-full w-full items-center justify-center p-2"><img :src="assignPreview.url" class="max-h-full max-w-full object-contain" alt="preview"></div>
@@ -538,7 +538,7 @@
                   <div class="flex min-h-0 flex-1 flex-col md:flex-row">
                     <div class="min-h-0 shrink-0 border-b border-black/[0.06] dark:border-white/10 md:w-1/2 md:border-b-0 md:border-r">
                       <div class="h-64 w-full bg-gray-50 dark:bg-[#111] md:h-full">
-                        <template x-if="docPreview && docPreviewIsPdf"><iframe :src="docPreview.url" class="h-full w-full" title="preview"></iframe></template>
+                        <template x-if="docPreview && docPreviewIsPdf"><iframe :src="docPreview.url || 'about:blank'" class="h-full w-full" title="preview"></iframe></template>
                         <template x-if="docPreview && docPreviewIsImage"><div class="flex h-full w-full items-center justify-center p-2"><img :src="docPreview.url" class="max-h-full max-w-full object-contain" alt="preview"></div></template>
                         <template x-if="! docPreview">
                           <div class="flex h-full w-full items-center justify-center p-4 text-center text-xs text-gray-400">
@@ -2122,7 +2122,7 @@
                       <div class="flex h-full w-full items-center justify-center p-3"><img :src="receiptPreview.url" alt="" class="max-h-full max-w-full object-contain"></div>
                     </template>
                     <template x-if="previewIsPdf">
-                      <iframe :src="receiptPreview.url" class="h-full w-full" title="receipt"></iframe>
+                      <iframe :src="receiptPreview.url || 'about:blank'" class="h-full w-full" title="receipt"></iframe>
                     </template>
                     <template x-if="! previewIsImage && ! previewIsPdf">
                       <div class="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-sm text-gray-500 dark:text-gray-400">
@@ -3193,7 +3193,7 @@
               <div class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2">
                 {{-- PDF preview --}}
                 <div class="min-h-0 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#111] md:border-b-0 md:border-r">
-                  <iframe :src="importCurrent._url" class="h-full min-h-[40vh] w-full" title="{{ __('invoices.import_title') }}"></iframe>
+                  <iframe :src="importCurrent._url || 'about:blank'" class="h-full min-h-[40vh] w-full" title="{{ __('invoices.import_title') }}"></iframe>
                 </div>
                 {{-- Six key fields --}}
                 <div class="min-h-0 overflow-auto px-5 py-4">
