@@ -151,14 +151,14 @@
     <div>
         {{-- ===================== FINANCE HUB (tabs) ===================== --}}
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('messages.nav.finance') }}</h1>
+          <h1 class="text-2xl font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('messages.nav.finance') }}</h1>
           <div class="-mx-1 max-w-full overflow-x-auto px-1 pb-1">
             <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/10 p-0.5 text-sm font-medium">
               @php $tabs = ['dashboard' => 'tab_dashboard', 'invoices' => 'tab_invoices', 'payments' => 'tab_payments', 'receipts' => 'tab_receipts', 'projects' => 'tab_projects', 'partners' => 'tab_partners', 'stats' => 'tab_stats', 'settings' => 'tab_settings']; @endphp
               @foreach ($tabs as $key => $lbl)
                 <button type="button" @click="setSection('{{ $key }}')"
                   class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 transition-colors"
-                  :class="section === '{{ $key }}' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-accent'">
+                  :class="section === '{{ $key }}' ? 'bg-md-selected text-md-primary shadow-sm' : 'text-md-on-surface-var dark:text-md-on-surface-var hover:text-accent'">
                   {{ __('invoices.'.$lbl) }}
                 </button>
               @endforeach
@@ -168,51 +168,51 @@
 
         {{-- Global business/private scope — filters every data tab consistently --}}
         <div x-show="section !== 'settings'" class="mt-4 flex items-center gap-2">
-          <span class="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.scope_label') }}</span>
+          <span class="text-[11px] font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.scope_label') }}</span>
           <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/5 p-0.5">
             @php $scopes = ['all' => 'project_scope_all', 'business' => 'project_kind_business', 'private' => 'project_kind_private']; @endphp
             @foreach ($scopes as $sk => $slbl)
               <button type="button" @click="setFinanceScope('{{ $sk }}')" class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
-                :class="financeScope === '{{ $sk }}' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'">{{ __('invoices.'.$slbl) }}</button>
+                :class="financeScope === '{{ $sk }}' ? 'bg-md-selected text-md-primary shadow-sm' : 'text-md-on-surface-var dark:text-md-on-surface-var'">{{ __('invoices.'.$slbl) }}</button>
             @endforeach
           </div>
         </div>
 
         {{-- ===================== DASHBOARD ===================== --}}
         <div x-show="section === 'dashboard'" class="mt-6">
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.dash_intro') }}</p>
+          <p class="text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.dash_intro') }}</p>
           <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {{-- Income: received this year --}}
             <div class="ll-card">
-              <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">
                 <span class="ll-chip h-6 w-6 rounded-lg" style="background:#59ad6b"><x-icon name="arrow-trending-up" class="h-3.5 w-3.5 text-white" /></span>{{ __('invoices.paid_total') }}
               </div>
-              <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(financeStats.paidYear)"></p>
-              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.income_this_year') }} · ' + financeStats.year"></p>
+              <p class="mt-2 text-2xl font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(financeStats.paidYear)"></p>
+              <p class="mt-0.5 text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="'{{ __('invoices.income_this_year') }} · ' + financeStats.year"></p>
             </div>
             {{-- Outstanding this year --}}
             <div class="ll-card">
-              <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">
                 <span class="ll-chip h-6 w-6 rounded-lg" style="background:#d9a441"><x-icon name="clock" class="h-3.5 w-3.5 text-white" /></span>{{ __('invoices.outstanding_total') }}
               </div>
-              <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(financeStats.outstandingYear)"></p>
-              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500" x-text="financeStats.countYear + ' {{ __('invoices.invoice_count') }}'"></p>
+              <p class="mt-2 text-2xl font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(financeStats.outstandingYear)"></p>
+              <p class="mt-0.5 text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="financeStats.countYear + ' {{ __('invoices.invoice_count') }}'"></p>
             </div>
             {{-- Income all-time --}}
             <div class="ll-card">
-              <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">
                 <span class="ll-chip h-6 w-6 rounded-lg" style="background:#7066f5"><x-icon name="banknotes" class="h-3.5 w-3.5 text-white" /></span>{{ __('invoices.income') }}
               </div>
-              <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(financeStats.paidAll)"></p>
-              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.paid_total') }}</p>
+              <p class="mt-2 text-2xl font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(financeStats.paidAll)"></p>
+              <p class="mt-0.5 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.paid_total') }}</p>
             </div>
             {{-- Expenses (coming soon) --}}
             <div class="ll-card opacity-70">
-              <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              <div class="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">
                 <span class="ll-chip h-6 w-6 rounded-lg" style="background:#6b7280"><x-icon name="arrow-trending-down" class="h-3.5 w-3.5 text-white" /></span>{{ __('invoices.expenses') }}
               </div>
-              <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-300 dark:text-gray-600">—</p>
-              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.expenses_soon') }}</p>
+              <p class="mt-2 text-2xl font-semibold tabular-nums text-md-on-surface-var dark:text-md-on-surface-var">—</p>
+              <p class="mt-0.5 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.expenses_soon') }}</p>
             </div>
           </div>
 
@@ -222,12 +222,12 @@
               <div class="flex items-center gap-2">
                 <span class="ll-chip h-7 w-7 rounded-lg" style="background:#e2915a"><x-icon name="receipt-percent" class="h-4 w-4 text-white" /></span>
                 <div>
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.vat_title') }}</h3>
-                  <p class="text-xs text-gray-400 dark:text-gray-500" x-text="vatReturn.year + ' · ' + vatReturn.count + ' {{ __('invoices.invoice_count') }}'"></p>
+                  <h3 class="text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.vat_title') }}</h3>
+                  <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="vatReturn.year + ' · ' + vatReturn.count + ' {{ __('invoices.invoice_count') }}'"></p>
                 </div>
               </div>
               {{-- Quarter selector for the unified payable (Zahllast) --}}
-              <select x-model="vatQuarter" class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] px-2 py-1 text-xs">
+              <select x-model="vatQuarter" class="rounded-lg border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 px-2 py-1 text-xs">
                 <option value="">{{ __('invoices.vat_full_year') }}</option>
                 <option value="1">Q1</option><option value="2">Q2</option><option value="3">Q3</option><option value="4">Q4</option>
               </select>
@@ -236,48 +236,48 @@
             <template x-if="vatAdvance">
               <div class="grid grid-cols-1 divide-y divide-black/[0.06] dark:divide-white/10 border-b border-black/[0.06] dark:border-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0 bg-accent/5">
                 <div class="px-5 py-4">
-                  <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_output') }}</p>
-                  <p class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(vatAdvance.outputVat)"></p>
+                  <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.vat_output') }}</p>
+                  <p class="mt-1 text-lg font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(vatAdvance.outputVat)"></p>
                 </div>
                 <div class="px-5 py-4">
-                  <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_input') }}</p>
-                  <p class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(vatAdvance.inputVat)"></p>
+                  <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.vat_input') }}</p>
+                  <p class="mt-1 text-lg font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(vatAdvance.inputVat)"></p>
                 </div>
                 <div class="px-5 py-4">
-                  <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_payable') }}</p>
+                  <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.vat_payable') }}</p>
                   <p class="mt-1 text-lg font-semibold tabular-nums text-accent" x-text="fmtMoney(vatAdvance.payable)"></p>
                 </div>
               </div>
             </template>
             <template x-if="smallBusiness">
-              <div class="border-b border-black/[0.06] dark:border-white/10 px-5 py-2 text-xs text-gray-500 dark:text-gray-400">{{ __('invoices.vat_kleinunternehmer_note') }}</div>
+              <div class="border-b border-black/[0.06] dark:border-white/10 px-5 py-2 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.vat_kleinunternehmer_note') }}</div>
             </template>
             {{-- Net / VAT / gross totals --}}
             <div class="grid grid-cols-1 divide-y divide-black/[0.06] dark:divide-white/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
               <div class="px-5 py-4">
-                <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_net') }}</p>
-                <p class="mt-1 text-xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(vatReturn.net)"></p>
+                <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.vat_net') }}</p>
+                <p class="mt-1 text-xl font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(vatReturn.net)"></p>
               </div>
               <div class="px-5 py-4">
-                <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_owed') }}</p>
+                <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.vat_owed') }}</p>
                 <p class="mt-1 text-xl font-semibold tabular-nums text-accent" x-text="fmtMoney(vatReturn.vat)"></p>
               </div>
               <div class="px-5 py-4">
-                <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_gross') }}</p>
-                <p class="mt-1 text-xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(vatReturn.gross)"></p>
+                <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.vat_gross') }}</p>
+                <p class="mt-1 text-xl font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(vatReturn.gross)"></p>
               </div>
             </div>
             {{-- Breakdown by rate --}}
             <template x-if="vatReturn.byRate.length">
               <div class="border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
-                <p class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.vat_by_rate') }}</p>
+                <p class="mb-2 text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.vat_by_rate') }}</p>
                 <table class="w-full text-sm">
-                  <thead class="text-left text-xs text-gray-400 dark:text-gray-500">
+                  <thead class="text-left text-xs text-md-on-surface-var dark:text-md-on-surface-var">
                     <tr><th class="pb-1 pr-3 font-normal">{{ __('invoices.vat_rate') }}</th><th class="pb-1 pr-3 font-normal text-right">{{ __('invoices.vat_net') }}</th><th class="pb-1 font-normal text-right">{{ __('invoices.vat_owed') }}</th></tr>
                   </thead>
                   <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
                     <template x-for="b in vatReturn.byRate" :key="b.rate">
-                      <tr class="text-gray-800 dark:text-gray-200">
+                      <tr class="text-md-on-surface dark:text-md-on-surface">
                         <td class="py-1.5 pr-3 tabular-nums" x-text="b.rate + '%'"></td>
                         <td class="py-1.5 pr-3 text-right tabular-nums" x-text="fmtMoney(b.net)"></td>
                         <td class="py-1.5 text-right tabular-nums" x-text="fmtMoney(b.vat)"></td>
@@ -289,13 +289,13 @@
             </template>
             {{-- Quarterly breakdown --}}
             <div class="border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
-              <p class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.vat_by_quarter') }}</p>
+              <p class="mb-2 text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.vat_by_quarter') }}</p>
               <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <template x-for="q in vatReturn.quarters" :key="q.q">
                   <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
-                    <p class="text-xs text-gray-400 dark:text-gray-500" x-text="'Q' + q.q"></p>
-                    <p class="mt-0.5 text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(q.vat)"></p>
-                    <p class="text-[11px] text-gray-400 dark:text-gray-500" x-text="fmtMoney(q.net) + ' {{ __('invoices.vat_net_short') }}'"></p>
+                    <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="'Q' + q.q"></p>
+                    <p class="mt-0.5 text-sm font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(q.vat)"></p>
+                    <p class="text-[11px] text-md-on-surface-var dark:text-md-on-surface-var" x-text="fmtMoney(q.net) + ' {{ __('invoices.vat_net_short') }}'"></p>
                   </div>
                 </template>
               </div>
@@ -308,11 +308,11 @@
               <div class="flex items-center justify-between gap-2 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
                 <div class="flex items-center gap-2">
                   <span class="ll-chip h-7 w-7 rounded-lg" style="background:#d9a441"><x-icon name="clock" class="h-4 w-4 text-white" /></span>
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.aging_title') }}</h3>
+                  <h3 class="text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.aging_title') }}</h3>
                 </div>
-                <p class="text-xs text-gray-400 dark:text-gray-500">
+                <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">
                   <span>{{ __('invoices.aging_open_total') }}:</span>
-                  <span class="font-semibold tabular-nums text-gray-700 dark:text-gray-300" x-text="fmtMoney(aging.openGross)"></span>
+                  <span class="font-semibold tabular-nums text-md-on-surface-var dark:text-md-on-surface-var" x-text="fmtMoney(aging.openGross)"></span>
                   <span x-text="'(' + aging.openCount + ')'"></span>
                 </p>
               </div>
@@ -324,9 +324,9 @@
                   { key: '60_plus', label: @js(__('invoices.aging_60plus')) },
                 ]" :key="b.key">
                   <div class="px-5 py-4">
-                    <p class="text-xs text-gray-400 dark:text-gray-500" x-text="b.label"></p>
-                    <p class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney((aging.buckets[b.key] || {}).gross || 0)"></p>
-                    <p class="text-[11px] text-gray-400 dark:text-gray-500" x-text="((aging.buckets[b.key] || {}).count || 0) + ' {{ __('invoices.invoice_count') }}'"></p>
+                    <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="b.label"></p>
+                    <p class="mt-1 text-lg font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney((aging.buckets[b.key] || {}).gross || 0)"></p>
+                    <p class="text-[11px] text-md-on-surface-var dark:text-md-on-surface-var" x-text="((aging.buckets[b.key] || {}).count || 0) + ' {{ __('invoices.invoice_count') }}'"></p>
                   </div>
                 </template>
               </div>
@@ -340,14 +340,14 @@
              @dragleave.prevent="if ($event.target === $el) drag = false"
              @drop.prevent="drag = false; if ($event.dataTransfer?.files?.length) uploadStandaloneReceipts($event.dataTransfer.files)">
           {{-- Drop receipts anywhere on the tab to upload + auto-match them by amount --}}
-          <div x-show="drag" x-cloak class="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-accent bg-accent/10">
-            <span class="rounded-xl bg-white/90 px-4 py-2 text-sm font-medium text-accent shadow dark:bg-[#1c1c1e]/90">{{ __('invoices.receipts_drop_hint') }}</span>
+          <div x-show="drag" x-cloak class="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-xl border-2 border-dashed border-accent bg-accent/10">
+            <span class="rounded-xl bg-white/90 px-4 py-2 text-sm font-medium text-accent shadow dark:bg-md-surface/90">{{ __('invoices.receipts_drop_hint') }}</span>
           </div>
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <input type="search" x-model.debounce.200ms="receiptQuery" @input="recPage = 1" placeholder="{{ __('invoices.receipts_search') }}" class="w-full max-w-xs rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+            <input type="search" x-model.debounce.200ms="receiptQuery" @input="recPage = 1" placeholder="{{ __('invoices.receipts_search') }}" class="w-full max-w-xs rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
             <div class="flex items-center gap-3">
-              <p class="text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.receipts_count') }}'.replace(':n', allReceipts.length)"></p>
-              <button type="button" @click="showReceiptTrash = ! showReceiptTrash" class="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium transition-colors" :class="showReceiptTrash ? 'bg-accent/10 text-accent' : 'text-gray-500 hover:bg-black/[0.04] dark:hover:bg-white/10'">
+              <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="'{{ __('invoices.receipts_count') }}'.replace(':n', allReceipts.length)"></p>
+              <button type="button" @click="showReceiptTrash = ! showReceiptTrash" class="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium transition-colors" :class="showReceiptTrash ? 'bg-accent/10 text-accent' : 'text-md-on-surface-var hover:bg-black/[0.04] dark:hover:bg-white/10'">
                 <x-icon name="trash" class="h-4 w-4" /><span x-text="'{{ __('invoices.trash_bin') }}' + (trashedReceipts.length ? ' (' + trashedReceipts.length + ')' : '')"></span>
               </button>
               <template x-if="allReceipts.length">
@@ -369,12 +369,12 @@
           {{-- Assignment: receipts that could not be auto-matched by amount --}}
           <div x-show="receiptAssign.length" x-cloak class="fixed inset-0 z-[1130] flex items-center justify-center p-4" role="dialog" aria-modal="true">
             <div class="absolute inset-0 bg-gray-900/50"></div>
-            <div class="relative flex h-[80vh] max-h-[80vh] w-full max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex h-[80vh] max-h-[80vh] w-full max-w-[75vw] flex-col rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-xl">
               <template x-if="receiptAssign.length">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="(receiptAssign[0]?.up?.name || '{{ __('invoices.receipt') }}')"></h3>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                    <h3 class="truncate text-base font-semibold text-md-on-surface dark:text-md-on-surface" x-text="(receiptAssign[0]?.up?.name || '{{ __('invoices.receipt') }}')"></h3>
+                    <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">
                       <span x-text="'{{ __('invoices.assign_intro') }}'.replace(':n', receiptAssign.length)"></span>
                       <template x-if="receiptAssign[0]?.total != null"><span> · <span x-text="fmtMoney(receiptAssign[0]?.total)"></span></span></template>
                     </p>
@@ -382,7 +382,7 @@
                   <div class="flex min-h-0 flex-1 flex-col md:flex-row">
                     {{-- Inline preview of the receipt being assigned (so it can be matched by eye) --}}
                     <div class="min-h-0 shrink-0 border-b md:border-b-0 md:border-r border-black/[0.06] dark:border-white/10 md:w-1/2">
-                      <div class="h-56 w-full overflow-hidden bg-gray-50 dark:bg-[#111] md:h-full">
+                      <div class="h-56 w-full overflow-hidden bg-md-surface-2 dark:bg-[#111] md:h-full">
                         <template x-if="assignPreview && assignPreviewIsPdf">
                           <iframe :src="assignPreview.url || 'about:blank'" class="h-full w-full" title="preview"></iframe>
                         </template>
@@ -390,30 +390,30 @@
                           <div class="flex h-full w-full items-center justify-center p-2"><img :src="assignPreview.url" class="max-h-full max-w-full object-contain" alt="preview"></div>
                         </template>
                         <template x-if="! assignPreview">
-                          <div class="flex h-full w-full items-center justify-center text-xs text-gray-400">{{ __('invoices.assign_preview_loading') }}</div>
+                          <div class="flex h-full w-full items-center justify-center text-xs text-md-on-surface-var">{{ __('invoices.assign_preview_loading') }}</div>
                         </template>
                       </div>
                     </div>
                     {{-- Candidate bookings: sticky search on top, then amount-matches OR search results --}}
                     <div class="flex min-h-0 flex-1 flex-col md:w-1/2">
                       <div class="border-b border-black/[0.06] dark:border-white/10 p-2">
-                        <input type="search" x-model.debounce.200ms="assignQuery" placeholder="{{ __('invoices.assign_search_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <input type="search" x-model.debounce.200ms="assignQuery" placeholder="{{ __('invoices.assign_search_ph') }}" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                       </div>
                       <div class="min-h-0 flex-1 overflow-auto px-2 py-2">
                         {{-- No query → amount matches (auto-suggested by the receipt total) --}}
                         <template x-if="! assignQuery.trim()">
                           <div>
                             <template x-if="receiptAssign[0]?.cands?.length">
-                              <div class="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">{{ __('invoices.assign_by_amount') }}</div>
+                              <div class="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-md-on-surface-var">{{ __('invoices.assign_by_amount') }}</div>
                             </template>
                             <template x-for="cand in (receiptAssign[0]?.cands || [])" :key="'m'+cand.id">
                               <button type="button" @click="assignPending(0, cand)" class="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left hover:bg-accent/5">
-                                <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
+                                <span class="min-w-0 flex-1 truncate text-sm text-md-on-surface dark:text-md-on-surface"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
                                 <span class="shrink-0 text-sm tabular-nums" :class="cand.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(cand.amount, cand.currency)"></span>
                               </button>
                             </template>
                             <template x-if="! receiptAssign[0]?.cands?.length">
-                              <div class="px-3 py-6 text-center text-xs text-gray-400">{{ __('invoices.assign_search_hint') }}</div>
+                              <div class="px-3 py-6 text-center text-xs text-md-on-surface-var">{{ __('invoices.assign_search_hint') }}</div>
                             </template>
                           </div>
                         </template>
@@ -422,12 +422,12 @@
                           <div>
                             <template x-for="cand in assignCandidates()" :key="'a'+cand.id">
                               <button type="button" @click="assignPending(0, cand)" class="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left hover:bg-accent/5">
-                                <span class="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
-                                <span class="shrink-0 text-xs tabular-nums text-gray-400" x-text="fmtMoney(cand.amount, cand.currency)"></span>
+                                <span class="min-w-0 flex-1 truncate text-sm text-md-on-surface-var dark:text-md-on-surface-var"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
+                                <span class="shrink-0 text-xs tabular-nums text-md-on-surface-var" x-text="fmtMoney(cand.amount, cand.currency)"></span>
                               </button>
                             </template>
                             <template x-if="! assignCandidates().length">
-                              <div class="px-3 py-4 text-center text-xs text-gray-400">{{ __('invoices.assign_no_match') }}</div>
+                              <div class="px-3 py-4 text-center text-xs text-md-on-surface-var">{{ __('invoices.assign_no_match') }}</div>
                             </template>
                           </div>
                         </template>
@@ -436,7 +436,7 @@
                   </div>
                   <div class="flex items-center justify-between gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
                     <x-button variant="secondary" size="sm" @click="dropPending(0)">{{ __('invoices.assign_skip') }}</x-button>
-                    <span class="text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.assign_remaining') }}'.replace(':n', receiptAssign.length)"></span>
+                    <span class="text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="'{{ __('invoices.assign_remaining') }}'.replace(':n', receiptAssign.length)"></span>
                   </div>
                 </div>
               </template>
@@ -456,8 +456,8 @@
                       <div class="flex items-center gap-3 px-4 py-3">
                         <span class="ll-chip h-9 w-9 rounded-xl shrink-0" style="background:#6b7280"><x-icon name="document" class="h-4.5 w-4.5 text-white" /></span>
                         <div class="min-w-0 flex-1">
-                          <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="doc.r.name || '{{ __('invoices.receipt') }}'"></p>
-                          <p class="truncate text-xs text-gray-500 dark:text-gray-400"><span x-text="doc.tx.date"></span> · <span x-text="doc.tx.counterparty || doc.tx.purpose || '—'"></span> · <span class="tabular-nums" x-text="fmtMoney(doc.tx.amount, doc.tx.currency)"></span></p>
+                          <p class="truncate text-sm font-medium text-md-on-surface dark:text-md-on-surface" x-text="doc.r.name || '{{ __('invoices.receipt') }}'"></p>
+                          <p class="truncate text-xs text-md-on-surface-var dark:text-md-on-surface-var"><span x-text="doc.tx.date"></span> · <span x-text="doc.tx.counterparty || doc.tx.purpose || '—'"></span> · <span class="tabular-nums" x-text="fmtMoney(doc.tx.amount, doc.tx.currency)"></span></p>
                         </div>
                         <x-button variant="secondary" size="sm" icon="arrow-uturn-left" @click="restoreReceipt(doc)">{{ __('invoices.restore') }}</x-button>
                         <x-icon-button name="trash" tone="red" size="sm" @click="deleteReceiptForever(doc)" :aria-label="__('invoices.delete')" />
@@ -480,16 +480,16 @@
                   <button type="button" @click="openReceiptDoc(doc)" class="group flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-accent/5">
                     <span class="ll-chip h-9 w-9 rounded-xl shrink-0" :style="{ background: doc.r.kind === 'invoice' ? '#7066f5' : '#3fae9f' }"><x-icon name="document" class="h-4.5 w-4.5 text-white" /></span>
                     <div class="min-w-0 flex-1">
-                      <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="doc.r.name || '{{ __('invoices.receipt') }}'"></p>
-                      <p class="truncate text-xs text-gray-500 dark:text-gray-400">
+                      <p class="truncate text-sm font-medium text-md-on-surface dark:text-md-on-surface" x-text="doc.r.name || '{{ __('invoices.receipt') }}'"></p>
+                      <p class="truncate text-xs text-md-on-surface-var dark:text-md-on-surface-var">
                         <template x-if="doc.tx"><span><span x-text="doc.tx.date"></span> · <span x-text="doc.tx.counterparty || doc.tx.purpose || '—'"></span> · <span class="tabular-nums" x-text="fmtMoney(doc.tx.amount, doc.tx.currency)"></span></span></template>
                         <template x-if="! doc.tx"><span>{{ __('invoices.receipt_standalone') }}<span x-show="doc.r.uploadedAt"> · <span class="tabular-nums" x-text="fmtDate(doc.r.uploadedAt)"></span></span></span></template>
                       </p>
                     </div>
                     <template x-if="! doc.tx"><x-badge variant="accent">{{ __('invoices.receipt_standalone_badge') }}</x-badge></template>
                     <template x-if="doc.r.category"><x-badge variant="gray"><span x-text="doc.r.category"></span></x-badge></template>
-                    <template x-if="doc.r.partnerId"><x-icon name="user" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" /></template>
-                    <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
+                    <template x-if="doc.r.partnerId"><x-icon name="user" class="h-4 w-4 shrink-0 text-md-on-surface-var dark:text-md-on-surface-var" /></template>
+                    <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-md-on-surface-var dark:text-md-on-surface-var" />
                   </button>
                 </template>
               </div>
@@ -500,29 +500,29 @@
           {{-- Receipt document detail (metadata, link, notes, tags, category, contact) --}}
           <div x-show="receiptDoc" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeReceiptDoc()">
             <div class="absolute inset-0 bg-gray-900/50" @click="closeReceiptDoc()"></div>
-            <div class="relative flex h-[75vh] max-h-[75vh] w-full max-w-[75vw] flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex h-[75vh] max-h-[75vh] w-full max-w-[75vw] flex-col rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-xl">
               <template x-if="receiptDoc">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="flex items-center gap-2.5 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
                     <span class="ll-chip h-8 w-8 rounded-xl shrink-0" :style="{ background: receiptDoc.r.kind === 'invoice' ? '#7066f5' : '#3fae9f' }"><x-icon name="document" class="h-4.5 w-4.5 text-white" /></span>
-                    <p class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100" x-text="receiptDoc.r.name || '{{ __('invoices.receipt') }}'"></p>
+                    <p class="min-w-0 flex-1 truncate text-sm font-semibold text-md-on-surface dark:text-md-on-surface" x-text="receiptDoc.r.name || '{{ __('invoices.receipt') }}'"></p>
                     {{-- Actions in a 3-dot menu next to the title --}}
                     <div class="relative shrink-0" x-data="{ menu: false }" @keydown.escape.window="menu = false">
                       <x-icon-button name="ellipsis" tone="gray" size="sm" @click="menu = ! menu" title="{{ __('invoices.receipt_actions') }}" aria-label="{{ __('invoices.receipt_actions') }}" ::aria-expanded="menu" />
-                      <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-30 mt-1 w-52 overflow-hidden rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-xl">
-                        <button type="button" @click="menu = false; openReceipt(receiptDoc.r)" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5 hover:text-accent">
+                      <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-30 mt-1 w-52 overflow-hidden rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-md-surface py-1 shadow-xl">
+                        <button type="button" @click="menu = false; openReceipt(receiptDoc.r)" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-md-on-surface-var dark:text-md-on-surface-var hover:bg-accent/5 hover:text-accent">
                           <x-icon name="arrow-up-right" class="h-4 w-4" />{{ __('invoices.receipt_open_tab') }}
                         </button>
-                        <button type="button" @click="menu = false; renameReceiptDoc()" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5 hover:text-accent">
+                        <button type="button" @click="menu = false; renameReceiptDoc()" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-md-on-surface-var dark:text-md-on-surface-var hover:bg-accent/5 hover:text-accent">
                           <x-icon name="pencil" class="h-4 w-4" />{{ __('invoices.receipt_rename') }}
                         </button>
                         <template x-if="receiptDoc.r.kind !== 'invoice'">
-                          <button type="button" @click="menu = false; reanalyzeReceipt(receiptDoc)" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5 hover:text-accent">
+                          <button type="button" @click="menu = false; reanalyzeReceipt(receiptDoc)" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-md-on-surface-var dark:text-md-on-surface-var hover:bg-accent/5 hover:text-accent">
                             <x-icon name="arrow-path" class="h-4 w-4" />{{ __('invoices.receipt_reanalyze') }}
                           </button>
                         </template>
                         <template x-if="receiptDoc.r.blob_path && $store.paperless.configured">
-                          <button type="button" @click="menu = false; sendReceiptToPaperless(receiptDoc)" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5 hover:text-accent">
+                          <button type="button" @click="menu = false; sendReceiptToPaperless(receiptDoc)" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-md-on-surface-var dark:text-md-on-surface-var hover:bg-accent/5 hover:text-accent">
                             <x-icon name="share" class="h-4 w-4" />{{ __('paperless.send_to_paperless') }}
                           </button>
                         </template>
@@ -538,11 +538,11 @@
                   {{-- Two-pane: document preview | info sidebar --}}
                   <div class="flex min-h-0 flex-1 flex-col md:flex-row">
                     <div class="min-h-0 shrink-0 border-b border-black/[0.06] dark:border-white/10 md:w-1/2 md:border-b-0 md:border-r">
-                      <div class="h-64 w-full bg-gray-50 dark:bg-[#111] md:h-full">
+                      <div class="h-64 w-full bg-md-surface-2 dark:bg-[#111] md:h-full">
                         <template x-if="docPreview && docPreviewIsPdf"><iframe :src="docPreview.url || 'about:blank'" class="h-full w-full" title="preview"></iframe></template>
                         <template x-if="docPreview && docPreviewIsImage"><div class="flex h-full w-full items-center justify-center p-2"><img :src="docPreview.url" class="max-h-full max-w-full object-contain" alt="preview"></div></template>
                         <template x-if="! docPreview">
-                          <div class="flex h-full w-full items-center justify-center p-4 text-center text-xs text-gray-400">
+                          <div class="flex h-full w-full items-center justify-center p-4 text-center text-xs text-md-on-surface-var">
                             <span x-show="receiptDoc?.r?.blob_path">{{ __('invoices.assign_preview_loading') }}</span>
                             <span x-show="! receiptDoc?.r?.blob_path" x-cloak>{{ __('invoices.receipt_no_preview') }}</span>
                           </div>
@@ -553,8 +553,8 @@
                     {{-- Linkage: only for receipts tied to a bank booking --}}
                     <template x-if="receiptDoc.tx">
                     <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2.5">
-                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_linked') }}</p>
-                      <p class="mt-1 text-sm text-gray-800 dark:text-gray-200">
+                      <p class="text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.receipt_linked') }}</p>
+                      <p class="mt-1 text-sm text-md-on-surface dark:text-md-on-surface">
                         <span x-text="receiptDoc.tx.date"></span> · <span x-text="receiptDoc.tx.counterparty || receiptDoc.tx.purpose || '—'"></span> · <span class="tabular-nums" x-text="fmtMoney(receiptDoc.tx.amount, receiptDoc.tx.currency)"></span>
                       </p>
                       <button type="button" @click="relinkQuery=''; receiptRelink = ! receiptRelink" class="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline">
@@ -562,12 +562,12 @@
                       </button>
                       <template x-if="receiptRelink">
                         <div class="mt-2">
-                          <input type="search" x-model.debounce.200ms="relinkQuery" placeholder="{{ __('invoices.receipt_relink_search') }}" class="w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                          <input type="search" x-model.debounce.200ms="relinkQuery" placeholder="{{ __('invoices.receipt_relink_search') }}" class="w-full rounded-lg border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                           <div class="mt-1 max-h-40 overflow-auto rounded-lg border border-black/[0.06] dark:border-white/10">
                             <template x-for="cand in relinkCandidates" :key="cand.id">
                               <button type="button" @click="relinkReceiptTo(cand)" class="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-accent/5">
-                                <span class="truncate text-gray-700 dark:text-gray-200"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
-                                <span class="shrink-0 tabular-nums text-gray-400" x-text="fmtMoney(cand.amount, cand.currency)"></span>
+                                <span class="truncate text-md-on-surface-var dark:text-md-on-surface"><span x-text="cand.date"></span> · <span x-text="cand.counterparty || cand.purpose || '—'"></span></span>
+                                <span class="shrink-0 tabular-nums text-md-on-surface-var" x-text="fmtMoney(cand.amount, cand.currency)"></span>
                               </button>
                             </template>
                           </div>
@@ -578,24 +578,24 @@
                     {{-- Standalone receipt ("Fremdbeleg"): no booking --}}
                     <template x-if="! receiptDoc.tx">
                       <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2.5">
-                        <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_standalone_badge') }}</p>
-                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_standalone_hint') }}<span x-show="receiptDoc.r.uploadedAt"> · <span x-text="fmtDate(receiptDoc.r.uploadedAt)"></span></span></p>
+                        <p class="text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.receipt_standalone_badge') }}</p>
+                        <p class="mt-1 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.receipt_standalone_hint') }}<span x-show="receiptDoc.r.uploadedAt"> · <span x-text="fmtDate(receiptDoc.r.uploadedAt)"></span></span></p>
                       </div>
                     </template>
 
                     {{-- Category (with suggestions) --}}
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_category') }}</label>
-                      <input type="text" x-model="receiptDoc.r.category" @change="saveReceiptDoc()" list="receiptCats" placeholder="{{ __('invoices.receipt_category_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.receipt_category') }}</label>
+                      <input type="text" x-model="receiptDoc.r.category" @change="saveReceiptDoc()" list="receiptCats" placeholder="{{ __('invoices.receipt_category_ph') }}" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                       <datalist id="receiptCats"><template x-for="c in allCategories" :key="c"><option :value="c"></option></template></datalist>
                     </div>
 
                     {{-- Tax rate (VAT) — stored on the linked booking; the receipt's detected rate is shown as a hint --}}
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_vat_label') }}</label>
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.receipt_vat_label') }}</label>
                       {{-- Embedded: VAT stored on the linked booking; standalone: on the receipt itself. --}}
                       <template x-if="receiptDoc.tx">
-                        <select x-model="receiptDoc.tx.vatCat" @change="_persistTx(receiptDoc.tx)" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <select x-model="receiptDoc.tx.vatCat" @change="_persistTx(receiptDoc.tx)" class="w-full appearance-none rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                           <option value="">{{ __('invoices.vatcat_none') }}</option>
                           <option value="19">{{ __('invoices.vatcat_19') }}</option>
                           <option value="16">{{ __('invoices.vatcat_16') }}</option>
@@ -605,7 +605,7 @@
                         </select>
                       </template>
                       <template x-if="! receiptDoc.tx">
-                        <select x-model="receiptDoc.r.vat" @change="saveReceiptDoc()" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <select x-model="receiptDoc.r.vat" @change="saveReceiptDoc()" class="w-full appearance-none rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                           <option value="">{{ __('invoices.vatcat_none') }}</option>
                           <option value="19">{{ __('invoices.vatcat_19') }}</option>
                           <option value="16">{{ __('invoices.vatcat_16') }}</option>
@@ -614,7 +614,7 @@
                         </select>
                       </template>
                       <template x-if="receiptDoc.tx && receiptDoc.r.vat">
-                        <p class="mt-1.5 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        <p class="mt-1.5 flex items-center gap-1.5 text-xs text-md-on-surface-var dark:text-md-on-surface-var">
                           <span>{{ __('invoices.receipt_vat_detected') }}</span>
                           <x-badge variant="accent"><span x-text="receiptDoc.r.vat + ' %'"></span></x-badge>
                         </p>
@@ -623,28 +623,28 @@
 
                     {{-- Tags (badge chips, like the other modules) --}}
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_tags') }}</label>
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.receipt_tags') }}</label>
                       <x-tag-field commit="saveReceiptDoc()" placeholder="{{ __('invoices.receipt_tags_ph') }}" />
                     </div>
 
                     {{-- Business partner (a contact, or a standalone partner) --}}
                     <div x-data="{ open: false }">
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_partner') }}</label>
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.receipt_partner') }}</label>
                       <template x-if="receiptDoc.r.partnerId">
                         <div class="flex items-center gap-2 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
-                          <x-icon name="user" class="h-4 w-4 text-gray-400" />
-                          <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="receiptPartnerName(receiptDoc.r) || '—'"></span>
+                          <x-icon name="user" class="h-4 w-4 text-md-on-surface-var" />
+                          <span class="min-w-0 flex-1 truncate text-sm text-md-on-surface dark:text-md-on-surface" x-text="receiptPartnerName(receiptDoc.r) || '—'"></span>
                           <x-icon-button name="x-mark" tone="gray" size="sm" @click="setReceiptPartner(null)" :aria-label="__('common.delete')" />
                         </div>
                       </template>
                       <template x-if="! receiptDoc.r.partnerId">
                         <div class="relative">
-                          <input type="search" x-model="receiptDoc.r.partnerQuery" @focus="open = true" placeholder="{{ __('invoices.receipt_partner_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                          <div x-show="open && partnerOptions().length" @click.outside="open = false" class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-lg">
+                          <input type="search" x-model="receiptDoc.r.partnerQuery" @focus="open = true" placeholder="{{ __('invoices.receipt_partner_ph') }}" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
+                          <div x-show="open && partnerOptions().length" @click.outside="open = false" class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-lg">
                             <template x-for="o in partnerOptions()" :key="o.kind + o.id">
-                              <button type="button" @click="setReceiptPartner(o); open = false" class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-accent/5">
+                              <button type="button" @click="setReceiptPartner(o); open = false" class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-md-on-surface-var dark:text-md-on-surface hover:bg-accent/5">
                                 <span class="min-w-0 truncate" x-text="o.name"></span>
-                                <span class="shrink-0 text-[10px] uppercase tracking-wide text-gray-400">{{ __('invoices.partner_partner') }}</span>
+                                <span class="shrink-0 text-[10px] uppercase tracking-wide text-md-on-surface-var">{{ __('invoices.partner_partner') }}</span>
                               </button>
                             </template>
                           </div>
@@ -654,8 +654,8 @@
 
                     {{-- Project (bundle this receipt under a cost project) --}}
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_project') }}</label>
-                      <select @change="setReceiptProject($event.target.value)" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.receipt_project') }}</label>
+                      <select @change="setReceiptProject($event.target.value)" class="w-full appearance-none rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                         <option value="" :selected="! receiptDoc.r.projectId">{{ __('invoices.project_none') }}</option>
                         <template x-for="o in projectRows" :key="o.project.id">
                           <option :value="o.project.id" :selected="receiptDoc.r.projectId === o.project.id" x-text="('— '.repeat(o.depth)) + o.project.name"></option>
@@ -665,8 +665,8 @@
 
                     {{-- Notes --}}
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_note') }}</label>
-                      <textarea x-model="receiptDoc.r.note" @change="saveReceiptDoc()" rows="3" placeholder="{{ __('invoices.receipt_note_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.receipt_note') }}</label>
+                      <textarea x-model="receiptDoc.r.note" @change="saveReceiptDoc()" rows="3" placeholder="{{ __('invoices.receipt_note_ph') }}" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm"></textarea>
                     </div>
                     <template x-if="receiptDoc.r.locked">
                       <x-alert variant="info">{{ __('invoices.receipt_locked_hint') }}</x-alert>
@@ -682,7 +682,7 @@
         {{-- ===================== PROJECTS (nestable cost bundles) ===================== --}}
         <div x-show="section === 'projects'" class="mt-6">
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.projects_intro') }}</p>
+            <p class="text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.projects_intro') }}</p>
             <x-button variant="primary" size="sm" icon="plus" @click="newProject()">{{ __('invoices.project_add') }}</x-button>
           </div>
 
@@ -690,12 +690,12 @@
           <template x-if="projects.length">
             <div class="mt-4 grid grid-cols-2 gap-3">
               <div class="ll-card">
-                <p class="text-[11px] uppercase tracking-wide text-gray-400">{{ __('invoices.project_business_total') }}</p>
-                <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectKindSummary.business)"></p>
+                <p class="text-[11px] uppercase tracking-wide text-md-on-surface-var">{{ __('invoices.project_business_total') }}</p>
+                <p class="mt-0.5 text-lg font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(projectKindSummary.business)"></p>
               </div>
               <div class="ll-card">
-                <p class="text-[11px] uppercase tracking-wide text-gray-400">{{ __('invoices.project_private_total') }}</p>
-                <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectKindSummary.private)"></p>
+                <p class="text-[11px] uppercase tracking-wide text-md-on-surface-var">{{ __('invoices.project_private_total') }}</p>
+                <p class="mt-0.5 text-lg font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(projectKindSummary.private)"></p>
               </div>
             </div>
           </template>
@@ -715,10 +715,10 @@
                       class="group flex w-full items-center gap-2 py-2.5 pr-3 text-left hover:bg-accent/5"
                       :class="openProjectId === row.project.id ? 'bg-accent/10' : ''"
                       :style="{ paddingLeft: (12 + row.depth * 18) + 'px' }">
-                      <x-icon name="folder" class="h-4 w-4 shrink-0 text-gray-400" />
-                      <span class="min-w-0 flex-1 truncate text-sm text-gray-900 dark:text-gray-100" x-text="row.project.name"></span>
+                      <x-icon name="folder" class="h-4 w-4 shrink-0 text-md-on-surface-var" />
+                      <span class="min-w-0 flex-1 truncate text-sm text-md-on-surface dark:text-md-on-surface" x-text="row.project.name"></span>
                       <template x-if="effectiveKind(row.project.id) === 'private'"><x-badge variant="gray">{{ __('invoices.project_kind_private') }}</x-badge></template>
-                      <span class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="fmtMoney(projectTotal(row.project.id))"></span>
+                      <span class="shrink-0 text-xs tabular-nums text-md-on-surface-var dark:text-md-on-surface-var" x-text="fmtMoney(projectTotal(row.project.id))"></span>
                     </button>
                   </template>
                 </div>
@@ -726,7 +726,7 @@
                   @include('invoices._pagination', ['page' => 'projPage', 'perPage' => 'projPerPage', 'pageCount' => 'projPageCount', 'setPerPage' => 'setProjPerPage', 'goto' => 'projGoto'])
                 </template>
                 <template x-if="! scopedProjectRows.length">
-                  <p class="px-4 py-6 text-center text-xs text-gray-400">{{ __('invoices.project_scope_empty') }}</p>
+                  <p class="px-4 py-6 text-center text-xs text-md-on-surface-var">{{ __('invoices.project_scope_empty') }}</p>
                 </template>
               </div>
 
@@ -740,16 +740,16 @@
                     <div class="ll-card flex items-center justify-between gap-3">
                       <div class="min-w-0">
                         <div class="flex items-center gap-2">
-                          <h2 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="openProject?.name"></h2>
+                          <h2 class="truncate text-base font-semibold text-md-on-surface dark:text-md-on-surface" x-text="openProject?.name"></h2>
                           <template x-if="effectiveKind(openProject?.id) === 'private'"><x-badge variant="gray">{{ __('invoices.project_kind_private') }}</x-badge></template>
                           <template x-if="openProject && effectiveKind(openProject.id) !== 'private'"><x-badge variant="accent">{{ __('invoices.project_kind_business') }}</x-badge></template>
                         </div>
-                        <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="openProject?.note"></p>
+                        <p class="truncate text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="openProject?.note"></p>
                       </div>
                       <div class="flex shrink-0 items-center gap-3">
                         <div class="text-right">
-                          <p class="text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectTotal(openProject?.id))"></p>
-                          <p class="text-[11px] uppercase tracking-wide text-gray-400">{{ __('invoices.project_total') }}</p>
+                          <p class="text-lg font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(projectTotal(openProject?.id))"></p>
+                          <p class="text-[11px] uppercase tracking-wide text-md-on-surface-var">{{ __('invoices.project_total') }}</p>
                         </div>
                         <x-icon-button name="pencil" tone="gray" size="sm" @click="editProject(openProject)" :aria-label="__('common.edit')" />
                         <x-icon-button name="trash" tone="red" size="sm" @click="removeProject(openProject)" :aria-label="__('common.delete')" />
@@ -759,20 +759,20 @@
                     {{-- Sub-projects --}}
                     <div class="ll-card !p-0 overflow-hidden">
                       <div class="flex items-center justify-between px-4 py-2.5">
-                        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('invoices.project_subprojects') }}</h3>
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-md-on-surface-var">{{ __('invoices.project_subprojects') }}</h3>
                         <x-button variant="secondary" size="sm" icon="plus" @click="newProject(openProject.id)">{{ __('invoices.project_sub_add') }}</x-button>
                       </div>
                       <div class="divide-y divide-black/[0.06] dark:divide-white/10">
                         <template x-for="sp in pagedSubs" :key="sp.id">
                           <button type="button" @click="openProjectDetail(sp.id)" class="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-accent/5">
-                            <x-icon name="folder" class="h-4 w-4 text-gray-400" />
-                            <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="sp.name"></span>
+                            <x-icon name="folder" class="h-4 w-4 text-md-on-surface-var" />
+                            <span class="min-w-0 flex-1 truncate text-sm text-md-on-surface dark:text-md-on-surface" x-text="sp.name"></span>
                             <template x-if="effectiveKind(sp.id) === 'private'"><x-badge variant="gray">{{ __('invoices.project_kind_private') }}</x-badge></template>
-                            <span class="text-xs tabular-nums text-gray-500" x-text="fmtMoney(projectTotal(sp.id))"></span>
+                            <span class="text-xs tabular-nums text-md-on-surface-var" x-text="fmtMoney(projectTotal(sp.id))"></span>
                           </button>
                         </template>
                         <template x-if="! projectSubs(openProject?.id).length">
-                          <p class="px-4 py-3 text-xs text-gray-400">{{ __('invoices.project_no_subs') }}</p>
+                          <p class="px-4 py-3 text-xs text-md-on-surface-var">{{ __('invoices.project_no_subs') }}</p>
                         </template>
                         <template x-if="projectSubs(openProject?.id).length > subPerPage">
                           @include('invoices._pagination', ['page' => 'subPage', 'perPage' => 'subPerPage', 'pageCount' => 'subPageCount', 'setPerPage' => 'setSubPerPage', 'goto' => 'subGoto'])
@@ -783,18 +783,18 @@
                     {{-- Manual "hand" expenses --}}
                     <div class="ll-card !p-0 overflow-hidden">
                       <div class="flex items-center justify-between px-4 py-2.5">
-                        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('invoices.project_expenses') }}</h3>
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-md-on-surface-var">{{ __('invoices.project_expenses') }}</h3>
                         <x-button variant="secondary" size="sm" icon="plus" @click="newExpense(openProject.id)">{{ __('invoices.project_expense_add') }}</x-button>
                       </div>
                       <div class="divide-y divide-black/[0.06] dark:divide-white/10">
                         <template x-for="ex in pagedExpenses" :key="ex.id">
                           <div class="group flex items-center gap-3 px-4 py-2.5">
                             <div class="min-w-0 flex-1">
-                              <p class="truncate text-sm text-gray-800 dark:text-gray-200" x-text="ex.note || '{{ __('invoices.project_expense') }}'"></p>
-                              <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="[ex.date, expenseAccountName(ex.account)].filter(Boolean).join(' · ') || '—'"></p>
+                              <p class="truncate text-sm text-md-on-surface dark:text-md-on-surface" x-text="ex.note || '{{ __('invoices.project_expense') }}'"></p>
+                              <p class="truncate text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="[ex.date, expenseAccountName(ex.account)].filter(Boolean).join(' · ') || '—'"></p>
                             </div>
                             <template x-if="ex.category"><x-badge variant="gray"><span x-text="ex.category"></span></x-badge></template>
-                            <span class="shrink-0 text-sm tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(ex.amount)"></span>
+                            <span class="shrink-0 text-sm tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(ex.amount)"></span>
                             <div class="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100">
                               <x-icon-button name="pencil" tone="gray" size="sm" @click="editExpense(openProject, ex)" :aria-label="__('common.edit')" />
                               <x-icon-button name="trash" tone="red" size="sm" @click="removeExpense(openProject, ex)" :aria-label="__('common.delete')" />
@@ -802,7 +802,7 @@
                           </div>
                         </template>
                         <template x-if="! (openProject?.expenses || []).length">
-                          <p class="px-4 py-3 text-xs text-gray-400">{{ __('invoices.project_no_expenses') }}</p>
+                          <p class="px-4 py-3 text-xs text-md-on-surface-var">{{ __('invoices.project_no_expenses') }}</p>
                         </template>
                         <template x-if="(openProject?.expenses || []).length > expPerPage">
                           @include('invoices._pagination', ['page' => 'expPage', 'perPage' => 'expPerPage', 'pageCount' => 'expPageCount', 'setPerPage' => 'setExpPerPage', 'goto' => 'expGoto'])
@@ -813,20 +813,20 @@
                     {{-- Bundled receipts --}}
                     <div class="ll-card !p-0 overflow-hidden">
                       <div class="flex items-center justify-between px-4 py-2.5">
-                        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('invoices.project_receipts') }}</h3>
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-md-on-surface-var">{{ __('invoices.project_receipts') }}</h3>
                         <x-button variant="secondary" size="sm" icon="plus" @click="openReceiptPicker()">{{ __('invoices.project_receipt_add') }}</x-button>
                       </div>
                       <div class="divide-y divide-black/[0.06] dark:divide-white/10">
                         <template x-for="d in pagedProjectReceipts" :key="d.r.id">
                           <button type="button" @click="openReceiptDoc(d)" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-accent/5">
-                            <x-icon name="document" class="h-4 w-4 text-gray-400" />
-                            <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="d.r.name || '{{ __('invoices.receipt') }}'"></span>
+                            <x-icon name="document" class="h-4 w-4 text-md-on-surface-var" />
+                            <span class="min-w-0 flex-1 truncate text-sm text-md-on-surface dark:text-md-on-surface" x-text="d.r.name || '{{ __('invoices.receipt') }}'"></span>
                             <template x-if="d.r.category"><x-badge variant="gray"><span x-text="d.r.category"></span></x-badge></template>
-                            <span class="text-xs tabular-nums text-gray-500" x-text="fmtMoney(d.r.total != null ? d.r.total : (d.tx ? Math.abs(d.tx.amount || 0) : 0))"></span>
+                            <span class="text-xs tabular-nums text-md-on-surface-var" x-text="fmtMoney(d.r.total != null ? d.r.total : (d.tx ? Math.abs(d.tx.amount || 0) : 0))"></span>
                           </button>
                         </template>
                         <template x-if="! projectReceiptList(openProject?.id).length">
-                          <p class="px-4 py-3 text-xs text-gray-400">{{ __('invoices.project_no_receipts') }}</p>
+                          <p class="px-4 py-3 text-xs text-md-on-surface-var">{{ __('invoices.project_no_receipts') }}</p>
                         </template>
                         <template x-if="projectReceiptList(openProject?.id).length > prcPerPage">
                           @include('invoices._pagination', ['page' => 'prcPage', 'perPage' => 'prcPerPage', 'pageCount' => 'prcPageCount', 'setPerPage' => 'setPrcPerPage', 'goto' => 'prcGoto'])
@@ -842,33 +842,33 @@
           {{-- Project create/edit modal --}}
           <div x-show="projectEditing" x-cloak class="fixed inset-0 z-[1140] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelProject()">
             <div class="absolute inset-0 bg-gray-900/50" @click="cancelProject()"></div>
-            <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+            <div class="relative w-full max-w-md rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface p-5 shadow-xl">
               <template x-if="projectEditing">
                 <div class="space-y-3">
-                  <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="projectEditing?.id ? '{{ __('invoices.project_edit') }}' : '{{ __('invoices.project_add') }}'"></h3>
+                  <h3 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface" x-text="projectEditing?.id ? '{{ __('invoices.project_edit') }}' : '{{ __('invoices.project_add') }}'"></h3>
                   <div>
-                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_name') }} <span class="text-red-500">*</span></label>
-                    <input type="text" x-model="projectEditing.name" @keydown.enter="saveProject()" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.project_name') }} <span class="text-red-500">*</span></label>
+                    <input type="text" x-model="projectEditing.name" @keydown.enter="saveProject()" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                   </div>
                   <div>
-                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_kind') }}</label>
+                    <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.project_kind') }}</label>
                     {{-- A root project sets its type; a sub-project always inherits the parent's. --}}
                     <template x-if="! projectEditing?.parentId">
                       <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/5 p-0.5">
-                        <button type="button" @click="projectEditing.kind = 'business'" class="rounded-lg px-3 py-1.5 text-sm font-medium transition" :class="projectEditing?.kind !== 'private' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'">{{ __('invoices.project_kind_business') }}</button>
-                        <button type="button" @click="projectEditing.kind = 'private'" class="rounded-lg px-3 py-1.5 text-sm font-medium transition" :class="projectEditing?.kind === 'private' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'">{{ __('invoices.project_kind_private') }}</button>
+                        <button type="button" @click="projectEditing.kind = 'business'" class="rounded-lg px-3 py-1.5 text-sm font-medium transition" :class="projectEditing?.kind !== 'private' ? 'bg-md-selected text-md-primary shadow-sm' : 'text-md-on-surface-var dark:text-md-on-surface-var'">{{ __('invoices.project_kind_business') }}</button>
+                        <button type="button" @click="projectEditing.kind = 'private'" class="rounded-lg px-3 py-1.5 text-sm font-medium transition" :class="projectEditing?.kind === 'private' ? 'bg-md-selected text-md-primary shadow-sm' : 'text-md-on-surface-var dark:text-md-on-surface-var'">{{ __('invoices.project_kind_private') }}</button>
                       </div>
                     </template>
                     <template x-if="projectEditing?.parentId">
-                      <p class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      <p class="flex items-center gap-1.5 text-xs text-md-on-surface-var dark:text-md-on-surface-var">
                         <x-icon name="lock-closed" class="h-3.5 w-3.5" />
                         <span x-text="'{{ __('invoices.project_kind_inherited') }}'.replace(':kind', projectKindLabel(effectiveKind(projectEditing.parentId)))"></span>
                       </p>
                     </template>
                   </div>
                   <div>
-                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_parent') }}</label>
-                    <select x-model="projectEditing.parentId" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.project_parent') }}</label>
+                    <select x-model="projectEditing.parentId" class="w-full appearance-none rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                       <option value="">{{ __('invoices.project_parent_none') }}</option>
                       <template x-for="o in projectOptions(projectEditing?.id)" :key="o.project.id">
                         <option :value="o.project.id" x-text="('— '.repeat(o.depth)) + o.project.name"></option>
@@ -876,8 +876,8 @@
                     </select>
                   </div>
                   <div>
-                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_note') }}</label>
-                    <textarea x-model="projectEditing.note" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                    <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.project_note') }}</label>
+                    <textarea x-model="projectEditing.note" rows="2" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm"></textarea>
                   </div>
                   <div class="flex justify-end gap-2 pt-1">
                     <x-button variant="secondary" size="sm" @click="cancelProject()">{{ __('common.cancel') }}</x-button>
@@ -891,17 +891,17 @@
           {{-- Manual expense modal --}}
           <div x-show="expenseEditing" x-cloak class="fixed inset-0 z-[1140] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelExpense()">
             <div class="absolute inset-0 bg-gray-900/50" @click="cancelExpense()"></div>
-            <div class="relative w-full max-w-sm rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+            <div class="relative w-full max-w-sm rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface p-5 shadow-xl">
               <template x-if="expenseEditing">
                 <div class="space-y-3">
-                  <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="expenseEditing?.id ? '{{ __('invoices.project_expense_edit') }}' : '{{ __('invoices.project_expense_add') }}'"></h3>
+                  <h3 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface" x-text="expenseEditing?.id ? '{{ __('invoices.project_expense_edit') }}' : '{{ __('invoices.project_expense_add') }}'"></h3>
                   <div>
-                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_expense_amount') }} <span class="text-red-500">*</span></label>
-                    <input type="number" step="0.01" min="0" x-model.number="expenseEditing.amount" @keydown.enter="saveExpense()" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.project_expense_amount') }} <span class="text-red-500">*</span></label>
+                    <input type="number" step="0.01" min="0" x-model.number="expenseEditing.amount" @keydown.enter="saveExpense()" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                   </div>
                   <div>
-                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_expense_account') }}</label>
-                    <select @change="expenseEditing.account = $event.target.value" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.project_expense_account') }}</label>
+                    <select @change="expenseEditing.account = $event.target.value" class="w-full appearance-none rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                       <option value="" :selected="! expenseEditing?.account">{{ __('invoices.project_expense_account_none') }}</option>
                       <template x-for="pm in sortedPayments" :key="pm.id">
                         <option :value="pm.id" :selected="expenseEditing?.account === pm.id" x-text="pm.label"></option>
@@ -909,8 +909,8 @@
                     </select>
                   </div>
                   <div>
-                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_expense_cat') }}</label>
-                    <select @change="expenseEditing.category = $event.target.value" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.project_expense_cat') }}</label>
+                    <select @change="expenseEditing.category = $event.target.value" class="w-full appearance-none rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                       <option value="" :selected="! expenseEditing?.category">{{ __('invoices.project_expense_cat_none') }}</option>
                       <template x-for="c in allCategories" :key="c">
                         <option :value="c" :selected="expenseEditing?.category === c" x-text="c"></option>
@@ -918,12 +918,12 @@
                     </select>
                   </div>
                   <div>
-                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_expense_date') }}</label>
-                    <input type="date" x-model="expenseEditing.date" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.project_expense_date') }}</label>
+                    <input type="date" x-model="expenseEditing.date" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                   </div>
                   <div>
-                    <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.project_expense_note') }}</label>
-                    <input type="text" x-model="expenseEditing.note" @keydown.enter="saveExpense()" placeholder="{{ __('invoices.project_expense_note_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                    <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.project_expense_note') }}</label>
+                    <input type="text" x-model="expenseEditing.note" @keydown.enter="saveExpense()" placeholder="{{ __('invoices.project_expense_note_ph') }}" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                   </div>
                   <div class="flex justify-end gap-2 pt-1">
                     <x-button variant="secondary" size="sm" @click="cancelExpense()">{{ __('common.cancel') }}</x-button>
@@ -937,32 +937,32 @@
           {{-- Receipt picker: bundle existing receipts into the open project --}}
           <div x-show="receiptPicker" x-cloak class="fixed inset-0 z-[1140] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeReceiptPicker()">
             <div class="absolute inset-0 bg-gray-900/50" @click="closeReceiptPicker()"></div>
-            <div class="relative flex h-[75vh] max-h-[75vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex h-[75vh] max-h-[75vh] w-full max-w-lg flex-col rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-xl">
               <div class="flex items-center gap-2.5 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-                <p class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.project_pick_title') }}</p>
+                <p class="min-w-0 flex-1 truncate text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.project_pick_title') }}</p>
                 <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeReceiptPicker()" :aria-label="__('common.close')" />
               </div>
               <div class="border-b border-black/[0.06] dark:border-white/10 p-2">
-                <input type="search" x-model.debounce.200ms="receiptPickerQuery" placeholder="{{ __('invoices.project_pick_search') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                <input type="search" x-model.debounce.200ms="receiptPickerQuery" placeholder="{{ __('invoices.project_pick_search') }}" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
               </div>
               <div class="min-h-0 flex-1 overflow-auto px-2 py-2">
                 <template x-for="d in pickerReceipts()" :key="d.r.id">
                   <button type="button" @click="toggleReceiptToProject(d)" class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-accent/5">
-                    <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border" :class="d.r.projectId === openProjectId ? 'border-accent bg-accent text-white' : 'border-gray-300 dark:border-gray-600'">
+                    <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border" :class="d.r.projectId === openProjectId ? 'border-accent bg-accent text-white' : 'border-md-outline-variant dark:border-md-outline-variant'">
                       <template x-if="d.r.projectId === openProjectId"><x-icon name="check" class="h-3.5 w-3.5" /></template>
                     </span>
                     <div class="min-w-0 flex-1">
-                      <p class="truncate text-sm text-gray-800 dark:text-gray-200" x-text="d.r.name || '{{ __('invoices.receipt') }}'"></p>
-                      <p class="truncate text-xs text-gray-500 dark:text-gray-400"><template x-if="d.tx"><span><span x-text="d.tx.date"></span> · <span x-text="d.tx.counterparty || d.tx.purpose || '—'"></span></span></template><template x-if="! d.tx"><span x-text="d.r.uploadedAt ? fmtDate(d.r.uploadedAt) : ''"></span></template></p>
+                      <p class="truncate text-sm text-md-on-surface dark:text-md-on-surface" x-text="d.r.name || '{{ __('invoices.receipt') }}'"></p>
+                      <p class="truncate text-xs text-md-on-surface-var dark:text-md-on-surface-var"><template x-if="d.tx"><span><span x-text="d.tx.date"></span> · <span x-text="d.tx.counterparty || d.tx.purpose || '—'"></span></span></template><template x-if="! d.tx"><span x-text="d.r.uploadedAt ? fmtDate(d.r.uploadedAt) : ''"></span></template></p>
                     </div>
                     <template x-if="d.r.projectId && d.r.projectId !== openProjectId">
                       <x-badge variant="warning"><span x-text="projectName(d.r.projectId)"></span></x-badge>
                     </template>
-                    <span class="shrink-0 text-xs tabular-nums text-gray-500" x-text="fmtMoney(d.r.total != null ? d.r.total : (d.tx ? Math.abs(d.tx.amount || 0) : 0))"></span>
+                    <span class="shrink-0 text-xs tabular-nums text-md-on-surface-var" x-text="fmtMoney(d.r.total != null ? d.r.total : (d.tx ? Math.abs(d.tx.amount || 0) : 0))"></span>
                   </button>
                 </template>
                 <template x-if="! pickerReceipts().length">
-                  <p class="px-3 py-6 text-center text-xs text-gray-400">{{ __('invoices.project_pick_none') }}</p>
+                  <p class="px-3 py-6 text-center text-xs text-md-on-surface-var">{{ __('invoices.project_pick_none') }}</p>
                 </template>
               </div>
               <div class="flex justify-end border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
@@ -978,8 +978,8 @@
           <div x-show="partnersView === 'list'">
             <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div class="relative max-w-xs flex-1">
-                <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input type="search" x-model="partnerSearch" @input="parPage = 1" placeholder="{{ __('invoices.partners_search') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] pl-9 text-sm focus:border-accent focus:ring-accent">
+                <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-md-on-surface-var" />
+                <input type="search" x-model="partnerSearch" @input="parPage = 1" placeholder="{{ __('invoices.partners_search') }}" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 pl-9 text-sm focus:border-accent focus:ring-accent">
               </div>
               <x-button variant="primary" icon="plus" @click="newPartner()">{{ __('invoices.partner_add') }}</x-button>
             </div>
@@ -992,7 +992,7 @@
               <div class="ll-card !p-0 overflow-hidden">
                 <div class="overflow-x-auto">
                   <table class="min-w-full text-sm">
-                    <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-semibold uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">
                       <tr>
                         <th class="px-4 py-3">{{ __('invoices.partner_name') }}</th>
                         <th class="px-4 py-3 hidden md:table-cell">{{ __('invoices.partner_contact_person') }}</th>
@@ -1011,16 +1011,16 @@
                             <div class="flex items-center gap-3">
                               <template x-if="partnerLogoSrc(p)"><img :src="partnerLogoSrc(p)" alt="" class="h-8 w-8 shrink-0 rounded-lg object-contain bg-white border border-black/[0.06] dark:border-white/10"></template>
                               <template x-if="! partnerLogoSrc(p)"><span class="ll-chip h-8 w-8 shrink-0" style="--chip: #6b7280"><x-icon name="user" class="h-4 w-4" /></span></template>
-                              <span class="font-medium text-gray-900 dark:text-gray-100" x-text="p.name"></span>
+                              <span class="font-medium text-md-on-surface dark:text-md-on-surface" x-text="p.name"></span>
                             </div>
                           </td>
-                          <td class="px-4 py-3 hidden md:table-cell text-gray-600 dark:text-gray-300" x-text="(p.contacts && p.contacts[0] && p.contacts[0].name) || '—'"></td>
-                          <td class="px-4 py-3 hidden lg:table-cell text-gray-600 dark:text-gray-300" x-text="p.email || '—'"></td>
-                          <td class="px-4 py-3 hidden lg:table-cell text-gray-600 dark:text-gray-300 tabular-nums" x-text="p.phone || '—'"></td>
-                          <td class="px-4 py-3 hidden md:table-cell text-gray-600 dark:text-gray-300 tabular-nums" x-text="p.vatId || '—'"></td>
+                          <td class="px-4 py-3 hidden md:table-cell text-md-on-surface-var dark:text-md-on-surface-var" x-text="(p.contacts && p.contacts[0] && p.contacts[0].name) || '—'"></td>
+                          <td class="px-4 py-3 hidden lg:table-cell text-md-on-surface-var dark:text-md-on-surface-var" x-text="p.email || '—'"></td>
+                          <td class="px-4 py-3 hidden lg:table-cell text-md-on-surface-var dark:text-md-on-surface-var tabular-nums" x-text="p.phone || '—'"></td>
+                          <td class="px-4 py-3 hidden md:table-cell text-md-on-surface-var dark:text-md-on-surface-var tabular-nums" x-text="p.vatId || '—'"></td>
                           <td class="px-4 py-3 hidden xl:table-cell"><template x-if="p.category"><x-badge variant="gray"><span x-text="p.category"></span></x-badge></template></td>
-                          <td class="px-4 py-3 text-right tabular-nums text-gray-500 dark:text-gray-400" x-text="partnerLinkCount(p.id)"></td>
-                          <td class="px-4 py-3 text-right"><x-icon name="chevron-right" class="h-4 w-4 text-gray-300 dark:text-gray-600" /></td>
+                          <td class="px-4 py-3 text-right tabular-nums text-md-on-surface-var dark:text-md-on-surface-var" x-text="partnerLinkCount(p.id)"></td>
+                          <td class="px-4 py-3 text-right"><x-icon name="chevron-right" class="h-4 w-4 text-md-on-surface-var dark:text-md-on-surface-var" /></td>
                         </tr>
                       </template>
                     </tbody>
@@ -1041,7 +1041,7 @@
                   <x-icon-button name="arrow-left" @click="backToPartners()" :aria-label="__('common.back')" />
                   <template x-if="partnerLogoSrc(openPartnerRec)"><img :src="partnerLogoSrc(openPartnerRec)" alt="" class="h-10 w-10 shrink-0 rounded-xl object-contain bg-white border border-black/[0.06] dark:border-white/10"></template>
                   <template x-if="! partnerLogoSrc(openPartnerRec)"><span class="ll-chip h-10 w-10 shrink-0" style="--chip: #6b7280"><x-icon name="user" class="h-5 w-5" /></span></template>
-                  <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="openPartnerRec.name"></h1>
+                  <h1 class="text-lg font-semibold text-md-on-surface dark:text-md-on-surface" x-text="openPartnerRec.name"></h1>
                 </div>
                 <div class="flex items-center gap-2">
                   <x-button variant="secondary" size="sm" icon="pencil" @click="editPartner(openPartnerRec)">{{ __('common.edit') }}</x-button>
@@ -1052,26 +1052,26 @@
               <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 {{-- Info --}}
                 <div class="ll-card lg:col-span-1">
-                  <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.partner_info') }}</h2>
+                  <h2 class="text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.partner_info') }}</h2>
                   <dl class="mt-3 space-y-2 text-sm">
-                    <div x-show="openPartnerRec.vatId"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_vat') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.vatId"></dd></div>
-                    <div x-show="openPartnerRec.email"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.email" class="text-accent hover:underline" x-text="openPartnerRec.email"></a></dd></div>
-                    <div x-show="openPartnerRec.invoiceEmail"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_invoice_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.invoiceEmail" class="text-accent hover:underline" x-text="openPartnerRec.invoiceEmail"></a></dd></div>
-                    <div x-show="openPartnerRec.phone"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_phone') }}</dt><dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="openPartnerRec.phone"></dd></div>
-                    <div x-show="openPartnerRec.url"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_url') }}</dt><dd><a :href="safeHref(openPartnerRec.url)" target="_blank" rel="noopener" class="text-accent hover:underline break-all" x-text="openPartnerRec.url"></a></dd></div>
-                    <div x-show="openPartnerRec.address"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.partner_address') }}</dt><dd class="whitespace-pre-line text-gray-800 dark:text-gray-200" x-text="openPartnerRec.address"></dd></div>
-                    <div x-show="openPartnerRec.category"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_category') }}</dt><dd class="text-gray-800 dark:text-gray-200" x-text="openPartnerRec.category"></dd></div>
-                    <div x-show="openPartnerRec.note"><dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.receipt_note') }}</dt><dd class="whitespace-pre-line text-gray-800 dark:text-gray-200" x-text="openPartnerRec.note"></dd></div>
+                    <div x-show="openPartnerRec.vatId"><dt class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_vat') }}</dt><dd class="tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="openPartnerRec.vatId"></dd></div>
+                    <div x-show="openPartnerRec.email"><dt class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.email" class="text-accent hover:underline" x-text="openPartnerRec.email"></a></dd></div>
+                    <div x-show="openPartnerRec.invoiceEmail"><dt class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_invoice_email') }}</dt><dd><a :href="'mailto:'+openPartnerRec.invoiceEmail" class="text-accent hover:underline" x-text="openPartnerRec.invoiceEmail"></a></dd></div>
+                    <div x-show="openPartnerRec.phone"><dt class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_phone') }}</dt><dd class="tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="openPartnerRec.phone"></dd></div>
+                    <div x-show="openPartnerRec.url"><dt class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_url') }}</dt><dd><a :href="safeHref(openPartnerRec.url)" target="_blank" rel="noopener" class="text-accent hover:underline break-all" x-text="openPartnerRec.url"></a></dd></div>
+                    <div x-show="openPartnerRec.address"><dt class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_address') }}</dt><dd class="whitespace-pre-line text-md-on-surface dark:text-md-on-surface" x-text="openPartnerRec.address"></dd></div>
+                    <div x-show="openPartnerRec.category"><dt class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.receipt_category') }}</dt><dd class="text-md-on-surface dark:text-md-on-surface" x-text="openPartnerRec.category"></dd></div>
+                    <div x-show="openPartnerRec.note"><dt class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.receipt_note') }}</dt><dd class="whitespace-pre-line text-md-on-surface dark:text-md-on-surface" x-text="openPartnerRec.note"></dd></div>
                   </dl>
                   {{-- Contact persons --}}
                   <template x-if="openPartnerRec.contacts && openPartnerRec.contacts.length">
                     <div class="mt-4 border-t border-black/[0.06] dark:border-white/10 pt-3">
-                      <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.partner_contacts') }}</h3>
+                      <h3 class="text-xs font-semibold uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_contacts') }}</h3>
                       <ul class="mt-2 space-y-2">
                         <template x-for="c in openPartnerRec.contacts" :key="c.id">
                           <li class="text-sm">
-                            <div class="font-medium text-gray-900 dark:text-gray-100"><span x-text="c.name"></span><span x-show="c.role" class="ml-1 text-xs font-normal text-gray-400" x-text="'· ' + c.role"></span></div>
-                            <div class="text-xs text-gray-500 dark:text-gray-400" x-text="[c.email, c.phone].filter(Boolean).join(' · ')"></div>
+                            <div class="font-medium text-md-on-surface dark:text-md-on-surface"><span x-text="c.name"></span><span x-show="c.role" class="ml-1 text-xs font-normal text-md-on-surface-var" x-text="'· ' + c.role"></span></div>
+                            <div class="text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="[c.email, c.phone].filter(Boolean).join(' · ')"></div>
                           </li>
                         </template>
                       </ul>
@@ -1082,29 +1082,29 @@
                 {{-- Linked invoices + receipts --}}
                 <div class="space-y-6 lg:col-span-2">
                   <div class="ll-card !p-0 overflow-hidden">
-                    <h2 class="border-b border-black/[0.06] dark:border-white/10 px-4 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.partner_linked_invoices') }} <span class="text-gray-400" x-text="'(' + invoicesForPartner(openPartnerRec.id).length + ')'"></span></h2>
+                    <h2 class="border-b border-black/[0.06] dark:border-white/10 px-4 py-3 text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.partner_linked_invoices') }} <span class="text-md-on-surface-var" x-text="'(' + invoicesForPartner(openPartnerRec.id).length + ')'"></span></h2>
                     <div class="divide-y divide-black/[0.06] dark:divide-white/10">
                       <template x-for="inv in invoicesForPartner(openPartnerRec.id)" :key="inv.id">
                         <button type="button" @click="openInvoiceById(inv.id)" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-accent/5">
                           <span class="ll-chip h-8 w-8 shrink-0" style="--chip: #7066f5"><x-icon name="document-text" class="h-4 w-4" /></span>
-                          <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100 tabular-nums" x-text="inv.number || '—'"></span><span class="block text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="inv.issueDate || ''"></span></span>
-                          <span class="shrink-0 text-sm tabular-nums text-gray-700 dark:text-gray-300" x-text="fmtMoney(computeTotals(inv).gross, inv.currency, 'de')"></span>
+                          <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-md-on-surface dark:text-md-on-surface tabular-nums" x-text="inv.number || '—'"></span><span class="block text-xs text-md-on-surface-var dark:text-md-on-surface-var tabular-nums" x-text="inv.issueDate || ''"></span></span>
+                          <span class="shrink-0 text-sm tabular-nums text-md-on-surface-var dark:text-md-on-surface-var" x-text="fmtMoney(computeTotals(inv).gross, inv.currency, 'de')"></span>
                         </button>
                       </template>
-                      <template x-if="! invoicesForPartner(openPartnerRec.id).length"><p class="px-4 py-3 text-sm text-gray-400 dark:text-gray-500">—</p></template>
+                      <template x-if="! invoicesForPartner(openPartnerRec.id).length"><p class="px-4 py-3 text-sm text-md-on-surface-var dark:text-md-on-surface-var">—</p></template>
                     </div>
                   </div>
                   <div class="ll-card !p-0 overflow-hidden">
-                    <h2 class="border-b border-black/[0.06] dark:border-white/10 px-4 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.partner_linked_receipts') }} <span class="text-gray-400" x-text="'(' + receiptsForPartner(openPartnerRec.id).length + ')'"></span></h2>
+                    <h2 class="border-b border-black/[0.06] dark:border-white/10 px-4 py-3 text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.partner_linked_receipts') }} <span class="text-md-on-surface-var" x-text="'(' + receiptsForPartner(openPartnerRec.id).length + ')'"></span></h2>
                     <div class="divide-y divide-black/[0.06] dark:divide-white/10">
                       <template x-for="d in receiptsForPartner(openPartnerRec.id)" :key="d.r.id">
                         <button type="button" @click="openReceiptDoc(d)" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-accent/5">
                           <span class="ll-chip h-8 w-8 shrink-0" style="--chip: #e2915a"><x-icon name="paper-clip" class="h-4 w-4" /></span>
-                          <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="d.r.name || d.r.merchant || '{{ __('invoices.receipt') }}'"></span><span class="block text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="d.tx ? (d.tx.date || '') : (d.r.uploadedAt ? fmtDate(d.r.uploadedAt) : '')"></span></span>
-                          <span class="shrink-0 text-sm tabular-nums text-gray-700 dark:text-gray-300" x-text="d.tx ? fmtMoney(d.tx.amount, 'EUR', 'de') : (d.r.total != null ? fmtMoney(d.r.total) : '')"></span>
+                          <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-md-on-surface dark:text-md-on-surface" x-text="d.r.name || d.r.merchant || '{{ __('invoices.receipt') }}'"></span><span class="block text-xs text-md-on-surface-var dark:text-md-on-surface-var tabular-nums" x-text="d.tx ? (d.tx.date || '') : (d.r.uploadedAt ? fmtDate(d.r.uploadedAt) : '')"></span></span>
+                          <span class="shrink-0 text-sm tabular-nums text-md-on-surface-var dark:text-md-on-surface-var" x-text="d.tx ? fmtMoney(d.tx.amount, 'EUR', 'de') : (d.r.total != null ? fmtMoney(d.r.total) : '')"></span>
                         </button>
                       </template>
-                      <template x-if="! receiptsForPartner(openPartnerRec.id).length"><p class="px-4 py-3 text-sm text-gray-400 dark:text-gray-500">—</p></template>
+                      <template x-if="! receiptsForPartner(openPartnerRec.id).length"><p class="px-4 py-3 text-sm text-md-on-surface-var dark:text-md-on-surface-var">—</p></template>
                     </div>
                   </div>
                 </div>
@@ -1115,53 +1115,53 @@
           {{-- Partner editor modal (create + edit; multiple contact persons) --}}
           <div x-show="partnerEditing" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelPartner()">
             <div class="absolute inset-0 bg-gray-900/50" @click="cancelPartner()"></div>
-            <div class="relative flex max-h-[88vh] w-full max-w-md flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[88vh] w-full max-w-md flex-col rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-xl">
               <template x-if="partnerEditing">
                 <div class="flex min-h-0 flex-col">
                   <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="partnerEditing.id ? '{{ __('common.edit') }}' : '{{ __('invoices.partner_add') }}'"></h3>
+                    <h3 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface" x-text="partnerEditing.id ? '{{ __('common.edit') }}' : '{{ __('invoices.partner_add') }}'"></h3>
                     <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelPartner()" :aria-label="__('common.close')" />
                   </div>
                   <div class="min-h-0 flex-1 space-y-3 overflow-auto px-5 py-4">
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_name') }} <span class="text-red-500">*</span></label>
-                      <input type="text" x-model="partnerEditing.name" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_name') }} <span class="text-red-500">*</span></label>
+                      <input type="text" x-model="partnerEditing.name" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                     </div>
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_url') }}</label>
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_url') }}</label>
                       <div class="flex items-center gap-2">
                         <template x-if="partnerLogoSrc(partnerEditing)"><img :src="partnerLogoSrc(partnerEditing)" alt="" class="h-8 w-8 shrink-0 rounded-lg object-contain bg-white"></template>
-                        <input type="url" x-model="partnerEditing.url" placeholder="https://…" class="min-w-0 flex-1 rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <input type="url" x-model="partnerEditing.url" placeholder="https://…" class="min-w-0 flex-1 rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                       </div>
-                      <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{{ __('invoices.partner_url_hint') }}</p>
+                      <p class="mt-1 text-[11px] text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_url_hint') }}</p>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                       <div>
-                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_email') }}</label>
-                        <input type="email" x-model="partnerEditing.email" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_email') }}</label>
+                        <input type="email" x-model="partnerEditing.email" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                       </div>
                       <div>
-                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_phone') }}</label>
-                        <input type="tel" x-model="partnerEditing.phone" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_phone') }}</label>
+                        <input type="tel" x-model="partnerEditing.phone" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                       </div>
                     </div>
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_invoice_email') }}</label>
-                      <input type="email" x-model="partnerEditing.invoiceEmail" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                      <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{{ __('invoices.partner_invoice_email_hint') }}</p>
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_invoice_email') }}</label>
+                      <input type="email" x-model="partnerEditing.invoiceEmail" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
+                      <p class="mt-1 text-[11px] text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_invoice_email_hint') }}</p>
                     </div>
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_vat') }}</label>
-                      <input type="text" x-model="partnerEditing.vatId" placeholder="DE…" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums">
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_vat') }}</label>
+                      <input type="text" x-model="partnerEditing.vatId" placeholder="DE…" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm tabular-nums">
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                       <div>
-                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_hourly_rate') }}</label>
-                        <input type="number" step="0.01" min="0" x-model.number="partnerEditing.hourlyRate" placeholder="0.00" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums">
+                        <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_hourly_rate') }}</label>
+                        <input type="number" step="0.01" min="0" x-model.number="partnerEditing.hourlyRate" placeholder="0.00" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm tabular-nums">
                       </div>
                       <div>
-                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_currency') }}</label>
-                        <select x-model="partnerEditing.currency" class="w-full appearance-none rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_currency') }}</label>
+                        <select x-model="partnerEditing.currency" class="w-full appearance-none rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                           <option value="">{{ __('invoices.partner_currency_default') }}</option>
                           @foreach(['EUR','USD','GBP','CHF','JPY'] as $cur)
                             <option value="{{ $cur }}" :selected="partnerEditing.currency === '{{ $cur }}'">{{ $cur }}</option>
@@ -1170,38 +1170,38 @@
                       </div>
                     </div>
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_address') }}</label>
-                      <textarea x-model="partnerEditing.address" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_address') }}</label>
+                      <textarea x-model="partnerEditing.address" rows="2" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm"></textarea>
                     </div>
                     {{-- Contact persons (multiple) --}}
                     <div>
                       <div class="mb-1 flex items-center justify-between">
-                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_contacts') }}</label>
+                        <label class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_contacts') }}</label>
                         <button type="button" @click="addPartnerContact(partnerEditing)" class="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"><x-icon name="plus" class="h-3.5 w-3.5" />{{ __('invoices.partner_contact_add') }}</button>
                       </div>
                       <div class="space-y-2">
                         <template x-for="(c, ci) in (partnerEditing.contacts || [])" :key="c.id">
                           <div class="rounded-xl border border-black/[0.06] dark:border-white/10 p-2">
                             <div class="flex items-center gap-2">
-                              <input type="text" x-model="c.name" placeholder="{{ __('invoices.partner_contact_person') }}" class="min-w-0 flex-1 rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                              <input type="text" x-model="c.role" placeholder="{{ __('invoices.partner_contact_role') }}" class="min-w-0 w-28 rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                              <input type="text" x-model="c.name" placeholder="{{ __('invoices.partner_contact_person') }}" class="min-w-0 flex-1 rounded-lg border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
+                              <input type="text" x-model="c.role" placeholder="{{ __('invoices.partner_contact_role') }}" class="min-w-0 w-28 rounded-lg border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                               <x-icon-button name="trash" tone="red" size="sm" @click="removePartnerContact(partnerEditing, ci)" :aria-label="__('common.delete')" />
                             </div>
                             <div class="mt-2 grid grid-cols-2 gap-2">
-                              <input type="email" x-model="c.email" placeholder="{{ __('invoices.partner_email') }}" class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                              <input type="tel" x-model="c.phone" placeholder="{{ __('invoices.partner_phone') }}" class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                              <input type="email" x-model="c.email" placeholder="{{ __('invoices.partner_email') }}" class="rounded-lg border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
+                              <input type="tel" x-model="c.phone" placeholder="{{ __('invoices.partner_phone') }}" class="rounded-lg border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                             </div>
                           </div>
                         </template>
                       </div>
                     </div>
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_category') }}</label>
-                      <input type="text" x-model="partnerEditing.category" list="receiptCats" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.receipt_category') }}</label>
+                      <input type="text" x-model="partnerEditing.category" list="receiptCats" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                     </div>
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.receipt_note') }}</label>
-                      <textarea x-model="partnerEditing.note" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.receipt_note') }}</label>
+                      <textarea x-model="partnerEditing.note" rows="2" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm"></textarea>
                     </div>
                   </div>
                   <div class="flex items-center justify-end gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
@@ -1223,45 +1223,45 @@
             <div>
               {{-- GoBD accounting export (revenue + expense journals as CSV for the Steuerberater) --}}
               <div class="mb-6 flex flex-wrap items-center gap-2 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] px-3 py-2">
-                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.datev_export') }}</span>
+                <span class="text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.datev_export') }}</span>
                 <x-button variant="secondary" size="sm" icon="arrow-down-tray" @click="exportRevenueCsv()">{{ __('invoices.datev_revenue') }}</x-button>
                 <x-button variant="secondary" size="sm" icon="arrow-down-tray" @click="exportExpenseCsv()">{{ __('invoices.datev_expense') }}</x-button>
-                <span class="text-[11px] text-gray-400 dark:text-gray-500" x-text="statsYear"></span>
+                <span class="text-[11px] text-md-on-surface-var dark:text-md-on-surface-var" x-text="statsYear"></span>
               </div>
               {{-- EÜR: simplified cash-basis income − expenses = profit (server-computed) --}}
               <template x-if="euer">
                 <div class="mb-6">
                   <div class="mb-2 flex items-center justify-between gap-2 px-1">
-                    <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.euer_title') }}</h2>
-                    <select x-model.number="euerYear" class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] px-2 py-1 text-xs">
+                    <h2 class="text-xs font-semibold uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.euer_title') }}</h2>
+                    <select x-model.number="euerYear" class="rounded-lg border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 px-2 py-1 text-xs">
                       <template x-for="y in statsYears" :key="y"><option :value="y" x-text="y"></option></template>
                     </select>
                   </div>
                   <div class="grid grid-cols-3 gap-4">
                     <div class="ll-card">
-                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.euer_income') }}</p>
-                      <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(euer.income.total)"></p>
+                      <p class="text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.euer_income') }}</p>
+                      <p class="mt-2 text-2xl font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(euer.income.total)"></p>
                     </div>
                     <div class="ll-card">
-                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.euer_expenses') }}</p>
-                      <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(euer.expenses.total)"></p>
+                      <p class="text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.euer_expenses') }}</p>
+                      <p class="mt-2 text-2xl font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(euer.expenses.total)"></p>
                     </div>
                     <div class="ll-card">
-                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.euer_profit') }}</p>
+                      <p class="text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.euer_profit') }}</p>
                       <p class="mt-2 text-2xl font-semibold tabular-nums" :class="euer.profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" x-text="fmtMoney(euer.profit)"></p>
                     </div>
                   </div>
                   <template x-if="euer.expenses.byCategory.length">
                     <div class="ll-card mt-4">
-                      <p class="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.euer_expenses') }} · {{ __('invoices.euer_by_category') }}</p>
+                      <p class="mb-3 text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.euer_expenses') }} · {{ __('invoices.euer_by_category') }}</p>
                       <div class="space-y-2">
                         <template x-for="c in euer.expenses.byCategory" :key="c.name">
                           <div>
                             <div class="flex items-baseline justify-between gap-2">
-                              <span class="truncate text-sm text-gray-800 dark:text-gray-200" x-text="c.name" :title="c.name"></span>
-                              <span class="shrink-0 text-sm tabular-nums text-gray-600 dark:text-gray-300" x-text="fmtMoney(c.amount)"></span>
+                              <span class="truncate text-sm text-md-on-surface dark:text-md-on-surface" x-text="c.name" :title="c.name"></span>
+                              <span class="shrink-0 text-sm tabular-nums text-md-on-surface-var dark:text-md-on-surface-var" x-text="fmtMoney(c.amount)"></span>
                             </div>
-                            <div class="mt-1 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                            <div class="mt-1 h-2 overflow-hidden rounded-full bg-md-surface-2 dark:bg-md-surface-2">
                               <div class="h-full ll-accent" :style="{ width: Math.round(Math.abs(c.amount) / euerExpensePeak * 100) + '%' }"></div>
                             </div>
                           </div>
@@ -1270,7 +1270,7 @@
                     </div>
                   </template>
                   <template x-if="! euer.income.total && ! euer.expenses.total">
-                    <p class="px-1 text-sm text-gray-400 dark:text-gray-500">{{ __('invoices.euer_empty') }}</p>
+                    <p class="px-1 text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.euer_empty') }}</p>
                   </template>
                 </div>
               </template>
@@ -1278,15 +1278,15 @@
               {{-- Project costs, clearly split business vs private (scope-aware) --}}
               <template x-if="projects.length">
                 <div>
-                  <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_project_costs') }}</h2>
+                  <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.stat_project_costs') }}</h2>
                   <div class="grid grid-cols-2 gap-4">
                     <div class="ll-card" x-show="financeScope !== 'private'">
-                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_project_business') }}</p>
-                      <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectKindSummary.business)"></p>
+                      <p class="text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.stat_project_business') }}</p>
+                      <p class="mt-2 text-2xl font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(projectKindSummary.business)"></p>
                     </div>
                     <div class="ll-card" x-show="financeScope !== 'business'">
-                      <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_project_private') }}</p>
-                      <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(projectKindSummary.private)"></p>
+                      <p class="text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.stat_project_private') }}</p>
+                      <p class="mt-2 text-2xl font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(projectKindSummary.private)"></p>
                     </div>
                   </div>
                 </div>
@@ -1294,11 +1294,11 @@
 
               {{-- Business revenue (invoices) — hidden in the private scope --}}
               <div x-show="financeScope !== 'private'" :class="projects.length ? 'mt-6' : ''">
-              <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_revenue_section') }}</h2>
+              <h2 class="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.stat_revenue_section') }}</h2>
               {{-- Year selector --}}
               <div class="mb-4 flex items-center gap-2">
-                <label class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stats_year') }}</label>
-                <select x-model.number="statsYear" class="rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] px-2 py-1 text-sm">
+                <label class="text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.stats_year') }}</label>
+                <select x-model.number="statsYear" class="rounded-lg border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 px-2 py-1 text-sm">
                   <template x-for="y in statsYears" :key="y"><option :value="y" x-text="y"></option></template>
                 </select>
               </div>
@@ -1306,8 +1306,8 @@
               {{-- KPI row --}}
               <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <div class="ll-card">
-                  <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_revenue') }}</p>
-                  <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(statsKpis.net)"></p>
+                  <p class="text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.stat_revenue') }}</p>
+                  <p class="mt-2 text-2xl font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(statsKpis.net)"></p>
                   <template x-if="statsKpis.growthPct !== null">
                     <p class="mt-0.5 flex items-center gap-1 text-xs" :class="statsKpis.growthPct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
                       <x-icon ::name="statsKpis.growthPct >= 0 ? 'arrow-trending-up' : 'arrow-trending-down'" class="h-3.5 w-3.5" />
@@ -1316,31 +1316,31 @@
                   </template>
                 </div>
                 <div class="ll-card">
-                  <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_invoices') }}</p>
-                  <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="statsKpis.count"></p>
+                  <p class="text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.stat_invoices') }}</p>
+                  <p class="mt-2 text-2xl font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="statsKpis.count"></p>
                 </div>
                 <div class="ll-card">
-                  <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_avg') }}</p>
-                  <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(statsKpis.avg)"></p>
+                  <p class="text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.stat_avg') }}</p>
+                  <p class="mt-2 text-2xl font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(statsKpis.avg)"></p>
                 </div>
                 <div class="ll-card">
-                  <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('invoices.stat_customers') }}</p>
-                  <p class="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="statsKpis.customers"></p>
+                  <p class="text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.stat_customers') }}</p>
+                  <p class="mt-2 text-2xl font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="statsKpis.customers"></p>
                 </div>
               </div>
 
               <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {{-- Monthly revenue bars --}}
                 <div class="ll-card">
-                  <p class="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.stat_monthly') }}</p>
+                  <p class="mb-3 text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.stat_monthly') }}</p>
                   <div class="space-y-1.5">
                     <template x-for="m in statsMonths" :key="m.month">
                       <div class="flex items-center gap-2">
-                        <span class="w-8 shrink-0 text-xs text-gray-400 dark:text-gray-500" x-text="monthLabel(m.month)"></span>
-                        <div class="h-4 flex-1 overflow-hidden rounded bg-gray-100 dark:bg-gray-800">
+                        <span class="w-8 shrink-0 text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="monthLabel(m.month)"></span>
+                        <div class="h-4 flex-1 overflow-hidden rounded bg-md-surface-2 dark:bg-md-surface-2">
                           <div class="h-full ll-accent" :style="{ width: Math.round(m.net / statsMonthPeak * 100) + '%' }"></div>
                         </div>
-                        <span class="w-24 shrink-0 text-right text-xs tabular-nums text-gray-600 dark:text-gray-300" x-text="m.net ? fmtMoney(m.net) : '—'"></span>
+                        <span class="w-24 shrink-0 text-right text-xs tabular-nums text-md-on-surface-var dark:text-md-on-surface-var" x-text="m.net ? fmtMoney(m.net) : '—'"></span>
                       </div>
                     </template>
                   </div>
@@ -1348,16 +1348,16 @@
 
                 {{-- Revenue by customer --}}
                 <div class="ll-card">
-                  <p class="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.stat_by_customer') }}</p>
-                  <template x-if="! statsCustomers.length"><p class="text-sm text-gray-400 dark:text-gray-500">—</p></template>
+                  <p class="mb-3 text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.stat_by_customer') }}</p>
+                  <template x-if="! statsCustomers.length"><p class="text-sm text-md-on-surface-var dark:text-md-on-surface-var">—</p></template>
                   <div class="space-y-2">
                     <template x-for="(c, i) in statsCustomers" :key="c.name">
                       <div>
                         <div class="flex items-baseline justify-between gap-2">
-                          <span class="truncate text-sm text-gray-800 dark:text-gray-200" x-text="c.name" :title="c.name"></span>
-                          <span class="shrink-0 text-sm tabular-nums text-gray-600 dark:text-gray-300" x-text="fmtMoney(c.net)"></span>
+                          <span class="truncate text-sm text-md-on-surface dark:text-md-on-surface" x-text="c.name" :title="c.name"></span>
+                          <span class="shrink-0 text-sm tabular-nums text-md-on-surface-var dark:text-md-on-surface-var" x-text="fmtMoney(c.net)"></span>
                         </div>
-                        <div class="mt-1 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                        <div class="mt-1 h-2 overflow-hidden rounded-full bg-md-surface-2 dark:bg-md-surface-2">
                           <div class="h-full ll-accent" :style="{ width: Math.round(c.net / (statsCustomers[0]?.net || 1) * 100) + '%' }"></div>
                         </div>
                       </div>
@@ -1368,13 +1368,13 @@
 
               {{-- VAT by quarter for the selected year --}}
               <div class="ll-card mt-4">
-                <p class="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100" x-text="'{{ __('invoices.vat_by_quarter') }} · ' + statsVat.year"></p>
+                <p class="mb-3 text-sm font-semibold text-md-on-surface dark:text-md-on-surface" x-text="'{{ __('invoices.vat_by_quarter') }} · ' + statsVat.year"></p>
                 <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <template x-for="q in statsVat.quarters" :key="q.q">
                     <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
-                      <p class="text-xs text-gray-400 dark:text-gray-500" x-text="'Q' + q.q"></p>
-                      <p class="mt-0.5 text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(q.vat)"></p>
-                      <p class="text-[11px] text-gray-400 dark:text-gray-500" x-text="fmtMoney(q.net) + ' {{ __('invoices.vat_net_short') }}'"></p>
+                      <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="'Q' + q.q"></p>
+                      <p class="mt-0.5 text-sm font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(q.vat)"></p>
+                      <p class="text-[11px] text-md-on-surface-var dark:text-md-on-surface-var" x-text="fmtMoney(q.net) + ' {{ __('invoices.vat_net_short') }}'"></p>
                     </div>
                   </template>
                 </div>
@@ -1399,8 +1399,8 @@
         <div x-show="section === 'settings'" class="mt-6 mx-auto max-w-3xl">
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.cats_title') }}</h2>
-              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.cats_intro') }}</p>
+              <h2 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.cats_title') }}</h2>
+              <p class="mt-0.5 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.cats_intro') }}</p>
             </div>
             <x-button variant="primary" icon="plus" size="sm" @click="openNewCategory()">{{ __('invoices.cats_add') }}</x-button>
           </div>
@@ -1408,7 +1408,7 @@
           <div class="ll-card !p-0 overflow-hidden">
             <div class="overflow-x-auto">
               <table class="w-full text-sm">
-                <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-medium uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">
                   <tr>
                     <th class="px-4 py-2.5">{{ __('invoices.cats_name') }}</th>
                     <th class="px-4 py-2.5">{{ __('invoices.cat_color') }}</th>
@@ -1423,11 +1423,11 @@
                       <td class="px-4 py-2.5">
                         <div class="flex items-center gap-3">
                           <span class="ll-chip h-8 w-8 rounded-lg shrink-0" style="background:#6b7280"><x-icon name="hashtag" class="h-4 w-4 text-white" /></span>
-                          <button type="button" @click="editDefault(c)" class="min-w-0 truncate text-left text-gray-800 dark:text-gray-200 hover:text-accent" x-text="c"></button>
+                          <button type="button" @click="editDefault(c)" class="min-w-0 truncate text-left text-md-on-surface dark:text-md-on-surface hover:text-accent" x-text="c"></button>
                         </div>
                       </td>
                       <td class="px-4 py-2.5"><span class="inline-block h-4 w-4 rounded-full border border-black/10 dark:border-white/20" style="background:#6b7280"></span></td>
-                      <td class="px-4 py-2.5 font-mono text-xs text-gray-400 dark:text-gray-500">hashtag</td>
+                      <td class="px-4 py-2.5 font-mono text-xs text-md-on-surface-var dark:text-md-on-surface-var">hashtag</td>
                       <td class="px-4 py-2.5">
                         <div class="flex items-center justify-end gap-1">
                           <x-badge variant="gray">{{ __('invoices.cats_default') }}</x-badge>
@@ -1442,16 +1442,16 @@
                       <td class="px-4 py-2.5">
                         <div class="flex items-center gap-3">
                           <span class="ll-chip h-8 w-8 rounded-lg shrink-0" :style="{ background: catColor(c) }">@include('invoices._category_icon', ['expr' => 'catIcon(c)', 'cls' => 'h-4 w-4 text-white'])</span>
-                          <button type="button" @click="editCategory(c)" class="min-w-0 truncate text-left text-gray-800 dark:text-gray-200 hover:text-accent" x-text="c.name"></button>
+                          <button type="button" @click="editCategory(c)" class="min-w-0 truncate text-left text-md-on-surface dark:text-md-on-surface hover:text-accent" x-text="c.name"></button>
                         </div>
                       </td>
                       <td class="px-4 py-2.5">
                         <div class="flex items-center gap-2">
                           <span class="inline-block h-4 w-4 rounded-full border border-black/10 dark:border-white/20" :style="{ background: catColor(c) }"></span>
-                          <span class="font-mono text-xs text-gray-400 dark:text-gray-500" x-text="catColor(c)"></span>
+                          <span class="font-mono text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="catColor(c)"></span>
                         </div>
                       </td>
-                      <td class="px-4 py-2.5 font-mono text-xs text-gray-400 dark:text-gray-500" x-text="catIcon(c)"></td>
+                      <td class="px-4 py-2.5 font-mono text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="catIcon(c)"></td>
                       <td class="px-4 py-2.5">
                         <div class="flex items-center justify-end gap-1">
                           <x-icon-button name="pencil" tone="gray" size="sm" class="md:opacity-0 md:group-hover:opacity-100" @click="editCategory(c)" :aria-label="__('invoices.cat_edit')" />
@@ -1474,23 +1474,23 @@
           {{-- Category editor (create / edit) --}}
           <div x-show="catEditing" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelCategory()">
             <div class="absolute inset-0 bg-gray-900/50" @click="cancelCategory()"></div>
-            <div class="relative flex max-h-[88vh] w-full max-w-md flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[88vh] w-full max-w-md flex-col rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-xl">
               <template x-if="catEditing">
                 <div class="flex min-h-0 flex-col">
                   <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
                     <div class="flex items-center gap-2.5">
                       <span class="ll-chip h-8 w-8 rounded-xl" :style="{ background: catEditing?.color || '#6b7280' }">@include('invoices._category_icon', ['expr' => 'catEditing?.icon', 'cls' => 'h-4.5 w-4.5 text-white'])</span>
-                      <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="catEditing?.id ? '{{ __('invoices.cat_edit') }}' : '{{ __('invoices.cats_add') }}'"></h3>
+                      <h3 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface" x-text="catEditing?.id ? '{{ __('invoices.cat_edit') }}' : '{{ __('invoices.cats_add') }}'"></h3>
                     </div>
                     <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelCategory()" :aria-label="__('common.close')" />
                   </div>
                   <div class="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4">
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.cats_name') }} <span class="text-red-500">*</span></label>
-                      <input type="text" x-model="catEditing.name" placeholder="{{ __('invoices.cats_add_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm" @keydown.enter.prevent="saveCategory()">
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.cats_name') }} <span class="text-red-500">*</span></label>
+                      <input type="text" x-model="catEditing.name" placeholder="{{ __('invoices.cats_add_ph') }}" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm" @keydown.enter.prevent="saveCategory()">
                     </div>
                     <div>
-                      <label class="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.cat_color') }}</label>
+                      <label class="mb-1.5 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.cat_color') }}</label>
                       <div class="flex flex-wrap gap-2">
                         <template x-for="col in catColorOptions" :key="col">
                           <button type="button" @click="catEditing.color = col" :style="{ background: col }"
@@ -1501,11 +1501,11 @@
                       </div>
                     </div>
                     <div>
-                      <label class="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.cat_icon') }}</label>
+                      <label class="mb-1.5 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.cat_icon') }}</label>
                       <div class="grid grid-cols-8 gap-1.5">
                         @foreach ($catIcons as $ic)
                           <button type="button" @click="catEditing.icon = '{{ $ic }}'" title="{{ $ic }}"
-                            class="flex h-9 items-center justify-center rounded-lg border border-black/[0.06] dark:border-white/10 text-gray-600 dark:text-gray-300 transition hover:bg-accent/5"
+                            class="flex h-9 items-center justify-center rounded-lg border border-black/[0.06] dark:border-white/10 text-md-on-surface-var dark:text-md-on-surface-var transition hover:bg-accent/5"
                             :class="catEditing.icon === '{{ $ic }}' ? 'ring-2 ring-accent bg-accent/10 text-accent' : ''">
                             <x-icon name="{{ $ic }}" class="h-4 w-4" />
                           </button>
@@ -1530,12 +1530,12 @@
           {{-- ---- LIST VIEW ---- --}}
           <div x-show="payView === 'list'">
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('invoices.pay_intro') }}</p>
+            <p class="text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_intro') }}</p>
             <div class="relative" x-data="{ open: false }" @click.outside="open = false">
               <x-button variant="primary" icon="plus" @click="open = ! open">{{ __('invoices.pay_add') }}</x-button>
-              <div x-show="open" x-cloak x-transition class="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <div x-show="open" x-cloak x-transition class="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-xl">
                 <template x-for="t in payTypeOptions" :key="t.type">
-                  <button type="button" @click="newPayment(t.type); open = false" class="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-accent/5">
+                  <button type="button" @click="newPayment(t.type); open = false" class="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-md-on-surface-var dark:text-md-on-surface hover:bg-accent/5">
                     <span class="ll-chip h-7 w-7 rounded-lg" :style="{ background: payTint(t.type) }">@include('invoices._payment_icon', ['expr' => 't.type', 'cls' => 'h-4 w-4 text-white'])</span>
                     <span x-text="payTypeLabel(t.type)"></span>
                   </button>
@@ -1561,20 +1561,20 @@
                     <template x-if="payIconSrc(pm)"><img :src="payIconSrc(pm)" alt="" class="h-9 w-9 shrink-0 rounded-xl bg-white object-contain p-0.5 ring-1 ring-black/[0.06] dark:ring-white/10"></template>
                     <template x-if="! payIconSrc(pm)"><span class="ll-chip h-9 w-9 rounded-xl shrink-0" :style="{ background: payTint(pm.type) }">@include('invoices._payment_icon', ['expr' => 'pm.type', 'cls' => 'h-4.5 w-4.5 text-white'])</span></template>
                     <div class="min-w-0 flex-1">
-                      <p class="flex items-center gap-2 truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                      <p class="flex items-center gap-2 truncate text-sm font-medium text-md-on-surface dark:text-md-on-surface">
                         <span class="truncate" x-text="pm.label"></span>
                         <template x-if="pm.business"><x-badge variant="accent">{{ __('invoices.pay_business') }}</x-badge></template>
                       </p>
-                      <p class="truncate text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="paySubtitle(pm) || payTypeLabel(pm.type)"></p>
+                      <p class="truncate text-xs text-md-on-surface-var dark:text-md-on-surface-var tabular-nums" x-text="paySubtitle(pm) || payTypeLabel(pm.type)"></p>
                     </div>
                     <template x-if="pm.type === 'bank' && accountTxCount(pm)">
-                      <span class="shrink-0 text-right text-sm font-medium tabular-nums" :class="accountBalance(pm) < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-200'" x-text="fmtMoney(accountBalance(pm))"></span>
+                      <span class="shrink-0 text-right text-sm font-medium tabular-nums" :class="accountBalance(pm) < 0 ? 'text-red-600 dark:text-red-400' : 'text-md-on-surface-var dark:text-md-on-surface'" x-text="fmtMoney(accountBalance(pm))"></span>
                     </template>
                     <div class="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover:opacity-100" @click.stop>
                       <x-icon-button name="pencil" tone="gray" size="sm" @click="editPayment(pm)" :aria-label="__('common.edit')" />
                       <x-icon-button name="trash" tone="red" size="sm" @click="removePayment(pm)" :aria-label="__('common.delete')" />
                     </div>
-                    <template x-if="pm.type === 'bank'"><x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" /></template>
+                    <template x-if="pm.type === 'bank'"><x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-md-on-surface-var dark:text-md-on-surface-var" /></template>
                   </div>
                 </template>
               </div>
@@ -1586,7 +1586,7 @@
           <div x-show="payView === 'account'" x-cloak>
             <template x-if="payAccount">
               <div>
-                <button type="button" @click="backToPayments()" class="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-accent dark:text-gray-400">
+                <button type="button" @click="backToPayments()" class="mb-4 inline-flex items-center gap-1 text-sm text-md-on-surface-var hover:text-accent dark:text-md-on-surface-var">
                   <x-icon name="chevron-left" class="h-4 w-4" />{{ __('invoices.pay_title') }}
                 </button>
 
@@ -1594,15 +1594,15 @@
                 <div class="ll-card">
                   <div class="flex flex-wrap items-start justify-between gap-3">
                     <div class="flex items-center gap-3">
-                      <template x-if="payIconSrc(payAccount)"><img :src="payIconSrc(payAccount)" alt="" class="h-11 w-11 rounded-2xl bg-white object-contain p-1 ring-1 ring-black/[0.06] dark:ring-white/10"></template>
-                      <template x-if="! payIconSrc(payAccount)"><span class="ll-chip h-11 w-11 rounded-2xl" :style="{ background: payTint(payAccount.type) }">@include('invoices._payment_icon', ['expr' => 'payAccount.type', 'cls' => 'h-5 w-5 text-white'])</span></template>
+                      <template x-if="payIconSrc(payAccount)"><img :src="payIconSrc(payAccount)" alt="" class="h-11 w-11 rounded-xl bg-white object-contain p-1 ring-1 ring-black/[0.06] dark:ring-white/10"></template>
+                      <template x-if="! payIconSrc(payAccount)"><span class="ll-chip h-11 w-11 rounded-xl" :style="{ background: payTint(payAccount.type) }">@include('invoices._payment_icon', ['expr' => 'payAccount.type', 'cls' => 'h-5 w-5 text-white'])</span></template>
                       <div>
-                        <p class="text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="payAccount.label"></p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400 tabular-nums" x-text="paySubtitle(payAccount)"></p>
+                        <p class="text-lg font-semibold text-md-on-surface dark:text-md-on-surface" x-text="payAccount.label"></p>
+                        <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var tabular-nums" x-text="paySubtitle(payAccount)"></p>
                       </div>
                     </div>
                     <div class="flex flex-wrap items-center justify-end gap-2">
-                      <select @change="setTxYear(parseInt($event.target.value, 10))" class="appearance-none rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] px-2 py-1.5 text-sm" aria-label="{{ __('invoices.stats_year') }}">
+                      <select @change="setTxYear(parseInt($event.target.value, 10))" class="appearance-none rounded-lg border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 px-2 py-1.5 text-sm" aria-label="{{ __('invoices.stats_year') }}">
                         <template x-for="y in accountTxYears" :key="y"><option :value="y" :selected="txYear === y" x-text="y"></option></template>
                       </select>
                       <template x-if="unlinkedIncomeCount">
@@ -1621,15 +1621,15 @@
                   {{-- Balance + income/expense + business toggle --}}
                   <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                     <div>
-                      <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.acct_balance') }}</p>
-                      <p class="mt-0.5 text-xl font-semibold tabular-nums" :class="accountBalance(payAccount) < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'" x-text="fmtMoney(accountBalance(payAccount))"></p>
+                      <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.acct_balance') }}</p>
+                      <p class="mt-0.5 text-xl font-semibold tabular-nums" :class="accountBalance(payAccount) < 0 ? 'text-red-600 dark:text-red-400' : 'text-md-on-surface dark:text-md-on-surface'" x-text="fmtMoney(accountBalance(payAccount))"></p>
                     </div>
                     <div>
-                      <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.acct_income') }}</p>
+                      <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.acct_income') }}</p>
                       <p class="mt-0.5 text-xl font-semibold tabular-nums text-green-600 dark:text-green-400" x-text="fmtMoney(accountIncome)"></p>
                     </div>
                     <div>
-                      <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.acct_expense') }}</p>
+                      <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.acct_expense') }}</p>
                       <p class="mt-0.5 text-xl font-semibold tabular-nums text-red-600 dark:text-red-400" x-text="fmtMoney(accountExpense)"></p>
                     </div>
                   </div>
@@ -1649,10 +1649,10 @@
                       </template>
                     </div>
                   </template>
-                  <label class="mt-4 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <label class="mt-4 flex items-center gap-2 text-sm text-md-on-surface-var dark:text-md-on-surface-var">
                     <input type="checkbox" :checked="payAccount.business" @change="toggleBusiness(payAccount)" class="rounded">
                     {{ __('invoices.pay_business_set') }}
-                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.pay_business_hint') }}</span>
+                    <span class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_business_hint') }}</span>
                   </label>
                 </div>
 
@@ -1661,24 +1661,24 @@
                   <div class="ll-card mt-6">
                     <div class="flex items-center gap-2">
                       <span class="ll-chip h-7 w-7 rounded-lg" style="background:#e2915a"><x-icon name="receipt-percent" class="h-4 w-4 text-white" /></span>
-                      <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.vat_summary_title') }}</h3>
+                      <h3 class="text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.vat_summary_title') }}</h3>
                     </div>
                     <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
-                        <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_output') }}</p>
+                        <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.vat_output') }}</p>
                         <p class="mt-0.5 text-lg font-semibold tabular-nums text-green-600 dark:text-green-400" x-text="fmtMoney(accountVat.outputVat)"></p>
                       </div>
                       <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
-                        <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_input') }}</p>
-                        <p class="mt-0.5 text-lg font-semibold tabular-nums text-gray-700 dark:text-gray-200" x-text="fmtMoney(accountVat.inputVat)"></p>
+                        <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.vat_input') }}</p>
+                        <p class="mt-0.5 text-lg font-semibold tabular-nums text-md-on-surface-var dark:text-md-on-surface" x-text="fmtMoney(accountVat.inputVat)"></p>
                       </div>
                       <div class="rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
-                        <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.vat_payable') }}</p>
+                        <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.vat_payable') }}</p>
                         <p class="mt-0.5 text-lg font-semibold tabular-nums text-accent" x-text="fmtMoney(accountVat.payable)"></p>
                       </div>
                     </div>
                     <p x-show="accountVat.undecided" class="mt-3 text-xs text-amber-600 dark:text-amber-400" x-text="'{{ __('invoices.vat_undecided') }}'.replace(':n', accountVat.undecided)"></p>
-                    <p x-show="accountVat.privateSum" class="mt-1 text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.vat_private') }}'.replace(':sum', fmtMoney(accountVat.privateSum))"></p>
+                    <p x-show="accountVat.privateSum" class="mt-1 text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="'{{ __('invoices.vat_private') }}'.replace(':sum', fmtMoney(accountVat.privateSum))"></p>
                     <p x-show="accountPrivateNoEg" class="mt-1 text-xs font-medium text-amber-600 dark:text-amber-400" x-text="'{{ __('invoices.eg_missing_count') }}'.replace(':n', accountPrivateNoEg)"></p>
                   </div>
                 </template>
@@ -1687,19 +1687,19 @@
                 <template x-if="_accountBase().length || txFiltersActive">
                   <div class="mt-6 flex flex-wrap items-center gap-2">
                     <div class="relative min-w-[12rem] flex-1">
-                      <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <input type="search" x-model.debounce.250ms="txSearch" @input="txPage = 1" placeholder="{{ __('invoices.tx_search_ph') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] pl-9 text-sm focus:border-accent focus:ring-accent">
+                      <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-md-on-surface-var" />
+                      <input type="search" x-model.debounce.250ms="txSearch" @input="txPage = 1" placeholder="{{ __('invoices.tx_search_ph') }}" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 pl-9 text-sm focus:border-accent focus:ring-accent">
                     </div>
-                    <select x-model="txDir" @change="txPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                    <select x-model="txDir" @change="txPage = 1" class="rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
                       <option value="">{{ __('invoices.tx_dir_all') }}</option>
                       <option value="in">{{ __('invoices.tx_dir_in') }}</option>
                       <option value="out">{{ __('invoices.tx_dir_out') }}</option>
                     </select>
-                    <select x-model="txType" @change="txPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                    <select x-model="txType" @change="txPage = 1" class="rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
                       <option value="">{{ __('invoices.tx_all_types') }}</option>
                       <template x-for="t in accountTxTypeOptions" :key="t"><option :value="t" x-text="txTypeName(t)"></option></template>
                     </select>
-                    <select x-model="txCat" @change="txPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                    <select x-model="txCat" @change="txPage = 1" class="rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
                       <option value="">{{ __('invoices.tx_all_cats') }}</option>
                       <option value="19">19 %</option>
                       <option value="16">16 %</option>
@@ -1708,7 +1708,7 @@
                       <option value="private">{{ __('invoices.vatcat_private') }}</option>
                       <option value="none">{{ __('invoices.vatcat_none') }}</option>
                     </select>
-                    <select x-model="txCounterparty" @change="txPage = 1" class="max-w-[14rem] rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                    <select x-model="txCounterparty" @change="txPage = 1" class="max-w-[14rem] rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
                       <option value="">{{ __('invoices.tx_all_cp') }}</option>
                       <template x-for="cp in accountCounterparties" :key="cp"><option :value="cp" x-text="cp"></option></template>
                     </select>
@@ -1723,7 +1723,7 @@
                 <template x-if="accountTx.length">
                   <div class="ll-card !p-0 mt-6 overflow-hidden overflow-x-auto">
                     <table class="min-w-full text-sm">
-                      <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                      <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-semibold uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">
                         <tr>
                           <th class="px-4 py-3">{{ __('invoices.col_date') }}</th>
                           <th class="px-4 py-3">{{ __('invoices.tx_type') }}</th>
@@ -1737,10 +1737,10 @@
                       <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
                         <template x-for="tx in pagedAccountTx" :key="tx.id">
                           <tr class="hover:bg-accent/5">
-                            <td class="whitespace-nowrap px-4 py-2.5 tabular-nums text-gray-500 dark:text-gray-400" x-text="tx.date"></td>
-                            <td class="whitespace-nowrap px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400" x-text="txTypeLabel(tx)"></td>
+                            <td class="whitespace-nowrap px-4 py-2.5 tabular-nums text-md-on-surface-var dark:text-md-on-surface-var" x-text="tx.date"></td>
+                            <td class="whitespace-nowrap px-4 py-2.5 text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="txTypeLabel(tx)"></td>
                             <td class="max-w-[16rem] px-4 py-2.5">
-                              <p class="truncate text-gray-800 dark:text-gray-200" x-text="tx.counterparty || '—'" :title="tx.counterparty"></p>
+                              <p class="truncate text-md-on-surface dark:text-md-on-surface" x-text="tx.counterparty || '—'" :title="tx.counterparty"></p>
                               <template x-if="privatLabel(tx)">
                                 <div class="mt-0.5 flex flex-wrap items-center gap-1.5">
                                   <span class="inline-flex items-center rounded-full bg-violet-500/15 px-2 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-300" x-text="privatLabel(tx)"></span>
@@ -1763,32 +1763,32 @@
                                   <span x-text="'{{ __('invoices.suggestion_label') }} ' + (suggestionFor(tx)?.suggested_category || '')"></span>
                                 </button>
                               </template>
-                              <p x-show="tx.iban && ! tx.invoiceId" class="truncate text-xs text-gray-400 dark:text-gray-500 tabular-nums" x-text="tx.iban"></p>
+                              <p x-show="tx.iban && ! tx.invoiceId" class="truncate text-xs text-md-on-surface-var dark:text-md-on-surface-var tabular-nums" x-text="tx.iban"></p>
                               <button type="button" x-show="tx.invoiceId" @click="openInvoiceById(tx.invoiceId, tx.invoiceNumber)" class="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline">
                                 <x-icon name="link" class="h-3 w-3" /><span x-text="'{{ __('invoices.match_invoice') }}'.replace(':n', tx.invoiceNumber || '')"></span>
                               </button>
                             </td>
-                            <td class="max-w-[22rem] truncate px-4 py-2.5 text-gray-500 dark:text-gray-400" x-text="tx.purpose" :title="tx.purpose"></td>
+                            <td class="max-w-[22rem] truncate px-4 py-2.5 text-md-on-surface-var dark:text-md-on-surface-var" x-text="tx.purpose" :title="tx.purpose"></td>
                             <td class="whitespace-nowrap px-4 py-2.5 text-right font-medium tabular-nums" :class="tx.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(tx.amount, tx.currency)"></td>
                             {{-- VAT category: a compact styled select; unselected shown in soft amber. --}}
                             <td class="whitespace-nowrap px-4 py-2.5">
                               <div class="relative inline-flex items-center">
                                 <select @change="setVatCat(tx, $event.target.value)"
                                   class="appearance-none rounded-lg border-0 py-1 pl-2.5 pr-7 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-accent"
-                                  :class="! tx.vatCat ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 ring-amber-300/60 dark:ring-amber-700/50' : (tx.vatCat === 'private' ? 'bg-violet-500/10 text-violet-700 dark:text-violet-300 ring-violet-400/40' : 'bg-black/[0.03] dark:bg-white/10 text-gray-700 dark:text-gray-200 ring-black/10 dark:ring-white/10')">
+                                  :class="! tx.vatCat ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 ring-amber-300/60 dark:ring-amber-700/50' : (tx.vatCat === 'private' ? 'bg-violet-500/10 text-violet-700 dark:text-violet-300 ring-violet-400/40' : 'bg-black/[0.03] dark:bg-white/10 text-md-on-surface-var dark:text-md-on-surface ring-black/10 dark:ring-white/10')">
                                   <option value="" :selected="! tx.vatCat">{{ __('invoices.vatcat_none') }}</option>
                                   <template x-for="c in vatCats" :key="c">
                                     <option :value="c" :selected="tx.vatCat === c" x-text="vatCatLabel(c)"></option>
                                   </template>
                                 </select>
-                                <x-icon name="chevron-down" class="pointer-events-none absolute right-1.5 h-3 w-3 text-gray-400" />
+                                <x-icon name="chevron-down" class="pointer-events-none absolute right-1.5 h-3 w-3 text-md-on-surface-var" />
                               </div>
                             </td>
                             {{-- Receipts: on every booking (income too). Paperclip + count; opens the panel. --}}
                             <td class="whitespace-nowrap px-4 py-2.5 text-center">
                               <button type="button" @click="openReceipts(tx)"
                                 class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors"
-                                :class="receiptCount(tx) ? 'text-accent hover:bg-accent/10' : 'text-gray-400 hover:bg-black/[0.04] dark:hover:bg-white/10'"
+                                :class="receiptCount(tx) ? 'text-accent hover:bg-accent/10' : 'text-md-on-surface-var hover:bg-black/[0.04] dark:hover:bg-white/10'"
                                 :title="receiptCount(tx) ? '{{ __('invoices.tx_receipt_count') }}'.replace(':n', receiptCount(tx)) : '{{ __('invoices.tx_receipt_add') }}'">
                                 <x-icon name="paper-clip" class="h-4 w-4" />
                                 <span x-show="receiptCount(tx)" x-text="receiptCount(tx)"></span>
@@ -1809,23 +1809,23 @@
           {{-- ---- STATEMENT IMPORT WIZARD ---- --}}
           <div x-show="stmt" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelStatement()">
             <div class="absolute inset-0 bg-gray-900/50" @click="cancelStatement()"></div>
-            <div class="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-xl">
               <template x-if="stmt">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.stmt_title') }}</h3>
+                    <h3 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.stmt_title') }}</h3>
                     <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelStatement()" :aria-label="__('common.close')" />
                   </div>
 
                   {{-- Column mapping (unknown CSV) --}}
                   <template x-if="stmt.stage === 'map'">
                     <div class="min-h-0 flex-1 overflow-auto px-5 py-4">
-                      <p class="text-sm text-gray-600 dark:text-gray-300">{{ __('invoices.stmt_map_hint') }}</p>
+                      <p class="text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.stmt_map_hint') }}</p>
                       <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <template x-for="f in txFields" :key="f">
-                          <label class="text-sm text-gray-700 dark:text-gray-300">
+                          <label class="text-sm text-md-on-surface-var dark:text-md-on-surface-var">
                             <span x-text="txFieldLabel(f)"></span><span x-show="f === 'date' || f === 'amount'" class="text-red-500">*</span>
-                            <select x-model="stmt.mapping[f]" class="mt-1 block w-full rounded-lg border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                            <select x-model="stmt.mapping[f]" class="mt-1 block w-full rounded-lg border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                               <option value="">—</option>
                               <template x-for="h in stmt.header" :key="h"><option :value="h" x-text="h"></option></template>
                             </select>
@@ -1842,23 +1842,23 @@
                   {{-- Preview + confirm --}}
                   <template x-if="stmt.stage === 'preview'">
                     <div class="flex min-h-0 flex-1 flex-col">
-                      <div class="border-b border-black/[0.06] dark:border-white/10 px-5 py-2.5 text-xs text-gray-500 dark:text-gray-400">
+                      <div class="border-b border-black/[0.06] dark:border-white/10 px-5 py-2.5 text-xs text-md-on-surface-var dark:text-md-on-surface-var">
                         <span x-text="stmt.format + ' · '"></span>
                         <span x-text="'{{ __('invoices.stmt_summary') }}'.replace(':new', stmt.fresh.length).replace(':dupes', stmt.dupes)"></span>
                         <span x-show="stmt.updates && stmt.updates.length" x-text="' · ' + '{{ __('invoices.stmt_updated') }}'.replace(':n', stmt.updates ? stmt.updates.length : 0)"></span>
                       </div>
                       <div class="min-h-0 flex-1 overflow-auto px-5 py-3">
-                        <template x-if="! stmt.fresh.length"><p class="py-8 text-center text-sm text-gray-400 dark:text-gray-500" x-text="(stmt.updates && stmt.updates.length) ? '{{ __('invoices.stmt_only_updates') }}'.replace(':n', stmt.updates.length) : '{{ __('invoices.stmt_nothing_new') }}'"></p></template>
+                        <template x-if="! stmt.fresh.length"><p class="py-8 text-center text-sm text-md-on-surface-var dark:text-md-on-surface-var" x-text="(stmt.updates && stmt.updates.length) ? '{{ __('invoices.stmt_only_updates') }}'.replace(':n', stmt.updates.length) : '{{ __('invoices.stmt_nothing_new') }}'"></p></template>
                         <table x-show="stmt.fresh.length" class="w-full text-sm">
-                          <thead class="text-left text-xs text-gray-400 dark:text-gray-500">
+                          <thead class="text-left text-xs text-md-on-surface-var dark:text-md-on-surface-var">
                             <tr><th class="pb-2 pr-3">{{ __('invoices.col_date') }}</th><th class="pb-2 pr-3">{{ __('invoices.tx_counterparty') }}</th><th class="pb-2 pr-3">{{ __('invoices.tx_purpose') }}</th><th class="pb-2 text-right">{{ __('invoices.col_total') }}</th></tr>
                           </thead>
                           <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
                             <template x-for="(tx, i) in stmt.fresh" :key="i">
                               <tr>
-                                <td class="whitespace-nowrap py-2 pr-3 tabular-nums text-gray-500 dark:text-gray-400" x-text="tx.date"></td>
-                                <td class="max-w-[12rem] truncate py-2 pr-3 text-gray-800 dark:text-gray-200" x-text="tx.counterparty || '—'"></td>
-                                <td class="max-w-[18rem] truncate py-2 pr-3 text-gray-500 dark:text-gray-400" x-text="tx.purpose"></td>
+                                <td class="whitespace-nowrap py-2 pr-3 tabular-nums text-md-on-surface-var dark:text-md-on-surface-var" x-text="tx.date"></td>
+                                <td class="max-w-[12rem] truncate py-2 pr-3 text-md-on-surface dark:text-md-on-surface" x-text="tx.counterparty || '—'"></td>
+                                <td class="max-w-[18rem] truncate py-2 pr-3 text-md-on-surface-var dark:text-md-on-surface-var" x-text="tx.purpose"></td>
                                 <td class="whitespace-nowrap py-2 text-right tabular-nums" :class="tx.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'" x-text="fmtMoney(tx.amount, tx.currency)"></td>
                               </tr>
                             </template>
@@ -1881,13 +1881,13 @@
           {{-- ---- RECEIPTS PANEL (Belege for a transaction) ---- --}}
           <div x-show="receiptTx" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeReceipts()">
             <div class="absolute inset-0 bg-gray-900/50" @click="closeReceipts()"></div>
-            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-xl">
               <template x-if="receiptTx">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="flex items-start justify-between gap-3 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
                     <div class="min-w-0">
-                      <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.receipts_title') }}</h3>
-                      <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="(receiptTx.counterparty || receiptTx.purpose || '') + ' · ' + fmtMoney(receiptTx.amount, receiptTx.currency) + ' · ' + receiptTx.date"></p>
+                      <h3 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.receipts_title') }}</h3>
+                      <p class="truncate text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="(receiptTx.counterparty || receiptTx.purpose || '') + ' · ' + fmtMoney(receiptTx.amount, receiptTx.currency) + ' · ' + receiptTx.date"></p>
                     </div>
                     <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeReceipts()" :aria-label="__('common.close')" />
                   </div>
@@ -1900,7 +1900,7 @@
                         <template x-for="(r, ri) in (receiptTx.receipts || []).filter((x) => ! x.trashed)" :key="ri">
                           <div class="flex items-center gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 px-3 py-2">
                             <span class="ll-chip h-8 w-8 rounded-lg shrink-0" :style="{ background: r.locked ? '#7066f5' : '#3fae9f' }"><x-icon name="document" class="h-4 w-4 text-white" /></span>
-                            <button type="button" @click="openReceipt(r)" class="min-w-0 flex-1 truncate text-left text-sm text-gray-800 dark:text-gray-200 hover:text-accent" x-text="r.name || '{{ __('invoices.receipt') }}'" :title="r.name"></button>
+                            <button type="button" @click="openReceipt(r)" class="min-w-0 flex-1 truncate text-left text-sm text-md-on-surface dark:text-md-on-surface hover:text-accent" x-text="r.name || '{{ __('invoices.receipt') }}'" :title="r.name"></button>
                             <template x-if="r.locked"><x-badge variant="accent">{{ __('invoices.receipt_from_invoice') }}</x-badge></template>
                             <x-icon-button name="arrow-down-tray" tone="gray" size="sm" @click="openReceipt(r)" :aria-label="__('invoices.receipt')" />
                             <template x-if="! r.locked"><x-icon-button name="trash" tone="red" size="sm" @click="removeReceipt(receiptTx, r)" :aria-label="__('common.delete')" /></template>
@@ -1909,14 +1909,14 @@
                       </div>
                     </template>
                     {{-- Drop zone / empty state --}}
-                    <div class="mt-3 rounded-2xl border-2 border-dashed px-4 py-8 text-center text-sm transition-colors"
-                         :class="drag ? 'border-accent bg-accent/5 text-accent' : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'">
+                    <div class="mt-3 rounded-xl border-2 border-dashed px-4 py-8 text-center text-sm transition-colors"
+                         :class="drag ? 'border-accent bg-accent/5 text-accent' : 'border-md-outline-variant dark:border-md-outline-variant text-md-on-surface-var dark:text-md-on-surface-var'">
                       <x-icon name="arrow-up-tray" class="mx-auto h-6 w-6" />
                       <p class="mt-2" x-text="drag ? '{{ __('invoices.receipts_drop') }}' : '{{ __('invoices.receipts_dnd') }}'"></p>
                     </div>
                   </div>
                   <div class="flex items-center justify-between gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <span x-show="receiptBusy" class="inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('invoices.receipts_uploading') }}</span>
+                    <span x-show="receiptBusy" class="inline-flex items-center gap-2 text-sm text-md-on-surface-var dark:text-md-on-surface-var"><x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('invoices.receipts_uploading') }}</span>
                     <span x-show="! receiptBusy"></span>
                     <div class="flex items-center gap-2">
                       {{-- Link an issued invoice to an incoming payment --}}
@@ -1936,93 +1936,93 @@
           {{-- ---- EIGENBELEG (self-receipt: prefilled from the booking → PDF) ---- --}}
           <div x-show="eigenbeleg" x-cloak class="fixed inset-0 z-[1130] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="! egBusy && cancelEigenbeleg()">
             <div class="absolute inset-0 bg-gray-900/50" @click="! egBusy && cancelEigenbeleg()"></div>
-            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-xl">
               <template x-if="eigenbeleg">
                 <div class="flex min-h-0 flex-col">
                   <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.eg_title') }}</h3>
+                    <h3 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.eg_title') }}</h3>
                     <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelEigenbeleg()" :aria-label="__('common.close')" />
                   </div>
                   <div class="min-h-0 flex-1 space-y-3 overflow-auto px-5 py-4">
                     <x-alert variant="info">{{ __('invoices.eg_intro') }}</x-alert>
                     {{-- Beleggrund (type) --}}
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_grund') }}</label>
-                      <select x-model="eigenbeleg.grund" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.eg_grund') }}</label>
+                      <select x-model="eigenbeleg.grund" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                         <template x-for="g in egGrundOptions" :key="g"><option :value="g" x-text="egGrundLabel(g)"></option></template>
                       </select>
                     </div>
                     <div x-show="eigenbeleg.grund === 'sonstiges'">
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_grund_other') }}</label>
-                      <input type="text" x-model="eigenbeleg.grundOther" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.eg_grund_other') }}</label>
+                      <input type="text" x-model="eigenbeleg.grundOther" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                     </div>
                     {{-- Betrag + Buchungstext (always) --}}
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_gross') }} <span class="text-red-500">*</span></label>
-                      <input type="number" step="0.01" x-model.number="eigenbeleg.gross" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm text-right tabular-nums">
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.eg_gross') }} <span class="text-red-500">*</span></label>
+                      <input type="number" step="0.01" x-model.number="eigenbeleg.gross" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm text-right tabular-nums">
                     </div>
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_buchungstext') }}</label>
-                      <textarea x-model="eigenbeleg.buchungstext" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.eg_buchungstext') }}</label>
+                      <textarea x-model="eigenbeleg.buchungstext" rows="2" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm"></textarea>
                     </div>
                     {{-- Lost-receipt business expense: strict Pflichtangaben (payee/VAT/reason) --}}
                     <template x-if="egIsExpense">
                       <div class="space-y-3 rounded-xl border border-black/[0.06] dark:border-white/10 p-3">
                         <div>
-                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_recipient') }} <span class="text-red-500">*</span></label>
-                          <input type="text" x-model="eigenbeleg.recipient" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                          <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.eg_recipient') }} <span class="text-red-500">*</span></label>
+                          <input type="text" x-model="eigenbeleg.recipient" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                         </div>
                         <div>
-                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_address') }}</label>
-                          <textarea x-model="eigenbeleg.address" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                          <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.eg_address') }}</label>
+                          <textarea x-model="eigenbeleg.address" rows="2" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm"></textarea>
                         </div>
                         <div>
-                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_vat_rate') }}</label>
-                          <select x-model.number="eigenbeleg.vatRate" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                          <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.import_vat_rate') }}</label>
+                          <select x-model.number="eigenbeleg.vatRate" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                             <template x-for="r in egVatChoices()" :key="r"><option :value="r" x-text="r + ' %'"></option></template>
                           </select>
                         </div>
-                        <dl class="rounded-xl bg-gray-50 dark:bg-[#2c2c2e]/60 px-3 py-2 text-sm">
-                          <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">{{ __('invoices.net') }}</dt><dd class="tabular-nums text-gray-700 dark:text-gray-200" x-text="fmtMoney(egNet, 'EUR', 'de')"></dd></div>
-                          <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400" x-text="'{{ __('invoices.vat_at') }}'.replace(':rate', eigenbeleg.vatRate)"></dt><dd class="tabular-nums text-gray-700 dark:text-gray-200" x-text="fmtMoney(egVat, 'EUR', 'de')"></dd></div>
+                        <dl class="rounded-xl bg-md-surface-2 dark:bg-md-surface-2/60 px-3 py-2 text-sm">
+                          <div class="flex justify-between"><dt class="text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.net') }}</dt><dd class="tabular-nums text-md-on-surface-var dark:text-md-on-surface" x-text="fmtMoney(egNet, 'EUR', 'de')"></dd></div>
+                          <div class="flex justify-between"><dt class="text-md-on-surface-var dark:text-md-on-surface-var" x-text="'{{ __('invoices.vat_at') }}'.replace(':rate', eigenbeleg.vatRate)"></dt><dd class="tabular-nums text-md-on-surface-var dark:text-md-on-surface" x-text="fmtMoney(egVat, 'EUR', 'de')"></dd></div>
                         </dl>
                         <div>
-                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_reason') }} <span class="text-red-500">*</span></label>
-                          <textarea x-model="eigenbeleg.reason" rows="2" placeholder="z. B. Originalquittung verloren" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                          <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.eg_reason') }} <span class="text-red-500">*</span></label>
+                          <textarea x-model="eigenbeleg.reason" rows="2" placeholder="z. B. Originalquittung verloren" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm"></textarea>
                         </div>
                       </div>
                     </template>
                     {{-- Ort + dates + issuer --}}
                     <div class="grid grid-cols-2 gap-3">
                       <div>
-                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_ort') }}</label>
-                        <input type="text" x-model="eigenbeleg.ort" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.eg_ort') }}</label>
+                        <input type="text" x-model="eigenbeleg.ort" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                       </div>
                       <div>
-                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_date') }}</label>
-                        <input type="date" x-model="eigenbeleg.date" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.eg_date') }}</label>
+                        <input type="date" x-model="eigenbeleg.date" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                       </div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                       <div>
-                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_created') }}</label>
-                        <input type="date" x-model="eigenbeleg.createdAt" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.eg_created') }}</label>
+                        <input type="date" x-model="eigenbeleg.createdAt" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                       </div>
                       <div>
-                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_issuer') }}</label>
-                        <input type="text" x-model="eigenbeleg.issuer" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.eg_issuer') }}</label>
+                        <input type="text" x-model="eigenbeleg.issuer" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                       </div>
                     </div>
                     {{-- Signature pad (finger/trackpad); embedded into the sealed PDF --}}
                     <div>
                       <div class="mb-1 flex items-center justify-between">
-                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.eg_signature') }}</label>
+                        <label class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.eg_signature') }}</label>
                         <button type="button" @click="egSigClear()" class="text-xs font-medium text-accent hover:underline">{{ __('invoices.eg_sig_clear') }}</button>
                       </div>
                       <canvas x-ref="egCanvas" x-init="$nextTick(() => egSigInit())"
-                        class="h-32 w-full touch-none rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-white"
+                        class="h-32 w-full touch-none rounded-xl border border-dashed border-md-outline-variant dark:border-md-outline-variant bg-white"
                         @pointerdown.prevent="egSigStart($event)" @pointermove.prevent="egSigMove($event)" @pointerup.prevent="egSigEnd()" @pointerleave="egSigEnd()"></canvas>
-                      <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.eg_sig_hint') }}</p>
+                      <p class="mt-1 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.eg_sig_hint') }}</p>
                     </div>
                   </div>
                   <div class="flex items-center justify-end gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
@@ -2109,16 +2109,16 @@
           {{-- ---- RECEIPT PREVIEW (quick look, decrypted client-side) ---- --}}
           <div x-show="receiptPreview" x-cloak class="fixed inset-0 z-[1140] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeReceiptPreview()">
             <div class="absolute inset-0 bg-gray-900/70" @click="closeReceiptPreview()"></div>
-            <div class="relative flex h-[90vh] w-full max-w-4xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex h-[90vh] w-full max-w-4xl flex-col rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-xl">
               <template x-if="receiptPreview">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="flex items-center gap-3 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-                    <x-icon name="document" class="h-5 w-5 shrink-0 text-gray-400" />
-                    <p class="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="receiptPreview.name" :title="receiptPreview.name"></p>
+                    <x-icon name="document" class="h-5 w-5 shrink-0 text-md-on-surface-var" />
+                    <p class="min-w-0 flex-1 truncate text-sm font-medium text-md-on-surface dark:text-md-on-surface" x-text="receiptPreview.name" :title="receiptPreview.name"></p>
                     <x-icon-button name="arrow-up-right" tone="gray" size="sm" @click="openReceiptInTab()" :aria-label="__('invoices.receipt_open_tab')" />
                     <x-icon-button name="x-mark" tone="gray" size="sm" @click="closeReceiptPreview()" :aria-label="__('common.close')" />
                   </div>
-                  <div class="min-h-0 flex-1 overflow-auto bg-gray-50 dark:bg-black/40">
+                  <div class="min-h-0 flex-1 overflow-auto bg-md-surface-2 dark:bg-black/40">
                     <template x-if="previewIsImage">
                       <div class="flex h-full w-full items-center justify-center p-3"><img :src="receiptPreview.url" alt="" class="max-h-full max-w-full object-contain"></div>
                     </template>
@@ -2126,8 +2126,8 @@
                       <iframe :src="receiptPreview.url || 'about:blank'" class="h-full w-full" title="receipt"></iframe>
                     </template>
                     <template x-if="! previewIsImage && ! previewIsPdf">
-                      <div class="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                        <x-icon name="document" class="h-8 w-8 text-gray-300 dark:text-gray-600" />
+                      <div class="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-sm text-md-on-surface-var dark:text-md-on-surface-var">
+                        <x-icon name="document" class="h-8 w-8 text-md-on-surface-var dark:text-md-on-surface-var" />
                         <p>{{ __('invoices.receipt_no_preview') }}</p>
                         <x-button variant="secondary" size="sm" icon="arrow-up-right" @click="openReceiptInTab()">{{ __('invoices.receipt_open_tab') }}</x-button>
                       </div>
@@ -2141,20 +2141,20 @@
           {{-- ---- INVOICE PICKER (link an issued invoice to an income booking) ---- --}}
           <div x-show="invoicePicker" x-cloak class="fixed inset-0 z-[1110] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="invoicePicker = null">
             <div class="absolute inset-0 bg-gray-900/50" @click="invoicePicker = null"></div>
-            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-xl">
               <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
-                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.match_pick_title') }}</h3>
+                <h3 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.match_pick_title') }}</h3>
                 <x-icon-button name="x-mark" tone="gray" size="sm" @click="invoicePicker = null" :aria-label="__('common.close')" />
               </div>
               <div class="min-h-0 flex-1 overflow-auto px-2 py-2">
-                <template x-if="! pickerInvoices.length"><p class="px-3 py-8 text-center text-sm text-gray-400 dark:text-gray-500">{{ __('invoices.match_none') }}</p></template>
+                <template x-if="! pickerInvoices.length"><p class="px-3 py-8 text-center text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.match_none') }}</p></template>
                 <template x-for="pi in pickerInvoices" :key="pi.id">
                   <button type="button" @click="linkInvoice(invoicePicker, pi)" class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-accent/5">
                     <div class="min-w-0 flex-1">
-                      <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100"><span x-text="pi.number"></span> · <span x-text="pi.customer?.name || '—'"></span></p>
-                      <p class="text-xs text-gray-400 dark:text-gray-500 tabular-nums" x-text="pi.issueDate + ' · ' + fmtMoney(computeTotals(pi).gross, pi.currency)"></p>
+                      <p class="truncate text-sm font-medium text-md-on-surface dark:text-md-on-surface"><span x-text="pi.number"></span> · <span x-text="pi.customer?.name || '—'"></span></p>
+                      <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var tabular-nums" x-text="pi.issueDate + ' · ' + fmtMoney(computeTotals(pi).gross, pi.currency)"></p>
                     </div>
-                    <span class="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium" :class="pi.status === 'paid' ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400' : 'bg-black/[0.04] text-gray-500 dark:bg-white/10 dark:text-gray-300'" x-text="pi.status === 'paid' ? '{{ __('invoices.status_paid') }}' : '{{ __('invoices.status_sent') }}'"></span>
+                    <span class="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium" :class="pi.status === 'paid' ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400' : 'bg-black/[0.04] text-md-on-surface-var dark:bg-white/10 dark:text-md-on-surface-var'" x-text="pi.status === 'paid' ? '{{ __('invoices.status_paid') }}' : '{{ __('invoices.status_sent') }}'"></span>
                   </button>
                 </template>
               </div>
@@ -2164,52 +2164,52 @@
           {{-- Editor modal --}}
           <div x-show="payEditing" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="cancelPayment()">
             <div class="absolute inset-0 bg-gray-900/50" @click="cancelPayment()"></div>
-            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-xl">
               <template x-if="payEditing">
                 <div class="flex min-h-0 flex-1 flex-col">
                   <div class="flex items-center gap-2.5 border-b border-black/[0.06] dark:border-white/10 px-5 py-3">
                     <span class="ll-chip h-8 w-8 rounded-xl" :style="{ background: payTint(payEditing.type) }">@include('invoices._payment_icon', ['expr' => 'payEditing.type', 'cls' => 'h-4.5 w-4.5 text-white'])</span>
-                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="payIsNew ? payTypeLabel(payEditing.type) : payEditing.label"></h3>
+                    <h3 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface" x-text="payIsNew ? payTypeLabel(payEditing.type) : payEditing.label"></h3>
                     <x-icon-button name="x-mark" tone="gray" size="sm" class="ml-auto" @click="cancelPayment()" :aria-label="__('common.close')" />
                   </div>
                   <div class="min-h-0 flex-1 space-y-3 overflow-auto px-5 py-4">
                     {{-- Common: label + holder --}}
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_label') }} <span class="text-red-500">*</span></label>
-                      <input type="text" x-model="payEditing.label" placeholder="{{ __('invoices.pay_label_ph') }}" :class="payErr('label') && 'ring-2 ring-red-400 border-red-400'" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_label') }} <span class="text-red-500">*</span></label>
+                      <input type="text" x-model="payEditing.label" placeholder="{{ __('invoices.pay_label_ph') }}" :class="payErr('label') && 'ring-2 ring-red-400 border-red-400'" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                       <p x-show="payErr('label')" class="mt-1 text-xs text-red-500">{{ __('invoices.pay_required') }}</p>
                     </div>
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_holder') }}</label>
-                      <input type="text" x-model="payEditing.holder" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_holder') }}</label>
+                      <input type="text" x-model="payEditing.holder" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                     </div>
 
                     {{-- Bank fields --}}
                     <template x-if="payEditing.type === 'bank'">
                       <div class="space-y-3">
                         <div>
-                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_iban') }} <span class="text-red-500">*</span></label>
-                          <input type="text" x-model="payEditing.iban" placeholder="DE00 0000 0000 0000 0000 00" :class="payErr('iban') && 'ring-2 ring-red-400 border-red-400'" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm font-mono tabular-nums">
+                          <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_iban') }} <span class="text-red-500">*</span></label>
+                          <input type="text" x-model="payEditing.iban" placeholder="DE00 0000 0000 0000 0000 00" :class="payErr('iban') && 'ring-2 ring-red-400 border-red-400'" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm font-mono tabular-nums">
                           <p x-show="payErr('iban')" class="mt-1 text-xs text-red-500">{{ __('invoices.pay_iban_or_acct') }}</p>
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                           <div>
-                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_bic') }}</label>
-                            <input type="text" x-model="payEditing.bic" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                            <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_bic') }}</label>
+                            <input type="text" x-model="payEditing.bic" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                           </div>
                           <div>
-                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_bank_name') }}</label>
-                            <input type="text" x-model="payEditing.bankName" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                            <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_bank_name') }}</label>
+                            <input type="text" x-model="payEditing.bankName" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                           </div>
                         </div>
                         <div>
-                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_account_no') }}</label>
-                          <input type="text" x-model="payEditing.accountNumber" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums">
+                          <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_account_no') }}</label>
+                          <input type="text" x-model="payEditing.accountNumber" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm tabular-nums">
                         </div>
                         <div>
-                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_url') }}</label>
-                          <input type="url" x-model="payEditing.url" placeholder="https://meine-bank.de" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
-                          <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.pay_url_hint') }}</p>
+                          <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_url') }}</label>
+                          <input type="url" x-model="payEditing.url" placeholder="https://meine-bank.de" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
+                          <p class="mt-1 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_url_hint') }}</p>
                         </div>
                       </div>
                     </template>
@@ -2218,14 +2218,14 @@
                     <template x-if="payEditing.type === 'card'">
                       <div class="space-y-3">
                         <div>
-                          <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_card_number') }} <span class="text-red-500">*</span></label>
-                          <input type="text" inputmode="numeric" x-model="payEditing.cardNumber" @input="payCardInput()" placeholder="•••• •••• •••• ••••" :class="payErr('cardNumber') && 'ring-2 ring-red-400 border-red-400'" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm font-mono tabular-nums">
+                          <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_card_number') }} <span class="text-red-500">*</span></label>
+                          <input type="text" inputmode="numeric" x-model="payEditing.cardNumber" @input="payCardInput()" placeholder="•••• •••• •••• ••••" :class="payErr('cardNumber') && 'ring-2 ring-red-400 border-red-400'" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm font-mono tabular-nums">
                           <p x-show="payErr('cardNumber')" class="mt-1 text-xs text-red-500">{{ __('invoices.pay_required') }}</p>
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                           <div>
-                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_card_network') }}</label>
-                            <select x-model="payEditing.cardNetwork" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                            <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_card_network') }}</label>
+                            <select x-model="payEditing.cardNetwork" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                               <option value="visa">Visa</option>
                               <option value="mastercard">Mastercard</option>
                               <option value="amex">Amex</option>
@@ -2233,8 +2233,8 @@
                             </select>
                           </div>
                           <div>
-                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_card_expiry') }}</label>
-                            <input type="text" x-model="payEditing.cardExpiry" placeholder="MM/YY" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums">
+                            <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_card_expiry') }}</label>
+                            <input type="text" x-model="payEditing.cardExpiry" placeholder="MM/YY" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm tabular-nums">
                           </div>
                         </div>
                       </div>
@@ -2243,16 +2243,16 @@
                     {{-- PayPal fields --}}
                     <template x-if="payEditing.type === 'paypal'">
                       <div>
-                        <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_email') }} <span class="text-red-500">*</span></label>
-                        <input type="email" x-model="payEditing.email" placeholder="name@example.com" :class="payErr('email') && 'ring-2 ring-red-400 border-red-400'" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm">
+                        <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_email') }} <span class="text-red-500">*</span></label>
+                        <input type="email" x-model="payEditing.email" placeholder="name@example.com" :class="payErr('email') && 'ring-2 ring-red-400 border-red-400'" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm">
                         <p x-show="payErr('email')" class="mt-1 text-xs text-red-500">{{ __('invoices.pay_required') }}</p>
                       </div>
                     </template>
 
                     {{-- Note (all types) --}}
                     <div>
-                      <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.pay_note') }}</label>
-                      <textarea x-model="payEditing.note" rows="2" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm"></textarea>
+                      <label class="mb-1 block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.pay_note') }}</label>
+                      <textarea x-model="payEditing.note" rows="2" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm"></textarea>
                     </div>
                   </div>
                   <div class="flex items-center justify-end gap-3 border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
@@ -2273,8 +2273,8 @@
              @dragleave.prevent="if ($event.target === $el) drag = false"
              @drop.prevent="drag = false; if ($event.dataTransfer?.files?.length) importPdfs($event.dataTransfer.files)">
           {{-- Drop invoice PDFs anywhere on the list to import them (same as the button) --}}
-          <div x-show="drag" x-cloak class="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-accent bg-accent/10">
-            <span class="rounded-xl bg-white/90 px-4 py-2 text-sm font-medium text-accent shadow dark:bg-[#1c1c1e]/90">{{ __('invoices.import_drop_hint') }}</span>
+          <div x-show="drag" x-cloak class="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-xl border-2 border-dashed border-accent bg-accent/10">
+            <span class="rounded-xl bg-white/90 px-4 py-2 text-sm font-medium text-accent shadow dark:bg-md-surface/90">{{ __('invoices.import_drop_hint') }}</span>
           </div>
           <div class="flex flex-wrap items-center justify-end gap-3">
             <input type="file" x-ref="pdfImport" accept="application/pdf,.pdf" multiple class="hidden" @change="importPdfs($event.target.files); $event.target.value = ''">
@@ -2336,7 +2336,7 @@
           </template>
 
           @unless ($s->company_name)
-            <p class="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+            <p class="mt-4 rounded-lg border border-md-outline-variant dark:border-md-outline-variant bg-md-surface-2 dark:bg-md-surface-2 px-4 py-3 text-sm text-md-on-surface-var dark:text-md-on-surface-var">
               {{ __('invoices.company_missing') }} <a href="{{ route('settings.company.edit') }}" class="font-medium underline">{{ __('settings.company_section') }}</a>
             </p>
           @endunless
@@ -2346,12 +2346,12 @@
             <div class="flex items-center gap-3">
               <span class="ll-chip h-8 w-8 rounded-xl" style="background:#6b7280"><x-icon name="hashtag" class="h-4.5 w-4.5 text-white" /></span>
               <div>
-                <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
+                <p class="text-sm font-medium text-md-on-surface dark:text-md-on-surface">
                   {{ __('invoices.cycle_title') }} · <span x-text="currentYear"></span>
                 </p>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
-                  <span x-text="'{{ __('invoices.cycle_next') }}: '"></span><span class="tabular-nums font-medium text-gray-700 dark:text-gray-300" x-text="nextNumberPreview"></span>
-                  <span x-show="numberingLocked" class="ml-1 text-gray-400 dark:text-gray-500" x-text="'· ' + '{{ __('invoices.cycle_locked') }}'.replace(':n', currentYearInvoices.length)"></span>
+                <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">
+                  <span x-text="'{{ __('invoices.cycle_next') }}: '"></span><span class="tabular-nums font-medium text-md-on-surface-var dark:text-md-on-surface-var" x-text="nextNumberPreview"></span>
+                  <span x-show="numberingLocked" class="ml-1 text-md-on-surface-var dark:text-md-on-surface-var" x-text="'· ' + '{{ __('invoices.cycle_locked') }}'.replace(':n', currentYearInvoices.length)"></span>
                 </p>
               </div>
             </div>
@@ -2362,31 +2362,31 @@
 
           <div class="mt-6 flex flex-wrap items-center gap-2">
             <div class="relative min-w-[12rem] flex-1 max-w-xs">
-              <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input type="search" x-model.debounce.250ms="query" @input="invPage = 1" placeholder="{{ __('invoices.search') }}" class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] pl-9 text-sm focus:border-accent focus:ring-accent">
+              <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-md-on-surface-var" />
+              <input type="search" x-model.debounce.250ms="query" @input="invPage = 1" placeholder="{{ __('invoices.search') }}" class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 pl-9 text-sm focus:border-accent focus:ring-accent">
             </div>
-            <select x-model="filterStatus" @change="invPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+            <select x-model="filterStatus" @change="invPage = 1" class="rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
               <option value="">{{ __('invoices.filter_all') }}</option>
               <option value="draft">{{ __('invoices.status_draft') }}</option>
               <option value="final">{{ __('invoices.status_final') }}</option>
               <option value="sent">{{ __('invoices.status_sent') }}</option>
               <option value="paid">{{ __('invoices.status_paid') }}</option>
             </select>
-            <select x-model="invYear" @change="invPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+            <select x-model="invYear" @change="invPage = 1" class="rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
               <option value="">{{ __('invoices.inv_all_years') }}</option>
               <template x-for="y in invoiceYears" :key="y"><option :value="y" x-text="y"></option></template>
             </select>
-            <select x-model="invCustomer" @change="invPage = 1" class="max-w-[14rem] rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+            <select x-model="invCustomer" @change="invPage = 1" class="max-w-[14rem] rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
               <option value="">{{ __('invoices.inv_all_customers') }}</option>
               <template x-for="c in invoiceCustomers" :key="c"><option :value="c" x-text="c"></option></template>
             </select>
-            <select x-model="invLinked" @change="invPage = 1" class="rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+            <select x-model="invLinked" @change="invPage = 1" class="rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
               <option value="">{{ __('invoices.inv_link_all') }}</option>
               <option value="linked">{{ __('invoices.inv_link_linked') }}</option>
               <option value="open">{{ __('invoices.inv_link_open') }}</option>
             </select>
             <x-button x-show="invFiltersActive" variant="secondary" size="sm" icon="x-mark" @click="resetInvFilters()">{{ __('invoices.tx_filter_reset') }}</x-button>
-            <button type="button" @click="showInvTrash = ! showInvTrash" class="ml-auto inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium transition-colors" :class="showInvTrash ? 'bg-accent/10 text-accent' : 'text-gray-500 hover:bg-black/[0.04] dark:hover:bg-white/10'">
+            <button type="button" @click="showInvTrash = ! showInvTrash" class="ml-auto inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium transition-colors" :class="showInvTrash ? 'bg-accent/10 text-accent' : 'text-md-on-surface-var hover:bg-black/[0.04] dark:hover:bg-white/10'">
               <x-icon name="trash" class="h-4 w-4" /><span x-text="'{{ __('invoices.trash_bin') }}' + (trashedInvoices.length ? ' (' + trashedInvoices.length + ')' : '')"></span>
             </button>
           </div>
@@ -2403,10 +2403,10 @@
                     <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
                       <template x-for="inv in trashedInvoices" :key="inv.id">
                         <tr>
-                          <td class="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100 tabular-nums" x-text="inv.number || @js(__('invoices.draft_label'))"></td>
-                          <td class="px-4 py-2.5 text-gray-700 dark:text-gray-300" x-text="inv.customer?.name || '—'"></td>
-                          <td class="px-4 py-2.5 text-gray-500 dark:text-gray-400 tabular-nums" x-text="inv.issueDate"></td>
-                          <td class="px-4 py-2.5 text-right tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(computeTotals(inv).gross, inv.currency)"></td>
+                          <td class="px-4 py-2.5 font-medium text-md-on-surface dark:text-md-on-surface tabular-nums" x-text="inv.number || @js(__('invoices.draft_label'))"></td>
+                          <td class="px-4 py-2.5 text-md-on-surface-var dark:text-md-on-surface-var" x-text="inv.customer?.name || '—'"></td>
+                          <td class="px-4 py-2.5 text-md-on-surface-var dark:text-md-on-surface-var tabular-nums" x-text="inv.issueDate"></td>
+                          <td class="px-4 py-2.5 text-right tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(computeTotals(inv).gross, inv.currency)"></td>
                           <td class="px-4 py-2.5">
                             <div class="flex items-center justify-end gap-2">
                               <x-button variant="secondary" size="sm" icon="arrow-uturn-left" @click="restore(inv)">{{ __('invoices.restore') }}</x-button>
@@ -2428,7 +2428,7 @@
               <template x-if="invFiltersActive"><span class="block text-sm">{{ __('invoices.inv_no_match') }}</span></template>
               <template x-if="! invFiltersActive">
                 <span>
-                  <span class="block text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.empty_title') }}</span>
+                  <span class="block text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.empty_title') }}</span>
                   <span class="mt-1 block text-sm">{{ __('invoices.empty_hint') }}</span>
                 </span>
               </template>
@@ -2437,7 +2437,7 @@
 
           <div x-show="! showInvTrash && filtered.length" class="ll-card !p-0 mt-4 overflow-hidden overflow-x-auto">
             <table class="min-w-full text-sm">
-              <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              <thead class="border-b border-black/[0.06] dark:border-white/10 text-left text-xs font-semibold uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">
                 <tr>
                   <th class="px-4 py-3">{{ __('invoices.col_number') }}</th>
                   <th class="px-4 py-3">{{ __('invoices.col_customer') }}</th>
@@ -2450,14 +2450,14 @@
               <tbody class="divide-y divide-black/[0.06] dark:divide-white/10">
                 <template x-for="inv in pagedInvoices" :key="inv.id">
                   <tr class="group cursor-pointer transition-colors hover:bg-accent/5" @click="open(inv)">
-                    <td class="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100 tabular-nums" x-text="inv.number || @js(__('invoices.draft_label'))"></td>
-                    <td class="px-4 py-2.5 text-gray-700 dark:text-gray-300" x-text="inv.customer?.name || '—'"></td>
-                    <td class="px-4 py-2.5 text-gray-500 dark:text-gray-400 tabular-nums" x-text="inv.issueDate"></td>
-                    <td class="px-4 py-2.5 text-right tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(computeTotals(inv).gross, inv.currency)"></td>
+                    <td class="px-4 py-2.5 font-medium text-md-on-surface dark:text-md-on-surface tabular-nums" x-text="inv.number || @js(__('invoices.draft_label'))"></td>
+                    <td class="px-4 py-2.5 text-md-on-surface-var dark:text-md-on-surface-var" x-text="inv.customer?.name || '—'"></td>
+                    <td class="px-4 py-2.5 text-md-on-surface-var dark:text-md-on-surface-var tabular-nums" x-text="inv.issueDate"></td>
+                    <td class="px-4 py-2.5 text-right tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(computeTotals(inv).gross, inv.currency)"></td>
                     <td class="px-4 py-2.5">
                       <div class="flex flex-wrap items-center gap-1.5">
                         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                          :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-amber-500/15 text-amber-600 dark:text-amber-400': inv.status === 'final', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': inv.status === 'draft' }"
+                          :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': inv.status === 'paid', 'bg-accent/15 text-accent': inv.status === 'sent', 'bg-amber-500/15 text-amber-600 dark:text-amber-400': inv.status === 'final', 'bg-gray-500/15 text-md-on-surface-var dark:text-md-on-surface-var': inv.status === 'draft' }"
                           x-text="statusLabel(inv.status)"></span>
                         <template x-if="isOverdue(inv)"><x-badge variant="error"><span x-text="'{{ __('invoices.overdue_days') }}'.replace(':n', daysOverdue(inv))"></span></x-badge></template>
                         <template x-if="isCreditNote(inv)"><x-badge variant="warning">{{ __('invoices.credit_note_badge') }}</x-badge></template>
@@ -2495,7 +2495,7 @@
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
               <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
-              <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
+              <h1 class="text-lg font-semibold text-md-on-surface dark:text-md-on-surface tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
               <span class="inline-flex items-center rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400" x-text="statusLabel(current?.status)"></span>
               <template x-if="isCancelled(current)"><x-badge variant="gray">{{ __('invoices.cancelled_badge') }}</x-badge></template>
               <template x-if="isInvoiceLinked(current)"><span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent" :title="'{{ __('invoices.linked_hint') }}'"><x-icon name="link" class="h-3 w-3" />{{ __('invoices.linked_badge') }}</span></template>
@@ -2511,35 +2511,35 @@
           {{-- Key-field bar (read-only). Recipient links to the business partner. --}}
           <div class="ll-card mt-4 grid grid-cols-2 gap-x-5 gap-y-3 md:grid-cols-6">
             <div class="col-span-2">
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_recipient') }}</p>
+              <p class="text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.import_recipient') }}</p>
               <template x-if="current.customer?.partnerId">
                 <button type="button" @click="goToPartner(current)" class="mt-1 text-left text-sm font-medium text-accent hover:underline" x-text="current.customer?.name || '—'"></button>
               </template>
               <template x-if="! current.customer?.partnerId">
-                <p class="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100" x-text="current.customer?.name || '—'"></p>
+                <p class="mt-1 text-sm font-medium text-md-on-surface dark:text-md-on-surface" x-text="current.customer?.name || '—'"></p>
               </template>
             </div>
             <div>
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.col_number') }}</p>
-              <p class="mt-1 text-sm tabular-nums text-gray-900 dark:text-gray-100" x-text="current.number || '—'"></p>
+              <p class="text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.col_number') }}</p>
+              <p class="mt-1 text-sm tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="current.number || '—'"></p>
             </div>
             <div>
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.issue_date') }}</p>
-              <p class="mt-1 text-sm tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtDate(current.issueDate) || '—'"></p>
+              <p class="text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.issue_date') }}</p>
+              <p class="mt-1 text-sm tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtDate(current.issueDate) || '—'"></p>
             </div>
             <div>
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_gross') }}</p>
-              <p class="mt-1 text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(impGross, current.currency, 'de')"></p>
+              <p class="text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.import_gross') }}</p>
+              <p class="mt-1 text-sm font-semibold tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(impGross, current.currency, 'de')"></p>
             </div>
             <div>
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_vat_rate') }}</p>
-              <p class="mt-1 text-sm tabular-nums text-gray-900 dark:text-gray-100" x-text="impRate + ' %'"></p>
+              <p class="text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.import_vat_rate') }}</p>
+              <p class="mt-1 text-sm tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="impRate + ' %'"></p>
             </div>
           </div>
 
           {{-- Inline original PDF (authoritative record) — rendered client-side to full-width
                page images; fills the field and scrolls, no browser PDF chrome. --}}
-          <div class="mt-4 min-h-[60vh] flex-1 overflow-auto rounded-2xl border border-black/[0.06] dark:border-white/10 bg-gray-100 dark:bg-[#111] p-3 sm:p-4">
+          <div class="mt-4 min-h-[60vh] flex-1 overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-md-surface-2 dark:bg-[#111] p-3 sm:p-4">
             <template x-if="invoicePdf?.pages?.length">
               <div class="mx-auto flex max-w-4xl flex-col gap-4">
                 <template x-for="(pg, i) in invoicePdf.pages" :key="i">
@@ -2547,7 +2547,7 @@
                 </template>
               </div>
             </template>
-            <template x-if="! invoicePdf?.pages?.length"><div class="flex h-full min-h-[50vh] items-center justify-center text-sm text-gray-400 dark:text-gray-500"><x-icon name="arrow-path" class="mr-2 h-4 w-4 animate-spin" />{{ __('invoices.import_title') }}</div></template>
+            <template x-if="! invoicePdf?.pages?.length"><div class="flex h-full min-h-[50vh] items-center justify-center text-sm text-md-on-surface-var dark:text-md-on-surface-var"><x-icon name="arrow-path" class="mr-2 h-4 w-4 animate-spin" />{{ __('invoices.import_title') }}</div></template>
           </div>
         </div>
         </template>
@@ -2558,15 +2558,15 @@
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
               <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
-              <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
+              <h1 class="text-lg font-semibold text-md-on-surface dark:text-md-on-surface tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
               <span x-show="current?.imported" class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-amber-500/15 text-amber-600 dark:text-amber-400': current?.status === 'final', 'bg-gray-500/15 text-gray-500 dark:text-gray-400': current?.status === 'draft' }"
+                :class="{ 'bg-green-500/15 text-green-600 dark:text-green-400': current?.status === 'paid', 'bg-accent/15 text-accent': current?.status === 'sent', 'bg-amber-500/15 text-amber-600 dark:text-amber-400': current?.status === 'final', 'bg-gray-500/15 text-md-on-surface-var dark:text-md-on-surface-var': current?.status === 'draft' }"
                 x-text="statusLabel(current?.status)"></span>
               {{-- Manual status override (non-imported). GoBD: a numbered invoice hides the
                    Draft option; setStatus finalizes forward + blocks numbered→draft. --}}
               <select x-show="! current?.imported" @change="setStatus(current, $event.target.value)"
                 class="rounded-full border-0 px-2.5 py-1 text-xs font-medium ring-1 ring-inset appearance-none cursor-pointer focus:ring-2 focus:ring-accent"
-                :class="{ 'bg-green-500/15 text-green-600 ring-green-500/20': current?.status === 'paid', 'bg-accent/15 text-accent ring-accent/20': current?.status === 'sent', 'bg-amber-500/15 text-amber-600 ring-amber-500/20': current?.status === 'final', 'bg-gray-500/15 text-gray-500 ring-gray-500/20': current?.status === 'draft' }">
+                :class="{ 'bg-green-500/15 text-green-600 ring-green-500/20': current?.status === 'paid', 'bg-accent/15 text-accent ring-accent/20': current?.status === 'sent', 'bg-amber-500/15 text-amber-600 ring-amber-500/20': current?.status === 'final', 'bg-gray-500/15 text-md-on-surface-var ring-gray-500/20': current?.status === 'draft' }">
                 <option value="draft" x-show="! current?.number" :selected="current?.status === 'draft'">{{ __('invoices.status_draft') }}</option>
                 <option value="final" :selected="current?.status === 'final'">{{ __('invoices.status_final') }}</option>
                 <option value="sent" :selected="current?.status === 'sent'">{{ __('invoices.status_sent') }}</option>
@@ -2614,38 +2614,38 @@
             {{-- Customer --}}
             <div class="ll-card">
               <div class="flex items-center justify-between">
-                <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.customer') }}</h2>
-                <button type="button" @click="openCustomerPicker()" class="text-xs font-medium text-gray-700 dark:text-gray-300 underline">{{ __('invoices.choose_customer') }}</button>
+                <h2 class="text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.customer') }}</h2>
+                <button type="button" @click="openCustomerPicker()" class="text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var underline">{{ __('invoices.choose_customer') }}</button>
               </div>
               <div class="mt-3 space-y-2">
-                <input type="text" x-model="current.customer.name" placeholder="{{ __('invoices.customer_name') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                <input type="text" x-model="current.customer.attn" placeholder="{{ __('invoices.attn') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                <textarea x-model="current.customer.address" rows="3" placeholder="{{ __('invoices.customer_address') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
-                <input type="email" x-model="current.customer.email" placeholder="{{ __('invoices.customer_email') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                <input type="email" x-model="current.customer.invoiceEmail" placeholder="{{ __('invoices.customer_invoice_email') }}" title="{{ __('invoices.partner_invoice_email_hint') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                <input type="text" x-model="current.customer.vatId" placeholder="{{ __('invoices.customer_vat') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                <input type="text" x-model="current.customer.name" placeholder="{{ __('invoices.customer_name') }}" class="block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                <input type="text" x-model="current.customer.attn" placeholder="{{ __('invoices.attn') }}" class="block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                <textarea x-model="current.customer.address" rows="3" placeholder="{{ __('invoices.customer_address') }}" class="block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
+                <input type="email" x-model="current.customer.email" placeholder="{{ __('invoices.customer_email') }}" class="block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                <input type="email" x-model="current.customer.invoiceEmail" placeholder="{{ __('invoices.customer_invoice_email') }}" title="{{ __('invoices.partner_invoice_email_hint') }}" class="block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                <input type="text" x-model="current.customer.vatId" placeholder="{{ __('invoices.customer_vat') }}" class="block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent">
               </div>
             </div>
 
             {{-- Dates --}}
             <div class="ll-card">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.col_date') }}</h2>
+              <h2 class="text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.col_date') }}</h2>
               <div class="mt-3 space-y-3">
-                <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.issue_date') }}
-                  <input type="date" x-model="current.issueDate" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                <label class="block text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.issue_date') }}
+                  <input type="date" x-model="current.issueDate" class="mt-1 block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent">
                 </label>
-                <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.due_date') }}
-                  <input type="date" x-model="current.dueDate" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                <label class="block text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.due_date') }}
+                  <input type="date" x-model="current.dueDate" class="mt-1 block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent">
                 </label>
                 <div class="grid grid-cols-2 gap-3">
-                  <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.language') }}
-                    <select x-model="current.lang" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                  <label class="block text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.language') }}
+                    <select x-model="current.lang" class="mt-1 block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent">
                       <option value="de">Deutsch</option>
                       <option value="en">English</option>
                     </select>
                   </label>
-                  <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.currency') }}
-                    <select x-model="current.currency" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                  <label class="block text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.currency') }}
+                    <select x-model="current.currency" class="mt-1 block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent">
                       <template x-for="c in currencyOptions" :key="c"><option :value="c" x-text="c"></option></template>
                     </select>
                   </label>
@@ -2655,26 +2655,26 @@
 
             {{-- Totals summary --}}
             <div class="ll-card">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.gross') }}</h2>
+              <h2 class="text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.gross') }}</h2>
               <dl class="mt-3 space-y-1.5 text-sm">
                 <template x-if="hasDiscount(current)">
-                  <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">{{ __('invoices.subtotal') }}</dt><dd class="tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(totals.grossNet)"></dd></div>
+                  <div class="flex justify-between"><dt class="text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.subtotal') }}</dt><dd class="tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(totals.grossNet)"></dd></div>
                 </template>
                 <template x-if="hasDiscount(current)">
                   <div class="flex justify-between text-accent"><dt>{{ __('invoices.discount') }}</dt><dd class="tabular-nums" x-text="'−' + fmtMoney(Math.abs(totals.discount))"></dd></div>
                 </template>
-                <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">{{ __('invoices.net') }}</dt><dd class="tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(totals.net)"></dd></div>
+                <div class="flex justify-between"><dt class="text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.net') }}</dt><dd class="tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(totals.net)"></dd></div>
                 <template x-for="rate in vatRatesOf(current)" :key="rate">
-                  <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400" x-text="@js(__('invoices.vat_at')).replace(':rate', rate)"></dt><dd class="tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(totals.vatByRate[rate])"></dd></div>
+                  <div class="flex justify-between"><dt class="text-md-on-surface-var dark:text-md-on-surface-var" x-text="@js(__('invoices.vat_at')).replace(':rate', rate)"></dt><dd class="tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(totals.vatByRate[rate])"></dd></div>
                 </template>
-                <div class="flex justify-between border-t border-gray-200 dark:border-gray-800 pt-1.5 font-semibold"><dt class="text-gray-900 dark:text-gray-100">{{ __('invoices.gross') }}</dt><dd class="tabular-nums text-gray-900 dark:text-gray-100" x-text="fmtMoney(totals.gross)"></dd></div>
+                <div class="flex justify-between border-t border-md-outline-variant dark:border-md-outline-variant pt-1.5 font-semibold"><dt class="text-md-on-surface dark:text-md-on-surface">{{ __('invoices.gross') }}</dt><dd class="tabular-nums text-md-on-surface dark:text-md-on-surface" x-text="fmtMoney(totals.gross)"></dd></div>
               </dl>
-              <p x-show="smallBusiness" class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ __('invoices.vat_kleinunternehmer_note') }}</p>
+              <p x-show="smallBusiness" class="mt-3 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.vat_kleinunternehmer_note') }}</p>
               {{-- Payment QR preview (GiroCode) — only for EUR invoices with a company IBAN --}}
               <div x-show="invoiceQr" class="mt-4 flex items-center gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 p-3">
                 <img :src="invoiceQr" class="h-20 w-20 rounded bg-white p-1">
-                <div class="text-xs text-gray-500 dark:text-gray-400">
-                  <p class="font-medium text-gray-700 dark:text-gray-300">{{ __('invoices.giro_title') }}</p>
+                <div class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">
+                  <p class="font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.giro_title') }}</p>
                   <p>{{ __('invoices.giro_hint') }}</p>
                 </div>
               </div>
@@ -2684,16 +2684,16 @@
           {{-- Line items --}}
           <div class="mt-6 ll-card">
             <div class="flex items-center justify-between gap-3">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.lines') }}</h2>
+              <h2 class="text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.lines') }}</h2>
               <div class="flex items-center gap-4">
-                <button type="button" @click="$refs.csv.click()" :title="'{{ __('invoices.csv_hint') }}'" class="inline-flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300 underline"><x-icon name="arrow-up-tray" class="h-3.5 w-3.5" />{{ __('invoices.csv_import') }}</button>
+                <button type="button" @click="$refs.csv.click()" :title="'{{ __('invoices.csv_hint') }}'" class="inline-flex items-center gap-1 text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var underline"><x-icon name="arrow-up-tray" class="h-3.5 w-3.5" />{{ __('invoices.csv_import') }}</button>
                 <input x-ref="csv" type="file" accept=".csv,text/csv" class="hidden" @change="importClockify($event.target.files); $event.target.value = ''">
-                <button type="button" @click="addLine()" class="inline-flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300 underline"><x-icon name="plus" class="h-3.5 w-3.5" />{{ __('invoices.add_line') }}</button>
+                <button type="button" @click="addLine()" class="inline-flex items-center gap-1 text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var underline"><x-icon name="plus" class="h-3.5 w-3.5" />{{ __('invoices.add_line') }}</button>
               </div>
             </div>
             <div class="mt-3 overflow-x-auto">
               <table class="min-w-full text-sm">
-                <thead class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <thead class="text-left text-xs font-semibold uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">
                   <tr>
                     <th class="py-1 pr-2">{{ __('invoices.line_desc') }}</th>
                     <th class="py-1 px-2 w-20 text-right">{{ __('invoices.line_qty') }}</th>
@@ -2707,12 +2707,12 @@
                 <tbody>
                   <template x-for="(l, i) in current.lines" :key="i">
                     <tr>
-                      <td class="py-1 pr-2 align-top"><textarea x-model="l.desc" rows="2" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent resize-y min-h-[2.5rem]"></textarea></td>
-                      <td class="py-1 px-2 align-top"><input type="number" step="0.01" x-model.number="l.qty" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
-                      <td class="py-1 px-2 align-top"><input type="text" x-model="l.unit" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent"></td>
-                      <td class="py-1 px-2 align-top"><input type="number" step="0.01" x-model.number="l.unitPrice" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
-                      <td class="py-1 px-2 align-top" x-show="! smallBusiness"><input type="number" step="0.01" x-model.number="l.vatRate" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
-                      <td class="py-1 px-2 text-right tabular-nums text-gray-700 dark:text-gray-300 align-top" x-text="fmtMoney(lineNet(l))"></td>
+                      <td class="py-1 pr-2 align-top"><textarea x-model="l.desc" rows="2" class="block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent resize-y min-h-[2.5rem]"></textarea></td>
+                      <td class="py-1 px-2 align-top"><input type="number" step="0.01" x-model.number="l.qty" class="block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
+                      <td class="py-1 px-2 align-top"><input type="text" x-model="l.unit" class="block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent"></td>
+                      <td class="py-1 px-2 align-top"><input type="number" step="0.01" x-model.number="l.unitPrice" class="block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
+                      <td class="py-1 px-2 align-top" x-show="! smallBusiness"><input type="number" step="0.01" x-model.number="l.vatRate" class="block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
+                      <td class="py-1 px-2 text-right tabular-nums text-md-on-surface-var dark:text-md-on-surface-var align-top" x-text="fmtMoney(lineNet(l))"></td>
                       <td class="py-1 pl-2 text-right align-top"><x-icon-button name="x-mark" size="sm" @click="removeLine(i)" title="{{ __('invoices.remove') }}" aria-label="{{ __('invoices.remove') }}" /></td>
                     </tr>
                   </template>
@@ -2724,41 +2724,41 @@
           {{-- Discount (Rabatt) + Skonto terms --}}
           <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div class="ll-card">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.discount') }}</h2>
+              <h2 class="text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.discount') }}</h2>
               <div class="mt-3 grid grid-cols-2 gap-3">
-                <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.discount') }}
-                  <select x-model="current.discountType" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                <label class="block text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.discount') }}
+                  <select x-model="current.discountType" class="mt-1 block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     <option :value="null">{{ __('invoices.discount_none') }}</option>
                     <option value="percent">{{ __('invoices.discount_percent') }}</option>
                     <option value="amount">{{ __('invoices.discount_amount') }}</option>
                   </select>
                 </label>
-                <label class="block text-sm text-gray-700 dark:text-gray-300" x-show="current.discountType">{{ __('invoices.discount_value') }}
-                  <input type="number" step="0.01" min="0" x-model.number="current.discountValue" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent">
+                <label class="block text-sm text-md-on-surface-var dark:text-md-on-surface-var" x-show="current.discountType">{{ __('invoices.discount_value') }}
+                  <input type="number" step="0.01" min="0" x-model.number="current.discountValue" class="mt-1 block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm text-right shadow-sm focus:border-accent focus:ring-accent">
                 </label>
               </div>
             </div>
             <div class="ll-card">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.skonto') }}</h2>
+              <h2 class="text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.skonto') }}</h2>
               <div class="mt-3 grid grid-cols-2 gap-3">
-                <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.skonto_percent') }}
-                  <input type="number" step="0.01" min="0" max="100" x-model.number="current.skontoPercent" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent">
+                <label class="block text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.skonto_percent') }}
+                  <input type="number" step="0.01" min="0" max="100" x-model.number="current.skontoPercent" class="mt-1 block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm text-right shadow-sm focus:border-accent focus:ring-accent">
                 </label>
-                <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.skonto_days') }}
-                  <input type="number" step="1" min="0" x-model.number="current.skontoDays" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent">
+                <label class="block text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.skonto_days') }}
+                  <input type="number" step="1" min="0" x-model.number="current.skontoDays" class="mt-1 block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm text-right shadow-sm focus:border-accent focus:ring-accent">
                 </label>
               </div>
-              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400" x-show="skontoDate(current)" x-text="'{{ __('invoices.skonto_note') }}'.replace(':percent', current.skontoPercent).replace(':date', skontoDate(current))"></p>
+              <p class="mt-2 text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-show="skontoDate(current)" x-text="'{{ __('invoices.skonto_note') }}'.replace(':percent', current.skontoPercent).replace(':date', skontoDate(current))"></p>
             </div>
           </div>
 
           {{-- Note / footer --}}
           <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.note') }}
-              <textarea x-model="current.note" rows="3" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
+            <label class="block text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.note') }}
+              <textarea x-model="current.note" rows="3" class="mt-1 block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
             </label>
-            <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.footer') }}
-              <textarea x-model="current.footer" rows="3" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
+            <label class="block text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.footer') }}
+              <textarea x-model="current.footer" rows="3" class="mt-1 block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
             </label>
           </div>
           </fieldset>{{-- /editable fieldset --}}
@@ -2767,14 +2767,14 @@
                online invoices carry a generated PDF per version, imported keep fields only. --}}
           <template x-if="current?.versions?.length">
             <div class="ll-card mt-6">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.versions_heading') }}</h2>
+              <h2 class="text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.versions_heading') }}</h2>
               <div class="mt-3 divide-y divide-black/[0.06] dark:divide-white/10">
                 <template x-for="v in [...current.versions].reverse()" :key="v.seq">
                   <div class="flex items-start justify-between gap-3 py-2">
                     <div class="min-w-0">
-                      <div class="text-sm font-medium text-gray-900 dark:text-gray-100 tabular-nums" x-text="v.label"></div>
-                      <div class="text-xs text-gray-500 dark:text-gray-400" x-text="fmtDate(v.at)"></div>
-                      <div class="mt-0.5 text-sm text-gray-700 dark:text-gray-300 break-words" x-text="v.reason"></div>
+                      <div class="text-sm font-medium text-md-on-surface dark:text-md-on-surface tabular-nums" x-text="v.label"></div>
+                      <div class="text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="fmtDate(v.at)"></div>
+                      <div class="mt-0.5 text-sm text-md-on-surface-var dark:text-md-on-surface-var break-words" x-text="v.reason"></div>
                     </div>
                     <div class="shrink-0">
                       <x-button variant="secondary" size="sm" icon="document-text" x-show="v.pdf" @click="openVersionPdf(v)">{{ __('invoices.version_open_pdf') }}</x-button>
@@ -2795,9 +2795,9 @@
         {{-- ===================== CUSTOMER PICKER ===================== --}}
         <div x-show="customerPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeCustomerPicker()">
           <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" @click="closeCustomerPicker()"></div>
-          <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
-            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.picker_title') }}</h2>
-            <input type="search" x-model="custQuery" placeholder="{{ __('invoices.picker_search') }}" class="mt-3 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+          <div class="relative w-full max-w-md rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface p-5 shadow-xl">
+            <h2 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.picker_title') }}</h2>
+            <input type="search" x-model="custQuery" placeholder="{{ __('invoices.picker_search') }}" class="mt-3 block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 text-sm shadow-sm focus:border-accent focus:ring-accent">
             <div class="mt-3 max-h-72 space-y-1 overflow-y-auto">
               <template x-if="! custSuggestions().length">
                 <x-empty-state class="py-6">{{ __('invoices.picker_empty') }}</x-empty-state>
@@ -2806,9 +2806,9 @@
                 <button type="button" @click="pickCustomer(c)" class="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left hover:bg-accent/5">
                   <span class="min-w-0">
                     <span class="block text-sm font-medium text-accent" x-text="_custName(c) || '—'"></span>
-                    <span class="block truncate text-xs text-gray-400 dark:text-gray-500" x-text="[c.invoiceEmail || c.email, c.category].filter(Boolean).join(' · ')"></span>
+                    <span class="block truncate text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="[c.invoiceEmail || c.email, c.category].filter(Boolean).join(' · ')"></span>
                   </span>
-                  <span class="shrink-0 text-xs text-gray-400 tabular-nums" x-show="c.hourlyRate" x-text="fmtMoney(c.hourlyRate, c.currency || (company.currency||'EUR')) + '/h'"></span>
+                  <span class="shrink-0 text-xs text-md-on-surface-var tabular-nums" x-show="c.hourlyRate" x-text="fmtMoney(c.hourlyRate, c.currency || (company.currency||'EUR')) + '/h'"></span>
                 </button>
               </template>
             </div>
@@ -3150,15 +3150,15 @@
     <template x-teleport="body">
       <div x-show="importReview" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="! importReview?.running && ! importReview?.saving && cancelImport()">
         <div class="absolute inset-0 bg-gray-900/50" @click="! importReview?.running && ! importReview?.saving && cancelImport()"></div>
-        <div class="relative flex h-[85vh] w-[80vw] max-w-6xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
-          <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-5 py-3">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.import_title') }}</h3>
+        <div class="relative flex h-[85vh] w-[80vw] max-w-6xl flex-col rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface shadow-xl">
+          <div class="flex items-center justify-between border-b border-md-outline-variant dark:border-md-outline-variant px-5 py-3">
+            <h3 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('invoices.import_title') }}</h3>
             <x-icon-button name="x-mark" tone="gray" size="sm" @click="cancelImport()" x-show="! importReview?.running && ! importReview?.saving" aria-label="{{ __('common.close') }}" />
           </div>
 
           {{-- Parsing progress --}}
           <template x-if="importReview?.running">
-            <div class="flex items-center justify-center gap-3 px-5 py-16 text-sm text-gray-500 dark:text-gray-400">
+            <div class="flex items-center justify-center gap-3 px-5 py-16 text-sm text-md-on-surface-var dark:text-md-on-surface-var">
               <x-icon name="arrow-path" class="h-5 w-5 animate-spin" />
               <span x-text="'{{ __('invoices.import_parsing') }}'.replace(':done', importReview?.done ?? 0).replace(':total', importReview?.total ?? 0)"></span>
             </div>
@@ -3167,11 +3167,11 @@
           {{-- Saving / upload progress --}}
           <template x-if="importReview?.saving">
             <div class="flex flex-col items-center justify-center gap-4 px-5 py-16">
-              <div class="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+              <div class="flex items-center gap-3 text-sm text-md-on-surface-var dark:text-md-on-surface-var">
                 <x-icon name="arrow-path" class="h-5 w-5 animate-spin" />
                 <span x-text="'{{ __('invoices.import_saving') }}'.replace(':done', importReview?.saved ?? 0).replace(':total', importReview?.saveTotal ?? 0)"></span>
               </div>
-              <div class="h-2 w-64 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+              <div class="h-2 w-64 overflow-hidden rounded-full bg-md-surface-2 dark:bg-md-surface-2">
                 <div class="h-full ll-accent transition-all" :style="{ width: (importReview?.saveTotal ? Math.round(importReview.saved / importReview.saveTotal * 100) : 0) + '%' }"></div>
               </div>
             </div>
@@ -3182,10 +3182,10 @@
           <template x-if="importCurrent">
             <div class="flex min-h-0 flex-1 flex-col">
               {{-- Stepper header: position + prev/next + failed count --}}
-              <div class="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-5 py-2.5">
+              <div class="flex items-center justify-between gap-3 border-b border-md-outline-variant dark:border-md-outline-variant px-5 py-2.5">
                 <div class="flex items-center gap-2">
                   <x-icon-button name="chevron-left" tone="gray" size="sm" @click="importPrev()" ::disabled="importReview.idx <= 0" aria-label="{{ __('common.back') }}" />
-                  <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="'{{ __('invoices.import_step') }}'.replace(':i', importReview.idx + 1).replace(':n', importReview.items.length)"></span>
+                  <span class="text-xs tabular-nums text-md-on-surface-var dark:text-md-on-surface-var" x-text="'{{ __('invoices.import_step') }}'.replace(':i', importReview.idx + 1).replace(':n', importReview.items.length)"></span>
                   <x-icon-button name="chevron-right" tone="gray" size="sm" @click="importNext()" ::disabled="importReview.idx >= importReview.items.length - 1" aria-label="{{ __('common.next') }}" />
                 </div>
                 <span x-show="importReview.failed" class="text-xs text-red-600 dark:text-red-400" x-text="'{{ __('invoices.import_failed_n') }}'.replace(':n', importReview.failed)"></span>
@@ -3193,13 +3193,13 @@
 
               <div class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2">
                 {{-- PDF preview --}}
-                <div class="min-h-0 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#111] md:border-b-0 md:border-r">
+                <div class="min-h-0 border-b border-md-outline-variant dark:border-md-outline-variant bg-md-surface-2 dark:bg-[#111] md:border-b-0 md:border-r">
                   <iframe :src="importCurrent._url || 'about:blank'" class="h-full min-h-[40vh] w-full" title="{{ __('invoices.import_title') }}"></iframe>
                 </div>
                 {{-- Six key fields --}}
                 <div class="min-h-0 overflow-auto px-5 py-4">
-                  <label class="mb-3 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
-                    <input type="checkbox" x-model="importCurrent.selected" class="rounded border-gray-300 text-accent focus:ring-accent">
+                  <label class="mb-3 flex items-center gap-2 text-sm font-medium text-md-on-surface dark:text-md-on-surface">
+                    <input type="checkbox" x-model="importCurrent.selected" class="rounded border-md-outline-variant text-accent focus:ring-accent">
                     {{ __('invoices.import_include') }}
                   </label>
                   <template x-if="importCurrent._dupe">
@@ -3207,73 +3207,73 @@
                   </template>
                   <div class="space-y-3">
                     <div class="relative" x-data="{ open: false }" @click.outside="open = false">
-                      <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_recipient') }}</label>
+                      <label class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.import_recipient') }}</label>
                       <input type="text" x-model="importCurrent.recipient.name" @focus="open = true" @input="open = true" @keydown.escape="open = false" autocomplete="off" placeholder="{{ __('invoices.customer_name') }}"
                         :class="importCurrent._warnings.includes('recipient') && ! importCurrent.recipient.name ? 'ring-1 ring-amber-400' : ''"
-                        class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
-                      <div x-show="open && filteredPartnerNames(importCurrent.recipient.name).length" x-cloak class="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-lg">
+                        class="mt-1 block w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
+                      <div x-show="open && filteredPartnerNames(importCurrent.recipient.name).length" x-cloak class="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface py-1 shadow-lg">
                         <template x-for="n in filteredPartnerNames(importCurrent.recipient.name)" :key="n">
-                          <button type="button" @click="importCurrent.recipient.name = n; open = false" class="block w-full px-3 py-2 text-left text-sm text-gray-800 dark:text-gray-200 hover:bg-accent/5" x-text="n"></button>
+                          <button type="button" @click="importCurrent.recipient.name = n; open = false" class="block w-full px-3 py-2 text-left text-sm text-md-on-surface dark:text-md-on-surface hover:bg-accent/5" x-text="n"></button>
                         </template>
                       </div>
                     </div>
                     {{-- Contact person (Ansprechpartner) — pick one of the partner's, or type a new one --}}
                     <div class="relative" x-data="{ open: false }" @click.outside="open = false">
-                      <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.partner_contact_person') }}</label>
+                      <label class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.partner_contact_person') }}</label>
                       <input type="text" x-model="importCurrent.contactPerson" @focus="open = true" @input="open = true" @keydown.escape="open = false" autocomplete="off" placeholder="—"
-                        class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
-                      <div x-show="open && filteredPartnerContacts(importCurrent.recipient.name, importCurrent.contactPerson).length" x-cloak class="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-lg">
+                        class="mt-1 block w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
+                      <div x-show="open && filteredPartnerContacts(importCurrent.recipient.name, importCurrent.contactPerson).length" x-cloak class="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-md-surface py-1 shadow-lg">
                         <template x-for="c in filteredPartnerContacts(importCurrent.recipient.name, importCurrent.contactPerson)" :key="c.id">
-                          <button type="button" @click="importCurrent.contactPerson = c.name; open = false" class="block w-full px-3 py-2 text-left text-sm text-gray-800 dark:text-gray-200 hover:bg-accent/5" x-text="c.name"></button>
+                          <button type="button" @click="importCurrent.contactPerson = c.name; open = false" class="block w-full px-3 py-2 text-left text-sm text-md-on-surface dark:text-md-on-surface hover:bg-accent/5" x-text="c.name"></button>
                         </template>
                       </div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                       <div>
-                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.col_number') }}</label>
+                        <label class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.col_number') }}</label>
                         <input type="text" x-model="importCurrent.number" placeholder="—"
                           :class="importCurrent._warnings.includes('number') && ! importCurrent.number ? 'ring-1 ring-amber-400' : ''"
-                          class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm tabular-nums focus:border-accent focus:ring-accent">
+                          class="mt-1 block w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm tabular-nums focus:border-accent focus:ring-accent">
                       </div>
                       <div>
-                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.issue_date') }}</label>
+                        <label class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.issue_date') }}</label>
                         <input type="date" x-model="importCurrent.issueDate"
                           :class="importCurrent._warnings.includes('date') && ! importCurrent.issueDate ? 'ring-1 ring-amber-400' : ''"
-                          class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                          class="mt-1 block w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
                       </div>
                     </div>
                     <div class="grid grid-cols-3 gap-3">
                       <div>
-                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_gross') }}</label>
+                        <label class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.import_gross') }}</label>
                         <input type="number" step="0.01" x-model.number="importCurrent.gross"
                           :class="importCurrent._warnings.includes('amount') && importCurrent.gross == null ? 'ring-1 ring-amber-400' : ''"
-                          class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm text-right tabular-nums focus:border-accent focus:ring-accent">
+                          class="mt-1 block w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm text-right tabular-nums focus:border-accent focus:ring-accent">
                       </div>
                       <div>
-                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.import_vat_rate') }}</label>
-                        <select x-model.number="importCurrent.vatRate" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                        <label class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.import_vat_rate') }}</label>
+                        <select x-model.number="importCurrent.vatRate" class="mt-1 block w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
                           <template x-for="r in importVatChoices()" :key="r"><option :value="r" x-text="r + ' %'"></option></template>
                         </select>
                       </div>
                       <div>
-                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('invoices.currency') }}</label>
-                        <select x-model="importCurrent.currency" class="mt-1 block w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                        <label class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.currency') }}</label>
+                        <select x-model="importCurrent.currency" class="mt-1 block w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
                           <template x-for="c in currencyOptions" :key="c"><option :value="c" x-text="c"></option></template>
                         </select>
                       </div>
                     </div>
                     {{-- Derived net + VAT preview --}}
-                    <dl class="rounded-xl bg-gray-50 dark:bg-[#2c2c2e]/60 px-3 py-2 text-sm">
-                      <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">{{ __('invoices.net') }}</dt><dd class="tabular-nums text-gray-700 dark:text-gray-200" x-text="fmtMoney(importNet(importCurrent), importCurrent.currency, 'de')"></dd></div>
-                      <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400" x-text="'{{ __('invoices.vat_at') }}'.replace(':rate', importCurrent.vatRate)"></dt><dd class="tabular-nums text-gray-700 dark:text-gray-200" x-text="fmtMoney(importVat(importCurrent), importCurrent.currency, 'de')"></dd></div>
+                    <dl class="rounded-xl bg-md-surface-2 dark:bg-md-surface-2/60 px-3 py-2 text-sm">
+                      <div class="flex justify-between"><dt class="text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.net') }}</dt><dd class="tabular-nums text-md-on-surface-var dark:text-md-on-surface" x-text="fmtMoney(importNet(importCurrent), importCurrent.currency, 'de')"></dd></div>
+                      <div class="flex justify-between"><dt class="text-md-on-surface-var dark:text-md-on-surface-var" x-text="'{{ __('invoices.vat_at') }}'.replace(':rate', importCurrent.vatRate)"></dt><dd class="tabular-nums text-md-on-surface-var dark:text-md-on-surface" x-text="fmtMoney(importVat(importCurrent), importCurrent.currency, 'de')"></dd></div>
                     </dl>
-                    <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('invoices.import_hint') }}</p>
+                    <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('invoices.import_hint') }}</p>
                   </div>
                 </div>
               </div>
 
-              <div class="flex items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-800 px-5 py-3">
-                <span class="text-xs text-gray-400 dark:text-gray-500" x-text="'{{ __('invoices.import_summary') }}'.replace(':n', importReview.items.length)"></span>
+              <div class="flex items-center justify-between gap-3 border-t border-md-outline-variant dark:border-md-outline-variant px-5 py-3">
+                <span class="text-xs text-md-on-surface-var dark:text-md-on-surface-var" x-text="'{{ __('invoices.import_summary') }}'.replace(':n', importReview.items.length)"></span>
                 <div class="flex items-center gap-3">
                   <x-button variant="secondary" @click="cancelImport()">{{ __('common.cancel') }}</x-button>
                   <x-button variant="primary" @click="confirmImport()" ::disabled="! importSelectedCount">
