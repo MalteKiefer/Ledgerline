@@ -832,7 +832,7 @@
                     <div class="mt-2 space-y-1">
                         <template x-for="r in statsRows" :key="r.type">
                             <div class="flex items-center justify-between gap-3 text-sm">
-                                <span class="text-gray-700 dark:text-gray-300" x-text="(labels.types?.[r.type] || r.type)"></span>
+                                <span class="text-gray-700 dark:text-gray-300" x-text="typeName(r.type)"></span>
                                 <span class="tabular-nums text-gray-500" x-text="fmtSize(r.size)"></span>
                             </div>
                         </template>
