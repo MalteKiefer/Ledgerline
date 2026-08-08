@@ -1,7 +1,19 @@
-// Same-origin API client for the Vue SPA. Sanctum cookie/session auth:
-// the httpOnly session cookie carries auth (no token in JS); writes send the
-// XSRF-TOKEN cookie back as X-XSRF-TOKEN. The client never sends user_id —
-// owner-scope + optimistic `version` are enforced server-side.
+// Backend-agnostic API client. Auth is a bearer token (Authorization header),
+// NOT a session cookie — so this SPA is portable to any API host (Laravel now,
+// a Go API later) by only changing the base URL. No CSRF, no credentials.
+
+const TOKEN_KEY = 'll_token';
+// Configurable API base so the built bundle can point at any host. Empty =
+// same-origin (current Laravel deployment). Set VITE_API_URL for a split host.
+const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '';
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+export function setToken(token: string | null): void {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
 
 export class ApiError extends Error {
   status: number;
@@ -25,20 +37,6 @@ export class VersionConflict extends Error {
   }
 }
 
-function readCookie(name: string): string | null {
-  const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)'));
-  return m ? decodeURIComponent(m[1]) : null;
-}
-
-let csrfReady = false;
-
-/** Bootstrap the XSRF-TOKEN cookie once before the first mutating request. */
-export async function ensureCsrf(): Promise<void> {
-  if (csrfReady) return;
-  await fetch('/sanctum/csrf-cookie', { credentials: 'same-origin' });
-  csrfReady = true;
-}
-
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export interface RequestOptions {
@@ -47,17 +45,23 @@ export interface RequestOptions {
   headers?: Record<string, string>;
 }
 
-async function request<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<T> {
-  const mutating = method !== 'GET';
-  if (mutating) await ensureCsrf();
+// Called on any 401 so the app can drop the token + route to login.
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: () => void): void { onUnauthorized = fn; }
 
+function apiUrl(path: string): string {
+  if (path.startsWith('http')) return path;
+  if (path.startsWith('/api/') || path === '/up') return BASE + path;
+  return `${BASE}/api/v1/${path}`;
+}
+
+async function request<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    'X-Requested-With': 'XMLHttpRequest',
     ...(opts.headers ?? {}),
   };
-  const xsrf = readCookie('XSRF-TOKEN');
-  if (mutating && xsrf) headers['X-XSRF-TOKEN'] = xsrf;
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   let body: BodyInit | undefined;
   if (opts.form) {
@@ -67,25 +71,20 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
     body = JSON.stringify(opts.json);
   }
 
-  const res = await fetch(path.startsWith('/') ? path : `/api/v1/${path}`, {
-    method,
-    credentials: 'same-origin',
-    headers,
-    body,
-  });
+  const res = await fetch(apiUrl(path), { method, headers, body });
 
+  if (res.status === 401) {
+    setToken(null);
+    if (onUnauthorized) onUnauthorized();
+    throw new ApiError(401, null);
+  }
   if (res.status === 204) return undefined as T;
 
   let parsed: unknown = null;
   const text = await res.text();
   if (text) {
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = text;
-    }
+    try { parsed = JSON.parse(text); } catch { parsed = text; }
   }
-
   if (res.ok) return parsed as T;
 
   if (res.status === 409 && parsed && typeof parsed === 'object' && (parsed as { error?: string }).error === 'version_conflict') {
@@ -101,4 +100,14 @@ export const api = {
   patch: <T>(path: string, json?: unknown) => request<T>('PATCH', path, { json }),
   delete: <T>(path: string, json?: unknown) => request<T>('DELETE', path, { json }),
   upload: <T>(path: string, form: FormData) => request<T>('POST', path, { form }),
+  // Absolute URL for a raw/stream endpoint with the token as a query param
+  // (for <img>/<iframe>/<a> that can't set an Authorization header).
+  streamUrl: (path: string) => {
+    const t = getToken();
+    const u = apiUrl(path);
+    return t ? `${u}${u.includes('?') ? '&' : '?'}_token=${encodeURIComponent(t)}` : u;
+  },
 };
+
+// Back-compat no-op (old code called ensureCsrf; bearer auth needs no CSRF).
+export async function ensureCsrf(): Promise<void> { /* no-op */ }

@@ -24,6 +24,7 @@ import { mdiUpload } from '@mdi/js';
 import { useAuthStore } from '@spa/stores/auth';
 import { useProfileStore } from '@spa/stores/profile';
 import { useToast } from '@spa/composables/useToast';
+import { api } from '@spa/api/client';
 
 const auth = useAuthStore();
 const p = useProfileStore();
@@ -31,7 +32,7 @@ const { success, error } = useToast();
 
 const avatarBust = ref(0);
 const avatarInput = ref<HTMLInputElement | null>(null);
-const avatarUrl = computed(() => (auth.user?.has_avatar ? `/api/v1/avatar?v=${avatarBust.value}` : ''));
+const avatarUrl = computed(() => (auth.user?.has_avatar ? api.streamUrl(`/api/v1/avatar?v=${avatarBust.value}`) : ''));
 const initials = computed(() => (auth.user?.name ?? '?').slice(0, 1).toUpperCase());
 
 function pickAvatar() { avatarInput.value?.click(); }

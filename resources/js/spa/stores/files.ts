@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { api, ensureCsrf } from '@spa/api/client';
+import { api, getToken } from '@spa/api/client';
 
 export interface FileFolder { id: number; name: string; parent_id: number | null; version: number }
 export interface FileLabel { id: number; name: string; color: string }
@@ -23,11 +23,6 @@ export interface FileStats {
 }
 export interface Usage { used: number; quota: number | null }
 
-/** XSRF-TOKEN cookie reader (the raw-fetch zip path can't go through `api`). */
-function xsrfToken(): string {
-  const m = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]*)/);
-  return m ? decodeURIComponent(m[1]) : '';
-}
 
 export const useFilesStore = defineStore('files', () => {
   const folders = ref<FileFolder[]>([]);
@@ -77,7 +72,7 @@ export const useFilesStore = defineStore('files', () => {
   // ---- Versions ----
   const versions = (f: FileEntry) => api.get<{ versions: FileVersion[] }>(`/api/v1/files/entries/${f.id}/versions`);
   const restoreVersion = (f: FileEntry, version: number) => api.post<{ file: FileEntry }>(`/api/v1/files/entries/${f.id}/versions/${version}/restore`);
-  const versionRawUrl = (f: FileEntry, version: number) => `/api/v1/files/entries/${f.id}/versions/${version}/raw?download=1`;
+  const versionRawUrl = (f: FileEntry, version: number) => api.streamUrl(`/api/v1/files/entries/${f.id}/versions/${version}/raw?download=1`);
 
   // ---- Public share links ----
   interface SharePayload { password?: string; remove_password?: boolean; allow_download?: boolean; expires_at?: string | null }
@@ -96,15 +91,13 @@ export const useFilesStore = defineStore('files', () => {
    * decodes JSON), then triggers a browser download through a temporary anchor.
    */
   async function zip(sel: { ids?: number[]; folder_id?: number | null }) {
-    await ensureCsrf();
+    const token = getToken();
     const res = await fetch('/api/v1/files/zip', {
       method: 'POST',
-      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-        'X-XSRF-TOKEN': xsrfToken(),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(sel),
     });
@@ -120,8 +113,8 @@ export const useFilesStore = defineStore('files', () => {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  const rawUrl = (f: FileEntry) => `/api/v1/files/entries/${f.id}/raw`;
-  const thumbUrl = (f: FileEntry) => `/api/v1/files/entries/${f.id}/thumb`;
+  const rawUrl = (f: FileEntry) => api.streamUrl(`/api/v1/files/entries/${f.id}/raw`);
+  const thumbUrl = (f: FileEntry) => api.streamUrl(`/api/v1/files/entries/${f.id}/thumb`);
 
   return {
     folders, files, labels, usage,

@@ -38,7 +38,7 @@ export const useContactsStore = defineStore('contacts', () => {
   const destroy = (id: string) => api.delete(`/api/v1/contacts/${id}`);
   const favorite = (id: string, fav: boolean) => api.patch(`/api/v1/contacts/${id}/favorite`, { favorite: fav });
   const createBook = (name: string) => api.post('/api/v1/address-books', { name });
-  const avatarUrl = (c: ContactRow) => c.avatar || (c.has_photo ? `/api/v1/contacts/${c.id}/avatar` : null);
+  const avatarUrl = (c: ContactRow) => c.has_photo ? api.streamUrl(`/api/v1/contacts/${c.id}/avatar`) : (c.avatar || null);
 
   // Groups
   const createGroup = (name: string) => api.post<{ id: number }>('/api/v1/contact-groups', { name });

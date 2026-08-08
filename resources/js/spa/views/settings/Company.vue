@@ -339,7 +339,7 @@ function selectedLogo(): File | null {
 
 const logoSrc = computed<string | null>(() => {
   if (logoPreview.value) return logoPreview.value;
-  if (form.has_logo && !removeLogo.value) return `/api/v1/company/logo?v=${logoVersion.value}`;
+  if (form.has_logo && !removeLogo.value) return api.streamUrl(`/api/v1/company/logo?v=${logoVersion.value}`);
   return null;
 });
 

@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\PasswordController as ApiPasswordController;
 use App\Http\Controllers\Api\SecurityController as ApiSecurityController;
 use App\Http\Controllers\Api\SecurityLogController as ApiSecurityLogController;
 use App\Http\Controllers\Api\SettingsController as ApiSettingsController;
+use App\Http\Controllers\Api\SpaAuthController;
 use App\Http\Controllers\Api\SystemController as ApiSystemController;
 use App\Http\Controllers\Api\TwoFactorController as ApiTwoFactorController;
 use App\Http\Controllers\Api\UsersController as ApiUsersController;
@@ -53,10 +54,15 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/auth/pair/collect', [AuthController::class, 'collect'])->name('api.auth.collect');
     });
 
+    // Backend-agnostic browser login: email+password (+2FA) → bearer token, so the
+    // SPA never depends on a Laravel session cookie (portable to a future Go API).
+    Route::post('/auth/login', [SpaAuthController::class, 'login'])->name('api.auth.login');
+
     // Enforce the scoped 'device' ability minted at pairing (legacy '*' tokens
     // still pass) so a token's declared scope is actually checked.
     Route::middleware(['auth:sanctum', 'abilities:device', UpdateTokenIp::class])->group(function (): void {
         Route::get('/me', [AuthController::class, 'me'])->name('api.me');
+        Route::post('/auth/logout', [SpaAuthController::class, 'logout'])->name('api.auth.logout');
         // Streams the signed-in user's stored avatar (same-origin, non-secret);
         // 404 when none stored. `me.user.has_avatar` tells the app whether to fetch it.
         Route::get('/avatar', AvatarController::class)->middleware('throttle:120,1')->name('api.avatar');

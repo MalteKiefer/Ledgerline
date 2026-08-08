@@ -120,8 +120,13 @@ class AuthController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** @return array<string, mixed> */
-    private function userPayload(User $user): array
+    /**
+     * The public /me user payload. Public so the SPA token-login controller can
+     * return the same shape on login.
+     *
+     * @return array<string, mixed>
+     */
+    public function userPayload(User $user): array
     {
         return [
             'id' => $user->id,

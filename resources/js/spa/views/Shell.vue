@@ -128,7 +128,7 @@ const locale = ref(getActiveLanguage() || 'de');
 const globalSearch = ref('');
 const avatarBust = ref(0);
 
-const avatarUrl = computed(() => (auth.user?.has_avatar ? `/api/v1/avatar?v=${avatarBust.value}` : ''));
+const avatarUrl = computed(() => (auth.user?.has_avatar ? api.streamUrl(`/api/v1/avatar?v=${avatarBust.value}`) : ''));
 const initials = computed(() => (auth.user?.name ?? '?').slice(0, 1).toUpperCase());
 
 interface NavChild { to: string; label: string }

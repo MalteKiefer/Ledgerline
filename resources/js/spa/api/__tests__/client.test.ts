@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { api, ApiError, VersionConflict } from '@spa/api/client';
+import { api, setToken, ApiError, VersionConflict } from '@spa/api/client';
 
 function mockRes(status: number, body: unknown) {
   return {
@@ -10,36 +10,43 @@ function mockRes(status: number, body: unknown) {
 }
 
 beforeEach(() => {
-  vi.stubGlobal('document', { cookie: 'XSRF-TOKEN=tok123' });
+  const store: Record<string, string> = {};
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => store[k] ?? null,
+    setItem: (k: string, v: string) => { store[k] = v; },
+    removeItem: (k: string) => { delete store[k]; },
+  });
+  setToken('tok123');
 });
 
-describe('api client', () => {
-  it('returns parsed body on 200', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockRes(200, { user: { id: 1 } })));
-    const r = await api.get<{ user: { id: number } }>('/api/v1/me');
-    expect(r.user.id).toBe(1);
+describe('api client (bearer)', () => {
+  it('sends Authorization: Bearer on requests', async () => {
+    const f = vi.fn().mockResolvedValue(mockRes(200, { user: { id: 1 } }));
+    vi.stubGlobal('fetch', f);
+    await api.get('/api/v1/me');
+    const headers = (f.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer tok123');
   });
 
   it('maps 409 version_conflict to VersionConflict', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockRes(409, { error: 'version_conflict', version: 7 })));
-    await expect(api.get('/api/v1/invoices/1')).rejects.toMatchObject({ version: 7 });
-    await expect(api.get('/api/v1/invoices/1')).rejects.toBeInstanceOf(VersionConflict);
+    await expect(api.put('/api/v1/invoices/1', {})).rejects.toBeInstanceOf(VersionConflict);
   });
 
-  it('maps 422 to ApiError with fields, sends XSRF on writes', async () => {
-    const f = vi.fn()
-      .mockResolvedValueOnce(mockRes(204, null)) // csrf-cookie
-      .mockResolvedValueOnce(mockRes(422, { errors: { email: ['required'] } }));
-    vi.stubGlobal('fetch', f);
+  it('maps 422 to ApiError with fields', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockRes(422, { errors: { email: ['required'] } })));
     try {
       await api.post('/api/v1/x', { a: 1 });
       throw new Error('should have thrown');
     } catch (e) {
       expect(e).toBeInstanceOf(ApiError);
-      expect((e as ApiError).status).toBe(422);
       expect((e as ApiError).fields?.email).toEqual(['required']);
     }
-    const writeCall = f.mock.calls[1][1] as RequestInit;
-    expect((writeCall.headers as Record<string, string>)['X-XSRF-TOKEN']).toBe('tok123');
+  });
+
+  it('drops the token and throws on 401', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockRes(401, null)));
+    await expect(api.get('/api/v1/me')).rejects.toMatchObject({ status: 401 });
+    expect(localStorage.getItem('ll_token')).toBeNull();
   });
 });

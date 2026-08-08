@@ -2,9 +2,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@spa/stores/auth';
 
 const routes: RouteRecordRaw[] = [
-  { path: '/login', name: 'login', component: () => import('@spa/views/auth/Login.vue'), meta: { guest: true } },
-  { path: '/two-factor-challenge', name: 'two-factor', component: () => import('@spa/views/auth/TwoFactor.vue'), meta: { guest: true } },
-  {
+  { path: '/login', name: 'login', component: () => import('@spa/views/auth/Login.vue'), meta: { guest: true } },  {
     path: '/',
     component: () => import('@spa/views/Shell.vue'),
     children: [

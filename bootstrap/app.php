@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\BearerFromQuery;
 use App\Http\Middleware\EnsureModule;
 use App\Http\Middleware\NoThrottle;
 use App\Http\Middleware\SecurityHeaders;
@@ -31,7 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Security headers on the token API too (nosniff / referrer / permissions /
         // HSTS). Sensitive-byte routes set their own sandbox CSP, which the
         // middleware preserves.
-        $middleware->api(append: [SecurityHeaders::class]);
+        $middleware->api(prepend: [BearerFromQuery::class], append: [SecurityHeaders::class]);
 
         // Same-origin Vue SPA authenticates via Sanctum's cookie/session flow
         // (no token in JS): mark first-party stateful requests so /api/v1 accepts

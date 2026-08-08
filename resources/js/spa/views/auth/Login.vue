@@ -6,9 +6,9 @@
           <h1 class="text-h5 mb-6">Ledgerline</h1>
           <v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error" />
           <v-form @submit.prevent="submit">
-            <v-text-field v-model="email" :label="t('auth_ui.email')" type="email" variant="outlined" autocomplete="username" required />
-            <v-text-field v-model="password" :label="t('auth_ui.password')" type="password" variant="outlined" autocomplete="current-password" required />
-            <v-checkbox v-model="remember" :label="t('auth_ui.remember')" density="compact" />
+            <v-text-field v-model="email" :label="t('auth_ui.email')" type="email" variant="outlined" autocomplete="username" :disabled="needs2fa" required />
+            <v-text-field v-model="password" :label="t('auth_ui.password')" type="password" variant="outlined" autocomplete="current-password" :disabled="needs2fa" required />
+            <v-text-field v-if="needs2fa" v-model="code" :label="t('auth_ui.twofa_code')" inputmode="numeric" variant="outlined" autofocus />
             <v-btn type="submit" color="primary" block size="large" :loading="busy">{{ t('auth_ui.sign_in') }}</v-btn>
           </v-form>
         </v-card>
@@ -28,7 +28,8 @@ const auth = useAuthStore();
 const router = useRouter();
 const email = ref('');
 const password = ref('');
-const remember = ref(false);
+const code = ref('');
+const needs2fa = ref(false);
 const busy = ref(false);
 const error = ref('');
 
@@ -36,10 +37,11 @@ async function submit() {
   busy.value = true;
   error.value = '';
   try {
-    const { twoFactor } = await auth.login(email.value, password.value, remember.value);
-    router.push(twoFactor ? { name: 'two-factor' } : { name: 'home' });
+    const { twoFactor } = await auth.login(email.value, password.value, code.value || undefined);
+    if (twoFactor) { needs2fa.value = true; return; }
+    router.push({ name: 'home' });
   } catch (e) {
-    error.value = e instanceof ApiError && e.status === 422 ? t('common.error') : String(e);
+    error.value = e instanceof ApiError && e.status === 422 ? t('auth.failed') : String(e);
   } finally {
     busy.value = false;
   }

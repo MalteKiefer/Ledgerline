@@ -62,7 +62,7 @@ export const useFinanceStore = defineStore('finance', () => {
   const stornoInvoice = (id: number) => api.post<{ invoice: Invoice }>(`/api/v1/finance/invoices/${id}/storno`);
   const emailInvoice = (id: number) => api.post<{ ok: boolean }>(`/api/v1/finance/invoices/${id}/email`);
   const dunInvoice = (id: number) => api.post<{ ok: boolean }>(`/api/v1/finance/invoices/${id}/dun`);
-  const invoicePdfUrl = (id: number) => `/api/v1/finance/invoices/${id}/pdf`;
+  const invoicePdfUrl = (id: number) => api.streamUrl(`/api/v1/finance/invoices/${id}/pdf`);
 
   // ---- Partners / payment methods ----
   const savePartner = (p: Partial<Partner>) => (p.id ? api.put(`/api/v1/finance/partners/${p.id}`, p) : api.post('/api/v1/finance/partners', p));
@@ -74,7 +74,7 @@ export const useFinanceStore = defineStore('finance', () => {
   const createReceipt = (form: FormData) => api.upload<{ receipt: Receipt }>('/api/v1/finance/receipts', form);
   const updateReceipt = (id: number, body: Record<string, unknown>) => api.put<{ receipt: Receipt }>(`/api/v1/finance/receipts/${id}`, body);
   const deleteReceipt = (id: number) => api.delete(`/api/v1/finance/receipts/${id}`);
-  const receiptFileUrl = (id: number) => `/api/v1/finance/receipts/${id}/raw`;
+  const receiptFileUrl = (id: number) => api.streamUrl(`/api/v1/finance/receipts/${id}/raw`);
 
   // ---- Projects ----
   const saveProject = (p: Partial<Project>) => (p.id ? api.put<{ project: Project }>(`/api/v1/finance/projects/${p.id}`, p) : api.post<{ project: Project }>('/api/v1/finance/projects', p));

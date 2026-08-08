@@ -1187,6 +1187,50 @@ components:
 
 paths:
 
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: spaLogin
+      summary: Browser login (email+password+optional 2FA) to a bearer token
+      description: >
+        Backend-agnostic web login: validates credentials (and TOTP/recovery code
+        when 2FA is confirmed) and returns a device-scoped Sanctum bearer token.
+        On a 2FA-required account with no/invalid code, returns 422 with
+        {two_factor: true}.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                code: { type: [string, "null"] }
+                recovery_code: { type: [string, "null"] }
+                device_name: { type: [string, "null"] }
+      responses:
+        "200":
+          description: Token + user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: '#/components/schemas/MeUser' }
+        "422":
+          description: Invalid credentials, or {two_factor:true} when a 2FA code is required.
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: spaLogout
+      summary: Revoke the current bearer token
+      responses:
+        "200": { description: OK. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
   # --------------------------------------------------------------------------
   # Contacts module (module:contacts + device auth). Mirrors the web routes.
   # --------------------------------------------------------------------------
