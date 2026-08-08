@@ -489,7 +489,7 @@
         <div x-show="viewer.open" x-cloak class="fixed inset-0 z-[1050] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeViewer()"
             @keydown.arrow-left.window="viewerHasGallery && viewerStep(-1)" @keydown.arrow-right.window="viewerHasGallery && viewerStep(1)">
             <div class="absolute inset-0 bg-gray-900/60" @click="closeViewer()"></div>
-            <div class="relative flex max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+            <div class="relative flex max-h-[92vh] w-full max-w-5xl flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
                 <div class="flex items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 px-5 py-3">
                     <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="viewer.row?.name"></h3>
                     <div class="flex shrink-0 items-center gap-3">
@@ -499,6 +499,7 @@
                         <x-icon-button name="x-mark" @click="closeViewer()" title="{{ __('common.close') }}" aria-label="{{ __('common.close') }}" />
                     </div>
                 </div>
+                <div class="flex min-h-0 flex-1">
                 <div class="min-h-0 flex-1 overflow-auto p-4">
                     <div x-show="viewer.kind === 'image'" x-cloak class="relative">
                         <img :src="viewer.src" :alt="viewer.row?.name"
@@ -532,6 +533,59 @@
                         </div>
                     </div>
                     <p x-show="viewer.kind === 'none'" x-cloak class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('files.encrypted_no_preview') }}</p>
+                </div>
+
+                {{-- Info sidebar: metadata + tags/labels for the previewed file --}}
+                <aside x-show="viewer.row" x-cloak class="hidden w-72 shrink-0 overflow-y-auto border-l border-gray-100 dark:border-gray-800 p-4 text-sm sm:block">
+                    <h4 class="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('files.info_title') }}</h4>
+                    <dl class="space-y-3">
+                        <div>
+                            <dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('files.info_name') }}</dt>
+                            <dd class="break-words text-gray-800 dark:text-gray-200" x-text="viewer.row?.name"></dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('files.info_mime') }}</dt>
+                            <dd class="break-words font-mono text-xs text-gray-700 dark:text-gray-300" x-text="viewer.row?.mime || '—'"></dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('files.info_size') }}</dt>
+                            <dd class="tabular-nums text-gray-800 dark:text-gray-200" x-text="fmtSize(viewer.row?.size || 0)"></dd>
+                        </div>
+                        <div x-show="viewer.row?.created">
+                            <dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('files.info_uploaded') }}</dt>
+                            <dd class="text-gray-800 dark:text-gray-200" x-text="fmtDate(viewer.row?.created)"></dd>
+                        </div>
+                        <div x-show="viewer.row?.updated">
+                            <dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('files.info_modified') }}</dt>
+                            <dd class="text-gray-800 dark:text-gray-200" x-text="fmtDate(viewer.row?.updated)"></dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('files.info_tags') }}</dt>
+                            <dd class="mt-1 flex flex-wrap gap-1">
+                                <template x-for="t in (viewer.row?.tags || [])" :key="t">
+                                    <x-badge variant="gray"><span x-text="t"></span></x-badge>
+                                </template>
+                                <span x-show="! (viewer.row?.tags || []).length" class="text-gray-400 dark:text-gray-500">—</span>
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('files.info_labels') }}</dt>
+                            <dd class="mt-1 flex flex-wrap gap-1">
+                                <template x-for="l in fileLabelObjects(viewer.row || {})" :key="l.id">
+                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-white" :style="`background:${l.color}`" x-text="l.name"></span>
+                                </template>
+                                <span x-show="! fileLabelObjects(viewer.row || {}).length" class="text-gray-400 dark:text-gray-500">—</span>
+                            </dd>
+                        </div>
+                        <div x-show="viewer.row?.note">
+                            <dt class="text-xs text-gray-400 dark:text-gray-500">{{ __('files.note') }}</dt>
+                            <dd class="whitespace-pre-line break-words text-gray-800 dark:text-gray-200" x-text="viewer.row?.note"></dd>
+                        </div>
+                        <div x-show="viewer.row?.favorite" class="flex items-center gap-1.5 text-amber-500">
+                            <x-icon name="star-solid" class="h-4 w-4" /><span>{{ __('files.favorite') }}</span>
+                        </div>
+                    </dl>
+                </aside>
                 </div>
             </div>
         </div>
