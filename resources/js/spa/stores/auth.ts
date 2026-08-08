@@ -10,6 +10,7 @@ export interface MeUser {
   groups: string[];
   modules: string[];
   has_avatar: boolean;
+  two_factor?: boolean;
   preferences?: Record<string, unknown>;
 }
 

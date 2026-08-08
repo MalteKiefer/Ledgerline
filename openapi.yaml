@@ -231,9 +231,13 @@ components:
         invoice_footer_text: { type: [string, "null"], maxLength: 2000 }
         invoice_accent_color: { type: [string, "null"], pattern: "^#[0-9a-fA-F]{6}$" }
         invoice_heading_color: { type: [string, "null"], pattern: "^#[0-9a-fA-F]{6}$" }
-        invoice_template: { type: [string, "null"], enum: [editorial, modern, elegant, klassisch] }
+        invoice_template: { type: [string, "null"], enum: [editorial, modern, elegant, klassisch, schlicht] }
         invoice_payment_methods: { type: [string, "null"], maxLength: 500 }
         invoice_payment_terms_text: { type: [string, "null"], maxLength: 1000 }
+        company_website: { type: [string, "null"], maxLength: 255 }
+        company_contacts: { type: array, maxItems: 20, items: { type: object, properties: { name: { type: [string, "null"] }, role: { type: [string, "null"] }, email: { type: [string, "null"] }, phone: { type: [string, "null"] } } } }
+        invoice_font: { type: [string, "null"], maxLength: 80 }
+        invoice_vat_ist: { type: boolean, description: "Ist-Versteuerung (cash-basis VAT) toggle." }
         has_logo: { type: boolean, readOnly: true, description: "Whether a company logo is stored (GET /company/logo)." }
 
     Group:
@@ -312,6 +316,9 @@ components:
         has_avatar:
           type: boolean
           description: "Whether a non-secret avatar is stored. True → fetch it via GET /api/v1/avatar (Bearer)."
+        two_factor:
+          type: boolean
+          description: "Whether TOTP two-factor authentication is confirmed for the account."
         preferences:
           allOf:
             - $ref: "#/components/schemas/DisplayPreferences"

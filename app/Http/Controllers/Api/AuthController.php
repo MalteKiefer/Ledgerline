@@ -137,6 +137,8 @@ class AuthController extends Controller
             'modules' => $user->allowedModules(),
             // Non-secret avatar. True → fetch GET /api/v1/avatar (Bearer).
             'has_avatar' => is_string($user->avatar) && $user->avatar !== '',
+            // Whether TOTP 2FA is confirmed — lets the SPA show the correct 2FA state.
+            'two_factor' => $user->two_factor_confirmed_at !== null,
             // Non-secret display preferences (units + 12/24h clock). Mobile applies
             // these to its own rendering; set via POST /api/v1/preferences.
             'preferences' => UserSetting::for((int) $user->id)->displayPrefs(),

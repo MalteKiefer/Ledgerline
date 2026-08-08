@@ -309,12 +309,39 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+  <!-- File preview -->
+  <v-dialog v-model="previewOpen" max-width="1100" scrollable>
+    <v-card v-if="preview" rounded="lg" class="d-flex flex-column" style="height:88vh">
+      <v-toolbar flat color="surface" density="comfortable">
+        <v-avatar size="30" variant="tonal" :color="undefined" class="ml-2"><span class="msym" style="font-size:18px">{{ categoryMsym(preview.name, preview.mime) }}</span></v-avatar>
+        <v-toolbar-title class="text-body-1 ml-2">{{ preview.name }}</v-toolbar-title>
+        <v-spacer />
+        <v-btn variant="text" size="small" :icon="mdiInformationOutline" @click="openInfo(mapFile(preview))" />
+        <v-btn variant="text" size="small" :icon="mdiDownload" :href="s.rawUrl(preview)" />
+        <v-btn variant="text" size="small" :icon="mdiOpenInNew" :href="s.rawUrl(preview)" target="_blank" />
+        <v-btn variant="text" size="small" :icon="mdiClose" @click="previewOpen = false" />
+      </v-toolbar>
+      <v-divider />
+      <div class="flex-grow-1 d-flex align-center justify-center bg-surface-variant" style="overflow:auto">
+        <img v-if="previewKind(preview) === 'image'" :src="s.rawUrl(preview)" style="max-width:100%;max-height:100%;object-fit:contain" >
+        <iframe v-else-if="previewKind(preview) === 'pdf'" :src="s.rawUrl(preview)" style="width:100%;height:100%;border:0" ></iframe>
+        <video v-else-if="previewKind(preview) === 'video'" :src="s.rawUrl(preview)" controls style="max-width:100%;max-height:100%"></video>
+        <audio v-else-if="previewKind(preview) === 'audio'" :src="s.rawUrl(preview)" controls></audio>
+        <iframe v-else-if="previewKind(preview) === 'text'" :src="s.rawUrl(preview)" style="width:100%;height:100%;border:0;background:#fff"></iframe>
+        <div v-else class="text-center pa-10 text-medium-emphasis">
+          <span class="msym d-block mb-3" style="font-size:56px">{{ categoryMsym(preview.name, preview.mime) }}</span>
+          <div>{{ preview.name }}</div>
+          <v-btn class="mt-4" color="primary" variant="tonal" :prepend-icon="mdiDownload" :href="s.rawUrl(preview)">{{ t('files.download') }}</v-btn>
+        </div>
+      </div>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
-import { mdiUpload, mdiFolder, mdiStar, mdiDelete, mdiFolderPlus, mdiMagnify, mdiViewGrid, mdiViewList, mdiDotsVertical, mdiDownload, mdiPencil, mdiRestore, mdiDeleteForever, mdiContentCopy } from '@mdi/js';
+import { mdiUpload, mdiFolder, mdiStar, mdiDelete, mdiFolderPlus, mdiMagnify, mdiViewGrid, mdiViewList, mdiDotsVertical, mdiDownload, mdiPencil, mdiRestore, mdiDeleteForever, mdiContentCopy, mdiInformationOutline, mdiOpenInNew, mdiClose } from '@mdi/js';
 import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats } from '@spa/stores/files';
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
 import { useToast } from '@spa/composables/useToast';
@@ -335,6 +362,8 @@ const uploadInput = ref<HTMLInputElement | null>(null);
 const trashFiles = ref<FileEntry[]>([]);
 const trashFolders = ref<FileFolder[]>([]);
 const menu = ref<{ show: boolean; target: [number, number]; row: Row | null }>({ show: false, target: [0, 0], row: null });
+const preview = ref<FileEntry | null>(null);
+const previewOpen = ref(false);
 
 const info = ref<{ show: boolean; busy: boolean; file: FileEntry | null; name: string; tags: string; note: string; labelIds: number[] }>({ show: false, busy: false, file: null, name: '', tags: '', note: '', labelIds: [] });
 const versionsDlg = ref<{ show: boolean; loading: boolean; file: FileEntry | null; list: FileVersion[] }>({ show: false, loading: false, file: null, list: [] });
@@ -414,8 +443,18 @@ async function setView(v: 'files' | 'favorites' | 'trash') {
   if (v === 'trash') { const r = await s.loadTrash(); trashFiles.value = r.files; trashFolders.value = r.folders; }
 }
 function open(row: Row) {
-  if (row._folder) { view.value = 'files'; cwd.value = row.id; }
-  else window.open(s.rawUrl(row.raw as FileEntry), '_blank');
+  if (row._folder) { view.value = 'files'; cwd.value = row.id; return; }
+  preview.value = row.raw as FileEntry;
+  previewOpen.value = true;
+}
+function previewKind(f: FileEntry): 'image' | 'pdf' | 'video' | 'audio' | 'text' | 'other' {
+  const m = (f.mime || '').toLowerCase();
+  if (isImage(f.name, f.mime)) return 'image';
+  if (m === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) return 'pdf';
+  if (m.startsWith('video/')) return 'video';
+  if (m.startsWith('audio/')) return 'audio';
+  if (m.startsWith('text/') || /\.(txt|md|csv|log|json|xml|yml|yaml)$/i.test(f.name)) return 'text';
+  return 'other';
 }
 function pickUpload() { uploadInput.value?.click(); }
 async function onUpload(e: Event) {
