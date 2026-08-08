@@ -18,7 +18,6 @@
             <li class="group flex items-center justify-between gap-1">
                 <button @click="book=b.id" :class="book===b.id?'font-semibold text-gray-900 dark:text-gray-100':'text-gray-600 dark:text-gray-400'" x-text="b.name" class="truncate text-left"></button>
                 <span class="flex shrink-0 gap-1 md:hidden md:group-hover:flex" x-show="b.owned">
-                    <button @click="openShare('address-books', b.id, b.name)" class="inline-flex min-h-9 min-w-9 items-center justify-center text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" title="{{ __('shares.share') }}"><x-icon name="share" class="h-4 w-4" /></button>
                     <button @click="renameBook(b)" class="inline-flex min-h-9 min-w-9 items-center justify-center text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" title="{{ __('contacts.ui.rename_book') }}"><x-icon name="pencil" class="h-4 w-4" /></button>
                     <button @click="deleteBook(b)" class="inline-flex min-h-9 min-w-9 items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-600" title="{{ __('contacts.ui.delete') }}"><x-icon name="x-mark" class="h-4 w-4" /></button>
                 </span>

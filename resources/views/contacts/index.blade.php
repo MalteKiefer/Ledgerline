@@ -11,17 +11,6 @@
         'exportUrl' => route('contacts.export'),
         'settingsUrl' => route('contacts.settings'),
         'importResultLabel' => __('contacts.ui.import_result'),
-        'sharesDataUrl' => route('shares.data'),
-        'sharesUrl' => route('shares.store'),
-        'sharesBase' => url('shares'),
-        'shareError' => __('shares.error'),
-        'shareLink' => route('contacts.index'),
-        'mailConfigured' => \App\Services\Notifications\ChannelNotifier::mailConfigured(),
-        'linkCopied' => __('shares.link_copied'),
-        'mailSent' => __('shares.mail_sent'),
-        'mailUnavailable' => __('shares.mail_unavailable'),
-        'publicStoreUrl' => route('public-share.store'),
-        'publicBase' => url('shares/public'),
         'token' => csrf_token(),
         'bulkDestroyUrl' => route('contacts.bulk-destroy'),
         'deleteSelectedConfirm' => __('contacts.ui.delete_selected_confirm'),
@@ -126,8 +115,6 @@
                 </form>
             </div>
         </div>
-
-        @include('partials.share-modal')
 
         {{-- Confirm modal (delete contact / book / group) --}}
         <div x-show="confirmModal.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="confirmModal.open=false">

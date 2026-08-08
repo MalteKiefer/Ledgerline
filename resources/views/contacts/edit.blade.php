@@ -5,11 +5,6 @@
         'contactBase' => url('contacts'),
         'suggestUrl' => route('contacts.suggest'),
         'indexUrl' => route('contacts.index'),
-        'galleryPickerUrl' => route('gallery.picker'),
-        'peopleUrl' => route('gallery.people.data'),
-        'peopleShowBase' => url('gallery/people'),
-        'filesDataUrl' => route('files.data'),
-        'filesRawBase' => url('files/raw'),
         'token' => csrf_token(),
         'confirmDelete' => __('contacts.ui.delete_confirm'),
         'savedToast' => __('contacts.ui.saved'),
@@ -285,7 +280,7 @@
                 {{-- Source picker --}}
                 <div x-show="!cropSrc" class="mt-4">
                     <div class="flex gap-1 border-b border-gray-100 dark:border-gray-800 text-sm">
-                        @foreach (['upload','gallery','people','files'] as $t)
+                        @foreach (['upload'] as $t)
                             <button type="button" @click="avatarTab('{{ $t }}')"
                                 :class="avatarModal.tab==='{{ $t }}' ? 'border-gray-900 dark:border-gray-100 text-gray-900 dark:text-gray-100' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'"
                                 class="-mb-px border-b-2 px-3 py-2 font-medium">{{ __('contacts.ui.avatar_tab_'.$t) }}</button>

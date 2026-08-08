@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace App\Dav;
 
-use App\Dav\Concerns\ResolvesResourceShares;
 use App\Enums\DavChangeOperation;
 use App\Models\AddressBook;
 use App\Models\Contact;
-use App\Models\ResourceShare;
 use App\Services\Contacts\ContactPersister;
 use App\Services\Contacts\DavChangeLog;
 use Illuminate\Support\Facades\Auth;
@@ -28,8 +26,6 @@ use Sabre\DAV\PropPatch;
  */
 class AddressBookBackend extends AbstractBackend implements SyncSupport
 {
-    use ResolvesResourceShares;
-
     public function __construct(
         private readonly DavChangeLog $changes,
         private readonly ContactPersister $persister,
@@ -43,32 +39,16 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
         return $id === null ? null : (int) $id;
     }
 
-    /** The principal may see this book (owns it or it's shared with them). */
+    /** The principal may see this book (owner-only in Phase 1; sharing is Phase 3). */
     private function ownsBook(string $addressBookId): bool
     {
-        $userId = $this->currentUserId();
-        if ($userId === null) {
-            return false;
-        }
-        if (AddressBook::query()->ownedBy($userId)->whereKey($addressBookId)->exists()) {
-            return true;
-        }
-
-        return $this->shareLevel(AddressBook::class, $addressBookId, $userId) !== null;
+        return $this->ownsBookCollection($addressBookId);
     }
 
-    /** The principal may write cards in this book (owner or write-share). */
+    /** The principal may write cards in this book (owner-only in Phase 1). */
     private function canWriteBook(string $addressBookId): bool
     {
-        $userId = $this->currentUserId();
-        if ($userId === null) {
-            return false;
-        }
-        if (AddressBook::query()->ownedBy($userId)->whereKey($addressBookId)->exists()) {
-            return true;
-        }
-
-        return $this->shareLevel(AddressBook::class, $addressBookId, $userId) === ResourceShare::WRITE;
+        return $this->ownsBookCollection($addressBookId);
     }
 
     /** Only the owner may rename/delete the book collection itself. */
@@ -86,19 +66,8 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
             return [];
         }
 
-        $rows = AddressBook::query()->ownedBy($userId)->get()
+        return AddressBook::query()->ownedBy($userId)->get()
             ->map(fn (AddressBook $b): array => $this->bookRow($b, $principalUri, $b->uri))->all();
-
-        // Address books other users shared with this principal.
-        $sharedIds = ResourceShare::query()
-            ->where('shareable_type', (new AddressBook)->getMorphClass())
-            ->where('shared_with_user_id', $userId)
-            ->pluck('shareable_id');
-        foreach (AddressBook::query()->withoutGlobalScopes()->whereIn('id', $sharedIds)->get() as $b) {
-            $rows[] = $this->bookRow($b, $principalUri, 'shared-'.$b->id, ' ('.__('contacts.ui.shared').')');
-        }
-
-        return $rows;
     }
 
     /** @return array<string, mixed> */

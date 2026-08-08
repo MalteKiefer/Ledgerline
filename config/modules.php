@@ -15,5 +15,6 @@ return [
     'list' => [
         'finance' => ['label' => 'messages.nav.finance', 'route' => 'finance.index'],
         'files' => ['label' => 'messages.nav.files', 'route' => 'files.index'],
+        'contacts' => ['label' => 'messages.nav.contacts', 'route' => 'contacts.index'],
     ],
 ];

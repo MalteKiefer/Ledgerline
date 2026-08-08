@@ -3,7 +3,11 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AddressBookController;
 use App\Http\Controllers\AvatarController;
+use App\Http\Controllers\ContactController;
+use App\Http\Controllers\ContactDuplicateController;
+use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
@@ -20,6 +24,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
+use App\Http\Controllers\Settings\ContactsController as SettingsContactsController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
 use App\Http\Controllers\Settings\GroupsController as SettingsGroupsController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
@@ -314,6 +319,48 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/shared-with-me/{share}/upload', [SharedWithMeController::class, 'upload'])->whereNumber('share')->middleware('throttle:1200,1')->name('shared-with-me.upload');
         Route::put('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'rename'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('shared-with-me.rename');
         Route::delete('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'destroy'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('shared-with-me.destroy');
+    });
+
+    // Contacts + CardDAV (plaintext-relational). Static collection routes are
+    // declared before /contacts/{contact} so they win over the model binding.
+    Route::middleware('module:contacts')->group(function (): void {
+        Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');
+        Route::get('/contacts/create', [ContactController::class, 'create'])->name('contacts.create');
+        Route::get('/contacts/data', [ContactController::class, 'data'])->name('contacts.data');
+        Route::get('/contacts/suggest', [ContactController::class, 'suggest'])->name('contacts.suggest');
+        Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
+        Route::post('/contacts/import', [ContactController::class, 'import'])->middleware('throttle:60,1')->name('contacts.import');
+        Route::post('/contacts/settings', [ContactController::class, 'settings'])->middleware('throttle:600,1')->name('contacts.settings');
+        Route::post('/contacts/bulk-destroy', [ContactController::class, 'bulkDestroy'])->middleware('throttle:600,1')->name('contacts.bulk-destroy');
+        Route::post('/contacts', [ContactController::class, 'store'])->middleware('throttle:600,1')->name('contacts.store');
+
+        // Duplicate detection + merge.
+        Route::get('/contacts/duplicates', [ContactDuplicateController::class, 'index'])->name('contacts.duplicates');
+        Route::get('/contacts/duplicates/data', [ContactDuplicateController::class, 'data'])->name('contacts.duplicates.data');
+        Route::post('/contacts/duplicates/merge', [ContactDuplicateController::class, 'merge'])->middleware('throttle:120,1')->name('contacts.duplicates.merge');
+        Route::post('/contacts/duplicates/dismiss', [ContactDuplicateController::class, 'dismiss'])->middleware('throttle:120,1')->name('contacts.duplicates.dismiss');
+
+        // Per-contact.
+        Route::get('/contacts/{contact}', [ContactController::class, 'show'])->whereNumber('contact')->name('contacts.show');
+        Route::get('/contacts/{contact}/view', [ContactController::class, 'view'])->whereNumber('contact')->name('contacts.view');
+        Route::get('/contacts/{contact}/edit', [ContactController::class, 'edit'])->whereNumber('contact')->name('contacts.edit');
+        Route::get('/contacts/{contact}/geo', [ContactController::class, 'geocode'])->whereNumber('contact')->middleware('throttle:120,1')->name('contacts.geo');
+        Route::get('/contacts/{contact}/avatar-image', [ContactController::class, 'avatarImage'])->whereNumber('contact')->middleware('throttle:3000,1')->name('contacts.avatar-image');
+        Route::patch('/contacts/{contact}/favorite', [ContactController::class, 'favorite'])->whereNumber('contact')->middleware('throttle:600,1')->name('contacts.favorite');
+        Route::post('/contacts/{contact}/avatar', [ContactController::class, 'avatar'])->whereNumber('contact')->middleware('throttle:120,1')->name('contacts.avatar');
+        Route::put('/contacts/{contact}', [ContactController::class, 'update'])->whereNumber('contact')->middleware('throttle:600,1')->name('contacts.update');
+        Route::delete('/contacts/{contact}', [ContactController::class, 'destroy'])->whereNumber('contact')->middleware('throttle:600,1')->name('contacts.destroy');
+
+        // Address books + groups.
+        Route::post('/address-books', [AddressBookController::class, 'store'])->middleware('throttle:600,1')->name('address-books.store');
+        Route::put('/address-books/{addressBook}', [AddressBookController::class, 'update'])->whereNumber('addressBook')->middleware('throttle:600,1')->name('address-books.update');
+        Route::delete('/address-books/{addressBook}', [AddressBookController::class, 'destroy'])->whereNumber('addressBook')->middleware('throttle:600,1')->name('address-books.destroy');
+        Route::post('/contact-groups', [ContactGroupController::class, 'store'])->middleware('throttle:600,1')->name('contact-groups.store');
+        Route::delete('/contact-groups/{group}', [ContactGroupController::class, 'destroy'])->whereNumber('group')->middleware('throttle:600,1')->name('contact-groups.destroy');
+
+        // CardDAV sync settings (single app-specific webdav_password + Apple profile).
+        Route::get('/settings/contacts', [SettingsContactsController::class, 'edit'])->name('settings.contacts.edit');
+        Route::get('/settings/contacts/profile', [SettingsContactsController::class, 'profile'])->name('settings.contacts.profile');
     });
 
     // Per-user company profile + invoice defaults (printed on every invoice).

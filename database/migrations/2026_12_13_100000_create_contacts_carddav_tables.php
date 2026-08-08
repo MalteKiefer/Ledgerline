@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
  * plaintext-relational contacts module: address books are CardDAV collections;
  * each contact stores the raw vCard 4.0 as the source of truth plus denormalised
  * columns for the UI/search; dav_changes is the RFC 6578 sync-collection change
- * log sabre needs for incremental sync; resource_shares grants another user
+ * log sabre needs for incremental sync.
  * read/write access to an owned collection.
  *
  * There is NO separate DAV credential table: CardDAV clients authenticate with
@@ -91,22 +91,6 @@ return new class extends Migration
             $table->unique(['user_id', 'signature']);
         });
 
-        // Cross-user sharing: one row grants another user access to a resource
-        // (polymorphic shareable) at a permission level.
-        Schema::create('resource_shares', function (Blueprint $table): void {
-            $table->id();
-            $table->string('shareable_type');
-            $table->string('shareable_id'); // string: covers int + uuid keys
-            $table->foreignId('owner_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('shared_with_user_id')->constrained('users')->cascadeOnDelete();
-            $table->string('permission', 8)->default('read'); // read | write
-            $table->timestamps();
-
-            $table->index(['shareable_type', 'shareable_id']);
-            $table->index(['shared_with_user_id', 'shareable_type']);
-            $table->unique(['shareable_type', 'shareable_id', 'shared_with_user_id'], 'resource_shares_unique');
-        });
-
         // Per-user contacts list preferences (re-added; the historical columns were
         // dropped with the old contacts module).
         Schema::table('user_settings', function (Blueprint $table): void {
@@ -126,7 +110,6 @@ return new class extends Migration
                 $table->dropColumn(['contact_sort', 'contact_display_format']);
             }
         });
-        Schema::dropIfExists('resource_shares');
         Schema::dropIfExists('contact_duplicate_dismissals');
         Schema::dropIfExists('dav_changes');
         Schema::dropIfExists('contact_group');

@@ -5,6 +5,8 @@ parameters:
     paths:
         - app
     tmpDir: storage/phpstan
+    stubFiles:
+        - stubs/vobject.stub
     # Third-party PHPDoc (Sanctum's currentAccessToken(), Socialite contracts) over-
     # promises non-null / concrete types that are nullable or looser at runtime; do
     # not treat those PHPDoc types as certain, so our defensive null-guards stand.

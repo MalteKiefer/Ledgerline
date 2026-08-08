@@ -58,7 +58,7 @@ class ContactController extends Controller
     public function data(Request $request, VCardService $vcards): JsonResponse
     {
         $userId = $request->user()->id;
-        // Owned OR shared-with-me address books (SharesWithUsers scope).
+        // Owner-scoped address books (OwnsUserData global scope).
         $bookIds = AddressBook::query()->pluck('id');
         $settings = UserSetting::for($userId);
 
