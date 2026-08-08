@@ -22,12 +22,12 @@ import { trans as t } from 'laravel-vue-i18n';
 import { mdiAccountGroup, mdiAccountMultiple, mdiDomain, mdiCloudUpload, mdiShieldAlert, mdiBellOutline } from '@mdi/js';
 
 const sections = [
-  { to: 'settings.users', icon: mdiAccountMultiple, label: 'pages.settings.users' },
-  { to: 'settings.groups', icon: mdiAccountGroup, label: 'pages.settings.groups' },
-  { to: 'settings.company', icon: mdiDomain, label: 'settings.company' },
-  { to: 'settings.backup', icon: mdiCloudUpload, label: 'settings.backup' },
-  { to: 'settings.security-log', icon: mdiShieldAlert, label: 'seclog.title' },
-  { to: 'settings.notifications', icon: mdiBellOutline, label: 'pages.settings.notifications' },
+  { to: 'settings.users', icon: mdiAccountMultiple, label: 'settings.users_section' },
+  { to: 'settings.groups', icon: mdiAccountGroup, label: 'settings.groups_section' },
+  { to: 'settings.company', icon: mdiDomain, label: 'settings.company_section' },
+  { to: 'settings.backup', icon: mdiCloudUpload, label: 'settings.backup_section' },
+  { to: 'settings.security-log', icon: mdiShieldAlert, label: 'settings.seclog_title' },
+  { to: 'settings.notifications', icon: mdiBellOutline, label: 'settings.notifications_section' },
 ];
 </script>
 

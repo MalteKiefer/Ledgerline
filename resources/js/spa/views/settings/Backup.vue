@@ -1,6 +1,6 @@
 <template>
   <v-card rounded="xl" border flat class="mb-4">
-    <v-toolbar flat color="surface"><v-toolbar-title>{{ t('settings.backup_jobs') }}</v-toolbar-title></v-toolbar>
+    <v-toolbar flat color="surface"><v-toolbar-title>{{ t('settings.backup_jobs_heading') }}</v-toolbar-title></v-toolbar>
     <v-divider />
     <v-list>
       <v-list-item v-for="j in s.jobs" :key="j.id" :title="j.name" :subtitle="(j.sources || []).join(', ') + (j.encrypt ? ' · 🔒' : '')">
@@ -14,7 +14,7 @@
   </v-card>
 
   <v-card rounded="xl" border flat>
-    <v-toolbar flat color="surface"><v-toolbar-title>{{ t('settings.backup_runs') }}</v-toolbar-title></v-toolbar>
+    <v-toolbar flat color="surface"><v-toolbar-title>{{ t('settings.backup_runs_heading') }}</v-toolbar-title></v-toolbar>
     <v-divider />
     <v-data-table :headers="headers" :items="s.runs" density="compact" :items-per-page="10">
       <template #[`item.status`]="{ item }">

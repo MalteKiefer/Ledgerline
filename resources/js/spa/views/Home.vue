@@ -5,7 +5,7 @@
     <v-row v-if="kpis">
       <v-col cols="12" sm="4">
         <v-card rounded="xl" border flat class="pa-4">
-          <div class="text-caption text-medium-emphasis text-uppercase">{{ t('invoices.revenue') }} {{ kpis.year }}</div>
+          <div class="text-caption text-medium-emphasis text-uppercase">{{ t('invoices.stat_revenue') }} {{ kpis.year }}</div>
           <div class="text-h5 mt-1">{{ money(kpis.net) }}</div>
           <div v-if="kpis.growthPct != null" class="text-caption" :class="kpis.growthPct >= 0 ? 'text-success' : 'text-error'">
             {{ kpis.growthPct >= 0 ? '+' : '' }}{{ kpis.growthPct }}%
@@ -14,7 +14,7 @@
       </v-col>
       <v-col cols="12" sm="4">
         <v-card rounded="xl" border flat class="pa-4">
-          <div class="text-caption text-medium-emphasis text-uppercase">{{ t('invoices.status_open') }}</div>
+          <div class="text-caption text-medium-emphasis text-uppercase">{{ t('invoices.outstanding_total') }}</div>
           <div class="text-h5 mt-1 text-warning">{{ money(openGross) }}</div>
           <div class="text-caption text-medium-emphasis">{{ openCount }} {{ t('invoices.tab_invoices') }}</div>
         </v-card>
@@ -59,7 +59,7 @@ const nav = [
   { to: '/finance', icon: 'receipt_long', label: 'invoices.tab_invoices' },
   { to: '/files', icon: 'folder', label: 'messages.nav.files' },
   { to: '/contacts', icon: 'contacts', label: 'messages.nav.contacts' },
-  { to: '/settings', icon: 'settings', label: 'pages.settings.title' },
+  { to: '/settings', icon: 'settings', label: 'settings.heading' },
 ];
 
 onMounted(async () => {

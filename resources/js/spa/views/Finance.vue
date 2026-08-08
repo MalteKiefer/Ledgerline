@@ -11,8 +11,8 @@
     <!-- Dashboard -->
     <div v-show="tab === 'dashboard'">
       <v-row v-if="kpis">
-        <v-col cols="12" sm="4"><v-card rounded="xl" border flat class="pa-4"><div class="text-caption text-uppercase text-medium-emphasis">{{ t('invoices.revenue') }} {{ kpis.year }}</div><div class="text-h5 mt-1">{{ money(kpis.net) }}</div></v-card></v-col>
-        <v-col cols="12" sm="4"><v-card rounded="xl" border flat class="pa-4"><div class="text-caption text-uppercase text-medium-emphasis">{{ t('invoices.status_open') }}</div><div class="text-h5 mt-1 text-warning">{{ money(openGross) }}</div></v-card></v-col>
+        <v-col cols="12" sm="4"><v-card rounded="xl" border flat class="pa-4"><div class="text-caption text-uppercase text-medium-emphasis">{{ t('invoices.stat_revenue') }} {{ kpis.year }}</div><div class="text-h5 mt-1">{{ money(kpis.net) }}</div></v-card></v-col>
+        <v-col cols="12" sm="4"><v-card rounded="xl" border flat class="pa-4"><div class="text-caption text-uppercase text-medium-emphasis">{{ t('invoices.outstanding_total') }}</div><div class="text-h5 mt-1 text-warning">{{ money(openGross) }}</div></v-card></v-col>
         <v-col cols="12" sm="4"><v-card rounded="xl" border flat class="pa-4"><div class="text-caption text-uppercase text-medium-emphasis">{{ t('invoices.vat_payable') }}</div><div class="text-h5 mt-1 text-primary">{{ money(vatPayable) }}</div></v-card></v-col>
       </v-row>
     </div>
@@ -69,7 +69,7 @@
       <v-card rounded="xl" border flat class="pa-4" v-if="kpis">
         <div class="text-subtitle-1 mb-2">{{ t('invoices.tab_stats') }} {{ kpis.year }}</div>
         <v-row>
-          <v-col cols="6" sm="3"><div class="text-caption text-medium-emphasis">{{ t('invoices.revenue') }}</div><div class="text-h6">{{ money(kpis.net) }}</div></v-col>
+          <v-col cols="6" sm="3"><div class="text-caption text-medium-emphasis">{{ t('invoices.stat_revenue') }}</div><div class="text-h6">{{ money(kpis.net) }}</div></v-col>
           <v-col cols="6" sm="3"><div class="text-caption text-medium-emphasis">{{ t('invoices.tab_invoices') }}</div><div class="text-h6">{{ kpis.count }}</div></v-col>
           <v-col cols="6" sm="3" v-if="kpis.growthPct != null"><div class="text-caption text-medium-emphasis">YoY</div><div class="text-h6">{{ kpis.growthPct }}%</div></v-col>
         </v-row>
@@ -93,9 +93,9 @@
               <v-col cols="6" sm="3"><v-text-field v-model="draft.issue_date" :label="t('invoices.issue_date')" type="date" variant="outlined" density="compact" /></v-col>
               <v-col cols="6" sm="3"><v-text-field v-model="draft.due_date" :label="t('invoices.due_date')" type="date" variant="outlined" density="compact" /></v-col>
             </v-row>
-            <div class="text-caption text-medium-emphasis mt-2 mb-1">{{ t('invoices.line_items') || 'Positionen' }}</div>
+            <div class="text-caption text-medium-emphasis mt-2 mb-1">{{ t('invoices.lines') || 'Positionen' }}</div>
             <div v-for="(l, i) in lines" :key="i" class="d-flex ga-2 mb-1">
-              <v-text-field v-model="l.desc" :placeholder="t('invoices.description')" variant="outlined" density="compact" hide-details class="flex-grow-1" />
+              <v-text-field v-model="l.desc" :placeholder="t('invoices.line_desc')" variant="outlined" density="compact" hide-details class="flex-grow-1" />
               <v-text-field v-model.number="l.qty" type="number" style="max-width:72px" variant="outlined" density="compact" hide-details />
               <v-text-field v-model.number="l.unitPrice" type="number" style="max-width:110px" variant="outlined" density="compact" hide-details />
               <v-text-field v-model.number="l.vatRate" type="number" style="max-width:80px" suffix="%" variant="outlined" density="compact" hide-details />
@@ -125,7 +125,7 @@
       <v-card rounded="xl">
         <v-card-title>{{ pForm.id ? t('common.edit') : t('common.add') }}</v-card-title>
         <v-card-text>
-          <v-text-field v-model="pForm.name" :label="t('account.name')" variant="outlined" density="comfortable" />
+          <v-text-field v-model="pForm.name" :label="t('common.name')" variant="outlined" density="comfortable" />
           <template v-if="pKind === 'partner'">
             <v-text-field v-model="pForm.email" label="E-Mail" variant="outlined" density="compact" />
             <v-text-field v-model="pForm.vat_id" label="VAT ID" variant="outlined" density="compact" />
@@ -169,7 +169,7 @@ interface PPForm { id?: number; version?: number; name: string; email?: string |
 const pForm = reactive<PPForm>({ name: '' });
 
 const invHeaders = [
-  { title: t('invoices.number'), key: 'number' },
+  { title: t('invoices.col_number'), key: 'number' },
   { title: t('invoices.customer'), key: 'customer', sortable: false },
   { title: t('invoices.issue_date'), key: 'issue_date' },
   { title: t('invoices.gross'), key: 'gross' },

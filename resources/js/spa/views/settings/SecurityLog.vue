@@ -1,7 +1,7 @@
 <template>
   <v-card rounded="xl" border flat>
     <v-toolbar flat color="surface">
-      <v-toolbar-title>{{ t('seclog.title') }}</v-toolbar-title>
+      <v-toolbar-title>{{ t('settings.seclog_title') }}</v-toolbar-title>
       <v-spacer />
       <v-btn variant="tonal" :prepend-icon="mdiDownload" href="/api/v1/security-log/export?export=csv">CSV</v-btn>
     </v-toolbar>

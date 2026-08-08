@@ -1,0 +1,43 @@
+/* Self-hosted Material Symbols for the SPA (the Blade bundle's copy is not
+   loaded here). Same woff2 under public/fonts — CSP font-src 'self'. */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: block;
+  src: url('/fonts/material-symbols-outlined.woff2') format('woff2');
+}
+
+.msym {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+.msym-fill { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+
+/* Hacker/nerdy dark base: deep near-black canvas, tabular mono numerals. */
+:root {
+  --ll-mono: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace;
+}
+html, body { background: #0b0e14; }
+.ll-mono { font-family: var(--ll-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+/* Slim dark scrollbars (terminal feel). */
+* { scrollbar-width: thin; scrollbar-color: #30363d transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: #30363d; border-radius: 6px; }
+*::-webkit-scrollbar-thumb:hover { background: #3f4650; }
+
+/* Uppercase micro-labels (Proton/Tuta stat captions). */
+.ll-label { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.68rem; opacity: 0.7; }

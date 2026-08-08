@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import { i18nVue } from 'laravel-vue-i18n';
+import '@spa/styles.css';
 import App from '@spa/App.vue';
 import { vuetify } from '@spa/plugins/vuetify';
 import { router } from '@spa/router';

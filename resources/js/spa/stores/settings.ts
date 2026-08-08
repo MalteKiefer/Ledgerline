@@ -68,17 +68,18 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // Backup
   const loadBackup = async () => {
-    [jobs.value, destinations.value, runs.value] = await Promise.all([
-      api.get<BackupJob[]>('/api/v1/backup/jobs'),
-      api.get<BackupDestination[]>('/api/v1/backup/destinations'),
-      api.get<BackupRun[]>('/api/v1/backup/runs'),
+    const [j, d, r] = await Promise.all([
+      api.get<{ jobs: BackupJob[] }>('/api/v1/backup/jobs'),
+      api.get<{ destinations: BackupDestination[] }>('/api/v1/backup/destinations'),
+      api.get<{ runs: BackupRun[] }>('/api/v1/backup/runs'),
     ]);
+    jobs.value = j.jobs ?? []; destinations.value = d.destinations ?? []; runs.value = r.runs ?? [];
   };
   const runJob = (id: number) => api.post(`/api/v1/backup/jobs/${id}/run`);
   const deleteJob = (id: number) => api.delete(`/api/v1/backup/jobs/${id}`);
 
   // Security log
-  const loadAudit = async (params = '') => { audit.value = (await api.get<{ data: AuditRow[] } | AuditRow[]>(`/api/v1/security-log${params}`) as { data?: AuditRow[] }).data ?? (audit.value); };
+  const loadAudit = async (params = '') => { const r = await api.get<{ data?: AuditRow[] }>(`/api/v1/security-log${params}`); audit.value = r.data ?? []; };
 
   return {
     users, groups, jobs, destinations, runs, audit,

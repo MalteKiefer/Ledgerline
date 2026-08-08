@@ -5,7 +5,7 @@
 
       <!-- Account -->
       <v-card rounded="xl" border flat class="mb-4">
-        <v-card-title>{{ t('account.account') }}</v-card-title>
+        <v-card-title>{{ t('account.nav_account') }}</v-card-title>
         <v-card-text class="d-flex align-center ga-4">
           <v-avatar size="64" color="primary">
             <v-img v-if="avatarUrl" :src="avatarUrl" />
@@ -23,25 +23,25 @@
 
       <!-- Appearance -->
       <v-card rounded="xl" border flat class="mb-4">
-        <v-card-title>{{ t('pages.appearance.title') }}</v-card-title>
+        <v-card-title>{{ t('account.appearance_heading') }}</v-card-title>
         <v-card-text>
           <v-row dense>
             <v-col cols="12" sm="6">
-              <v-select :label="t('pages.appearance.theme')" v-model="themeChoice" :items="themeItems" variant="outlined" density="comfortable" @update:model-value="onTheme" />
+              <v-select :label="t('account.appearance_theme')" v-model="themeChoice" :items="themeItems" variant="outlined" density="comfortable" @update:model-value="onTheme" />
             </v-col>
             <v-col cols="12" sm="6">
-              <v-select :label="t('pages.appearance.language')" v-model="localeChoice" :items="localeItems" variant="outlined" density="comfortable" @update:model-value="onLocale" />
+              <v-select :label="t('account.appearance_language')" v-model="localeChoice" :items="localeItems" variant="outlined" density="comfortable" @update:model-value="onLocale" />
             </v-col>
           </v-row>
           <template v-if="p.prefs">
             <v-divider class="my-2" />
             <v-row dense>
-              <v-col cols="6" sm="4"><v-select label="Distanz" v-model="p.prefs.unit_distance" :items="['km','mi']" variant="outlined" density="compact" @update:model-value="savePref('unit_distance')" /></v-col>
-              <v-col cols="6" sm="4"><v-select label="Höhe" v-model="p.prefs.unit_elevation" :items="['m','ft']" variant="outlined" density="compact" @update:model-value="savePref('unit_elevation')" /></v-col>
-              <v-col cols="6" sm="4"><v-select label="Gewicht" v-model="p.prefs.unit_weight" :items="['kg','lb']" variant="outlined" density="compact" @update:model-value="savePref('unit_weight')" /></v-col>
-              <v-col cols="6" sm="4"><v-select label="Temperatur" v-model="p.prefs.unit_temp" :items="['c','f']" variant="outlined" density="compact" @update:model-value="savePref('unit_temp')" /></v-col>
-              <v-col cols="6" sm="4"><v-select label="Glukose" v-model="p.prefs.unit_glucose" :items="['mgdl','mmoll']" variant="outlined" density="compact" @update:model-value="savePref('unit_glucose')" /></v-col>
-              <v-col cols="6" sm="4"><v-select label="Zeitformat" v-model="p.prefs.time_format" :items="['24h','12h']" variant="outlined" density="compact" @update:model-value="savePref('time_format')" /></v-col>
+              <v-col cols="6" sm="4"><v-select :label="t('account.pref_distance')" v-model="p.prefs.unit_distance" :items="['km','mi']" variant="outlined" density="compact" @update:model-value="savePref('unit_distance')" /></v-col>
+              <v-col cols="6" sm="4"><v-select :label="t('account.pref_elevation')" v-model="p.prefs.unit_elevation" :items="['m','ft']" variant="outlined" density="compact" @update:model-value="savePref('unit_elevation')" /></v-col>
+              <v-col cols="6" sm="4"><v-select :label="t('account.pref_weight')" v-model="p.prefs.unit_weight" :items="['kg','lb']" variant="outlined" density="compact" @update:model-value="savePref('unit_weight')" /></v-col>
+              <v-col cols="6" sm="4"><v-select :label="t('account.pref_temp')" v-model="p.prefs.unit_temp" :items="['c','f']" variant="outlined" density="compact" @update:model-value="savePref('unit_temp')" /></v-col>
+              <v-col cols="6" sm="4"><v-select :label="t('account.pref_glucose')" v-model="p.prefs.unit_glucose" :items="['mgdl','mmoll']" variant="outlined" density="compact" @update:model-value="savePref('unit_glucose')" /></v-col>
+              <v-col cols="6" sm="4"><v-select :label="t('account.pref_time')" v-model="p.prefs.time_format" :items="['24h','12h']" variant="outlined" density="compact" @update:model-value="savePref('time_format')" /></v-col>
             </v-row>
           </template>
         </v-card-text>
@@ -49,12 +49,12 @@
 
       <!-- Security: change password -->
       <v-card rounded="xl" border flat class="mb-4">
-        <v-card-title>{{ t('account.password') }}</v-card-title>
+        <v-card-title>{{ t('account.password_title') }}</v-card-title>
         <v-card-text>
           <v-form @submit.prevent="onPassword">
-            <v-text-field v-model="pw.current" :label="t('account.current_password')" type="password" variant="outlined" density="comfortable" :error-messages="pwErr.current_password" />
-            <v-text-field v-model="pw.next" :label="t('account.new_password')" type="password" variant="outlined" density="comfortable" :error-messages="pwErr.password" />
-            <v-text-field v-model="pw.confirm" :label="t('account.confirm_password')" type="password" variant="outlined" density="comfortable" />
+            <v-text-field v-model="pw.current" :label="t('account.password_current')" type="password" variant="outlined" density="comfortable" :error-messages="pwErr.current_password" />
+            <v-text-field v-model="pw.next" :label="t('account.password_new')" type="password" variant="outlined" density="comfortable" :error-messages="pwErr.password" />
+            <v-text-field v-model="pw.confirm" :label="t('account.password_confirm')" type="password" variant="outlined" density="comfortable" />
             <v-btn type="submit" color="primary" :loading="pwBusy">{{ t('common.save') }}</v-btn>
           </v-form>
         </v-card-text>
@@ -62,7 +62,7 @@
 
       <!-- Devices -->
       <v-card rounded="xl" border flat class="mb-4">
-        <v-card-title>{{ t('account.devices') }}</v-card-title>
+        <v-card-title>{{ t('account.devices_list_heading') }}</v-card-title>
         <v-list>
           <v-list-item v-for="d in p.devices" :key="d.id" :title="d.name" :subtitle="deviceSub(d)">
             <template #append>
@@ -77,11 +77,11 @@
 
       <!-- Data / danger -->
       <v-card rounded="xl" border flat>
-        <v-card-title>{{ t('pages.profile.data') }}</v-card-title>
+        <v-card-title>{{ t('account.export_heading') }}</v-card-title>
         <v-card-text class="d-flex ga-2 flex-wrap">
-          <v-btn variant="tonal" :prepend-icon="mdiDownload" href="/api/v1/account/export">{{ t('pages.profile.export') }}</v-btn>
+          <v-btn variant="tonal" :prepend-icon="mdiDownload" href="/api/v1/account/export">{{ t('account.export_button') }}</v-btn>
           <v-spacer />
-          <v-btn variant="text" color="error" :prepend-icon="mdiDeleteAlert" @click="confirmDelete = true">{{ t('pages.profile.delete_account') }}</v-btn>
+          <v-btn variant="text" color="error" :prepend-icon="mdiDeleteAlert" @click="confirmDelete = true">{{ t('account.delete_button') }}</v-btn>
         </v-card-text>
       </v-card>
     </v-col>
@@ -89,10 +89,10 @@
 
   <v-dialog v-model="confirmDelete" max-width="480">
     <v-card rounded="xl">
-      <v-card-title>{{ t('pages.profile.delete_account') }}</v-card-title>
+      <v-card-title>{{ t('account.delete_button') }}</v-card-title>
       <v-card-text>
-        <p class="mb-3">{{ t('pages.profile.delete_confirm') }}</p>
-        <v-text-field v-model="delPassword" :label="t('account.password')" type="password" variant="outlined" />
+        <p class="mb-3">{{ t('account.delete_modal_warning') }}</p>
+        <v-text-field v-model="delPassword" :label="t('account.password_title')" type="password" variant="outlined" />
       </v-card-text>
       <v-card-actions>
         <v-spacer />
@@ -126,8 +126,8 @@ const avatarUrl = computed(() => (auth.user?.has_avatar ? `/api/v1/avatar?v=${av
 const initials = computed(() => (auth.user?.name ?? '?').slice(0, 1).toUpperCase());
 
 const themeItems = [
-  { title: t('pages.appearance.theme_light'), value: 'light' },
-  { title: t('pages.appearance.theme_dark'), value: 'dark' },
+  { title: t('messages.menu.theme_light'), value: 'light' },
+  { title: t('messages.menu.theme_dark'), value: 'dark' },
 ];
 const themeChoice = ref(theme.global.current.value.dark ? 'dark' : 'light');
 const localeItems = [

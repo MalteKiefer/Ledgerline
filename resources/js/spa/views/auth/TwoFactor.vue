@@ -3,14 +3,14 @@
     <v-row justify="center" align="center">
       <v-col cols="12" sm="8" md="5" lg="4">
         <v-card class="pa-6" rounded="xl" border flat>
-          <h1 class="text-h6 mb-4">{{ t('auth.two_factor_title') }}</h1>
+          <h1 class="text-h6 mb-4">{{ t('auth_ui.twofa_title') }}</h1>
           <v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error" />
           <v-form @submit.prevent="submit">
-            <v-text-field v-if="!useRecovery" v-model="code" :label="t('auth.two_factor_code')" inputmode="numeric" variant="outlined" autofocus />
-            <v-text-field v-else v-model="recovery" :label="t('auth.recovery_code')" variant="outlined" autofocus />
-            <v-btn type="submit" color="primary" block size="large" :loading="busy">{{ t('auth.login') }}</v-btn>
+            <v-text-field v-if="!useRecovery" v-model="code" :label="t('auth_ui.twofa_code')" inputmode="numeric" variant="outlined" autofocus />
+            <v-text-field v-else v-model="recovery" :label="t('auth_ui.twofa_recovery')" variant="outlined" autofocus />
+            <v-btn type="submit" color="primary" block size="large" :loading="busy">{{ t('auth_ui.sign_in') }}</v-btn>
             <v-btn variant="text" block class="mt-2" @click="useRecovery = !useRecovery">
-              {{ useRecovery ? t('auth.use_code') : t('auth.use_recovery') }}
+              {{ useRecovery ? t('auth_ui.twofa_use_code') : t('auth_ui.twofa_use_recovery') }}
             </v-btn>
           </v-form>
         </v-card>
@@ -40,7 +40,7 @@ async function submit() {
     await auth.twoFactor(useRecovery.value ? { recovery_code: recovery.value } : { code: code.value });
     router.push({ name: 'home' });
   } catch (e) {
-    error.value = t('auth.two_factor_failed');
+    error.value = t('common.error');
   } finally {
     busy.value = false;
   }

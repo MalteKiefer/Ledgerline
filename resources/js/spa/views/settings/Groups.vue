@@ -1,7 +1,7 @@
 <template>
   <v-card rounded="xl" border flat>
     <v-toolbar flat color="surface">
-      <v-toolbar-title>{{ t('pages.settings.groups') }}</v-toolbar-title>
+      <v-toolbar-title>{{ t('settings.groups_section') }}</v-toolbar-title>
       <v-spacer />
       <v-btn color="primary" variant="tonal" :prepend-icon="mdiPlus" @click="openNew">{{ t('common.add') }}</v-btn>
     </v-toolbar>
@@ -21,7 +21,7 @@
     <v-card rounded="xl">
       <v-card-title>{{ editing ? t('common.edit') : t('common.add') }}</v-card-title>
       <v-card-text>
-        <v-text-field v-model="form.name" :label="t('account.name')" variant="outlined" density="comfortable" />
+        <v-text-field v-model="form.name" :label="t('settings.groups_name')" variant="outlined" density="comfortable" />
         <v-row dense>
           <v-col cols="6"><v-text-field v-model.number="form.files_quota_mb" label="Files MB" type="number" variant="outlined" density="compact" /></v-col>
           <v-col cols="6"><v-text-field v-model.number="form.max_connected_devices" label="Max devices" type="number" variant="outlined" density="compact" /></v-col>

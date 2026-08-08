@@ -21,8 +21,8 @@
     </v-list>
     <template #append>
       <v-list density="compact" nav>
-        <v-list-item :prepend-icon="mdiThemeLightDark" :title="t('pages.appearance.theme')" @click="toggleTheme" />
-        <v-list-item :prepend-icon="mdiLogout" :title="t('account.logout')" @click="logout" />
+        <v-list-item :prepend-icon="mdiThemeLightDark" :title="t('account.appearance_theme')" @click="toggleTheme" />
+        <v-list-item :prepend-icon="mdiLogout" :title="t('messages.menu.logout')" @click="logout" />
       </v-list>
     </template>
   </v-navigation-drawer>
@@ -105,7 +105,7 @@ const navItems = [
   { to: '/files', icon: mdiFolderOutline, label: 'messages.nav.files' },
   { to: '/contacts', icon: mdiAccountBoxOutline, label: 'messages.nav.contacts' },
   { to: '/profile', icon: mdiAccountCircleOutline, label: 'pages.profile.title' },
-  { to: '/settings', icon: mdiCogOutline, label: 'pages.settings.title' },
+  { to: '/settings', icon: mdiCogOutline, label: 'settings.heading' },
 ];
 
 function toggleTheme() {

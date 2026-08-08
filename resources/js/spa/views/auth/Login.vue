@@ -6,10 +6,10 @@
           <h1 class="text-h5 mb-6">Ledgerline</h1>
           <v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error" />
           <v-form @submit.prevent="submit">
-            <v-text-field v-model="email" :label="t('account.email')" type="email" variant="outlined" autocomplete="username" required />
-            <v-text-field v-model="password" :label="t('account.password')" type="password" variant="outlined" autocomplete="current-password" required />
-            <v-checkbox v-model="remember" :label="t('auth.remember_me')" density="compact" />
-            <v-btn type="submit" color="primary" block size="large" :loading="busy">{{ t('auth.login') }}</v-btn>
+            <v-text-field v-model="email" :label="t('auth_ui.email')" type="email" variant="outlined" autocomplete="username" required />
+            <v-text-field v-model="password" :label="t('auth_ui.password')" type="password" variant="outlined" autocomplete="current-password" required />
+            <v-checkbox v-model="remember" :label="t('auth_ui.remember')" density="compact" />
+            <v-btn type="submit" color="primary" block size="large" :loading="busy">{{ t('auth_ui.sign_in') }}</v-btn>
           </v-form>
         </v-card>
       </v-col>
@@ -39,7 +39,7 @@ async function submit() {
     const { twoFactor } = await auth.login(email.value, password.value, remember.value);
     router.push(twoFactor ? { name: 'two-factor' } : { name: 'home' });
   } catch (e) {
-    error.value = e instanceof ApiError && e.status === 422 ? t('auth.failed') : String(e);
+    error.value = e instanceof ApiError && e.status === 422 ? t('common.error') : String(e);
   } finally {
     busy.value = false;
   }

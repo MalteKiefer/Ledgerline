@@ -1,7 +1,7 @@
 <template>
   <v-card rounded="xl" border flat>
     <v-toolbar flat color="surface">
-      <v-toolbar-title>{{ t('pages.settings.notifications') }}</v-toolbar-title>
+      <v-toolbar-title>{{ t('settings.notifications_section') }}</v-toolbar-title>
       <v-spacer />
       <v-btn variant="text" size="small" @click="markAll">{{ t('notifications.mark_all_read') }}</v-btn>
     </v-toolbar>
@@ -23,10 +23,10 @@ import { trans as t } from 'laravel-vue-i18n';
 import { mdiCheck } from '@mdi/js';
 import { api } from '@spa/api/client';
 
-interface Note { id: string; title: string; body: string; read: boolean }
+interface Note { id: string | number; title: string; body: string; read: boolean }
 const items = ref<Note[]>([]);
 onMounted(load);
-async function load() { items.value = (await api.get<{ data: Note[] } | Note[]>('/api/v1/notifications') as { data?: Note[] }).data ?? []; }
+async function load() { const r = await api.get<{ items?: Note[] }>('/api/v1/notifications'); items.value = r.items ?? []; }
 async function markRead(n: Note) { await api.post(`/api/v1/notifications/${n.id}/read`); n.read = true; }
 async function markAll() { await api.post('/api/v1/notifications/read-all'); items.value.forEach((n) => (n.read = true)); }
 </script>

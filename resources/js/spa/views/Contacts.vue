@@ -3,14 +3,14 @@
     <!-- Books / groups rail -->
     <v-card rounded="xl" border flat width="220" class="flex-shrink-0" style="align-self:flex-start">
       <div class="pa-3">
-        <v-btn color="primary" block :prepend-icon="mdiPlus" @click="openNew">{{ t('contacts.new') }}</v-btn>
+        <v-btn color="primary" block :prepend-icon="mdiPlus" @click="openNew">{{ t('contacts.ui.new_contact') }}</v-btn>
       </div>
       <v-list density="compact" nav>
-        <v-list-subheader>{{ t('contacts.address_books') }}</v-list-subheader>
-        <v-list-item :active="!bookId && !favOnly" :prepend-icon="mdiAccountMultiple" :title="t('contacts.all')" @click="pick(null, false)" />
-        <v-list-item :active="favOnly" :prepend-icon="mdiStar" :title="t('contacts.favorites')" @click="pick(null, true)" />
+        <v-list-subheader>{{ t('contacts.ui.books') }}</v-list-subheader>
+        <v-list-item :active="!bookId && !favOnly" :prepend-icon="mdiAccountMultiple" :title="t('contacts.ui.all_books')" @click="pick(null, false)" />
+        <v-list-item :active="favOnly" :prepend-icon="mdiStar" :title="t('contacts.ui.favorites')" @click="pick(null, true)" />
         <v-list-item v-for="b in c.books" :key="b.id" :active="bookId === b.id" :prepend-icon="mdiBookOpenPageVariant" :title="b.name" @click="pick(b.id, false)" />
-        <v-list-item :prepend-icon="mdiFolderPlus" :title="t('contacts.new_book')" @click="newBook" />
+        <v-list-item :prepend-icon="mdiFolderPlus" :title="t('contacts.ui.new_book')" @click="newBook" />
       </v-list>
     </v-card>
 
@@ -60,38 +60,38 @@
             <v-list-item v-for="(u, i) in arr(detail.urls)" :key="'u'+i" :prepend-icon="mdiWeb" :title="u.value" :href="u.value" target="_blank" />
             <v-list-item v-for="(a, i) in addresses(detail)" :key="'a'+i" :prepend-icon="mdiMapMarker" :title="a" />
           </v-list>
-          <div v-if="str(detail.note)" class="mt-4"><div class="text-caption text-medium-emphasis">{{ t('contacts.note') }}</div>{{ str(detail.note) }}</div>
+          <div v-if="str(detail.note)" class="mt-4"><div class="text-caption text-medium-emphasis">{{ t('contacts.ui.note') }}</div>{{ str(detail.note) }}</div>
         </v-card-text>
       </template>
-      <div v-else class="d-flex align-center justify-center fill-height text-medium-emphasis" style="min-height:300px">{{ t('contacts.select_hint') }}</div>
+      <div v-else class="d-flex align-center justify-center fill-height text-medium-emphasis" style="min-height:300px">{{ t('contacts.ui.empty') }}</div>
     </v-card>
   </div>
 
   <!-- Editor -->
   <v-dialog v-model="editor" max-width="640" scrollable>
     <v-card rounded="xl">
-      <v-card-title>{{ editing ? t('common.edit') : t('contacts.new') }}</v-card-title>
+      <v-card-title>{{ editing ? t('common.edit') : t('contacts.ui.new_contact') }}</v-card-title>
       <v-card-text>
-        <v-select v-model="form.book_id" :items="bookItems" :label="t('contacts.address_book')" variant="outlined" density="comfortable" />
+        <v-select v-model="form.book_id" :items="bookItems" :label="t('contacts.ui.books')" variant="outlined" density="comfortable" />
         <v-row dense>
-          <v-col cols="6"><v-text-field v-model="form.first_name" :label="t('contacts.first_name')" variant="outlined" density="compact" /></v-col>
-          <v-col cols="6"><v-text-field v-model="form.last_name" :label="t('contacts.last_name')" variant="outlined" density="compact" /></v-col>
+          <v-col cols="6"><v-text-field v-model="form.first_name" :label="t('contacts.ui.first_name')" variant="outlined" density="compact" /></v-col>
+          <v-col cols="6"><v-text-field v-model="form.last_name" :label="t('contacts.ui.last_name')" variant="outlined" density="compact" /></v-col>
         </v-row>
-        <v-text-field v-model="form.org" :label="t('contacts.org')" variant="outlined" density="compact" />
-        <v-text-field v-model="form.title" :label="t('contacts.title')" variant="outlined" density="compact" />
-        <div class="text-caption text-medium-emphasis mt-2">{{ t('contacts.emails') }}</div>
+        <v-text-field v-model="form.org" :label="t('contacts.ui.org')" variant="outlined" density="compact" />
+        <v-text-field v-model="form.title" :label="t('contacts.ui.title')" variant="outlined" density="compact" />
+        <div class="text-caption text-medium-emphasis mt-2">{{ t('contacts.ui.email') }}</div>
         <div v-for="(e, i) in form.emails" :key="'fe'+i" class="d-flex ga-2">
           <v-text-field v-model="e.value" type="email" variant="outlined" density="compact" class="flex-grow-1" />
           <v-btn variant="text" :icon="mdiClose" @click="form.emails.splice(i,1)" />
         </div>
-        <v-btn size="small" variant="text" :prepend-icon="mdiPlus" @click="form.emails.push({ value: '', type: 'home' })">{{ t('contacts.add_email') }}</v-btn>
-        <div class="text-caption text-medium-emphasis mt-2">{{ t('contacts.phones') }}</div>
+        <v-btn size="small" variant="text" :prepend-icon="mdiPlus" @click="form.emails.push({ value: '', type: 'home' })">{{ t('common.add') }}</v-btn>
+        <div class="text-caption text-medium-emphasis mt-2">{{ t('contacts.ui.phone') }}</div>
         <div v-for="(p, i) in form.phones" :key="'fp'+i" class="d-flex ga-2">
           <v-text-field v-model="p.value" variant="outlined" density="compact" class="flex-grow-1" />
           <v-btn variant="text" :icon="mdiClose" @click="form.phones.splice(i,1)" />
         </div>
-        <v-btn size="small" variant="text" :prepend-icon="mdiPlus" @click="form.phones.push({ value: '', type: 'cell' })">{{ t('contacts.add_phone') }}</v-btn>
-        <v-textarea v-model="form.note" :label="t('contacts.note')" rows="2" variant="outlined" density="compact" class="mt-2" />
+        <v-btn size="small" variant="text" :prepend-icon="mdiPlus" @click="form.phones.push({ value: '', type: 'cell' })">{{ t('common.add') }}</v-btn>
+        <v-textarea v-model="form.note" :label="t('contacts.ui.note')" rows="2" variant="outlined" density="compact" class="mt-2" />
       </v-card-text>
       <v-card-actions><v-spacer /><v-btn variant="text" @click="editor = false">{{ t('common.cancel') }}</v-btn><v-btn color="primary" :loading="saving" @click="save">{{ t('common.save') }}</v-btn></v-card-actions>
     </v-card>
@@ -182,5 +182,5 @@ async function save() {
     success(t('common.saved'));
   } catch { error(t('common.error')); } finally { saving.value = false; }
 }
-async function newBook() { const name = prompt(t('contacts.new_book')); if (name) { await c.createBook(name); await c.load(); } }
+async function newBook() { const name = prompt(t('contacts.ui.new_book')); if (name) { await c.createBook(name); await c.load(); } }
 </script>

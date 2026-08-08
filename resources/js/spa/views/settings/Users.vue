@@ -1,7 +1,7 @@
 <template>
   <v-card rounded="xl" border flat>
     <v-toolbar flat color="surface">
-      <v-toolbar-title>{{ t('pages.settings.users') }}</v-toolbar-title>
+      <v-toolbar-title>{{ t('settings.users_section') }}</v-toolbar-title>
       <v-spacer />
       <v-btn color="primary" variant="tonal" :prepend-icon="mdiPlus" @click="openNew">{{ t('common.add') }}</v-btn>
     </v-toolbar>
@@ -18,9 +18,9 @@
           <template #activator="{ props }"><v-btn variant="text" size="small" :icon="mdiDotsVertical" v-bind="props" /></template>
           <v-list density="compact">
             <v-list-item :prepend-icon="mdiPencil" :title="t('common.edit')" @click="openEdit(item)" />
-            <v-list-item :prepend-icon="mdiKey" :title="t('pages.settings.reset_password')" @click="onResetPw(item)" />
+            <v-list-item :prepend-icon="mdiKey" :title="t('settings.users_reset')" @click="onResetPw(item)" />
             <v-list-item v-if="item.two_factor" :prepend-icon="mdiShieldRefresh" title="Reset 2FA" @click="s.reset2fa(item.id)" />
-            <v-list-item :prepend-icon="mdiLinkVariant" :title="t('pages.settings.invite_link')" @click="onInvite(item)" />
+            <v-list-item :prepend-icon="mdiLinkVariant" :title="t('settings.users_invite_create')" @click="onInvite(item)" />
             <v-divider />
             <v-list-item :prepend-icon="mdiDelete" :title="t('common.delete')" base-color="error" @click="onDelete(item)" />
           </v-list>
@@ -33,10 +33,10 @@
     <v-card rounded="xl">
       <v-card-title>{{ editing ? t('common.edit') : t('common.add') }}</v-card-title>
       <v-card-text>
-        <v-text-field v-model="form.name" :label="t('account.name')" variant="outlined" density="comfortable" :error-messages="err.name" />
-        <v-text-field v-model="form.email" :label="t('account.email')" type="email" variant="outlined" density="comfortable" :error-messages="err.email" />
-        <v-text-field v-if="!editing" v-model="form.password" :label="t('account.password')" type="password" variant="outlined" density="comfortable" :error-messages="err.password" />
-        <v-select v-model="form.role" :items="['user','admin']" :label="t('pages.settings.role')" variant="outlined" density="comfortable" />
+        <v-text-field v-model="form.name" :label="t('settings.users_name')" variant="outlined" density="comfortable" :error-messages="err.name" />
+        <v-text-field v-model="form.email" :label="t('settings.users_email')" type="email" variant="outlined" density="comfortable" :error-messages="err.email" />
+        <v-text-field v-if="!editing" v-model="form.password" :label="t('settings.users_password')" type="password" variant="outlined" density="comfortable" :error-messages="err.password" />
+        <v-select v-model="form.role" :items="['user','admin']" :label="t('settings.users_role')" variant="outlined" density="comfortable" />
       </v-card-text>
       <v-card-actions>
         <v-spacer />
@@ -48,7 +48,7 @@
 
   <v-dialog v-model="linkDialog" max-width="560">
     <v-card rounded="xl">
-      <v-card-title>{{ t('pages.settings.invite_link') }}</v-card-title>
+      <v-card-title>{{ t('settings.users_invite_create') }}</v-card-title>
       <v-card-text>
         <v-text-field :model-value="link" readonly variant="outlined" append-inner-icon="mdiContentCopy" @click:append-inner="copy" />
       </v-card-text>
@@ -75,9 +75,9 @@ const linkDialog = ref(false);
 const link = ref('');
 
 const headers = [
-  { title: t('account.name'), key: 'name' },
-  { title: t('account.email'), key: 'email' },
-  { title: t('pages.settings.role'), key: 'role' },
+  { title: t('settings.users_name'), key: 'name' },
+  { title: t('settings.users_email'), key: 'email' },
+  { title: t('settings.users_role'), key: 'role' },
   { title: '2FA', key: 'two_factor' },
   { title: '', key: 'actions', sortable: false, align: 'end' as const },
 ];

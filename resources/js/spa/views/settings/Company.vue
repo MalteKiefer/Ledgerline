@@ -1,13 +1,13 @@
 <template>
   <v-card rounded="xl" border flat>
-    <v-toolbar flat color="surface"><v-toolbar-title>{{ t('settings.company') }}</v-toolbar-title></v-toolbar>
+    <v-toolbar flat color="surface"><v-toolbar-title>{{ t('settings.company_section') }}</v-toolbar-title></v-toolbar>
     <v-divider />
     <v-card-text v-if="c">
       <v-row dense>
         <v-col cols="12" sm="6"><v-text-field v-model="c.company_name" label="Name" variant="outlined" density="comfortable" /></v-col>
         <v-col cols="12" sm="6"><v-text-field v-model="c.company_email" label="E-Mail" variant="outlined" density="comfortable" /></v-col>
-        <v-col cols="12"><v-textarea v-model="c.company_address" :label="t('account.address')" rows="2" variant="outlined" density="comfortable" /></v-col>
-        <v-col cols="12" sm="4"><v-text-field v-model="c.company_phone" :label="t('account.phone')" variant="outlined" density="compact" /></v-col>
+        <v-col cols="12"><v-textarea v-model="c.company_address" :label="t('settings.company_address')" rows="2" variant="outlined" density="comfortable" /></v-col>
+        <v-col cols="12" sm="4"><v-text-field v-model="c.company_phone" :label="t('settings.company_phone')" variant="outlined" density="compact" /></v-col>
         <v-col cols="12" sm="4"><v-text-field v-model="c.company_tax_id" label="Tax ID" variant="outlined" density="compact" /></v-col>
         <v-col cols="12" sm="4"><v-text-field v-model="c.company_vat_id" label="VAT ID" variant="outlined" density="compact" /></v-col>
         <v-col cols="12" sm="6"><v-text-field v-model="c.company_iban" label="IBAN" variant="outlined" density="compact" /></v-col>
