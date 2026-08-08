@@ -126,6 +126,22 @@
     }
     .msym-fill { --msym-fill: 1; }
 
+    /* M3 form control — reused across every module's inputs/selects/textareas so
+       fields aren't hand-styled per view. Compose size utilities on top. */
+    .m3-field {
+        border-radius: 0.5rem;
+        border: 1px solid var(--color-md-outline);
+        background: transparent;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        color: var(--color-md-on-surface);
+    }
+    .m3-field:focus {
+        border-color: var(--color-md-primary);
+        outline: none;
+        box-shadow: 0 0 0 1px var(--color-md-primary);
+    }
+
     /* M3 state layer: a translucent primary overlay on hover/press. Put on any
        interactive surface via class="m3-state". */
     .m3-state { position: relative; }
