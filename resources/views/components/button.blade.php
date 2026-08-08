@@ -20,7 +20,7 @@
     $iconSizes = ['sm' => 'h-3.5 w-3.5', 'md' => 'h-4 w-4', 'lg' => 'h-5 w-5'];
     $variants = [
         'primary' => 'll-accent shadow-sm shadow-accent/30 hover:brightness-105',
-        'secondary' => 'border border-gray-300 text-gray-700 hover:border-accent hover:text-accent hover:bg-accent/5 dark:border-gray-700 dark:text-gray-300',
+        'secondary' => 'border border-md-outline-variant text-md-on-surface-var hover:border-accent hover:text-accent hover:bg-accent/5 dark:border-md-outline-variant dark:text-md-on-surface-var',
         'danger' => 'border border-red-300 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950',
     ];
     $classes = $base.' '.($sizes[$size] ?? $sizes['md']).' '.($variants[$variant] ?? $variants['secondary']);

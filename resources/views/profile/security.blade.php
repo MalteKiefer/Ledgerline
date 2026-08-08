@@ -9,8 +9,8 @@
         {{-- Password change (Fortify updatePasswords; errors in the "updatePassword" bag) --}}
         <div class="mt-5 ll-card space-y-4">
             <div>
-                <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.password_title') }}</h2>
-                <p class="text-xs text-gray-500 dark:text-gray-400">{{ __('account.password_desc') }}</p>
+                <h2 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('account.password_title') }}</h2>
+                <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('account.password_desc') }}</p>
             </div>
             @if ($errors->updatePassword->any())
                 <x-alert variant="error">{{ $errors->updatePassword->first() }}</x-alert>
@@ -19,19 +19,19 @@
                 @csrf
                 @method('PUT')
                 <div>
-                    <label for="current_password" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('account.password_current') }}</label>
+                    <label for="current_password" class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var mb-1">{{ __('account.password_current') }}</label>
                     <input id="current_password" name="current_password" type="password" autocomplete="current-password" required
-                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                        class="block w-full rounded-lg border border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface px-3 py-2 text-sm text-md-on-surface dark:text-md-on-surface focus:border-accent focus:ring-accent">
                 </div>
                 <div>
-                    <label for="password" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('account.password_new') }}</label>
+                    <label for="password" class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var mb-1">{{ __('account.password_new') }}</label>
                     <input id="password" name="password" type="password" autocomplete="new-password" required minlength="12"
-                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                        class="block w-full rounded-lg border border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface px-3 py-2 text-sm text-md-on-surface dark:text-md-on-surface focus:border-accent focus:ring-accent">
                 </div>
                 <div>
-                    <label for="password_confirmation" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('account.password_confirm') }}</label>
+                    <label for="password_confirmation" class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var mb-1">{{ __('account.password_confirm') }}</label>
                     <input id="password_confirmation" name="password_confirmation" type="password" autocomplete="new-password" required minlength="12"
-                        class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                        class="block w-full rounded-lg border border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface px-3 py-2 text-sm text-md-on-surface dark:text-md-on-surface focus:border-accent focus:ring-accent">
                 </div>
                 <x-button type="submit">{{ __('account.password_save') }}</x-button>
             </form>
@@ -40,13 +40,13 @@
         <div class="mt-5 ll-card space-y-4">
             <div class="flex items-center justify-between gap-3">
                 <div>
-                    <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.twofa_title') }}</h2>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ __('account.twofa_desc') }}</p>
+                    <h2 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('account.twofa_title') }}</h2>
+                    <p class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('account.twofa_desc') }}</p>
                 </div>
                 @if ($enabled)
                     <span class="rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-600 dark:text-green-400">{{ __('account.twofa_on') }}</span>
                 @else
-                    <span class="rounded-full bg-gray-500/15 px-2.5 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('account.twofa_off') }}</span>
+                    <span class="rounded-full bg-gray-500/15 px-2.5 py-1 text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('account.twofa_off') }}</span>
                 @endif
             </div>
 
@@ -60,30 +60,30 @@
 
             {{-- Secret generated but not yet confirmed → show QR + confirm --}}
             @if ($pending)
-                <p class="text-sm text-gray-600 dark:text-gray-400">{{ __('account.twofa_scan') }}</p>
+                <p class="text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('account.twofa_scan') }}</p>
                 @if ($qr)
                     <div class="inline-block rounded-lg bg-white p-3">{!! $qr !!}</div>
                 @endif
                 <form method="POST" action="{{ route('two-factor.confirm') }}" class="flex flex-wrap items-end gap-2">
                     @csrf
                     <div>
-                        <label for="code" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('account.twofa_code') }}</label>
+                        <label for="code" class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var mb-1">{{ __('account.twofa_code') }}</label>
                         <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" required
-                            class="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm tracking-widest text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                            class="rounded-lg border border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface px-3 py-2 text-sm tracking-widest text-md-on-surface dark:text-md-on-surface focus:border-accent focus:ring-accent">
                     </div>
                     <x-button type="submit">{{ __('account.twofa_confirm') }}</x-button>
                 </form>
                 <form method="POST" action="{{ route('two-factor.disable') }}">
                     @csrf @method('DELETE')
-                    <button type="submit" class="text-xs text-gray-500 hover:text-red-600">{{ __('account.twofa_cancel') }}</button>
+                    <button type="submit" class="text-xs text-md-on-surface-var hover:text-red-600">{{ __('account.twofa_cancel') }}</button>
                 </form>
             @endif
 
             {{-- Recovery codes (pending or enabled) --}}
             @if (($pending || $enabled) && count($recovery))
                 <div class="rounded-xl border border-black/[0.08] dark:border-white/10 p-3">
-                    <p class="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">{{ __('account.twofa_recovery_codes') }}</p>
-                    <div class="grid grid-cols-2 gap-1 font-mono text-xs text-gray-800 dark:text-gray-200">
+                    <p class="mb-2 text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('account.twofa_recovery_codes') }}</p>
+                    <div class="grid grid-cols-2 gap-1 font-mono text-xs text-md-on-surface dark:text-md-on-surface">
                         @foreach ($recovery as $code)
                             <div>{{ $code }}</div>
                         @endforeach
@@ -106,12 +106,12 @@
 
         {{-- WebDAV access: mount the Files tree as a network drive --}}
         <div class="mt-5 ll-card">
-            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.webdav_title') }}</h2>
-            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ __('account.webdav_desc') }}</p>
+            <h2 class="text-base font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('account.webdav_title') }}</h2>
+            <p class="mt-0.5 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('account.webdav_desc') }}</p>
             <div class="mt-3 rounded-xl bg-black/[0.03] dark:bg-white/5 px-3 py-2 text-xs">
-                <span class="text-gray-500 dark:text-gray-400">{{ __('account.webdav_url') }}:</span>
-                <code class="ml-1 select-all text-gray-800 dark:text-gray-200">{{ rtrim(config('app.url'), '/') }}/dav/</code>
-                <span class="mt-1 block text-gray-500 dark:text-gray-400">{{ __('account.webdav_user') }}: <code class="text-gray-800 dark:text-gray-200">{{ $user->email }}</code></span>
+                <span class="text-md-on-surface-var dark:text-md-on-surface-var">{{ __('account.webdav_url') }}:</span>
+                <code class="ml-1 select-all text-md-on-surface dark:text-md-on-surface">{{ rtrim(config('app.url'), '/') }}/dav/</code>
+                <span class="mt-1 block text-md-on-surface-var dark:text-md-on-surface-var">{{ __('account.webdav_user') }}: <code class="text-md-on-surface dark:text-md-on-surface">{{ $user->email }}</code></span>
             </div>
             @if (session('status') === 'webdav-set')
                 <x-alert variant="success" class="mt-3">{{ __('account.webdav_set') }}</x-alert>
@@ -122,9 +122,9 @@
                 @csrf
                 @method('PUT')
                 <div class="min-w-0 flex-1">
-                    <label for="webdav_password" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('account.webdav_password') }}</label>
+                    <label for="webdav_password" class="block text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var mb-1">{{ __('account.webdav_password') }}</label>
                     <input id="webdav_password" name="webdav_password" type="password" autocomplete="new-password" required minlength="12"
-                        class="w-full rounded-xl border-gray-200 dark:border-gray-700 bg-white dark:bg-[#2c2c2e] text-sm focus:border-accent focus:ring-accent">
+                        class="w-full rounded-xl border-md-outline-variant dark:border-md-outline-variant bg-white dark:bg-md-surface-2 text-sm focus:border-accent focus:ring-accent">
                     @error('webdav_password')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                 </div>
                 <x-button type="submit">{{ __('account.webdav_save') }}</x-button>
@@ -133,7 +133,7 @@
                 <form method="POST" action="{{ route('profile.webdav.destroy') }}" class="mt-2">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" class="text-xs text-gray-500 hover:text-red-600">{{ __('account.webdav_disable') }}</button>
+                    <button type="submit" class="text-xs text-md-on-surface-var hover:text-red-600">{{ __('account.webdav_disable') }}</button>
                 </form>
             @endif
         </div>

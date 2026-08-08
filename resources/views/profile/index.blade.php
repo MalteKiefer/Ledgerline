@@ -21,11 +21,11 @@
         @else
             <span class="flex h-20 w-20 items-center justify-center rounded-full ll-accent text-2xl font-semibold shadow-lg shadow-accent/30">{{ $initials }}</span>
         @endif
-        <p class="mt-3 text-xl font-bold text-gray-900 dark:text-gray-100">{{ $user->name ?: '—' }}</p>
+        <p class="mt-3 text-xl font-bold text-md-on-surface dark:text-md-on-surface">{{ $user->name ?: '—' }}</p>
         @if ($user->email)
-            <p class="text-sm text-gray-500 dark:text-gray-400">{{ $user->email }}</p>
+            <p class="text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ $user->email }}</p>
         @endif
-        <p class="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500"><x-icon name="lock-closed" class="h-3.5 w-3.5" />{{ request()->getHost() }}</p>
+        <p class="mt-1 inline-flex items-center gap-1.5 text-xs text-md-on-surface-var dark:text-md-on-surface-var"><x-icon name="lock-closed" class="h-3.5 w-3.5" />{{ request()->getHost() }}</p>
     </div>
 
     {{-- Stats band --}}
@@ -41,9 +41,9 @@
             <div class="ll-card flex flex-col gap-2 !p-4">
                 <span class="ll-chip h-9 w-9" style="--chip: {{ $t['tint'] }}"><x-icon name="{{ $t['icon'] }}" class="h-5 w-5" /></span>
                 <div class="min-w-0">
-                    <p class="truncate text-lg font-bold leading-tight text-gray-900 dark:text-gray-100">{{ $t['value'] }}</p>
-                    <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{{ $t['label'] }}</p>
-                    @isset($t['sub'])<p class="truncate text-[11px] text-gray-400 dark:text-gray-500">{{ $t['sub'] }}</p>@endisset
+                    <p class="truncate text-lg font-bold leading-tight text-md-on-surface dark:text-md-on-surface">{{ $t['value'] }}</p>
+                    <p class="mt-0.5 truncate text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ $t['label'] }}</p>
+                    @isset($t['sub'])<p class="truncate text-[11px] text-md-on-surface-var dark:text-md-on-surface-var">{{ $t['sub'] }}</p>@endisset
                 </div>
             </div>
         @endforeach
@@ -69,17 +69,17 @@
     @endphp
 
     @foreach ([['account.hub_account_heading', $account], ['account.hub_personal_heading', $personal], ['account.hub_data_heading', $data]] as [$heading, $rows])
-        <h2 class="mt-7 mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __($heading) }}</h2>
+        <h2 class="mt-7 mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __($heading) }}</h2>
         <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
             @foreach ($rows as $r)
                 <a href="{{ $r['url'] }}" class="group flex items-center gap-3.5 px-4 py-3.5 transition hover:bg-accent/5">
                     <span class="ll-chip h-9 w-9 shrink-0" style="--chip: {{ $r['tint'] }}"><x-icon name="{{ $r['icon'] }}" class="h-5 w-5" /></span>
                     <span class="min-w-0 flex-1">
-                        <span class="block text-sm font-semibold {{ ($r['danger'] ?? false) ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100' }}">{{ $r['title'] }}</span>
-                        <span class="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">{{ $r['desc'] }}</span>
+                        <span class="block text-sm font-semibold {{ ($r['danger'] ?? false) ? 'text-red-600 dark:text-red-400' : 'text-md-on-surface dark:text-md-on-surface' }}">{{ $r['title'] }}</span>
+                        <span class="mt-0.5 block truncate text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ $r['desc'] }}</span>
                     </span>
-                    @isset($r['badge'])<span class="shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500">{{ $r['badge'] }}</span>@endisset
-                    <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600 transition group-hover:text-accent" />
+                    @isset($r['badge'])<span class="shrink-0 text-xs font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ $r['badge'] }}</span>@endisset
+                    <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-md-on-surface-var dark:text-md-on-surface-var transition group-hover:text-accent" />
                 </a>
             @endforeach
         </div>
@@ -87,15 +87,15 @@
 
     {{-- Administration (workspace-wide, admin only) --}}
     @if ($global)
-        <h2 class="mt-7 mb-2 flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('account.hub_admin_heading') }}<x-icon name="lock-closed" class="h-3 w-3" /></h2>
+        <h2 class="mt-7 mb-2 flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('account.hub_admin_heading') }}<x-icon name="lock-closed" class="h-3 w-3" /></h2>
         <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
             <a href="{{ route('settings') }}" class="group flex items-center gap-3.5 px-4 py-3.5 transition hover:bg-accent/5">
                 <span class="ll-chip h-9 w-9 shrink-0" style="--chip: #6b7280"><x-icon name="server" class="h-5 w-5" /></span>
                 <span class="min-w-0 flex-1">
-                    <span class="block text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('account.nav_admin') }}</span>
-                    <span class="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">{{ __('account.nav_admin_desc') }}</span>
+                    <span class="block text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('account.nav_admin') }}</span>
+                    <span class="mt-0.5 block truncate text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('account.nav_admin_desc') }}</span>
                 </span>
-                <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600 transition group-hover:text-accent" />
+                <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-md-on-surface-var dark:text-md-on-surface-var transition group-hover:text-accent" />
             </a>
         </div>
     @endif

@@ -9,7 +9,7 @@
 --}}
 @php
     $initial = strtoupper(mb_substr($user->name ?? '?', 0, 1));
-    $initialClasses = $size.' inline-flex items-center justify-center rounded-full bg-gray-300 text-sm font-medium text-gray-700 dark:text-gray-300';
+    $initialClasses = $size.' inline-flex items-center justify-center rounded-full bg-gray-300 text-sm font-medium text-md-on-surface-var dark:text-md-on-surface-var';
 @endphp
 
 @if (! empty($user->avatar))

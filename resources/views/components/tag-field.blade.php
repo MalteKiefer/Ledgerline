@@ -14,7 +14,7 @@
     $after = $commit ? '; '.$commit : '';
 @endphp
 
-<div {{ $attributes->class('mt-1 flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 dark:bg-gray-800 px-2 py-1.5 text-sm transition focus-within:border-accent focus-within:ring-1 focus-within:ring-accent') }}
+<div {{ $attributes->class('mt-1 flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-md border border-md-outline-variant dark:border-md-outline-variant dark:bg-md-surface-2 px-2 py-1.5 text-sm transition focus-within:border-accent focus-within:ring-1 focus-within:ring-accent') }}
      @click="$refs.tagInput.focus()">
     <template x-for="tag in tagList()" :key="tag">
         <span class="inline-flex items-center gap-1 rounded-md bg-accent/10 py-0.5 pl-2 pr-1 text-xs font-medium text-accent">
@@ -29,5 +29,5 @@
         @blur="commitTag(){{ $after }}"
         placeholder="{{ $placeholder }}"
         @if ($list) list="{{ $list }}" @endif
-        class="min-w-[6rem] flex-1 border-0 bg-transparent p-0 text-sm focus:ring-0 placeholder:text-gray-400 dark:placeholder:text-gray-500">
+        class="min-w-[6rem] flex-1 border-0 bg-transparent p-0 text-sm focus:ring-0 placeholder:text-md-on-surface-var dark:placeholder:text-md-on-surface-var">
 </div>

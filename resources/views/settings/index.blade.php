@@ -1,6 +1,6 @@
 <x-layouts.app :title="__('settings.index_title')">
-    <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.heading') }}</h1>
-    <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ __('settings.admin_note') }}</p>
+    <h1 class="text-2xl font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('settings.heading') }}</h1>
+    <p class="mt-1 text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.admin_note') }}</p>
 
     @php
         // Administration only — personal preferences moved to the profile hub.
@@ -18,18 +18,18 @@
 
     <section class="mt-8">
         <div class="flex items-center gap-2 px-1">
-            <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ __('settings.admin_heading') }}</h2>
-            <x-icon name="lock-closed" class="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.admin_heading') }}</h2>
+            <x-icon name="lock-closed" class="h-3.5 w-3.5 text-md-on-surface-var dark:text-md-on-surface-var" />
         </div>
         <div class="mt-3 ll-card overflow-hidden !p-0 divide-y divide-black/[0.06] dark:divide-white/10">
             @foreach ($admin as $card)
                 <a href="{{ $card['url'] }}" class="group flex items-center gap-3.5 px-4 py-3.5 transition hover:bg-accent/5">
                     <span class="ll-chip" style="--chip: {{ $card['tint'] }}"><x-icon :name="$card['icon']" class="h-5 w-5" /></span>
                     <span class="min-w-0 flex-1">
-                        <span class="block text-sm font-semibold text-gray-900 dark:text-gray-100">{{ $card['title'] }}</span>
-                        <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{{ $card['desc'] }}</span>
+                        <span class="block text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ $card['title'] }}</span>
+                        <span class="mt-0.5 block text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ $card['desc'] }}</span>
                     </span>
-                    <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600 transition group-hover:text-accent" />
+                    <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-md-on-surface-var dark:text-md-on-surface-var transition group-hover:text-accent" />
                 </a>
             @endforeach
         </div>

@@ -1,12 +1,12 @@
 <x-layouts.app :title="__('settings.paperless_heading')">
-    @php $input = 'mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm'; @endphp
+    @php $input = 'mt-1 block w-full rounded-md border-md-outline-variant dark:border-md-outline-variant shadow-sm focus:border-accent focus:ring-accent sm:text-sm'; @endphp
 
-    <p class="text-sm text-gray-500 dark:text-gray-400">
+    <p class="text-sm text-md-on-surface-var dark:text-md-on-surface-var">
         <a href="{{ route('settings') }}" class="hover:underline">{{ __('messages.menu.settings') }}</a>
         <span aria-hidden="true">/</span> {{ __('settings.paperless_section') }}
     </p>
-    <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.paperless_heading') }}</h1>
-    <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ __('settings.paperless_desc') }}</p>
+    <h1 class="mt-1 text-2xl font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('settings.paperless_heading') }}</h1>
+    <p class="mt-1 text-sm text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.paperless_desc') }}</p>
 
     <div x-data="paperlessSettings({
             testUrl: '{{ route('settings.paperless.test') }}',
@@ -17,28 +17,28 @@
             counts: @js($counts),
         })">
         {{-- Connection --}}
-        <form method="POST" action="{{ route('settings.paperless.update') }}" class="mt-6 rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+        <form method="POST" action="{{ route('settings.paperless.update') }}" class="mt-6 rounded-lg border border-md-outline-variant bg-white p-4 sm:p-6 shadow-sm">
             @csrf
             @method('PUT')
 
             <label class="flex items-center gap-2">
                 <input type="checkbox" name="paperless_enabled" value="1" @checked(old('paperless_enabled', $settings->paperless_enabled))
-                    class="rounded border-gray-300 dark:border-gray-700 focus:ring-accent">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.paperless_enabled') }}</span>
+                    class="rounded border-md-outline-variant dark:border-md-outline-variant focus:ring-accent">
+                <span class="text-sm font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.paperless_enabled') }}</span>
             </label>
 
             <div class="mt-4">
-                <label for="paperless_url" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.paperless_url') }}</label>
+                <label for="paperless_url" class="block text-sm font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.paperless_url') }}</label>
                 <input type="url" id="paperless_url" name="paperless_url" x-ref="url" placeholder="https://paperless.example.com"
                     value="{{ old('paperless_url', $settings->paperless_url) }}" class="{{ $input }}">
                 @error('paperless_url')<p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>@enderror
             </div>
 
             <div class="mt-4">
-                <label for="paperless_token" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.paperless_token') }}</label>
+                <label for="paperless_token" class="block text-sm font-medium text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.paperless_token') }}</label>
                 <input type="password" id="paperless_token" name="paperless_token" x-ref="token" autocomplete="off"
                     placeholder="{{ $settings->paperless_token ? '••••••••' : '' }}" class="{{ $input }}">
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.paperless_token_hint') }}</p>
+                <p class="mt-1 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.paperless_token_hint') }}</p>
                 @error('paperless_token')<p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>@enderror
             </div>
 
@@ -55,30 +55,30 @@
         {{-- Cached quick-pick terms --}}
         <div class="mt-6 ll-card">
             <div class="flex items-center justify-between gap-3">
-                <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.paperless_cache_heading') }}</h2>
+                <h2 class="text-sm font-semibold text-md-on-surface dark:text-md-on-surface">{{ __('settings.paperless_cache_heading') }}</h2>
                 <x-button variant="secondary" size="sm" @click="sync()" ::disabled="busy">
                     <span x-show="busy === 'sync'" x-text="config.syncing"></span>
                     <span x-show="busy !== 'sync'">{{ __('settings.paperless_sync_now') }}</span>
                 </x-button>
             </div>
             <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-                <div class="rounded-md bg-gray-50 dark:bg-gray-800 p-3">
-                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ __('settings.paperless_tags') }}</div>
-                    <div class="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100" x-text="counts.tag"></div>
+                <div class="rounded-md bg-md-surface-2 dark:bg-md-surface-2 p-3">
+                    <div class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.paperless_tags') }}</div>
+                    <div class="mt-1 text-xl font-semibold text-md-on-surface dark:text-md-on-surface" x-text="counts.tag"></div>
                 </div>
-                <div class="rounded-md bg-gray-50 dark:bg-gray-800 p-3">
-                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ __('settings.paperless_document_types') }}</div>
-                    <div class="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100" x-text="counts.document_type"></div>
+                <div class="rounded-md bg-md-surface-2 dark:bg-md-surface-2 p-3">
+                    <div class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.paperless_document_types') }}</div>
+                    <div class="mt-1 text-xl font-semibold text-md-on-surface dark:text-md-on-surface" x-text="counts.document_type"></div>
                 </div>
-                <div class="rounded-md bg-gray-50 dark:bg-gray-800 p-3">
-                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ __('settings.paperless_correspondents') }}</div>
-                    <div class="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100" x-text="counts.correspondent"></div>
+                <div class="rounded-md bg-md-surface-2 dark:bg-md-surface-2 p-3">
+                    <div class="text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.paperless_correspondents') }}</div>
+                    <div class="mt-1 text-xl font-semibold text-md-on-surface dark:text-md-on-surface" x-text="counts.correspondent"></div>
                 </div>
             </div>
             @if ($settings->paperless_synced_at)
-                <p class="mt-3 text-xs text-gray-400 dark:text-gray-500">{{ __('settings.paperless_synced_at', ['time' => $settings->paperless_synced_at->timezone(config('app.timezone'))->format('Y-m-d H:i')]) }}</p>
+                <p class="mt-3 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.paperless_synced_at', ['time' => $settings->paperless_synced_at->timezone(config('app.timezone'))->format('Y-m-d H:i')]) }}</p>
             @else
-                <p class="mt-3 text-xs text-gray-400 dark:text-gray-500">{{ __('settings.paperless_never_synced') }}</p>
+                <p class="mt-3 text-xs text-md-on-surface-var dark:text-md-on-surface-var">{{ __('settings.paperless_never_synced') }}</p>
             @endif
             <p x-show="syncError" x-cloak class="mt-2 text-sm text-red-600 dark:text-red-400" x-text="syncError"></p>
         </div>

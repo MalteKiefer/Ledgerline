@@ -39,7 +39,7 @@
              @click.outside="if (! $refs.amTrigger?.contains($event.target)) open = false"
              @click="open = false"
              @scroll.window="open = false"
-             class="fixed z-[1600] {{ $width }} max-h-[80vh] overflow-y-auto rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-xl"
+             class="fixed z-[1600] {{ $width }} max-h-[80vh] overflow-y-auto rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-md-surface py-1 shadow-xl"
              :style="`top: ${_y}px; left: ${_x}px;{{ $align === 'left' ? '' : ' transform: translateX(-100%);' }}`">
             {{ $slot }}
         </div>
