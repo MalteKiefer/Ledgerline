@@ -8,11 +8,8 @@ use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\UpdateUserPassword;
 use App\Models\AppSettings;
-use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Str;
 use Laravel\Fortify\Actions\RedirectIfTwoFactorAuthenticatable;
 use Laravel\Fortify\Fortify;
 
@@ -50,30 +47,10 @@ class FortifyServiceProvider extends ServiceProvider
         // also blocked in CreateNewUser (defence in depth).
         Fortify::registerView(fn () => self::registrationOpen() ? view('auth.register') : redirect()->route('login'));
 
-        // Register limiters after the whole app has booted so they land on the
-        // final RateLimiter singleton — the deferred CacheServiceProvider (which
-        // owns both `cache` and the RateLimiter) is re-resolved mid-boot when
-        // AppServiceProvider reads settings via the cache, discarding limiters
-        // registered earlier (→ 500 "Rate limiter [fortify] is not defined").
-        $this->app->booted(function (): void {
-            RateLimiter::for('login', function (Request $request): Limit {
-                $email = $request->string(Fortify::username())->lower()->value();
-
-                return Limit::perMinute(5)->by(Str::transliterate($email.'|'.$request->ip()));
-            });
-
-            RateLimiter::for('two-factor', function (Request $request): Limit {
-                $id = $request->session()->get('login.id');
-
-                return Limit::perMinute(5)->by(is_scalar($id) ? (string) $id : (string) $request->ip());
-            });
-
-            // Blanket per-IP limit on the whole Fortify route group (register /
-            // forgot-password / reset-password / verification-notification). Stacks
-            // with the tighter login/two-factor buckets above; stops reset-email
-            // bombing + enumeration on the otherwise-unthrottled public auth POSTs.
-            RateLimiter::for('fortify', fn (Request $request): Limit => Limit::perMinute(20)->by((string) $request->ip()));
-        });
+        // No rate limiters: throttling is disabled app-wide (private 2-user home
+        // LAN, not internet-facing) — the `throttle` alias is a no-op. Fortify's
+        // login/two-factor throttle groups therefore pass through inert. See the
+        // Security register (2026-08-08).
     }
 
     /** Whether self-service registration is currently enabled workspace-wide. */
