@@ -12,6 +12,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -97,7 +98,12 @@ class AccountController extends Controller
 
         // Token API request (no web session): revoke the presented token and answer JSON.
         if ($request->expectsJson() || ! $request->hasSession()) {
-            $user->currentAccessToken()?->delete();
+            // Only a real PersonalAccessToken can be deleted; under SPA cookie
+            // auth this is a TransientToken (no delete()) and the row is gone anyway.
+            $tok = $user->currentAccessToken();
+            if ($tok instanceof PersonalAccessToken) {
+                $tok->delete();
+            }
 
             return response()->json(['deleted' => true]);
         }

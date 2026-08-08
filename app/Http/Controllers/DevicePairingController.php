@@ -12,6 +12,7 @@ use Endroid\QrCode\Writer\SvgWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Laravel\Sanctum\PersonalAccessToken;
 
 /**
  * Web (session) side of QR device pairing. The signed-in owner starts a pairing
@@ -97,7 +98,10 @@ class DevicePairingController extends Controller
         // itself). Null for session-auth callers (web). Resolved once, then
         // captured into the map closure (a bare closure would not see $request).
         $user = $this->requireUser($request);
-        $currentKey = $user->currentAccessToken()?->getKey();
+        // Under SPA cookie/session auth currentAccessToken() is a TransientToken
+        // (no getKey()); only a real PersonalAccessToken identifies "this device".
+        $token = $user->currentAccessToken();
+        $currentKey = $token instanceof PersonalAccessToken ? $token->getKey() : null;
         $devices = $user->tokens()
             // Most-recently-used first (nulls last), so the live device is on top and
             // any stale row sinks — a web caller can't match currentAccessToken().
