@@ -50,23 +50,13 @@ class AppServiceProvider extends ServiceProvider
         // Only admins may manage the non-personal, workspace-wide settings.
         Gate::define('manage-global-settings', fn (User $user): bool => $user->managesGlobalSettings());
 
-        // Hard, IP-keyed limit on the public QR-pairing exchange (the one-time
-        // code is the only credential there) — tight, since a legitimate user
-        // pairs a handful of devices by hand.
-        RateLimiter::for('auth-pair', fn (Request $request) => Limit::perMinute(30)->by($request->ip()));
-
-        // Security-sensitive gates that must stay HARD regardless of the LAN
-        // convenience THROTTLE_MULTIPLIER. Named limiters are string signatures,
-        // so ScaledThrottleRequests never scales them (it only scales inline
-        // numeric limits). These guard UNAUTHENTICATED credential-guessing:
-        //   - share-unlock: the Argon2id password gate on a public file-share link
-        //   - invite:       consuming/showing a mail-independent invite (sets a password)
-        RateLimiter::for('share-unlock', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
-        RateLimiter::for('invite', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
-        // WebDAV: each failed HTTP-Basic attempt runs an Argon2id verify and clients
-        // resend on every request, so cap per-IP to bound brute-force + CPU DoS.
-        // Named (not scaled) — legit clients browse well under this.
-        RateLimiter::for('dav', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
+        // Rate limiters are registered in a booted() callback (see registerRateLimiters):
+        // applySettingOverrides()/applyMailSettings() below resolve the `cache` service,
+        // whose deferred CacheServiceProvider also owns the RateLimiter singleton —
+        // registering limiters before that resolution churns them away, so the named
+        // limiters (auth-pair/share-unlock/invite/dav) would be undefined at request
+        // time (500 "Rate limiter [x] is not defined"). booted() runs after all that.
+        $this->registerRateLimiters();
 
         $this->applySettingOverrides();
         $this->applyMailSettings();
@@ -142,6 +132,26 @@ class AppServiceProvider extends ServiceProvider
      * Overlay admin settings onto config. Cached (settings saves clear it) so it
      * adds no DB query per request.
      */
+    /**
+     * Register the app's named rate limiters after the whole app has booted, so
+     * they land on the final RateLimiter singleton (not one later discarded when
+     * the deferred CacheServiceProvider is re-resolved during boot). All are
+     * string-named → ScaledThrottleRequests never scales them.
+     */
+    private function registerRateLimiters(): void
+    {
+        $this->app->booted(function (): void {
+            RateLimiter::for('auth-pair', fn (Request $request) => Limit::perMinute(30)->by($request->ip()));
+            // Unauthenticated credential-guess gates — kept hard regardless of the
+            // LAN convenience THROTTLE_MULTIPLIER (named ⇒ not scaled).
+            RateLimiter::for('share-unlock', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
+            RateLimiter::for('invite', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
+            // WebDAV: each failed HTTP-Basic attempt runs an Argon2id verify and
+            // clients resend on every request → cap per-IP (brute-force + CPU DoS).
+            RateLimiter::for('dav', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
+        });
+    }
+
     private function applySettingOverrides(): void
     {
         // Wrapped: this runs in boot() for every context including the docker
