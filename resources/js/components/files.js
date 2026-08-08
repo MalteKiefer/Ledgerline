@@ -327,6 +327,9 @@ export default (config = {}, labels = {}, initial = {}) => ({
     thumbUrl(row) { return '/files/entries/' + row.id + '/thumb'; },
     fileCat(row) { return fileCategory(row?.name, row?.mime); },
     typeLabel(file) { return labels.types?.[this.fileCat(file)] ?? file?.mime ?? ''; },
+    // Category key → human label for the storage-stats "by type" list. Exposed as
+    // a method because the closure `labels` isn't reachable from Blade expressions.
+    typeName(cat) { return labels.types?.[cat] || cat; },
     fileIconPath(row) { return CATEGORY_ICON[this.fileCat(row)] ?? CATEGORY_ICON.OTHER; },
     rowTint(row) { return row.kind === 'folder' ? FOLDER_TINT : categoryTint(row.name, row.mime || ''); },
     rowIconPath(row) { return row.kind === 'folder' ? FOLDER_ICON_PATH : (CATEGORY_ICON[fileCategory(row.name, row.mime || '')] || CATEGORY_ICON.OTHER); },
