@@ -415,7 +415,7 @@
     </Modal>
 
     <!-- Business-partner editor (all fields + multiple contact persons + logo pull) -->
-    <Modal v-model="pDlg" :title="partnerForm.id ? t('common.edit') : t('invoices.partner_add')" width="640px">
+    <Modal v-model="pDlg" :title="partnerForm.id ? t('common.edit') : t('invoices.partner_add')" width="920px">
       <div class="space-y-3">
         <TextField v-model="partnerForm.name" :label="t('invoices.partner_name') + ' *'" />
 
@@ -848,7 +848,6 @@ async function loadPartnerLogo() {
     const r = await api.get<{ icon: string | null }>(`/api/v1/passwords/icon?domain=${encodeURIComponent(host)}`);
     const icon = r?.icon ?? null;
     if (!icon) { error(t('invoices.partner_logo_none')); return; }
-    if (icon.length > 2000) { error(t('invoices.partner_logo_too_large')); return; } // backend `logo` column caps at 2000 chars
     partnerForm.logo = icon;
   } catch { error(t('common.error')); } finally { logoBusy.value = false; }
 }
