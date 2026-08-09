@@ -70,5 +70,9 @@ return [
         'regenerate_done' => 'Календарь пересоздан',
         'special_readonly' => 'Этот календарь создаётся автоматически и доступен только для чтения.',
         'birthday_event' => 'День рождения: :name',
+        'special_calendars' => 'Специальные календари',
+        'name_birthdays' => 'Дни рождения',
+        'name_holidays' => 'Праздники',
+        'name_school_holidays' => 'Школьные каникулы',
     ],
 ];

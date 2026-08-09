@@ -221,11 +221,6 @@
   <!-- Calendar editor -->
   <Modal v-model="calModal" :title="calEditingId ? t('calendar.ui.rename_calendar') : t('calendar.ui.new_calendar')" width="420px">
     <div class="space-y-4">
-      <Select v-if="!calEditingId" v-model="calForm.kind" :label="t('calendar.ui.new_calendar_type')" :options="calKindOptions" />
-      <template v-if="!calEditingId && isHolidayKind">
-        <Select v-model="calForm.country" :label="t('calendar.ui.country')" :options="countryOptions" />
-        <Select v-model="calForm.subdivision" :label="t('calendar.ui.region')" :options="regionOptions" />
-      </template>
       <TextField v-model="calForm.name" :label="t('calendar.ui.calendar_name')" />
       <div>
         <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('calendar.ui.color') }}</span>
@@ -279,7 +274,7 @@ import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { api, ApiError } from '@spa/api/client';
-import { useCalendarStore, type CalendarCol, type Occurrence, type HolidayCountry, type HolidaySubdivision } from '@spa/stores/calendar';
+import { useCalendarStore, type CalendarCol, type Occurrence } from '@spa/stores/calendar';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 
@@ -577,63 +572,22 @@ async function onDelete(): Promise<void> {
   } catch { error(t('common.error')); } finally { deleting.value = false; }
 }
 
-// --- calendar editor --------------------------------------------------------
+// --- calendar editor (NORMAL calendars only) --------------------------------
+// Special calendars (birthdays/holidays/school holidays) are created from the
+// calendar settings page (profile/Calendar.vue), not here.
 const calModal = ref(false);
 const calEditingId = ref<string | null>(null);
 const calSaving = ref(false);
-const calForm = reactive<{ name: string; color: string; kind: string; country: string; subdivision: string }>({ name: '', color: '#6750a4', kind: 'normal', country: '', subdivision: '' });
-const calKindOptions = computed(() => [
-  { title: t('calendar.ui.type_normal'), value: 'normal' },
-  { title: t('calendar.ui.type_birthdays'), value: 'birthdays' },
-  { title: t('calendar.ui.type_holidays'), value: 'holidays' },
-  { title: t('calendar.ui.type_school_holidays'), value: 'school_holidays' },
-]);
+const calForm = reactive<{ name: string; color: string }>({ name: '', color: '#6750a4' });
 
-// Country / region selects (only for the holiday kinds), populated from OpenHolidays.
-const holidayCountries = ref<HolidayCountry[]>([]);
-const holidaySubdivisions = ref<HolidaySubdivision[]>([]);
-const isHolidayKind = computed(() => calForm.kind === 'holidays' || calForm.kind === 'school_holidays');
-const countryOptions = computed(() => holidayCountries.value.map((c) => ({ title: c.name, value: c.isoCode })));
-const regionOptions = computed(() => [
-  { title: t('calendar.ui.region_all'), value: '' },
-  ...holidaySubdivisions.value.map((s) => ({ title: s.name, value: s.code })),
-]);
-async function ensureCountries(): Promise<void> {
-  if (holidayCountries.value.length) return;
-  try { holidayCountries.value = await store.loadHolidayCountries(); } catch { /* keep DE default */ }
-}
-async function loadRegions(country: string): Promise<void> {
-  holidaySubdivisions.value = [];
-  if (!country) return;
-  try { holidaySubdivisions.value = await store.loadHolidaySubdivisions(country); } catch { /* region list is optional */ }
-}
-// Picking a holiday kind loads the country list and defaults to DE; changing the
-// country reloads its regions and resets the selected region to national.
-watch(() => calForm.kind, async (k) => {
-  if (k === 'holidays' || k === 'school_holidays') {
-    if (!calForm.country) calForm.country = 'DE';
-    await ensureCountries();
-    await loadRegions(calForm.country);
-  }
-});
-watch(() => calForm.country, (c) => { calForm.subdivision = ''; loadRegions(c); });
-
-function openNewCalendar(): void { calEditingId.value = null; calForm.name = ''; calForm.color = '#6750a4'; calForm.kind = 'normal'; calForm.country = ''; calForm.subdivision = ''; holidaySubdivisions.value = []; calModal.value = true; }
-function openEditCalendar(c: CalendarCol): void { calEditingId.value = c.id; calForm.name = c.name; calForm.color = c.color || '#6750a4'; calForm.kind = c.kind; calModal.value = true; }
+function openNewCalendar(): void { calEditingId.value = null; calForm.name = ''; calForm.color = '#6750a4'; calModal.value = true; }
+function openEditCalendar(c: CalendarCol): void { calEditingId.value = c.id; calForm.name = c.name; calForm.color = c.color || '#6750a4'; calModal.value = true; }
 async function saveCalendar(): Promise<void> {
   if (!calForm.name) return;
   calSaving.value = true;
   try {
     if (calEditingId.value) {
       await store.updateCalendar(calEditingId.value, { name: calForm.name, color: calForm.color });
-    } else if (calForm.kind !== 'normal') {
-      const r = await store.createSpecial(calForm.kind as 'holidays' | 'school_holidays' | 'birthdays', {
-        name: calForm.name,
-        color: calForm.color,
-        country: isHolidayKind.value ? calForm.country : undefined,
-        subdivision: isHolidayKind.value ? calForm.subdivision : undefined,
-      });
-      if (r?.id) activeCalendars.value.add(r.id);
     } else {
       const r = await store.createCalendar(calForm.name, calForm.color);
       if (r?.id) activeCalendars.value.add(r.id);

@@ -204,24 +204,39 @@ class CalendarController extends Controller
     public function storeSpecial(Request $request, SpecialCalendarGenerator $generator): JsonResponse
     {
         $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['nullable', 'string', 'max:255'],
             'color' => ['nullable', 'string', 'max:9'],
             'kind' => ['required', 'in:'.implode(',', Calendar::SPECIAL_KINDS)],
             'country' => ['nullable', 'string', 'regex:/^[A-Za-z-]{2,8}$/'],
             'subdivision' => ['nullable', 'string', 'regex:/^[A-Za-z0-9-]{2,16}$/'],
         ]);
-        $name = (string) $request->string('name');
+        $kind = $request->string('kind')->toString();
         // country/subdivision only apply to the holiday kinds; birthdays ignore them.
-        $regional = in_array($request->string('kind')->toString(), [Calendar::KIND_HOLIDAYS, Calendar::KIND_SCHOOL_HOLIDAYS], true);
+        $regional = in_array($kind, [Calendar::KIND_HOLIDAYS, Calendar::KIND_SCHOOL_HOLIDAYS], true);
+        $country = $regional && $request->filled('country') ? strtoupper((string) $request->string('country')) : null;
+        $subdivision = $regional && $request->filled('subdivision') ? (string) $request->string('subdivision') : null;
+
+        // The SPA sends a predefined name; derive a safe server-side default if a
+        // client omits it, so a special calendar is never nameless.
+        $name = trim((string) $request->string('name'));
+        if ($name === '') {
+            $name = $this->defaultSpecialName($kind, $country, $subdivision);
+        }
+
+        // Str::slug is empty for non-latin names (e.g. Cyrillic); keep a uri stem.
+        $stem = Str::slug($name);
+        if ($stem === '') {
+            $stem = $kind;
+        }
 
         $calendar = Calendar::create([
             'user_id' => $this->requireUser($request)->id,
             'name' => $name,
-            'uri' => Str::slug($name).'-'.Str::lower(Str::random(4)),
+            'uri' => $stem.'-'.Str::lower(Str::random(4)),
             'color' => $request->filled('color') ? (string) $request->string('color') : null,
-            'kind' => (string) $request->string('kind'),
-            'country' => $regional && $request->filled('country') ? strtoupper((string) $request->string('country')) : null,
-            'subdivision' => $regional && $request->filled('subdivision') ? (string) $request->string('subdivision') : null,
+            'kind' => $kind,
+            'country' => $country,
+            'subdivision' => $subdivision,
             'timezone' => 'UTC',
             'synctoken' => 1,
         ]);
@@ -229,6 +244,26 @@ class CalendarController extends Controller
         $created = $generator->regenerate($calendar);
 
         return response()->json(['id' => $calendar->id, 'created' => $created], 201);
+    }
+
+    /**
+     * Predefined name for a special calendar when the client omits one — the
+     * localized base ("Birthdays"/"Public holidays"/"School holidays") plus the
+     * region or country for the holiday kinds. Mirrors the SPA's client-side scheme.
+     */
+    private function defaultSpecialName(string $kind, ?string $country, ?string $subdivision): string
+    {
+        $key = match ($kind) {
+            Calendar::KIND_BIRTHDAYS => 'calendar.ui.name_birthdays',
+            Calendar::KIND_HOLIDAYS => 'calendar.ui.name_holidays',
+            Calendar::KIND_SCHOOL_HOLIDAYS => 'calendar.ui.name_school_holidays',
+            default => 'calendar.ui.default_calendar',
+        };
+        $translated = __($key);
+        $base = is_string($translated) ? $translated : $key;
+        $suffix = ($subdivision !== null && $subdivision !== '') ? $subdivision : $country;
+
+        return ($suffix !== null && $suffix !== '') ? $base.' · '.$suffix : $base;
     }
 
     /**

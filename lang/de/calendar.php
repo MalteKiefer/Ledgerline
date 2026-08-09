@@ -70,5 +70,9 @@ return [
         'regenerate_done' => 'Kalender neu generiert',
         'special_readonly' => 'Dieser Kalender wird generiert und ist schreibgeschützt.',
         'birthday_event' => 'Geburtstag: :name',
+        'special_calendars' => 'Spezialkalender',
+        'name_birthdays' => 'Geburtstage',
+        'name_holidays' => 'Feiertage',
+        'name_school_holidays' => 'Schulferien',
     ],
 ];

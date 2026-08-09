@@ -1769,9 +1769,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name, kind]
+              required: [kind]
               properties:
-                name: { type: string, maxLength: 255 }
+                name: { type: [string, "null"], maxLength: 255, description: "Optional; the SPA sends a predefined name. If omitted/empty the server derives a default from kind (+ country/subdivision)." }
                 color: { type: [string, "null"], maxLength: 9 }
                 kind: { type: string, enum: [holidays, school_holidays, birthdays] }
                 country: { type: [string, "null"], description: "ISO 3166-1 alpha-2 (holiday kinds). Default DE.", pattern: '^[A-Za-z-]{2,8}$' }

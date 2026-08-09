@@ -70,5 +70,9 @@ return [
         'regenerate_done' => 'Calendar regenerated',
         'special_readonly' => 'This calendar is generated and read-only.',
         'birthday_event' => 'Birthday: :name',
+        'special_calendars' => 'Special calendars',
+        'name_birthdays' => 'Birthdays',
+        'name_holidays' => 'Public holidays',
+        'name_school_holidays' => 'School holidays',
     ],
 ];
