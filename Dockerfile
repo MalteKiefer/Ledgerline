@@ -13,7 +13,7 @@
 ARG PHP_BASE=serversideup/php:8.5-fpm-nginx-alpine@sha256:13af81f6fb5fbb9e26c6a7cd9e8c8bf22e32dd21842ae3c587b9ac4f24da4c6e
 
 # --- Front-end assets (Vite build) -----------------------------------------
-FROM node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS assets
+FROM node:26-bookworm-slim@sha256:cd565714d4da3e84bfd341e31448f81d47c6362198f152345297c9c1154e6341 AS assets
 WORKDIR /app
 COPY package.json yarn.lock .yarnrc ./
 RUN yarn install --frozen-lockfile --non-interactive
