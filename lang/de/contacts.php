@@ -16,7 +16,7 @@ return [
     'qr_heading' => 'Zum Hinzufügen scannen',
     'qr_hint' => 'Scanne dies mit dem Handy, um die CardDAV-URL in einen Client zu übernehmen.',
     'apple_profile' => 'Apple-Profil laden (iOS / macOS)',
-    'apple_profile_hint' => 'Richtet ein CardDAV-Konto auf iPhone, iPad oder Mac ein. Das App-Passwort wird bei der Installation einmal abgefragt.',
+    'apple_profile_hint' => 'Richtet CardDAV- (Kontakte) und CalDAV-Konten (Kalender) auf iPhone, iPad oder Mac ein. Das App-Passwort wird bei der Installation einmal abgefragt.',
 
     'ui' => [
         'heading' => 'Kontakte',

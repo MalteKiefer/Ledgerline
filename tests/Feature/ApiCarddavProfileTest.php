@@ -30,12 +30,15 @@ class ApiCarddavProfileTest extends TestCase
 
         $response->assertOk();
         $response->assertHeader('Content-Type', 'application/x-apple-aspen-config; charset=utf-8');
-        $this->assertStringContainsString('attachment; filename="ledgerline-contacts.mobileconfig"', (string) $response->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('attachment; filename="ledgerline-sync.mobileconfig"', (string) $response->headers->get('Content-Disposition'));
         $body = $response->getContent();
         $this->assertIsString($body);
+        // The combined profile provisions BOTH CardDAV (contacts) and CalDAV (calendar).
         $this->assertStringContainsString('com.apple.carddav.account', $body);
+        $this->assertStringContainsString('com.apple.caldav.account', $body);
         $this->assertStringContainsString('dav@example.com', $body);
         // No password is ever embedded.
         $this->assertStringNotContainsString('CardDAVPassword', $body);
+        $this->assertStringNotContainsString('CalDAVPassword', $body);
     }
 }

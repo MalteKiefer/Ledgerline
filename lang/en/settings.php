@@ -388,6 +388,6 @@ return [
     'invoice_template_klassisch_hint' => 'Traditional German business layout: wordmark, info box, ruled table.',
     'invoice_template_schlicht' => 'Plain',
     'invoice_template_schlicht_hint' => 'Minimal, monochrome, compact.',
-    'sync_section' => 'Sync (CardDAV)',
+    'sync_section' => 'Sync (CardDAV + CalDAV)',
     'sync_block_hint' => 'Subscribe from macOS/iOS Internet Accounts or any CardDAV client using the URL and your app-specific password.',
 ];
