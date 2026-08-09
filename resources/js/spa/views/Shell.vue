@@ -144,6 +144,7 @@ const menu = computed<NavGroup[]>(() => {
   ] });
   if (auth.can('files')) mods.push({ to: '/files', label: 'messages.nav.files', icon: 'folder' });
   if (auth.can('contacts')) mods.push({ to: '/contacts', label: 'messages.nav.contacts', icon: 'contacts' });
+  if (auth.can('calendar')) mods.push({ to: '/calendar', label: 'messages.nav.calendar', icon: 'calendar_month' });
   groups.push({ key: 'modules', title: 'settings.personal_heading', items: mods });
   if (auth.isAdmin()) groups.push({ key: 'admin', title: 'settings.admin_heading', items: [{ key: 'settings', label: 'settings.heading', icon: 'settings', children: [
     { to: '/settings/users', label: 'settings.users_section' }, { to: '/settings/groups', label: 'settings.groups_section' },
@@ -156,7 +157,7 @@ const menu = computed<NavGroup[]>(() => {
   return groups;
 });
 
-const routeTitles: Record<string, string> = { home: 'pages.dashboard.title', files: 'messages.nav.files', contacts: 'messages.nav.contacts', profile: 'pages.profile.title' };
+const routeTitles: Record<string, string> = { home: 'pages.dashboard.title', files: 'messages.nav.files', contacts: 'messages.nav.contacts', calendar: 'messages.nav.calendar', profile: 'pages.profile.title' };
 const crumbRoot = computed(() => {
   const name = String(route.name ?? '');
   if (name.startsWith('settings')) return t('settings.heading');

@@ -8,6 +8,7 @@ return [
         'finance' => 'Финансы',
         'files' => 'Файлы',
         'contacts' => 'Контакты',
+        'calendar' => 'Календарь',
         'more' => 'Ещё',
     ],
     'menu' => [

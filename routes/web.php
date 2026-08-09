@@ -5,6 +5,8 @@ declare(strict_types=1);
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AddressBookController;
 use App\Http\Controllers\AvatarController;
+use App\Http\Controllers\CalendarBookController;
+use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactDuplicateController;
 use App\Http\Controllers\ContactGroupController;
@@ -23,6 +25,7 @@ use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
+use App\Http\Controllers\Settings\CalendarController as SettingsCalendarController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
 use App\Http\Controllers\Settings\ContactsController as SettingsContactsController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
@@ -74,6 +77,12 @@ Route::match(
     '/dav/{path?}',
     WebDavController::class
 )->where('path', '.*')->middleware('throttle:dav')->name('dav');
+
+// CalDAV/CardDAV service discovery. In production a host-layer (Caddy) redirect
+// serves these from the base domain; this self-contained fallback covers a plain
+// deployment without one. Either way the full /dav/ URL works directly.
+Route::get('/.well-known/caldav', static fn () => redirect('/dav/', 301))->name('well-known.caldav');
+Route::get('/.well-known/carddav', static fn () => redirect('/dav/', 301))->name('well-known.carddav');
 
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {
@@ -361,6 +370,30 @@ Route::middleware('auth')->group(function (): void {
         // CardDAV sync settings (single app-specific webdav_password + Apple profile).
         Route::get('/settings/contacts', [SettingsContactsController::class, 'edit'])->name('settings.contacts.edit');
         Route::get('/settings/contacts/profile', [SettingsContactsController::class, 'profile'])->name('settings.contacts.profile');
+    });
+
+    // Calendar + CalDAV (plaintext-relational). Static collection routes are
+    // declared before /calendar/events/{event} so they win over model binding.
+    Route::middleware('module:calendar')->group(function (): void {
+        Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
+        Route::get('/calendar/data', [CalendarController::class, 'data'])->name('calendar.data');
+        Route::get('/calendar/events', [CalendarController::class, 'events'])->name('calendar.events');
+        Route::get('/calendar/export', [CalendarController::class, 'export'])->name('calendar.export');
+        Route::post('/calendar/import', [CalendarController::class, 'import'])->middleware('throttle:60,1')->name('calendar.import');
+        Route::post('/calendar/settings', [CalendarController::class, 'settings'])->middleware('throttle:600,1')->name('calendar.settings');
+        Route::post('/calendar/events', [CalendarController::class, 'store'])->middleware('throttle:600,1')->name('calendar.events.store');
+        Route::get('/calendar/events/{event}', [CalendarController::class, 'show'])->name('calendar.events.show');
+        Route::put('/calendar/events/{event}', [CalendarController::class, 'update'])->middleware('throttle:600,1')->name('calendar.events.update');
+        Route::delete('/calendar/events/{event}', [CalendarController::class, 'destroy'])->middleware('throttle:600,1')->name('calendar.events.destroy');
+
+        // Calendar collections.
+        Route::post('/calendars', [CalendarBookController::class, 'store'])->middleware('throttle:600,1')->name('calendars.store');
+        Route::put('/calendars/{calendar}', [CalendarBookController::class, 'update'])->middleware('throttle:600,1')->name('calendars.update');
+        Route::delete('/calendars/{calendar}', [CalendarBookController::class, 'destroy'])->middleware('throttle:600,1')->name('calendars.destroy');
+
+        // CalDAV sync settings (single app-specific webdav_password + Apple profile).
+        Route::get('/settings/calendar', [SettingsCalendarController::class, 'edit'])->name('settings.calendar.edit');
+        Route::get('/settings/calendar/profile', [SettingsCalendarController::class, 'profile'])->name('settings.calendar.profile');
     });
 
     // Per-user company profile + invoice defaults (printed on every invoice).

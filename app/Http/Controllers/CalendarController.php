@@ -1,0 +1,284 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Models\Calendar;
+use App\Models\CalendarEvent;
+use App\Models\UserSetting;
+use App\Services\Calendar\CalendarEventService;
+use App\Services\Calendar\CalendarImporter;
+use App\Services\Calendar\CalendarWriter;
+use Carbon\CarbonImmutable;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
+
+/**
+ * Calendar UI backend (reload-free JSON). All queries are scoped to the
+ * authenticated user's calendars; writes go through CalendarWriter so the ICS,
+ * denormalised columns and CalDAV sync token stay consistent. Optimistic
+ * concurrency is expressed via the DAV-native etag (409 on mismatch), mirroring
+ * the contacts controller's guard-agnostic (web session + Sanctum) shape.
+ */
+class CalendarController extends Controller
+{
+    /** Module entry: the calendar UI lives in the SPA. */
+    public function index(Request $request): RedirectResponse
+    {
+        $this->ensureCalendar($this->requireUser($request)->id);
+
+        return redirect('/spa/calendar');
+    }
+
+    /** Guarantee the user has at least one calendar (events need a home). */
+    private function ensureCalendar(int $userId): Calendar
+    {
+        $existing = Calendar::query()->ownedBy($userId)->first();
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        return Calendar::create([
+            'user_id' => $userId,
+            'name' => __('calendar.ui.default_calendar'),
+            'uri' => 'calendar-'.Str::lower(Str::random(6)),
+            'color' => '#6750a4',
+            'timezone' => 'UTC',
+            'synctoken' => 1,
+        ]);
+    }
+
+    /** Calendars + per-user view settings (mirror ContactController@data). */
+    public function data(Request $request): JsonResponse
+    {
+        $userId = $this->requireUser($request)->id;
+        $this->ensureCalendar($userId);
+        $settings = UserSetting::for($userId);
+
+        return response()->json([
+            'calendars' => Calendar::query()->orderBy('name')->get(['id', 'name', 'uri', 'color', 'user_id'])
+                ->map(fn (Calendar $c): array => [
+                    'id' => $c->id,
+                    'name' => $c->name,
+                    'uri' => $c->uri,
+                    'color' => $c->color,
+                    'owned' => (int) $c->user_id === $userId,
+                ]),
+            'settings' => [
+                'default_view' => (string) ($settings->calendar_default_view ?? 'month'),
+                'week_start' => (int) ($settings->calendar_week_start ?? 1),
+            ],
+        ]);
+    }
+
+    /** Recurrence-expanded occurrences in [from,to] across the user's calendars. */
+    public function events(Request $request, CalendarEventService $service): JsonResponse
+    {
+        $request->validate([
+            'from' => ['required', 'date'],
+            'to' => ['required', 'date', 'after:from'],
+            'calendar' => ['nullable', 'string'],
+        ]);
+        $from = CarbonImmutable::parse((string) $request->query('from'))->utc();
+        $to = CarbonImmutable::parse((string) $request->query('to'))->utc();
+
+        // Owner-scoped calendar ids (OwnsUserData global scope) + colour map.
+        $calendars = Calendar::query()
+            ->when($request->query('calendar'), fn ($q) => $q->whereKey($request->query('calendar')))
+            ->get(['id', 'color']);
+        $colors = $calendars->pluck('color', 'id');
+        $calendarIds = $calendars->pluck('id')->all();
+
+        // Coarse prefilter: the master starts before the window ends, and either
+        // it ends after the window starts OR it recurs (exact filtering is done in
+        // expand()). Bounds the rows before the PHP recurrence expansion.
+        $candidates = CalendarEvent::query()
+            ->whereIn('calendar_id', $calendarIds)
+            ->whereNotNull('dtstart')
+            ->where('dtstart', '<', $to)
+            ->where(fn ($w) => $w->whereNull('dtend')->orWhere('dtend', '>', $from)->orWhereNotNull('rrule'))
+            ->get();
+
+        $out = [];
+        foreach ($candidates as $event) {
+            $color = $colors[$event->calendar_id] ?? null;
+            foreach ($service->expand($event, $from, $to) as $occ) {
+                $out[] = array_merge($occ, [
+                    'id' => $event->id,
+                    'calendar' => $event->calendar_id,
+                    'color' => is_string($color) ? $color : null,
+                ]);
+            }
+        }
+
+        return response()->json(['events' => $out]);
+    }
+
+    /** Full parsed editor data + ids + etag (mirror ContactController@show). */
+    public function show(CalendarEvent $event, CalendarEventService $service): JsonResponse
+    {
+        $this->authorizeEvent($event);
+
+        return response()->json(array_merge(
+            $service->parse($event->ics),
+            [
+                'id' => $event->id,
+                'calendar' => $event->calendar_id,
+                'etag' => $event->etag,
+            ],
+        ));
+    }
+
+    public function store(Request $request, CalendarWriter $writer): JsonResponse
+    {
+        $data = $this->validated($request, creating: true);
+        $calendar = Calendar::query()->ownedBy($this->requireUser($request)->id)
+            ->findOrFail((string) $request->string('calendar_id'));
+        $event = $writer->create($calendar, $data);
+
+        return response()->json(['id' => $event->id], 201);
+    }
+
+    public function update(Request $request, CalendarEvent $event, CalendarWriter $writer): JsonResponse
+    {
+        $this->authorizeEvent($event);
+        $data = $this->validated($request);
+
+        // Optimistic concurrency via the DAV-native etag: reject a stale write.
+        $etag = trim((string) $request->string('etag'));
+        if ($etag !== '' && $etag !== $event->etag) {
+            return response()->json(['error' => 'etag_conflict', 'etag' => $event->etag], 409);
+        }
+
+        $updated = $writer->update($event, $data);
+
+        return response()->json(['ok' => true, 'etag' => $updated->etag]);
+    }
+
+    public function destroy(CalendarEvent $event, CalendarWriter $writer): JsonResponse
+    {
+        $this->authorizeEvent($event);
+        $writer->delete($event);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Persist the user's calendar view preferences (default view + week start). */
+    public function settings(Request $request): JsonResponse
+    {
+        $request->validate([
+            'default_view' => ['required', 'in:month,week,agenda'],
+            'week_start' => ['required', 'integer', 'in:0,1'],
+        ]);
+
+        UserSetting::for($this->requireUser($request)->id)->update([
+            'calendar_default_view' => (string) $request->string('default_view'),
+            'calendar_week_start' => $request->integer('week_start'),
+        ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Export a calendar (or all the user's calendars) as one .ics download. */
+    public function export(Request $request): StreamedResponse
+    {
+        $calendarIds = Calendar::query()
+            ->when($request->query('calendar'), fn ($q) => $q->whereKey($request->query('calendar')))
+            ->pluck('id');
+
+        return response()->streamDownload(function () use ($calendarIds): void {
+            echo "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Ledgerline//Calendar//EN\r\n";
+            CalendarEvent::whereIn('calendar_id', $calendarIds)->orderBy('dtstart')
+                ->chunk(200, function ($chunk): void {
+                    foreach ($chunk as $event) {
+                        foreach ($this->veventBlocks($event->ics) as $block) {
+                            echo $block."\r\n";
+                        }
+                    }
+                });
+            echo "END:VCALENDAR\r\n";
+        }, 'calendar.ics', ['Content-Type' => 'text/calendar; charset=utf-8']);
+    }
+
+    /** Import an .ics (one or many VEVENTs) into a calendar; dedupe by UID. */
+    public function import(Request $request, CalendarImporter $importer): JsonResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'max:512000'],
+            'calendar_id' => ['required', 'string'],
+        ]);
+        $calendar = Calendar::query()->ownedBy($this->requireUser($request)->id)
+            ->findOrFail((string) $request->string('calendar_id'));
+
+        $result = $importer->import($calendar, (string) file_get_contents($request->file('file')->getRealPath()));
+
+        return response()->json($result);
+    }
+
+    /**
+     * Extract the VEVENT block(s) from a single-event VCALENDAR so the export can
+     * concatenate them under one VCALENDAR wrapper.
+     *
+     * @return list<string>
+     */
+    private function veventBlocks(string $ics): array
+    {
+        if (! preg_match_all('/BEGIN:VEVENT.*?END:VEVENT/s', $ics, $m)) {
+            return [];
+        }
+
+        return array_map(fn (string $b): string => rtrim($b, "\r\n"), $m[0]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function validated(Request $request, bool $creating = false): array
+    {
+        /** @var array<string, mixed> $validated */
+        $validated = $request->validate([
+            'calendar_id' => [$creating ? 'required' : 'sometimes', 'string'],
+            'summary' => ['nullable', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:5000'],
+            'location' => ['nullable', 'string', 'max:255'],
+            'dtstart' => ['required', 'date'],
+            'dtend' => ['nullable', 'date', 'after_or_equal:dtstart'],
+            'all_day' => ['nullable', 'boolean'],
+            'rrule' => ['nullable', 'string', 'max:255', function (string $attribute, mixed $value, \Closure $fail): void {
+                if (is_string($value) && $value !== '' && ! $this->rruleParses($value)) {
+                    $fail(__('validation.string', ['attribute' => $attribute]));
+                }
+            }],
+            'status' => ['nullable', 'in:CONFIRMED,TENTATIVE,CANCELLED'],
+            'etag' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        return $validated;
+    }
+
+    /** A syntactically valid RRULE parses back into a VEVENT without throwing. */
+    private function rruleParses(string $rrule): bool
+    {
+        try {
+            $ics = app(CalendarEventService::class)->build([
+                'summary' => 'x', 'dtstart' => '2020-01-01T00:00:00Z', 'rrule' => $rrule,
+            ]);
+
+            return str_contains($ics, 'RRULE');
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function authorizeEvent(CalendarEvent $event): void
+    {
+        // The calendar relation is owner-scoped, so another user's event resolves
+        // to a null calendar — that must read as forbidden, not a 500.
+        abort_unless($event->calendar?->user_id === auth()->id(), 403);
+    }
+}

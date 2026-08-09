@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Dav\AddressBookBackend;
+use App\Dav\CalendarBackend;
 use App\Dav\FilesHome;
 use App\Dav\PrincipalBackend;
 use App\Dav\WebDavAuth;
 use Illuminate\Http\Request;
+use Sabre\CalDAV\CalendarRoot;
+use Sabre\CalDAV\Plugin as CalDAVPlugin;
 use Sabre\CardDAV\AddressBookRoot;
 use Sabre\CardDAV\Plugin as CardDAVPlugin;
 use Sabre\DAV\Auth\Plugin as AuthPlugin;
@@ -22,11 +25,12 @@ use Sabre\DAVACL\PrincipalCollection;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Unified WebDAV / CardDAV endpoint (/dav). One Sabre server exposes three
- * collections — principals, addressbooks (CardDAV) and files (the WebDAV drive)
- * — all authenticated with the single app-specific HTTP Basic password
- * (users.webdav_password). One password unlocks Files and Contacts; macOS/iOS
- * discover CardDAV via /.well-known/carddav → /dav/. DAVACL rejects
+ * Unified WebDAV / CardDAV / CalDAV endpoint (/dav). One Sabre server exposes
+ * four collections — principals, addressbooks (CardDAV), calendars (CalDAV) and
+ * files (the WebDAV drive) — all authenticated with the single app-specific HTTP
+ * Basic password (users.webdav_password). One password unlocks Files, Contacts
+ * and Calendar; macOS/iOS discover CardDAV/CalDAV via /.well-known/carddav and
+ * /.well-known/caldav → /dav/. DAVACL rejects
  * unauthenticated access and confines each principal to its own resources; the
  * backends owner-scope on top of that. Sabre emits the response via the PHP
  * SAPI, so this action returns an already-sent empty response.
@@ -48,6 +52,7 @@ class WebDavController extends Controller
         $server = new Server([
             new PrincipalCollection($principals),
             new AddressBookRoot($principals, app(AddressBookBackend::class)),
+            new CalendarRoot($principals, app(CalendarBackend::class)),
             new FilesHome,
         ]);
         $server->setBaseUri('/dav/');
@@ -61,6 +66,7 @@ class WebDavController extends Controller
         $server->addPlugin($acl);
 
         $server->addPlugin(new CardDAVPlugin);
+        $server->addPlugin(new CalDAVPlugin);
         $server->addPlugin(new SyncPlugin);
 
         // macOS Finder requires DAV class-2 locking; back it with the local disk

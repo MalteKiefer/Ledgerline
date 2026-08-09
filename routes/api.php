@@ -24,6 +24,8 @@ use App\Http\Controllers\Api\TwoFactorController as ApiTwoFactorController;
 use App\Http\Controllers\Api\UsersController as ApiUsersController;
 use App\Http\Controllers\Api\WebDavAccessController as ApiWebDavAccessController;
 use App\Http\Controllers\AvatarController;
+use App\Http\Controllers\CalendarBookController;
+use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactDuplicateController;
 use App\Http\Controllers\ContactGroupController;
@@ -201,6 +203,27 @@ Route::prefix('v1')->group(function (): void {
             // the web Settings/ContactsController@profile; carries the username, never
             // a password (sync uses the app-specific webdav_password, hashed).
             Route::get('/account/carddav-profile', [ApiContactsProfileController::class, 'carddavProfile'])->middleware('throttle:20,1')->name('api.account.carddav-profile');
+        });
+
+        // Calendar module — mirrors the web routes (plaintext-relational calendars
+        // + events with recurrence-expanded range query + ICS import/export). The
+        // web CalendarController methods already return JSON; mount the same
+        // guard-agnostic controllers under /api/v1 so the Vue SPA (and mobile)
+        // consume them via device auth. The Blade/SPA entry (index) is not exposed.
+        // Owner-scope is controller-side; 409 on etag mismatch.
+        Route::middleware('module:calendar')->group(function (): void {
+            Route::get('/calendar/data', [CalendarController::class, 'data'])->name('api.calendar.data');
+            Route::get('/calendar/events', [CalendarController::class, 'events'])->name('api.calendar.events');
+            Route::get('/calendar/export', [CalendarController::class, 'export'])->name('api.calendar.export');
+            Route::post('/calendar/import', [CalendarController::class, 'import'])->middleware('throttle:60,1')->name('api.calendar.import');
+            Route::post('/calendar/settings', [CalendarController::class, 'settings'])->middleware('throttle:600,1')->name('api.calendar.settings');
+            Route::post('/calendar/events', [CalendarController::class, 'store'])->middleware('throttle:600,1')->name('api.calendar.events.store');
+            Route::get('/calendar/events/{event}', [CalendarController::class, 'show'])->name('api.calendar.events.show');
+            Route::put('/calendar/events/{event}', [CalendarController::class, 'update'])->middleware('throttle:600,1')->name('api.calendar.events.update');
+            Route::delete('/calendar/events/{event}', [CalendarController::class, 'destroy'])->middleware('throttle:600,1')->name('api.calendar.events.destroy');
+            Route::post('/calendars', [CalendarBookController::class, 'store'])->middleware('throttle:600,1')->name('api.calendars.store');
+            Route::put('/calendars/{calendar}', [CalendarBookController::class, 'update'])->middleware('throttle:600,1')->name('api.calendars.update');
+            Route::delete('/calendars/{calendar}', [CalendarBookController::class, 'destroy'])->middleware('throttle:600,1')->name('api.calendars.destroy');
         });
 
         // Files module — mirrors the web routes (plaintext-relational folders +

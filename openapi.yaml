@@ -131,6 +131,18 @@ tags:
       `{contacts, books, groups}`; `GET /contacts/{id}` returns the full parsed
       vCard (fn, org, emails/phones/urls/addresses, note, group_ids). Owner-scope
       is enforced controller-side; avatar bytes stream from `/contacts/{id}/avatar`.
+  - name: Calendar
+    description: >
+      CalDAV-backed calendar module (calendars + events), plaintext-relational.
+      The same guard-agnostic controllers back the web routes; these `/api/v1`
+      mirrors are gated by `module:calendar` on top of device auth. The Blade/SPA
+      entry (index) is not exposed. `GET /calendar/data` returns
+      `{calendars, settings}`; `GET /calendar/events?from=&to=` returns
+      recurrence-expanded occurrences; `GET /calendar/events/{id}` returns the
+      full parsed VEVENT editor shape + etag. Optimistic concurrency is the
+      DAV-native etag (409 on mismatch). Owner-scope is enforced controller-side.
+      CalDAV itself is served over the unified `/dav` Sabre endpoint (HTTP Basic,
+      not `/api/v1`) — the same surface as CardDAV, absent from this document.
 components:
   securitySchemes:
     bearerAuth:
@@ -380,6 +392,89 @@ components:
         invoice_font: { type: [string, "null"], maxLength: 80 }
         invoice_vat_ist: { type: boolean, description: "Ist-Versteuerung (cash-basis VAT) toggle." }
         has_logo: { type: boolean, readOnly: true, description: "Whether a company logo is stored (GET /company/logo)." }
+
+    Calendar:
+      type: object
+      description: A CalDAV calendar collection, owner-scoped.
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        uri: { type: string }
+        color: { type: [string, "null"], description: "#RRGGBB or #RRGGBBAA (Apple CALENDAR-COLOR)." }
+        owned: { type: boolean }
+
+    CalendarOccurrence:
+      type: object
+      description: >
+        A concrete occurrence of an event within the queried [from,to] window
+        (recurring masters emit one per occurrence). id/uid identify the master
+        for edit; color echoes the parent calendar for rendering. Times are UTC.
+      properties:
+        id: { type: string, format: uuid }
+        calendar: { type: string, format: uuid }
+        uid: { type: string }
+        summary: { type: [string, "null"] }
+        location: { type: [string, "null"] }
+        description: { type: [string, "null"] }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        all_day: { type: boolean }
+        status: { type: [string, "null"], enum: [CONFIRMED, TENTATIVE, CANCELLED, null] }
+        recurring: { type: boolean }
+        color: { type: [string, "null"] }
+
+    CalendarEvent:
+      type: object
+      description: The full parsed VEVENT editor shape plus ids + etag.
+      properties:
+        id: { type: string, format: uuid }
+        calendar: { type: string, format: uuid }
+        uid: { type: [string, "null"] }
+        summary: { type: [string, "null"] }
+        description: { type: [string, "null"] }
+        location: { type: [string, "null"] }
+        dtstart: { type: [string, "null"], format: date-time }
+        dtend: { type: [string, "null"], format: date-time }
+        all_day: { type: boolean }
+        rrule: { type: [string, "null"] }
+        status: { type: [string, "null"], enum: [CONFIRMED, TENTATIVE, CANCELLED, null] }
+        sequence: { type: integer }
+        etag: { type: string }
+
+    CalendarEventInput:
+      type: object
+      required: [dtstart]
+      properties:
+        calendar_id: { type: string, format: uuid, description: "Required on create." }
+        summary: { type: [string, "null"], maxLength: 255 }
+        description: { type: [string, "null"], maxLength: 5000 }
+        location: { type: [string, "null"], maxLength: 255 }
+        dtstart: { type: string, format: date-time }
+        dtend: { type: [string, "null"], format: date-time, description: "after_or_equal dtstart." }
+        all_day: { type: boolean }
+        rrule: { type: [string, "null"], maxLength: 255, description: "iCalendar RRULE; validated by parsing." }
+        status: { type: [string, "null"], enum: [CONFIRMED, TENTATIVE, CANCELLED, null] }
+        etag: { type: [string, "null"], description: "Optional optimistic-concurrency token on update (409 on mismatch)." }
+
+    CalendarSettings:
+      type: object
+      properties:
+        default_view: { type: string, enum: [month, week, agenda] }
+        week_start: { type: integer, enum: [0, 1], description: "0=Sunday, 1=Monday." }
+
+    CalendarImportResult:
+      type: object
+      properties:
+        created: { type: integer }
+        updated: { type: integer }
+        skipped: { type: integer }
+
+    EtagConflict:
+      type: object
+      description: DAV-native optimistic-concurrency conflict; re-fetch and retry.
+      properties:
+        error: { type: string, enum: [etag_conflict] }
+        etag: { type: string, description: "The current stored etag." }
 
     Group:
       type: object
@@ -1450,6 +1545,149 @@ paths:
       responses:
         "200": { description: Deleted. }
         "404": { $ref: '#/components/responses/NotFound' }
+
+  # --------------------------------------------------------------------------
+  # Calendar (CalDAV-backed, module:calendar)
+  # --------------------------------------------------------------------------
+
+  /calendar/data:
+    get:
+      tags: [Calendar]
+      operationId: calendarData
+      summary: List calendars + view settings
+      responses:
+        "200":
+          description: Calendar snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  calendars: { type: array, items: { $ref: '#/components/schemas/Calendar' } }
+                  settings: { $ref: '#/components/schemas/CalendarSettings' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+  /calendar/events:
+    get:
+      tags: [Calendar]
+      operationId: calendarEvents
+      summary: Recurrence-expanded occurrences in a date range
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: calendar, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Occurrences overlapping [from,to].
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events: { type: array, items: { $ref: '#/components/schemas/CalendarOccurrence' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+    post:
+      tags: [Calendar]
+      operationId: calendarEventsStore
+      summary: Create an event
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CalendarEventInput' } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { id: { type: string } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/events/{event}:
+    get:
+      tags: [Calendar]
+      operationId: calendarEventsShow
+      summary: Full parsed VEVENT detail
+      parameters: [{ name: event, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Event detail., content: { application/json: { schema: { $ref: '#/components/schemas/CalendarEvent' } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Calendar]
+      operationId: calendarEventsUpdate
+      summary: Update an event (etag optimistic concurrency)
+      parameters: [{ name: event, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CalendarEventInput' } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, etag: { type: string } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { description: Etag conflict., content: { application/json: { schema: { $ref: '#/components/schemas/EtagConflict' } } } }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+    delete:
+      tags: [Calendar]
+      operationId: calendarEventsDestroy
+      summary: Delete an event
+      parameters: [{ name: event, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Deleted. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/import:
+    post:
+      tags: [Calendar]
+      operationId: calendarImport
+      summary: Import an ICS file (dedupe by UID)
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary }, calendar_id: { type: string } } } } } }
+      responses:
+        "200": { description: Import summary., content: { application/json: { schema: { $ref: '#/components/schemas/CalendarImportResult' } } } }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/export:
+    get:
+      tags: [Calendar]
+      operationId: calendarExport
+      summary: Export events as one ICS
+      parameters: [{ name: calendar, in: query, required: false, schema: { type: string } }]
+      responses:
+        "200": { description: ICS file., content: { text/calendar: { schema: { type: string } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+  /calendar/settings:
+    post:
+      tags: [Calendar]
+      operationId: calendarSettings
+      summary: Update calendar view settings (default view / week start)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CalendarSettings' } } } }
+      responses:
+        "200": { description: Saved. }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /calendars:
+    post:
+      tags: [Calendar]
+      operationId: calendarsStore
+      summary: Create a calendar
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, color: { type: string } } } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { id: { type: string } } } } } }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /calendars/{calendar}:
+    put:
+      tags: [Calendar]
+      operationId: calendarsUpdate
+      summary: Update a calendar (name/color/description/timezone)
+      parameters: [{ name: calendar, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: string }, color: { type: string }, description: { type: string }, timezone: { type: string } } } } } }
+      responses:
+        "200": { description: Updated. }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Calendar]
+      operationId: calendarsDestroy
+      summary: Delete a calendar (422 on the last one)
+      parameters: [{ name: calendar, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Deleted. }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "422": { description: Cannot delete the last calendar. }
 
   # --------------------------------------------------------------------------
   # Health check (app up-check) — NOT under /api/v1; served at the site root.

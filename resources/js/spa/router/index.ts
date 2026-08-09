@@ -22,6 +22,7 @@ const routes: RouteRecordRaw[] = [
       },
       { path: 'files', name: 'files', component: () => import('@spa/views/Files.vue') },
       { path: 'contacts', name: 'contacts', component: () => import('@spa/views/Contacts.vue') },
+      { path: 'calendar', name: 'calendar', component: () => import('@spa/views/Calendar.vue') },
       // Settings sub-pages render directly in the main area (the Shell nav is the menu).
       { path: 'settings', redirect: '/settings/users' },
       { path: 'settings/users', name: 'settings.users', component: () => import('@spa/views/settings/Users.vue') },
