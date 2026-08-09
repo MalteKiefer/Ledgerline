@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.561.0
+  version: 1.562.0
   license:
     name: Proprietary
   description: >
@@ -20,7 +20,23 @@ info:
     **Authentication:** obtain a Sanctum bearer token via the device pairing
     exchange (QR code scan + owner approval in the web UI), then include it as
     `Authorization: Bearer <token>` on every request. All routes except the two
-    pairing endpoints require the `device` Sanctum ability.
+    pairing endpoints require the `device` Sanctum ability. Sanctum's absolute
+    token lifetime is shortened to 60 days for the internet-facing deployment
+    (v1.562.0); re-pair / re-login to renew (idle + remote-wipe revocation apply
+    on top). Login also requires a verified email address before a bearer is
+    minted (403 `{status:"verify-email"}`), and a blocked account fails auth
+    generically (no enumeration).
+
+    **Rate limiting (enforced, v1.562.0):** since the app is served publicly via
+    the NetBird proxy (`https://home.pinlo.me`), the former LAN-only no-op
+    throttling was reversed — every throttled route now genuinely returns
+    **429** with a `Retry-After` header. Named web limiters: login 5/min,
+    two-factor challenge 5/min (TOTP is no longer online-brute-forceable),
+    fortify 20/min, auth-pair 30/min, dav 120/min, share-unlock 10/min, invite
+    10/min. The `/api/v1` endpoints carry inline per-minute throttles (e.g.
+    `/auth/login` 10/min, the `/auth/{reset,forgot,register}` broker routes
+    6/min, `/invite/*` 20/min, `/file-share/*/unlock` 10/min, `/files/zip`
+    120/min); handle 429 by backing off for `Retry-After` seconds.
 
     **Web-only surfaces (intentionally no /api/v1 twin):** per-user Paperless
     CONFIGURATION (URL/token/enabled + connection test) and the workspace-admin
@@ -28,6 +44,13 @@ info:
     settings + error resolution, the `max_connected_devices` security setting, and
     the self-registration toggle — are managed in the web UI only. (Backup, users,
     groups, security-log and the company profile ARE mirrored on the API.)
+
+    **Response security headers (v1.562.0):** responses carry a tightened header
+    set for the internet-facing deployment — `Content-Security-Policy` with
+    `frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN` (framing default
+    reversed from `*`), a broadened `Permissions-Policy` denylist, and stripped
+    `Server`/`X-Powered-By`. These are transport headers, not JSON — clients need
+    no changes.
 
 servers:
   - url: /api/v1
@@ -193,7 +216,15 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/VersionConflict" }
     RateLimited:
-      description: Too many requests — the route's per-minute rate limit was exceeded.
+      description: >
+        Too many requests — the route's per-minute rate limit was exceeded.
+        Rate limiting is genuinely enforced again on the internet-facing
+        deployment (v1.562.0); it was inert under the former LAN-only build.
+        Back off and retry after the `Retry-After` interval.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying (standard throttle header).
+          schema: { type: integer }
 
   schemas:
     ValidationError:
@@ -305,7 +336,7 @@ components:
         when omitted or blank.
       properties:
         mail_enabled: { type: boolean }
-        smtp_host: { type: [string, "null"], maxLength: 255 }
+        smtp_host: { type: [string, "null"], maxLength: 255, description: "SSRF-guarded (v1.562.0): a host resolving to a link-local / cloud-metadata / internal range is rejected with 422 (parity with ntfy_url/webhook_url)." }
         smtp_port: { type: [integer, "null"], minimum: 1, maximum: 65535 }
         smtp_encryption: { type: [string, "null"], enum: [tls, ssl, null] }
         smtp_username: { type: [string, "null"], maxLength: 255 }
@@ -1566,6 +1597,10 @@ paths:
         app_version/os_version) are registered as a real device — same as QR
         pairing — so they appear under "Connected devices" (revoke/wipe/heartbeat)
         and re-login on the same install_id replaces the previous device row.
+        The account must have a verified email before a bearer is minted — an
+        unverified account returns 403 {status:"verify-email"} (v1.562.0). A
+        blocked account fails with the same generic 422 as bad credentials (no
+        enumeration). Throttled at 10 req/min → 429.
       requestBody:
         required: true
         content:
@@ -1592,8 +1627,17 @@ paths:
                 properties:
                   token: { type: string }
                   user: { $ref: '#/components/schemas/MeUser' }
+        "403":
+          description: >
+            Email not verified — no bearer is minted until the address is verified.
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, example: verify-email } } }
         "422":
-          description: Invalid credentials, or {two_factor:true} when a 2FA code is required.
+          description: >
+            Invalid credentials (also returned generically for a blocked account,
+            no enumeration), or {two_factor:true} when a 2FA code is required.
+        "429": { $ref: '#/components/responses/RateLimited' }
   /auth/logout:
     post:
       tags: [Auth]
@@ -1929,6 +1973,10 @@ paths:
       tags: [Calendar]
       operationId: calendarEvents
       summary: Recurrence-expanded occurrences in a date range
+      description: >
+        The requested `to − from` window is capped at 400 days to bound
+        recurrence-expansion cost (v1.562.0); a wider span is rejected with
+        422 {error:"range_too_large"}.
       parameters:
         - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
         - { name: to, in: query, required: true, schema: { type: string, format: date-time } }
@@ -1944,7 +1992,20 @@ paths:
                   events: { type: array, items: { $ref: '#/components/schemas/CalendarOccurrence' } }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
-        "422": { $ref: '#/components/responses/ValidationError' }
+        "422":
+          description: >
+            Request validation failed (standard body), OR the from..to window
+            exceeds the 400-day cap → { error: "range_too_large" }.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - type: object
+                    required: [error]
+                    properties:
+                      error: { type: string, enum: [range_too_large] }
+        "429": { $ref: '#/components/responses/RateLimited' }
     post:
       tags: [Calendar]
       operationId: calendarEventsStore
@@ -2693,9 +2754,13 @@ paths:
       operationId: accountExport
       summary: GDPR data export (streamed zip)
       description: >
-        Streams a zip file containing the user's data as JSON (finance data + account
-        info + settings). Data only — no blob bytes. The zip is generated on the fly
-        and not stored server-side. Throttle: 6 req/min.
+        Streams a zip file containing the user's data as JSON, one file per data
+        module. Coverage was completed in v1.562.0 to satisfy GDPR Art.15 — it now
+        also includes calendar, mail (message rows + labels/rules/saved-searches),
+        file/folder shares, and the finance payment-methods/partners/projects, on
+        top of the previous account info, settings and finance data. Data only — no
+        blob bytes. The zip is generated on the fly and not stored server-side.
+        Throttle: 6 req/min.
       responses:
         "200":
           description: Zip archive streamed to the client.
@@ -4544,13 +4609,19 @@ paths:
       tags: [Files]
       operationId: filesZip
       summary: Download a selection of files and/or a folder subtree as a ZIP
+      description: >
+        Streams the selected files (or a folder subtree via `folder_id`) as a ZIP.
+        Bounded (v1.562.0): at most 5000 files and 2 GiB total — over either budget
+        the request is refused with 413 (the folder-subtree branch is now capped too).
       security: [ { bearerAuth: [] } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { ids: { type: array, items: { type: integer } }, folder_id: { type: integer } } } } } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { ids: { type: array, items: { type: integer }, maxItems: 5000 }, folder_id: { type: integer } } } } } }
       responses:
         "200": { description: ZIP archive., content: { application/zip: { schema: { type: string, format: binary } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "413": { description: "Over the ZIP export cap (>5000 files or >2 GiB total)." }
         "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /files/stats:
     get:
       tags: [Files]
@@ -5540,6 +5611,7 @@ paths:
             application/json:
               schema: { type: object, properties: { status: { type: string, example: reset-link-sent } } }
         "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
   /auth/reset-password:
     post:
       tags: [Auth]
@@ -5549,8 +5621,10 @@ paths:
         Resets the password using an emailed reset token. Reuses the Fortify
         ResetUserPassword action, so it applies the same password rules and acts as a
         kill switch (revokes every device token + persisted session). Returns 200 on
-        success, 422 on an invalid/expired token or email. Mirrors the web
-        reset-password POST.
+        success. Every non-success case (unknown email, bad/expired token, weak
+        password) collapses to ONE neutral 422 `{status:"reset-failed", message}`
+        (v1.562.0) — the response no longer signals account existence, so do NOT
+        branch on distinct broker error codes. Mirrors the web reset-password POST.
       security: []
       requestBody:
         required: true
@@ -5571,10 +5645,14 @@ paths:
             application/json:
               schema: { type: object, properties: { status: { type: string, example: password-reset } } }
         "422":
-          description: Invalid/expired token or email, or the password failed the rules.
+          description: >
+            Any failure — unknown email, invalid/expired token, or a password that
+            failed the rules. The body is always the same neutral shape (no
+            account-existence oracle).
           content:
             application/json:
-              schema: { type: object, properties: { status: { type: string }, message: { type: string } } }
+              schema: { type: object, properties: { status: { type: string, example: reset-failed }, message: { type: string } } }
+        "429": { $ref: '#/components/responses/RateLimited' }
   /auth/register:
     post:
       tags: [Auth]
@@ -5617,6 +5695,7 @@ paths:
         "403":
           description: Self-registration is disabled workspace-wide.
         "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
 
   # --------------------------------------------------------------------------
   # Public file-share consumption (no auth) — the share token in the path is the
@@ -5629,8 +5708,11 @@ paths:
       operationId: publicFileShareMeta
       summary: Public file-share metadata (no auth)
       description: >
-        Resolves a share link by its opaque token (owner scope removed). Reports the
-        target name/kind, whether a password is required, and the download policy.
+        Resolves a share link by its opaque token (owner scope removed; the token
+        is now matched against a stored sha256 hash). Reports the target name/kind,
+        whether a password is required, and the download policy. Trashing (soft-
+        deleting) the shared file/folder now revokes the link — a previously-valid
+        share returns 404 once its target is trashed (v1.562.0).
       security: []
       parameters:
         - { name: token, in: path, required: true, schema: { type: string } }
@@ -5650,6 +5732,7 @@ paths:
                   allowDownload: { type: boolean }
                   expiresAt: { type: [string, "null"], format: date-time }
         "404": { description: Unknown, expired, or trashed share (existence not leaked). }
+        "429": { $ref: '#/components/responses/RateLimited' }
   /file-share/{token}/unlock:
     post:
       tags: [Files]
@@ -5680,6 +5763,7 @@ paths:
               schema: { type: object, properties: { ok: { type: boolean }, grant: { type: string } } }
         "404": { description: Unknown or expired share. }
         "422": { description: Wrong password (or the share is not password-gated). }
+        "429": { $ref: '#/components/responses/RateLimited' }
   /file-share/{token}/manifest:
     get:
       tags: [Files]
@@ -5709,6 +5793,7 @@ paths:
                   files: { type: array, items: { type: object } }
         "403": { description: Locked — a valid unlock grant is required. }
         "404": { description: Unknown, expired, or trashed share. }
+        "429": { $ref: '#/components/responses/RateLimited' }
   /file-share/{token}/file/{file}/raw:
     get:
       tags: [Files]
@@ -5731,7 +5816,8 @@ paths:
           content:
             application/octet-stream: { schema: { type: string, format: binary } }
         "403": { description: Locked, or a download was requested on a download-disabled share. }
-        "404": { description: Unknown share or file not in the shared set. }
+        "404": { description: Unknown share or file not in the shared set (also once the file is trashed). }
+        "429": { $ref: '#/components/responses/RateLimited' }
 
   # --------------------------------------------------------------------------
   # Public invite / password-reset link consumption (no auth). The admin CREATE
@@ -5761,6 +5847,7 @@ paths:
                   email: { type: string, format: email }
                   expiresAt: { type: [string, "null"], format: date-time }
         "404": { description: "Invalid, consumed, or expired link (valid:false)." }
+        "429": { $ref: '#/components/responses/RateLimited' }
     post:
       tags: [Users]
       operationId: inviteConsume
@@ -5768,6 +5855,9 @@ paths:
       description: >
         Sets the target user's password (constant-time token check + single-use +
         expiry) and mints a device-scoped bearer token (rather than a session login).
+        Consuming the link is a kill switch (v1.562.0): it REVOKES every pre-existing
+        device token + web session for the account BEFORE minting the fresh bearer —
+        a client holding an older token must re-authenticate.
       security: []
       parameters:
         - { name: invite, in: path, required: true, schema: { type: integer } }
@@ -5795,6 +5885,7 @@ paths:
                   user: { $ref: '#/components/schemas/MeUser' }
         "404": { description: Invalid, consumed, or expired link. }
         "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
 
   # --------------------------------------------------------------------------
   # CardDAV Apple configuration profile download (device auth + module:contacts).
