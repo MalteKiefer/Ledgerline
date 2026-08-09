@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\MailAttachment;
 use App\Models\MailMessage;
+use App\Models\UserSetting;
 use App\Support\BlobStore;
+use App\Support\Mail\MailHtmlSanitizer;
+use App\Support\Mail\MimeParser;
 use Illuminate\Contracts\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -73,6 +78,110 @@ class MailMessageController extends Controller
         $this->authorizeOwner($request, $message);
 
         return response()->json(['message' => $this->presentFull($message)]);
+    }
+
+    /**
+     * The message's HTML body as a standalone, sandboxed document for a reader
+     * iframe. Re-derived from the immutable raw .eml (so remote images can be
+     * gated per request and cid: images inlined). Strict CSP: no scripts, no
+     * same-origin, images only from data: (+ https: when the caller opts into
+     * remote content AND the user's mail_load_remote pref is on). cid: inline
+     * images are rewritten to data: URIs from the stored attachment bytes.
+     */
+    public function body(Request $request, MailMessage $message): Response
+    {
+        $this->authorizeOwner($request, $message);
+
+        $prefs = UserSetting::for((int) $message->user_id);
+        $allowRemote = $request->boolean('remote') && (bool) $prefs->mail_load_remote;
+
+        $html = $this->renderBody($message, $allowRemote);
+
+        $csp = "default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src data:".($allowRemote ? ' https:' : '');
+        $doc = '<!doctype html><html><head><meta charset="utf-8">'
+            .'<meta name="referrer" content="no-referrer">'
+            .'<meta name="viewport" content="width=device-width, initial-scale=1">'
+            ."</head><body>{$html}</body></html>";
+
+        return response($doc, 200, [
+            'Content-Type' => 'text/html; charset=utf-8',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => $csp,
+            'Cache-Control' => 'private, no-store',
+        ]);
+    }
+
+    /**
+     * Build the sanitized body HTML: parse the raw .eml, resolve cid: inline
+     * images to data: URIs, sanitize with remote gating. Falls back to the
+     * escaped plaintext body (then the stored sanitized HTML) when the raw blob
+     * is unavailable or has no HTML part.
+     */
+    private function renderBody(MailMessage $message, bool $allowRemote): string
+    {
+        $disk = BlobStore::disk();
+        $key = 'mail/'.$message->id;
+        if ($disk->exists($key)) {
+            $raw = $disk->get($key);
+            if (is_string($raw) && $raw !== '') {
+                $parsed = (new MimeParser)->parse($raw);
+                $html = (new MailHtmlSanitizer)->sanitize($parsed->htmlBody, $allowRemote, $this->cidMap($message));
+                if ($html !== null) {
+                    return $html;
+                }
+                if ($parsed->textBody !== null) {
+                    return '<pre style="white-space:pre-wrap;word-break:break-word">'.e($parsed->textBody).'</pre>';
+                }
+            }
+        }
+
+        if ($message->html_sanitized !== null) {
+            return $message->html_sanitized;
+        }
+        if ($message->text_body !== null) {
+            return '<pre style="white-space:pre-wrap;word-break:break-word">'.e($message->text_body).'</pre>';
+        }
+
+        return '';
+    }
+
+    /**
+     * Map of normalized Content-Id → data: URI for the message's inline
+     * attachments, capped in total size so a message with many/large inline
+     * images cannot bloat the body document.
+     *
+     * @return array<string, string>
+     */
+    private function cidMap(MailMessage $message): array
+    {
+        $budget = 8 * 1024 * 1024; // total inlined bytes ceiling
+        $map = [];
+
+        $inline = MailAttachment::query()
+            ->where('message_id', $message->id)
+            ->where('inline', true)
+            ->whereNotNull('content_id')
+            ->get();
+
+        $disk = BlobStore::disk();
+        foreach ($inline as $att) {
+            $cid = (string) $att->content_id;
+            if ($cid === '' || $att->size > $budget) {
+                continue;
+            }
+            $bytes = $disk->get('mail/att/'.$att->blob);
+            if (! is_string($bytes)) {
+                continue;
+            }
+            $budget -= strlen($bytes);
+            if ($budget < 0) {
+                break;
+            }
+            $type = $att->content_type ?? 'application/octet-stream';
+            $map[$cid] = 'data:'.$type.';base64,'.base64_encode($bytes);
+        }
+
+        return $map;
     }
 
     /** @param  EloquentBuilder<MailMessage>  $query */
@@ -179,9 +288,17 @@ class MailMessageController extends Controller
             'text_body' => $m->text_body,
             'html' => $m->html_sanitized,
             'headers_raw' => $this->rawHeaders($m),
-            // Attachment listing is Phase 2; the shape is stable so the client
-            // can render an empty list today.
-            'attachments' => [],
+            'attachments' => $m->attachments()
+                ->orderBy('created_at')
+                ->get()
+                ->map(fn (MailAttachment $a): array => [
+                    'id' => $a->id,
+                    'filename' => $a->filename,
+                    'content_type' => $a->content_type,
+                    'size' => $a->size,
+                    'inline' => $a->inline,
+                ])
+                ->all(),
         ]);
     }
 

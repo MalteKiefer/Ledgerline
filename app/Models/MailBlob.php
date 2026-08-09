@@ -16,6 +16,7 @@ use Illuminate\Support\Carbon;
  *
  * @property string $blob
  * @property int $user_id
+ * @property string $kind
  * @property int $size
  * @property ?Carbon $created_at
  */

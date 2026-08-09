@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Support\Mail;
 
+use App\Services\Mail\ParsedAttachment;
 use App\Services\Mail\ParsedMessage;
 use Illuminate\Support\Carbon;
 use ZBateson\MailMimeParser\Header\AddressHeader;
 use ZBateson\MailMimeParser\Header\DateHeader;
+use ZBateson\MailMimeParser\IMessage;
 use ZBateson\MailMimeParser\MailMimeParser;
+use ZBateson\MailMimeParser\Message\IMessagePart;
 
 /**
  * Thin server-side wrapper over zbateson/mail-mime-parser: turns a raw RFC822
@@ -60,7 +63,56 @@ final class MimeParser
             spf: $auth['spf'],
             dkim: $auth['dkim'],
             dmarc: $auth['dmarc'],
+            attachments: $this->attachments($message),
         );
+    }
+
+    /**
+     * Every attachment part (real + inline/cid) with its decoded bytes. An
+     * attachment is "inline" when its Content-Disposition is inline or it
+     * carries a Content-Id (cid: reference from an HTML body). A part whose
+     * bytes cannot be read is skipped rather than aborting the whole parse.
+     *
+     * @return list<ParsedAttachment>
+     */
+    private function attachments(IMessage $message): array
+    {
+        $out = [];
+        foreach ($message->getAllAttachmentParts() as $part) {
+            if (! $part instanceof IMessagePart) {
+                continue;
+            }
+
+            $stream = $part->getBinaryContentStream();
+            if ($stream === null) {
+                continue;
+            }
+            $bytes = $stream->getContents();
+
+            $contentId = $this->normalizeContentId($part->getContentId());
+            $disposition = strtolower(trim((string) $part->getContentDisposition()));
+
+            $out[] = new ParsedAttachment(
+                filename: $this->nullIfBlank($part->getFilename()),
+                contentType: $this->nullIfBlank($part->getContentType()),
+                contentId: $contentId,
+                inline: $disposition === 'inline' || $contentId !== null,
+                bytes: $bytes,
+            );
+        }
+
+        return $out;
+    }
+
+    /** A Content-Id with the surrounding angle brackets stripped, or null. */
+    private function normalizeContentId(?string $value): ?string
+    {
+        $v = $this->nullIfBlank($value);
+        if ($v === null) {
+            return null;
+        }
+
+        return $this->nullIfBlank(trim($v, '<>'));
     }
 
     /**

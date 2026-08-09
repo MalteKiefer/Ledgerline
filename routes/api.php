@@ -37,6 +37,7 @@ use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MailAttachmentController;
 use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\MailLogController;
 use App\Http\Controllers\MailMessageController;
@@ -308,9 +309,12 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/mail/accounts/{account}/logs', [MailLogController::class, 'index'])->whereNumber('account')->middleware('throttle:600,1')->name('api.mail.accounts.logs');
             Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware('throttle:1200,1')->name('api.mail.messages.index');
             Route::get('/mail/messages/{message}', [MailMessageController::class, 'show'])->whereUuid('message')->middleware('throttle:1200,1')->name('api.mail.messages.show');
+            Route::get('/mail/messages/{message}/body', [MailMessageController::class, 'body'])->whereUuid('message')->middleware('throttle:3000,1')->name('api.mail.messages.body');
             Route::post('/mail/messages/seen', [MailSeenController::class, 'update'])->middleware('throttle:120,1')->name('api.mail.messages.seen');
             Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware('throttle:60,1')->name('api.mail.messages.trash');
             Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware('throttle:60,1')->name('api.mail.messages.restore');
+            Route::get('/mail/attachments/{attachment}/raw', [MailAttachmentController::class, 'raw'])->whereUuid('attachment')->middleware('throttle:3000,1')->name('api.mail.attachments.raw');
+            Route::post('/mail/attachments/{attachment}/save', [MailAttachmentController::class, 'save'])->whereUuid('attachment')->middleware('throttle:60,1')->name('api.mail.attachments.save');
             Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->whereUuid('blob')->middleware('throttle:600,1')->name('api.mail.raw');
         });
 

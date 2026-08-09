@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Mail;
 
 use App\Models\MailAccount;
+use App\Models\MailAttachment;
 use App\Models\MailBlob;
 use App\Models\MailMessage;
 use App\Support\BlobStore;
@@ -129,17 +130,33 @@ class MaildirIngestor
             throw new RuntimeException('MaildirIngestor: failed to write mail blob to disk.');
         }
 
+        // Decoded attachment parts (real + inline/cid). Write each part's
+        // plaintext bytes to mail/att/{uuid} BEFORE the txn — same loss-safety
+        // posture as the raw blob: a txn failure leaves them as orphans the
+        // sweep reclaims, and the Maildir file survives for a clean retry.
+        //
+        // @var list<array{blob:string, attachment:\App\Services\Mail\ParsedAttachment}> $attachmentBlobs
+        $attachmentBlobs = [];
+        foreach ($parsed->attachments as $attachment) {
+            $attBlobId = (string) Str::uuid();
+            if (BlobStore::disk()->put('mail/att/'.$attBlobId, $attachment->bytes) === false) {
+                throw new RuntimeException('MaildirIngestor: failed to write mail attachment blob to disk.');
+            }
+            $attachmentBlobs[] = ['blob' => $attBlobId, 'attachment' => $attachment];
+        }
+
         // Origin \Seen state from the Maildir filename flags (cur/ carries
         // ":2,<flags>" where S = Seen; new/ files are unseen).
         $seen = $this->maildirSeen($path);
 
-        DB::transaction(function () use ($account, $folder, $hash, $rawSize, $blobId, $seen, $spam, $parsed, $htmlSanitized, $searchText): void {
+        DB::transaction(function () use ($account, $folder, $hash, $rawSize, $blobId, $seen, $spam, $parsed, $htmlSanitized, $searchText, $attachmentBlobs): void {
             // Hour-snapped archived-at (mirrors every other module's created_at).
             $now = now()->startOfHour();
 
             (new MailBlob)->forceFill([
                 'blob' => $blobId,
                 'user_id' => $account->user_id,
+                'kind' => 'message',
                 'size' => $rawSize,
                 'created_at' => $now,
             ])->save();
@@ -175,6 +192,31 @@ class MaildirIngestor
                 'search_text' => $searchText,
                 'indexed_at' => $now,
             ])->save();
+
+            foreach ($attachmentBlobs as $entry) {
+                $attachment = $entry['attachment'];
+
+                (new MailBlob)->forceFill([
+                    'blob' => $entry['blob'],
+                    'user_id' => $account->user_id,
+                    'kind' => 'attachment',
+                    'size' => $attachment->size(),
+                    'created_at' => $now,
+                ])->save();
+
+                (new MailAttachment)->forceFill([
+                    'id' => (string) Str::uuid(),
+                    'message_id' => $blobId,
+                    'user_id' => $account->user_id,
+                    'blob' => $entry['blob'],
+                    'filename' => $this->cap($attachment->filename, 500),
+                    'content_type' => $this->cap($attachment->contentType, 255),
+                    'content_id' => $this->cap($attachment->contentId, 512),
+                    'inline' => $attachment->inline,
+                    'size' => $attachment->size(),
+                    'created_at' => $now,
+                ])->save();
+            }
         });
 
         // Ledger row committed → the Maildir plaintext is redundant. Shred it.
@@ -247,6 +289,9 @@ class MaildirIngestor
             $parts[] = $addr['email'];
         }
         $parts[] = $parsed->textBody;
+        foreach ($parsed->attachments as $attachment) {
+            $parts[] = $attachment->filename;
+        }
 
         $text = trim(implode(' ', array_filter(
             $parts,

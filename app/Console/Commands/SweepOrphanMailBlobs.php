@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Models\MailAttachment;
 use App\Models\MailBlob;
 use App\Models\MailMessage;
 use App\Support\BlobStore;
@@ -47,21 +48,35 @@ class SweepOrphanMailBlobs extends Command
             ->orderBy('blob')
             ->chunkById(500, function ($blobs) use ($disk, &$swept): void {
                 $ids = $blobs->pluck('blob')->all();
-                $referenced = MailMessage::query()
+
+                // A raw-message blob (kind=message) is referenced by a MailMessage
+                // of the same id; an attachment blob (kind=attachment) is
+                // referenced by a MailAttachment.blob. The on-disk prefix differs
+                // (mail/{blob} vs mail/att/{blob}), so resolve both per kind.
+                $referencedMessages = MailMessage::query()
                     ->withoutGlobalScopes()
                     ->whereIn('id', $ids)
                     ->pluck('id')
                     ->flip();
+                $referencedAttachments = MailAttachment::query()
+                    ->withoutGlobalScopes()
+                    ->whereIn('blob', $ids)
+                    ->pluck('blob')
+                    ->flip();
 
                 $orphanIds = [];
                 foreach ($blobs as $blob) {
-                    if (isset($referenced[$blob->blob])) {
+                    $isAttachment = $blob->kind === 'attachment';
+                    $referenced = $isAttachment
+                        ? isset($referencedAttachments[$blob->blob])
+                        : isset($referencedMessages[$blob->blob]);
+                    if ($referenced) {
                         continue;
                     }
                     $orphanIds[] = $blob->blob;
 
                     if (is_string($blob->blob) && Str::isUuid($blob->blob)) {
-                        $disk->delete('mail/'.$blob->blob);
+                        $disk->delete(($isAttachment ? 'mail/att/' : 'mail/').$blob->blob);
                     }
                     $swept++;
                 }

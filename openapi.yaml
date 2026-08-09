@@ -1419,8 +1419,22 @@ components:
         text_body: { type: [string, "null"], description: "show only." }
         html: { type: [string, "null"], description: "Server-sanitised HTML (show only)." }
         headers_raw: { type: [string, "null"], description: "Raw RFC822 header block (show only)." }
-        attachments: { type: array, description: "show only; populated from Phase 2.", items: { type: object } }
+        attachments: { type: array, description: "show only.", items: { $ref: '#/components/schemas/MailAttachment' } }
       required: [id, folder, size, seen, trashed]
+
+    MailAttachment:
+      type: object
+      description: >
+        One decoded MIME attachment part of an archived message. Bytes are served
+        sandboxed via GET /mail/attachments/{id}/raw; inline=true marks cid:
+        images referenced by the HTML body.
+      properties:
+        id: { type: string, format: uuid }
+        filename: { type: [string, "null"] }
+        content_type: { type: [string, "null"] }
+        size: { type: integer }
+        inline: { type: boolean }
+      required: [id, size, inline]
 
     MailLog:
       type: object
@@ -6115,6 +6129,92 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/messages/{message}/body:
+    get:
+      tags: [Mail]
+      operationId: mailMessagesBody
+      summary: Sandboxed HTML body document for a reader iframe
+      description: >
+        Throttle 3000/min. Returns the message's HTML body as a standalone
+        document (text/html) for embedding in a sandboxed reader iframe. Served
+        with `default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src
+        data:` (+`https:` only when `?remote=1` AND the user's mail_load_remote
+        pref is on). cid: inline images are rewritten to data: URIs; no scripts.
+      parameters:
+        - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: remote, in: query, required: false, schema: { type: boolean }, description: "Load remote images once (only if mail_load_remote is on)." }
+      responses:
+        "200":
+          description: HTML body document.
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/attachments/{attachment}/raw:
+    get:
+      tags: [Mail]
+      operationId: mailAttachmentRaw
+      summary: Stream an attachment's bytes (sandboxed)
+      description: >
+        Throttle 3000/min. Owner-scoped; streams the decoded attachment bytes
+        with nosniff + `default-src 'none'; sandbox`. A small safe allowlist
+        (png/jpeg/gif/webp/pdf/text-plain) renders inline; everything else is a
+        forced download.
+      parameters:
+        - { name: attachment, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Attachment bytes.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/attachments/{attachment}/save:
+    post:
+      tags: [Mail]
+      operationId: mailAttachmentSave
+      summary: Save an attachment into another module (Files / Paperless)
+      description: >
+        Throttle 60/min. Copies the server-held attachment bytes into a target
+        module — no client upload. target=files creates a FileEntry (owner quota
+        enforced, 413); target=paperless posts to the user's Paperless via their
+        own credentials. (Gallery is not a module in this deployment.)
+      parameters:
+        - { name: attachment, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target: { type: string, enum: [files, paperless] }
+                folder_id: { type: [integer, "null"], description: "Owner-scoped Files folder (target=files only)." }
+              required: [target]
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  target: { type: string }
+                  file_id: { type: integer, description: "target=files." }
+                  task: { type: string, description: "target=paperless task id." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { description: "Files quota exceeded." }
+        "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /mail/messages/seen:
     post:

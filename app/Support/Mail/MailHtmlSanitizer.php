@@ -45,7 +45,18 @@ final class MailHtmlSanitizer
     /** Attributes whose value must be a safe URL (or is dropped). */
     private const URL_ATTRS = ['href', 'src', 'poster', 'background', 'srcset', 'action', 'formaction'];
 
-    public function sanitize(?string $html): ?string
+    /**
+     * @param  bool  $allowRemote  keep http(s)/protocol-relative resource src
+     *                             (remote images) — gated by the caller. At ingest
+     *                             this is false (remote src is dropped, so the
+     *                             stored html_sanitized never auto-fetches); the
+     *                             body endpoint passes true only when the user
+     *                             opted into remote content.
+     * @param  array<string, string>  $cidMap  normalized Content-Id → data: URI;
+     *                                         a `cid:<id>` img src is rewritten to its data:
+     *                                         URI (or dropped when unresolved).
+     */
+    public function sanitize(?string $html, bool $allowRemote = false, array $cidMap = []): ?string
     {
         if ($html === null || trim($html) === '') {
             return null;
@@ -66,7 +77,7 @@ final class MailHtmlSanitizer
                 return null;
             }
 
-            $this->walk($dom->documentElement);
+            $this->walk($dom->documentElement, $allowRemote, $cidMap);
 
             $body = $dom->getElementsByTagName('body')->item(0);
             $out = '';
@@ -84,13 +95,14 @@ final class MailHtmlSanitizer
         }
     }
 
-    private function walk(?DOMNode $node): void
+    /** @param  array<string, string>  $cidMap */
+    private function walk(?DOMNode $node, bool $allowRemote, array $cidMap): void
     {
         if (! $node instanceof DOMElement) {
             // Descend into non-element containers (e.g. the document node).
             if ($node !== null) {
                 foreach (iterator_to_array($node->childNodes) as $child) {
-                    $this->walk($child);
+                    $this->walk($child, $allowRemote, $cidMap);
                 }
             }
 
@@ -104,13 +116,14 @@ final class MailHtmlSanitizer
 
                 continue;
             }
-            $this->walk($child);
+            $this->walk($child, $allowRemote, $cidMap);
         }
 
-        $this->scrubAttributes($node);
+        $this->scrubAttributes($node, $allowRemote, $cidMap);
     }
 
-    private function scrubAttributes(DOMElement $el): void
+    /** @param  array<string, string>  $cidMap */
+    private function scrubAttributes(DOMElement $el, bool $allowRemote, array $cidMap): void
     {
         $tag = strtolower($el->nodeName);
         $isImg = $tag === 'img';
@@ -136,8 +149,17 @@ final class MailHtmlSanitizer
             }
 
             if (in_array($lower, self::URL_ATTRS, true)) {
-                if (! $this->safeUrl($value, $isImg && in_array($lower, ['src', 'poster'], true), $remoteTag && in_array($lower, ['src', 'srcset', 'poster', 'background'], true))) {
+                $resolved = $this->resolveUrl(
+                    $value,
+                    allowDataImage: $isImg && in_array($lower, ['src', 'poster'], true),
+                    isRemoteResource: $remoteTag && in_array($lower, ['src', 'srcset', 'poster', 'background'], true),
+                    allowRemote: $allowRemote,
+                    cidMap: $isImg && in_array($lower, ['src', 'poster'], true) ? $cidMap : [],
+                );
+                if ($resolved === null) {
                     $el->removeAttribute($name);
+                } elseif ($resolved !== $value) {
+                    $el->setAttribute($name, $resolved);
                 }
             }
         }
@@ -150,39 +172,53 @@ final class MailHtmlSanitizer
     }
 
     /**
-     * Whether a URL attribute value is safe to keep.
+     * Resolve a URL attribute value: return the value to keep (possibly
+     * rewritten), or null to drop the attribute.
      *
      * @param  bool  $allowDataImage  data:image/* is allowed (inline <img>).
      * @param  bool  $isRemoteResource  true when this attribute triggers an
-     *                                  automatic resource load (img/media src) —
-     *                                  remote http(s)/protocol-relative is stripped.
+     *                                  automatic resource load (img/media src).
+     * @param  bool  $allowRemote  keep remote http(s)/protocol-relative resource
+     *                             loads (reader opted into remote content).
+     * @param  array<string, string>  $cidMap  normalized Content-Id → data: URI
+     *                                         for rewriting a `cid:` image src.
      */
-    private function safeUrl(string $value, bool $allowDataImage, bool $isRemoteResource): bool
+    private function resolveUrl(string $value, bool $allowDataImage, bool $isRemoteResource, bool $allowRemote, array $cidMap): ?string
     {
         $v = trim($value);
         if ($v === '') {
-            return false;
+            return null;
         }
 
         $scheme = $this->scheme($v);
 
         // Explicitly dangerous schemes — always drop.
         if (in_array($scheme, ['javascript', 'vbscript'], true)) {
-            return false;
+            return null;
         }
 
         if ($scheme === 'data') {
-            return $allowDataImage && preg_match('#^data:image/(png|jpe?g|gif|webp|bmp)[;,]#i', $v) === 1;
+            return ($allowDataImage && preg_match('#^data:image/(png|jpe?g|gif|webp|bmp)[;,]#i', $v) === 1) ? $v : null;
+        }
+
+        // cid: inline attachment reference. Rewrite to its data: URI when the
+        // caller supplied one (the body endpoint); otherwise drop (a bare cid:
+        // is meaningless to a browser).
+        if ($scheme === 'cid') {
+            $id = trim(substr($v, 4), '<>');
+            $decoded = rawurldecode($id);
+
+            return $cidMap[$id] ?? $cidMap[$decoded] ?? null;
         }
 
         // Remote auto-loading resource (tracking pixel / leak): neutralise unless
-        // the reader later opts in (Phase 2). Covers http(s) and protocol-relative.
+        // the reader opted in. Covers http(s) and protocol-relative.
         if ($isRemoteResource && ($scheme === 'http' || $scheme === 'https' || str_starts_with($v, '//'))) {
-            return false;
+            return $allowRemote ? $v : null;
         }
 
-        // cid: (inline attachment ref) and relative/anchor/mailto links are kept.
-        return true;
+        // Relative / anchor / mailto links and non-loading hrefs are kept.
+        return $v;
     }
 
     private function scheme(string $url): ?string

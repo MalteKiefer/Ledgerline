@@ -36,9 +36,10 @@ final class MailData implements UserDataContributor
         $blobs = MailBlob::query()
             ->where('user_id', $user->getKey())
             ->orderBy('blob')
-            ->get(['blob', 'size', 'created_at'])
+            ->get(['blob', 'kind', 'size', 'created_at'])
             ->map(fn (MailBlob $b): array => [
                 'blob' => $b->blob,
+                'kind' => $b->kind,
                 'size' => $b->size,
                 'created_at' => $b->created_at,
             ])
@@ -57,7 +58,7 @@ final class MailData implements UserDataContributor
             ->chunkById(500, function ($blobs) use ($disk): void {
                 foreach ($blobs as $blob) {
                     if (is_string($blob->blob) && Str::isUuid($blob->blob)) {
-                        $disk->delete('mail/'.$blob->blob);
+                        $disk->delete(($blob->kind === 'attachment' ? 'mail/att/' : 'mail/').$blob->blob);
                     }
                 }
 

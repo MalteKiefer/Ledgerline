@@ -93,6 +93,11 @@ return [
         'encrypted_smime' => 'Зашифровано S/MIME',
         'download_eml' => 'Скачать .eml',
         'load_remote' => 'Загрузить внешний контент',
+        'no_attachments' => 'Нет вложений.',
+        'attachment_view' => 'Просмотр',
+        'attachment_download' => 'Скачать',
+        'save_to_files' => 'Сохранить в Файлы',
+        'save_to_paperless' => 'Отправить в Paperless',
     ],
 
     'actions' => [
@@ -123,5 +128,8 @@ return [
         'sync_cancelled' => 'Синхронизация отменена.',
         'load_failed' => 'Не удалось загрузить почту.',
         'save_failed' => 'Не удалось сохранить учётную запись.',
+        'saved_to_files' => 'Сохранено в Файлы.',
+        'saved_to_paperless' => 'Отправлено в Paperless.',
+        'save_attachment_failed' => 'Не удалось сохранить вложение.',
     ],
 ];

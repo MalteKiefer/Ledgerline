@@ -18,6 +18,7 @@ final readonly class ParsedMessage
     /**
      * @param  list<array{name:?string, email:string}>  $to
      * @param  list<array{name:?string, email:string}>  $cc
+     * @param  list<ParsedAttachment>  $attachments
      */
     public function __construct(
         public ?string $messageId,
@@ -36,6 +37,7 @@ final readonly class ParsedMessage
         public ?string $spf,
         public ?string $dkim,
         public ?string $dmarc,
+        public array $attachments = [],
     ) {}
 
     public function hasAttachment(): bool

@@ -93,6 +93,11 @@ return [
         'encrypted_smime' => 'S/MIME-verschlüsselt',
         'download_eml' => '.eml herunterladen',
         'load_remote' => 'Externe Inhalte laden',
+        'no_attachments' => 'Keine Anhänge.',
+        'attachment_view' => 'Ansehen',
+        'attachment_download' => 'Herunterladen',
+        'save_to_files' => 'In Dateien speichern',
+        'save_to_paperless' => 'An Paperless senden',
     ],
 
     'actions' => [
@@ -123,5 +128,8 @@ return [
         'sync_cancelled' => 'Synchronisierung abgebrochen.',
         'load_failed' => 'E-Mails konnten nicht geladen werden.',
         'save_failed' => 'Konto konnte nicht gespeichert werden.',
+        'saved_to_files' => 'In Dateien gespeichert.',
+        'saved_to_paperless' => 'An Paperless gesendet.',
+        'save_attachment_failed' => 'Anhang konnte nicht gespeichert werden.',
     ],
 ];

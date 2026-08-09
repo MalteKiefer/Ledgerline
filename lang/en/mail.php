@@ -93,6 +93,11 @@ return [
         'encrypted_smime' => 'S/MIME encrypted',
         'download_eml' => 'Download .eml',
         'load_remote' => 'Load remote content',
+        'no_attachments' => 'No attachments.',
+        'attachment_view' => 'View',
+        'attachment_download' => 'Download',
+        'save_to_files' => 'Save to Files',
+        'save_to_paperless' => 'Save to Paperless',
     ],
 
     'actions' => [
@@ -123,5 +128,8 @@ return [
         'sync_cancelled' => 'Sync cancelled.',
         'load_failed' => 'Could not load mail.',
         'save_failed' => 'Could not save the account.',
+        'saved_to_files' => 'Saved to Files.',
+        'saved_to_paperless' => 'Sent to Paperless.',
+        'save_attachment_failed' => 'Could not save the attachment.',
     ],
 ];
