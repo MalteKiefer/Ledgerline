@@ -18,19 +18,38 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $name
  * @property string $uri
  * @property string|null $color
+ * @property string $kind
  * @property string|null $description
  * @property string $timezone
  * @property int $synctoken
  */
-#[Fillable(['user_id', 'name', 'uri', 'color', 'description', 'timezone', 'synctoken'])]
+#[Fillable(['user_id', 'name', 'uri', 'color', 'kind', 'description', 'timezone', 'synctoken'])]
 class Calendar extends Model
 {
     use HasUuids;
     use OwnsUserData;
 
+    /** Ordinary editable/imported calendar. */
+    public const KIND_NORMAL = 'normal';
+
+    /** Generated, read-only: German national public holidays. */
+    public const KIND_HOLIDAYS = 'holidays';
+
+    /** Generated, read-only: contact birthdays (yearly-recurring). */
+    public const KIND_BIRTHDAYS = 'birthdays';
+
+    /** The special (server-generated, read-only) kinds. */
+    public const SPECIAL_KINDS = [self::KIND_HOLIDAYS, self::KIND_BIRTHDAYS];
+
     protected function casts(): array
     {
         return ['synctoken' => 'integer'];
+    }
+
+    /** A special calendar is generated + read-only (no manual event add/edit). */
+    public function isSpecial(): bool
+    {
+        return in_array($this->kind, self::SPECIAL_KINDS, true);
     }
 
     /** @return HasMany<CalendarEvent, $this> */

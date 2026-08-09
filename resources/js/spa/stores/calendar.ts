@@ -8,6 +8,7 @@ export interface CalendarCol {
   name: string;
   uri: string;
   color: string | null;
+  kind: 'normal' | 'holidays' | 'birthdays';
   owned: boolean;
 }
 
@@ -83,6 +84,11 @@ export const useCalendarStore = defineStore('calendar', () => {
   const updateCalendar = (id: string, body: Record<string, unknown>) => api.put(`/api/v1/calendars/${id}`, body);
   const deleteCalendar = (id: string) => api.delete(`/api/v1/calendars/${id}`);
 
+  // Special (generated, read-only) calendars — holidays / birthdays.
+  const createSpecial = (kind: 'holidays' | 'birthdays', name: string, color?: string) =>
+    api.post<{ id: string; created: number }>('/api/v1/calendars/special', { kind, name, color });
+  const regenerate = (id: string) => api.post<{ ok: boolean; created: number }>(`/api/v1/calendars/${id}/regenerate`, {});
+
   const saveSettings = (s: CalSettings) => api.post('/api/v1/calendar/settings', s);
 
   function importIcs(file: File, calendarId: string) {
@@ -99,6 +105,6 @@ export const useCalendarStore = defineStore('calendar', () => {
   return {
     calendars, settings, events,
     loadData, loadRange, show, create, update, destroy,
-    createCalendar, updateCalendar, deleteCalendar, saveSettings, importIcs, exportUrl,
+    createCalendar, updateCalendar, deleteCalendar, createSpecial, regenerate, saveSettings, importIcs, exportUrl,
   };
 });

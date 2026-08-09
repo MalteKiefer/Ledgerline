@@ -10,6 +10,7 @@ use App\Models\UserSetting;
 use App\Services\Calendar\CalendarEventService;
 use App\Services\Calendar\CalendarImporter;
 use App\Services\Calendar\CalendarWriter;
+use App\Services\Calendar\SpecialCalendarGenerator;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -61,12 +62,13 @@ class CalendarController extends Controller
         $settings = UserSetting::for($userId);
 
         return response()->json([
-            'calendars' => Calendar::query()->orderBy('name')->get(['id', 'name', 'uri', 'color', 'user_id'])
+            'calendars' => Calendar::query()->orderBy('name')->get(['id', 'name', 'uri', 'color', 'kind', 'user_id'])
                 ->map(fn (Calendar $c): array => [
                     'id' => $c->id,
                     'name' => $c->name,
                     'uri' => $c->uri,
                     'color' => $c->color,
+                    'kind' => $c->kind,
                     'owned' => (int) $c->user_id === $userId,
                 ]),
             'settings' => [
@@ -139,6 +141,8 @@ class CalendarController extends Controller
         $data = $this->validated($request, creating: true);
         $calendar = Calendar::query()->ownedBy($this->requireUser($request)->id)
             ->findOrFail((string) $request->string('calendar_id'));
+        // Special calendars are generated + read-only; reject manual event writes.
+        abort_if($calendar->isSpecial(), 422);
         $event = $writer->create($calendar, $data);
 
         return response()->json(['id' => $event->id], 201);
@@ -147,6 +151,8 @@ class CalendarController extends Controller
     public function update(Request $request, CalendarEvent $event, CalendarWriter $writer): JsonResponse
     {
         $this->authorizeEvent($event);
+        // Generated events in a special calendar are read-only.
+        abort_if($event->calendar?->isSpecial() ?? false, 422);
         $data = $this->validated($request);
 
         // Optimistic concurrency via the DAV-native etag: reject a stale write.
@@ -184,6 +190,47 @@ class CalendarController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * Create a SPECIAL (generated, read-only) calendar — "holidays" (German
+     * national public holidays) or "birthdays" (from contacts) — and populate it.
+     * Normal calendars keep going through CalendarBookController@store.
+     */
+    public function storeSpecial(Request $request, SpecialCalendarGenerator $generator): JsonResponse
+    {
+        $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'color' => ['nullable', 'string', 'max:9'],
+            'kind' => ['required', 'in:'.implode(',', Calendar::SPECIAL_KINDS)],
+        ]);
+        $name = (string) $request->string('name');
+
+        $calendar = Calendar::create([
+            'user_id' => $this->requireUser($request)->id,
+            'name' => $name,
+            'uri' => Str::slug($name).'-'.Str::lower(Str::random(4)),
+            'color' => $request->filled('color') ? (string) $request->string('color') : null,
+            'kind' => (string) $request->string('kind'),
+            'timezone' => 'UTC',
+            'synctoken' => 1,
+        ]);
+
+        $created = $generator->regenerate($calendar);
+
+        return response()->json(['id' => $calendar->id, 'created' => $created], 201);
+    }
+
+    /** Rebuild a special calendar's generated events from the current source. */
+    public function regenerate(Request $request, Calendar $calendar, SpecialCalendarGenerator $generator): JsonResponse
+    {
+        $this->authorizeCalendar($calendar);
+        // Only special calendars are generated; a normal one has nothing to rebuild.
+        abort_unless($calendar->isSpecial(), 422);
+
+        $created = $generator->regenerate($calendar);
+
+        return response()->json(['ok' => true, 'created' => $created]);
+    }
+
     /** Export a calendar (or all the user's calendars) as one .ics download. */
     public function export(Request $request): StreamedResponse
     {
@@ -214,6 +261,8 @@ class CalendarController extends Controller
         ]);
         $calendar = Calendar::query()->ownedBy($this->requireUser($request)->id)
             ->findOrFail((string) $request->string('calendar_id'));
+        // Special calendars are generated + read-only; refuse imports into them.
+        abort_if($calendar->isSpecial(), 422);
 
         $result = $importer->import($calendar, (string) file_get_contents($request->file('file')->getRealPath()));
 
@@ -280,5 +329,10 @@ class CalendarController extends Controller
         // The calendar relation is owner-scoped, so another user's event resolves
         // to a null calendar — that must read as forbidden, not a 500.
         abort_unless($event->calendar?->user_id === auth()->id(), 403);
+    }
+
+    private function authorizeCalendar(Calendar $calendar): void
+    {
+        abort_unless($calendar->user_id === auth()->id(), 403);
     }
 }

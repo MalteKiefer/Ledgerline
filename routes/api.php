@@ -222,6 +222,9 @@ Route::prefix('v1')->group(function (): void {
             Route::put('/calendar/events/{event}', [CalendarController::class, 'update'])->middleware('throttle:600,1')->name('api.calendar.events.update');
             Route::delete('/calendar/events/{event}', [CalendarController::class, 'destroy'])->middleware('throttle:600,1')->name('api.calendar.events.destroy');
             Route::post('/calendars', [CalendarBookController::class, 'store'])->middleware('throttle:600,1')->name('api.calendars.store');
+            // Special (generated, read-only) calendars: create + (re)generate holidays/birthdays.
+            Route::post('/calendars/special', [CalendarController::class, 'storeSpecial'])->middleware('throttle:60,1')->name('api.calendars.special');
+            Route::post('/calendars/{calendar}/regenerate', [CalendarController::class, 'regenerate'])->middleware('throttle:60,1')->name('api.calendars.regenerate');
             Route::put('/calendars/{calendar}', [CalendarBookController::class, 'update'])->middleware('throttle:600,1')->name('api.calendars.update');
             Route::delete('/calendars/{calendar}', [CalendarBookController::class, 'destroy'])->middleware('throttle:600,1')->name('api.calendars.destroy');
         });

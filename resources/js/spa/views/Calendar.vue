@@ -20,6 +20,9 @@
             <span class="h-3.5 w-3.5 shrink-0 rounded-[4px] border" :style="{ backgroundColor: isVisible(cal.id) ? (cal.color || '#6750a4') : 'transparent', borderColor: cal.color || '#6750a4' }" />
             <span class="truncate" :class="isVisible(cal.id) ? '' : 'text-[var(--ll-muted)] opacity-60'">{{ cal.name }}</span>
           </button>
+          <button v-if="cal.kind !== 'normal'" class="hidden h-7 w-7 place-items-center rounded hover:bg-black/[0.05] group-hover:grid dark:hover:bg-white/10" :title="t('calendar.ui.regenerate')" @click="regenerateCal(cal)">
+            <Icon name="refresh" :size="16" class="text-[var(--ll-muted)]" />
+          </button>
           <button class="hidden h-7 w-7 place-items-center rounded hover:bg-black/[0.05] group-hover:grid dark:hover:bg-white/10" :title="t('calendar.ui.rename_calendar')" @click="openEditCalendar(cal)">
             <Icon name="edit" :size="16" class="text-[var(--ll-muted)]" />
           </button>
@@ -29,12 +32,11 @@
         </div>
         <div v-if="!store.calendars.length" class="px-2 py-3 text-xs text-[var(--ll-muted)]">{{ t('calendar.ui.no_events') }}</div>
       </nav>
-      <div class="space-y-2 border-t border-[var(--ll-border)] p-3">
+      <div class="border-t border-[var(--ll-border)] p-3">
         <div class="flex flex-col gap-2">
           <Btn variant="outline" size="sm" icon="upload" class="w-full justify-start" @click="openImport">{{ t('calendar.ui.import') }}</Btn>
           <Btn variant="ghost" size="sm" icon="download" tag="a" class="w-full justify-start" :href="exportHref" :title="t('calendar.ui.export')">{{ t('calendar.ui.export') }}</Btn>
         </div>
-        <Select v-model="weekStartModel" :label="t('calendar.ui.week_start')" :options="weekStartOptions" />
       </div>
     </Card>
 
@@ -65,38 +67,42 @@
 
       <!-- MONTH -->
       <div v-else-if="view === 'month'" class="flex flex-1 flex-col overflow-hidden">
-        <div class="grid w-full border-b border-[var(--ll-border)] text-center text-[0.7rem] font-medium uppercase tracking-wide text-[var(--ll-muted)]" :style="cols7">
+        <div class="grid w-full border-b border-[var(--ll-border)] text-center text-[0.7rem] font-medium uppercase tracking-wide text-[var(--ll-muted)]" :style="monthCols">
+          <div class="grid place-items-center py-2 text-[0.6rem]">{{ t('calendar.ui.kw') }}</div>
           <div v-for="w in weekdayLabels" :key="w" class="py-2">{{ w }}</div>
         </div>
-        <div class="grid w-full flex-1 overflow-y-auto" :style="cols7">
-          <div
-            v-for="day in monthDays" :key="ymd(day)"
-            class="min-h-[96px] cursor-pointer border-b border-r border-[var(--ll-border)] p-1"
-            :class="inMonth(day) ? '' : 'bg-black/[0.015] dark:bg-white/[0.02]'"
-            @click="openCreate(ymd(day))"
-          >
-            <div class="mb-1 flex justify-end">
-              <span
-                class="grid h-6 w-6 place-items-center rounded-full text-xs font-medium"
-                :class="isToday(day) ? 'bg-primary-500 text-white' : (inMonth(day) ? '' : 'text-[var(--ll-muted)]')"
-              >{{ day.getDate() }}</span>
+        <div class="grid w-full flex-1 overflow-y-auto" :style="monthCols">
+          <template v-for="week in monthWeeks" :key="week.key">
+            <div class="grid place-items-center border-b border-r border-[var(--ll-border)] bg-black/[0.015] text-[0.7rem] tabular-nums text-[var(--ll-muted)] dark:bg-white/[0.02]">{{ week.kw }}</div>
+            <div
+              v-for="day in week.days" :key="ymd(day)"
+              class="min-h-[96px] cursor-pointer border-b border-r border-[var(--ll-border)] p-1"
+              :class="inMonth(day) ? '' : 'bg-black/[0.015] dark:bg-white/[0.02]'"
+              @click="openCreate(ymd(day))"
+            >
+              <div class="mb-1 flex justify-end">
+                <span
+                  class="grid h-6 w-6 place-items-center rounded-full text-xs font-medium"
+                  :class="isToday(day) ? 'bg-primary-500 text-white' : (inMonth(day) ? '' : 'text-[var(--ll-muted)]')"
+                >{{ day.getDate() }}</span>
+              </div>
+              <div class="space-y-0.5">
+                <button
+                  v-for="o in cellEvents(day).slice(0, 3)" :key="o.id + o.start"
+                  class="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] hover:opacity-80"
+                  :style="o.all_day ? { backgroundColor: chipBg(o) } : {}"
+                  @click.stop="openEdit(o)"
+                >
+                  <span v-if="!o.all_day" class="h-1.5 w-1.5 shrink-0 rounded-full" :style="{ backgroundColor: dotColor(o) }" />
+                  <span v-if="!o.all_day" class="shrink-0 tabular-nums text-[var(--ll-muted)]">{{ timeLabel(o) }}</span>
+                  <span class="truncate">{{ o.summary || '—' }}</span>
+                </button>
+                <button v-if="cellEvents(day).length > 3" class="pl-1" @click.stop="openDay(ymd(day))">
+                  <Badge tone="gray">{{ t('calendar.ui.more', { count: String(cellEvents(day).length - 3) }) }}</Badge>
+                </button>
+              </div>
             </div>
-            <div class="space-y-0.5">
-              <button
-                v-for="o in cellEvents(day).slice(0, 3)" :key="o.id + o.start"
-                class="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] hover:opacity-80"
-                :style="o.all_day ? { backgroundColor: chipBg(o) } : {}"
-                @click.stop="openEdit(o)"
-              >
-                <span v-if="!o.all_day" class="h-1.5 w-1.5 shrink-0 rounded-full" :style="{ backgroundColor: dotColor(o) }" />
-                <span v-if="!o.all_day" class="shrink-0 tabular-nums text-[var(--ll-muted)]">{{ timeLabel(o) }}</span>
-                <span class="truncate">{{ o.summary || '—' }}</span>
-              </button>
-              <button v-if="cellEvents(day).length > 3" class="pl-1" @click.stop="openDay(ymd(day))">
-                <Badge tone="gray">{{ t('calendar.ui.more', { count: String(cellEvents(day).length - 3) }) }}</Badge>
-              </button>
-            </div>
-          </div>
+          </template>
         </div>
       </div>
 
@@ -108,7 +114,7 @@
           <div class="flex min-w-[720px] flex-1 flex-col">
             <!-- weekday header -->
             <div class="grid w-full shrink-0" :style="weekCols">
-              <div class="border-b border-[var(--ll-border)]" />
+              <div class="grid place-items-center border-b border-[var(--ll-border)] text-[0.6rem] uppercase tracking-wide text-[var(--ll-muted)]">{{ t('calendar.ui.kw') }} {{ weekKw }}</div>
               <div
                 v-for="day in weekDays" :key="'h' + ymd(day)"
                 class="border-b border-l border-[var(--ll-border)] py-2 text-center text-xs"
@@ -215,6 +221,7 @@
   <!-- Calendar editor -->
   <Modal v-model="calModal" :title="calEditingId ? t('calendar.ui.rename_calendar') : t('calendar.ui.new_calendar')" width="420px">
     <div class="space-y-4">
+      <Select v-if="!calEditingId" v-model="calForm.kind" :label="t('calendar.ui.new_calendar_type')" :options="calKindOptions" />
       <TextField v-model="calForm.name" :label="t('calendar.ui.calendar_name')" />
       <div>
         <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('calendar.ui.color') }}</span>
@@ -296,6 +303,14 @@ function startOfWeek(d: Date, ws: number): Date { const s = startOfDay(d); const
 function endOfWeek(d: Date, ws: number): Date { return addDays(startOfWeek(d, ws), 6); }
 function eachDayFrom(a: Date, b: Date): Date[] { const out: Date[] = []; let cur = startOfDay(a); const end = startOfDay(b); while (cur <= end) { out.push(cur); cur = addDays(cur, 1); } return out; }
 function parseKey(k: string): Date { const p = k.split('-').map(Number); return new Date(p[0], (p[1] || 1) - 1, p[2] || 1); }
+// ISO-8601 week number (weeks start Monday; week 1 holds the first Thursday).
+function isoWeek(d: Date): number {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7; // Sunday → 7
+  t.setUTCDate(t.getUTCDate() + 4 - day); // shift to the week's Thursday
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return Math.ceil(((t.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+}
 
 const weekStart = computed<number>(() => store.settings.week_start);
 
@@ -304,8 +319,28 @@ const weekStartDay = computed<Date>(() => startOfWeek(cursor.value, weekStart.va
 const weekDays = computed<Date[]>(() => eachDayFrom(weekStartDay.value, addDays(weekStartDay.value, 6)));
 // Explicit grid templates so month (7 equal cols) and week (time gutter + 7
 // equal cols) render correctly regardless of utility-class generation order.
-const cols7 = { gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' };
+// Month: a leading KW (week-number) gutter + 7 equal day columns. Week: a time
+// gutter + 7 equal columns. Explicit so the grid renders regardless of utility
+// class-generation order.
+const monthCols = { gridTemplateColumns: '3rem repeat(7, minmax(0, 1fr))' };
 const weekCols = { gridTemplateColumns: '4rem repeat(7, minmax(0, 1fr))' };
+
+// Index (within a display week row) of the Monday — anchors the ISO week number
+// regardless of whether the week starts on Sunday (0) or Monday (1).
+const mondayIndex = computed<number>(() => (1 - weekStart.value + 7) % 7);
+function rowKw(days: Date[]): number { return isoWeek(days[mondayIndex.value] ?? days[0]); }
+
+// 6 week-rows for the month grid, each carrying its ISO week number for the KW gutter.
+const monthWeeks = computed<{ key: string; kw: number; days: Date[] }[]>(() => {
+  const out: { key: string; kw: number; days: Date[] }[] = [];
+  const all = monthDays.value;
+  for (let i = 0; i < all.length; i += 7) {
+    const days = all.slice(i, i + 7);
+    out.push({ key: ymd(days[0]), kw: rowKw(days), days });
+  }
+  return out;
+});
+const weekKw = computed<number>(() => rowKw(weekDays.value));
 
 const weekdayLabels = computed<string[]>(() => {
   const base = new Date(2023, 0, 1); // Sunday
@@ -407,16 +442,6 @@ async function reloadRange(): Promise<void> {
 }
 watch([cursor, view], () => { reloadRange(); });
 
-// --- week-start setting -----------------------------------------------------
-const weekStartOptions = computed(() => [
-  { title: t('calendar.ui.week_start_monday'), value: '1' },
-  { title: t('calendar.ui.week_start_sunday'), value: '0' },
-]);
-const weekStartModel = computed<string>({
-  get: () => String(store.settings.week_start),
-  set: (v) => { store.settings.week_start = v === '0' ? 0 : 1; store.saveSettings(store.settings).catch(() => { /* non-fatal */ }); reloadRange(); },
-});
-
 // --- event editor -----------------------------------------------------------
 const eventModal = ref(false);
 const editingId = ref<string | null>(null);
@@ -426,7 +451,10 @@ const deleting = ref(false);
 const form = reactive<{ calendar_id: string; summary: string; description: string; location: string; allDay: boolean; start: string; end: string; repeat: string; status: string }>(
   { calendar_id: '', summary: '', description: '', location: '', allDay: false, start: '', end: '', repeat: 'none', status: 'CONFIRMED' },
 );
-const calendarOptions = computed(() => store.calendars.map((c) => ({ title: c.name, value: c.id })));
+// Only normal calendars can hold user-created events; special ones are generated.
+const editableCalendars = computed(() => store.calendars.filter((c) => c.kind === 'normal'));
+const calendarOptions = computed(() => editableCalendars.value.map((c) => ({ title: c.name, value: c.id })));
+function isSpecialCal(id: string): boolean { return store.calendars.find((c) => c.id === id)?.kind !== 'normal' && store.calendars.some((c) => c.id === id); }
 const repeatOptions = computed(() => [
   { title: t('calendar.ui.repeat_none'), value: 'none' },
   { title: t('calendar.ui.repeat_daily'), value: 'daily' },
@@ -472,7 +500,7 @@ function openCreate(startVal: string): void {
   const allDay = startVal.length === 10;
   const dayPart = startVal.slice(0, 10);
   Object.assign(form, {
-    calendar_id: store.calendars[0]?.id ?? '',
+    calendar_id: editableCalendars.value[0]?.id ?? '',
     summary: '', description: '', location: '',
     allDay,
     start: startVal,
@@ -482,6 +510,8 @@ function openCreate(startVal: string): void {
   eventModal.value = true;
 }
 async function openEdit(o: Occurrence): Promise<void> {
+  // Generated events (holidays/birthdays) are read-only.
+  if (isSpecialCal(o.calendar)) { error(t('calendar.ui.special_readonly')); return; }
   try {
     const d = await store.show(o.id);
     editingId.value = d.id;
@@ -546,23 +576,39 @@ async function onDelete(): Promise<void> {
 const calModal = ref(false);
 const calEditingId = ref<string | null>(null);
 const calSaving = ref(false);
-const calForm = reactive<{ name: string; color: string }>({ name: '', color: '#6750a4' });
-function openNewCalendar(): void { calEditingId.value = null; calForm.name = ''; calForm.color = '#6750a4'; calModal.value = true; }
-function openEditCalendar(c: CalendarCol): void { calEditingId.value = c.id; calForm.name = c.name; calForm.color = c.color || '#6750a4'; calModal.value = true; }
+const calForm = reactive<{ name: string; color: string; kind: string }>({ name: '', color: '#6750a4', kind: 'normal' });
+const calKindOptions = computed(() => [
+  { title: t('calendar.ui.type_normal'), value: 'normal' },
+  { title: t('calendar.ui.type_birthdays'), value: 'birthdays' },
+  { title: t('calendar.ui.type_holidays'), value: 'holidays' },
+]);
+function openNewCalendar(): void { calEditingId.value = null; calForm.name = ''; calForm.color = '#6750a4'; calForm.kind = 'normal'; calModal.value = true; }
+function openEditCalendar(c: CalendarCol): void { calEditingId.value = c.id; calForm.name = c.name; calForm.color = c.color || '#6750a4'; calForm.kind = c.kind; calModal.value = true; }
 async function saveCalendar(): Promise<void> {
   if (!calForm.name) return;
   calSaving.value = true;
   try {
     if (calEditingId.value) {
       await store.updateCalendar(calEditingId.value, { name: calForm.name, color: calForm.color });
+    } else if (calForm.kind !== 'normal') {
+      const r = await store.createSpecial(calForm.kind as 'holidays' | 'birthdays', calForm.name, calForm.color);
+      if (r?.id) activeCalendars.value.add(r.id);
     } else {
       const r = await store.createCalendar(calForm.name, calForm.color);
       if (r?.id) activeCalendars.value.add(r.id);
     }
     calModal.value = false;
     await store.loadData();
+    await reloadRange();
     success(t('common.saved'));
   } catch { error(t('common.error')); } finally { calSaving.value = false; }
+}
+async function regenerateCal(c: CalendarCol): Promise<void> {
+  try {
+    await store.regenerate(c.id);
+    await reloadRange();
+    success(t('calendar.ui.regenerate_done'));
+  } catch { error(t('common.error')); }
 }
 async function removeCalendar(c: CalendarCol): Promise<void> {
   if (!confirm(t('calendar.ui.delete_calendar'))) return;

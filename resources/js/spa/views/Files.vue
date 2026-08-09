@@ -362,14 +362,38 @@
 
       <!-- Info sidebar (always visible on md+, stacks below on mobile) -->
       <aside class="mt-4 shrink-0 md:mt-0 md:ml-4 md:w-72 md:overflow-y-auto md:border-l md:border-[var(--ll-border)] md:pl-4">
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1.5">
           <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-500/15 text-primary-600 dark:text-primary-300">
             <Icon :name="categoryMsym(preview.name, preview.mime)" :size="20" />
           </span>
-          <div class="min-w-0">
+          <div class="min-w-0 flex-1">
             <div class="truncate text-sm font-medium" :title="preview.name">{{ preview.name }}</div>
             <div class="truncate text-xs text-[var(--ll-muted)]">{{ preview.mime || '—' }}</div>
           </div>
+          <!-- Favorite toggle -->
+          <button
+            type="button"
+            class="grid h-8 w-8 shrink-0 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10"
+            :class="preview.favorite ? 'text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'"
+            :title="t('files.favorite')"
+            @click="previewFav()"
+          >
+            <Icon name="star" :size="18" :fill="preview.favorite" />
+          </button>
+          <!-- Actions menu -->
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger class="grid h-8 w-8 shrink-0 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10">
+              <Icon name="more_vert" :size="18" />
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-50 min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+              <DropdownMenuItem as="a" :href="s.rawUrl(preview)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
+              <DropdownMenuItem as="a" :href="s.rawUrl(preview)" target="_blank" :class="menuItemCls"><Icon name="open_in_new" :size="18" />{{ t('common.open') }}</DropdownMenuItem>
+              <DropdownMenuItem :class="menuItemCls" @select="previewRename()"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
+              <DropdownMenuItem :class="menuItemCls" @select="openVersions(mapFile(preview))"><Icon name="history" :size="18" />{{ t('files.versions') }}</DropdownMenuItem>
+              <DropdownMenuItem :class="menuItemCls" @select="openShare(mapFile(preview))"><Icon name="share" :size="18" />{{ t('files.share') }}</DropdownMenuItem>
+              <DropdownMenuItem :class="menuItemDangerCls" @select="previewTrash()"><Icon name="delete" :size="18" />{{ t('files.trash') }}</DropdownMenuItem>
+            </DropdownMenuContent></DropdownMenuPortal>
+          </DropdownMenuRoot>
         </div>
 
         <dl class="mt-4 space-y-3 text-sm">
@@ -385,38 +409,43 @@
             <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.folder') }}</dt>
             <dd class="break-words">{{ folderPath(preview.file_folder_id) }}</dd>
           </div>
-          <div v-if="preview.tags?.length">
+
+          <!-- Tags (editable: removable chips + add input) -->
+          <div>
             <dt class="mb-1 text-xs text-[var(--ll-muted)]">{{ t('files.info_tags') }}</dt>
-            <dd class="flex flex-wrap gap-1">
-              <span v-for="tg in preview.tags" :key="tg" class="rounded bg-black/[0.05] px-1.5 py-0.5 text-xs dark:bg-white/10">{{ tg }}</span>
+            <dd>
+              <div v-if="preview.tags?.length" class="mb-1.5 flex flex-wrap gap-1">
+                <Badge v-for="tg in preview.tags" :key="tg" tone="gray">
+                  {{ tg }}
+                  <button type="button" class="grid place-items-center rounded-full text-[var(--ll-muted)] hover:text-red-600" :title="t('common.delete')" @click="removeTag(tg)"><Icon name="close" :size="14" /></button>
+                </Badge>
+              </div>
+              <TextField v-model="tagInput" :placeholder="t('files.tags_placeholder')" @enter="addTag" />
             </dd>
           </div>
-          <div v-if="preview.labels?.length">
+
+          <!-- Labels (toggle on/off from available set) -->
+          <div v-if="s.labels.length">
             <dt class="mb-1 text-xs text-[var(--ll-muted)]">{{ t('files.info_labels') }}</dt>
-            <dd class="flex flex-wrap gap-1">
-              <span
-                v-for="l in preview.labels" :key="l.id"
-                class="rounded px-1.5 py-0.5 text-xs font-medium"
-                :style="{ background: `color-mix(in srgb, ${l.color} 15%, transparent)`, color: l.color }"
-              >{{ l.name }}</span>
+            <dd class="flex flex-wrap gap-1.5">
+              <button
+                v-for="l in (s.labels as FileLabel[])" :key="l.id" type="button"
+                class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium transition-colors"
+                :style="previewHasLabel(l.id)
+                  ? { background: l.color, color: '#fff' }
+                  : { background: `color-mix(in srgb, ${l.color} 15%, transparent)`, color: l.color }"
+                @click="toggleLabel(l.id)"
+              >
+                <Icon name="label" :size="13" />{{ l.name }}
+              </button>
             </dd>
           </div>
+
           <div v-if="preview.note">
             <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.note') }}</dt>
             <dd class="whitespace-pre-wrap break-words">{{ preview.note }}</dd>
           </div>
-          <div v-if="preview.favorite" class="flex items-center gap-1.5 text-primary-600 dark:text-primary-300">
-            <Icon name="star" :size="18" fill />
-            <span class="text-xs font-medium">{{ t('files.favorite') }}</span>
-          </div>
         </dl>
-
-        <div class="mt-4 flex flex-col gap-1.5 border-t border-[var(--ll-border)] pt-3">
-          <Btn variant="soft" size="sm" block icon="download" tag="a" :href="s.rawUrl(preview)">{{ t('files.download') }}</Btn>
-          <Btn variant="ghost" size="sm" block icon="open_in_new" tag="a" :href="s.rawUrl(preview)" target="_blank">{{ t('common.open') }}</Btn>
-          <Btn variant="ghost" size="sm" block icon="drive_file_rename_outline" @click="doRename(mapFile(preview))">{{ t('files.rename') }}</Btn>
-          <Btn variant="ghost" size="sm" block icon="info" @click="openInfo(mapFile(preview))">{{ t('files.info') }}</Btn>
-        </div>
       </aside>
     </div>
   </Modal>
@@ -426,7 +455,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
-import { Icon, Btn, Card, TextField, Modal } from '@spa/ui';
+import { Icon, Btn, Card, TextField, Badge, Modal } from '@spa/ui';
 import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats } from '@spa/stores/files';
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
 import { useToast } from '@spa/composables/useToast';
@@ -448,6 +477,7 @@ const trashFiles = ref<FileEntry[]>([]);
 const trashFolders = ref<FileFolder[]>([]);
 const preview = ref<FileEntry | null>(null);
 const previewOpen = ref(false);
+const tagInput = ref('');
 
 // Presentational-only constants for the re-skinned nav + dropdown-menu items.
 const navItems = [
@@ -736,4 +766,73 @@ async function openStorage() {
   catch { error(t('common.error')); }
   finally { storageDlg.value.loading = false; }
 }
+
+// ---- Preview sidebar metadata (favorite / tags / labels) ----
+// Re-point `preview` at the freshly loaded store object so its version + fields
+// stay current after each optimistic save+reload (same handling as the rest of the view).
+function syncPreview() {
+  const cur = preview.value;
+  if (!cur) return;
+  const fresh = (s.files as FileEntry[]).find((f) => f.id === cur.id);
+  if (fresh) preview.value = fresh;
+}
+async function previewFav() {
+  const f = preview.value;
+  if (!f) return;
+  try { await s.toggleFav(f); await s.load(); syncPreview(); }
+  catch { error(t('common.error')); }
+}
+async function previewRename() {
+  const f = preview.value;
+  if (!f) return;
+  const name = prompt(t('files.rename'), f.name);
+  if (!name) return;
+  try { await s.rename(f, name); await s.load(); syncPreview(); }
+  catch { error(t('common.error')); }
+}
+async function previewTrash() {
+  const f = preview.value;
+  if (!f) return;
+  try { await s.trashFile(f); previewOpen.value = false; await s.load(); }
+  catch { error(t('common.error')); }
+}
+function previewHasLabel(id: number): boolean {
+  return (preview.value?.labels ?? []).some((l) => l.id === id);
+}
+async function toggleLabel(id: number) {
+  const f = preview.value;
+  if (!f) return;
+  const cur = (f.labels ?? []).map((l) => l.id);
+  const next = previewHasLabel(id) ? cur.filter((x) => x !== id) : [...cur, id];
+  try { await s.setFileLabels(f, next); await s.load(); syncPreview(); }
+  catch { error(t('common.error')); }
+}
+async function saveTags(tags: string[]) {
+  const f = preview.value;
+  if (!f) return;
+  try { await s.updateEntry(f, { tags }); await s.load(); syncPreview(); }
+  catch { error(t('common.error')); }
+}
+async function commitTags(added: string[]) {
+  const f = preview.value;
+  if (!f || !added.length) return;
+  await saveTags(Array.from(new Set([...(f.tags ?? []), ...added])));
+}
+async function removeTag(tag: string) {
+  const f = preview.value;
+  if (!f) return;
+  await saveTags((f.tags ?? []).filter((x) => x !== tag));
+}
+// Enter commits the whole input; a typed comma commits the completed token(s).
+async function addTag() {
+  const parts = tagInput.value.split(',').map((x) => x.trim()).filter(Boolean);
+  tagInput.value = '';
+  await commitTags(parts);
+}
+watch(tagInput, (v) => {
+  if (!v.includes(',')) return;
+  const parts = v.split(',');
+  tagInput.value = parts.pop() ?? '';
+  void commitTags(parts.map((x) => x.trim()).filter(Boolean));
+});
 </script>

@@ -401,6 +401,7 @@ components:
         name: { type: string }
         uri: { type: string }
         color: { type: [string, "null"], description: "#RRGGBB or #RRGGBBAA (Apple CALENDAR-COLOR)." }
+        kind: { type: string, enum: [normal, holidays, birthdays], description: "normal = editable; holidays/birthdays = generated + read-only." }
         owned: { type: boolean }
 
     CalendarOccurrence:
@@ -1688,6 +1689,45 @@ paths:
         "200": { description: Deleted. }
         "404": { $ref: '#/components/responses/NotFound' }
         "422": { description: Cannot delete the last calendar. }
+  /calendars/special:
+    post:
+      tags: [Calendar]
+      operationId: calendarsStoreSpecial
+      summary: Create a special (generated, read-only) calendar and populate it
+      description: >
+        Creates a calendar of kind `holidays` (German national public holidays) or
+        `birthdays` (from the owner's contacts) and generates its events. Its events
+        are server-generated and not user-editable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, kind]
+              properties:
+                name: { type: string, maxLength: 255 }
+                color: { type: [string, "null"], maxLength: 9 }
+                kind: { type: string, enum: [holidays, birthdays] }
+      responses:
+        "201": { description: Created + populated., content: { application/json: { schema: { type: object, properties: { id: { type: string }, created: { type: integer, description: "Number of events generated." } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendars/{calendar}/regenerate:
+    post:
+      tags: [Calendar]
+      operationId: calendarsRegenerate
+      summary: Rebuild a special calendar's generated events from the current source
+      parameters: [{ name: calendar, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Regenerated., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, created: { type: integer } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "422": { description: Not a special calendar. }
+        "429": { $ref: '#/components/responses/RateLimited' }
 
   # --------------------------------------------------------------------------
   # Health check (app up-check) — NOT under /api/v1; served at the site root.
