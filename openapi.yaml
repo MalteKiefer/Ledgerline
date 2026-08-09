@@ -6078,6 +6078,40 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/folders:
+    get:
+      tags: [Mail]
+      operationId: mailFolders
+      summary: Folder tree with total + unread counts
+      description: >
+        Throttle 600/min. Owner-scoped. The distinct (account_id, folder) pairs
+        with archived mail, each with its total + unread (unseen) counts;
+        trashed messages excluded. Omit account_id for a unified view across
+        every account.
+      parameters:
+        - { name: account_id, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200":
+          description: Folder counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folders:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        account_id: { type: [integer, "null"] }
+                        folder: { type: string }
+                        total: { type: integer }
+                        unread: { type: integer }
+                  total: { type: integer }
+                  unread: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /mail/messages:
     get:
       tags: [Mail]

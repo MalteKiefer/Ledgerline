@@ -39,6 +39,7 @@ use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailAttachmentController;
 use App\Http\Controllers\MailBlobController;
+use App\Http\Controllers\MailFolderController;
 use App\Http\Controllers\MailLogController;
 use App\Http\Controllers\MailMessageController;
 use App\Http\Controllers\MailSeenController;
@@ -307,6 +308,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/mail/accounts/{account}/test', [MailAccountController::class, 'test'])->whereNumber('account')->middleware('throttle:6,1')->name('api.mail.accounts.test');
             Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->whereNumber('account')->name('api.mail.accounts.status');
             Route::get('/mail/accounts/{account}/logs', [MailLogController::class, 'index'])->whereNumber('account')->middleware('throttle:600,1')->name('api.mail.accounts.logs');
+            Route::get('/mail/folders', [MailFolderController::class, 'index'])->middleware('throttle:600,1')->name('api.mail.folders.index');
             Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware('throttle:1200,1')->name('api.mail.messages.index');
             Route::get('/mail/messages/{message}', [MailMessageController::class, 'show'])->whereUuid('message')->middleware('throttle:1200,1')->name('api.mail.messages.show');
             Route::get('/mail/messages/{message}/body', [MailMessageController::class, 'body'])->whereUuid('message')->middleware('throttle:3000,1')->name('api.mail.messages.body');
