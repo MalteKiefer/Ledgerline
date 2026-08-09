@@ -236,14 +236,11 @@ services:
       - redis_password
     volumes:
       - valkey-data:/data
-    # Read-only root filesystem: every write path is accounted for — the custom
-    # command writes the generated config to /tmp (tmpfs below) and valkey writes
-    # AOF/RDB to the /data volume; run in foreground with no pidfile/logfile/unix
-    # socket, so nothing else touches the rootfs. The /run/secrets/* password is a
-    # separate Docker mount and stays readable under a read-only root.
-    read_only: true
-    tmpfs:
-      - /tmp
+    # NOTE: read_only root is NOT set here — Docker Compose cannot mount the
+    # `redis_password` secret into a read_only service ("cannot create secret in
+    # read-only service valkey: `file` is the sole supported option"), which aborts
+    # the whole `up`. Verified on deploy (v1.562.0). Compensated: non-root,
+    # cap_drop:[ALL], no-new-privileges, internal-only network, secret-file password.
     networks:
       - internal
     restart: unless-stopped
