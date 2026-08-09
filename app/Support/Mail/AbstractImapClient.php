@@ -121,9 +121,20 @@ abstract class AbstractImapClient
         }
     }
 
-    /** IMAP quoted-string: wrap in double quotes, escaping \ and ". */
+    /**
+     * IMAP quoted-string: wrap in double quotes, escaping \ and ". An IMAP
+     * quoted-string (RFC 3501) cannot carry CR/LF or other control characters,
+     * so a value containing one (a folder / Message-Id / username / password with
+     * an embedded newline) could break out of the quoted string and inject a
+     * physical IMAP command line. FAIL CLOSED: refuse any NUL, C0 control (incl.
+     * \r/\n) or DEL — mirrors MbsyncConfig::quote's control-char guard.
+     */
     protected function quoted(string $s): string
     {
+        if (preg_match('/[\x00-\x1f\x7f]/', $s) === 1) {
+            throw new RuntimeException('IMAP: refusing a value with a control character');
+        }
+
         return '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $s).'"';
     }
 }

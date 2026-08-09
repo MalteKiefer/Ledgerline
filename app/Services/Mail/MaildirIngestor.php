@@ -13,10 +13,12 @@ use App\Models\MailRule;
 use App\Services\Files\FileTextIndex;
 use App\Support\BlobStore;
 use App\Support\Mail\MailHtmlSanitizer;
+use App\Support\Mail\MailLogger;
 use App\Support\Mail\MimeParser;
 use App\Support\Mail\RuleEvaluator;
 use App\Support\Mail\SpamHeaders;
 use App\Support\Mail\ThreadId;
+use App\Support\Redactor;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -86,6 +88,19 @@ class MaildirIngestor
      */
     public function ingestFile(MailAccount $account, string $folder, string $path): IngestResult
     {
+        // OOM guard: check the file SIZE before reading it into memory. An
+        // oversized message is quarantined (moved aside), NOT read and NOT thrown
+        // — a throw would leave it for a retry that re-triggers the same OOM.
+        $maxMessage = is_int($cfg = config('mail_archive.max_message_bytes', 52_428_800)) ? $cfg : 52_428_800;
+        $fileSize = @filesize($path);
+        if ($maxMessage > 0 && $fileSize !== false && $fileSize > $maxMessage) {
+            MailLogger::record($account, 'warn', 'ingest.oversize', $folder, 'message '.$fileSize.'B exceeds '.$maxMessage.'B cap; quarantined');
+            Log::warning('mail.ingest.oversize', ['account_id' => $account->id, 'bytes' => $fileSize]);
+            $this->quarantine($path);
+
+            return IngestResult::quarantined();
+        }
+
         $raw = @file_get_contents($path);
         if ($raw === false) {
             Log::warning('mail.ingest.unreadable', ['account_id' => $account->id, 'path' => $path]);
@@ -195,7 +210,21 @@ class MaildirIngestor
         //
         // @var list<array{blob:string, attachment:\App\Services\Mail\ParsedAttachment}> $attachmentBlobs
         $attachmentBlobs = [];
+        $maxAttachmentBytes = is_int($cfgAtt = config('mail_archive.max_attachment_bytes', 26_214_400)) ? $cfgAtt : 26_214_400;
+        $maxAttachments = is_int($cfgCount = config('mail_archive.max_attachments', 200)) ? $cfgCount : 200;
         foreach ($attachments as $attachment) {
+            // Defense-in-depth caps (the message is already ≤ max_message_bytes):
+            // bound the number of stored attachment blobs, and skip any single
+            // oversized part — the message itself is still archived.
+            if ($maxAttachments > 0 && count($attachmentBlobs) >= $maxAttachments) {
+                Log::warning('mail.ingest.attachment_limit', ['account_id' => $account->id, 'max' => $maxAttachments]);
+                break;
+            }
+            if ($maxAttachmentBytes > 0 && $attachment->size() > $maxAttachmentBytes) {
+                Log::warning('mail.ingest.attachment_oversize', ['account_id' => $account->id, 'bytes' => $attachment->size()]);
+
+                continue;
+            }
             $attBlobId = (string) Str::uuid();
             if (BlobStore::disk()->put('mail/att/'.$attBlobId, $attachment->bytes) === false) {
                 throw new RuntimeException('MaildirIngestor: failed to write mail attachment blob to disk.');
@@ -345,7 +374,7 @@ class MaildirIngestor
                     Log::warning('mail.ingest.failed', [
                         'account_id' => $account->id,
                         'path' => $path,
-                        'error' => $e->getMessage(),
+                        'error' => Redactor::redact($e->getMessage()),
                     ]);
                 }
             }

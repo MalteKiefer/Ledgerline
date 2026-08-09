@@ -8,6 +8,7 @@ use App\Mail\ComposedMail;
 use App\Models\MailAccount;
 use App\Support\Mail\ImapAppender;
 use App\Support\OutboundUrl;
+use App\Support\Redactor;
 use Illuminate\Mail\SentMessage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -46,6 +47,16 @@ class MailSender
         $host = trim((string) $account->smtp_host);
         if (! OutboundUrl::hostAllowed($host)) {
             throw new RuntimeException('mail send: SMTP host not allowed');
+        }
+        // Refuse a "mail host" pointed at a non-mail port (SSRF pivot). NOTE: the
+        // send path runs through Laravel's config-driven mailer (kept so Mail::fake
+        // can intercept it in tests), which — unlike the raw IMAP sockets and the
+        // SmtpProbe transport — offers no CURLOPT_RESOLVE-style IP pin, so the
+        // hostAllowed() resolved-IP check + this port allowlist are its guard. Same
+        // residual applies to the finance companyMailer, which shares this pattern.
+        $smtpPort = is_int($account->smtp_port) && $account->smtp_port > 0 ? $account->smtp_port : 587;
+        if (! OutboundUrl::mailPortAllowed($smtpPort)) {
+            throw new RuntimeException('mail send: SMTP port not allowed');
         }
 
         $fromEmail = trim((string) $account->from_email);
@@ -145,7 +156,7 @@ class MailSender
 
             return true;
         } catch (\Throwable $e) {
-            Log::warning('mail.send.sent_append_failed', ['account_id' => $account->id, 'error' => $e->getMessage()]);
+            Log::warning('mail.send.sent_append_failed', ['account_id' => $account->id, 'error' => Redactor::redact($e->getMessage())]);
 
             return false;
         }

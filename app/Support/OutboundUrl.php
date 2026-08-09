@@ -124,6 +124,57 @@ final class OutboundUrl
         return true;
     }
 
+    /** Standard mail ports (SMTP 25/465/587, IMAP 143/993). */
+    private const MAIL_PORTS = [25, 143, 465, 587, 993];
+
+    /**
+     * Whether $port is a standard mail port. The raw IMAP/SMTP socket callers use
+     * this to refuse a "mail host" secretly pointed at an internal HTTP/Redis/…
+     * port (an SSRF pivot) — the owner-configured host is otherwise trusted.
+     */
+    public static function mailPortAllowed(int $port): bool
+    {
+        return in_array($port, self::MAIL_PORTS, true);
+    }
+
+    /**
+     * Resolve $host to a single verified-safe IP for a RAW socket connection,
+     * pinning it against DNS-rebinding / TOCTOU: the name is resolved ONCE here
+     * and the caller connects to exactly this address, with TLS peer_name/SNI set
+     * to the original hostname so certificate verification still binds to the
+     * name. This is the socket-world equivalent of client()'s CURLOPT_RESOLVE pin,
+     * for the raw IMAP/SMTP clients that curl can't pin for us.
+     *
+     * Fails closed: unlike safe()/hostAllowed() (which tolerate an unresolvable
+     * host in the default posture, since a Docker-internal HTTP service may not
+     * resolve at save time), a socket cannot be re-pinned later, so a host that
+     * does not resolve to an allowed address is refused outright. link-local/
+     * metadata is always refused; private is refused only in the hardened posture.
+     *
+     * @return array{ip: string, host: string, ipv6: bool}
+     *
+     * @throws RuntimeException when no resolved address is allowed
+     */
+    public static function resolvedSocketTarget(string $host): array
+    {
+        $host = trim($host);
+        if ($host === '') {
+            throw new RuntimeException('Refusing to connect to an empty host.');
+        }
+
+        $allowed = array_values(array_filter(
+            self::resolve($host),
+            static fn (string $ip): bool => self::ipAllowed($ip),
+        ));
+        if ($allowed === []) {
+            throw new RuntimeException('Refusing to connect: host did not resolve to an allowed address.');
+        }
+
+        $ip = $allowed[0];
+
+        return ['ip' => $ip, 'host' => $host, 'ipv6' => str_contains($ip, ':')];
+    }
+
     /**
      * @return list<string>
      */

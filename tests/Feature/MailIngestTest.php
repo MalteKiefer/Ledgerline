@@ -167,6 +167,27 @@ class MailIngestTest extends TestCase
         $this->assertDirectoryExists($this->maildir.'/cur/.quarantine');
     }
 
+    public function test_oversized_message_is_quarantined_not_read_into_memory(): void
+    {
+        config(['mail_archive.max_message_bytes' => 1024]); // 1 KiB cap for the test
+        $account = $this->account();
+        // A 2 KiB file — over the cap. It must be quarantined WITHOUT being read
+        // (the OOM guard checks filesize first), never stored, never thrown.
+        $path = $this->drop(str_repeat('A', 2048), 'cur', 'huge.eml');
+
+        $result = app(MaildirIngestor::class)->ingestFile($account, 'INBOX', $path);
+
+        $this->assertSame(IngestStatus::Quarantined, $result->status);
+        $this->assertSame(0, MailMessage::query()->where('user_id', $account->user_id)->count());
+        // Preserved (moved aside), never silently lost or retried into OOM.
+        $this->assertDirectoryExists($this->maildir.'/cur/.quarantine');
+        $this->assertFileDoesNotExist($path);
+
+        // A within-cap message still archives normally.
+        $ok = app(MaildirIngestor::class)->ingestFile($account, 'INBOX', $this->drop($this->sampleEml(), 'cur', 'ok.eml'));
+        $this->assertSame(IngestStatus::Stored, $ok->status);
+    }
+
     public function test_html_body_is_server_sanitised(): void
     {
         $account = $this->account();

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support\Mail;
 
+use App\Support\OutboundUrl;
 use RuntimeException;
 
 /**
@@ -24,11 +25,27 @@ final class ImapConnection implements ImapStream
      */
     public static function open(string $transport, string $host, int $port, int $connectTimeout, int $ioTimeout): self
     {
-        $ctx = stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true, 'SNI_enabled' => true]]);
+        if (! OutboundUrl::mailPortAllowed($port)) {
+            throw new RuntimeException('IMAP: port not allowed');
+        }
+
+        // Pin the resolved IP (resolve once, connect to exactly that address) so a
+        // short-TTL record can't answer a safe IP to the guard and a private/
+        // metadata IP to the real connect. peer_name keeps TLS verification (and
+        // STARTTLS's later enableCrypto) bound to the hostname, not the literal IP.
+        $target = OutboundUrl::resolvedSocketTarget($host);
+        $addr = $target['ipv6'] ? '['.$target['ip'].']' : $target['ip'];
+
+        $ctx = stream_context_create(['ssl' => [
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+            'SNI_enabled' => true,
+            'peer_name' => $target['host'],
+        ]]);
         $errno = 0;
         $errstr = '';
         $sock = @stream_socket_client(
-            "{$transport}://{$host}:{$port}",
+            "{$transport}://{$addr}:{$port}",
             $errno,
             $errstr,
             $connectTimeout,
