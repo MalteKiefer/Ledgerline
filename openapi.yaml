@@ -1291,10 +1291,13 @@ paths:
       operationId: spaLogin
       summary: Browser login (email+password+optional 2FA) to a bearer token
       description: >
-        Backend-agnostic web login: validates credentials (and TOTP/recovery code
+        Backend-agnostic login: validates credentials (and TOTP/recovery code
         when 2FA is confirmed) and returns a device-scoped Sanctum bearer token.
         On a 2FA-required account with no/invalid code, returns 422 with
-        {two_factor: true}.
+        {two_factor: true}. Native clients that send `install_id` (+ device_name/
+        app_version/os_version) are registered as a real device — same as QR
+        pairing — so they appear under "Connected devices" (revoke/wipe/heartbeat)
+        and re-login on the same install_id replaces the previous device row.
       requestBody:
         required: true
         content:
@@ -1307,7 +1310,10 @@ paths:
                 password: { type: string }
                 code: { type: [string, "null"] }
                 recovery_code: { type: [string, "null"] }
-                device_name: { type: [string, "null"] }
+                device_name: { type: [string, "null"], description: "Device label (native) or 'web' default." }
+                install_id: { type: [string, "null"], description: "Stable app install id — presence marks a native device; enables device registration + dedup." }
+                app_version: { type: [string, "null"] }
+                os_version: { type: [string, "null"] }
       responses:
         "200":
           description: Token + user.

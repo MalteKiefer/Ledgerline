@@ -61,7 +61,7 @@ Route::prefix('v1')->group(function (): void {
 
     // Backend-agnostic browser login: email+password (+2FA) → bearer token, so the
     // SPA never depends on a Laravel session cookie (portable to a future Go API).
-    Route::post('/auth/login', [SpaAuthController::class, 'login'])->name('api.auth.login');
+    Route::post('/auth/login', [SpaAuthController::class, 'login'])->middleware('throttle:10,1')->name('api.auth.login');
 
     // Public account lifecycle (no auth). Mirrors the web Fortify pipeline via the
     // same actions. forgot-password always answers generically (no enumeration);

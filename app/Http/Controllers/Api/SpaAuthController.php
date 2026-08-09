@@ -9,6 +9,7 @@ use App\Actions\Fortify\ResetUserPassword;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Providers\FortifyServiceProvider;
+use App\Services\Auth\Pairing;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -44,7 +45,12 @@ class SpaAuthController extends Controller
             'password' => ['required', 'string'],
             'code' => ['nullable', 'string'],
             'recovery_code' => ['nullable', 'string'],
+            // Native clients (Android) send device metadata so the login registers
+            // a proper "device" the same way QR pairing does. Absent = browser SPA.
             'device_name' => ['nullable', 'string', 'max:64'],
+            'install_id' => ['nullable', 'string', 'max:64'],
+            'app_version' => ['nullable', 'string', 'max:32'],
+            'os_version' => ['nullable', 'string', 'max:32'],
         ]);
 
         $email = $request->string('email')->value();
@@ -61,8 +67,22 @@ class SpaAuthController extends Controller
             }
         }
 
-        $name = $request->filled('device_name') ? $request->string('device_name')->value() : 'web';
-        $token = $user->createToken($name, ['device'])->plainTextToken;
+        // A native client identifies itself with an install_id (and a device name).
+        // Register it as a real device (cap/dedup/meta) so it appears under
+        // "Connected devices" with revoke/wipe/heartbeat — identical to QR pairing.
+        // A browser SPA (no install_id) keeps the plain device-scoped token.
+        $installId = $request->string('install_id')->value();
+        if ($installId !== '') {
+            $name = $request->filled('device_name') ? $request->string('device_name')->value() : 'device';
+            $token = app(Pairing::class)->issueDeviceToken($user, $name, $request->ip(), [
+                'install_id' => $installId,
+                'app_version' => $request->string('app_version')->value() ?: null,
+                'os_version' => $request->string('os_version')->value() ?: null,
+            ])->plainTextToken;
+        } else {
+            $name = $request->filled('device_name') ? $request->string('device_name')->value() : 'web';
+            $token = $user->createToken($name, ['device'])->plainTextToken;
+        }
 
         return response()->json([
             'token' => $token,

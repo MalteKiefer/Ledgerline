@@ -22,6 +22,35 @@ class SpaAuthTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$token)->getJson('/api/v1/me')->assertOk()->assertJsonPath('user.email', 'a@b.de');
     }
 
+    public function test_native_login_registers_a_device_with_metadata(): void
+    {
+        User::factory()->create(['email' => 'a@b.de', 'password' => 'supersecret12']);
+        $r = $this->postJson('/api/v1/auth/login', [
+            'email' => 'a@b.de', 'password' => 'supersecret12',
+            'device_name' => 'Google Pixel 9', 'install_id' => 'abc123def456',
+            'app_version' => '1.4.2', 'os_version' => 'Android 16',
+        ])->assertOk();
+        $token = $r->json('token');
+        $this->assertIsString($token);
+        // The device appears under "Connected devices" with its metadata.
+        $devices = $this->withHeader('Authorization', 'Bearer '.$token)->getJson('/api/v1/devices')->assertOk()->json('devices');
+        $this->assertCount(1, $devices);
+        $this->assertSame('Google Pixel 9', $devices[0]['name']);
+        // Second login on the SAME install_id replaces the device (no stacking).
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'a@b.de', 'password' => 'supersecret12',
+            'device_name' => 'Google Pixel 9', 'install_id' => 'abc123def456',
+        ])->assertOk();
+        $this->assertSame(1, User::where('email', 'a@b.de')->first()->tokens()->count());
+    }
+
+    public function test_browser_login_stays_a_plain_web_token(): void
+    {
+        $u = User::factory()->create(['email' => 'c@b.de', 'password' => 'supersecret12']);
+        $this->postJson('/api/v1/auth/login', ['email' => 'c@b.de', 'password' => 'supersecret12'])->assertOk();
+        $this->assertSame('web', $u->tokens()->first()->name);
+    }
+
     public function test_bad_password_fails(): void
     {
         User::factory()->create(['email' => 'a@b.de', 'password' => 'supersecret12']);
