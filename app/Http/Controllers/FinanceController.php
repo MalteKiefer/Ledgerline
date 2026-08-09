@@ -228,7 +228,8 @@ class FinanceController extends Controller
             'category' => ['nullable', 'string', 'max:120'],
             'kind' => ['nullable', 'string', 'max:16'],
             'url' => ['nullable', 'string', 'max:2000'],
-            'logo' => ['nullable', 'string', 'max:2000'],
+            // logo is a data: URI (fetched favicon/BIMI) — a few KB; the column is TEXT.
+            'logo' => ['nullable', 'string', 'max:2000000'],
             'note' => ['nullable', 'string', 'max:100000'],
             'address' => ['nullable', 'string', 'max:2000'],
             'email' => ['nullable', 'string', 'max:320'],

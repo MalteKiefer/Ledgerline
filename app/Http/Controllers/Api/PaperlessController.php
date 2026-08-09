@@ -7,8 +7,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PaperlessTerm;
 use App\Models\UserSetting;
+use App\Rules\SafeUrl;
 use App\Services\Paperless\PaperlessClient;
 use App\Services\Paperless\PaperlessSync;
+use App\Support\KeepBlankSecrets;
+use App\Support\OutboundUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -203,6 +206,121 @@ class PaperlessController extends Controller
         }
 
         return response()->json(['ok' => true, 'counts' => $counts]);
+    }
+
+    /**
+     * Per-user Paperless connection config (URL + enabled flag + a has_token
+     * boolean). The API token itself is NEVER returned. Mirrors the web
+     * Settings/PaperlessController::edit.
+     *
+     * GET /api/v1/paperless/config
+     */
+    public function config(Request $request): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $settings = UserSetting::for($user->id);
+
+        return response()->json([
+            'paperless_enabled' => (bool) $settings->paperless_enabled,
+            'paperless_url' => $settings->paperless_url,
+            'has_token' => filled($settings->paperless_token),
+            'counts' => $this->counts($user->id),
+        ]);
+    }
+
+    /**
+     * Update the per-user Paperless config. Mirrors the web controller's
+     * validation and blank-preserve token semantics (a blank token keeps the
+     * stored one). Never returns the token.
+     *
+     * PUT /api/v1/paperless/config
+     */
+    public function updateConfig(Request $request): JsonResponse
+    {
+        $request->validate([
+            'paperless_enabled' => ['sometimes', 'boolean'],
+            'paperless_url' => ['nullable', 'url', 'max:255', new SafeUrl],
+            'paperless_token' => ['nullable', 'string', 'max:255'],
+        ], [], [
+            'paperless_url' => __('settings.paperless_url'),
+            'paperless_token' => __('settings.paperless_token'),
+        ]);
+
+        $user = $this->requireUser($request);
+        $settings = UserSetting::for($user->id);
+        $validated = [
+            'paperless_url' => $request->input('paperless_url'),
+            'paperless_token' => $request->string('paperless_token')->value(),
+        ];
+        // A blank token keeps the stored one (so it need not be retyped).
+        $validated = KeepBlankSecrets::preserve($validated, ['paperless_token']);
+        $validated['paperless_enabled'] = $request->boolean('paperless_enabled');
+        $settings->update($validated);
+
+        return response()->json([
+            'paperless_enabled' => (bool) $settings->paperless_enabled,
+            'paperless_url' => $settings->paperless_url,
+            'has_token' => filled($settings->paperless_token),
+            'counts' => $this->counts($user->id),
+        ]);
+    }
+
+    /**
+     * Test the connection using the posted URL + token (falling back to stored).
+     * Mirrors the web Settings/PaperlessController::test.
+     *
+     * POST /api/v1/paperless/config/test
+     */
+    public function testConfig(Request $request): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $settings = UserSetting::for($user->id);
+        $rawUrl = $request->input('paperless_url') ?: $settings->paperless_url;
+        $rawToken = $request->input('paperless_token') ?: $settings->paperless_token;
+        $url = trim(is_string($rawUrl) ? $rawUrl : '');
+        $token = trim(is_string($rawToken) ? $rawToken : '');
+
+        if ($url === '' || $token === '') {
+            return response()->json(['ok' => false, 'detail' => __('settings.paperless_test_missing')]);
+        }
+
+        // Guard the raw posted URL before any request is issued.
+        if (! OutboundUrl::safe($url)) {
+            return response()->json(['ok' => false, 'detail' => __('settings.safe_url', ['attribute' => __('settings.paperless_url')])]);
+        }
+
+        try {
+            $client = new PaperlessClient($url, $token);
+            $client->ping();
+
+            return response()->json([
+                'ok' => true,
+                'detail' => __('settings.paperless_test_ok_detail', [
+                    'tags' => $client->count('tag'),
+                    'types' => $client->count('document_type'),
+                    'correspondents' => $client->count('correspondent'),
+                ]),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['ok' => false, 'detail' => $e->getMessage()]);
+        }
+    }
+
+    /** @return array{tag:int, document_type:int, correspondent:int} */
+    private function counts(int $userId): array
+    {
+        $by = PaperlessTerm::query()->where('user_id', $userId)
+            ->selectRaw('kind, count(*) as c')
+            ->groupBy('kind')
+            ->pluck('c', 'kind');
+
+        $count = static fn (mixed $value): int => is_numeric($value) ? (int) $value : 0;
+
+        return [
+            'tag' => $count($by['tag'] ?? 0),
+            'document_type' => $count($by['document_type'] ?? 0),
+            'correspondent' => $count($by['correspondent'] ?? 0),
+        ];
     }
 
     /** Prevent proxies and clients from caching the transient plaintext response. */

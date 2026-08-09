@@ -3,27 +3,60 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AddressBookController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController as ApiBackupController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
+use App\Http\Controllers\Api\ContactsProfileController as ApiContactsProfileController;
+use App\Http\Controllers\Api\FilesLimitsController as ApiFilesLimitsController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
+use App\Http\Controllers\Api\InviteLinkController as ApiInviteLinkController;
 use App\Http\Controllers\Api\InvoiceOcrController;
+use App\Http\Controllers\Api\MailAccountController;
+use App\Http\Controllers\Api\NotificationsController as ApiNotificationsController;
 use App\Http\Controllers\Api\PaperlessController as ApiPaperlessController;
 use App\Http\Controllers\Api\PasswordController as ApiPasswordController;
+use App\Http\Controllers\Api\SecurityController as ApiSecurityController;
 use App\Http\Controllers\Api\SecurityLogController as ApiSecurityLogController;
+use App\Http\Controllers\Api\SecurityPortalController;
 use App\Http\Controllers\Api\SettingsController as ApiSettingsController;
+use App\Http\Controllers\Api\SpaAuthController;
+use App\Http\Controllers\Api\SystemController as ApiSystemController;
 use App\Http\Controllers\Api\TwoFactorController as ApiTwoFactorController;
 use App\Http\Controllers\Api\UsersController as ApiUsersController;
+use App\Http\Controllers\Api\WebDavAccessController as ApiWebDavAccessController;
 use App\Http\Controllers\AvatarController;
+use App\Http\Controllers\CalendarBookController;
+use App\Http\Controllers\CalendarController;
+use App\Http\Controllers\ContactController;
+use App\Http\Controllers\ContactDuplicateController;
+use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MailAttachmentController;
+use App\Http\Controllers\MailBlobController;
+use App\Http\Controllers\MailDeleteOriginController;
+use App\Http\Controllers\MailExportController;
+use App\Http\Controllers\MailFolderController;
+use App\Http\Controllers\MailKeyController;
+use App\Http\Controllers\MailLabelController;
+use App\Http\Controllers\MailLogController;
+use App\Http\Controllers\MailMessageController;
+use App\Http\Controllers\MailPushbackController;
+use App\Http\Controllers\MailRuleController;
+use App\Http\Controllers\MailSavedSearchController;
+use App\Http\Controllers\MailSeenController;
+use App\Http\Controllers\MailSendController;
+use App\Http\Controllers\MailStatsController;
+use App\Http\Controllers\MailTrashController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
+use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\SharedFolderController;
 use App\Http\Controllers\SharedWithMeController;
 use App\Http\Controllers\ThemeController;
@@ -44,10 +77,40 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/auth/pair/collect', [AuthController::class, 'collect'])->name('api.auth.collect');
     });
 
+    // Backend-agnostic browser login: email+password (+2FA) → bearer token, so the
+    // SPA never depends on a Laravel session cookie (portable to a future Go API).
+    Route::post('/auth/login', [SpaAuthController::class, 'login'])->middleware('throttle:10,1')->name('api.auth.login');
+
+    // Public account lifecycle (no auth). Mirrors the web Fortify pipeline via the
+    // same actions. forgot-password always answers generically (no enumeration);
+    // register is gated by the workspace allow_registration flag (403 when off).
+    Route::post('/auth/forgot-password', [SpaAuthController::class, 'forgotPassword'])->middleware('throttle:6,1')->name('api.auth.forgot-password');
+    Route::post('/auth/reset-password', [SpaAuthController::class, 'resetPassword'])->middleware('throttle:6,1')->name('api.auth.reset-password');
+    Route::post('/auth/register', [SpaAuthController::class, 'register'])->middleware('throttle:6,1')->name('api.auth.register');
+
+    // Public, unauthenticated file-share consumption — the share token in the path is
+    // the credential (mounts the SAME guard-agnostic PublicFileShareController as the
+    // web routes). A password-gated share issues a stateless HMAC grant on unlock that
+    // the tokenless client carries on manifest/raw (X-Share-Grant header or ?grant=).
+    Route::prefix('file-share/{token}')->name('api.public.file-share.')->group(function (): void {
+        Route::get('/', [PublicFileShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
+        Route::post('/unlock', [PublicFileShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
+        Route::get('/manifest', [PublicFileShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
+        Route::get('/file/{file}/raw', [PublicFileShareController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('file.raw');
+    });
+
+    // Public, unauthenticated invite / password-reset link consumption. The admin
+    // CREATE side is /api/v1/users/{user}/invite-link; this is the consume side.
+    // show reports validity as JSON (never a redirect); store sets the password and
+    // mints a bearer (rather than a session login). Hashed single-use expiring token.
+    Route::get('/invite/{invite}/{token}', [ApiInviteLinkController::class, 'show'])->middleware('throttle:20,1')->name('api.invite.show');
+    Route::post('/invite/{invite}/{token}', [ApiInviteLinkController::class, 'store'])->middleware('throttle:20,1')->name('api.invite.store');
+
     // Enforce the scoped 'device' ability minted at pairing (legacy '*' tokens
     // still pass) so a token's declared scope is actually checked.
     Route::middleware(['auth:sanctum', 'abilities:device', UpdateTokenIp::class])->group(function (): void {
         Route::get('/me', [AuthController::class, 'me'])->name('api.me');
+        Route::post('/auth/logout', [SpaAuthController::class, 'logout'])->name('api.auth.logout');
         // Streams the signed-in user's stored avatar (same-origin, non-secret);
         // 404 when none stored. `me.user.has_avatar` tells the app whether to fetch it.
         Route::get('/avatar', AvatarController::class)->middleware('throttle:120,1')->name('api.avatar');
@@ -125,6 +188,68 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/finance/receipts/{receipt}/raw', [FinanceController::class, 'receiptFile'])->whereNumber('receipt')->middleware('throttle:3000,1')->name('api.finance.receipts.raw');
         });
 
+        // Contacts module — mirrors the web routes. The web ContactController
+        // methods already return JSON (store/update/destroy/show/data/suggest/
+        // geocode/favorite/bulkDestroy/import/export/avatar); mount the same
+        // guard-agnostic controllers under /api/v1 so the Vue SPA (and mobile)
+        // consume them via device auth. Blade-only methods (index/create/edit/
+        // view) are intentionally not exposed. Owner-scope is controller-side.
+        Route::middleware('module:contacts')->group(function (): void {
+            Route::get('/contacts/data', [ContactController::class, 'data'])->name('api.contacts.data');
+            Route::get('/contacts/suggest', [ContactController::class, 'suggest'])->name('api.contacts.suggest');
+            Route::get('/contacts/export', [ContactController::class, 'export'])->name('api.contacts.export');
+            Route::post('/contacts/import', [ContactController::class, 'import'])->middleware('throttle:60,1')->name('api.contacts.import');
+            Route::post('/contacts/settings', [ContactController::class, 'settings'])->middleware('throttle:600,1')->name('api.contacts.settings');
+            Route::delete('/contacts/bulk-destroy', [ContactController::class, 'bulkDestroy'])->middleware('throttle:600,1')->name('api.contacts.bulk-destroy');
+            Route::post('/contacts', [ContactController::class, 'store'])->middleware('throttle:600,1')->name('api.contacts.store');
+            Route::get('/contacts/duplicates/data', [ContactDuplicateController::class, 'data'])->name('api.contacts.duplicates.data');
+            Route::post('/contacts/duplicates/merge', [ContactDuplicateController::class, 'merge'])->middleware('throttle:120,1')->name('api.contacts.duplicates.merge');
+            Route::post('/contacts/duplicates/dismiss', [ContactDuplicateController::class, 'dismiss'])->middleware('throttle:120,1')->name('api.contacts.duplicates.dismiss');
+            Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('api.contacts.show');
+            Route::get('/contacts/{contact}/geo', [ContactController::class, 'geocode'])->middleware('throttle:120,1')->name('api.contacts.geo');
+            Route::get('/contacts/{contact}/avatar', [ContactController::class, 'avatarImage'])->middleware('throttle:3000,1')->name('api.contacts.avatar');
+            Route::patch('/contacts/{contact}/favorite', [ContactController::class, 'favorite'])->middleware('throttle:600,1')->name('api.contacts.favorite');
+            Route::post('/contacts/{contact}/avatar', [ContactController::class, 'avatar'])->middleware('throttle:120,1')->name('api.contacts.avatar.upload');
+            Route::put('/contacts/{contact}', [ContactController::class, 'update'])->middleware('throttle:600,1')->name('api.contacts.update');
+            Route::delete('/contacts/{contact}', [ContactController::class, 'destroy'])->middleware('throttle:600,1')->name('api.contacts.destroy');
+            Route::post('/address-books', [AddressBookController::class, 'store'])->middleware('throttle:600,1')->name('api.address-books.store');
+            Route::put('/address-books/{addressBook}', [AddressBookController::class, 'update'])->middleware('throttle:600,1')->name('api.address-books.update');
+            Route::delete('/address-books/{addressBook}', [AddressBookController::class, 'destroy'])->middleware('throttle:600,1')->name('api.address-books.destroy');
+            Route::post('/contact-groups', [ContactGroupController::class, 'store'])->middleware('throttle:600,1')->name('api.contact-groups.store');
+            Route::delete('/contact-groups/{group}', [ContactGroupController::class, 'destroy'])->middleware('throttle:600,1')->name('api.contact-groups.destroy');
+            // Downloadable Apple CardDAV enrollment profile (.mobileconfig). Mirrors
+            // the web Settings/ContactsController@profile; carries the username, never
+            // a password (sync uses the app-specific webdav_password, hashed).
+            Route::get('/account/carddav-profile', [ApiContactsProfileController::class, 'carddavProfile'])->middleware('throttle:20,1')->name('api.account.carddav-profile');
+        });
+
+        // Calendar module — mirrors the web routes (plaintext-relational calendars
+        // + events with recurrence-expanded range query + ICS import/export). The
+        // web CalendarController methods already return JSON; mount the same
+        // guard-agnostic controllers under /api/v1 so the Vue SPA (and mobile)
+        // consume them via device auth. The Blade/SPA entry (index) is not exposed.
+        // Owner-scope is controller-side; 409 on etag mismatch.
+        Route::middleware('module:calendar')->group(function (): void {
+            Route::get('/calendar/data', [CalendarController::class, 'data'])->name('api.calendar.data');
+            // OpenHolidays proxies (SSRF-guarded) so the SPA selects load under CSP connect-src 'self'.
+            Route::get('/calendar/holiday-countries', [CalendarController::class, 'holidayCountries'])->middleware('throttle:60,1')->name('api.calendar.holiday-countries');
+            Route::get('/calendar/holiday-subdivisions', [CalendarController::class, 'holidaySubdivisions'])->middleware('throttle:60,1')->name('api.calendar.holiday-subdivisions');
+            Route::get('/calendar/events', [CalendarController::class, 'events'])->name('api.calendar.events');
+            Route::get('/calendar/export', [CalendarController::class, 'export'])->name('api.calendar.export');
+            Route::post('/calendar/import', [CalendarController::class, 'import'])->middleware('throttle:60,1')->name('api.calendar.import');
+            Route::post('/calendar/settings', [CalendarController::class, 'settings'])->middleware('throttle:600,1')->name('api.calendar.settings');
+            Route::post('/calendar/events', [CalendarController::class, 'store'])->middleware('throttle:600,1')->name('api.calendar.events.store');
+            Route::get('/calendar/events/{event}', [CalendarController::class, 'show'])->name('api.calendar.events.show');
+            Route::put('/calendar/events/{event}', [CalendarController::class, 'update'])->middleware('throttle:600,1')->name('api.calendar.events.update');
+            Route::delete('/calendar/events/{event}', [CalendarController::class, 'destroy'])->middleware('throttle:600,1')->name('api.calendar.events.destroy');
+            Route::post('/calendars', [CalendarBookController::class, 'store'])->middleware('throttle:600,1')->name('api.calendars.store');
+            // Special (generated, read-only) calendars: create + (re)generate holidays/birthdays.
+            Route::post('/calendars/special', [CalendarController::class, 'storeSpecial'])->middleware('throttle:60,1')->name('api.calendars.special');
+            Route::post('/calendars/{calendar}/regenerate', [CalendarController::class, 'regenerate'])->middleware('throttle:60,1')->name('api.calendars.regenerate');
+            Route::put('/calendars/{calendar}', [CalendarBookController::class, 'update'])->middleware('throttle:600,1')->name('api.calendars.update');
+            Route::delete('/calendars/{calendar}', [CalendarBookController::class, 'destroy'])->middleware('throttle:600,1')->name('api.calendars.destroy');
+        });
+
         // Files module — mirrors the web routes (plaintext-relational folders +
         // files + version history). Gated by module:files on top of device auth.
         Route::middleware('module:files')->group(function (): void {
@@ -178,6 +303,54 @@ Route::prefix('v1')->group(function (): void {
             Route::delete('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'destroy'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('api.shared-with-me.destroy');
         });
 
+        // Mail archive (Phase 1) — plaintext-relational IMAP account config +
+        // pull-only sync + the archived-message ledger/reader. Owner-scoped;
+        // gated by module:mail on top of device auth. Immutable archive: only
+        // seen/trash toggles mutate; raw .eml served sandboxed.
+        Route::middleware('module:mail')->group(function (): void {
+            Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('api.mail.accounts.index');
+            Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.accounts.store');
+            Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.update');
+            Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.destroy');
+            Route::post('/mail/accounts/{account}/sync', [MailAccountController::class, 'sync'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.sync');
+            Route::post('/mail/accounts/{account}/sync/cancel', [MailAccountController::class, 'cancelSync'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.sync-cancel');
+            Route::post('/mail/accounts/{account}/test', [MailAccountController::class, 'test'])->whereNumber('account')->middleware('throttle:6,1')->name('api.mail.accounts.test');
+            Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->whereNumber('account')->name('api.mail.accounts.status');
+            Route::get('/mail/accounts/{account}/logs', [MailLogController::class, 'index'])->whereNumber('account')->middleware('throttle:600,1')->name('api.mail.accounts.logs');
+            Route::get('/mail/folders', [MailFolderController::class, 'index'])->middleware('throttle:600,1')->name('api.mail.folders.index');
+            Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware('throttle:1200,1')->name('api.mail.messages.index');
+            Route::get('/mail/messages/{message}', [MailMessageController::class, 'show'])->whereUuid('message')->middleware('throttle:1200,1')->name('api.mail.messages.show');
+            Route::get('/mail/messages/{message}/body', [MailMessageController::class, 'body'])->whereUuid('message')->middleware('throttle:3000,1')->name('api.mail.messages.body');
+            Route::post('/mail/messages/seen', [MailSeenController::class, 'update'])->middleware('throttle:120,1')->name('api.mail.messages.seen');
+            Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware('throttle:60,1')->name('api.mail.messages.trash');
+            Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware('throttle:60,1')->name('api.mail.messages.restore');
+            Route::post('/mail/messages/labels', [MailLabelController::class, 'apply'])->middleware('throttle:120,1')->name('api.mail.messages.labels');
+            Route::get('/mail/labels', [MailLabelController::class, 'index'])->name('api.mail.labels.index');
+            Route::post('/mail/labels', [MailLabelController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.labels.store');
+            Route::put('/mail/labels/{label}', [MailLabelController::class, 'update'])->whereNumber('label')->middleware('throttle:60,1')->name('api.mail.labels.update');
+            Route::delete('/mail/labels/{label}', [MailLabelController::class, 'destroy'])->whereNumber('label')->middleware('throttle:60,1')->name('api.mail.labels.destroy');
+            Route::get('/mail/rules', [MailRuleController::class, 'index'])->name('api.mail.rules.index');
+            Route::post('/mail/rules', [MailRuleController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.rules.store');
+            Route::put('/mail/rules/{rule}', [MailRuleController::class, 'update'])->whereNumber('rule')->middleware('throttle:60,1')->name('api.mail.rules.update');
+            Route::delete('/mail/rules/{rule}', [MailRuleController::class, 'destroy'])->whereNumber('rule')->middleware('throttle:60,1')->name('api.mail.rules.destroy');
+            Route::get('/mail/saved-searches', [MailSavedSearchController::class, 'index'])->name('api.mail.saved-searches.index');
+            Route::post('/mail/saved-searches', [MailSavedSearchController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.saved-searches.store');
+            Route::delete('/mail/saved-searches/{search}', [MailSavedSearchController::class, 'destroy'])->whereNumber('search')->middleware('throttle:60,1')->name('api.mail.saved-searches.destroy');
+            Route::post('/mail/export', [MailExportController::class, 'export'])->middleware('throttle:30,1')->name('api.mail.export');
+            Route::get('/mail/stats', [MailStatsController::class, 'index'])->middleware('throttle:120,1')->name('api.mail.stats');
+            Route::post('/mail/messages/{message}/pushback', MailPushbackController::class)->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.pushback');
+            Route::post('/mail/messages/{message}/delete-origin', MailDeleteOriginController::class)->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.delete-origin');
+            Route::post('/mail/messages/compose', [MailSendController::class, 'compose'])->middleware('throttle:30,1')->name('api.mail.messages.compose');
+            Route::post('/mail/messages/{message}/reply', [MailSendController::class, 'reply'])->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.reply');
+            Route::post('/mail/messages/{message}/forward', [MailSendController::class, 'forward'])->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.forward');
+            Route::get('/mail/attachments/{attachment}/raw', [MailAttachmentController::class, 'raw'])->whereUuid('attachment')->middleware('throttle:3000,1')->name('api.mail.attachments.raw');
+            Route::post('/mail/attachments/{attachment}/save', [MailAttachmentController::class, 'save'])->whereUuid('attachment')->middleware('throttle:60,1')->name('api.mail.attachments.save');
+            Route::get('/mail/keys', [MailKeyController::class, 'index'])->name('api.mail.keys.index');
+            Route::post('/mail/keys', [MailKeyController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.keys.store');
+            Route::delete('/mail/keys/{key}', [MailKeyController::class, 'destroy'])->whereNumber('key')->middleware('throttle:60,1')->name('api.mail.keys.destroy');
+            Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->whereUuid('blob')->middleware('throttle:600,1')->name('api.mail.raw');
+        });
+
         // Per-user Paperless-ngx integration: cached term quick-picks, live term
         // creation, document forwarding, and cache sync. The /documents endpoint is
         // a transient-cleartext boundary (client posts bytes; server forwards to the
@@ -186,6 +359,11 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/paperless/terms', [ApiPaperlessController::class, 'createTerm'])->middleware('throttle:30,1')->name('api.paperless.terms.create');
         Route::post('/paperless/documents', [ApiPaperlessController::class, 'submit'])->middleware('throttle:20,1')->name('api.paperless.documents');
         Route::post('/paperless/sync', [ApiPaperlessController::class, 'sync'])->middleware('throttle:20,1')->name('api.paperless.sync');
+        // Per-user Paperless connection config (URL + enabled + token). GET/PUT
+        // never return the token (has_token bool); PUT preserves a blank token.
+        Route::get('/paperless/config', [ApiPaperlessController::class, 'config'])->middleware('throttle:60,1')->name('api.paperless.config');
+        Route::put('/paperless/config', [ApiPaperlessController::class, 'updateConfig'])->middleware('throttle:30,1')->name('api.paperless.config.update');
+        Route::post('/paperless/config/test', [ApiPaperlessController::class, 'testConfig'])->middleware('throttle:20,1')->name('api.paperless.config.test');
 
         // Per-user company profile + invoice defaults (non-secret business identity).
         Route::get('/company', [ApiCompanyController::class, 'show'])->name('api.company.show');
@@ -221,7 +399,14 @@ Route::prefix('v1')->group(function (): void {
         // JSON here via expectsJson().
         Route::get('/account/export', [AccountController::class, 'export'])->middleware('throttle:6,1')->name('api.account.export');
         Route::delete('/account', [AccountController::class, 'destroy'])->name('api.account.destroy');
+        Route::get('/account/sessions', [AccountController::class, 'sessions'])->name('api.account.sessions.index');
         Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->name('api.account.sessions.revoke');
+
+        // App-specific WebDAV mount password (set/clear); the password is stored
+        // hashed and never returned — GET reports enabled + username + mount URL.
+        Route::get('/account/webdav', [ApiWebDavAccessController::class, 'show'])->name('api.account.webdav.show');
+        Route::put('/account/webdav', [ApiWebDavAccessController::class, 'update'])->middleware('throttle:20,1')->name('api.account.webdav.update');
+        Route::delete('/account/webdav', [ApiWebDavAccessController::class, 'destroy'])->middleware('throttle:20,1')->name('api.account.webdav.destroy');
 
         Route::post('/locale', [LocaleController::class, 'update'])->name('api.locale.update');
         Route::post('/theme', [ThemeController::class, 'update'])->name('api.theme.update');
@@ -244,6 +429,43 @@ Route::prefix('v1')->group(function (): void {
 
             Route::put('/password', [ApiPasswordController::class, 'update'])->middleware('throttle:10,1')->name('password');
             Route::post('/email/verify/resend', [ApiTwoFactorController::class, 'resendVerification'])->middleware('throttle:6,1')->name('email.verify.resend');
+        });
+
+        // Admin workspace settings (JSON mirrors of the web Settings/* pages).
+        // Gated by the admin role on top of the device token. Secret values
+        // (SMTP/ntfy/webhook creds, Paperless token) are never serialised.
+        Route::middleware('can:manage-global-settings')->prefix('admin')->name('api.admin.')->group(function (): void {
+            // Notifications (SMTP / NTFY / webhook) + test send.
+            Route::get('/notifications', [ApiNotificationsController::class, 'show'])->name('notifications.show');
+            Route::put('/notifications', [ApiNotificationsController::class, 'update'])->middleware('throttle:60,1')->name('notifications.update');
+            Route::post('/notifications/test', [ApiNotificationsController::class, 'test'])->middleware('throttle:20,1')->name('notifications.test');
+
+            // Device policy (paired-device cap).
+            Route::get('/security', [ApiSecurityController::class, 'show'])->name('security.show');
+            Route::put('/security', [ApiSecurityController::class, 'update'])->middleware('throttle:60,1')->name('security.update');
+
+            // Workspace Files limits (max upload MB + orphan-blob grace hours).
+            Route::get('/files-limits', [ApiFilesLimitsController::class, 'show'])->name('files-limits.show');
+            Route::put('/files-limits', [ApiFilesLimitsController::class, 'update'])->middleware('throttle:60,1')->name('files-limits.update');
+
+            // System / maintenance overview (read-only) + resolve an error event.
+            Route::get('/system', [ApiSystemController::class, 'show'])->middleware('throttle:60,1')->name('system.show');
+            Route::post('/system/errors/{error}/resolve', [ApiSystemController::class, 'resolveError'])->whereNumber('error')->middleware('throttle:60,1')->name('system.errors.resolve');
+
+            // Workspace self-registration toggle (mirrors Settings/UsersController@registration).
+            Route::get('/registration', [ApiUsersController::class, 'registrationShow'])->name('registration.show');
+            Route::put('/registration', [ApiUsersController::class, 'registration'])->middleware('throttle:60,1')->name('registration.update');
+
+            // Security portal: verbose request log, IP block-list, per-user block,
+            // and a cross-user session/device overview. Admin-gated.
+            Route::get('/request-log', [SecurityPortalController::class, 'requestLog'])->middleware('throttle:120,1')->name('request-log');
+            Route::get('/request-log/export', [SecurityPortalController::class, 'requestLogExport'])->middleware('throttle:10,1')->name('request-log.export');
+            Route::get('/blocked-ips', [SecurityPortalController::class, 'blocks'])->name('blocked-ips.index');
+            Route::post('/blocked-ips', [SecurityPortalController::class, 'blockIp'])->middleware('throttle:60,1')->name('blocked-ips.store');
+            Route::delete('/blocked-ips/{blockedIp}', [SecurityPortalController::class, 'unblockIp'])->whereNumber('blockedIp')->middleware('throttle:60,1')->name('blocked-ips.destroy');
+            Route::post('/users/{user}/block', [SecurityPortalController::class, 'blockUser'])->whereNumber('user')->middleware('throttle:60,1')->name('users.block');
+            Route::post('/users/{user}/unblock', [SecurityPortalController::class, 'unblockUser'])->whereNumber('user')->middleware('throttle:60,1')->name('users.unblock');
+            Route::get('/sessions', [SecurityPortalController::class, 'sessions'])->middleware('throttle:60,1')->name('sessions.index');
         });
 
         // Admin group management (workspace-wide limit templates + shareable flag).

@@ -9,6 +9,7 @@ use App\Models\DevicePairing;
 use App\Models\User;
 use App\Support\DeviceAudit;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\NewAccessToken;
 
 /**
  * QR device-pairing state machine. The web session creates a one-time code
@@ -113,24 +114,39 @@ class Pairing
             return ['status' => 'pending'];
         }
 
-        // Enforce the device cap (revoke the oldest tokens so this new one keeps
-        // the user at the configured maximum), then mint once.
         $user = $pairing->user;
         // A consumed pairing always has its owning user; guard for the type system.
         abort_if($user === null, 410);
+
+        $token = $this->issueDeviceToken($user, $pairing->device_name ?? 'device', $ip, $client);
+        $pairing->forceFill(['token_id' => $token->accessToken->getKey()])->save();
+
+        return ['status' => 'approved', 'token' => $token->plainTextToken, 'user' => $user];
+    }
+
+    /**
+     * Mint a first-party 'device' Sanctum token for a native client and register
+     * it exactly like a paired device (so it shows under "Connected devices" with
+     * revoke/wipe/heartbeat). Shared by QR pairing (collect) AND the mobile
+     * email+password login (SpaAuthController@login) — the ONLY difference between
+     * those flows is how the user was authenticated; the device row is identical.
+     *
+     * @param  array{install_id?: ?string, app_version?: ?string, os_version?: ?string}  $client
+     */
+    public function issueDeviceToken(User $user, string $deviceName, ?string $ip, array $client = []): NewAccessToken
+    {
         // Device cap: a per-user override (admin-set) wins, else the workspace
         // setting, else the config default.
         $configuredMax = $user->max_connected_devices
             ?: (AppSettings::current()->max_connected_devices ?: config('devices.max', 3));
         $max = max(1, is_numeric($configuredMax) ? (int) $configuredMax : 3);
 
-        // Same-device re-pair dedupe: a reinstall/re-pair of a physical device sends
-        // a stable, non-secret install_id. Revoke that device's PREVIOUS token(s) up
-        // front so the "Connected devices" row is REPLACED, not stacked — this stops
-        // duplicate "iPhone" entries piling up (the owner could otherwise remove the
-        // active one and log the phone out) and frees the slot before the cap check.
-        // Audited as device.superseded so the resulting resume-401 on the old token
-        // is explained in the trail rather than looking like a silent eviction.
+        // Same-device re-pair/re-login dedupe: a reinstall (or a fresh login on the
+        // same install) sends a stable, non-secret install_id. Revoke that device's
+        // PREVIOUS token(s) up front so the "Connected devices" row is REPLACED, not
+        // stacked — this stops duplicate rows piling up and frees the slot before the
+        // cap check. Audited as device.superseded so the resulting resume-401 on the
+        // old token is explained rather than looking like a silent eviction.
         $rawInstall = $client['install_id'] ?? null;
         if (is_string($rawInstall) && $rawInstall !== '') {
             $installId = mb_substr($rawInstall, 0, 64);
@@ -143,7 +159,7 @@ class Pairing
         // LRU eviction: keep the most-recently-used devices. A token that never
         // contacted the API (last_used_at NULL) is evicted first, then the least
         // recently used, then the oldest by id. This never evicts an actively-used
-        // device just because it was paired early (the old orderBy('id') bug).
+        // device just because it was registered early.
         $existing = $user->tokens()
             ->orderByRaw('last_used_at is null desc')
             ->orderBy('last_used_at')
@@ -157,17 +173,16 @@ class Pairing
             }
         }
 
-        // Scope the token to a named 'device' ability (not the '*' wildcard) so a
-        // future ability check can constrain what a paired device may reach.
-        // Set expires_at explicitly (= the Sanctum global lifetime) so the absolute
-        // expiry is visible in the device list and auditable when it lapses, rather
-        // than an invisible global cut-off (config/sanctum.php expiration).
+        // Scope the token to a named 'device' ability (not the '*' wildcard) so the
+        // /api/v1 abilities:device gate applies. Set expires_at explicitly (= the
+        // Sanctum global lifetime) so the absolute expiry is visible + auditable.
         $ttlCfg = config('sanctum.expiration', 60 * 24 * 180);
         $ttl = is_numeric($ttlCfg) ? (int) $ttlCfg : 60 * 24 * 180;
         $expiresAt = $ttl > 0 ? now()->addMinutes($ttl) : null;
-        $token = $user->createToken($pairing->device_name ?? 'device', ['device'], $expiresAt);
-        // Record the paired device's IP + non-secret client-correlation fields for
-        // the web "Connected devices" list and the audit trail.
+        $token = $user->createToken($deviceName !== '' ? $deviceName : 'device', ['device'], $expiresAt);
+
+        // Record the device's IP + non-secret client-correlation fields for the web
+        // "Connected devices" list and the audit trail.
         $fill = [];
         if ($ip !== null) {
             $fill['ip'] = $ip;
@@ -181,9 +196,8 @@ class Pairing
         if ($fill !== []) {
             $token->accessToken->forceFill($fill)->save();
         }
-        $pairing->forceFill(['token_id' => $token->accessToken->getKey()])->save();
 
-        return ['status' => 'approved', 'token' => $token->plainTextToken, 'user' => $user];
+        return $token;
     }
 
     /** Drop expired and terminal rows. Returns the number deleted. */

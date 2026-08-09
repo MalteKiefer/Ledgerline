@@ -8,7 +8,7 @@ return [
     'hub_admin_heading' => 'Administration',
     'nav_account' => 'Account details',
     'nav_account_desc' => 'Name, email and identity',
-    'nav_devices' => 'Devices',
+    'nav_devices' => 'Devices & sessions',
     'nav_devices_desc' => 'Connected apps and command-line clients',
     'nav_sessions' => 'Web sessions',
     'nav_sessions_desc' => 'Browsers signed in to your account',

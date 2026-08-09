@@ -44,7 +44,14 @@ class User extends Authenticatable implements MustVerifyEmail
             'groups' => 'array',
             'max_connected_devices' => 'integer',
             'modules' => 'array',
+            'blocked_at' => 'datetime',
         ];
+    }
+
+    /** A blocked user cannot authenticate; their tokens/sessions are revoked at block time. */
+    public function isBlocked(): bool
+    {
+        return $this->blocked_at !== null;
     }
 
     /**

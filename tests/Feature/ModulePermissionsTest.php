@@ -49,15 +49,17 @@ final class ModulePermissionsTest extends TestCase
         $this->assertSame(array_keys(config('modules.list')), $user->fresh()->allowedModules());
     }
 
-    public function test_web_route_is_blocked_for_a_disabled_module(): void
+    public function test_module_data_route_is_blocked_for_a_disabled_module(): void
     {
-        // A user whose module allow-list excludes finance is denied the page.
+        // SPA-only cutover: the /finance page is now a public SPA shell (no data),
+        // so the module gate lives on the data endpoints instead of the page.
         $blocked = User::factory()->create(['role' => 'user', 'modules' => ['reports']]);
-        $this->actingAs($blocked)->get('/finance')->assertForbidden();
+        $this->actingAs($blocked)->get('/finance/data')->assertForbidden();
+        $this->actingAs($blocked)->get('/finance')->assertOk(); // shell only, no data
 
-        // A user who has finance enabled can open it.
+        // A user who has finance enabled can load its data.
         $allowed = User::factory()->create(['role' => 'user', 'modules' => ['finance']]);
-        $this->actingAs($allowed)->get('/finance')->assertOk();
+        $this->actingAs($allowed)->get('/finance/data')->assertOk();
     }
 
     public function test_me_exposes_allowed_modules(): void

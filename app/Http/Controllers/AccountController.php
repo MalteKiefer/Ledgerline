@@ -12,6 +12,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -62,6 +63,31 @@ class AccountController extends Controller
         }, $filename, ['Content-Type' => 'application/zip']);
     }
 
+    /**
+     * List the caller's active web sessions (DB session driver only; empty
+     * otherwise). Mirrors the profile Sessions page. Newest first; `current`
+     * flags the caller's own browser session (never present on a token request).
+     */
+    public function sessions(Request $request): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $currentId = $request->hasSession() ? $request->session()->getId() : null;
+
+        $rows = config('session.driver') === 'database'
+            ? DB::table('sessions')->where('user_id', $user->id)->orderByDesc('last_activity')->get()
+            : collect();
+
+        $sessions = $rows->map(fn ($s): array => [
+            'id' => is_scalar($s->id) ? (string) $s->id : '',
+            'ip' => is_string($s->ip_address) ? $s->ip_address : null,
+            'user_agent' => is_string($s->user_agent) ? $s->user_agent : null,
+            'last_active' => is_numeric($s->last_activity) ? (int) $s->last_activity : 0,
+            'current' => $s->id === $currentId,
+        ])->all();
+
+        return response()->json(['sessions' => $sessions]);
+    }
+
     /** Revoke another active session (not the current one). */
     public function revokeSession(Request $request, string $id): RedirectResponse|JsonResponse
     {
@@ -97,7 +123,12 @@ class AccountController extends Controller
 
         // Token API request (no web session): revoke the presented token and answer JSON.
         if ($request->expectsJson() || ! $request->hasSession()) {
-            $user->currentAccessToken()?->delete();
+            // Only a real PersonalAccessToken can be deleted; under SPA cookie
+            // auth this is a TransientToken (no delete()) and the row is gone anyway.
+            $tok = $user->currentAccessToken();
+            if ($tok instanceof PersonalAccessToken) {
+                $tok->delete();
+            }
 
             return response()->json(['deleted' => true]);
         }

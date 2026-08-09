@@ -10,6 +10,7 @@ return [
     'password' => 'Password',
     'remember' => 'Keep me signed in',
     'sign_in' => 'Sign in',
+    'invalid_credentials' => 'Wrong email or password.',
     'forgot' => 'Forgot your password?',
     'no_account' => 'No account yet?',
     'register_link' => 'Create one',
@@ -35,6 +36,9 @@ return [
     'back_to_login' => 'Back to sign in',
     'reset_title' => 'Choose a new password',
     'reset_button' => 'Reset password',
+    'reset_success' => 'Your password has been reset. You can now sign in.',
+    'reset_invalid' => 'This reset link is invalid or has expired.',
+    'register_disabled' => 'Self-registration is currently disabled.',
 
     // Email verification
     'verify_title' => 'Verify your email',

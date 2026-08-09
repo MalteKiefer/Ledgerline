@@ -109,19 +109,22 @@ class ContactsFeatureTest extends TestCase
         $this->assertTrue($jane->favorite);
     }
 
-    public function test_editor_pages_render_and_are_owner_scoped(): void
+    public function test_editor_paths_serve_the_shell_and_contact_data_is_owner_scoped(): void
     {
         $user = $this->signIn();
         $book = $this->book($user->id);
         $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Jane'])->assertStatus(201);
         $contact = Contact::firstOrFail();
 
-        $this->get(route('contacts.create'))->assertOk()->assertSee('contactEditorPage', false);
-        $this->get(route('contacts.edit', $contact))->assertOk()->assertSee('contactEditorPage', false);
+        // SPA-only: the editor UI lives in the SPA, so the create/edit paths
+        // serve the shell (200) and vue-router renders the form client-side.
+        $this->get('/contacts/create')->assertOk()->assertSee('id="app"', false);
+        $this->get('/contacts/'.$contact->id.'/edit')->assertOk()->assertSee('id="app"', false);
 
-        // Another user cannot open the edit page.
+        // Owner-scoping now lives on the data endpoint: another user cannot read
+        // the contact JSON.
         $this->signIn();
-        $this->get(route('contacts.edit', $contact))->assertForbidden();
+        $this->getJson(route('contacts.show', $contact))->assertForbidden();
     }
 
     public function test_updating_a_contact_keeps_its_photo(): void
@@ -148,17 +151,20 @@ class ContactsFeatureTest extends TestCase
         $this->assertStringContainsString('PHOTO', $contact->vcard);
     }
 
-    public function test_view_page_renders_and_is_owner_scoped(): void
+    public function test_view_path_serves_the_shell_and_contact_data_is_owner_scoped(): void
     {
         $user = $this->signIn();
         $book = $this->book($user->id);
         $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Jane'])->assertStatus(201);
         $contact = Contact::firstOrFail();
 
-        $this->get(route('contacts.view', $contact))->assertOk()->assertSee('contactViewPage', false);
+        // SPA-only: the contact detail UI lives in the SPA; the view path serves
+        // the shell (200).
+        $this->get('/contacts/'.$contact->id.'/view')->assertOk()->assertSee('id="app"', false);
 
+        // A non-owner cannot read the contact JSON (owner-scoped data endpoint).
         $this->signIn();
-        $this->get(route('contacts.view', $contact))->assertForbidden();
+        $this->getJson(route('contacts.show', $contact))->assertForbidden();
     }
 
     public function test_bulk_destroy_deletes_own_contacts_and_ignores_foreign_ids(): void

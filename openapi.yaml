@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.552.0
+  version: 1.561.0
   license:
     name: Proprietary
   description: >
@@ -104,6 +104,11 @@ tags:
     description: >
       Admin, read-only, metadata-only audit trail (admin role + device token). Rows
       never contain tokens/keys/ciphertext.
+  - name: SecurityPortal
+    description: >
+      Admin security portal (admin role + device token): verbose HTTP request log
+      with CSV/JSON export, IP block-list CRUD, per-user block toggle, and a
+      cross-user session/device overview.
   - name: Paperless
     description: >
       Per-user Paperless-ngx integration: cached term quick-picks, live term
@@ -111,7 +116,50 @@ tags:
       a transient-cleartext boundary (like POST /invoices/ocr): the client posts the
       raw document bytes, the server forwards them to the user's own Paperless
       instance and stores/logs nothing. Per-user Paperless CONFIGURATION (URL / token
-      / enabled flag) is set in the web UI only — there is no /api/v1 config twin.
+      / enabled flag) is managed via GET/PUT /paperless/config + POST
+      /paperless/config/test; the API token is never returned (has_token bool).
+  - name: Settings
+    description: >
+      Admin workspace settings (requires the admin role on top of the device token —
+      `can:manage-global-settings`): outgoing notifications (SMTP/NTFY/webhook) with a
+      test send, the paired-device cap, the Files upload/orphan-grace limits, and the
+      read-only System/maintenance overview. Operative secrets (SMTP password, ntfy
+      token, webhook secret) are NEVER returned — a GET reports has_* booleans and a
+      blank submission preserves the stored secret. Non-admins get 403.
+  - name: Contacts
+    description: >
+      CardDAV-backed contacts module (address books + contacts + groups +
+      duplicate detection), plaintext-relational. The same guard-agnostic
+      controllers back the web routes; these `/api/v1` mirrors are gated by
+      `module:contacts` on top of device auth. Blade-only screens
+      (index/create/edit/view) are not exposed. `GET /contacts/data` returns
+      `{contacts, books, groups}`; `GET /contacts/{id}` returns the full parsed
+      vCard (fn, org, emails/phones/urls/addresses, note, group_ids). Owner-scope
+      is enforced controller-side; avatar bytes stream from `/contacts/{id}/avatar`.
+  - name: Calendar
+    description: >
+      CalDAV-backed calendar module (calendars + events), plaintext-relational.
+      The same guard-agnostic controllers back the web routes; these `/api/v1`
+      mirrors are gated by `module:calendar` on top of device auth. The Blade/SPA
+      entry (index) is not exposed. `GET /calendar/data` returns
+      `{calendars, settings}`; `GET /calendar/events?from=&to=` returns
+      recurrence-expanded occurrences; `GET /calendar/events/{id}` returns the
+      full parsed VEVENT editor shape + etag. Optimistic concurrency is the
+      DAV-native etag (409 on mismatch). Owner-scope is enforced controller-side.
+      CalDAV itself is served over the unified `/dav` Sabre endpoint (HTTP Basic,
+      not `/api/v1`) — the same surface as CardDAV, absent from this document.
+  - name: Mail
+    description: >
+      Plaintext-relational IMAP mail archive (Phase 1). Per-user IMAP accounts
+      (the password is the only encrypted-at-rest secret, never serialised) are
+      synced pull-only + read-only-origin via mbsync into an immutable archive:
+      the server parses each message into denormalised envelope columns + a
+      plaintext body + server-sanitised HTML + a full-text search column, and
+      stores the raw `.eml` bytes plaintext on the files disk (served sandboxed by
+      id). Gated by `module:mail` on top of device auth; owner-scoped (404, never
+      403, on a foreign id). Messages are IMMUTABLE — only `seen`/`trashed_at`
+      toggle; there is no edit or hard-delete endpoint. Deleting an ACCOUNT keeps
+      its archived mail; only a full GDPR user purge removes everything.
 components:
   securitySchemes:
     bearerAuth:
@@ -174,7 +222,7 @@ components:
       required: [error]
       properties:
         error: { type: string }
-    FinanceReceipt:
+    TransactionReceipt:
       type: object
       description: >
         A receipt entry embedded in a bank transaction's `receipts[]`. File receipts
@@ -196,6 +244,138 @@ components:
         vat: { type: [string, "null"] }
         locked: { type: boolean, description: "A locked receipt (e.g. an auto-linked invoice) cannot be deleted." }
         trashed: { type: boolean }
+
+    WebDavAccess:
+      type: object
+      description: >
+        WebDAV mount access status. The password is stored hashed and never returned.
+      required: [enabled, username, url]
+      properties:
+        enabled: { type: boolean, description: "Whether an app-specific WebDAV password is set." }
+        username: { type: string, description: "The username to authenticate with (the account email)." }
+        url: { type: string, format: uri, description: "The WebDAV mount URL (…/dav/)." }
+
+    PaperlessConfig:
+      type: object
+      description: >
+        Per-user Paperless connection config. The API token is never returned;
+        `has_token` reports whether one is stored.
+      required: [paperless_enabled, paperless_url, has_token, counts]
+      properties:
+        paperless_enabled: { type: boolean }
+        paperless_url: { type: [string, "null"], format: uri }
+        has_token: { type: boolean }
+        counts:
+          type: object
+          required: [tag, document_type, correspondent]
+          properties:
+            tag: { type: integer }
+            document_type: { type: integer }
+            correspondent: { type: integer }
+
+    NotificationConfig:
+      type: object
+      description: >
+        Workspace notification config with secrets masked. Secret values
+        (smtp_password / ntfy_token / webhook_secret) are represented only by
+        has_* booleans and are never returned.
+      required:
+        [mail_enabled, has_smtp_password, ntfy_enabled, has_ntfy_token, webhook_enabled, has_webhook_secret]
+      properties:
+        mail_enabled: { type: boolean }
+        smtp_host: { type: [string, "null"] }
+        smtp_port: { type: [integer, "null"] }
+        smtp_encryption: { type: [string, "null"], enum: [tls, ssl, null] }
+        smtp_username: { type: [string, "null"] }
+        smtp_from_address: { type: [string, "null"], format: email }
+        smtp_from_name: { type: [string, "null"] }
+        has_smtp_password: { type: boolean }
+        ntfy_enabled: { type: boolean }
+        ntfy_url: { type: [string, "null"], format: uri }
+        ntfy_topic: { type: [string, "null"] }
+        has_ntfy_token: { type: boolean }
+        webhook_enabled: { type: boolean }
+        webhook_url: { type: [string, "null"], format: uri }
+        has_webhook_secret: { type: boolean }
+    NotificationConfigWrite:
+      type: object
+      description: >
+        Notification config update. Only submitted fields are persisted. Secret
+        fields (smtp_password/ntfy_token/webhook_secret) preserve the stored value
+        when omitted or blank.
+      properties:
+        mail_enabled: { type: boolean }
+        smtp_host: { type: [string, "null"], maxLength: 255 }
+        smtp_port: { type: [integer, "null"], minimum: 1, maximum: 65535 }
+        smtp_encryption: { type: [string, "null"], enum: [tls, ssl, null] }
+        smtp_username: { type: [string, "null"], maxLength: 255 }
+        smtp_password: { type: [string, "null"], maxLength: 255, description: "Blank/omitted keeps the stored secret." }
+        smtp_from_address: { type: [string, "null"], format: email, maxLength: 255 }
+        smtp_from_name: { type: [string, "null"], maxLength: 255 }
+        ntfy_enabled: { type: boolean }
+        ntfy_url: { type: [string, "null"], format: uri, maxLength: 255 }
+        ntfy_topic: { type: [string, "null"], maxLength: 255 }
+        ntfy_token: { type: [string, "null"], maxLength: 255, description: "Blank/omitted keeps the stored secret." }
+        webhook_enabled: { type: boolean }
+        webhook_url: { type: [string, "null"], format: uri, maxLength: 255 }
+        webhook_secret: { type: [string, "null"], maxLength: 255, description: "Blank/omitted keeps the stored secret." }
+
+    FilesLimits:
+      type: object
+      description: "Workspace Files limits (admin override, or the config default)."
+      required: [files_max_upload_mb, files_blob_orphan_grace_hours]
+      properties:
+        files_max_upload_mb: { type: integer }
+        files_blob_orphan_grace_hours: { type: integer }
+
+    SystemOverview:
+      type: object
+      description: "Read-only operational overview (metadata only — no secrets)."
+      required: [tasks, status, trend, errors, audit]
+      properties:
+        tasks:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              expression: { type: string }
+              lastAt: { type: [string, "null"] }
+              lastOk: { type: [boolean, "null"] }
+        status:
+          type: object
+          description: "SystemStatus snapshot (version/queue/storage/errors/backup/scheduler/disk)."
+          additionalProperties: true
+        trend:
+          type: object
+          description: "Storage trend over ~30 days ({points, deltaBytes, deltaDays})."
+          additionalProperties: true
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              level: { type: [string, "null"] }
+              exception: { type: [string, "null"] }
+              message: { type: [string, "null"] }
+              file: { type: [string, "null"] }
+              line: { type: [integer, "null"] }
+              count: { type: integer }
+              first_seen_at: { type: [string, "null"] }
+              last_seen_at: { type: [string, "null"] }
+              resolved_at: { type: [string, "null"] }
+        audit:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              action: { type: string }
+              actor: { type: [string, "null"] }
+              ip: { type: [string, "null"] }
+              meta: { type: [object, "null"], additionalProperties: true }
+              created_at: { type: [string, "null"] }
 
     CompanyProfile:
       type: object
@@ -221,10 +401,100 @@ components:
         invoice_footer_text: { type: [string, "null"], maxLength: 2000 }
         invoice_accent_color: { type: [string, "null"], pattern: "^#[0-9a-fA-F]{6}$" }
         invoice_heading_color: { type: [string, "null"], pattern: "^#[0-9a-fA-F]{6}$" }
-        invoice_template: { type: [string, "null"], enum: [editorial, modern, elegant, klassisch] }
+        invoice_template: { type: [string, "null"], enum: [editorial, modern, elegant, klassisch, schlicht] }
         invoice_payment_methods: { type: [string, "null"], maxLength: 500 }
         invoice_payment_terms_text: { type: [string, "null"], maxLength: 1000 }
+        company_website: { type: [string, "null"], maxLength: 255 }
+        company_contacts: { type: array, maxItems: 20, items: { type: object, properties: { name: { type: [string, "null"] }, role: { type: [string, "null"] }, email: { type: [string, "null"] }, phone: { type: [string, "null"] } } } }
+        invoice_font: { type: [string, "null"], maxLength: 80 }
+        invoice_vat_ist: { type: boolean, description: "Ist-Versteuerung (cash-basis VAT) toggle." }
         has_logo: { type: boolean, readOnly: true, description: "Whether a company logo is stored (GET /company/logo)." }
+
+    Calendar:
+      type: object
+      description: A CalDAV calendar collection, owner-scoped.
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        uri: { type: string }
+        color: { type: [string, "null"], description: "#RRGGBB or #RRGGBBAA (Apple CALENDAR-COLOR)." }
+        kind: { type: string, enum: [normal, holidays, school_holidays, birthdays], description: "normal = editable; holidays/school_holidays/birthdays = generated + read-only." }
+        country: { type: [string, "null"], description: "ISO 3166-1 alpha-2 (holiday kinds), remembered for regenerate. e.g. DE." }
+        subdivision: { type: [string, "null"], description: "OpenHolidays subdivision code (holiday kinds), e.g. DE-BY; null = national." }
+        owned: { type: boolean }
+
+    CalendarOccurrence:
+      type: object
+      description: >
+        A concrete occurrence of an event within the queried [from,to] window
+        (recurring masters emit one per occurrence). id/uid identify the master
+        for edit; color echoes the parent calendar for rendering. Times are UTC.
+      properties:
+        id: { type: string, format: uuid }
+        calendar: { type: string, format: uuid }
+        uid: { type: string }
+        summary: { type: [string, "null"] }
+        location: { type: [string, "null"] }
+        description: { type: [string, "null"] }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        all_day: { type: boolean }
+        status: { type: [string, "null"], enum: [CONFIRMED, TENTATIVE, CANCELLED, null] }
+        recurring: { type: boolean }
+        color: { type: [string, "null"] }
+
+    CalendarEvent:
+      type: object
+      description: The full parsed VEVENT editor shape plus ids + etag.
+      properties:
+        id: { type: string, format: uuid }
+        calendar: { type: string, format: uuid }
+        uid: { type: [string, "null"] }
+        summary: { type: [string, "null"] }
+        description: { type: [string, "null"] }
+        location: { type: [string, "null"] }
+        dtstart: { type: [string, "null"], format: date-time }
+        dtend: { type: [string, "null"], format: date-time }
+        all_day: { type: boolean }
+        rrule: { type: [string, "null"] }
+        status: { type: [string, "null"], enum: [CONFIRMED, TENTATIVE, CANCELLED, null] }
+        sequence: { type: integer }
+        etag: { type: string }
+
+    CalendarEventInput:
+      type: object
+      required: [dtstart]
+      properties:
+        calendar_id: { type: string, format: uuid, description: "Required on create." }
+        summary: { type: [string, "null"], maxLength: 255 }
+        description: { type: [string, "null"], maxLength: 5000 }
+        location: { type: [string, "null"], maxLength: 255 }
+        dtstart: { type: string, format: date-time }
+        dtend: { type: [string, "null"], format: date-time, description: "after_or_equal dtstart." }
+        all_day: { type: boolean }
+        rrule: { type: [string, "null"], maxLength: 255, description: "iCalendar RRULE; validated by parsing." }
+        status: { type: [string, "null"], enum: [CONFIRMED, TENTATIVE, CANCELLED, null] }
+        etag: { type: [string, "null"], description: "Optional optimistic-concurrency token on update (409 on mismatch)." }
+
+    CalendarSettings:
+      type: object
+      properties:
+        default_view: { type: string, enum: [month, week, agenda] }
+        week_start: { type: integer, enum: [0, 1], description: "0=Sunday, 1=Monday." }
+
+    CalendarImportResult:
+      type: object
+      properties:
+        created: { type: integer }
+        updated: { type: integer }
+        skipped: { type: integer }
+
+    EtagConflict:
+      type: object
+      description: DAV-native optimistic-concurrency conflict; re-fetch and retry.
+      properties:
+        error: { type: string, enum: [etag_conflict] }
+        etag: { type: string, description: "The current stored etag." }
 
     Group:
       type: object
@@ -244,7 +514,7 @@ components:
             modules). A member's effective modules are the union across their groups
             (a group with null grants all); a per-user allow-list overrides. Enforced
             server-side and surfaced at /me as user.modules.
-          items: { type: string, enum: [finance] }
+          items: { type: string, enum: [finance, files, contacts, calendar, mail] }
         members:
           type: array
           items:
@@ -276,7 +546,7 @@ components:
         The authenticated user's profile. Returned as the `user` object by GET /me
         and by POST /auth/pair/collect (when `status: approved`). All fields are
         non-secret metadata — no credentials (password hash, 2FA secret) are included.
-      required: [id, name, email, locale, groups, modules, has_avatar, preferences]
+      required: [id, name, email, locale, groups, modules, has_avatar, two_factor, preferences, theme]
       properties:
         id: { type: integer }
         name: { type: string }
@@ -298,10 +568,13 @@ components:
             toggles). A native client should hide the tabs for modules NOT listed
             here; the API also enforces it — a disabled module's store endpoints
             return 403.
-          items: { type: string, enum: [finance] }
+          items: { type: string, enum: [finance, files, contacts, calendar, mail] }
         has_avatar:
           type: boolean
           description: "Whether a non-secret avatar is stored. True → fetch it via GET /api/v1/avatar (Bearer)."
+        two_factor:
+          type: boolean
+          description: "Whether TOTP two-factor authentication is confirmed for the account."
         preferences:
           allOf:
             - $ref: "#/components/schemas/DisplayPreferences"
@@ -334,7 +607,7 @@ components:
         number: { type: [string, "null"] }
         seq: { type: [integer, "null"] }
         year: { type: [integer, "null"] }
-        status: { type: string, enum: [draft, sent, paid] }
+        status: { type: string, enum: [draft, final, sent, paid] }
         type: { type: string, enum: [invoice, credit_note], description: "Document kind. A credit note (Storno/Gutschrift) reverses a finalized invoice and carries its own GoBD number." }
         cancels_invoice_id: { type: [integer, "null"], description: "For a credit note, the id of the invoice it cancels (server-set, never mass-assigned)." }
         issue_date: { type: [string, "null"] }
@@ -662,21 +935,58 @@ components:
         size: { type: integer }
         storage_path: { type: string }
         sha256: { type: string, nullable: true }
-        tags: { type: array, items: { type: string } }
+        tags: { type: array, nullable: true, items: { type: string } }
         note: { type: string, nullable: true }
         favorite: { type: boolean }
+        labels: { type: array, items: { $ref: "#/components/schemas/FileLabel" }, description: "Eager-loaded on /files/data, /files/trash, /files/search, and the setFileLabels response." }
         version: { type: integer }
         deleted_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time, nullable: true }
         updated_at: { type: string, format: date-time, nullable: true }
+    FolderShareOwnerView:
+      type: object
+      description: "Owner-visible cross-user share (folder_shares): the shared target (a folder subtree OR a single file — exactly one is set) plus its member roster. Returned by the owner-side index/store/updateMember."
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [file, folder], description: "Whether this share targets a single file or a folder subtree." }
+        file_folder_id: { type: integer, nullable: true, description: "The shared folder id (null for a file share)." }
+        folder_name: { type: string, nullable: true, description: "Name of the shared folder (null for a file share or if it was trashed)." }
+        file_id: { type: integer, nullable: true, description: "The shared file id (null for a folder share)." }
+        file_name: { type: string, nullable: true, description: "Name of the shared file (null for a folder share or if it was trashed)." }
+        members:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer, description: "folder_share_members row id." }
+              user_id: { type: integer }
+              name: { type: string, nullable: true }
+              email: { type: string, nullable: true }
+              role: { type: string, enum: [viewer, editor] }
+    SharedWithMeItem:
+      type: object
+      description: "A folder OR file shared WITH the authenticated user (member side): the shared target, the caller's role, and the owner. `kind` selects whether folder_name or file_name is populated."
+      properties:
+        id: { type: integer, description: "folder_shares row id." }
+        kind: { type: string, enum: [file, folder] }
+        folder_name: { type: string, description: "Present for a folder share." }
+        file_name: { type: string, description: "Present for a file share." }
+        role: { type: string, enum: [viewer, editor] }
+        owner:
+          type: object
+          properties:
+            id: { type: integer, nullable: true }
+            name: { type: string, nullable: true }
+            email: { type: string, nullable: true }
     FileShare:
       type: object
       description: "A public share link (file_shares) to a file or folder subtree; optional password gate + expiry. Never serializes the password hash."
       properties:
         id: { type: integer }
-        kind: { type: string, enum: [file, folder] }
         token: { type: string }
-        url: { type: string }
+        kind: { type: string, enum: [file, folder] }
+        file_id: { type: integer, nullable: true }
+        file_folder_id: { type: integer, nullable: true }
         needs_password: { type: boolean }
         allow_download: { type: boolean }
         expires_at: { type: string, format: date-time, nullable: true }
@@ -728,7 +1038,7 @@ components:
         purpose: { type: [string, "null"] }
         booking_text: { type: [string, "null"] }
         eref: { type: [string, "null"] }
-        receipts: { type: [array, "null"], items: { $ref: "#/components/schemas/FinanceReceipt" } }
+        receipts: { type: [array, "null"], items: { $ref: "#/components/schemas/TransactionReceipt" } }
         version: { type: integer }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -745,7 +1055,7 @@ components:
         accepted here.
       properties:
         number: { type: [string, "null"], maxLength: 64 }
-        status: { type: string, enum: [draft, sent, paid] }
+        status: { type: string, enum: [draft, final, sent, paid] }
         type: { type: string, enum: [invoice, credit_note] }
         issue_date: { type: [string, "null"], format: date }
         due_date: { type: [string, "null"], format: date }
@@ -899,7 +1209,7 @@ components:
         role: { type: string, enum: [admin, user] }
         password: { type: string, minLength: 12, description: "Create only (prohibited on update); omit to trigger a reset mail." }
         max_connected_devices: { type: [integer, "null"], minimum: 1, maximum: 50 }
-        modules: { type: [array, "null"], items: { type: string, enum: [finance] } }
+        modules: { type: [array, "null"], items: { type: string, enum: [finance, files, contacts, calendar, mail] } }
         modules_marker: { type: string, enum: ['set'], description: "Send with an (empty) modules[] to set an explicit list rather than 'no change'." }
         groups: { type: [array, "null"], items: { type: integer } }
 
@@ -922,6 +1232,58 @@ components:
         ip: { type: [string, "null"] }
         user_agent: { type: [string, "null"] }
         meta: { type: [object, "null"], additionalProperties: true }
+
+    RequestLogEntry:
+      type: object
+      description: "One HTTP request-trail row (admin, metadata only)."
+      required: [id, method, path, status]
+      properties:
+        id: { type: integer }
+        time: { type: [string, "null"], format: date-time }
+        ip: { type: [string, "null"] }
+        method: { type: string, example: GET }
+        path: { type: string, example: /api/v1/files }
+        status: { type: integer, example: 200 }
+        user:
+          type: [object, "null"]
+          properties: { id: { type: integer }, name: { type: string } }
+        user_agent: { type: [string, "null"] }
+        duration_ms: { type: [integer, "null"] }
+
+    BlockedIp:
+      type: object
+      description: "One entry in the IP/CIDR block-list."
+      required: [id, cidr]
+      properties:
+        id: { type: integer }
+        cidr: { type: string, example: 203.0.113.0/24 }
+        reason: { type: [string, "null"] }
+        created_at: { type: [string, "null"], format: date-time }
+
+    SessionsOverview:
+      type: object
+      description: "Cross-user active web sessions + device tokens (admin)."
+      properties:
+        web:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [web] }
+              user_id: { type: integer }
+              ip: { type: [string, "null"] }
+              user_agent: { type: [string, "null"] }
+              last_activity: { type: [string, "null"], format: date-time }
+        devices:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [device] }
+              user_id: { type: integer }
+              name: { type: [string, "null"] }
+              ip: { type: [string, "null"] }
+              last_used_at: { type: [string, "null"], description: "Raw DB timestamp string (Y-m-d H:i:s), not strict ISO-8601." }
 
     BackupDestinationSummary:
       type: object
@@ -1027,7 +1389,719 @@ components:
         verifyMessage: { type: [string, "null"] }
         verifiedHuman: { type: [string, "null"], description: "Relative time of the last verification." }
 
+    MailAddress:
+      type: object
+      properties:
+        name: { type: [string, "null"] }
+        email: { type: string }
+      required: [email]
+
+    MailAccount:
+      type: object
+      description: An IMAP mail account. The password is never serialised.
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        host: { type: string }
+        port: { type: integer }
+        username: { type: string }
+        encryption: { type: string, enum: [ssl, tls, starttls, none] }
+        folders: { type: [array, "null"], items: { type: string }, description: "Sync allow-list; null = all folders." }
+        backfill_since: { type: [string, "null"], format: date }
+        delete_after_import: { type: boolean }
+        skip_spam: { type: boolean }
+        enabled: { type: boolean }
+        sync_interval_minutes: { type: [integer, "null"], description: "Per-account override; null = workspace default." }
+        smtp_host: { type: [string, "null"], description: "Outgoing SMTP for compose/reply/forward (opt-in)." }
+        smtp_port: { type: [integer, "null"] }
+        smtp_username: { type: [string, "null"] }
+        smtp_encryption: { type: [string, "null"], enum: [ssl, tls, starttls, none, null] }
+        from_name: { type: [string, "null"] }
+        from_email: { type: [string, "null"] }
+        has_smtp_password: { type: boolean, description: "The SMTP password itself is NEVER returned; this flags whether one is stored." }
+        status: { type: string, enum: [idle, syncing, error] }
+        last_error: { type: [string, "null"] }
+        last_synced_at: { type: [string, "null"], format: date-time }
+        message_count: { type: integer }
+      required: [id, name, host, port, username, encryption, enabled, status]
+
+    MailMessage:
+      type: object
+      description: >
+        An archived message. `index` returns the envelope fields; `show` adds
+        text_body/html/references/reply_to/headers_raw/attachments. Immutable —
+        only seen/trashed toggle.
+      properties:
+        id: { type: string, format: uuid, description: "Also the raw-blob key (GET /mail/raw/{id})." }
+        account_id: { type: [integer, "null"], description: "null once the source account was deleted." }
+        folder: { type: string }
+        message_id: { type: [string, "null"] }
+        in_reply_to: { type: [string, "null"] }
+        references: { type: [string, "null"] }
+        thread_id: { type: [string, "null"] }
+        subject: { type: [string, "null"] }
+        from_name: { type: [string, "null"] }
+        from_email: { type: [string, "null"] }
+        to: { type: array, items: { $ref: '#/components/schemas/MailAddress' } }
+        cc: { type: array, items: { $ref: '#/components/schemas/MailAddress' } }
+        reply_to: { type: [string, "null"] }
+        date: { type: [string, "null"], format: date-time, description: "The message's own Date header." }
+        size: { type: integer }
+        has_attachment: { type: boolean }
+        attachment_count: { type: integer }
+        seen: { type: boolean }
+        trashed: { type: boolean }
+        spam: { type: boolean }
+        spf: { type: [string, "null"] }
+        dkim: { type: [string, "null"] }
+        dmarc: { type: [string, "null"] }
+        encrypted_type: { type: [string, "null"], enum: [pgp, smime, null], description: "Set in a later phase." }
+        decrypt_status: { type: [string, "null"], enum: [ok, nokey, fail, null] }
+        created_at: { type: [string, "null"], format: date-time, description: "Archived-at (hour-snapped)." }
+        text_body: { type: [string, "null"], description: "show only." }
+        html: { type: [string, "null"], description: "Server-sanitised HTML (show only)." }
+        headers_raw: { type: [string, "null"], description: "Raw RFC822 header block (show only)." }
+        attachments: { type: array, description: "show only.", items: { $ref: '#/components/schemas/MailAttachment' } }
+        labels: { type: array, items: { $ref: '#/components/schemas/MailLabel' } }
+      required: [id, folder, size, seen, trashed]
+
+    MailLabel:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        color: { type: string }
+        message_count: { type: integer, description: "index only." }
+      required: [id, name, color]
+
+    MailRule:
+      type: object
+      description: "A sieve-lite ingest rule (matched at ingest)."
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        enabled: { type: boolean }
+        priority: { type: integer }
+        match:
+          type: object
+          properties:
+            from: { type: [string, "null"] }
+            to: { type: [string, "null"] }
+            subject: { type: [string, "null"] }
+            folder: { type: [string, "null"] }
+            has_attachment: { type: [boolean, "null"] }
+        action:
+          type: object
+          properties:
+            add_label: { type: [integer, "null"] }
+            mark_read: { type: [boolean, "null"] }
+            trash: { type: [boolean, "null"] }
+            skip: { type: [boolean, "null"] }
+      required: [id, name, enabled, priority]
+
+    MailSavedSearch:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        filters: { type: object, additionalProperties: true }
+      required: [id, name]
+
+    MailAttachment:
+      type: object
+      description: >
+        One decoded MIME attachment part of an archived message. Bytes are served
+        sandboxed via GET /mail/attachments/{id}/raw; inline=true marks cid:
+        images referenced by the HTML body.
+      properties:
+        id: { type: string, format: uuid }
+        filename: { type: [string, "null"] }
+        content_type: { type: [string, "null"] }
+        size: { type: integer }
+        inline: { type: boolean }
+      required: [id, size, inline]
+
+    MailKey:
+      type: object
+      description: >
+        A user's PGP / S-MIME decryption key — PUBLIC material only. The private
+        key + passphrase are stored encrypted and are never serialised.
+      properties:
+        id: { type: integer }
+        type: { type: string, enum: [pgp, smime] }
+        label: { type: string }
+        key_fingerprint: { type: [string, "null"] }
+        key_id: { type: [string, "null"] }
+        public_key: { type: [string, "null"] }
+        identities: { type: [array, "null"], items: { $ref: '#/components/schemas/MailAddress' } }
+        has_cert: { type: boolean }
+        expires_at: { type: [string, "null"], format: date-time }
+        created_at: { type: [string, "null"], format: date-time }
+      required: [id, type, label, has_cert]
+
+    MailLog:
+      type: object
+      properties:
+        id: { type: integer }
+        level: { type: string, enum: [info, warn, error] }
+        event: { type: string }
+        folder: { type: [string, "null"] }
+        message: { type: [string, "null"] }
+        created_at: { type: [string, "null"], format: date-time }
+      required: [id, level, event]
+
 paths:
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: spaLogin
+      summary: Browser login (email+password+optional 2FA) to a bearer token
+      security: []
+      description: >
+        Backend-agnostic login: validates credentials (and TOTP/recovery code
+        when 2FA is confirmed) and returns a device-scoped Sanctum bearer token.
+        On a 2FA-required account with no/invalid code, returns 422 with
+        {two_factor: true}. Native clients that send `install_id` (+ device_name/
+        app_version/os_version) are registered as a real device — same as QR
+        pairing — so they appear under "Connected devices" (revoke/wipe/heartbeat)
+        and re-login on the same install_id replaces the previous device row.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                code: { type: [string, "null"] }
+                recovery_code: { type: [string, "null"] }
+                device_name: { type: [string, "null"], description: "Device label (native) or 'web' default." }
+                install_id: { type: [string, "null"], description: "Stable app install id — presence marks a native device; enables device registration + dedup." }
+                app_version: { type: [string, "null"] }
+                os_version: { type: [string, "null"] }
+      responses:
+        "200":
+          description: Token + user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: '#/components/schemas/MeUser' }
+        "422":
+          description: Invalid credentials, or {two_factor:true} when a 2FA code is required.
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: spaLogout
+      summary: Revoke the current bearer token
+      responses:
+        "200": { description: OK. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+
+  # --------------------------------------------------------------------------
+  # Contacts module (module:contacts + device auth). Mirrors the web routes.
+  # --------------------------------------------------------------------------
+  /contacts/data:
+    get:
+      tags: [Contacts]
+      operationId: contactsData
+      summary: List contacts + address books + groups
+      parameters:
+        - { name: book, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: group, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: favorites, in: query, required: false, schema: { type: boolean } }
+        - { name: q, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Contacts snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contacts: { type: array, items: { type: object } }
+                  books: { type: array, items: { type: object } }
+                  groups: { type: array, items: { type: object } }
+                  settings: { type: object, properties: { sort: { type: string, enum: [first_name, last_name] }, display_format: { type: string, enum: [first_last, last_first] } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+  /contacts:
+    post:
+      tags: [Contacts]
+      operationId: contactsStore
+      summary: Create a contact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [book_id], properties: { book_id: { type: string }, fn: { type: string }, first_name: { type: string }, last_name: { type: string }, org: { type: string }, emails: { type: array, items: { type: object } }, phones: { type: array, items: { type: object } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { id: { type: string } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /contacts/{contact}:
+    get:
+      tags: [Contacts]
+      operationId: contactsShow
+      summary: Full parsed vCard detail
+      parameters: [{ name: contact, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Contact detail (parsed vCard + id/book/group_ids)., content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Contacts]
+      operationId: contactsUpdate
+      summary: Update a contact
+      parameters: [{ name: contact, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, description: "Rich editor payload: book_id, fn, first_name, last_name, org, title, nickname, bday, anniversaries[], note, emails[], phones[], urls[], addresses[], related[], custom_fields[], favorite, group_ids[]." } } } }
+      responses:
+        "200": { description: Updated. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Contacts]
+      operationId: contactsDestroy
+      summary: Delete a contact
+      parameters: [{ name: contact, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Deleted. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "404": { $ref: '#/components/responses/NotFound' }
+  /contacts/{contact}/favorite:
+    patch:
+      tags: [Contacts]
+      operationId: contactsFavorite
+      summary: Toggle the favorite star
+      parameters: [{ name: contact, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [favorite], properties: { favorite: { type: boolean } } } } } }
+      responses:
+        "200": { description: OK., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, favorite: { type: boolean } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "404": { $ref: '#/components/responses/NotFound' }
+  /contacts/{contact}/avatar:
+    get:
+      tags: [Contacts]
+      operationId: contactsAvatar
+      summary: Stream the contact avatar (sandboxed)
+      parameters: [{ name: contact, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Image bytes., content: { image/jpeg: { schema: { type: string, format: binary } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Contacts]
+      operationId: contactsAvatarUpload
+      summary: Upload/replace the contact avatar
+      parameters: [{ name: contact, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { avatar: { type: string, format: binary } } } } } }
+      responses:
+        "200": { description: Stored., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, avatar: { type: [string, "null"] } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /contacts/bulk-destroy:
+    delete:
+      tags: [Contacts]
+      operationId: contactsBulkDestroy
+      summary: Delete multiple contacts
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { ids: { type: array, items: { type: string } } } } } } }
+      responses:
+        "200": { description: Deleted. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+  /contacts/import:
+    post:
+      tags: [Contacts]
+      operationId: contactsImport
+      summary: Import a VCF file
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary }, book_id: { type: string } } } } } }
+      responses:
+        "200": { description: Import summary., content: { application/json: { schema: { type: object, properties: { created: { type: integer }, updated: { type: integer }, skipped: { type: integer } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /contacts/export:
+    get:
+      tags: [Contacts]
+      operationId: contactsExport
+      summary: Export contacts as VCF
+      responses:
+        "200": { description: VCF file., content: { text/vcard: { schema: { type: string } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+  /contacts/suggest:
+    get:
+      tags: [Contacts]
+      operationId: contactsSuggest
+      summary: Autocomplete suggestions
+      parameters: [{ name: q, in: query, required: false, schema: { type: string } }]
+      responses:
+        "200": { description: Suggestions. }
+  /contacts/{contact}/geo:
+    get:
+      tags: [Contacts]
+      operationId: contactsGeo
+      summary: Geocode a contact address for the map preview
+      parameters:
+        - { name: contact, in: path, required: true, schema: { type: string } }
+        - { name: address, in: query, required: false, schema: { type: integer, default: 0 }, description: "Which postal address to geocode (index)." }
+      responses:
+        "200": { description: Geocoder match., content: { application/json: { schema: { type: object, properties: { display: { type: [string, "null"] }, lat: { type: [number, "null"] }, lon: { type: [number, "null"] } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "404": { $ref: '#/components/responses/NotFound' }
+  /contacts/settings:
+    post:
+      tags: [Contacts]
+      operationId: contactsSettings
+      summary: Update contacts view settings (sort/display)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [sort, display_format], properties: { sort: { type: string, enum: [first_name, last_name] }, display_format: { type: string, enum: [first_last, last_first] } } } } } }
+      responses:
+        "200": { description: Saved. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /contacts/duplicates/data:
+    get:
+      tags: [Contacts]
+      operationId: contactsDuplicatesData
+      summary: Duplicate candidate groups
+      responses:
+        "200": { description: Duplicate groups. }
+  /contacts/duplicates/merge:
+    post:
+      tags: [Contacts]
+      operationId: contactsDuplicatesMerge
+      summary: Merge a duplicate set
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [primary_id, ids], properties: { primary_id: { type: string }, ids: { type: array, minItems: 2, items: { type: string } } } } } } }
+      responses:
+        "200": { description: Merged. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /contacts/duplicates/dismiss:
+    post:
+      tags: [Contacts]
+      operationId: contactsDuplicatesDismiss
+      summary: Dismiss a duplicate suggestion
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ids], properties: { ids: { type: array, minItems: 2, items: { type: string } } } } } } }
+      responses:
+        "200": { description: Dismissed. }
+  /address-books:
+    post:
+      tags: [Contacts]
+      operationId: addressBooksStore
+      summary: Create an address book
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } } }
+      responses:
+        "201": { description: Created. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /address-books/{addressBook}:
+    put:
+      tags: [Contacts]
+      operationId: addressBooksUpdate
+      summary: Rename an address book
+      parameters: [{ name: addressBook, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: string } } } } } }
+      responses:
+        "200": { description: Updated. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Contacts]
+      operationId: addressBooksDestroy
+      summary: Delete an address book
+      parameters: [{ name: addressBook, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Deleted. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+  /contact-groups:
+    post:
+      tags: [Contacts]
+      operationId: contactGroupsStore
+      summary: Create a contact group
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } } }
+      responses:
+        "201": { description: Created. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /contact-groups/{group}:
+    delete:
+      tags: [Contacts]
+      operationId: contactGroupsDestroy
+      summary: Delete a contact group
+      parameters: [{ name: group, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200": { description: Deleted. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  # --------------------------------------------------------------------------
+  # Calendar (CalDAV-backed, module:calendar)
+  # --------------------------------------------------------------------------
+
+  /calendar/data:
+    get:
+      tags: [Calendar]
+      operationId: calendarData
+      summary: List calendars + view settings
+      responses:
+        "200":
+          description: Calendar snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  calendars: { type: array, items: { $ref: '#/components/schemas/Calendar' } }
+                  settings: { $ref: '#/components/schemas/CalendarSettings' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+  /calendar/holiday-countries:
+    get:
+      tags: [Calendar]
+      operationId: calendarHolidayCountries
+      summary: OpenHolidays country list (proxied + cached) for the special-calendar dialog
+      description: >
+        Server-proxied OpenHolidays `/Countries` (SSRF-guarded, cached ~1 day) so
+        the SPA can populate the country select under CSP connect-src 'self'. Names
+        are in the current UI language. An upstream failure degrades to an empty list.
+      responses:
+        "200":
+          description: Country list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  countries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        isoCode: { type: string, description: "ISO 3166-1 alpha-2, e.g. DE." }
+                        name: { type: string }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/holiday-subdivisions:
+    get:
+      tags: [Calendar]
+      operationId: calendarHolidaySubdivisions
+      summary: OpenHolidays subdivisions (regions / Bundesländer) for a country
+      description: >
+        Server-proxied OpenHolidays `/Subdivisions?countryIsoCode=..` (SSRF-guarded,
+        cached ~1 day). German Bundesländer come back as DE-BW, DE-BY, … An upstream
+        failure degrades to an empty list.
+      parameters:
+        - { name: country, in: query, required: true, schema: { type: string, pattern: '^[A-Za-z-]{2,8}$' }, description: "ISO 3166-1 alpha-2, e.g. DE." }
+      responses:
+        "200":
+          description: Subdivision list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subdivisions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code: { type: string, description: "OpenHolidays subdivision code, e.g. DE-BY." }
+                        name: { type: string }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/events:
+    get:
+      tags: [Calendar]
+      operationId: calendarEvents
+      summary: Recurrence-expanded occurrences in a date range
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: calendar, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Occurrences overlapping [from,to].
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events: { type: array, items: { $ref: '#/components/schemas/CalendarOccurrence' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+    post:
+      tags: [Calendar]
+      operationId: calendarEventsStore
+      summary: Create an event
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CalendarEventInput' } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { id: { type: string } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/events/{event}:
+    get:
+      tags: [Calendar]
+      operationId: calendarEventsShow
+      summary: Full parsed VEVENT detail
+      parameters: [{ name: event, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Event detail., content: { application/json: { schema: { $ref: '#/components/schemas/CalendarEvent' } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Calendar]
+      operationId: calendarEventsUpdate
+      summary: Update an event (etag optimistic concurrency)
+      parameters: [{ name: event, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CalendarEventInput' } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, etag: { type: string } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { description: Etag conflict., content: { application/json: { schema: { $ref: '#/components/schemas/EtagConflict' } } } }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+    delete:
+      tags: [Calendar]
+      operationId: calendarEventsDestroy
+      summary: Delete an event
+      parameters: [{ name: event, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Deleted. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/import:
+    post:
+      tags: [Calendar]
+      operationId: calendarImport
+      summary: Import an ICS file (dedupe by UID)
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary }, calendar_id: { type: string } } } } } }
+      responses:
+        "200": { description: Import summary., content: { application/json: { schema: { $ref: '#/components/schemas/CalendarImportResult' } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/export:
+    get:
+      tags: [Calendar]
+      operationId: calendarExport
+      summary: Export events as one ICS
+      parameters: [{ name: calendar, in: query, required: false, schema: { type: string } }]
+      responses:
+        "200": { description: ICS file., content: { text/calendar: { schema: { type: string } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+  /calendar/settings:
+    post:
+      tags: [Calendar]
+      operationId: calendarSettings
+      summary: Update calendar view settings (default view / week start)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CalendarSettings' } } } }
+      responses:
+        "200": { description: Saved. }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /calendars:
+    post:
+      tags: [Calendar]
+      operationId: calendarsStore
+      summary: Create a calendar
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, color: { type: string } } } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { id: { type: string } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /calendars/{calendar}:
+    put:
+      tags: [Calendar]
+      operationId: calendarsUpdate
+      summary: Update a calendar (name/color/description/timezone)
+      parameters: [{ name: calendar, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: string }, color: { type: string }, description: { type: string }, timezone: { type: string } } } } } }
+      responses:
+        "200": { description: Updated. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Calendar]
+      operationId: calendarsDestroy
+      summary: Delete a calendar (422 on the last one)
+      parameters: [{ name: calendar, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Deleted. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "422": { description: Cannot delete the last calendar. }
+  /calendars/special:
+    post:
+      tags: [Calendar]
+      operationId: calendarsStoreSpecial
+      summary: Create a special (generated, read-only) calendar and populate it
+      description: >
+        Creates a calendar of kind `holidays` (public holidays for a country +
+        optional region), `school_holidays` (Ferien, multi-day ranges) or
+        `birthdays` (from the owner's contacts) and generates its events. The
+        holiday kinds pull from the OpenHolidays API for the given `country`
+        (default DE) + optional `subdivision`, falling back to locally-computed
+        German national holidays if the API is unreachable and the calendar is DE
+        with no subdivision. `country`/`subdivision` are ignored for `birthdays`
+        and are persisted so a later regenerate re-queries the same region. Events
+        are server-generated and not user-editable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                name: { type: [string, "null"], maxLength: 255, description: "Optional; the SPA sends a predefined name. If omitted/empty the server derives a default from kind (+ country/subdivision)." }
+                color: { type: [string, "null"], maxLength: 9 }
+                kind: { type: string, enum: [holidays, school_holidays, birthdays] }
+                country: { type: [string, "null"], description: "ISO 3166-1 alpha-2 (holiday kinds). Default DE.", pattern: '^[A-Za-z-]{2,8}$' }
+                subdivision: { type: [string, "null"], description: "OpenHolidays subdivision code (holiday kinds), e.g. DE-BY; omit for national.", pattern: '^[A-Za-z0-9-]{2,16}$' }
+      responses:
+        "201": { description: Created + populated., content: { application/json: { schema: { type: object, properties: { id: { type: string }, created: { type: integer, description: "Number of events generated." } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendars/{calendar}/regenerate:
+    post:
+      tags: [Calendar]
+      operationId: calendarsRegenerate
+      summary: Rebuild a special calendar's generated events from the current source
+      parameters: [{ name: calendar, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Regenerated., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, created: { type: integer } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "422": { description: Not a special calendar. }
+        "429": { $ref: '#/components/responses/RateLimited' }
 
   # --------------------------------------------------------------------------
   # Health check (app up-check) — NOT under /api/v1; served at the site root.
@@ -1704,6 +2778,93 @@ paths:
         "401":
           description: Unauthenticated.
 
+  /account/sessions:
+    get:
+      tags: [Account]
+      operationId: accountSessionsIndex
+      summary: List active web sessions
+      description: >
+        The caller's active web (browser) sessions, newest first. Only populated when
+        the server uses the database session driver (empty array otherwise). `current`
+        flags the caller's own session and is never true on a token request. No secret
+        values.
+      responses:
+        "200":
+          description: Session list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions]
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, ip, user_agent, last_active, current]
+                      properties:
+                        id: { type: string }
+                        ip: { type: [string, "null"] }
+                        user_agent: { type: [string, "null"] }
+                        last_active: { type: integer, description: "Unix timestamp of last activity." }
+                        current: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /account/webdav:
+    get:
+      tags: [Account]
+      operationId: accountWebdavShow
+      summary: WebDAV mount access status
+      description: >
+        Whether an app-specific WebDAV password is set, plus the mount URL and the
+        username (the account email) to use. The password itself is stored hashed and
+        is never returned.
+      responses:
+        "200":
+          description: WebDAV access status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebDavAccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [Account]
+      operationId: accountWebdavUpdate
+      summary: Set the WebDAV mount password
+      description: >
+        Sets the caller's app-specific WebDAV password (min 12 chars), stored hashed.
+        Distinct from the login password; revocable. Throttle: 20 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [webdav_password]
+              properties:
+                webdav_password: { type: string, minLength: 12, maxLength: 255 }
+      responses:
+        "200":
+          description: Password set — returns the updated access status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebDavAccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Account]
+      operationId: accountWebdavDestroy
+      summary: Clear the WebDAV mount password
+      description: "Removes the app-specific WebDAV password (disables WebDAV access). Throttle: 20 req/min."
+      responses:
+        "200":
+          description: Password cleared — returns the updated access status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebDavAccess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   # --------------------------------------------------------------------------
   # Preferences
   # --------------------------------------------------------------------------
@@ -1879,7 +3040,7 @@ paths:
                 name: { type: string, maxLength: 100 }
                 max_connected_devices: { type: [integer, "null"], minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
-                modules: { type: [array, "null"], items: { type: string, enum: [finance] }, description: "Enabled module keys (null = all)." }
+                modules: { type: [array, "null"], items: { type: string, enum: [finance, files, contacts, calendar, mail] }, description: "Enabled module keys (null = all)." }
                 members:
                   type: array
                   items: { type: integer }
@@ -1920,7 +3081,7 @@ paths:
                 name: { type: string, maxLength: 100 }
                 max_connected_devices: { type: [integer, "null"], minimum: 1, maximum: 50 }
                 shareable: { type: boolean }
-                modules: { type: [array, "null"], items: { type: string, enum: [finance] }, description: "Enabled module keys (null = all)." }
+                modules: { type: [array, "null"], items: { type: string, enum: [finance, files, contacts, calendar, mail] }, description: "Enabled module keys (null = all)." }
                 members:
                   type: array
                   items: { type: integer }
@@ -2149,7 +3310,7 @@ paths:
       summary: Trashed finance rows
       security: [ { bearerAuth: [] } ]
       responses:
-        "200": { description: "Trashed sets — same keys as /finance/data EXCEPT financeCategories (categories are hard-deleted, not trashable), each an array of soft-deleted rows.", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "200": { description: "Trashed sets — same keys as /finance/data EXCEPT financeCategories (hard-deleted, not trashable) and standaloneReceipts (not surfaced in trash), each an array of soft-deleted rows.", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /finance/invoices:
@@ -2181,7 +3342,18 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/VersionConflict" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422":
+          description: >
+            Standard Laravel validation body ({ message, errors }) OR a GoBD business
+            rejection — a numbered invoice cannot revert to draft ({ error: status_draft_blocked }).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ValidationError"
+                  - allOf:
+                      - $ref: "#/components/schemas/FinanceError"
+                      - properties: { error: { enum: [status_draft_blocked] } }
         "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Finance]
@@ -2209,6 +3381,14 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "Cannot restore — the invoice number is now used by a live invoice ({ error: number_conflict })."
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/FinanceError"
+                  - properties: { error: { enum: [number_conflict] } }
         "429": { $ref: "#/components/responses/RateLimited" }
   /finance/invoices/{id}/force:
     delete:
@@ -2237,6 +3417,14 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "Numbering race could not be resolved after retries — retriable. Body { error: number_conflict } (NOT a version conflict)."
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/FinanceError"
+                  - properties: { error: { enum: [number_conflict] } }
         "429": { $ref: "#/components/responses/RateLimited" }
   /finance/invoices/{invoice}/email:
     post:
@@ -2321,6 +3509,14 @@ paths:
                 allOf:
                   - $ref: "#/components/schemas/FinanceError"
                   - properties: { error: { enum: [not_finalized, already_cancelled, already_credit_note] } }
+        "409":
+          description: "Credit-note numbering race could not be resolved — retriable. Body { error: number_conflict }."
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/FinanceError"
+                  - properties: { error: { enum: [number_conflict] } }
         "429": { $ref: "#/components/responses/RateLimited" }
   /finance/invoices/{invoice}/dun:
     post:
@@ -2895,6 +4091,7 @@ paths:
       responses:
         "201": { description: Created., content: { application/json: { schema: { type: object, properties: { receipt: { $ref: "#/components/schemas/FinanceReceipt" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /finance/receipts/{receipt}:
@@ -2924,6 +4121,7 @@ paths:
       responses:
         "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { receipt: { $ref: "#/components/schemas/FinanceReceipt" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/VersionConflict" }
         "429": { $ref: "#/components/responses/RateLimited" }
@@ -2937,6 +4135,7 @@ paths:
       responses:
         "200": { description: Trashed., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /finance/receipts/{id}/restore:
@@ -2950,6 +4149,7 @@ paths:
       responses:
         "200": { description: Restored., content: { application/json: { schema: { type: object, properties: { receipt: { $ref: "#/components/schemas/FinanceReceipt" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /finance/receipts/{id}/force:
@@ -2963,6 +4163,7 @@ paths:
       responses:
         "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /finance/receipts/{receipt}/raw:
@@ -2977,6 +4178,7 @@ paths:
       responses:
         "200": { description: Receipt bytes., content: { application/octet-stream: { schema: { type: string, format: binary } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /files/data:
@@ -2986,7 +4188,7 @@ paths:
       summary: All folders + files for the current user (+ usage)
       security: [ { bearerAuth: [] } ]
       responses:
-        "200": { description: "Folders, files and usage snapshot.", content: { application/json: { schema: { type: object, properties: { folders: { type: array, items: { $ref: "#/components/schemas/FileFolder" } }, files: { type: array, items: { $ref: "#/components/schemas/FileEntry" } }, usage: { $ref: "#/components/schemas/FilesUsage" } } } } } }
+        "200": { description: "Folders, files, labels and usage snapshot.", content: { application/json: { schema: { type: object, properties: { folders: { type: array, items: { $ref: "#/components/schemas/FileFolder" } }, files: { type: array, items: { $ref: "#/components/schemas/FileEntry" } }, labels: { type: array, items: { $ref: "#/components/schemas/FileLabel" } }, usage: { $ref: "#/components/schemas/FilesUsage" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /files/trash:
@@ -3034,6 +4236,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/VersionConflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [Files]
       operationId: filesDestroy
@@ -3087,6 +4290,7 @@ paths:
       summary: Toggle favorite
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [field, value], properties: { field: { type: string, enum: [favorite] }, value: { type: boolean } } } } } }
       responses:
         "200": { description: Toggled., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -3219,8 +4423,10 @@ paths:
       security: [ { bearerAuth: [] } ]
       requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [id, index, file], properties: { id: { type: string }, index: { type: integer }, file: { type: string, format: binary } } } } } }
       responses:
-        "200": { description: "Part stored.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "200": { description: "Part stored.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, index: { type: integer } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Unknown/expired upload session." }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /files/upload/chunk/complete:
     post:
       tags: [Files]
@@ -3231,6 +4437,7 @@ paths:
       responses:
         "201": { description: Assembled., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Unknown/expired upload session." }
         "413": { description: "Over storage quota." }
   /files/upload/chunk/abort:
     post:
@@ -3242,6 +4449,7 @@ paths:
       responses:
         "200": { description: Aborted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Unknown/expired upload session." }
   /files/search:
     get:
       tags: [Files]
@@ -3249,7 +4457,7 @@ paths:
       summary: Full-text / OCR content search over the user's files
       description: "Matches extracted content (search_text) via the pgsql GIN index (LIKE fallback on sqlite) plus filename. Throttle 120/min."
       security: [ { bearerAuth: [] } ]
-      parameters: [ { name: q, in: query, required: true, schema: { type: string } } ]
+      parameters: [ { name: q, in: query, required: false, schema: { type: string }, description: "Empty/absent returns an empty match set." } ]
       responses:
         "200": { description: Matches., content: { application/json: { schema: { type: object, properties: { files: { type: array, items: { $ref: "#/components/schemas/FileEntry" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -3308,29 +4516,29 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /files/rel-shares:
-    post: { tags: [Files], operationId: filesStoreShare, summary: Create a public share link for a file or folder, security: [ { bearerAuth: [] } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [kind, id], properties: { kind: { type: string, enum: [file, folder] }, id: { type: integer }, password: { type: string }, expires_at: { type: string, nullable: true }, allow_download: { type: boolean } } } } } }, responses: { "201": { description: Created., content: { application/json: { schema: { $ref: "#/components/schemas/FileShare" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "422": { $ref: "#/components/responses/ValidationError" } } }
+    post: { tags: [Files], operationId: filesStoreShare, summary: Create a public share link for a file or folder, security: [ { bearerAuth: [] } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [kind], properties: { kind: { type: string, enum: [file, folder] }, file_id: { type: [integer, "null"], description: "Required when kind=file." }, file_folder_id: { type: [integer, "null"], description: "Required when kind=folder." }, password: { type: [string, "null"], maxLength: 200 }, allow_download: { type: boolean, default: true }, expires_at: { type: [string, "null"], format: date-time } } } } } }, responses: { "201": { description: Created., content: { application/json: { schema: { type: object, properties: { share: { $ref: "#/components/schemas/FileShare" } } } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "422": { $ref: "#/components/responses/ValidationError" } } }
   /files/rel-shares/{share}:
-    put: { tags: [Files], operationId: filesUpdateShare, summary: Update a share (password / expiry / download / version), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Updated., content: { application/json: { schema: { $ref: "#/components/schemas/FileShare" } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/VersionConflict" } } }
+    put: { tags: [Files], operationId: filesUpdateShare, summary: Update a share (password / expiry / download / version), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { password: { type: [string, "null"], maxLength: 200 }, remove_password: { type: boolean }, allow_download: { type: boolean }, expires_at: { type: [string, "null"], format: date-time }, version: { type: integer, minimum: 0 } } } } } }, responses: { "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { share: { $ref: "#/components/schemas/FileShare" } } } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { $ref: "#/components/responses/VersionConflict" } } }
     delete: { tags: [Files], operationId: filesDestroyShare, summary: Revoke a public share, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Revoked. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
   /files/folder-shares:
-    get: { tags: [Files], operationId: filesFolderShares, summary: List folder shares I own, security: [ { bearerAuth: [] } ], responses: { "200": { description: Shares. }, "401": { $ref: "#/components/responses/Unauthorized" } } }
-    post: { tags: [Files], operationId: filesStoreFolderShare, summary: Share a folder with a registered user (viewer|editor), security: [ { bearerAuth: [] } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [file_folder_id, email, role], properties: { file_folder_id: { type: integer }, email: { type: string, format: email }, role: { type: string, enum: [viewer, editor] } } } } } }, responses: { "201": { description: Shared. }, "401": { $ref: "#/components/responses/Unauthorized" }, "422": { description: "Unknown recipient / self-share (error=recipient_not_found)." } } }
+    get: { tags: [Files], operationId: filesFolderShares, summary: List folder shares I own, security: [ { bearerAuth: [] } ], responses: { "200": { description: Shares I own., content: { application/json: { schema: { type: object, properties: { shares: { type: array, items: { $ref: "#/components/schemas/FolderShareOwnerView" } } } } } } }, "401": { $ref: "#/components/responses/Unauthorized" } } }
+    post: { tags: [Files], operationId: filesStoreFolderShare, summary: Share a folder subtree OR a single file with a registered user (viewer|editor), security: [ { bearerAuth: [] } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [email, role], properties: { kind: { type: string, enum: [file, folder], description: "Selects the target; defaults to folder when omitted. kind=folder requires file_folder_id; kind=file requires file_id." }, file_folder_id: { type: integer, description: "Owned folder id (required when kind=folder)." }, file_id: { type: integer, description: "Owned file id (required when kind=file)." }, email: { type: string, format: email }, role: { type: string, enum: [viewer, editor] } } } } } }, responses: { "201": { description: Shared., content: { application/json: { schema: { type: object, properties: { share: { $ref: "#/components/schemas/FolderShareOwnerView" } } } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "422": { description: "Unknown recipient / self-share (error=recipient_not_found), or the target file/folder is not owned by the caller." } } }
   /files/folder-shares/{share}/members:
-    put: { tags: [Files], operationId: filesUpdateFolderMember, summary: Change a member's role, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Updated. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
-    delete: { tags: [Files], operationId: filesRemoveFolderMember, summary: Remove a member (revokes access), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Removed. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
+    put: { tags: [Files], operationId: filesUpdateFolderMember, summary: Change a member's role, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [user_id, role], properties: { user_id: { type: integer }, role: { type: string, enum: [viewer, editor] } } } } } }, responses: { "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { share: { $ref: "#/components/schemas/FolderShareOwnerView" } } } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
+    delete: { tags: [Files], operationId: filesRemoveFolderMember, summary: Remove a member (revokes access; DELETE with a JSON body), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [user_id], properties: { user_id: { type: integer } } } } } }, responses: { "200": { description: Removed. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
   /files/folder-shares/{share}:
     delete: { tags: [Files], operationId: filesDestroyFolderShare, summary: Delete a folder share, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Deleted. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
   /shared-with-me:
-    get: { tags: [Files], operationId: sharedWithMe, summary: Folders others shared with me, security: [ { bearerAuth: [] } ], responses: { "200": { description: Shares. }, "401": { $ref: "#/components/responses/Unauthorized" } } }
+    get: { tags: [Files], operationId: sharedWithMe, summary: Folders others shared with me, security: [ { bearerAuth: [] } ], responses: { "200": { description: Folders shared with me., content: { application/json: { schema: { type: object, properties: { shares: { type: array, items: { $ref: "#/components/schemas/SharedWithMeItem" } } } } } } }, "401": { $ref: "#/components/responses/Unauthorized" } } }
   /shared-with-me/{share}:
-    get: { tags: [Files], operationId: sharedWithMeBrowse, summary: Browse a shared folder subtree, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Files + folders + role. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
+    get: { tags: [Files], operationId: sharedWithMeBrowse, summary: Browse a shared folder subtree OR a lone shared file, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: "For a folder share (kind=folder): the whole subtree (owner-scoped) — folders + files + root_id + the caller's role. For a file share (kind=file): just the one file under `file` (no folders/subtree). A non-member is 404 (existence hidden).", content: { application/json: { schema: { type: object, properties: { share_id: { type: integer }, role: { type: string, enum: [owner, viewer, editor] }, kind: { type: string, enum: [file, folder] }, root_id: { type: integer, description: "Folder shares only." }, file: { type: object, description: "File shares only — the single shared file.", properties: { id: { type: integer }, name: { type: string }, mime: { type: string, nullable: true }, size: { type: integer }, updated_at: { type: string, format: date-time, nullable: true } } }, folders: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string }, parent_id: { type: integer, nullable: true } } } }, files: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string }, mime: { type: string, nullable: true }, size: { type: integer }, file_folder_id: { type: integer, nullable: true }, updated_at: { type: string, format: date-time, nullable: true } } } } } } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
   /shared-with-me/{share}/files/{file}/raw:
-    get: { tags: [Files], operationId: sharedWithMeRaw, summary: Stream a file from a shared folder (sandboxed), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } }, { name: download, in: query, required: false, schema: { type: boolean } } ], responses: { "200": { description: Bytes., content: { application/octet-stream: { schema: { type: string, format: binary } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
+    get: { tags: [Files], operationId: sharedWithMeRaw, summary: Stream a shared file (from a folder subtree or a file share; sandboxed), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } }, { name: download, in: query, required: false, schema: { type: boolean } } ], responses: { "200": { description: Bytes., content: { application/octet-stream: { schema: { type: string, format: binary } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { description: "Not a member, or the file id is outside the shared subtree / is not the lone shared file." } } }
   /shared-with-me/{share}/upload:
-    post: { tags: [Files], operationId: sharedWithMeUpload, summary: Upload into a shared folder (editor only; counts against the owner's quota), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary }, file_folder_id: { type: integer, nullable: true } } } } } }, responses: { "201": { description: Uploaded. }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "413": { description: "Over the owner's quota." } } }
+    post: { tags: [Files], operationId: sharedWithMeUpload, summary: Upload into a shared folder (editor only; counts against the owner's quota), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary }, name: { type: string, maxLength: 500 }, file_folder_id: { type: integer, nullable: true } } } } } }, responses: { "201": { description: Uploaded., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" }, "413": { description: "Over the owner's quota." }, "422": { description: "The share is a lone file share (no folder to upload into)." } } }
   /shared-with-me/{share}/files/{file}:
-    put: { tags: [Files], operationId: sharedWithMeRename, summary: Rename a file in a shared folder (editor only), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Renamed. }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" } } }
-    delete: { tags: [Files], operationId: sharedWithMeDestroy, summary: Delete a file in a shared folder (editor only), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Deleted. }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" } } }
+    put: { tags: [Files], operationId: sharedWithMeRename, summary: Rename a shared file (editor only; works for a folder-subtree file or a lone shared file), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 500 } } } } } }, responses: { "200": { description: Renamed., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { $ref: "#/components/responses/Forbidden" } } }
+    delete: { tags: [Files], operationId: sharedWithMeDestroy, summary: Delete a file within a shared folder subtree (editor only), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } }, { name: file, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Deleted. }, "401": { $ref: "#/components/responses/Unauthorized" }, "403": { description: "Viewer (no mutation role), OR a lone file share — a member may never delete the owner's single shared file." } } }
   /files/zip:
     post:
       tags: [Files]
@@ -3369,7 +4577,7 @@ paths:
         present (fast path, `source: pdf-text`), otherwise rasterise+OCR
         (`source: ocr`, ≤30 pages); images are OCR'd directly. `text` preserves visual
         line breaks (`\n`). Best-effort: a 501/timeout leaves manual entry intact.
-        Requires the `finance` module. Throttle: 120 req/min.
+        Requires the `finance` module. Throttle: 20 req/min.
       requestBody:
         required: true
         content:
@@ -3489,6 +4697,8 @@ paths:
                 type: object
                 properties:
                   company: { $ref: "#/components/schemas/CompanyProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { description: Rate limit exceeded. }
 
@@ -3506,6 +4716,8 @@ paths:
           content:
             application/octet-stream:
               schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: No logo stored. }
 
   # ── Per-user non-display settings (notify channels + file version cap) ──
@@ -3544,7 +4756,7 @@ paths:
       summary: Generate a pairing code + QR (owner)
       description: "The owner (already paired) starts pairing a NEW device: returns a pairing id + QR data-URI carrying a short-lived one-time code (never a token). Throttle 20/min."
       responses:
-        "200": { description: "Pairing started.", content: { application/json: { schema: { type: [object, "null"], required: [id], properties: { id: { type: integer, format: int64 }, qr: { type: string, description: "SVG data-URI." }, expires_at: { type: string, format: date-time } } } } } }
+        "200": { description: "Pairing started.", content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: integer, format: int64 }, qr: { type: string, description: "SVG data-URI." }, expires_at: { type: string, format: date-time } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { description: Rate limit exceeded. }
   /device-pairings/cli:
@@ -3554,7 +4766,7 @@ paths:
       summary: Generate a CLI pairing code (owner)
       description: "Like /device-pairings but returns a copyable text code (60s TTL) for a CLI client. Throttle 20/min."
       responses:
-        "200": { description: "Pairing started.", content: { application/json: { schema: { type: [object, "null"], required: [id, code], properties: { id: { type: integer, format: int64 }, code: { type: string }, expires_at: { type: string, format: date-time } } } } } }
+        "200": { description: "Pairing started.", content: { application/json: { schema: { type: object, required: [id, code], properties: { id: { type: integer, format: int64 }, code: { type: string }, expires_at: { type: string, format: date-time } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { description: Rate limit exceeded. }
   /device-pairings/{devicePairing}:
@@ -3579,6 +4791,7 @@ paths:
         "200": { description: "Approved.", content: { application/json: { schema: { type: object, properties: { status: { type: string } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Pairing is not awaiting approval (wrong state or expired)." }
         "429": { description: Rate limit exceeded. }
   /device-pairings/{devicePairing}/reject:
     post:
@@ -3591,6 +4804,7 @@ paths:
         "200": { description: "Rejected.", content: { application/json: { schema: { type: object, properties: { status: { type: string } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "410": { description: "Pairing code expired (Gone)." }
 
   # ── 2FA + app password (self-service) ──
   /user/two-factor/enable:
@@ -3598,12 +4812,22 @@ paths:
       tags: [TwoFactor]
       operationId: twoFactorEnable
       summary: Enable TOTP (generate secret + recovery codes)
-      description: "Generates a new TOTP secret + recovery codes (stored encrypted). NOT yet active — call /confirm with a live code. Idempotent. Requires a current-password step-up (matches the web confirmPassword contract) so a stolen device token can't bind 2FA to an attacker. Throttle 10/min."
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string } } } } } }
+      description: "Generates a new TOTP secret + recovery codes (stored encrypted). NOT yet active — call /confirm with a live code. Idempotent. Requires a fresh `current_password` step-up (matches the web confirmPassword contract) so a stolen device token can't bind 2FA to an attacker — EXCEPT for a native device token (install_id set, biometric-sealed), which is skipped. Throttle 10/min."
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                current_password:
+                  type: string
+                  format: password
+                  description: "Required for web sessions + the web SPA bearer; OPTIONAL for a native device token (install_id set, biometric-sealed)."
       responses:
         "200": { description: "Secret generated.", content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean, enum: [true] } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "422": { description: "The current password did not match." }
+        "422": { $ref: "#/components/responses/ValidationError" }
         "429": { description: Rate limit exceeded. }
   /user/two-factor/qr:
     get:
@@ -3634,8 +4858,8 @@ paths:
       summary: List recovery codes
       description: "Only after 2FA is confirmed (else 404). Requires a fresh `current_password` step-up (in the JSON body, not a query string) so a stolen device token cannot exfiltrate a standing second factor. Throttle 30/min."
       requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password } } } } }
+        required: false
+        content: { application/json: { schema: { type: object, properties: { current_password: { type: string, format: password, description: "Required for web sessions + the web SPA bearer; OPTIONAL for a native device token (install_id set, biometric-sealed)." } } } } }
       responses:
         "200": { description: "Codes.", content: { application/json: { schema: { type: object, required: [recovery_codes], properties: { recovery_codes: { type: array, items: { type: string } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -3648,8 +4872,8 @@ paths:
       summary: Regenerate recovery codes
       description: "Invalidates the old set and returns a fresh one. Requires a fresh `current_password` step-up. Throttle 10/min."
       requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password } } } } }
+        required: false
+        content: { application/json: { schema: { type: object, properties: { current_password: { type: string, format: password, description: "Required for web sessions + the web SPA bearer; OPTIONAL for a native device token (install_id set, biometric-sealed)." } } } } }
       responses:
         "200": { description: "New codes.", content: { application/json: { schema: { type: object, required: [recovery_codes], properties: { recovery_codes: { type: array, items: { type: string } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -3662,8 +4886,8 @@ paths:
       summary: Disable 2FA
       description: "Clears the TOTP secret, recovery codes, and confirmed flag. Idempotent. Requires a fresh `current_password` step-up so a stolen device token cannot disable 2FA. Throttle 10/min."
       requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password } } } } }
+        required: false
+        content: { application/json: { schema: { type: object, properties: { current_password: { type: string, format: password, description: "Required for web sessions + the web SPA bearer; OPTIONAL for a native device token (install_id set, biometric-sealed)." } } } } }
       responses:
         "200": { description: "Disabled.", content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean, enum: [false] } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -3797,7 +5021,7 @@ paths:
       description: "Single-use, time-limited link; the plaintext token appears only in `url` (never stored/logged — only its SHA-256). Optionally emails it. Throttle 20/min."
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ttl_hours], properties: { ttl_hours: { type: integer, enum: [1, 24, 168, 720] }, send: { type: boolean, default: false } } } } } }
       responses:
-        "200": { description: "Link.", content: { application/json: { schema: { type: [object, "null"], required: [url, sent], properties: { url: { type: string, format: uri }, expires_at: { type: string, format: date-time }, sent: { type: boolean } } } } } }
+        "200": { description: "Link.", content: { application/json: { schema: { type: object, required: [url, sent], properties: { url: { type: string, format: uri }, expires_at: { type: string, format: date-time }, sent: { type: boolean } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -3895,6 +5119,192 @@ paths:
         "422": { description: Paperless error. }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /paperless/config:
+    get:
+      tags: [Paperless]
+      operationId: paperlessConfigShow
+      summary: Per-user Paperless connection config
+      description: "Instance URL + enabled flag + has_token (the API token is never returned) + cached term counts. Throttle 60/min."
+      responses:
+        "200": { description: "Config.", content: { application/json: { schema: { $ref: "#/components/schemas/PaperlessConfig" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    put:
+      tags: [Paperless]
+      operationId: paperlessConfigUpdate
+      summary: Update the per-user Paperless config
+      description: "Sets URL / enabled / token. A blank/omitted token preserves the stored one; the token is never returned. Throttle 30/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paperless_enabled: { type: boolean }
+                paperless_url: { type: [string, "null"], format: uri, maxLength: 255 }
+                paperless_token: { type: [string, "null"], maxLength: 255, description: "Blank/omitted keeps the stored token." }
+      responses:
+        "200": { description: "Updated config.", content: { application/json: { schema: { $ref: "#/components/schemas/PaperlessConfig" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /paperless/config/test:
+    post:
+      tags: [Paperless]
+      operationId: paperlessConfigTest
+      summary: Test the Paperless connection
+      description: "Pings Paperless using the posted URL+token (falling back to the stored ones). SSRF-guarded. Throttle 20/min."
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paperless_url: { type: [string, "null"], format: uri }
+                paperless_token: { type: [string, "null"] }
+      responses:
+        "200": { description: "Result (200 even on failure; check `ok`).", content: { application/json: { schema: { type: object, required: [ok], properties: { ok: { type: boolean }, detail: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ── Admin: settings ──
+  /admin/notifications:
+    get:
+      tags: [Settings]
+      operationId: adminNotificationsShow
+      summary: Notification config (admin)
+      description: "SMTP/NTFY/webhook config. Secret values are NEVER returned — has_smtp_password / has_ntfy_token / has_webhook_secret booleans instead."
+      responses:
+        "200": { description: "Config.", content: { application/json: { schema: { $ref: "#/components/schemas/NotificationConfig" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Settings]
+      operationId: adminNotificationsUpdate
+      summary: Update notification config (admin)
+      description: "Only submitted fields are persisted. A blank secret field preserves the stored value. Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationConfigWrite" }
+      responses:
+        "200": { description: "Updated config (secrets masked).", content: { application/json: { schema: { $ref: "#/components/schemas/NotificationConfig" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/notifications/test:
+    post:
+      tags: [Settings]
+      operationId: adminNotificationsTest
+      summary: Send a test notification (admin)
+      description: "Sends a test message over one channel using the saved settings. A connection/send FAILURE returns 200 {ok:false, detail} (unified test-endpoint convention, matches backup/destinations/test); only request validation is 422. Throttle 20/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel]
+              properties:
+                channel: { type: string, enum: [mail, ntfy, webhook] }
+      responses:
+        "200": { description: "{ ok: boolean, detail?: string } — ok:false means the test send failed.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, detail: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { description: "Request validation failed (bad channel)." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /admin/security:
+    get:
+      tags: [Settings]
+      operationId: adminSecurityShow
+      summary: Device policy (admin)
+      description: "The workspace paired-device cap."
+      responses:
+        "200": { description: "Policy.", content: { application/json: { schema: { type: object, required: [max_connected_devices], properties: { max_connected_devices: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Settings]
+      operationId: adminSecurityUpdate
+      summary: Update device policy (admin)
+      description: "Sets the paired-device cap (1–100). Audits the diff. Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [max_connected_devices]
+              properties:
+                max_connected_devices: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        "200": { description: "Updated policy.", content: { application/json: { schema: { type: object, required: [max_connected_devices], properties: { max_connected_devices: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /admin/files-limits:
+    get:
+      tags: [Settings]
+      operationId: adminFilesLimitsShow
+      summary: Workspace Files limits (admin)
+      description: "Effective max upload size (MB) and orphan-blob grace window (hours) — the admin override, or the config default."
+      responses:
+        "200": { description: "Limits.", content: { application/json: { schema: { $ref: "#/components/schemas/FilesLimits" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Settings]
+      operationId: adminFilesLimitsUpdate
+      summary: Update workspace Files limits (admin)
+      description: "Sets either/both limits; unspecified keys are unchanged. Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                files_max_upload_mb: { type: integer, minimum: 1, maximum: 1048576 }
+                files_blob_orphan_grace_hours: { type: integer, minimum: 0, maximum: 8760 }
+      responses:
+        "200": { description: "Updated limits.", content: { application/json: { schema: { $ref: "#/components/schemas/FilesLimits" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /admin/system:
+    get:
+      tags: [Settings]
+      operationId: adminSystemShow
+      summary: System / maintenance overview (admin, read-only)
+      description: "Operational status snapshot (queue/storage/backup/scheduler/disk), scheduled-task liveness, the in-app error log and recent audit trail. Metadata only. Throttle 60/min."
+      responses:
+        "200": { description: "Overview.", content: { application/json: { schema: { $ref: "#/components/schemas/SystemOverview" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/system/errors/{error}/resolve:
+    post:
+      tags: [Settings]
+      operationId: adminSystemResolveError
+      summary: Resolve an error event (admin)
+      description: "Marks a recorded error as resolved (it reappears if it recurs). Throttle 60/min."
+      parameters: [{ name: error, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200": { description: "Resolved.", content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   # ── Admin: backup ──
   /backup/destinations:
     get:
@@ -3971,13 +5381,13 @@ paths:
       tags: [Backup]
       operationId: backupJobsStore
       summary: Create a backup job (admin)
-      description: "Invariant: source=database + encrypt=false → 422 (a DB dump contains all data plaintext + operational secrets). Throttle 20/min."
+      description: "422 only when encrypt=true and no passphrase is available (job passphrase blank + no BACKUP_PASSPHRASE env). DB-dump encryption is recommended (cleartext PII) but not forced. Throttle 20/min."
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BackupJobWrite" } } } }
       responses:
         "201": { description: "Created.", content: { application/json: { schema: { type: object, properties: { job: { $ref: "#/components/schemas/BackupJobSummary" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "422": { description: "Validation failed, or source=database with encrypt=false (a DB dump must be encrypted)." }
+        "422": { description: "Validation failed, or encrypt=true without an available passphrase (job passphrase blank and no BACKUP_PASSPHRASE env)." }
         "429": { $ref: "#/components/responses/RateLimited" }
   /backup/jobs/{job}:
     parameters: [{ name: job, in: path, required: true, schema: { type: integer } }]
@@ -3992,7 +5402,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "422": { description: "Validation failed, or source=database with encrypt=false." }
+        "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Backup]
@@ -4100,3 +5510,1454 @@ paths:
         "422": { description: "Wrong passphrase or corrupt archive, or a missing `passphrase` (validation)." }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+
+  # --------------------------------------------------------------------------
+  # Public account lifecycle (no auth) — mirrors the web Fortify pipeline.
+  # --------------------------------------------------------------------------
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      operationId: authForgotPassword
+      summary: Request a password-reset link (public)
+      description: >
+        Sends a password-reset email via the Fortify broker. Always responds with a
+        generic 200 regardless of whether the email exists — the endpoint cannot be
+        used to enumerate accounts. Mirrors the web forgot-password POST.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Generic acknowledgement (sent iff the email exists).
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, example: reset-link-sent } } }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      operationId: authResetPassword
+      summary: Consume a password-reset token (public)
+      description: >
+        Resets the password using an emailed reset token. Reuses the Fortify
+        ResetUserPassword action, so it applies the same password rules and acts as a
+        kill switch (revokes every device token + persisted session). Returns 200 on
+        success, 422 on an invalid/expired token or email. Mirrors the web
+        reset-password POST.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, email, password, password_confirmation]
+              properties:
+                token: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 12 }
+                password_confirmation: { type: string }
+      responses:
+        "200":
+          description: Password reset.
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, example: password-reset } } }
+        "422":
+          description: Invalid/expired token or email, or the password failed the rules.
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string }, message: { type: string } } }
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: authRegister
+      summary: Self-register a new account (public, gated)
+      description: >
+        Creates a new account via the Fortify CreateNewUser action. Gated by the
+        workspace `allow_registration` flag — 403 when self-registration is disabled.
+        The privileged `role` is never taken from input (always `user`). Because email
+        verification is required, no bearer is minted until the address is verified:
+        responds {status: "verify-email"} and sends the verification email. Mirrors
+        the web register POST.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, password_confirmation]
+              properties:
+                name: { type: string, maxLength: 255 }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 12 }
+                password_confirmation: { type: string }
+                device_name: { type: [string, "null"], maxLength: 64 }
+      responses:
+        "201":
+          description: >
+            Created. When email verification is pending, {status:"verify-email"} (no
+            token). If verification is ever disabled, returns {token, user} instead.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: verify-email }
+                  token: { type: string }
+                  user: { $ref: '#/components/schemas/MeUser' }
+        "403":
+          description: Self-registration is disabled workspace-wide.
+        "422": { $ref: '#/components/responses/ValidationError' }
+
+  # --------------------------------------------------------------------------
+  # Public file-share consumption (no auth) — the share token in the path is the
+  # credential. Same controller as the web /file-share routes; a password-gated
+  # share issues a stateless HMAC grant on unlock, carried on manifest/raw.
+  # --------------------------------------------------------------------------
+  /file-share/{token}:
+    get:
+      tags: [Files]
+      operationId: publicFileShareMeta
+      summary: Public file-share metadata (no auth)
+      description: >
+        Resolves a share link by its opaque token (owner scope removed). Reports the
+        target name/kind, whether a password is required, and the download policy.
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Share metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  found: { type: boolean }
+                  kind: { type: string, enum: [file, folder] }
+                  name: { type: string }
+                  needsPassword: { type: boolean }
+                  unlocked: { type: boolean }
+                  allowDownload: { type: boolean }
+                  expiresAt: { type: [string, "null"], format: date-time }
+        "404": { description: Unknown, expired, or trashed share (existence not leaked). }
+  /file-share/{token}/unlock:
+    post:
+      tags: [Files]
+      operationId: publicFileShareUnlock
+      summary: Unlock a password-gated public share (no auth)
+      description: >
+        Verifies the share password. On success returns a short-lived stateless HMAC
+        `grant` (bound to this share) that a tokenless client presents on manifest/raw
+        via the `X-Share-Grant` header or a `grant` query parameter. (Web clients also
+        get a session grant.)
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, maxLength: 200 }
+      responses:
+        "200":
+          description: Unlocked.
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, grant: { type: string } } }
+        "404": { description: Unknown or expired share. }
+        "422": { description: Wrong password (or the share is not password-gated). }
+  /file-share/{token}/manifest:
+    get:
+      tags: [Files]
+      operationId: publicFileShareManifest
+      summary: Public file-share manifest — the shared subtree (no auth)
+      description: >
+        Lists the folders + files the share exposes (a shared folder → its whole
+        descendant subtree; a shared file → just it). Requires a prior unlock for a
+        password-gated share (grant via `X-Share-Grant` header or `grant` query).
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: grant, in: query, required: false, schema: { type: string }, description: Stateless unlock grant (alternative to the X-Share-Grant header). }
+        - { name: X-Share-Grant, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Manifest tree.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind: { type: string, enum: [file, folder] }
+                  name: { type: string }
+                  allowDownload: { type: boolean }
+                  folders: { type: array, items: { type: object } }
+                  files: { type: array, items: { type: object } }
+        "403": { description: Locked — a valid unlock grant is required. }
+        "404": { description: Unknown, expired, or trashed share. }
+  /file-share/{token}/file/{file}/raw:
+    get:
+      tags: [Files]
+      operationId: publicFileShareRaw
+      summary: Stream a shared file's bytes (no auth)
+      description: >
+        Streams a single file from the shared set (sandboxed CSP + nosniff). Requires
+        a prior unlock for a password-gated share. `?download=1` forces an attachment
+        and is refused (403) unless the owner enabled downloads.
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: file, in: path, required: true, schema: { type: integer } }
+        - { name: grant, in: query, required: false, schema: { type: string } }
+        - { name: X-Share-Grant, in: header, required: false, schema: { type: string } }
+        - { name: download, in: query, required: false, schema: { type: boolean } }
+      responses:
+        "200":
+          description: File bytes.
+          content:
+            application/octet-stream: { schema: { type: string, format: binary } }
+        "403": { description: Locked, or a download was requested on a download-disabled share. }
+        "404": { description: Unknown share or file not in the shared set. }
+
+  # --------------------------------------------------------------------------
+  # Public invite / password-reset link consumption (no auth). The admin CREATE
+  # side is POST /users/{user}/invite-link.
+  # --------------------------------------------------------------------------
+  /invite/{invite}/{token}:
+    get:
+      tags: [Users]
+      operationId: inviteShow
+      summary: Check an invite / reset link (public)
+      description: >
+        Reports whether the (hashed, single-use, expiring) invite token is still
+        valid, plus the target email. JSON only — never a redirect.
+      security: []
+      parameters:
+        - { name: invite, in: path, required: true, schema: { type: integer } }
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Valid link.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean, example: true }
+                  email: { type: string, format: email }
+                  expiresAt: { type: [string, "null"], format: date-time }
+        "404": { description: "Invalid, consumed, or expired link (valid:false)." }
+    post:
+      tags: [Users]
+      operationId: inviteConsume
+      summary: Consume an invite / reset link — set password, get a bearer (public)
+      description: >
+        Sets the target user's password (constant-time token check + single-use +
+        expiry) and mints a device-scoped bearer token (rather than a session login).
+      security: []
+      parameters:
+        - { name: invite, in: path, required: true, schema: { type: integer } }
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, password_confirmation]
+              properties:
+                password: { type: string, minLength: 12 }
+                password_confirmation: { type: string }
+                device_name: { type: [string, "null"], maxLength: 64 }
+      responses:
+        "200":
+          description: Password set — bearer + user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: '#/components/schemas/MeUser' }
+        "404": { description: Invalid, consumed, or expired link. }
+        "422": { $ref: '#/components/responses/ValidationError' }
+
+  # --------------------------------------------------------------------------
+  # CardDAV Apple configuration profile download (device auth + module:contacts).
+  # --------------------------------------------------------------------------
+  /account/carddav-profile:
+    get:
+      tags: [Contacts]
+      operationId: accountCarddavProfile
+      summary: Download the Apple CardDAV + CalDAV .mobileconfig profile
+      description: >
+        Returns a downloadable Apple configuration profile provisioning BOTH a CardDAV
+        account (contacts) and a CalDAV account (calendar) against the unified /dav
+        server, so one install syncs contacts + calendars. Carries the username (the
+        user's email) but never a password — sync uses the app-specific WebDAV password,
+        of which only the hash is stored.
+      responses:
+        "200":
+          description: Apple configuration profile.
+          content:
+            application/x-apple-aspen-config:
+              schema: { type: string }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+
+  # --------------------------------------------------------------------------
+  # Admin self-registration toggle (admin role + device token).
+  # --------------------------------------------------------------------------
+  /admin/registration:
+    get:
+      tags: [Users]
+      operationId: adminRegistrationShow
+      summary: Read the workspace self-registration toggle (admin)
+      responses:
+        "200":
+          description: Current toggle state.
+          content:
+            application/json:
+              schema: { type: object, properties: { allow_registration: { type: boolean } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Users]
+      operationId: adminRegistrationUpdate
+      summary: Set the workspace self-registration toggle (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [allow_registration]
+              properties:
+                allow_registration: { type: boolean }
+      responses:
+        "200":
+          description: Updated toggle state.
+          content:
+            application/json:
+              schema: { type: object, properties: { allow_registration: { type: boolean } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+
+  # ── Security portal (admin) ──
+  /admin/request-log:
+    get:
+      tags: [SecurityPortal]
+      operationId: adminRequestLog
+      summary: List HTTP request-trail rows (admin)
+      description: "Paginated, filterable verbose request log. Metadata only. Admin-gated. Throttle 120/min."
+      parameters:
+        - { name: ip, in: query, schema: { type: string } }
+        - { name: user_id, in: query, schema: { type: integer } }
+        - { name: method, in: query, schema: { type: string, enum: [GET, POST, PUT, PATCH, DELETE] } }
+        - { name: status, in: query, schema: { type: integer } }
+        - { name: path, in: query, schema: { type: string }, description: "Substring match." }
+        - { name: since, in: query, schema: { type: string }, description: "ISO-8601 or -24h/-7d." }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, default: 50, maximum: 100 } }
+      responses:
+        "200": { description: "Rows.", content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: "#/components/schemas/RequestLogEntry" } }, meta: { type: object, properties: { total: { type: integer }, current_page: { type: integer }, last_page: { type: integer } } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/request-log/export:
+    get:
+      tags: [SecurityPortal]
+      operationId: adminRequestLogExport
+      summary: Export the request log (admin, CSV/JSON)
+      description: "Streamed download, same filters as the index. Throttle 10/min."
+      parameters:
+        - { name: export, in: query, schema: { type: string, enum: [csv, json], default: csv } }
+        - { name: ip, in: query, schema: { type: string } }
+        - { name: user_id, in: query, schema: { type: integer } }
+        - { name: method, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: integer } }
+        - { name: path, in: query, schema: { type: string } }
+        - { name: since, in: query, schema: { type: string } }
+      responses:
+        "200": { description: "Stream.", content: { text/csv: { schema: { type: string, format: binary } }, application/json: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/blocked-ips:
+    get:
+      tags: [SecurityPortal]
+      operationId: adminBlockedIpsIndex
+      summary: List blocked IPs/CIDRs (admin)
+      responses:
+        "200": { description: "Block-list.", content: { application/json: { schema: { type: object, properties: { blocks: { type: array, items: { $ref: "#/components/schemas/BlockedIp" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [SecurityPortal]
+      operationId: adminBlockIp
+      summary: Add an IP/CIDR to the block-list (admin)
+      description: "Throttle 60/min. 422 on malformed CIDR or duplicate."
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [cidr], properties: { cidr: { type: string, maxLength: 64, example: 203.0.113.0/24 }, reason: { type: [string, "null"] } } } } } }
+      responses:
+        "201": { description: "Created.", content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/blocked-ips/{blockedIp}:
+    delete:
+      tags: [SecurityPortal]
+      operationId: adminUnblockIp
+      summary: Remove an IP/CIDR from the block-list (admin)
+      description: "Throttle 60/min."
+      parameters:
+        - { name: blockedIp, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: "Removed.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/users/{user}/block:
+    post:
+      tags: [SecurityPortal]
+      operationId: adminBlockUser
+      summary: Block a user (admin)
+      description: "Signs the user out and prevents sign-in. Throttle 60/min."
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: "Blocked.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, blocked_at: { type: string, format: date-time } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "You cannot block yourself." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/users/{user}/unblock:
+    post:
+      tags: [SecurityPortal]
+      operationId: adminUnblockUser
+      summary: Unblock a user (admin)
+      description: "Throttle 60/min."
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: "Unblocked.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/sessions:
+    get:
+      tags: [SecurityPortal]
+      operationId: adminSessions
+      summary: Cross-user session/device overview (admin)
+      description: "Active web sessions + device tokens across all users. Throttle 60/min."
+      responses:
+        "200": { description: "Overview.", content: { application/json: { schema: { $ref: "#/components/schemas/SessionsOverview" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/accounts:
+    get:
+      tags: [Mail]
+      operationId: mailAccountsIndex
+      summary: List the caller's mail accounts (with message counts)
+      responses:
+        "200":
+          description: Accounts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accounts: { type: array, items: { $ref: '#/components/schemas/MailAccount' } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Mail]
+      operationId: mailAccountsStore
+      summary: Create a mail account
+      description: "Throttle 60/min. AssignsOwner stamps user_id; the password is write-only."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 200 }
+                host: { type: string, maxLength: 255, description: "SSRF-guarded (SafeHost)." }
+                port: { type: integer, minimum: 1, maximum: 65535 }
+                username: { type: string, maxLength: 255 }
+                password: { type: string, maxLength: 2000, description: "Write-only; never returned." }
+                encryption: { type: string, enum: [ssl, tls, starttls, none] }
+                folders: { type: [array, "null"], items: { type: string } }
+                backfill_since: { type: [string, "null"], format: date }
+                delete_after_import: { type: [boolean, "null"] }
+                skip_spam: { type: [boolean, "null"] }
+                enabled: { type: [boolean, "null"] }
+                sync_interval_minutes: { type: [integer, "null"], minimum: 1, maximum: 1440 }
+                smtp_host: { type: [string, "null"], maxLength: 255, description: "SSRF-guarded (SafeHost). Enables compose/reply/forward." }
+                smtp_port: { type: [integer, "null"], minimum: 1, maximum: 65535 }
+                smtp_username: { type: [string, "null"], maxLength: 255 }
+                smtp_password: { type: [string, "null"], maxLength: 2000, description: "Write-only; never returned." }
+                smtp_encryption: { type: [string, "null"], enum: [ssl, tls, starttls, none, null] }
+                from_name: { type: [string, "null"], maxLength: 255 }
+                from_email: { type: [string, "null"], format: email, maxLength: 255 }
+              required: [name, host, port, username, password, encryption]
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { type: object, properties: { account: { $ref: '#/components/schemas/MailAccount' } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/accounts/{account}:
+    put:
+      tags: [Mail]
+      operationId: mailAccountsUpdate
+      summary: Update a mail account
+      description: "Throttle 60/min. A blank password keeps the stored one."
+      parameters:
+        - { name: account, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 200 }
+                host: { type: string, maxLength: 255 }
+                port: { type: integer, minimum: 1, maximum: 65535 }
+                username: { type: string, maxLength: 255 }
+                password: { type: [string, "null"], maxLength: 2000, description: "Blank keeps the current password." }
+                encryption: { type: string, enum: [ssl, tls, starttls, none] }
+                folders: { type: [array, "null"], items: { type: string } }
+                backfill_since: { type: [string, "null"], format: date }
+                delete_after_import: { type: [boolean, "null"] }
+                skip_spam: { type: [boolean, "null"] }
+                enabled: { type: [boolean, "null"] }
+                sync_interval_minutes: { type: [integer, "null"], minimum: 1, maximum: 1440 }
+                smtp_host: { type: [string, "null"], maxLength: 255 }
+                smtp_port: { type: [integer, "null"], minimum: 1, maximum: 65535 }
+                smtp_username: { type: [string, "null"], maxLength: 255 }
+                smtp_password: { type: [string, "null"], maxLength: 2000, description: "Blank keeps the current SMTP password." }
+                smtp_encryption: { type: [string, "null"], enum: [ssl, tls, starttls, none, null] }
+                from_name: { type: [string, "null"], maxLength: 255 }
+                from_email: { type: [string, "null"], format: email, maxLength: 255 }
+              required: [name, host, port, username, encryption]
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { type: object, properties: { account: { $ref: '#/components/schemas/MailAccount' } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Mail]
+      operationId: mailAccountsDestroy
+      summary: Delete a mail account (archived mail is kept)
+      description: "Throttle 60/min. account_id nullOnDelete — archived messages survive."
+      parameters:
+        - { name: account, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/accounts/{account}/sync:
+    post:
+      tags: [Mail]
+      operationId: mailAccountsSync
+      summary: Trigger an on-demand sync
+      description: "Throttle 60/min. Dispatches the pull-only sync producer."
+      parameters:
+        - { name: account, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Dispatched.
+          content:
+            application/json:
+              schema: { type: object, properties: { dispatched: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/accounts/{account}/sync/cancel:
+    post:
+      tags: [Mail]
+      operationId: mailAccountsCancelSync
+      summary: Cancel an in-flight sync
+      description: "Throttle 60/min. Cancels the ingest batch + settles to idle. Idempotent."
+      parameters:
+        - { name: account, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Cancelled.
+          content:
+            application/json:
+              schema: { type: object, properties: { cancelled: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/accounts/{account}/test:
+    post:
+      tags: [Mail]
+      operationId: mailAccountsTest
+      summary: Test the account's IMAP login (no changes)
+      description: "Throttle 6/min. SSRF-guarded probe with the stored credentials; the detail is redacted."
+      parameters:
+        - { name: account, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Probe result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  detail: { type: string }
+                required: [ok, detail]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/accounts/{account}/status:
+    get:
+      tags: [Mail]
+      operationId: mailAccountsStatus
+      summary: Current sync status + message count
+      parameters:
+        - { name: account, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [idle, syncing, error] }
+                  last_error: { type: [string, "null"] }
+                  last_synced_at: { type: [string, "null"], format: date-time }
+                  message_count: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /mail/accounts/{account}/logs:
+    get:
+      tags: [Mail]
+      operationId: mailAccountsLogs
+      summary: Read the account's sync/ingest diagnostic log
+      description: "Throttle 600/min. Newest first; ?level filter; per_page 10..200. Cache-Control no-store."
+      parameters:
+        - { name: account, in: path, required: true, schema: { type: integer } }
+        - { name: level, in: query, required: false, schema: { type: string, enum: [info, warn, error] } }
+        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200 } }
+      responses:
+        "200":
+          description: Log page.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/MailLog' } }
+                  meta: { type: object, properties: { current_page: { type: integer }, last_page: { type: integer }, total: { type: integer } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/folders:
+    get:
+      tags: [Mail]
+      operationId: mailFolders
+      summary: Folder tree with total + unread counts
+      description: >
+        Throttle 600/min. Owner-scoped. The distinct (account_id, folder) pairs
+        with archived mail, each with its total + unread (unseen) counts;
+        trashed messages excluded. Omit account_id for a unified view across
+        every account.
+      parameters:
+        - { name: account_id, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200":
+          description: Folder counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folders:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        account_id: { type: [integer, "null"] }
+                        folder: { type: string }
+                        total: { type: integer }
+                        unread: { type: integer }
+                  total: { type: integer }
+                  unread: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/messages:
+    get:
+      tags: [Mail]
+      operationId: mailMessagesIndex
+      summary: List archived messages (envelope rows)
+      description: >
+        Throttle 1200/min. Owner-scoped, paginated envelope listing. Omit
+        account_id for a unified inbox. Full-text search (?q) runs server-side
+        (pgsql tsvector / sqlite LIKE) over the search column + subject + sender.
+      parameters:
+        - { name: account_id, in: query, required: false, schema: { type: integer } }
+        - { name: folder, in: query, required: false, schema: { type: string } }
+        - { name: trashed, in: query, required: false, schema: { type: boolean }, description: "true = only trashed; default only non-trashed." }
+        - { name: seen, in: query, required: false, schema: { type: boolean } }
+        - { name: spam, in: query, required: false, schema: { type: boolean } }
+        - { name: thread_id, in: query, required: false, schema: { type: string } }
+        - { name: label, in: query, required: false, schema: { type: integer }, description: "Filter by label id." }
+        - { name: q, in: query, required: false, schema: { type: string }, description: "Full-text query." }
+        - { name: from, in: query, required: false, schema: { type: string, format: date }, description: "Date-range start (message Date)." }
+        - { name: to, in: query, required: false, schema: { type: string, format: date } }
+        - { name: page, in: query, required: false, schema: { type: integer } }
+        - { name: per_page, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1000 } }
+      responses:
+        "200":
+          description: Message page.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/MailMessage' } }
+                  meta: { type: object, properties: { total: { type: integer }, per_page: { type: integer }, current_page: { type: integer }, last_page: { type: integer } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/messages/{message}:
+    get:
+      tags: [Mail]
+      operationId: mailMessagesShow
+      summary: Read one archived message (full reader payload)
+      description: "Throttle 1200/min. Adds text_body/html/headers_raw/references/attachments to the envelope."
+      parameters:
+        - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Message.
+          content:
+            application/json:
+              schema: { type: object, properties: { message: { $ref: '#/components/schemas/MailMessage' } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/messages/{message}/body:
+    get:
+      tags: [Mail]
+      operationId: mailMessagesBody
+      summary: Sandboxed HTML body document for a reader iframe
+      description: >
+        Throttle 3000/min. Returns the message's HTML body as a standalone
+        document (text/html) for embedding in a sandboxed reader iframe. Served
+        with `default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src
+        data:` (+`https:` only when `?remote=1` AND the user's mail_load_remote
+        pref is on). cid: inline images are rewritten to data: URIs; no scripts.
+      parameters:
+        - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: remote, in: query, required: false, schema: { type: boolean }, description: "Load remote images once (only if mail_load_remote is on)." }
+      responses:
+        "200":
+          description: HTML body document.
+          content:
+            text/html:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/attachments/{attachment}/raw:
+    get:
+      tags: [Mail]
+      operationId: mailAttachmentRaw
+      summary: Stream an attachment's bytes (sandboxed)
+      description: >
+        Throttle 3000/min. Owner-scoped; streams the decoded attachment bytes
+        with nosniff + `default-src 'none'; sandbox`. A small safe allowlist
+        (png/jpeg/gif/webp/pdf/text-plain) renders inline; everything else is a
+        forced download.
+      parameters:
+        - { name: attachment, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Attachment bytes.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/attachments/{attachment}/save:
+    post:
+      tags: [Mail]
+      operationId: mailAttachmentSave
+      summary: Save an attachment into another module (Files / Paperless)
+      description: >
+        Throttle 60/min. Copies the server-held attachment bytes into a target
+        module — no client upload. target=files creates a FileEntry (owner quota
+        enforced, 413); target=paperless posts to the user's Paperless via their
+        own credentials. (Gallery is not a module in this deployment.)
+      parameters:
+        - { name: attachment, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target: { type: string, enum: [files, paperless] }
+                folder_id: { type: [integer, "null"], description: "Owner-scoped Files folder (target=files only)." }
+              required: [target]
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  target: { type: string }
+                  file_id: { type: integer, description: "target=files." }
+                  task: { type: string, description: "target=paperless task id." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { description: "Files quota exceeded." }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/messages/seen:
+    post:
+      tags: [Mail]
+      operationId: mailMessagesSeen
+      summary: Mark messages read/unread (bulk)
+      description: "Throttle 120/min. Owner-scoped; metadata only."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids: { type: array, maxItems: 1000, items: { type: string, format: uuid } }
+                seen: { type: boolean }
+              required: [ids, seen]
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { type: object, properties: { updated: { type: integer } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/messages/trash:
+    post:
+      tags: [Mail]
+      operationId: mailMessagesTrash
+      summary: Move messages to trash (bulk soft-hide)
+      description: "Throttle 60/min. Immutable archive — soft-hide only, never a hard delete."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids: { type: array, maxItems: 1000, items: { type: string, format: uuid } }
+              required: [ids]
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { type: object, properties: { updated: { type: integer } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/messages/restore:
+    post:
+      tags: [Mail]
+      operationId: mailMessagesRestore
+      summary: Restore messages from trash (bulk)
+      description: "Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids: { type: array, maxItems: 1000, items: { type: string, format: uuid } }
+              required: [ids]
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { type: object, properties: { updated: { type: integer } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/messages/{message}/pushback:
+    post:
+      tags: [Mail]
+      operationId: mailPushback
+      summary: Push a message back to its origin mailbox (APPEND)
+      description: >
+        Throttle 30/min. Owner-scoped, deliberate write-to-origin (SSRF-guarded,
+        no-store). APPENDs the server-held raw .eml to the origin IMAP mailbox
+        (optionally a different folder), restoring \Seen. 502 on IMAP failure.
+      parameters:
+        - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                folder: { type: [string, "null"], description: "Target folder; defaults to the archived folder." }
+      responses:
+        "200":
+          description: Appended.
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Source account deleted or raw bytes unavailable." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { description: "Origin IMAP APPEND failed." }
+  /mail/messages/{message}/delete-origin:
+    post:
+      tags: [Mail]
+      operationId: mailDeleteOrigin
+      summary: Delete a message from its origin mailbox
+      description: >
+        Throttle 30/min. Owner-scoped, deliberate destructive write-to-origin
+        (SSRF-guarded, no-store). Locates the message on the origin by its stored
+        Message-Id and expunges it; the archived copy is kept. 502 on IMAP
+        failure.
+      parameters:
+        - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                folder: { type: [string, "null"], description: "Folder to search; defaults to the archived folder." }
+      responses:
+        "200":
+          description: Expunged.
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, expunged: { type: integer } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Source account deleted or no Message-Id." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { description: "Origin IMAP delete failed." }
+  /mail/messages/compose:
+    post:
+      tags: [Mail]
+      operationId: mailCompose
+      summary: Compose and send a new message over the account's SMTP
+      description: >
+        Throttle 30/min. Owner-scoped. Sends over the account's OWN encrypted
+        SMTP credentials (SSRF-guarded) and appends the sent copy to the origin
+        Sent folder. Opt-in — an account with no SMTP configured returns
+        `no_smtp` (422). Attachments may be uploaded (multipart) and/or referenced
+        by the caller's own archived attachment ids.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id]
+              properties:
+                account_id: { type: integer }
+                to: { type: array, items: { type: string, format: email } }
+                cc: { type: array, items: { type: string, format: email } }
+                bcc: { type: array, items: { type: string, format: email } }
+                subject: { type: [string, "null"] }
+                text: { type: [string, "null"] }
+                html: { type: [string, "null"] }
+                attachment_ids: { type: array, items: { type: string, format: uuid } }
+                sent_folder: { type: [string, "null"] }
+          multipart/form-data:
+            schema:
+              type: object
+              required: [account_id]
+              properties:
+                account_id: { type: integer }
+                "to[]": { type: array, items: { type: string, format: email } }
+                subject: { type: string }
+                text: { type: string }
+                html: { type: string }
+                "attachments[]": { type: array, items: { type: string, format: binary } }
+      responses:
+        "200":
+          description: Sent.
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, message_id: { type: [string, "null"] }, appended_to_sent: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: >
+            Validation failure ({ ok:false, error:validation, errors }) OR a business
+            rejection with a machine `error` code (no_recipient, empty_body, no_smtp,
+            account_deleted).
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, error: { type: string }, errors: { type: object, additionalProperties: true } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { description: "SMTP send failed." }
+  /mail/messages/{message}/reply:
+    post:
+      tags: [Mail]
+      operationId: mailReply
+      summary: Reply to a message (quotes the original, threads via References)
+      description: >
+        Throttle 30/min. Owner-scoped. Recipient = the original Reply-To (else
+        From); `all=true` adds the original To+Cc (minus self) as Cc. Quotes the
+        original body, subject prefixed `Re:`. Sends over the account SMTP +
+        appends to Sent. `no_smtp`/`account_deleted` → 422.
+      parameters:
+        - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: [string, "null"] }
+                html: { type: [string, "null"] }
+                all: { type: [boolean, "null"], description: "Reply-all." }
+                sent_folder: { type: [string, "null"] }
+      responses:
+        "200":
+          description: Sent.
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, message_id: { type: [string, "null"] }, appended_to_sent: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "Validation failure OR business rejection (no_smtp, account_deleted, no_recipient)."
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, error: { type: string }, errors: { type: object, additionalProperties: true } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { description: "SMTP send failed." }
+  /mail/messages/{message}/forward:
+    post:
+      tags: [Mail]
+      operationId: mailForward
+      summary: Forward a message (attaches the original .eml, subject Fwd:)
+      description: >
+        Throttle 30/min. Owner-scoped. Attaches the immutable original `.eml`
+        (message/rfc822 — carrying its own attachments) and a forwarded-message
+        header block; subject prefixed `Fwd:`. Sends over the account SMTP +
+        appends to Sent. `no_smtp`/`account_deleted` → 422; missing `to` → 422.
+      parameters:
+        - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to]
+              properties:
+                to: { type: array, minItems: 1, items: { type: string, format: email } }
+                cc: { type: array, items: { type: string, format: email } }
+                text: { type: [string, "null"] }
+                html: { type: [string, "null"] }
+                sent_folder: { type: [string, "null"] }
+      responses:
+        "200":
+          description: Sent.
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, message_id: { type: [string, "null"] }, appended_to_sent: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "Validation failure ({ ok:false, error:validation, errors }) OR business rejection (no_smtp, account_deleted)."
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, error: { type: string }, errors: { type: object, additionalProperties: true } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { description: "SMTP send failed." }
+  /mail/keys:
+    get:
+      tags: [Mail]
+      operationId: mailKeysIndex
+      summary: List the user's PGP / S-MIME decryption keys
+      description: >
+        Owner-scoped. Returns PUBLIC material only — the private key and
+        passphrase are stored encrypted + hidden and are NEVER returned.
+      responses:
+        "200":
+          description: Keys.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys: { type: array, items: { $ref: '#/components/schemas/MailKey' } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Mail]
+      operationId: mailKeysStore
+      summary: Import a PGP secret key or an S-MIME PKCS#12 bundle
+      description: >
+        Throttle 60/min. Import only. type=pgp needs armored_private_key
+        (+optional passphrase); type=smime needs p12_base64 (base64 PKCS#12,
+        +optional passphrase, converted to PEM server-side). Used only for
+        server-side decryption of encrypted archived mail.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: { type: string, enum: [pgp, smime] }
+                label: { type: string, maxLength: 200 }
+                passphrase: { type: [string, "null"] }
+                armored_private_key: { type: [string, "null"], description: "PGP: armored secret key." }
+                p12_base64: { type: [string, "null"], description: "S-MIME: base64 PKCS#12 bundle." }
+              required: [type, label]
+      responses:
+        "201":
+          description: Imported.
+          content:
+            application/json:
+              schema: { type: object, properties: { key: { $ref: '#/components/schemas/MailKey' } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/keys/{key}:
+    delete:
+      tags: [Mail]
+      operationId: mailKeysDestroy
+      summary: Delete a decryption key
+      description: "Throttle 60/min. Owner-scoped."
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/messages/labels:
+    post:
+      tags: [Mail]
+      operationId: mailMessagesLabels
+      summary: Bulk attach / detach labels across messages
+      description: "Throttle 120/min. Owner-scoped; only the caller's messages + labels are touched."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids: { type: array, maxItems: 1000, items: { type: string, format: uuid } }
+                add: { type: array, items: { type: integer } }
+                remove: { type: array, items: { type: integer } }
+              required: [ids]
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { updated: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/labels:
+    get:
+      tags: [Mail]
+      operationId: mailLabelsIndex
+      summary: List labels (with message counts)
+      responses:
+        "200": { description: Labels., content: { application/json: { schema: { type: object, properties: { labels: { type: array, items: { $ref: '#/components/schemas/MailLabel' } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Mail]
+      operationId: mailLabelsStore
+      summary: Create a label
+      description: "Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 100 }
+                color: { type: [string, "null"], description: "Hex color." }
+              required: [name]
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { label: { $ref: '#/components/schemas/MailLabel' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/labels/{label}:
+    put:
+      tags: [Mail]
+      operationId: mailLabelsUpdate
+      summary: Rename / recolor a label
+      description: "Throttle 60/min."
+      parameters: [{ name: label, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { name: { type: string }, color: { type: [string, "null"] } }, required: [name] }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { label: { $ref: '#/components/schemas/MailLabel' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Mail]
+      operationId: mailLabelsDestroy
+      summary: Delete a label
+      description: "Throttle 60/min."
+      parameters: [{ name: label, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/rules:
+    get:
+      tags: [Mail]
+      operationId: mailRulesIndex
+      summary: List ingest rules
+      responses:
+        "200": { description: Rules., content: { application/json: { schema: { type: object, properties: { rules: { type: array, items: { $ref: '#/components/schemas/MailRule' } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Mail]
+      operationId: mailRulesStore
+      summary: Create an ingest rule
+      description: "Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MailRule' }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { rule: { $ref: '#/components/schemas/MailRule' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/rules/{rule}:
+    put:
+      tags: [Mail]
+      operationId: mailRulesUpdate
+      summary: Update an ingest rule
+      description: "Throttle 60/min."
+      parameters: [{ name: rule, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MailRule' }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { rule: { $ref: '#/components/schemas/MailRule' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Mail]
+      operationId: mailRulesDestroy
+      summary: Delete an ingest rule
+      description: "Throttle 60/min."
+      parameters: [{ name: rule, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/saved-searches:
+    get:
+      tags: [Mail]
+      operationId: mailSavedSearchesIndex
+      summary: List saved searches
+      responses:
+        "200": { description: Saved searches., content: { application/json: { schema: { type: object, properties: { saved_searches: { type: array, items: { $ref: '#/components/schemas/MailSavedSearch' } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Mail]
+      operationId: mailSavedSearchesStore
+      summary: Create a saved search
+      description: "Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { name: { type: string }, filters: { type: object, additionalProperties: true } }, required: [name, filters] }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { saved_search: { $ref: '#/components/schemas/MailSavedSearch' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/saved-searches/{search}:
+    delete:
+      tags: [Mail]
+      operationId: mailSavedSearchesDestroy
+      summary: Delete a saved search
+      description: "Throttle 60/min."
+      parameters: [{ name: search, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/export:
+    post:
+      tags: [Mail]
+      operationId: mailExport
+      summary: Export messages as .mbox or a ZIP of .eml
+      description: >
+        Throttle 30/min. Owner-scoped. Selection = ids[] OR folder OR label.
+        format=mbox streams an mboxrd file; format=zip a ZIP of .eml files.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                format: { type: string, enum: [mbox, zip] }
+                ids: { type: array, items: { type: string, format: uuid } }
+                folder: { type: [string, "null"] }
+                label: { type: [integer, "null"] }
+              required: [format]
+      responses:
+        "200":
+          description: Export stream.
+          content:
+            application/mbox: { schema: { type: string, format: binary } }
+            application/zip: { schema: { type: string, format: binary } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/stats:
+    get:
+      tags: [Mail]
+      operationId: mailStats
+      summary: Storage stats (totals + per account/folder)
+      description: "Throttle 120/min. Owner-scoped."
+      responses:
+        "200":
+          description: Stats.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_messages: { type: integer }
+                  total_bytes: { type: integer }
+                  per_account: { type: array, items: { type: object, properties: { account_id: { type: [integer, "null"] }, count: { type: integer }, bytes: { type: integer } } } }
+                  per_folder: { type: array, items: { type: object, properties: { account_id: { type: [integer, "null"] }, folder: { type: string }, count: { type: integer }, bytes: { type: integer } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/raw/{blob}:
+    get:
+      tags: [Mail]
+      operationId: mailRaw
+      summary: Download the raw .eml bytes of a message
+      description: >
+        Throttle 600/min. Streams the immutable raw RFC822 (message/rfc822) with
+        nosniff + `default-src 'none'; sandbox`. `?download=1` forces an
+        attachment (the single-message export). The path param is the message id.
+      parameters:
+        - { name: blob, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: download, in: query, required: false, schema: { type: boolean } }
+      responses:
+        "200":
+          description: Raw message.
+          content:
+            message/rfc822:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }

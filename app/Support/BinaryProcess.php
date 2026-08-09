@@ -42,6 +42,35 @@ final class BinaryProcess
     }
 
     /**
+     * Run a command and capture its full result: success flag, stdout, stderr
+     * and exit code. Unlike run() (which collapses every failure to null), this
+     * preserves the tool's own output so a caller can surface a diagnostic tail
+     * (e.g. mbsync's "Login failed" / "Cannot connect"). Array-argv only — no
+     * shell string, no injection. On an exception (binary missing, spawn error)
+     * returns ok=false with the throwable message in `err` and exit=null.
+     *
+     * @param  array<int, string>  $argv
+     * @return array{ok: bool, out: string, err: string, exit: ?int}
+     */
+    public static function runCapture(array $argv, int $timeout = 60): array
+    {
+        try {
+            $process = new Process($argv);
+            $process->setTimeout($timeout);
+            $process->run();
+
+            return [
+                'ok' => $process->isSuccessful(),
+                'out' => $process->getOutput(),
+                'err' => $process->getErrorOutput(),
+                'exit' => $process->getExitCode(),
+            ];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'out' => '', 'err' => $e->getMessage(), 'exit' => null];
+        }
+    }
+
+    /**
      * Check whether a binary is available on the system PATH.
      */
     public static function available(string $binary): bool

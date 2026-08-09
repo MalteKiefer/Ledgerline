@@ -120,8 +120,13 @@ class AuthController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** @return array<string, mixed> */
-    private function userPayload(User $user): array
+    /**
+     * The public /me user payload. Public so the SPA token-login controller can
+     * return the same shape on login.
+     *
+     * @return array<string, mixed>
+     */
+    public function userPayload(User $user): array
     {
         return [
             'id' => $user->id,
@@ -137,6 +142,8 @@ class AuthController extends Controller
             'modules' => $user->allowedModules(),
             // Non-secret avatar. True → fetch GET /api/v1/avatar (Bearer).
             'has_avatar' => is_string($user->avatar) && $user->avatar !== '',
+            // Whether TOTP 2FA is confirmed — lets the SPA show the correct 2FA state.
+            'two_factor' => $user->two_factor_confirmed_at !== null,
             // Non-secret display preferences (units + 12/24h clock). Mobile applies
             // these to its own rendering; set via POST /api/v1/preferences.
             'preferences' => UserSetting::for((int) $user->id)->displayPrefs(),

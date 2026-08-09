@@ -29,6 +29,12 @@ return [
     'access_log_retention_days' => (int) env('OPS_ACCESS_LOG_RETENTION_DAYS', 30),
 
     /*
+     * Retention (days) for the verbose per-request security log (request_logs).
+     * High volume — keep a bounded window. 0 keeps forever.
+     */
+    'request_log_retention_days' => (int) env('OPS_REQUEST_LOG_RETENTION_DAYS', 30),
+
+    /*
      * Alert when the most recent successful backup is older than this many hours
      * (backup staleness). 0 disables the staleness check.
      */

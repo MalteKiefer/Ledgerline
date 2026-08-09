@@ -10,6 +10,7 @@ return [
     'password' => 'Пароль',
     'remember' => 'Оставаться в системе',
     'sign_in' => 'Войти',
+    'invalid_credentials' => 'Неверный e-mail или пароль.',
     'forgot' => 'Забыли пароль?',
     'no_account' => 'Ещё нет аккаунта?',
     'register_link' => 'Создать',
@@ -35,6 +36,9 @@ return [
     'back_to_login' => 'Назад ко входу',
     'reset_title' => 'Выберите новый пароль',
     'reset_button' => 'Сбросить пароль',
+    'reset_success' => 'Пароль сброшен. Теперь вы можете войти.',
+    'reset_invalid' => 'Ссылка недействительна или срок её действия истёк.',
+    'register_disabled' => 'Самостоятельная регистрация сейчас отключена.',
 
     // Email verification
     'verify_title' => 'Подтвердите эл. почту',

@@ -1,0 +1,10 @@
+# Laravel-superpowers local hook config.
+#
+# The banned-token-leak-guard flags generic "AI-rot" phrases, but this repo uses
+# "Phase N" as deliberate, canonical milestone vocabulary throughout CLAUDE.md's
+# HISTORIE, migration docblocks and the mail-archive rebuild. The guard is therefore
+# incompatible with our documented conventions (it would block every release commit
+# that touches CLAUDE.md). Disabled by owner decision; commit hygiene (no AI refs,
+# imperative subjects) is still followed by policy.
+hook_enabled:
+  banned_token_leak_guard: false

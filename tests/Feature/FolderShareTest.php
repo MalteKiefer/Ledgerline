@@ -13,6 +13,7 @@ use App\Models\FolderShareMember;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Testing\File as FakeFile;
+use Illuminate\Routing\RouteCollection;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -31,6 +32,17 @@ class FolderShareTest extends TestCase
     {
         parent::setUp();
         Storage::fake(config('files.disk'));
+
+        // The application boots a greedy GET SPA catch-all — Route::get('/{any}')
+        // in routes/web.php, registered at bootstrap, i.e. BEFORE this setUp — that
+        // would shadow the ad-hoc GET /t/* routes below (Laravel matches routes in
+        // registration order) and return the SPA HTML shell instead of reaching the
+        // controllers, making every member-side GET assertion (browse/raw/index)
+        // read 200-HTML instead of the controller's JSON/404. Isolate the route
+        // table to just these controller-proving routes so authorization + subtree
+        // scope are genuinely exercised. Safe: the controllers under test never call
+        // route()/redirect()/url(), so no application routes are needed here.
+        $this->app->make('router')->setRoutes(new RouteCollection);
 
         // Owner side.
         Route::get('/t/shared', [SharedFolderController::class, 'index']);

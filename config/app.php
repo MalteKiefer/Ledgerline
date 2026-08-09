@@ -28,7 +28,7 @@ return [
     |
     */
 
-    'version' => env('APP_VERSION', '1.560.0'),
+    'version' => env('APP_VERSION', '1.561.0'),
 
     /*
     |--------------------------------------------------------------------------
@@ -68,6 +68,11 @@ return [
     */
 
     'url' => env('APP_URL', 'http://localhost'),
+
+    // Behind a TLS-terminating reverse proxy (NetBird) that forwards over plain
+    // HTTP: emit https:// URLs so assets/forms/redirects aren't blocked by the
+    // https page as mixed content / CSP scheme mismatches. See AppServiceProvider.
+    'force_https' => (bool) env('FORCE_HTTPS', false),
 
     /*
     |--------------------------------------------------------------------------

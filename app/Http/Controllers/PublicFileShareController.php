@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\FileEntry;
 use App\Models\FileFolder;
 use App\Models\FileShare;
+use App\Support\ShareGrant;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -72,9 +73,14 @@ class PublicFileShareController extends Controller
         if (! $share->needsPassword() || ! Hash::check($request->string('password')->value(), (string) $share->password_hash)) {
             return response()->json(['ok' => false], 422);
         }
-        $request->session()->put($this->shareGateKey($share), true);
+        // Web clients carry the unlock in the session; a tokenless API client has no
+        // session, so also hand back a short-lived stateless grant it can present on
+        // manifest/raw (X-Share-Grant header or ?grant=). Both paths coexist.
+        if ($request->hasSession()) {
+            $request->session()->put($this->shareGateKey($share), true);
+        }
 
-        return response()->json(['ok' => true]);
+        return response()->json(['ok' => true, 'grant' => ShareGrant::issue($share)]);
     }
 
     public function manifest(Request $request, string $token): JsonResponse
@@ -253,7 +259,22 @@ class PublicFileShareController extends Controller
 
     private function shareUnlocked(Request $request, FileShare $share): bool
     {
-        return ! $share->needsPassword() || (bool) $request->session()->get($this->shareGateKey($share));
+        if (! $share->needsPassword()) {
+            return true;
+        }
+
+        // Stateless grant (tokenless API clients) — header or query carrier.
+        $grant = $request->header('X-Share-Grant');
+        if (! is_string($grant) || $grant === '') {
+            $q = $request->query('grant');
+            $grant = is_string($q) ? $q : null;
+        }
+        if (ShareGrant::valid($grant, $share)) {
+            return true;
+        }
+
+        // Session grant (web clients that unlocked via the browser).
+        return $request->hasSession() && (bool) $request->session()->get($this->shareGateKey($share));
     }
 
     private function shareGateKey(FileShare $share): string

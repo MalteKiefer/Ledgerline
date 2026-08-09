@@ -18,7 +18,8 @@
         "league/flysystem-webdav": "^3.31",
         "predis/predis": "^3.5",
         "sabre/dav": "^4.7",
-        "spatie/db-dumper": "^4.1"
+        "spatie/db-dumper": "^4.1",
+        "zbateson/mail-mime-parser": "^4.0"
     },
     "require-dev": {
         "cyclonedx/cyclonedx-php-composer": "^6.2",

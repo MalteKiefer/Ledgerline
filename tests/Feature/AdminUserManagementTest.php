@@ -13,10 +13,13 @@ class AdminUserManagementTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_non_admin_cannot_access_user_management(): void
-    {
-        $this->actingAs(User::factory()->create())->get(route('settings.users'))->assertForbidden();
-    }
+    // NOTE: viewing the user-management INDEX is no longer a server-rendered Blade
+    // page — /settings/users serves the SPA shell (static HTML, 200 for anyone) and
+    // the data + admin authorization live in the API (GET /api/v1/users, gated by
+    // can:manage-global-settings). Those are covered by UsersApiTest
+    // (test_admin_can_list_users + the group-level non-admin 403). The obsolete
+    // GET-page tests (403-on-web-route, "see Heavy User" in HTML) were removed with
+    // the SPA cutover; the web MUTATION routes below still enforce the admin gate.
 
     public function test_admin_can_create_a_user_with_role_and_limits(): void
     {
@@ -101,14 +104,6 @@ class AdminUserManagementTest extends TestCase
         $this->actingAs(User::factory()->create());
         $target = User::factory()->create();
         $this->post(route('settings.users.reset2fa', $target))->assertForbidden();
-    }
-
-    public function test_the_index_lists_users(): void
-    {
-        $this->actingAs(User::factory()->admin()->create());
-        User::factory()->create(['name' => 'Heavy User']);
-
-        $this->get(route('settings.users'))->assertOk()->assertSee('Heavy User');
     }
 
     public function test_the_avatar_route_is_admin_only(): void

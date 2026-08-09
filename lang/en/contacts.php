@@ -16,7 +16,7 @@ return [
     'qr_heading' => 'Scan to add',
     'qr_hint' => 'Scan this with your phone to copy the CardDAV URL into a client.',
     'apple_profile' => 'Download Apple profile (iOS / macOS)',
-    'apple_profile_hint' => 'Installs a CardDAV account on iPhone, iPad or Mac. You will be asked for the app password once during install.',
+    'apple_profile_hint' => 'Installs CardDAV (contacts) and CalDAV (calendar) accounts on iPhone, iPad or Mac. You will be asked for the app password once during install.',
 
     'ui' => [
         'heading' => 'Contacts',

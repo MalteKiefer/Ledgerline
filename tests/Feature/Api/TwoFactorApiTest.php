@@ -161,6 +161,38 @@ class TwoFactorApiTest extends TestCase
             ->assertNotFound();
     }
 
+    /** A native device token (install_id set) is biometric-sealed → no password step-up. */
+    private function nativeToken(User $user): string
+    {
+        $new = $user->createToken('pixel', ['device']);
+        $new->accessToken->forceFill(['install_id' => 'abc123def456'])->save();
+
+        return $new->plainTextToken;
+    }
+
+    public function test_native_device_token_reads_recovery_codes_without_password(): void
+    {
+        $user = User::factory()->create();
+        $token = $this->nativeToken($user);
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
+
+        // No current_password in the body → still OK for a native install.
+        $this->withToken($token)->getJson('/api/v1/user/two-factor/recovery-codes')
+            ->assertOk()->assertJsonStructure(['recovery_codes']);
+    }
+
+    public function test_native_device_token_disables_2fa_without_password(): void
+    {
+        $user = User::factory()->create();
+        $token = $this->nativeToken($user);
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
+
+        $this->withToken($token)->deleteJson('/api/v1/user/two-factor')->assertOk();
+        $this->assertNull($user->refresh()->two_factor_secret);
+    }
+
     public function test_qr_returns_404_once_2fa_is_confirmed(): void
     {
         $user = User::factory()->create();

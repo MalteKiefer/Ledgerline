@@ -40,14 +40,22 @@ class SharedFolderController extends Controller
         ]);
     }
 
-    /** Share a folder with a user (idempotent per folder; adds/updates the recipient). */
+    /**
+     * Share a folder (whole subtree) OR a single file with a user. Idempotent per
+     * target: reuses the owner's existing share for that folder/file and
+     * adds/updates the recipient. `kind` (file|folder) selects which id is
+     * required; when omitted it defaults to folder for backward compatibility.
+     */
     public function store(Request $request): JsonResponse
     {
         $uid = (int) $this->requireUser($request)->id;
+        $kind = $request->string('kind')->value() === 'file' ? 'file' : 'folder';
         $request->validate([
-            'file_folder_id' => ['required', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'kind' => ['nullable', Rule::in(['file', 'folder'])],
             'email' => ['required', 'string', 'email', 'max:255'],
             'role' => ['required', Rule::in(['viewer', 'editor'])],
+            'file_folder_id' => [Rule::requiredIf($kind === 'folder'), 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'file_id' => [Rule::requiredIf($kind === 'file'), 'integer', Rule::exists('files', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
         ]);
 
         $recipient = User::query()->where('email', $request->string('email')->value())->first();
@@ -57,18 +65,25 @@ class SharedFolderController extends Controller
             return response()->json(['error' => 'recipient_not_found'], 422);
         }
 
-        $folderId = $request->integer('file_folder_id');
         $role = $request->string('role')->value();
+        $fileId = $kind === 'file' ? $request->integer('file_id') : null;
+        $folderId = $kind === 'folder' ? $request->integer('file_folder_id') : null;
 
-        $share = DB::transaction(function () use ($folderId, $recipient, $role): FolderShare {
-            // Reuse the owner's existing share for that folder if one exists (the
-            // find is owner-scoped by the global scope). file_folder_id / owner_id
-            // are set explicitly, never mass-assigned (owner_id via AssignsOwner
-            // on create); FolderShare/FolderShareMember guard everything but role.
-            $share = FolderShare::query()->where('file_folder_id', $folderId)->first();
+        $share = DB::transaction(function () use ($kind, $fileId, $folderId, $recipient, $role): FolderShare {
+            // Reuse the owner's existing share for that target if one exists (the
+            // find is owner-scoped by the global scope). file_folder_id / file_id /
+            // owner_id are set explicitly, never mass-assigned (owner_id via
+            // AssignsOwner on create); FolderShare/FolderShareMember guard all but role.
+            $share = $kind === 'file'
+                ? FolderShare::query()->where('file_id', $fileId)->first()
+                : FolderShare::query()->where('file_folder_id', $folderId)->first();
             if (! $share instanceof FolderShare) {
                 $share = new FolderShare;
-                $share->file_folder_id = $folderId;
+                if ($kind === 'file') {
+                    $share->file_id = $fileId;
+                } else {
+                    $share->file_folder_id = $folderId;
+                }
                 $share->save();
             }
 
@@ -138,7 +153,7 @@ class SharedFolderController extends Controller
     }
 
     /**
-     * Owner-visible share representation (folder name + member roster).
+     * Owner-visible share representation (folder OR file target + member roster).
      *
      * @return array<string, mixed>
      */
@@ -154,8 +169,11 @@ class SharedFolderController extends Controller
 
         return [
             'id' => $share->id,
+            'kind' => $share->kind(),
             'file_folder_id' => $share->file_folder_id,
             'folder_name' => $share->folder?->name,
+            'file_id' => $share->file_id,
+            'file_name' => $share->sharedFile?->name,
             'members' => $members,
         ];
     }

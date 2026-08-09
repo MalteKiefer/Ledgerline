@@ -1,6 +1,9 @@
 <?php
 
+use App\Http\Middleware\BearerFromQuery;
+use App\Http\Middleware\BlockGuard;
 use App\Http\Middleware\EnsureModule;
+use App\Http\Middleware\LogRequest;
 use App\Http\Middleware\NoThrottle;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
@@ -24,14 +27,22 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->web(append: [SetLocale::class, SecurityHeaders::class]);
+        // BlockGuard (early, before controllers) refuses blocked IPs/users on
+        // every request; LogRequest (terminable) records the full request trail
+        // after the response. Applied to both web + api.
+        $middleware->web(prepend: [BlockGuard::class], append: [SetLocale::class, SecurityHeaders::class, LogRequest::class]);
         // WebDAV authenticates via HTTP Basic (Sabre) and uses non-form verbs
         // (PUT/DELETE/PROPFIND/MKCOL/…) — exempt it from session CSRF.
         $middleware->validateCsrfTokens(except: ['dav', 'dav/*']);
         // Security headers on the token API too (nosniff / referrer / permissions /
         // HSTS). Sensitive-byte routes set their own sandbox CSP, which the
         // middleware preserves.
-        $middleware->api(append: [SecurityHeaders::class]);
+        $middleware->api(prepend: [BlockGuard::class, BearerFromQuery::class], append: [SecurityHeaders::class, LogRequest::class]);
+
+        // The SPA authenticates with a bearer TOKEN (not a session cookie), so the
+        // API stays stateless — no statefulApi()/EnsureFrontendRequestsAreStateful
+        // (which would apply session + CSRF to same-origin /api calls and 419 the
+        // token login). This keeps the API portable to a future non-Laravel host.
 
         // Sanctum ability guards for the token-scoped mobile/CLI API.
         $middleware->alias([

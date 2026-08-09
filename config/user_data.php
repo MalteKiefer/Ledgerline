@@ -3,6 +3,7 @@
 use App\Support\UserData\ContactsData;
 use App\Support\UserData\FilesData;
 use App\Support\UserData\FinanceData;
+use App\Support\UserData\MailData;
 use App\Support\UserData\PaperlessData;
 use App\Support\UserData\SettingsData;
 
@@ -13,6 +14,7 @@ return [
         ContactsData::class,
         FilesData::class,
         FinanceData::class,
+        MailData::class,
         PaperlessData::class,
         SettingsData::class,
     ],

@@ -164,10 +164,11 @@ class FilesRelationalTest extends TestCase
         $this->assertSame('foobar', $this->get(route('files.rel.raw', $id))->streamedContent());
     }
 
-    public function test_files_page_renders_for_an_authed_user(): void
+    public function test_files_page_serves_the_spa_shell(): void
     {
+        // SPA-only: /files serves the SPA shell; the Files UI renders client-side.
         $this->actingAs(User::factory()->create());
-        $this->get(route('files.index'))->assertOk()->assertSee('x-data="files(', false);
+        $this->get(route('files.index'))->assertOk()->assertSee('id="app"', false);
     }
 
     public function test_label_crud_assign_and_search(): void
