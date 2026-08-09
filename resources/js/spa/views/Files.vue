@@ -104,7 +104,7 @@
                 <DropdownMenuTrigger class="grid h-7 w-7 shrink-0 place-items-center rounded-md hover:bg-black/[0.05] dark:hover:bg-white/10" @click.stop>
                   <Icon name="more_vert" :size="16" />
                 </DropdownMenuTrigger>
-                <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-50 min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+                <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
                   <template v-if="!row._folder && view!=='trash'">
                     <DropdownMenuItem as="a" :href="s.rawUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
@@ -170,7 +170,7 @@
                     <DropdownMenuTrigger class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" @click.stop>
                       <Icon name="more_vert" :size="18" />
                     </DropdownMenuTrigger>
-                    <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-50 min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+                    <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
                       <template v-if="!row._folder && view!=='trash'">
                         <DropdownMenuItem as="a" :href="s.rawUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
@@ -385,7 +385,7 @@
             <DropdownMenuTrigger class="grid h-8 w-8 shrink-0 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10">
               <Icon name="more_vert" :size="18" />
             </DropdownMenuTrigger>
-            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-50 min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
               <DropdownMenuItem as="a" :href="s.rawUrl(preview)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
               <DropdownMenuItem as="a" :href="s.rawUrl(preview)" target="_blank" :class="menuItemCls"><Icon name="open_in_new" :size="18" />{{ t('common.open') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItemCls" @select="previewRename()"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>

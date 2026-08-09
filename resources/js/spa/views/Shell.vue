@@ -64,7 +64,7 @@
 
           <DropdownMenuRoot>
             <DropdownMenuTrigger class="grid h-9 min-w-9 place-items-center rounded-lg px-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10">{{ locale.toUpperCase() }}</DropdownMenuTrigger>
-            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" class="z-50 min-w-32 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" class="z-[1600] min-w-32 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
               <DropdownMenuItem v-for="l in locales" :key="l" class="cursor-pointer rounded-md px-3 py-1.5 text-sm outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" @select="setLocale(l)">{{ l.toUpperCase() }}</DropdownMenuItem>
             </DropdownMenuContent></DropdownMenuPortal>
           </DropdownMenuRoot>
@@ -74,7 +74,7 @@
               <Icon name="notifications" :size="20" />
               <span v-if="unread" class="absolute right-1.5 top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] text-white">{{ unread }}</span>
             </DropdownMenuTrigger>
-            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-50 w-80 rounded-xl border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] w-80 rounded-xl border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
               <div class="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('notifications.title') }}</div>
               <button v-for="n in notes" :key="n.id" class="block w-full rounded-md px-3 py-2 text-left hover:bg-black/[0.05] dark:hover:bg-white/10" :class="n.read ? '' : 'bg-primary-500/5'" @click="readNote(n)">
                 <div class="text-sm font-medium">{{ n.title }}</div><div class="text-xs text-[var(--ll-muted)]">{{ n.body }}</div>
@@ -91,7 +91,7 @@
               </span>
               <span class="hidden text-left leading-tight sm:block"><span class="block text-sm font-medium">{{ auth.user?.name }}</span><span class="block text-xs text-[var(--ll-muted)]">{{ auth.isAdmin() ? 'Admin' : 'User' }}</span></span>
             </DropdownMenuTrigger>
-            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-50 w-52 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] w-52 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
               <DropdownMenuItem class="flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" @select="router.push('/profile')"><Icon name="account_circle" :size="18" />{{ t('pages.profile.title') }}</DropdownMenuItem>
               <DropdownMenuItem v-if="auth.isAdmin()" class="flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" @select="router.push('/settings')"><Icon name="settings" :size="18" />{{ t('settings.heading') }}</DropdownMenuItem>
               <div class="my-1 border-t border-[var(--ll-border)]" />
