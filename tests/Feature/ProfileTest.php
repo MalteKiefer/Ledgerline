@@ -8,46 +8,31 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * SPA-only cutover: the profile UI lives entirely in the Vue SPA, so every
+ * /profile* path now returns the SPA shell (200) and the SPA router + the gated
+ * /api enforce auth and render the account details client-side. These tests
+ * assert the shell is served; the account data itself is covered by the /me API.
+ */
 class ProfileTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_guests_cannot_view_the_profile(): void
+    public function test_guests_get_the_spa_shell_and_the_router_guards_client_side(): void
     {
-        $this->get(route('profile'))->assertRedirect(route('login'));
+        // The page shell is public; the SPA redirects to /login when /api/v1/me
+        // is 401. Server-side auth now lives on the API, not the page route.
+        $this->get('/profile')->assertOk()->assertSee('id="app"', false);
     }
 
-    public function test_profile_shows_the_account_details(): void
+    public function test_profile_paths_serve_the_spa_shell(): void
     {
         $user = User::factory()->create([
             'name' => 'Grace Hopper',
             'email' => 'grace@example.com',
         ]);
 
-        // Name + email head the hub and are detailed on the account sub-page.
-        $this->actingAs($user)
-            ->get(route('profile'))
-            ->assertOk()
-            ->assertSee('Grace Hopper')
-            ->assertSee('grace@example.com');
-        $this->actingAs($user)
-            ->get(route('profile.account'))
-            ->assertOk()
-            ->assertSee('grace@example.com');
-    }
-
-    public function test_profile_renders_the_avatar_when_present(): void
-    {
-        $user = User::factory()->create(['avatar' => 'avatars/1.png']);
-
-        // The hero shows the avatar; its provenance is detailed on the account sub-page.
-        $this->actingAs($user)
-            ->get(route('profile'))
-            ->assertOk()
-            ->assertSee(route('profile.avatar'));
-        $this->actingAs($user)
-            ->get(route('profile.account'))
-            ->assertOk()
-            ->assertSee('object storage');
+        $this->actingAs($user)->get('/profile')->assertOk()->assertSee('id="app"', false);
+        $this->actingAs($user)->get('/profile/account')->assertOk()->assertSee('id="app"', false);
     }
 }

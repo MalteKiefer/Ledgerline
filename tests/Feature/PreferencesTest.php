@@ -38,12 +38,9 @@ class PreferencesTest extends TestCase
         $this->post(route('preferences.update'), ['distance' => 'lightyears'])->assertSessionHasErrors('distance');
     }
 
-    public function test_prefs_are_injected_into_the_page(): void
-    {
-        $user = $this->signIn();
-        UserSetting::for($user->id)->update(['unit_elevation' => 'ft']);
-        $this->get(route('finance.index'))->assertOk()->assertSee('name="ll-prefs"', false)->assertSee('&quot;elevation&quot;:&quot;ft&quot;', false);
-    }
+    // SPA-only cutover: preferences are no longer injected as an <meta ll-prefs>
+    // tag in a server-rendered page — the SPA reads them from GET /api/v1/me
+    // (asserted by test_me_endpoint_carries_preferences below).
 
     public function test_me_endpoint_carries_preferences(): void
     {

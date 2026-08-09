@@ -8,7 +8,6 @@ use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\UpdateUserPassword;
 use App\Models\AppSettings;
-use Illuminate\Http\Request;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Fortify\Actions\RedirectIfTwoFactorAuthenticatable;
 use Laravel\Fortify\Fortify;
@@ -34,18 +33,21 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::redirectUserForTwoFactorAuthenticationUsing(RedirectIfTwoFactorAuthenticatable::class);
 
-        // Views (all under resources/views/auth, iOS-styled).
-        Fortify::loginView(fn () => view('auth.login'));
-        Fortify::requestPasswordResetLinkView(fn () => view('auth.forgot-password'));
-        Fortify::resetPasswordView(fn (Request $request) => view('auth.reset-password', ['request' => $request]));
-        Fortify::verifyEmailView(fn () => view('auth.verify-email'));
-        Fortify::twoFactorChallengeView(fn () => view('auth.two-factor-challenge'));
-        Fortify::confirmPasswordView(fn () => view('auth.confirm-password'));
+        // The Blade UI is retired — the Vue SPA owns all UI including the auth
+        // screens (/login, /register, /forgot-password, /reset-password, …). Every
+        // Fortify view route just returns the SPA shell; the SPA renders the right
+        // screen client-side and authenticates via the bearer API (/api/v1/auth/*).
+        Fortify::loginView(fn () => view('spa'));
+        Fortify::requestPasswordResetLinkView(fn () => view('spa'));
+        Fortify::resetPasswordView(fn () => view('spa'));
+        Fortify::verifyEmailView(fn () => view('spa'));
+        Fortify::twoFactorChallengeView(fn () => view('spa'));
+        Fortify::confirmPasswordView(fn () => view('spa'));
 
         // Self-registration is gated by a workspace toggle (an admin creates users
         // by default). When off, the register page redirects to login; the POST is
         // also blocked in CreateNewUser (defence in depth).
-        Fortify::registerView(fn () => self::registrationOpen() ? view('auth.register') : redirect()->route('login'));
+        Fortify::registerView(fn () => self::registrationOpen() ? view('spa') : redirect()->route('login'));
 
         // No rate limiters: throttling is disabled app-wide (private 2-user home
         // LAN, not internet-facing) — the `throttle` alias is a no-op. Fortify's

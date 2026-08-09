@@ -57,7 +57,7 @@ const routes: RouteRecordRaw[] = [
 ];
 
 export const router = createRouter({
-  history: createWebHistory('/spa/'),
+  history: createWebHistory('/'),
   routes,
 });
 

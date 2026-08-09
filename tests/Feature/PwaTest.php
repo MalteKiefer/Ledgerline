@@ -11,15 +11,10 @@ class PwaTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_layout_carries_the_pwa_meta_tags(): void
-    {
-        $this->signIn();
-
-        $this->get(route('finance.index'))->assertOk()
-            ->assertSee('manifest.webmanifest', false)
-            ->assertSee('theme-color', false)
-            ->assertSee('apple-touch-icon', false);
-    }
+    // The former "layout carries PWA meta tags" test guarded the retired Blade
+    // layout. Under the SPA-only cutover the served HTML is the SPA shell (which
+    // wires the manifest/service worker via the build, not a Blade partial), so
+    // that assertion no longer applies. The on-disk PWA assets are still checked.
 
     public function test_the_pwa_assets_exist_and_the_manifest_is_valid(): void
     {

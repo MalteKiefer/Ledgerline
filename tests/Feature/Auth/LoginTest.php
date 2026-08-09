@@ -12,9 +12,11 @@ class LoginTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_login_screen_renders(): void
+    public function test_login_screen_serves_the_spa_shell(): void
     {
-        $this->get('/login')->assertOk()->assertSee('name="email"', false)->assertSee('name="password"', false);
+        // The Blade UI is retired; /login now returns the SPA shell and the Vue
+        // app renders the login screen client-side (auth via the bearer API).
+        $this->get('/login')->assertOk()->assertSee('id="app"', false);
     }
 
     public function test_a_user_can_log_in_with_correct_credentials(): void

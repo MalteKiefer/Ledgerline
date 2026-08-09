@@ -22,7 +22,6 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
-use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CalendarController as SettingsCalendarController;
@@ -33,8 +32,6 @@ use App\Http\Controllers\Settings\GroupsController as SettingsGroupsController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
 use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
-use App\Http\Controllers\Settings\SecurityLogController;
-use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
 use App\Http\Controllers\Settings\UsersController as SettingsUsersController;
 use App\Http\Controllers\SharedFolderController;
@@ -44,9 +41,10 @@ use App\Http\Controllers\WebDavAccessController;
 use App\Http\Controllers\WebDavController;
 use Illuminate\Support\Facades\Route;
 
-// The root forwards to Finance (the app is finance-only); unauthenticated
-// visitors are then redirected to the login page by the "auth" middleware.
-Route::get('/', static fn () => redirect()->route('finance.index'));
+// SPA-only: the Vue SPA is the sole UI and owns all client-side routing. The
+// root (and every other UI path, via the catch-all at the bottom) serves the
+// SPA shell; the SPA's router guard redirects to /login when /api/v1/me is 401.
+Route::get('/', static fn () => view('spa'))->name('home');
 
 // Prometheus metrics for external scraping — no session; guarded by its own
 // token (OPS_METRICS_TOKEN) and disabled when unset. Rate-limited.
@@ -92,15 +90,8 @@ Route::middleware('auth')->group(function (): void {
     // WebDAV app-specific password (mount Files as a network drive).
     Route::put('/profile/webdav', [WebDavAccessController::class, 'update'])->middleware('throttle:20,1')->name('profile.webdav.update');
     Route::delete('/profile/webdav', [WebDavAccessController::class, 'destroy'])->middleware('throttle:20,1')->name('profile.webdav.destroy');
-    // Profile = the iOS-style personal hub; each section is its own sub-page.
-    Route::get('/profile', [ProfileController::class, 'index'])->name('profile');
-    Route::get('/profile/account', [ProfileController::class, 'account'])->name('profile.account');
-    Route::get('/profile/devices', [ProfileController::class, 'devices'])->name('profile.devices');
-    Route::get('/profile/sessions', [ProfileController::class, 'sessions'])->name('profile.sessions');
-    Route::get('/profile/security', [ProfileController::class, 'security'])->name('profile.security');
-    Route::get('/profile/appearance', [ProfileController::class, 'appearance'])->name('profile.appearance');
-    Route::get('/profile/export', [ProfileController::class, 'exportPage'])->name('profile.export');
-    Route::get('/profile/danger', [ProfileController::class, 'danger'])->name('profile.danger');
+    // Profile page renders are served by the SPA (see the catch-all). Only the
+    // data/artifact endpoints remain here.
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');
     Route::post('/profile/avatar', [AvatarController::class, 'store'])->middleware('throttle:30,1')->name('profile.avatar.store');
     Route::delete('/profile/avatar', [AvatarController::class, 'destroy'])->middleware('throttle:30,1')->name('profile.avatar.destroy');
@@ -126,11 +117,10 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
 
-    // Settings.
-    Route::get('/settings', SettingsController::class)->name('settings');
+    // Settings page renders are served by the SPA (see the catch-all). Only the
+    // data/mutation endpoints remain in this group.
 
     // Paperless-ngx: per-user integration (each user's own instance URL + token).
-    Route::get('/settings/paperless', [SettingsPaperlessController::class, 'edit'])->name('settings.paperless.edit');
     Route::put('/settings/paperless', [SettingsPaperlessController::class, 'update'])->name('settings.paperless.update');
     Route::post('/settings/paperless/test', [SettingsPaperlessController::class, 'test'])->middleware('throttle:20,1')->name('settings.paperless.test');
     Route::post('/settings/paperless/sync', [SettingsPaperlessController::class, 'sync'])->middleware('throttle:20,1')->name('settings.paperless.sync');
@@ -138,14 +128,11 @@ Route::middleware('auth')->group(function (): void {
     // Non-personal, workspace-wide settings — restricted to users with the admin
     // role (see User::managesGlobalSettings / the manage-global-settings gate).
     Route::middleware('can:manage-global-settings')->group(function (): void {
-        Route::get('/settings/system', [SystemController::class, 'edit'])->name('settings.system.edit');
+        // Admin settings page renders are served by the SPA (see the catch-all);
+        // the security-log CSV/JSON export lives on /api/v1/security-log/export.
         Route::post('/settings/system/errors/{error}/resolve', [SystemController::class, 'resolveError'])->name('settings.system.errors.resolve');
 
-        // Security log: filterable audit trail + CSV/JSON export (admin only).
-        Route::get('/settings/security-log', [SecurityLogController::class, 'index'])->name('settings.security-log');
-
-        // User management: list, create, edit role + per-user limits, reset, delete.
-        Route::get('/settings/users', [SettingsUsersController::class, 'index'])->name('settings.users');
+        // User management: create, edit role + per-user limits, reset, delete.
         Route::post('/settings/users', [SettingsUsersController::class, 'store'])->name('settings.users.store');
         Route::put('/settings/users/{user}', [SettingsUsersController::class, 'update'])->name('settings.users.update');
         Route::post('/settings/users/{user}/reset-password', [SettingsUsersController::class, 'resetPassword'])->middleware('throttle:10,1')->name('settings.users.reset');
@@ -156,22 +143,18 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/settings/registration', [SettingsUsersController::class, 'registration'])->name('settings.registration');
 
         // Group management: reusable limit templates + shareable flag.
-        Route::get('/settings/groups', [SettingsGroupsController::class, 'index'])->name('settings.groups');
         Route::post('/settings/groups', [SettingsGroupsController::class, 'store'])->name('settings.groups.store');
         Route::put('/settings/groups/{group}', [SettingsGroupsController::class, 'update'])->name('settings.groups.update');
         Route::delete('/settings/groups/{group}', [SettingsGroupsController::class, 'destroy'])->name('settings.groups.destroy');
 
         // Workspace security policy (per-user paired-device cap).
-        Route::get('/settings/security', [SettingsSecurityController::class, 'edit'])->name('settings.security.edit');
         Route::put('/settings/security', [SettingsSecurityController::class, 'update'])->name('settings.security.update');
 
         // Notification channels (mail / NTFY / webhook).
-        Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
         Route::put('/settings/notifications', [SettingsNotificationsController::class, 'update'])->name('settings.notifications.update');
         Route::post('/settings/notifications/test', [SettingsNotificationsController::class, 'test'])->middleware('throttle:20,1')->name('settings.notifications.test');
 
         // Backup destinations, jobs and run history.
-        Route::get('/settings/backup', [SettingsBackupController::class, 'index'])->name('settings.backup.index');
         Route::post('/settings/backup/destinations', [SettingsBackupController::class, 'storeDestination'])->name('settings.backup.destinations.store');
         Route::match(['post', 'put'], '/settings/backup/destinations/test', [SettingsBackupController::class, 'testDestination'])->middleware('throttle:20,1')->name('settings.backup.destinations.test');
         Route::put('/settings/backup/destinations/{destination}', [SettingsBackupController::class, 'updateDestination'])->name('settings.backup.destinations.update');
@@ -199,7 +182,8 @@ Route::middleware('auth')->group(function (): void {
     // transactions + projects + categories as owner-scoped rows. The per-user
     // company profile (printed on invoices) stays in the user's settings.
     Route::middleware('module:finance')->group(function (): void {
-        Route::get('/finance', [FinanceController::class, 'page'])->name('finance.index');
+        // The /finance page render is served by the SPA (see the catch-all);
+        // only the owner-scoped data/mutation endpoints stay module-gated here.
         Route::get('/finance/data', [FinanceController::class, 'index'])->name('finance.data');
         // Read-only server-side analytics (source of truth for the stats UI).
         Route::get('/finance/reports', [FinanceReportController::class, 'reports'])->middleware('throttle:120,1')->name('finance.reports');
@@ -270,13 +254,13 @@ Route::middleware('auth')->group(function (): void {
     });
     Route::redirect('/invoices', '/finance'); // old bookmarks
 
-    // Per-user Files preferences (version-history depth).
-    Route::get('/settings/files', [SettingsFilesController::class, 'edit'])->name('settings.files.edit');
+    // Per-user Files preferences (version-history depth). The edit page render is
+    // served by the SPA (see the catch-all); the update endpoint stays here.
     Route::put('/settings/files', [SettingsFilesController::class, 'update'])->name('settings.files.update');
 
     // Files module — plaintext-relational: nested folders + files + version
-    // history as rows, bytes plaintext on the files disk. Hybrid-rendered page.
-    Route::get('/files', [FilesController::class, 'page'])->middleware('module:files')->name('files.index');
+    // history as rows, bytes plaintext on the files disk. The page render is
+    // served by the SPA (see the catch-all); the data/mutation endpoints follow.
     Route::middleware('module:files')->group(function (): void {
         Route::get('/files/trash', [FilesController::class, 'trashed'])->name('files.rel.trash');
         Route::get('/files/entries', [FilesController::class, 'index'])->name('files.rel.index');
@@ -333,8 +317,8 @@ Route::middleware('auth')->group(function (): void {
     // Contacts + CardDAV (plaintext-relational). Static collection routes are
     // declared before /contacts/{contact} so they win over the model binding.
     Route::middleware('module:contacts')->group(function (): void {
-        Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');
-        Route::get('/contacts/create', [ContactController::class, 'create'])->name('contacts.create');
+        // The contacts index/create/duplicates/view/edit page renders are served
+        // by the SPA (see the catch-all); the data endpoints remain here.
         Route::get('/contacts/data', [ContactController::class, 'data'])->name('contacts.data');
         Route::get('/contacts/suggest', [ContactController::class, 'suggest'])->name('contacts.suggest');
         Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
@@ -343,16 +327,16 @@ Route::middleware('auth')->group(function (): void {
         Route::delete('/contacts/bulk-destroy', [ContactController::class, 'bulkDestroy'])->middleware('throttle:600,1')->name('contacts.bulk-destroy');
         Route::post('/contacts', [ContactController::class, 'store'])->middleware('throttle:600,1')->name('contacts.store');
 
-        // Duplicate detection + merge.
-        Route::get('/contacts/duplicates', [ContactDuplicateController::class, 'index'])->name('contacts.duplicates');
+        // Duplicate detection + merge (page render served by the SPA).
         Route::get('/contacts/duplicates/data', [ContactDuplicateController::class, 'data'])->name('contacts.duplicates.data');
         Route::post('/contacts/duplicates/merge', [ContactDuplicateController::class, 'merge'])->middleware('throttle:120,1')->name('contacts.duplicates.merge');
         Route::post('/contacts/duplicates/dismiss', [ContactDuplicateController::class, 'dismiss'])->middleware('throttle:120,1')->name('contacts.duplicates.dismiss');
 
-        // Per-contact.
-        Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('contacts.show');
-        Route::get('/contacts/{contact}/view', [ContactController::class, 'view'])->name('contacts.view');
-        Route::get('/contacts/{contact}/edit', [ContactController::class, 'edit'])->name('contacts.edit');
+        // Per-contact. The show endpoint returns JSON (data route). Contacts use
+        // UUID keys, so it is constrained to a UUID: this keeps non-UUID segments
+        // (e.g. /contacts/duplicates, /contacts/create — SPA paths) from being
+        // swallowed by the model binding so they fall through to the SPA catch-all.
+        Route::get('/contacts/{contact}', [ContactController::class, 'show'])->whereUuid('contact')->name('contacts.show');
         Route::get('/contacts/{contact}/geo', [ContactController::class, 'geocode'])->middleware('throttle:120,1')->name('contacts.geo');
         Route::get('/contacts/{contact}/avatar', [ContactController::class, 'avatarImage'])->middleware('throttle:3000,1')->name('contacts.avatar');
         Route::patch('/contacts/{contact}/favorite', [ContactController::class, 'favorite'])->middleware('throttle:600,1')->name('contacts.favorite');
@@ -367,15 +351,16 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/contact-groups', [ContactGroupController::class, 'store'])->middleware('throttle:600,1')->name('contact-groups.store');
         Route::delete('/contact-groups/{group}', [ContactGroupController::class, 'destroy'])->middleware('throttle:600,1')->name('contact-groups.destroy');
 
-        // CardDAV sync settings (single app-specific webdav_password + Apple profile).
-        Route::get('/settings/contacts', [SettingsContactsController::class, 'edit'])->name('settings.contacts.edit');
+        // CardDAV sync settings: the edit page render is served by the SPA; the
+        // downloadable Apple enrollment profile (.mobileconfig) stays here.
         Route::get('/settings/contacts/profile', [SettingsContactsController::class, 'profile'])->name('settings.contacts.profile');
     });
 
     // Calendar + CalDAV (plaintext-relational). Static collection routes are
     // declared before /calendar/events/{event} so they win over model binding.
     Route::middleware('module:calendar')->group(function (): void {
-        Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
+        // The /calendar page render is served by the SPA (see the catch-all);
+        // the data endpoints remain module-gated here.
         Route::get('/calendar/data', [CalendarController::class, 'data'])->name('calendar.data');
         // OpenHolidays proxies (SSRF-guarded) so the SPA selects load under CSP connect-src 'self'.
         Route::get('/calendar/holiday-countries', [CalendarController::class, 'holidayCountries'])->middleware('throttle:60,1')->name('calendar.holiday-countries');
@@ -397,13 +382,13 @@ Route::middleware('auth')->group(function (): void {
         Route::put('/calendars/{calendar}', [CalendarBookController::class, 'update'])->middleware('throttle:600,1')->name('calendars.update');
         Route::delete('/calendars/{calendar}', [CalendarBookController::class, 'destroy'])->middleware('throttle:600,1')->name('calendars.destroy');
 
-        // CalDAV sync settings (single app-specific webdav_password + Apple profile).
-        Route::get('/settings/calendar', [SettingsCalendarController::class, 'edit'])->name('settings.calendar.edit');
+        // CalDAV sync settings: the edit page render is served by the SPA; the
+        // downloadable Apple enrollment profile (.mobileconfig) stays here.
         Route::get('/settings/calendar/profile', [SettingsCalendarController::class, 'profile'])->name('settings.calendar.profile');
     });
 
-    // Per-user company profile + invoice defaults (printed on every invoice).
-    Route::get('/settings/company', [SettingsCompanyController::class, 'edit'])->name('settings.company.edit');
+    // Per-user company profile + invoice defaults (printed on every invoice). The
+    // edit page render is served by the SPA; update + logo image stay here.
     Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
     Route::get('/settings/company/logo', [SettingsCompanyController::class, 'logo'])->name('settings.company.logo');
 
@@ -414,8 +399,33 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->middleware('throttle:20,1')->name('paperless.documents');
 });
 
-// Vue 3 + Vuetify SPA shell (Sanctum cookie auth; vue-router owns /spa/*).
-// Mounted under /spa during the migration so the live Blade app at / stays
-// untouched until the P7 cutover. Public: the shell itself needs no auth —
-// the SPA router redirects to its own /spa/login when /api/v1/me is 401.
-Route::get('/spa/{any?}', fn () => view('spa'))->where('any', '.*')->name('spa');
+// Public SPA-shell page renders. These serve the SPA shell (no data — data comes
+// from the gated /api/v1) and, crucially, preserve the named route entry points
+// that kept, non-page controllers still reference for post-mutation redirects
+// (e.g. settings.* saves) and invite consumption (finance.index). Auth is now
+// enforced by the SPA router guard + the API, not by these page routes, so they
+// are intentionally public: an unauthenticated visit returns the 200 shell and
+// the SPA redirects to /login client-side.
+$spa = static fn () => view('spa');
+Route::get('/finance', $spa)->name('finance.index');
+Route::get('/files', $spa)->name('files.index');
+Route::get('/contacts', $spa)->name('contacts.index');
+Route::get('/calendar', $spa)->name('calendar.index');
+Route::get('/profile', $spa)->name('profile');
+Route::get('/settings/users', $spa)->name('settings.users');
+Route::get('/settings/groups', $spa)->name('settings.groups');
+Route::get('/settings/security', $spa)->name('settings.security.edit');
+Route::get('/settings/notifications', $spa)->name('settings.notifications.edit');
+Route::get('/settings/company', $spa)->name('settings.company.edit');
+Route::get('/settings/files', $spa)->name('settings.files.edit');
+Route::get('/settings/paperless', $spa)->name('settings.paperless.edit');
+Route::get('/settings/backup', $spa)->name('settings.backup.index');
+
+// Catch-all: every other GET UI path returns the SPA shell so vue-router can
+// handle it client-side. GET-only, so POST/PUT/DELETE (Fortify auth + data
+// mutations) are unaffected. The negative lookahead keeps real, non-SPA handlers
+// (the token API, static assets, WebDAV, health/metrics, Sanctum, discovery,
+// public file-share + invite links) from being shadowed by the shell.
+Route::get('/{any}', $spa)
+    ->where('any', '^(?!api/|build/|storage/|dav|up$|metrics$|sanctum/|\.well-known/|file-share/|invite/).*$')
+    ->name('spa.catchall');
