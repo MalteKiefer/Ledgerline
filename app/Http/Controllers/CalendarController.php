@@ -93,6 +93,13 @@ class CalendarController extends Controller
         $from = CarbonImmutable::parse((string) $request->query('from'))->utc();
         $to = CarbonImmutable::parse((string) $request->query('to'))->utc();
 
+        // Cap the requested span: recurrence expansion is O(events · occurrences),
+        // so an unbounded window (e.g. 1970→3000) is a self-DoS. A calendar UI never
+        // needs more than a wide year around the view; reject anything larger.
+        if ($from->diffInDays($to) > 400) {
+            return response()->json(['error' => 'range_too_large'], 422);
+        }
+
         // Owner-scoped calendar ids (OwnsUserData global scope) + colour map.
         $calendars = Calendar::query()
             ->when($request->query('calendar'), fn ($q) => $q->whereKey($request->query('calendar')))

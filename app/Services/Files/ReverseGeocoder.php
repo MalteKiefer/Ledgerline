@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Files;
 
 use App\Models\AppSettings;
+use App\Support\OutboundUrl;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use Throwable;
 
 /**
@@ -88,8 +88,12 @@ class ReverseGeocoder
         try {
             $this->throttle();
 
-            $response = Http::withHeaders(['User-Agent' => 'Ledgerline ERP (self-hosted)'])
-                ->timeout(5)
+            // Route through the app-wide SSRF guard (redirect-free + resolved-IP pin)
+            // for consistency with every other outbound client. The host is a fixed
+            // constant today, so behaviour is unchanged; the guard applies if it ever
+            // becomes config/DB-driven.
+            $response = OutboundUrl::client($path, 5)
+                ->withHeaders(['User-Agent' => 'Ledgerline ERP (self-hosted)'])
                 ->get($path, $query);
 
             if (! $response->successful()) {

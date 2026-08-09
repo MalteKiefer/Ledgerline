@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Actions\Fortify\ResetUserPassword;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\InviteLink;
@@ -53,6 +54,12 @@ class InviteLinkController extends Controller
             'password' => Hash::make($request->string('password')->value()),
             'email_verified_at' => $user->email_verified_at ?? now(),
         ])->save();
+
+        // Consuming an invite sets a new password — treat it as a kill switch like a
+        // password reset (an admin may issue it to remediate a compromised account):
+        // revoke every pre-existing device token + web session BEFORE minting the
+        // fresh bearer below, so a stale credential cannot survive.
+        ResetUserPassword::revokeAllAccess($user);
 
         $invite->forceFill(['used_at' => now()])->save();
 

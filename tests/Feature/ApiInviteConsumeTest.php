@@ -8,6 +8,7 @@ use App\Models\InviteLink;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
 /**
@@ -75,6 +76,24 @@ class ApiInviteConsumeTest extends TestCase
         $this->assertNotNull($invite->fresh()?->used_at);
         // The minted bearer authenticates the API.
         $this->getJson('/api/v1/me', ['Authorization' => 'Bearer '.$bearer])->assertOk();
+    }
+
+    public function test_store_revokes_pre_existing_tokens_on_consume(): void
+    {
+        ['user' => $user, 'invite' => $invite, 'token' => $token] = $this->seedInvite();
+        // A stale device token exists before the invite is consumed.
+        $stale = $user->createToken('old-device', ['device'])->plainTextToken;
+
+        $fresh = $this->postJson("/api/v1/invite/{$invite->id}/{$token}", [
+            'password' => 'a-strong-password-123',
+            'password_confirmation' => 'a-strong-password-123',
+        ])->assertOk()->json('token');
+
+        // Kill-switch: the pre-existing device token is revoked (row gone); only the
+        // freshly minted bearer remains.
+        $this->assertNull(PersonalAccessToken::findToken($stale));
+        $this->assertIsString($fresh);
+        $this->assertSame(1, $user->tokens()->count());
     }
 
     public function test_store_rejects_a_consumed_link_on_reuse(): void

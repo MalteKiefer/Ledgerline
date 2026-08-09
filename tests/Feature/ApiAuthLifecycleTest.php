@@ -66,6 +66,30 @@ class ApiAuthLifecycleTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_reset_password_does_not_enumerate_users(): void
+    {
+        User::factory()->create(['email' => 'known@example.com']);
+
+        // Existing email + bad token, and a totally unknown email, must yield the
+        // SAME neutral body — no passwords.user vs passwords.token existence oracle.
+        $existing = $this->postJson('/api/v1/auth/reset-password', [
+            'token' => 'not-a-real-token',
+            'email' => 'known@example.com',
+            'password' => 'brand-new-password-1',
+            'password_confirmation' => 'brand-new-password-1',
+        ])->assertStatus(422)->assertJson(['status' => 'reset-failed']);
+
+        $unknown = $this->postJson('/api/v1/auth/reset-password', [
+            'token' => 'not-a-real-token',
+            'email' => 'nobody@example.com',
+            'password' => 'brand-new-password-1',
+            'password_confirmation' => 'brand-new-password-1',
+        ])->assertStatus(422)->assertJson(['status' => 'reset-failed']);
+
+        $this->assertSame($existing->json(), $unknown->json());
+        $existing->assertJsonMissing(['status' => 'passwords.user']);
+    }
+
     public function test_register_is_forbidden_when_self_registration_is_off(): void
     {
         AppSettings::current()->update(['allow_registration' => false]);

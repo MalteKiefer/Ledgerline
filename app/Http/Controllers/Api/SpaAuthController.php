@@ -72,6 +72,14 @@ class SpaAuthController extends Controller
             }
         }
 
+        // Email-verification gate: the account must prove ownership of its address
+        // (User implements MustVerifyEmail) before it can obtain an API bearer.
+        // register() already withholds the token until verified; enforce the same on
+        // login so it cannot be used to bypass that gate (internet-facing hardening).
+        if (! $user->hasVerifiedEmail()) {
+            return response()->json(['status' => 'verify-email'], 403);
+        }
+
         // A native client identifies itself with an install_id (and a device name).
         // Register it as a real device (cap/dedup/meta) so it appears under
         // "Connected devices" with revoke/wipe/heartbeat — identical to QR pairing.
@@ -140,9 +148,12 @@ class SpaAuthController extends Controller
             return response()->json(['status' => 'password-reset']);
         }
 
-        $statusKey = is_string($status) ? $status : 'passwords.token';
-
-        return response()->json(['status' => $statusKey, 'message' => __($statusKey)], 422);
+        // Never echo the broker status: `passwords.user` (unknown email) vs
+        // `passwords.token` (bad token) is an account-existence oracle. Collapse
+        // every non-success state to one neutral body — a bad token and an
+        // unknown email are indistinguishable to the caller (mirrors the generic
+        // forgot-password response).
+        return response()->json(['status' => 'reset-failed', 'message' => __('passwords.token')], 422);
     }
 
     /**
