@@ -14,6 +14,11 @@
       <input ref="avatarInput" type="file" accept="image/*" class="hidden" @change="onAvatar" >
     </div>
   </Card>
+
+  <Card :title="t('settings.sync_section')" class="mt-4">
+    <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('contacts.apple_profile_hint') }}</p>
+    <Btn tag="a" variant="soft" icon="download" :href="carddavUrl" download>{{ t('contacts.apple_profile') }}</Btn>
+  </Card>
 </template>
 
 <script setup lang="ts">
@@ -33,6 +38,8 @@ const avatarBust = ref(0);
 const avatarInput = ref<HTMLInputElement | null>(null);
 const avatarUrl = computed(() => (auth.user?.has_avatar ? api.streamUrl(`/api/v1/avatar?v=${avatarBust.value}`) : ''));
 const initials = computed(() => (auth.user?.name ?? '?').slice(0, 1).toUpperCase());
+// Downloadable Apple CardDAV configuration profile (bearer via the ?_token= pattern).
+const carddavUrl = computed(() => api.streamUrl('/api/v1/account/carddav-profile'));
 
 function pickAvatar() { avatarInput.value?.click(); }
 

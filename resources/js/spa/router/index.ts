@@ -2,7 +2,15 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@spa/stores/auth';
 
 const routes: RouteRecordRaw[] = [
-  { path: '/login', name: 'login', component: () => import('@spa/views/auth/Login.vue'), meta: { guest: true } },  {
+  { path: '/login', name: 'login', component: () => import('@spa/views/auth/Login.vue'), meta: { guest: true } },
+  // Public auth pages — reachable WITHOUT a token. `guest` bounces an already
+  // signed-in user to home (same as login); `public` pages never bounce.
+  { path: '/forgot-password', name: 'forgot-password', component: () => import('@spa/views/auth/ForgotPassword.vue'), meta: { guest: true } },
+  { path: '/reset-password', name: 'reset-password', component: () => import('@spa/views/auth/ResetPassword.vue'), meta: { guest: true } },
+  { path: '/register', name: 'register', component: () => import('@spa/views/auth/Register.vue'), meta: { guest: true } },
+  { path: '/invite/:invite/:token', name: 'invite', component: () => import('@spa/views/auth/Invite.vue'), meta: { public: true } },
+  { path: '/share/:token', name: 'public-share', component: () => import('@spa/views/PublicShare.vue'), meta: { public: true } },
+  {
     path: '/',
     component: () => import('@spa/views/Shell.vue'),
     children: [
@@ -49,6 +57,8 @@ export const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
   if (!auth.ready) await auth.bootstrap();
+  // Fully public pages (invite/share links) load regardless of auth state.
+  if (to.meta.public) return true;
   if (!to.meta.guest && !auth.user) return { name: 'login', query: { redirect: to.fullPath } };
   if (to.meta.guest && auth.user) return { name: 'home' };
   return true;

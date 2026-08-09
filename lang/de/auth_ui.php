@@ -36,6 +36,9 @@ return [
     'back_to_login' => 'Zurück zur Anmeldung',
     'reset_title' => 'Neues Passwort wählen',
     'reset_button' => 'Passwort zurücksetzen',
+    'reset_success' => 'Dein Passwort wurde zurückgesetzt. Du kannst dich jetzt anmelden.',
+    'reset_invalid' => 'Dieser Link ist ungültig oder abgelaufen.',
+    'register_disabled' => 'Die Selbstregistrierung ist derzeit deaktiviert.',
 
     // Email verification
     'verify_title' => 'E-Mail bestätigen',

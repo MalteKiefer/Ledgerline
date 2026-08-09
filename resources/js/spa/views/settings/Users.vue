@@ -1,4 +1,19 @@
 <template>
+  <Card :title="t('settings.users_registration')" class="mb-4">
+    <div class="flex items-center justify-between gap-4">
+      <p class="text-sm text-[var(--ll-muted)]">{{ t('settings.users_registration_hint') }}</p>
+      <button
+        type="button" role="switch" :aria-checked="regAllow" :disabled="regBusy"
+        class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 disabled:opacity-50"
+        :class="regAllow ? 'bg-primary-500' : 'bg-[var(--ll-border)]'"
+        :title="regAllow ? t('settings.users_registration_on') : t('settings.users_registration_off')"
+        @click="toggleReg"
+      >
+        <span class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform" :class="regAllow ? 'translate-x-5' : 'translate-x-0.5'" />
+      </button>
+    </div>
+  </Card>
+
   <Card :title="t('settings.users_section')" body-class="p-0">
     <template #actions>
       <Btn variant="solid" size="sm" icon="add" @click="openNew">{{ t('common.add') }}</Btn>
@@ -108,8 +123,20 @@ const roleOptions = [
 const form = reactive({ name: '', email: '', password: '', role: 'user' });
 const err = reactive<Record<string, string[] | undefined>>({});
 
-onMounted(load);
+// Workspace self-registration toggle (admin only; this view is already admin-gated).
+const regAllow = ref(false);
+const regBusy = ref(false);
+
+onMounted(() => { void load(); void loadReg(); });
 async function load() { loading.value = true; try { await s.loadUsers(); } finally { loading.value = false; } }
+async function loadReg() { try { regAllow.value = (await s.getRegistration()).allow_registration; } catch { /* non-admin / unavailable */ } }
+async function toggleReg() {
+  regBusy.value = true;
+  try {
+    regAllow.value = (await s.setRegistration(!regAllow.value)).allow_registration;
+    success(t('common.saved'));
+  } catch { error(t('common.error')); } finally { regBusy.value = false; }
+}
 
 function openNew() { editing.value = null; Object.assign(form, { name: '', email: '', password: '', role: 'user' }); clearErr(); dialog.value = true; }
 function openEdit(u: AdminUser) { editing.value = u; Object.assign(form, { name: u.name, email: u.email, password: '', role: u.role }); clearErr(); dialog.value = true; }

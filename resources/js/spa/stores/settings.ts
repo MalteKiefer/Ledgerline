@@ -141,6 +141,10 @@ export const useSettingsStore = defineStore('settings', () => {
   // Security log
   const loadAudit = async (params = '') => { const r = await api.get<{ data?: AuditRow[] }>(`/api/v1/security-log${params}`); audit.value = r.data ?? []; };
 
+  // Workspace self-registration toggle (admin only)
+  const getRegistration = () => api.get<{ allow_registration: boolean }>('/api/v1/admin/registration');
+  const setRegistration = (allow: boolean) => api.put<{ allow_registration: boolean }>('/api/v1/admin/registration', { allow_registration: allow });
+
   return {
     users, groups, jobs, destinations, runs, audit,
     loadUsers, createUser, updateUser, deleteUser, resetPassword, reset2fa, inviteLink,
@@ -148,6 +152,6 @@ export const useSettingsStore = defineStore('settings', () => {
     loadBackup, runJob, deleteJob,
     saveDestination, deleteDestination, testDestination,
     saveJob, verifyRun, cancelRun, restoreRun, downloadRunUrl, decryptRun,
-    loadAudit,
+    loadAudit, getRegistration, setRegistration,
   };
 });

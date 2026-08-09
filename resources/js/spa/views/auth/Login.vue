@@ -15,6 +15,13 @@
           <TextField v-if="needs2fa" v-model="code" :label="t('auth_ui.twofa_code')" icon="pin" inputmode="numeric" autofocus @enter="submit" />
           <Btn type="submit" variant="solid" size="lg" class="w-full" :loading="busy">{{ t('auth_ui.sign_in') }}</Btn>
         </form>
+        <div class="mt-5 flex flex-col gap-1.5 text-center text-sm">
+          <RouterLink :to="{ name: 'forgot-password' }" class="text-primary-600 hover:underline dark:text-primary-300">{{ t('auth_ui.forgot') }}</RouterLink>
+          <p class="text-[var(--ll-muted)]">
+            {{ t('auth_ui.no_account') }}
+            <RouterLink :to="{ name: 'register' }" class="text-primary-600 hover:underline dark:text-primary-300">{{ t('auth_ui.register_link') }}</RouterLink>
+          </p>
+        </div>
       </Card>
     </div>
   </div>
@@ -22,7 +29,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, RouterLink } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Card, TextField, Btn } from '@spa/ui';
 import { useAuthStore } from '@spa/stores/auth';
