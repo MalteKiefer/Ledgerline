@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\PaperlessTerm;
 use App\Models\UserSetting;
 use App\Services\Paperless\PaperlessClient;
+use App\Support\Redactor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -65,7 +66,7 @@ class PaperlessController extends Controller
         try {
             $term = $client->create($kind, $name);
         } catch (\Throwable $e) {
-            Log::warning('Paperless createTerm failed', ['error' => $e->getMessage()]);
+            Log::warning('Paperless createTerm failed', ['error' => Redactor::redact($e->getMessage())]);
 
             return response()->json(['ok' => false, 'detail' => __('paperless.request_failed')], 422);
         }
@@ -120,7 +121,7 @@ class PaperlessController extends Controller
                 ],
             );
         } catch (\Throwable $e) {
-            Log::warning('Paperless submit failed', ['error' => $e->getMessage()]);
+            Log::warning('Paperless submit failed', ['error' => Redactor::redact($e->getMessage())]);
 
             return response()->json(['ok' => false, 'detail' => __('paperless.request_failed')], 422);
         }

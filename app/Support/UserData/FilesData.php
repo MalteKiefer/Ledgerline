@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Support\UserData;
 
 use App\Models\FileEntry;
+use App\Models\FileShare;
 use App\Models\FileVersion;
+use App\Models\FolderShare;
+use App\Models\FolderShareMember;
 use App\Models\User;
 use App\Support\BlobStore;
 
@@ -29,9 +32,11 @@ final class FilesData implements UserDataContributor
      */
     public function export(User $user): array
     {
+        $uid = $user->getKey();
+
         $files = FileEntry::query()
             ->withoutGlobalScopes()
-            ->where('user_id', $user->getKey())
+            ->where('user_id', $uid)
             ->orderBy('id')
             ->get(['id', 'file_folder_id', 'name', 'mime', 'size', 'created_at'])
             ->map(fn (FileEntry $f): array => [
@@ -44,7 +49,39 @@ final class FilesData implements UserDataContributor
             ])
             ->all();
 
-        return ['files' => $files];
+        // Public share links the user owns. password_hash is #[$hidden] and a
+        // secret — the explicit column list omits it.
+        $publicShares = FileShare::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $uid)
+            ->orderBy('id')
+            ->get(['id', 'token', 'kind', 'file_id', 'file_folder_id', 'allow_download', 'expires_at', 'created_at'])
+            ->toArray();
+
+        // Cross-user folder shares the user owns (owner column is owner_id) …
+        $folderShares = FolderShare::query()
+            ->withoutGlobalScopes()
+            ->where('owner_id', $uid)
+            ->orderBy('id')
+            ->get(['id', 'file_folder_id', 'file_id', 'created_at'])
+            ->toArray();
+
+        // … and the recipient memberships attached to those shares.
+        $folderShareIds = array_column($folderShares, 'id');
+        $folderShareMembers = $folderShareIds === []
+            ? []
+            : FolderShareMember::query()
+                ->whereIn('folder_share_id', $folderShareIds)
+                ->orderBy('id')
+                ->get(['id', 'folder_share_id', 'user_id', 'role', 'created_at'])
+                ->toArray();
+
+        return [
+            'files' => $files,
+            'file_shares' => $publicShares,
+            'folder_shares' => $folderShares,
+            'folder_share_members' => $folderShareMembers,
+        ];
     }
 
     public function purge(User $user): void

@@ -12,6 +12,7 @@ use App\Services\Paperless\PaperlessClient;
 use App\Services\Paperless\PaperlessSync;
 use App\Support\KeepBlankSecrets;
 use App\Support\OutboundUrl;
+use App\Support\Redactor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -104,7 +105,7 @@ class PaperlessController extends Controller
         try {
             $term = $client->create($kind, $name);
         } catch (\Throwable $e) {
-            Log::warning('Paperless createTerm failed (api)', ['error' => $e->getMessage()]);
+            Log::warning('Paperless createTerm failed (api)', ['error' => Redactor::redact($e->getMessage())]);
 
             return response()->json(['ok' => false, 'detail' => __('paperless.request_failed')], 422);
         }
@@ -179,7 +180,7 @@ class PaperlessController extends Controller
                 ],
             );
         } catch (\Throwable $e) {
-            Log::warning('Paperless submit failed (api)', ['error' => $e->getMessage()]);
+            Log::warning('Paperless submit failed (api)', ['error' => Redactor::redact($e->getMessage())]);
 
             return $this->noStore(
                 response()->json(['ok' => false, 'detail' => __('paperless.request_failed')], 422)

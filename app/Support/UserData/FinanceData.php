@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Support\UserData;
 
 use App\Models\BankTransaction;
+use App\Models\FinancePartner;
+use App\Models\FinanceProject;
 use App\Models\FinanceReceipt;
 use App\Models\Invoice;
+use App\Models\PaymentMethod;
 use App\Models\User;
 use App\Support\BlobStore;
 
@@ -47,6 +50,21 @@ final class FinanceData implements UserDataContributor
             'receipts' => FinanceReceipt::query()->withoutGlobalScopes()->withTrashed()
                 ->where('user_id', $uid)->orderBy('id')
                 ->get(['id', 'name', 'amount', 'category', 'note', 'created_at'])
+                ->toArray(),
+            // Payment methods: the user's own bank/card details. The full card PAN
+            // (card_number) is deliberately omitted from the download — network +
+            // expiry identify the card without exporting the raw number.
+            'payment_methods' => PaymentMethod::query()->withoutGlobalScopes()->withTrashed()
+                ->where('user_id', $uid)->orderBy('id')
+                ->get(['id', 'type', 'name', 'business', 'bank', 'iban', 'bic', 'account_no', 'card_network', 'card_expiry', 'paypal_email', 'created_at'])
+                ->toArray(),
+            'partners' => FinancePartner::query()->withoutGlobalScopes()->withTrashed()
+                ->where('user_id', $uid)->orderBy('id')
+                ->get(['id', 'name', 'category', 'kind', 'url', 'note', 'address', 'email', 'invoice_email', 'phone', 'vat_id', 'hourly_rate', 'currency', 'contacts', 'created_at'])
+                ->toArray(),
+            'projects' => FinanceProject::query()->withoutGlobalScopes()->withTrashed()
+                ->where('user_id', $uid)->orderBy('id')
+                ->get(['id', 'parent_id', 'name', 'kind', 'note', 'expenses', 'created_at'])
                 ->toArray(),
         ];
     }
