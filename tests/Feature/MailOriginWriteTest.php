@@ -186,6 +186,44 @@ class MailOriginWriteTest extends TestCase
         (new ImapAppender)->append($account, 'INBOX', "a\r\n\r\nb", 'pw');
     }
 
+    public function test_appender_rejects_a_folder_with_control_characters(): void
+    {
+        $account = $this->account();
+        $fake = new FakeImapStream;
+        $appender = new class($fake) extends ImapAppender
+        {
+            public function __construct(public ImapStream $fakeStream) {}
+
+            protected function connect(MailAccount $account): ImapStream
+            {
+                return $this->fakeStream;
+            }
+        };
+
+        // A folder name carrying CRLF would break out of the IMAP quoted-string
+        // and inject a physical command line → fail closed.
+        $this->expectException(RuntimeException::class);
+        $appender->append($account, "INBOX\r\nX00 DELETE \"Trash\"", "a\r\n\r\nb", 'imap-secret');
+    }
+
+    public function test_deleter_rejects_a_folder_with_control_characters(): void
+    {
+        $account = $this->account();
+        $fake = new FakeImapStream(['5']);
+        $deleter = new class($fake) extends ImapDeleter
+        {
+            public function __construct(public ImapStream $fakeStream) {}
+
+            protected function connect(MailAccount $account): ImapStream
+            {
+                return $this->fakeStream;
+            }
+        };
+
+        $this->expectException(RuntimeException::class);
+        $deleter->delete($account, "INBOX\r\nX00 LOGOUT", '<abc@example.com>', 'imap-secret');
+    }
+
     public function test_pushback_controller_appends_and_sets_no_store(): void
     {
         $account = $this->account();

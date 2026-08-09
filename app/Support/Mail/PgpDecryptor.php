@@ -45,8 +45,14 @@ final class PgpDecryptor
 
             $argv = $this->base($home, ['--pinentry-mode', 'loopback']);
             if ($passphrase !== null && $passphrase !== '') {
-                $argv[] = '--passphrase';
-                $argv[] = $passphrase;
+                // Pass the passphrase via a 0600 file inside the ephemeral
+                // GNUPGHOME (shredded with the homedir in the finally) rather than
+                // on argv, where it would be world-readable in /proc/<pid>/cmdline.
+                $passFile = $home.'/passphrase';
+                file_put_contents($passFile, $passphrase);
+                @chmod($passFile, 0600);
+                $argv[] = '--passphrase-file';
+                $argv[] = $passFile;
             }
             $argv[] = '--decrypt';
             $argv[] = $msgFile;

@@ -8,6 +8,7 @@ use App\Models\BlockedIp;
 use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -29,7 +30,16 @@ class BlockGuard
             abort(403, 'Your address has been blocked.');
         }
 
+        // BlockGuard is prepended BEFORE StartSession / auth:sanctum, so for a
+        // token API request $request->user() is still null here. Resolve the
+        // Sanctum bearer explicitly so an already-authenticated blocked account is
+        // refused on its very next request — not only at block time. (Web sessions
+        // are torn down when the block is set, and the Fortify login gate refuses
+        // re-login, so the web path is covered without a session read here.)
         $user = $request->user();
+        if (! $user instanceof User) {
+            $user = Auth::guard('sanctum')->user();
+        }
         if ($user instanceof User && $user->isBlocked()) {
             // Deny + tear down any auth so a blocked account can't act.
             abort(403, 'This account has been blocked.');

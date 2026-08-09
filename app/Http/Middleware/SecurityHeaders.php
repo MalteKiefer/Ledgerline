@@ -14,10 +14,11 @@ use Symfony\Component\HttpFoundation\Response;
  * defence-in-depth backstop: even if untrusted content ever reached the app
  * origin, it could not load remote scripts, be framed, or post elsewhere.
  *
- * 'unsafe-eval' is required by Alpine.js (it evaluates x-* expressions via the
- * Function constructor) and is an accepted defence-in-depth reduction; drop it
- * if Alpine is ever built in CSP-safe mode. No inline <script> or inline event
- * handlers are emitted anywhere in the app, so script-src omits 'unsafe-inline'
+ * 'unsafe-eval' is scoped to the legacy Alpine Blade pages only (Alpine evaluates
+ * x-* expressions via the Function constructor); the Vue SPA — the primary UI,
+ * precompiled by Vite — is served eval-free. See responseNeedsEval(). No inline
+ * <script> or inline event handlers are emitted anywhere in the app, so
+ * script-src omits 'unsafe-inline'
  * (the sole inline script — the theme bootstrap — is allowed via its exact
  * sha256 hash). This is a defence-in-depth policy for the application shell
  * only: script-src still forbids loading scripts from other origins. The real
@@ -38,13 +39,21 @@ final class SecurityHeaders
     {
         $response = $next($request);
 
+        // Strip stack-fingerprinting headers the base image / PHP-FPM may add.
+        $response->headers->remove('X-Powered-By');
+        $response->headers->remove('Server');
+
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         // Framing policy is driven by security.frame_ancestors (CSP frame-ancestors
         // below is authoritative). X-Frame-Options can only express deny/sameorigin,
-        // not an allowlist, so emit it ONLY in the default deny case; when embedding
-        // is permitted (an allowlist or `*`) we drop XFO and let frame-ancestors rule.
-        if ($this->frameAncestors() === "'none'") {
+        // not an allowlist: emit DENY for 'none', SAMEORIGIN for 'self', and drop XFO
+        // for any broader allowlist (let frame-ancestors rule). A literal '*' never
+        // reaches here on a TLS box (frameAncestors() downgrades it to 'self').
+        $frameAncestors = $this->frameAncestors();
+        if ($frameAncestors === "'none'") {
             $response->headers->set('X-Frame-Options', 'DENY');
+        } elseif ($frameAncestors === "'self'") {
+            $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
         }
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         // No resource of this single-origin app is meant to be embedded/read by
@@ -56,7 +65,10 @@ final class SecurityHeaders
         // FLoC and now logs "Unrecognized feature" for it.)
         $response->headers->set(
             'Permissions-Policy',
-            'geolocation=(), camera=(), microphone=(), payment=(), usb=()'
+            'geolocation=(), camera=(), microphone=(), payment=(), usb=(), '
+            .'accelerometer=(), gyroscope=(), magnetometer=(), autoplay=(), '
+            .'display-capture=(), fullscreen=(self), browsing-topics=(), '
+            .'serial=(), midi=(), hid=(), bluetooth=(), idle-detection=()'
         );
 
         // Pin HTTPS only when the deployment is actually served over TLS
@@ -83,7 +95,7 @@ final class SecurityHeaders
         if (! app()->environment('local') && ! $isSandboxed) {
             $response->headers->set(
                 'Content-Security-Policy',
-                implode('; ', $this->appPolicy())
+                implode('; ', $this->appPolicy($this->responseNeedsEval($response)))
             );
         }
 
@@ -91,26 +103,69 @@ final class SecurityHeaders
     }
 
     /**
+     * Whether this response is a legacy Alpine Blade page that needs 'unsafe-eval'.
+     *
+     * The primary UI is the Vue SPA (spa.blade.php), precompiled by Vite → no eval.
+     * Only the legacy Alpine-backed Blade pages (guest/app layouts: e.g. the invite
+     * page) evaluate x-* expressions via the Function constructor. The eval-free SPA
+     * shell is the ONLY view containing `<div id="app">`, so scope 'unsafe-eval' to
+     * pages that are NOT the SPA shell. Non-HTML responses (JSON API, streamed blobs)
+     * never need eval and get the tighter policy.
+     */
+    private function responseNeedsEval(Response $response): bool
+    {
+        $type = (string) $response->headers->get('Content-Type', '');
+        if (! str_contains($type, 'text/html')) {
+            return false;
+        }
+
+        // Streamed/binary responses (StreamedResponse/BinaryFileResponse) return
+        // false from getContent() — no in-repo inline eval surface, treat as SPA.
+        $body = $response->getContent();
+        if (! is_string($body)) {
+            return false;
+        }
+
+        return ! str_contains($body, 'id="app"');
+    }
+
+    /**
      * The CSP `frame-ancestors` source list (who may embed this app in a frame).
-     * Defaults to `'none'` (public/safe: no framing; XFO DENY also emitted). An
-     * operator on a trusted LAN may set FRAME_ANCESTORS to a source list (e.g.
-     * "'self' http://192.168.3.200:8300") or `*` to permit a home-dashboard embed
-     * — see the Security register. Trimmed; empty falls back to 'none'.
+     * Defaults to `'self'` (same-origin framing only; XFO SAMEORIGIN also emitted).
+     * Set FRAME_ANCESTORS to `'none'` to refuse all framing, or to a source list
+     * (e.g. "'self' https://dashboard.example") for specific embedders. Trimmed;
+     * empty falls back to 'self'.
+     *
+     * A literal `*` (framing by ANY origin) is a clickjacking exposure on an
+     * internet-facing deployment, so it is REFUSED when the box is served over
+     * TLS (FORCE_HTTPS or secure cookies on) — it is downgraded to 'self'. This
+     * mirrors the TRUSTED_PROXIES='*' refusal in bootstrap/app.php (never trust a
+     * blanket wildcard on a public host).
      */
     private function frameAncestors(): string
     {
-        $v = config('security.frame_ancestors', "'none'");
+        $v = config('security.frame_ancestors', "'self'");
         $v = is_string($v) ? trim($v) : '';
 
-        return $v !== '' ? $v : "'none'";
+        if ($v === '') {
+            return "'self'";
+        }
+
+        // Fail safe: never allow universal framing on a TLS / internet-facing box.
+        if ($v === '*' && (config('app.force_https') || config('session.secure'))) {
+            return "'self'";
+        }
+
+        return $v;
     }
 
     /**
      * Defence-in-depth CSP for the authenticated application shell.
      *
+     * @param  bool  $allowEval  include 'unsafe-eval' (only for legacy Alpine pages)
      * @return list<string>
      */
-    private function appPolicy(): array
+    private function appPolicy(bool $allowEval): array
     {
         return [
             "default-src 'self'",
@@ -122,16 +177,18 @@ final class SecurityHeaders
             'frame-ancestors '.$this->frameAncestors(),
             "form-action 'self'",
             // The only inline script is the theme bootstrap (allowed via its
-            // exact hash), so 'unsafe-inline' stays dropped. 'unsafe-eval'
-            // remains because stock Alpine evaluates x-* expressions via the
-            // Function constructor; cross-origin scripts stay forbidden.
-            "script-src 'self' 'unsafe-eval' ".ThemeBootstrap::cspHash(),
+            // exact hash), so 'unsafe-inline' stays dropped. 'unsafe-eval' is
+            // added ONLY for legacy Alpine Blade pages (they evaluate x-* via the
+            // Function constructor); the Vue SPA — precompiled by Vite — runs
+            // eval-free. Cross-origin scripts stay forbidden either way.
+            $allowEval
+                ? "script-src 'self' 'unsafe-eval' ".ThemeBootstrap::cspHash()
+                : "script-src 'self' ".ThemeBootstrap::cspHash(),
             "style-src 'self' 'unsafe-inline'",
-            // App content is same-origin (encrypted /raw blobs -> blob: URLs,
-            // avatars, QR as data:). The ONLY remote images are Leaflet OSM map
-            // tiles, so scope to that host instead of a blanket 'https:' — this
-            // closes the "any https host" exfil channel the backstop is meant to
-            // contain while keeping the maps working.
+            // App content is same-origin only (blobs -> blob: URLs, avatars, QR
+            // as data:). No remote image host is allowed — contacts now uses an
+            // OSM *link*, not tiles — so this stays tighter than a blanket 'https:'
+            // and closes the "any https host" exfil channel the backstop contains.
             "img-src 'self' data: blob:",
             "font-src 'self' data:",
             // blob: for client-decrypted video/audio; no remote media origin.

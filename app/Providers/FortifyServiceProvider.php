@@ -8,6 +8,9 @@ use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\UpdateUserPassword;
 use App\Models\AppSettings;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Fortify\Actions\RedirectIfTwoFactorAuthenticatable;
 use Laravel\Fortify\Fortify;
@@ -32,6 +35,31 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::redirectUserForTwoFactorAuthenticationUsing(RedirectIfTwoFactorAuthenticatable::class);
+
+        // Web login credential check WITH an admin-block gate. Without this the
+        // web Fortify login (/login) never consults `blocked_at` — a blocked user
+        // could simply log back in and get a fresh session (the one-shot token/
+        // session teardown at block time doesn't prevent re-login). Fortify runs
+        // this for both the 2FA-redirect and the final attempt, so it covers the
+        // TOTP path too. Returning null yields the standard generic failure (no
+        // account-existence enumeration), mirroring the token login in
+        // SpaAuthController. The username is already canonicalised (lowercased)
+        // by Fortify's CanonicalizeUsername step before this runs.
+        Fortify::authenticateUsing(function (Request $request): ?User {
+            $email = $request->string(Fortify::username())->value();
+            $password = $request->string('password')->value();
+
+            $user = User::where('email', $email)->first();
+            if (! $user instanceof User || ! is_string($user->password) || ! Hash::check($password, $user->password)) {
+                return null;
+            }
+
+            if ($user->isBlocked()) {
+                return null;
+            }
+
+            return $user;
+        });
 
         // The Blade UI is retired — the Vue SPA owns all UI including the auth
         // screens (/login, /register, /forgot-password, /reset-password, …). Every

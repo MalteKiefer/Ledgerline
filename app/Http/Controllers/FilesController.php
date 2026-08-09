@@ -48,6 +48,14 @@ class FilesController extends Controller
     /** Largest source image the on-demand thumbnailer will decode in-request (40 MiB). */
     private const THUMB_MAX_SRC_BYTES = 40 * 1024 * 1024;
 
+    /** Reject thumbnail sources over this pixel budget (decompression bomb, ~100 MP). */
+    private const THUMB_MAX_PIXELS = 100 * 1000 * 1000;
+
+    /** ZIP export caps: abort 413 over either the file-count or cumulative-byte budget. */
+    private const ZIP_MAX_FILES = 5000;
+
+    private const ZIP_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+
     // ---- Storage helpers ----
 
     private function disk(): string
@@ -552,12 +560,17 @@ class FilesController extends Controller
 
         $name = $session['name'] !== '' ? $session['name'] : 'file';
 
+        // Sniff the assembled bytes server-side (finfo) rather than trusting the
+        // client filename extension — the served Content-Type must not be
+        // attacker-controlled. Fall back to the extension map only if unsniffable.
+        $mime = $this->sniffMime($tmp->path()) ?? $this->guessMime($name);
+
         $file = DB::transaction(fn (): FileEntry => $this->persistFile(
             name: $name,
             folderId: $session['file_folder_id'],
             path: $path,
             size: $size,
-            mime: $this->guessMime($name),
+            mime: $mime,
             sha: $sha,
         ));
 
@@ -595,6 +608,19 @@ class FilesController extends Controller
         ];
 
         return $map[$ext] ?? null;
+    }
+
+    /** Content-sniffed MIME of an assembled file (finfo), or null when indeterminate. */
+    private function sniffMime(string $path): ?string
+    {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo === false) {
+            return null;
+        }
+        $mime = finfo_file($finfo, $path);
+        finfo_close($finfo);
+
+        return is_string($mime) && $mime !== '' && $mime !== 'application/x-empty' ? $mime : null;
     }
 
     // ---- Download ----
@@ -803,6 +829,14 @@ class FilesController extends Controller
                 stream_copy_to_stream($in, $dst);
                 fclose($in);
                 fclose($dst);
+                // Pixel-budget guard (decompression bomb): reject > ~100 MP from the
+                // image header BEFORE decoding, independent of the driver — the GD
+                // fallback ignores ImageMagick's policy.xml, so the byte cap alone
+                // would let a highly-compressed huge image OOM the request.
+                $dims = @getimagesize($tmp->path());
+                if (is_array($dims) && (int) $dims[0] * (int) $dims[1] > self::THUMB_MAX_PIXELS) {
+                    abort(404);
+                }
                 $webp = (string) $images->make()->decodePath($tmp->path())
                     ->cover(400, 400)->encode(new WebpEncoder(quality: 78));
                 $this->fs()->put($thumbPath, $webp);
@@ -824,11 +858,11 @@ class FilesController extends Controller
      * de-duplicated + path-safe; bytes are read from the files disk. Owner-scoped
      * through the model global scope.
      */
-    public function downloadZip(Request $request): StreamedResponse|BinaryFileResponse
+    public function downloadZip(Request $request): BinaryFileResponse
     {
         $uid = (int) $this->requireUser($request)->id;
         $request->validate([
-            'ids' => ['nullable', 'array', 'max:5000'],
+            'ids' => ['nullable', 'array', 'max:'.self::ZIP_MAX_FILES],
             'ids.*' => ['integer'],
             // Owner-scope the folder explicitly (defense-in-depth, matches every
             // other folder param) rather than relying only on downstream scopes.
@@ -849,14 +883,26 @@ class FilesController extends Controller
         $files = $query->get();
         abort_if($files->isEmpty(), 404);
 
-        $tmp = tempnam(sys_get_temp_dir(), 'llzip');
-        if ($tmp === false) {
-            abort(500);
-        }
+        // DoS caps (metadata-only, before touching any bytes): the folder subtree
+        // branch has no validation count-cap, and a huge selection would otherwise
+        // OOM the worker. Abort 413 over either budget.
+        abort_if($files->count() > self::ZIP_MAX_FILES, 413);
+        abort_if($files->sum(fn (FileEntry $f): int => (int) $f->size) > self::ZIP_MAX_BYTES, 413);
+
+        // RAII temp: any throw before the success-path rename unlinks it (no
+        // plaintext-PII residue in the system temp dir). On success we rename it
+        // out so it survives until the framework deletes it post-send.
+        $tmp = DiskTempFile::create('llzip');
+        $zipPath = $tmp->path();
         $zip = new \ZipArchive;
-        if ($zip->open($tmp, \ZipArchive::OVERWRITE) !== true) {
+        if ($zip->open($zipPath, \ZipArchive::OVERWRITE) !== true) {
             abort(500);
         }
+
+        // Remote-disk per-entry temp files must outlive $zip->close() (ZipArchive
+        // reads added files lazily at close), so hold their RAII handles here.
+        /** @var list<DiskTempFile> $entryTemps */
+        $entryTemps = [];
         $used = [];
         foreach ($files as $f) {
             $path = (string) $f->storage_path;
@@ -873,14 +919,65 @@ class FilesController extends Controller
                 $n++;
             }
             $used[$entry] = true;
-            $zip->addFromString($entry, (string) $this->fs()->get($path));
-        }
-        $zip->close();
 
-        return response()->download($tmp, 'files-'.now()->format('Ymd-His').'.zip', [
+            // Stream from disk instead of reading the whole file into a PHP string:
+            // local disk → add the file path directly (ZipArchive streams it at
+            // close); remote disk → stream the blob to a temp file and add that.
+            $local = $this->localDiskPath($path);
+            if ($local !== null) {
+                $zip->addFile($local, $entry);
+            } elseif (($t = $this->streamBlobToTemp($path)) !== null) {
+                $entryTemps[] = $t;
+                $zip->addFile($t->path(), $entry);
+            }
+        }
+        if (! $zip->close()) {
+            abort(500);
+        }
+
+        // Detach from RAII: move the finished archive to a sibling path the
+        // framework owns (deleted post-send). $tmp's stored path no longer exists
+        // → its destructor is a harmless no-op.
+        $final = $zipPath.'.zip';
+        abort_unless(@rename($zipPath, $final), 500);
+
+        return response()->download($final, 'files-'.now()->format('Ymd-His').'.zip', [
             'Content-Type' => 'application/zip',
             'X-Content-Type-Options' => 'nosniff',
         ])->deleteFileAfterSend(true);
+    }
+
+    /** Absolute local filesystem path for a stored blob, or null on a remote disk. */
+    private function localDiskPath(string $relative): ?string
+    {
+        try {
+            $abs = $this->fs()->path($relative);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return is_string($abs) && is_file($abs) ? $abs : null;
+    }
+
+    /** Stream a remote-disk blob to a RAII temp file (bounded chunks), or null on failure. */
+    private function streamBlobToTemp(string $relative): ?DiskTempFile
+    {
+        $in = $this->fs()->readStream($relative);
+        if (! is_resource($in)) {
+            return null;
+        }
+        $tmp = DiskTempFile::create('llzipe');
+        $out = fopen($tmp->path(), 'wb');
+        if ($out === false) {
+            fclose($in);
+
+            return null;
+        }
+        stream_copy_to_stream($in, $out);
+        fclose($in);
+        fclose($out);
+
+        return $tmp;
     }
 
     /**

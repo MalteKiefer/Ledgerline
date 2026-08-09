@@ -65,7 +65,11 @@ final class SmimeDecryptor
 
         $in = DiskTempFile::create('smime-p12');
         file_put_contents($in->path(), $p12);
-        $pass = 'pass:'.($passphrase ?? '');
+        // Read the import passphrase from a RAII temp file (`file:`) rather than
+        // `pass:<value>` on argv, where it would leak via /proc/<pid>/cmdline.
+        $passFile = DiskTempFile::create('smime-pass');
+        file_put_contents($passFile->path(), $passphrase ?? '');
+        $pass = 'file:'.$passFile->path();
 
         $key = BinaryProcess::run(['openssl', 'pkcs12', '-in', $in->path(), '-nocerts', '-nodes', '-passin', $pass], self::TIMEOUT);
         $cert = BinaryProcess::run(['openssl', 'pkcs12', '-in', $in->path(), '-clcerts', '-nokeys', '-passin', $pass], self::TIMEOUT);

@@ -36,7 +36,7 @@ class MailExportController extends Controller
         abort_if($ids === [], 422);
 
         return $request->string('format')->value() === 'zip'
-            ? $this->zip($ids)
+            ? $this->zip($ids, $uid)
             : $this->mbox($ids);
     }
 
@@ -72,7 +72,7 @@ class MailExportController extends Controller
     /**
      * @param  list<string>  $ids
      */
-    private function zip(array $ids): BinaryFileResponse
+    private function zip(array $ids, int $uid): BinaryFileResponse
     {
         $disk = BlobStore::disk();
         $tmp = tempnam(sys_get_temp_dir(), 'llmbox');
@@ -82,7 +82,9 @@ class MailExportController extends Controller
         abort_if($zip->open($tmp, \ZipArchive::OVERWRITE) !== true, 500);
 
         $seen = [];
-        foreach (MailMessage::query()->whereIn('id', $ids)->get() as $message) {
+        // Re-pin the owner scope on the re-query (defense-in-depth; $ids is already
+        // owner-scoped via resolveIds()).
+        foreach (MailMessage::query()->ownedBy($uid)->whereIn('id', $ids)->get() as $message) {
             $raw = $disk->get('mail/'.$message->id);
             if (! is_string($raw) || $raw === '') {
                 continue;

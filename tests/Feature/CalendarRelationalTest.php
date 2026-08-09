@@ -49,6 +49,20 @@ class CalendarRelationalTest extends TestCase
         $this->assertDatabaseHas('calendar_changes', ['operation' => 1]);
     }
 
+    public function test_events_rejects_an_over_wide_window(): void
+    {
+        $user = $this->signIn();
+        $this->calendar($user->id);
+
+        // A multi-decade span would fan out recurrence expansion (self-DoS) → 422.
+        $this->getJson(route('calendar.events', ['from' => '1970-01-01', 'to' => '3000-01-01']))
+            ->assertStatus(422)->assertJson(['error' => 'range_too_large']);
+
+        // A normal month-wide window is accepted.
+        $this->getJson(route('calendar.events', ['from' => '2026-08-01', 'to' => '2026-08-31']))
+            ->assertOk();
+    }
+
     public function test_data_lists_calendars_and_settings_scoped_to_the_user(): void
     {
         $user = $this->signIn();

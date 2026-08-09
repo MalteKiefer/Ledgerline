@@ -22,6 +22,8 @@ use Sabre\DAV\Sync\Plugin as SyncPlugin;
 use Sabre\DAV\TemporaryFileFilterPlugin;
 use Sabre\DAVACL\Plugin as AclPlugin;
 use Sabre\DAVACL\PrincipalCollection;
+use Sabre\HTTP\RequestInterface;
+use Sabre\HTTP\ResponseInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -75,10 +77,44 @@ class WebDavController extends Controller
         $server->addPlugin(new LocksPlugin(new LockBackend($lockDir)));
         $server->addPlugin(new TemporaryFileFilterPlugin(sys_get_temp_dir().'/ll-webdav'));
 
+        // Harden GET responses. Sabre writes straight to the PHP SAPI, bypassing
+        // the SecurityHeaders middleware, so a stored file (whose Content-Type is
+        // client-influenced at upload) could otherwise be served inline and run
+        // as same-origin script (stored XSS) on this internet-facing host. Emit
+        // nosniff + an empty-sandbox CSP on every GET, and force
+        // download + a neutral Content-Type for browser-executable types.
+        $server->on('afterMethod:GET', function (RequestInterface $request, ResponseInterface $response): void {
+            self::hardenGetResponse($response);
+        });
+
         $server->start();
 
         // Sabre has already written headers + body to the SAPI; hand Laravel an
         // empty, already-sent response so it does not emit anything further.
         return response('', $server->httpResponse->getStatus());
+    }
+
+    /**
+     * Harden a Sabre GET response: nosniff + an empty-sandbox CSP on every GET,
+     * plus a forced download + neutral Content-Type for browser-executable
+     * media types (a stored file's Content-Type is client-influenced at upload).
+     * Extracted so the header policy is unit-testable without a real DAV socket.
+     */
+    public static function hardenGetResponse(ResponseInterface $response): void
+    {
+        $response->setHeader('X-Content-Type-Options', 'nosniff');
+        $response->setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+
+        $contentType = strtolower((string) $response->getHeader('Content-Type'));
+        $base = trim(explode(';', $contentType, 2)[0]);
+        $risky = [
+            'text/html', 'application/xhtml+xml', 'image/svg+xml',
+            'application/xml', 'text/xml',
+            'application/javascript', 'text/javascript', 'application/x-javascript',
+        ];
+        if (in_array($base, $risky, true)) {
+            $response->setHeader('Content-Type', 'application/octet-stream');
+            $response->setHeader('Content-Disposition', 'attachment');
+        }
     }
 }

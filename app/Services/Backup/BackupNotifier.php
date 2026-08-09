@@ -9,6 +9,7 @@ use App\Models\AppSettings;
 use App\Models\BackupJob;
 use App\Models\User;
 use App\Services\Notifications\ChannelNotifier;
+use App\Support\Redactor;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -51,7 +52,7 @@ class BackupNotifier
                     default => null,
                 };
             } catch (\Throwable $e) {
-                Log::warning('Backup notification failed', ['job' => $job->id, 'channel' => $channel, 'error' => $e->getMessage()]);
+                Log::warning('Backup notification failed', ['job' => $job->id, 'channel' => $channel, 'error' => Redactor::redact($e->getMessage())]);
             }
         }
     }

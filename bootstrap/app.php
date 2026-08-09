@@ -4,7 +4,6 @@ use App\Http\Middleware\BearerFromQuery;
 use App\Http\Middleware\BlockGuard;
 use App\Http\Middleware\EnsureModule;
 use App\Http\Middleware\LogRequest;
-use App\Http\Middleware\NoThrottle;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Services\Ops\ErrorRecorder;
@@ -15,6 +14,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Laravel\Sanctum\Exceptions\MissingAbilityException;
 use Laravel\Sanctum\Http\Middleware\CheckAbilities;
 use Laravel\Sanctum\Http\Middleware\CheckForAnyAbility;
@@ -49,12 +49,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'abilities' => CheckAbilities::class,
             'ability' => CheckForAnyAbility::class,
             'module' => EnsureModule::class,
-            // Rate limiting is disabled app-wide (private 2-user home LAN, not
-            // internet-facing) — the `throttle` alias is a no-op that ignores every
-            // limit/limiter argument, so `throttle:` route declarations stay inert.
-            // See the Security register (2026-08-08). Re-enable by pointing this at
-            // the framework ThrottleRequests + defining named limiters again.
-            'throttle' => NoThrottle::class,
+            // Rate limiting is ENABLED (internet-facing via the NetBird proxy at
+            // https://home.pinlo.me, 2026-08-09). The `throttle` alias points at the
+            // framework limiter; inline `throttle:N,1` route limits apply, and the
+            // named limiters (login/two-factor/fortify/auth-pair/dav/share-unlock/
+            // invite) are defined in App\Support\RateLimiters, registered per-request-
+            // safely by App\Providers\RateLimitServiceProvider (booted() after the
+            // deferred CacheServiceProvider is warm — see the boot-churn note there).
+            'throttle' => ThrottleRequests::class,
         ]);
 
         // Behind a TLS-terminating reverse proxy, honour X-Forwarded-* so

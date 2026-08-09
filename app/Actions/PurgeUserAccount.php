@@ -30,6 +30,12 @@ class PurgeUserAccount
             }
 
             // Shared per-user infrastructure not owned by any single module.
+            // Sanctum personal access tokens are a polymorphic relation with no
+            // DB-level FK cascade off users.id, so the final $user->delete()
+            // would leave them orphaned (a still-valid bearer pointing at a
+            // deleted account). Revoke them explicitly. Web sessions likewise
+            // have no cascade and are cleared here.
+            $user->tokens()->delete();
             DB::table('sessions')->where('user_id', $user->id)->delete();
 
             $user->delete();

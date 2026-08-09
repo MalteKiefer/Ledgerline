@@ -37,23 +37,31 @@ class ImapProbe
         }
 
         $port = (int) $account->port;
+        if (! OutboundUrl::mailPortAllowed($port)) {
+            return ['ok' => false, 'detail' => 'The mail server port is not an allowed IMAP port.'];
+        }
         $encryption = (string) $account->encryption;
         $username = (string) $account->username;
         $password = (string) $account->password;
 
         $transport = ($encryption === 'ssl' || $encryption === 'tls') ? 'ssl' : 'tcp';
-        $context = stream_context_create(['ssl' => [
-            'verify_peer' => true,
-            'verify_peer_name' => true,
-            'SNI_enabled' => true,
-        ]]);
 
         $stream = null;
         try {
+            // Pin the resolved IP (resolve once, dial exactly it) so a rebind can't
+            // swap in a private/metadata address; peer_name binds TLS to the name.
+            $target = OutboundUrl::resolvedSocketTarget($host);
+            $addr = $target['ipv6'] ? '['.$target['ip'].']' : $target['ip'];
+            $context = stream_context_create(['ssl' => [
+                'verify_peer' => true,
+                'verify_peer_name' => true,
+                'SNI_enabled' => true,
+                'peer_name' => $target['host'],
+            ]]);
             $errno = 0;
             $errstr = '';
             $stream = @stream_socket_client(
-                sprintf('%s://%s:%d', $transport, $host, $port),
+                sprintf('%s://%s:%d', $transport, $addr, $port),
                 $errno,
                 $errstr,
                 self::TIMEOUT,

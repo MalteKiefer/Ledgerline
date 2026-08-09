@@ -22,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $user_id
  * @property string $token
+ * @property string|null $token_hash
  * @property string $kind
  * @property int|null $file_id
  * @property int|null $file_folder_id
@@ -37,8 +38,8 @@ class FileShare extends Model
     /** Server-set: token/user_id/kind/targets set explicitly, never mass-assigned. */
     protected $fillable = ['allow_download', 'expires_at'];
 
-    /** The password hash must never leak through serialization. */
-    protected $hidden = ['password_hash'];
+    /** The password hash + token hash must never leak through serialization. */
+    protected $hidden = ['password_hash', 'token_hash'];
 
     protected $casts = [
         'allow_download' => 'boolean',
@@ -54,6 +55,24 @@ class FileShare extends Model
     public function needsPassword(): bool
     {
         return $this->password_hash !== null && $this->password_hash !== '';
+    }
+
+    /**
+     * Setting the plaintext token also derives its sha256 so public links can
+     * resolve by hash. The plaintext is retained only for building the
+     * owner-facing URL; the hash is what /file-share/{token} looks up. Runs on
+     * fill/forceFill/create, so token_hash can never drift out of sync.
+     *
+     * @return Attribute<string, string>
+     */
+    protected function token(): Attribute
+    {
+        return Attribute::make(
+            set: fn (string $value): array => [
+                'token' => $value,
+                'token_hash' => hash('sha256', $value),
+            ],
+        );
     }
 
     /**

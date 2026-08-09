@@ -7,6 +7,7 @@ namespace App\Services\Notifications;
 use App\Models\AppNotification;
 use App\Models\AppSettings;
 use App\Support\OutboundUrl;
+use App\Support\Redactor;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Mailer\Mailer;
 use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
@@ -50,7 +51,7 @@ class ChannelNotifier
                     default => null,
                 };
             } catch (\Throwable $e) {
-                Log::warning('Channel notification failed', ['channel' => $channel, 'error' => $e->getMessage()]);
+                Log::warning('Channel notification failed', ['channel' => $channel, 'error' => Redactor::redact($e->getMessage())]);
             }
         }
     }

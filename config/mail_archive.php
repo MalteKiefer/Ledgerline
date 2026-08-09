@@ -37,4 +37,18 @@ return [
 
     // Diagnostic per-account sync/ingest log retention (days). Metadata only.
     'log_retention_days' => (int) env('MAIL_ARCHIVE_LOG_RETENTION_DAYS', 30),
+
+    /*
+     * Ingest resource caps (OOM defense). The ingestor reads the whole raw .eml
+     * and every decoded attachment into memory, so an oversized message could
+     * exhaust the worker. A message whose file exceeds max_message_bytes is
+     * quarantined (moved aside, never read into memory) rather than thrown — a
+     * throw would leave it for a retry that re-triggers the same OOM. Individual
+     * attachments over max_attachment_bytes are skipped (the message is still
+     * archived); no more than max_attachments blobs are stored per message.
+     * 0 disables a given cap.
+     */
+    'max_message_bytes' => (int) env('MAIL_ARCHIVE_MAX_MESSAGE_BYTES', 52_428_800),   // 50 MiB
+    'max_attachment_bytes' => (int) env('MAIL_ARCHIVE_MAX_ATTACHMENT_BYTES', 26_214_400), // 25 MiB
+    'max_attachments' => (int) env('MAIL_ARCHIVE_MAX_ATTACHMENTS', 200),
 ];

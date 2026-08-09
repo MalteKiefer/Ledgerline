@@ -53,12 +53,20 @@ class PublicFileShareController extends Controller
             return response()->json(['found' => false], 404);
         }
 
+        // Withhold the target's real name (which may itself be sensitive, e.g.
+        // "Q3-layoffs.xlsx") until a password-gated share is unlocked. A holder
+        // of only the token, no password, learns whether a password is needed
+        // and the link lifecycle — never the content name. A share with no
+        // password has no secret to protect, so its name is shown as before.
+        $unlocked = $this->shareUnlocked($request, $share);
+        $reveal = ! $share->needsPassword() || $unlocked;
+
         return response()->json([
             'found' => true,
             'kind' => $share->kind,
-            'name' => $name,
+            'name' => $reveal ? $name : null,
             'needsPassword' => $share->needsPassword(),
-            'unlocked' => $this->shareUnlocked($request, $share),
+            'unlocked' => $unlocked,
             'allowDownload' => $share->allow_download,
             'expiresAt' => $share->expires_at?->toIso8601String(),
         ]);
@@ -148,7 +156,9 @@ class PublicFileShareController extends Controller
             return null;
         }
 
-        return FileShare::withoutGlobalScopes()->where('token', $token)->first();
+        // Look up by sha256(token), not the raw capability — a DB/backup leak no
+        // longer yields a directly-usable link (the plaintext lives only in the URL).
+        return FileShare::withoutGlobalScopes()->where('token_hash', hash('sha256', $token))->first();
     }
 
     /** The display name of the shared target, or null if it is gone / trashed. */
@@ -158,6 +168,7 @@ class PublicFileShareController extends Controller
             $file = FileEntry::withoutGlobalScopes()
                 ->where('user_id', $share->user_id)
                 ->whereKey($share->file_id)
+                ->whereNull('deleted_at')
                 ->first();
 
             return $file?->name;
@@ -166,6 +177,7 @@ class PublicFileShareController extends Controller
         $folder = FileFolder::withoutGlobalScopes()
             ->where('user_id', $share->user_id)
             ->whereKey($share->file_folder_id)
+            ->whereNull('deleted_at')
             ->first();
 
         return $folder?->name;
@@ -184,6 +196,7 @@ class PublicFileShareController extends Controller
             return FileEntry::withoutGlobalScopes()
                 ->where('user_id', $share->user_id)
                 ->whereKey($share->file_id)
+                ->whereNull('deleted_at')
                 ->get();
         }
 
@@ -195,6 +208,7 @@ class PublicFileShareController extends Controller
         return FileEntry::withoutGlobalScopes()
             ->where('user_id', $share->user_id)
             ->whereIn('file_folder_id', $ids)
+            ->whereNull('deleted_at')
             ->get();
     }
 
@@ -213,6 +227,7 @@ class PublicFileShareController extends Controller
         return FileFolder::withoutGlobalScopes()
             ->where('user_id', $share->user_id)
             ->whereIn('id', $ids)
+            ->whereNull('deleted_at')
             ->get();
     }
 
@@ -230,6 +245,7 @@ class PublicFileShareController extends Controller
         $root = FileFolder::withoutGlobalScopes()
             ->where('user_id', $share->user_id)
             ->whereKey($share->file_folder_id)
+            ->whereNull('deleted_at')
             ->first();
         if ($root === null) {
             return [];
@@ -242,6 +258,7 @@ class PublicFileShareController extends Controller
             $children = FileFolder::withoutGlobalScopes()
                 ->where('user_id', $share->user_id)
                 ->whereIn('parent_id', $frontier)
+                ->whereNull('deleted_at')
                 ->pluck('id')->all();
             $frontier = [];
             foreach ($children as $child) {

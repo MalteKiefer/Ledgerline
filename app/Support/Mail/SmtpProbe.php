@@ -8,6 +8,7 @@ use App\Models\MailAccount;
 use App\Support\OutboundUrl;
 use App\Support\Redactor;
 use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
+use Symfony\Component\Mailer\Transport\Smtp\Stream\SocketStream;
 use Throwable;
 
 /**
@@ -43,12 +44,32 @@ class SmtpProbe
 
         $enc = is_string($account->smtp_encryption) ? $account->smtp_encryption : '';
         $port = is_int($account->smtp_port) && $account->smtp_port > 0 ? $account->smtp_port : 587;
+        if (! OutboundUrl::mailPortAllowed($port)) {
+            return ['ok' => false, 'detail' => 'The SMTP server port is not an allowed submission port.'];
+        }
         // ssl/tls → implicit TLS on connect; starttls → opportunistic upgrade
         // (tls=false lets EsmtpTransport STARTTLS if the server advertises it).
         $implicitTls = $enc === 'ssl' || $enc === 'tls';
 
-        $transport = new EsmtpTransport($host, $port, $implicitTls);
+        // Pin the resolved IP: dial the literal address and keep TLS verification
+        // bound to the hostname via peer_name — closes the resolve-then-reconnect
+        // (DNS-rebind/TOCTOU) window that a bare hostname would leave open.
+        try {
+            $target = OutboundUrl::resolvedSocketTarget($host);
+        } catch (Throwable $e) {
+            return ['ok' => false, 'detail' => $this->clean($e->getMessage())];
+        }
+
+        $transport = new EsmtpTransport($target['ip'], $port, $implicitTls);
         $stream = $transport->getStream();
+        if ($stream instanceof SocketStream) {
+            $stream->setStreamOptions(['ssl' => [
+                'verify_peer' => true,
+                'verify_peer_name' => true,
+                'SNI_enabled' => true,
+                'peer_name' => $target['host'],
+            ]]);
+        }
         if (method_exists($stream, 'setTimeout')) {
             $stream->setTimeout(self::TIMEOUT);
         }

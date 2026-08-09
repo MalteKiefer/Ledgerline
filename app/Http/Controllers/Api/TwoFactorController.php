@@ -15,7 +15,6 @@ use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
 use Laravel\Fortify\Actions\EnableTwoFactorAuthentication;
 use Laravel\Fortify\Actions\GenerateNewRecoveryCodes;
 use Laravel\Fortify\Fortify;
-use Laravel\Sanctum\PersonalAccessToken;
 
 /**
  * Mobile 2FA management surface.
@@ -102,27 +101,24 @@ class TwoFactorController extends Controller
      * fully set up.
      */
     /**
-     * Password step-up for sensitive 2FA operations (disable / view or regenerate
-     * recovery codes). Mirrors the web confirmPassword gate: a stolen web token or
-     * session cannot disable 2FA or read recovery codes without the account password.
+     * Password step-up for sensitive 2FA operations (enable / disable / view or
+     * regenerate recovery codes). Mirrors the web confirmPassword gate: a stolen
+     * token or session cannot bind, disable or read the second factor without the
+     * account password.
      *
-     * EXCEPTION — a NATIVE device token (a PersonalAccessToken carrying a non-empty
-     * install_id, minted only by QR pairing / the native mobile login) is skipped:
-     * that token is AES-256-GCM-sealed in the device keystore behind a per-use
-     * biometric/PIN unlock, so every native call already required a fresh biometric
-     * step-up — a re-typed login password on the device is redundant and there is no
-     * natural place to prompt for it. The web SPA bearer (no install_id, kept in
-     * localStorage) and web sessions get NO bypass and still require the password.
+     * NO EXCEPTIONS — every bearer and session path (web SPA and native device)
+     * must supply `current_password`. The former install_id bypass (native tokens
+     * skipped the password) trusted a CLIENT-ASSERTED, server-unverifiable flag for
+     * a security decision: an exfiltrated native device token could disable 2FA and
+     * read recovery codes with no password, defeating the step-up. Removed for max
+     * security (internet-facing). The native app MUST now prompt for the login
+     * password on these ops. The password travels in the JSON body (never a query
+     * string), so it does not leak into URLs/access logs.
      *
      * @throws ValidationException
      */
     private function requireCurrentPassword(Request $request, User $user): void
     {
-        $token = $request->user()?->currentAccessToken();
-        if ($token instanceof PersonalAccessToken && is_string($token->install_id) && $token->install_id !== '') {
-            return; // native, biometric-sealed device — biometric unlock is the step-up
-        }
-
         $pw = $request->string('current_password')->value();
         if ($pw === '' || ! Hash::check($pw, (string) $user->password)) {
             throw ValidationException::withMessages([
