@@ -4795,3 +4795,348 @@ paths:
         "422": { description: "Wrong passphrase or corrupt archive, or a missing `passphrase` (validation)." }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+
+  # --------------------------------------------------------------------------
+  # Public account lifecycle (no auth) — mirrors the web Fortify pipeline.
+  # --------------------------------------------------------------------------
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      operationId: authForgotPassword
+      summary: Request a password-reset link (public)
+      description: >
+        Sends a password-reset email via the Fortify broker. Always responds with a
+        generic 200 regardless of whether the email exists — the endpoint cannot be
+        used to enumerate accounts. Mirrors the web forgot-password POST.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Generic acknowledgement (sent iff the email exists).
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, example: reset-link-sent } } }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      operationId: authResetPassword
+      summary: Consume a password-reset token (public)
+      description: >
+        Resets the password using an emailed reset token. Reuses the Fortify
+        ResetUserPassword action, so it applies the same password rules and acts as a
+        kill switch (revokes every device token + persisted session). Returns 200 on
+        success, 422 on an invalid/expired token or email. Mirrors the web
+        reset-password POST.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, email, password, password_confirmation]
+              properties:
+                token: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 12 }
+                password_confirmation: { type: string }
+      responses:
+        "200":
+          description: Password reset.
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string, example: password-reset } } }
+        "422":
+          description: Invalid/expired token or email, or the password failed the rules.
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string }, message: { type: string } } }
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: authRegister
+      summary: Self-register a new account (public, gated)
+      description: >
+        Creates a new account via the Fortify CreateNewUser action. Gated by the
+        workspace `allow_registration` flag — 403 when self-registration is disabled.
+        The privileged `role` is never taken from input (always `user`). Because email
+        verification is required, no bearer is minted until the address is verified:
+        responds {status: "verify-email"} and sends the verification email. Mirrors
+        the web register POST.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, password_confirmation]
+              properties:
+                name: { type: string, maxLength: 255 }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 12 }
+                password_confirmation: { type: string }
+                device_name: { type: [string, "null"], maxLength: 64 }
+      responses:
+        "201":
+          description: >
+            Created. When email verification is pending, {status:"verify-email"} (no
+            token). If verification is ever disabled, returns {token, user} instead.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: verify-email }
+                  token: { type: string }
+                  user: { $ref: '#/components/schemas/MeUser' }
+        "403":
+          description: Self-registration is disabled workspace-wide.
+        "422": { $ref: '#/components/responses/ValidationError' }
+
+  # --------------------------------------------------------------------------
+  # Public file-share consumption (no auth) — the share token in the path is the
+  # credential. Same controller as the web /file-share routes; a password-gated
+  # share issues a stateless HMAC grant on unlock, carried on manifest/raw.
+  # --------------------------------------------------------------------------
+  /file-share/{token}:
+    get:
+      tags: [Files]
+      operationId: publicFileShareMeta
+      summary: Public file-share metadata (no auth)
+      description: >
+        Resolves a share link by its opaque token (owner scope removed). Reports the
+        target name/kind, whether a password is required, and the download policy.
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Share metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  found: { type: boolean }
+                  kind: { type: string, enum: [file, folder] }
+                  name: { type: string }
+                  needsPassword: { type: boolean }
+                  unlocked: { type: boolean }
+                  allowDownload: { type: boolean }
+                  expiresAt: { type: [string, "null"], format: date-time }
+        "404": { description: Unknown, expired, or trashed share (existence not leaked). }
+  /file-share/{token}/unlock:
+    post:
+      tags: [Files]
+      operationId: publicFileShareUnlock
+      summary: Unlock a password-gated public share (no auth)
+      description: >
+        Verifies the share password. On success returns a short-lived stateless HMAC
+        `grant` (bound to this share) that a tokenless client presents on manifest/raw
+        via the `X-Share-Grant` header or a `grant` query parameter. (Web clients also
+        get a session grant.)
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, maxLength: 200 }
+      responses:
+        "200":
+          description: Unlocked.
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, grant: { type: string } } }
+        "404": { description: Unknown or expired share. }
+        "422": { description: Wrong password (or the share is not password-gated). }
+  /file-share/{token}/manifest:
+    get:
+      tags: [Files]
+      operationId: publicFileShareManifest
+      summary: Public file-share manifest — the shared subtree (no auth)
+      description: >
+        Lists the folders + files the share exposes (a shared folder → its whole
+        descendant subtree; a shared file → just it). Requires a prior unlock for a
+        password-gated share (grant via `X-Share-Grant` header or `grant` query).
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: grant, in: query, required: false, schema: { type: string }, description: Stateless unlock grant (alternative to the X-Share-Grant header). }
+        - { name: X-Share-Grant, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Manifest tree.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind: { type: string, enum: [file, folder] }
+                  name: { type: string }
+                  allowDownload: { type: boolean }
+                  folders: { type: array, items: { type: object } }
+                  files: { type: array, items: { type: object } }
+        "403": { description: Locked — a valid unlock grant is required. }
+        "404": { description: Unknown, expired, or trashed share. }
+  /file-share/{token}/file/{file}/raw:
+    get:
+      tags: [Files]
+      operationId: publicFileShareRaw
+      summary: Stream a shared file's bytes (no auth)
+      description: >
+        Streams a single file from the shared set (sandboxed CSP + nosniff). Requires
+        a prior unlock for a password-gated share. `?download=1` forces an attachment
+        and is refused (403) unless the owner enabled downloads.
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: file, in: path, required: true, schema: { type: integer } }
+        - { name: grant, in: query, required: false, schema: { type: string } }
+        - { name: X-Share-Grant, in: header, required: false, schema: { type: string } }
+        - { name: download, in: query, required: false, schema: { type: boolean } }
+      responses:
+        "200":
+          description: File bytes.
+          content:
+            application/octet-stream: { schema: { type: string, format: binary } }
+        "403": { description: Locked, or a download was requested on a download-disabled share. }
+        "404": { description: Unknown share or file not in the shared set. }
+
+  # --------------------------------------------------------------------------
+  # Public invite / password-reset link consumption (no auth). The admin CREATE
+  # side is POST /users/{user}/invite-link.
+  # --------------------------------------------------------------------------
+  /invite/{invite}/{token}:
+    get:
+      tags: [Users]
+      operationId: inviteShow
+      summary: Check an invite / reset link (public)
+      description: >
+        Reports whether the (hashed, single-use, expiring) invite token is still
+        valid, plus the target email. JSON only — never a redirect.
+      security: []
+      parameters:
+        - { name: invite, in: path, required: true, schema: { type: integer } }
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Valid link.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean, example: true }
+                  email: { type: string, format: email }
+                  expiresAt: { type: [string, "null"], format: date-time }
+        "404": { description: "Invalid, consumed, or expired link (valid:false)." }
+    post:
+      tags: [Users]
+      operationId: inviteConsume
+      summary: Consume an invite / reset link — set password, get a bearer (public)
+      description: >
+        Sets the target user's password (constant-time token check + single-use +
+        expiry) and mints a device-scoped bearer token (rather than a session login).
+      security: []
+      parameters:
+        - { name: invite, in: path, required: true, schema: { type: integer } }
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, password_confirmation]
+              properties:
+                password: { type: string, minLength: 12 }
+                password_confirmation: { type: string }
+                device_name: { type: [string, "null"], maxLength: 64 }
+      responses:
+        "200":
+          description: Password set — bearer + user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: '#/components/schemas/MeUser' }
+        "404": { description: Invalid, consumed, or expired link. }
+        "422": { $ref: '#/components/responses/ValidationError' }
+
+  # --------------------------------------------------------------------------
+  # CardDAV Apple configuration profile download (device auth + module:contacts).
+  # --------------------------------------------------------------------------
+  /account/carddav-profile:
+    get:
+      tags: [Contacts]
+      operationId: accountCarddavProfile
+      summary: Download the Apple CardDAV .mobileconfig profile
+      description: >
+        Returns a downloadable Apple configuration profile (CardDAV account) for
+        iOS/macOS. Carries the username (the user's email) but never a password — sync
+        uses the app-specific WebDAV password, of which only the hash is stored.
+      responses:
+        "200":
+          description: Apple configuration profile.
+          content:
+            application/x-apple-aspen-config:
+              schema: { type: string }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+
+  # --------------------------------------------------------------------------
+  # Admin self-registration toggle (admin role + device token).
+  # --------------------------------------------------------------------------
+  /admin/registration:
+    get:
+      tags: [Users]
+      operationId: adminRegistrationShow
+      summary: Read the workspace self-registration toggle (admin)
+      responses:
+        "200":
+          description: Current toggle state.
+          content:
+            application/json:
+              schema: { type: object, properties: { allow_registration: { type: boolean } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Users]
+      operationId: adminRegistrationUpdate
+      summary: Set the workspace self-registration toggle (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [allow_registration]
+              properties:
+                allow_registration: { type: boolean }
+      responses:
+        "200":
+          description: Updated toggle state.
+          content:
+            application/json:
+              schema: { type: object, properties: { allow_registration: { type: boolean } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }

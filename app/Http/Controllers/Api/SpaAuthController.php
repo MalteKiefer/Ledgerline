@@ -4,12 +4,20 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Actions\Fortify\CreateNewUser;
+use App\Actions\Fortify\ResetUserPassword;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Providers\FortifyServiceProvider;
+use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Auth\Events\Registered;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Contracts\TwoFactorAuthenticationProvider;
 use Laravel\Fortify\Fortify;
@@ -60,6 +68,98 @@ class SpaAuthController extends Controller
             'token' => $token,
             'user' => app(AuthController::class)->userPayload($user),
         ]);
+    }
+
+    /**
+     * Request a password-reset link (public). Always responds with a generic 200 so
+     * the endpoint cannot be used to enumerate which emails have an account. Mirrors
+     * the web Fortify forgot-password POST.
+     */
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $request->validate(['email' => ['required', 'string', 'email']]);
+
+        // Fire-and-forget: the broker only sends when the email exists, but the
+        // response is identical either way (no user enumeration).
+        Password::broker()->sendResetLink(['email' => $request->string('email')->value()]);
+
+        return response()->json(['status' => 'reset-link-sent']);
+    }
+
+    /**
+     * Consume a password-reset token (public). Reuses the Fortify ResetUserPassword
+     * action so the logic (password rules + kill-switch that revokes every device
+     * token/session) is identical to the web pipeline. Mirrors the web reset-password
+     * POST. Returns 200 on success, 422 on an invalid token/email.
+     */
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $request->validate([
+            'token' => ['required', 'string'],
+            'email' => ['required', 'string', 'email'],
+            'password' => ['required', 'string', 'confirmed', PasswordRule::min(12)],
+        ]);
+
+        $status = Password::broker()->reset(
+            $request->only('email', 'password', 'password_confirmation', 'token'),
+            function (User $user) use ($request): void {
+                app(ResetUserPassword::class)->reset($user, [
+                    'password' => $request->string('password')->value(),
+                    'password_confirmation' => $request->string('password_confirmation')->value(),
+                ]);
+                event(new PasswordReset($user));
+            }
+        );
+
+        if ($status === Password::PasswordReset) {
+            return response()->json(['status' => 'password-reset']);
+        }
+
+        $statusKey = is_string($status) ? $status : 'passwords.token';
+
+        return response()->json(['status' => $statusKey, 'message' => __($statusKey)], 422);
+    }
+
+    /**
+     * Self-register (public). Gated by the workspace `allow_registration` flag (403
+     * when off). Reuses the Fortify CreateNewUser action — the privileged `role` is
+     * never taken from input (always 'user'). Because accounts must verify their
+     * email, no bearer is minted until the address is verified: responds
+     * {status: 'verify-email'} and fires the verification notification. Mirrors the
+     * web Fortify register POST.
+     */
+    public function register(Request $request): JsonResponse
+    {
+        if (! FortifyServiceProvider::registrationOpen()) {
+            return response()->json(['message' => 'registration_disabled'], 403);
+        }
+
+        /** @var array<string, string> $input */
+        $input = [
+            'name' => $request->string('name')->value(),
+            'email' => $request->string('email')->value(),
+            'password' => $request->string('password')->value(),
+            'password_confirmation' => $request->string('password_confirmation')->value(),
+        ];
+
+        $user = app(CreateNewUser::class)->create($input);
+
+        event(new Registered($user));
+
+        // Email verification is enabled workspace-wide; a fresh account is unverified,
+        // so withhold the bearer until it verifies (the SPA shows a "check your inbox"
+        // state). If verification is ever disabled, mint the token immediately.
+        if ($user instanceof MustVerifyEmail && ! $user->hasVerifiedEmail()) {
+            return response()->json(['status' => 'verify-email'], 201);
+        }
+
+        $name = $request->filled('device_name') ? $request->string('device_name')->value() : 'web';
+        $token = $user->createToken($name, ['device'])->plainTextToken;
+
+        return response()->json([
+            'token' => $token,
+            'user' => app(AuthController::class)->userPayload($user),
+        ], 201);
     }
 
     /** Revoke the token making this request. */

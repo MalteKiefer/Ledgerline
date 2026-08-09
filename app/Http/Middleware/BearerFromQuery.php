@@ -17,6 +17,9 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class BearerFromQuery
 {
+    /**
+     * @param  Closure(Request): Response  $next
+     */
     public function handle(Request $request, Closure $next): Response
     {
         if (! $request->headers->has('Authorization')) {

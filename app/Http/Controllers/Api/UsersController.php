@@ -239,6 +239,31 @@ class UsersController extends Controller
         ]);
     }
 
+    /**
+     * Read the workspace self-registration toggle.
+     *
+     * GET /api/v1/admin/registration
+     */
+    public function registrationShow(Request $request): JsonResponse
+    {
+        return response()->json(['allow_registration' => (bool) AppSettings::current()->allow_registration]);
+    }
+
+    /**
+     * Set the workspace self-registration toggle. Mirrors the web
+     * Settings/UsersController@registration.
+     *
+     * PUT /api/v1/admin/registration   throttle:60,1
+     */
+    public function registration(Request $request): JsonResponse
+    {
+        $request->validate(['allow_registration' => ['required', 'boolean']]);
+
+        AppSettings::current()->update(['allow_registration' => $request->boolean('allow_registration')]);
+
+        return response()->json(['allow_registration' => (bool) AppSettings::current()->allow_registration]);
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------

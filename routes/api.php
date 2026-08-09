@@ -7,8 +7,10 @@ use App\Http\Controllers\AddressBookController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController as ApiBackupController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
+use App\Http\Controllers\Api\ContactsProfileController as ApiContactsProfileController;
 use App\Http\Controllers\Api\FilesLimitsController as ApiFilesLimitsController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
+use App\Http\Controllers\Api\InviteLinkController as ApiInviteLinkController;
 use App\Http\Controllers\Api\InvoiceOcrController;
 use App\Http\Controllers\Api\NotificationsController as ApiNotificationsController;
 use App\Http\Controllers\Api\PaperlessController as ApiPaperlessController;
@@ -34,6 +36,7 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
+use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\SharedFolderController;
 use App\Http\Controllers\SharedWithMeController;
 use App\Http\Controllers\ThemeController;
@@ -57,6 +60,31 @@ Route::prefix('v1')->group(function (): void {
     // Backend-agnostic browser login: email+password (+2FA) → bearer token, so the
     // SPA never depends on a Laravel session cookie (portable to a future Go API).
     Route::post('/auth/login', [SpaAuthController::class, 'login'])->name('api.auth.login');
+
+    // Public account lifecycle (no auth). Mirrors the web Fortify pipeline via the
+    // same actions. forgot-password always answers generically (no enumeration);
+    // register is gated by the workspace allow_registration flag (403 when off).
+    Route::post('/auth/forgot-password', [SpaAuthController::class, 'forgotPassword'])->middleware('throttle:6,1')->name('api.auth.forgot-password');
+    Route::post('/auth/reset-password', [SpaAuthController::class, 'resetPassword'])->middleware('throttle:6,1')->name('api.auth.reset-password');
+    Route::post('/auth/register', [SpaAuthController::class, 'register'])->middleware('throttle:6,1')->name('api.auth.register');
+
+    // Public, unauthenticated file-share consumption — the share token in the path is
+    // the credential (mounts the SAME guard-agnostic PublicFileShareController as the
+    // web routes). A password-gated share issues a stateless HMAC grant on unlock that
+    // the tokenless client carries on manifest/raw (X-Share-Grant header or ?grant=).
+    Route::prefix('file-share/{token}')->name('api.public.file-share.')->group(function (): void {
+        Route::get('/', [PublicFileShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
+        Route::post('/unlock', [PublicFileShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
+        Route::get('/manifest', [PublicFileShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
+        Route::get('/file/{file}/raw', [PublicFileShareController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('file.raw');
+    });
+
+    // Public, unauthenticated invite / password-reset link consumption. The admin
+    // CREATE side is /api/v1/users/{user}/invite-link; this is the consume side.
+    // show reports validity as JSON (never a redirect); store sets the password and
+    // mints a bearer (rather than a session login). Hashed single-use expiring token.
+    Route::get('/invite/{invite}/{token}', [ApiInviteLinkController::class, 'show'])->middleware('throttle:20,1')->name('api.invite.show');
+    Route::post('/invite/{invite}/{token}', [ApiInviteLinkController::class, 'store'])->middleware('throttle:20,1')->name('api.invite.store');
 
     // Enforce the scoped 'device' ability minted at pairing (legacy '*' tokens
     // still pass) so a token's declared scope is actually checked.
@@ -169,6 +197,10 @@ Route::prefix('v1')->group(function (): void {
             Route::delete('/address-books/{addressBook}', [AddressBookController::class, 'destroy'])->middleware('throttle:600,1')->name('api.address-books.destroy');
             Route::post('/contact-groups', [ContactGroupController::class, 'store'])->middleware('throttle:600,1')->name('api.contact-groups.store');
             Route::delete('/contact-groups/{group}', [ContactGroupController::class, 'destroy'])->middleware('throttle:600,1')->name('api.contact-groups.destroy');
+            // Downloadable Apple CardDAV enrollment profile (.mobileconfig). Mirrors
+            // the web Settings/ContactsController@profile; carries the username, never
+            // a password (sync uses the app-specific webdav_password, hashed).
+            Route::get('/account/carddav-profile', [ApiContactsProfileController::class, 'carddavProfile'])->middleware('throttle:20,1')->name('api.account.carddav-profile');
         });
 
         // Files module — mirrors the web routes (plaintext-relational folders +
@@ -324,6 +356,10 @@ Route::prefix('v1')->group(function (): void {
             // System / maintenance overview (read-only) + resolve an error event.
             Route::get('/system', [ApiSystemController::class, 'show'])->middleware('throttle:60,1')->name('system.show');
             Route::post('/system/errors/{error}/resolve', [ApiSystemController::class, 'resolveError'])->whereNumber('error')->middleware('throttle:60,1')->name('system.errors.resolve');
+
+            // Workspace self-registration toggle (mirrors Settings/UsersController@registration).
+            Route::get('/registration', [ApiUsersController::class, 'registrationShow'])->name('registration.show');
+            Route::put('/registration', [ApiUsersController::class, 'registration'])->middleware('throttle:60,1')->name('registration.update');
         });
 
         // Admin group management (workspace-wide limit templates + shareable flag).
