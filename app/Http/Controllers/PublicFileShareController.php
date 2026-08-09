@@ -148,7 +148,9 @@ class PublicFileShareController extends Controller
             return null;
         }
 
-        return FileShare::withoutGlobalScopes()->where('token', $token)->first();
+        // Look up by sha256(token), not the raw capability — a DB/backup leak no
+        // longer yields a directly-usable link (the plaintext lives only in the URL).
+        return FileShare::withoutGlobalScopes()->where('token_hash', hash('sha256', $token))->first();
     }
 
     /** The display name of the shared target, or null if it is gone / trashed. */
@@ -158,6 +160,7 @@ class PublicFileShareController extends Controller
             $file = FileEntry::withoutGlobalScopes()
                 ->where('user_id', $share->user_id)
                 ->whereKey($share->file_id)
+                ->whereNull('deleted_at')
                 ->first();
 
             return $file?->name;
@@ -166,6 +169,7 @@ class PublicFileShareController extends Controller
         $folder = FileFolder::withoutGlobalScopes()
             ->where('user_id', $share->user_id)
             ->whereKey($share->file_folder_id)
+            ->whereNull('deleted_at')
             ->first();
 
         return $folder?->name;
@@ -184,6 +188,7 @@ class PublicFileShareController extends Controller
             return FileEntry::withoutGlobalScopes()
                 ->where('user_id', $share->user_id)
                 ->whereKey($share->file_id)
+                ->whereNull('deleted_at')
                 ->get();
         }
 
@@ -195,6 +200,7 @@ class PublicFileShareController extends Controller
         return FileEntry::withoutGlobalScopes()
             ->where('user_id', $share->user_id)
             ->whereIn('file_folder_id', $ids)
+            ->whereNull('deleted_at')
             ->get();
     }
 
@@ -213,6 +219,7 @@ class PublicFileShareController extends Controller
         return FileFolder::withoutGlobalScopes()
             ->where('user_id', $share->user_id)
             ->whereIn('id', $ids)
+            ->whereNull('deleted_at')
             ->get();
     }
 
@@ -230,6 +237,7 @@ class PublicFileShareController extends Controller
         $root = FileFolder::withoutGlobalScopes()
             ->where('user_id', $share->user_id)
             ->whereKey($share->file_folder_id)
+            ->whereNull('deleted_at')
             ->first();
         if ($root === null) {
             return [];
@@ -242,6 +250,7 @@ class PublicFileShareController extends Controller
             $children = FileFolder::withoutGlobalScopes()
                 ->where('user_id', $share->user_id)
                 ->whereIn('parent_id', $frontier)
+                ->whereNull('deleted_at')
                 ->pluck('id')->all();
             $frontier = [];
             foreach ($children as $child) {
