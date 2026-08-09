@@ -39,6 +39,8 @@ const sections = computed(() => [
   { to: 'profile.devices', icon: 'smartphone', label: 'account.nav_devices' },
   // Calendar settings only surface when the calendar module is enabled for the user.
   ...(auth.can('calendar') ? [{ to: 'profile.calendar', icon: 'calendar_month', label: 'messages.nav.calendar' }] : []),
+  // Mail encryption-key manager only surfaces when the mail module is enabled.
+  ...(auth.can('mail') ? [{ to: 'profile.mail-keys', icon: 'key', label: 'mail.keys.title' }] : []),
   { to: 'profile.data', icon: 'database', label: 'account.hub_data_heading' },
 ]);
 

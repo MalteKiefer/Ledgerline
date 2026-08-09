@@ -26,12 +26,14 @@ const routes: RouteRecordRaw[] = [
           { path: 'security', name: 'profile.security', component: () => import('@spa/views/profile/Security.vue') },
           { path: 'devices', name: 'profile.devices', component: () => import('@spa/views/profile/Devices.vue') },
           { path: 'calendar', name: 'profile.calendar', component: () => import('@spa/views/profile/Calendar.vue') },
+          { path: 'mail-keys', name: 'profile.mail-keys', component: () => import('@spa/views/profile/MailKeys.vue') },
           { path: 'data', name: 'profile.data', component: () => import('@spa/views/profile/Data.vue') },
         ],
       },
       { path: 'files', name: 'files', component: () => import('@spa/views/Files.vue') },
       { path: 'contacts', name: 'contacts', component: () => import('@spa/views/Contacts.vue') },
       { path: 'calendar', name: 'calendar', component: () => import('@spa/views/Calendar.vue') },
+      { path: 'mail', name: 'mail', component: () => import('@spa/views/Mail.vue') },
       // Settings is a hub layout (left submenu + RouterView), like Profile —
       // its submenu lives in the page, not in the sidebar rail.
       {
