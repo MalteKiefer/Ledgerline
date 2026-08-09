@@ -6326,6 +6326,69 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/messages/{message}/pushback:
+    post:
+      tags: [Mail]
+      operationId: mailPushback
+      summary: Push a message back to its origin mailbox (APPEND)
+      description: >
+        Throttle 30/min. Owner-scoped, deliberate write-to-origin (SSRF-guarded,
+        no-store). APPENDs the server-held raw .eml to the origin IMAP mailbox
+        (optionally a different folder), restoring \Seen. 502 on IMAP failure.
+      parameters:
+        - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                folder: { type: [string, "null"], description: "Target folder; defaults to the archived folder." }
+      responses:
+        "200":
+          description: Appended.
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Source account deleted or raw bytes unavailable." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { description: "Origin IMAP APPEND failed." }
+  /mail/messages/{message}/delete-origin:
+    post:
+      tags: [Mail]
+      operationId: mailDeleteOrigin
+      summary: Delete a message from its origin mailbox
+      description: >
+        Throttle 30/min. Owner-scoped, deliberate destructive write-to-origin
+        (SSRF-guarded, no-store). Locates the message on the origin by its stored
+        Message-Id and expunges it; the archived copy is kept. 502 on IMAP
+        failure.
+      parameters:
+        - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                folder: { type: [string, "null"], description: "Folder to search; defaults to the archived folder." }
+      responses:
+        "200":
+          description: Expunged.
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, expunged: { type: integer } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Source account deleted or no Message-Id." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { description: "Origin IMAP delete failed." }
   /mail/raw/{blob}:
     get:
       tags: [Mail]

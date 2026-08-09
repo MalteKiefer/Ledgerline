@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Jobs\Mail;
 
 use App\Models\MailAccount;
+use App\Services\Mail\IngestStatus;
 use App\Services\Mail\MaildirIngestor;
+use App\Support\Mail\ImapDeleter;
 use App\Support\Mail\MailLogger;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -30,9 +32,11 @@ use Throwable;
  *
  * If the batch has been cancelled (user abort), the job returns immediately.
  *
- * NOTE: delete-after-import (removing the just-archived messages from the origin
- * server) is a Phase 4 feature and is deliberately NOT performed here yet — the
- * origin mailbox is only ever read.
+ * Delete-after-import (opt-in per account): once a slice is durably archived,
+ * the freshly-STORED messages' origin UIDs (from the Maildir filename) are
+ * removed from the origin mailbox in ONE ImapDeleter session. It runs strictly
+ * AFTER the archive commit (never before), and is best-effort — a delete
+ * failure never fails the ingest or loses the archived copy.
  */
 class IngestMailChunk implements ShouldQueue
 {
@@ -64,7 +68,7 @@ class IngestMailChunk implements ShouldQueue
         return [30, 120, 300];
     }
 
-    public function handle(MaildirIngestor $ingestor): void
+    public function handle(MaildirIngestor $ingestor, ImapDeleter $deleter): void
     {
         // User abort: a cancelled batch stops the rest of the ingest at once.
         if ($this->batch()?->cancelled()) {
@@ -77,6 +81,8 @@ class IngestMailChunk implements ShouldQueue
         }
 
         $summary = ['stored' => 0, 'duplicate' => 0, 'quarantined' => 0, 'skipped_old' => 0, 'skipped_spam' => 0, 'failed' => 0];
+        /** @var list<string> $deleteUids Origin UIDs of freshly-stored messages (delete-after-import). */
+        $deleteUids = [];
 
         foreach ($this->paths as $path) {
             // A prior attempt of this job (or a same-content dedup) may have
@@ -88,6 +94,9 @@ class IngestMailChunk implements ShouldQueue
             try {
                 $result = $ingestor->ingestFile($account, $this->folder, $path);
                 $summary[$result->status->value]++;
+                if ($result->status === IngestStatus::Stored && $result->uid !== null) {
+                    $deleteUids[] = $result->uid;
+                }
             } catch (Throwable $e) {
                 // Parse/blob/ledger failure: the ingestor left the file in place
                 // (it only unlinks after commit), so nothing is lost — the next
@@ -100,6 +109,23 @@ class IngestMailChunk implements ShouldQueue
                     'path' => $path,
                     'error' => $e->getMessage(),
                 ]);
+            }
+        }
+
+        // Delete-after-import (opt-in): remove the just-archived messages from
+        // the origin, AFTER their archive commit. Best-effort — never fails the
+        // ingest or loses the archived copy.
+        if ($account->delete_after_import && $deleteUids !== []) {
+            try {
+                $removed = $deleter->deleteUids($account, $this->folder, $deleteUids, (string) $account->password);
+                MailLogger::record($account, 'info', 'origin_deleted', $this->folder, "removed {$removed} origin message(s) after import");
+            } catch (Throwable $e) {
+                Log::warning('mail.chunk.delete_after_import_failed', [
+                    'account_id' => $this->accountId,
+                    'folder' => $this->folder,
+                    'error' => $e->getMessage(),
+                ]);
+                MailLogger::record($account, 'warn', 'origin_delete_failed', $this->folder, 'origin delete-after-import failed');
             }
         }
 
