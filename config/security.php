@@ -25,16 +25,19 @@ return [
     | CSP frame-ancestors (who may embed the app in a frame/iframe)
     |--------------------------------------------------------------------------
     |
-    | Default 'none' — the app refuses all framing (clickjacking-safe) and also
-    | emits X-Frame-Options: DENY. On a trusted, non-internet-facing LAN an
-    | operator may allow a home-dashboard/portal to embed the app by setting
-    | FRAME_ANCESTORS to a CSP source list, e.g. "'self' http://192.168.3.200:8300",
-    | or "*" to permit any embedder. When set to anything other than 'none' the
-    | X-Frame-Options header is dropped (it cannot express an allowlist) and CSP
-    | frame-ancestors is authoritative. Keep 'none' for a public deployment.
+    | Default 'self' — same-origin framing only (clickjacking-safe for an
+    | internet-facing deployment); SecurityHeaders also emits
+    | X-Frame-Options: SAMEORIGIN. Set 'none' to refuse ALL framing (XFO: DENY),
+    | or a CSP source list to allow specific embedders, e.g.
+    | "'self' https://dashboard.example". A literal "*" (framing by ANY origin)
+    | is a clickjacking exposure and is REFUSED on a TLS/internet-facing box
+    | (falls back to 'self' when FORCE_HTTPS / secure cookies are on) — see
+    | SecurityHeaders::frameAncestors(). When set to anything other than 'none'
+    | X-Frame-Options 'DENY' is dropped (it cannot express an allowlist) and CSP
+    | frame-ancestors is authoritative.
     |
     */
 
-    'frame_ancestors' => env('FRAME_ANCESTORS', "'none'"),
+    'frame_ancestors' => env('FRAME_ANCESTORS', "'self'"),
 
 ];
