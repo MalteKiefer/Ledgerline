@@ -56,6 +56,20 @@ class PasswordIconController extends Controller
         }
         $urls[] = 'https://'.$domain.'/favicon.ico';
         $urls[] = 'https://'.$domain.'/apple-touch-icon.png';
+        // Many sites (e.g. intellytec.de) don't serve /favicon.ico at the apex —
+        // it lives on www, is declared only via <link rel=icon> in the HTML, or
+        // sits behind a redirect the SSRF client won't follow. Try the www variant,
+        // then fall back to well-known favicon services (fixed hosts, SSRF-guarded)
+        // so a logo resolves for essentially any domain. Still a user-opted, transient
+        // egress; nothing is stored server-side.
+        $bare = str_starts_with($domain, 'www.') ? substr($domain, 4) : $domain;
+        if ($bare !== $domain) {
+            $urls[] = 'https://'.$bare.'/favicon.ico';
+        } else {
+            $urls[] = 'https://www.'.$domain.'/favicon.ico';
+        }
+        $urls[] = 'https://icons.duckduckgo.com/ip3/'.$bare.'.ico';
+        $urls[] = 'https://www.google.com/s2/favicons?sz=128&domain='.$bare;
 
         return $urls;
     }
