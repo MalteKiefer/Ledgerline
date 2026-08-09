@@ -161,7 +161,11 @@ class TwoFactorApiTest extends TestCase
             ->assertNotFound();
     }
 
-    /** A native device token (install_id set) is biometric-sealed → no password step-up. */
+    /**
+     * A native device token carries an install_id. Max-security: the former
+     * install_id password-step-up bypass is REMOVED — native tokens now require
+     * `current_password` on the sensitive 2FA ops exactly like every other bearer.
+     */
     private function nativeToken(User $user): string
     {
         $new = $user->createToken('pixel', ['device']);
@@ -170,26 +174,37 @@ class TwoFactorApiTest extends TestCase
         return $new->plainTextToken;
     }
 
-    public function test_native_device_token_reads_recovery_codes_without_password(): void
+    public function test_native_device_token_still_requires_password_to_read_recovery_codes(): void
     {
         $user = User::factory()->create();
         $token = $this->nativeToken($user);
         $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
-        // No current_password in the body → still OK for a native install.
+        // No current_password → 422 even for a native install (bypass removed).
         $this->withToken($token)->getJson('/api/v1/user/two-factor/recovery-codes')
+            ->assertUnprocessable()->assertJsonValidationErrors(['current_password']);
+
+        // With the correct password → OK.
+        $this->withToken($token)
+            ->json('GET', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'password'])
             ->assertOk()->assertJsonStructure(['recovery_codes']);
     }
 
-    public function test_native_device_token_disables_2fa_without_password(): void
+    public function test_native_device_token_still_requires_password_to_disable_2fa(): void
     {
         $user = User::factory()->create();
         $token = $this->nativeToken($user);
         $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
-        $this->withToken($token)->deleteJson('/api/v1/user/two-factor')->assertOk();
+        // No current_password → 422, 2FA stays active (bypass removed).
+        $this->withToken($token)->deleteJson('/api/v1/user/two-factor')
+            ->assertUnprocessable()->assertJsonValidationErrors(['current_password']);
+        $this->assertNotNull($user->refresh()->two_factor_secret);
+
+        // With the correct password → disabled.
+        $this->withToken($token)->deleteJson('/api/v1/user/two-factor', ['current_password' => 'password'])->assertOk();
         $this->assertNull($user->refresh()->two_factor_secret);
     }
 
@@ -259,6 +274,32 @@ class TwoFactorApiTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors(['current_password']);
         $user->refresh();
         $this->assertNotNull($user->two_factor_confirmed_at);
+    }
+
+    public function test_device_token_without_password_is_rejected_on_all_sensitive_ops(): void
+    {
+        $user = User::factory()->create();
+        $token = $this->deviceToken($user);
+
+        // enable is guarded: a device token without the password cannot bind 2FA.
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable')
+            ->assertUnprocessable()->assertJsonValidationErrors(['current_password']);
+        $this->assertNull($user->refresh()->two_factor_secret);
+
+        // Bring 2FA up (with the password) so the read/disable ops have state.
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password']);
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
+
+        // recovery-codes read, regenerate and disable all reject a passwordless device token.
+        $this->withToken($token)->getJson('/api/v1/user/two-factor/recovery-codes')
+            ->assertUnprocessable()->assertJsonValidationErrors(['current_password']);
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/recovery-codes/regenerate')
+            ->assertUnprocessable()->assertJsonValidationErrors(['current_password']);
+        $this->withToken($token)->deleteJson('/api/v1/user/two-factor')
+            ->assertUnprocessable()->assertJsonValidationErrors(['current_password']);
+
+        // 2FA survived every passwordless attempt.
+        $this->assertNotNull($user->refresh()->two_factor_confirmed_at);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
