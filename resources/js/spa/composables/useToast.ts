@@ -11,11 +11,15 @@ interface ToastState {
 // Single app-wide snackbar state, rendered once in App.vue.
 export const toastState = reactive<ToastState>({ show: false, text: '', color: 'info' });
 
+let hideTimer: ReturnType<typeof setTimeout> | undefined;
+
 export function useToast() {
   function toast(text: string, color: ToastColor = 'info') {
     toastState.text = text;
     toastState.color = color;
     toastState.show = true;
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => { toastState.show = false; }, 4000);
   }
   return {
     toast,

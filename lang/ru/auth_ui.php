@@ -10,6 +10,7 @@ return [
     'password' => 'Пароль',
     'remember' => 'Оставаться в системе',
     'sign_in' => 'Войти',
+    'invalid_credentials' => 'Неверный e-mail или пароль.',
     'forgot' => 'Забыли пароль?',
     'no_account' => 'Ещё нет аккаунта?',
     'register_link' => 'Создать',

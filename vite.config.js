@@ -3,7 +3,6 @@ import { fileURLToPath, URL } from 'node:url';
 import laravel from 'laravel-vite-plugin';
 import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
-import vuetify from 'vite-plugin-vuetify';
 import i18n from 'laravel-vue-i18n/vite';
 
 // No external font provider is configured: the application uses the operating
@@ -13,12 +12,11 @@ export default defineConfig({
     plugins: [
         laravel({
             // Legacy Blade+Alpine bundle (app.js) stays live until the SPA cutover;
-            // the Vue 3 + Vuetify SPA boots from spa/main.ts.
+            // the Vue 3 SPA (Tailwind + Reka UI) boots from spa/main.ts.
             input: ['resources/css/app.css', 'resources/js/app.js', 'resources/js/spa/main.ts'],
             refresh: true,
         }),
         vue(),
-        vuetify({ autoImport: true }),
         i18n('lang'),
         tailwindcss(),
     ],

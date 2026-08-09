@@ -1,75 +1,76 @@
 <template>
-  <div>
-    <v-card rounded="lg" flat class="ll-hero mb-6 pa-6 d-flex align-center">
-      <div>
-        <div class="text-h5 font-weight-bold mb-1">{{ t('pages.dashboard.heading') }}, {{ firstName }} 👋</div>
-        <div class="text-body-2 text-medium-emphasis" style="max-width:520px">{{ t('pages.dashboard.subtitle') }}</div>
-        <v-btn v-if="auth.can('finance')" color="primary" class="mt-4" :prepend-icon="mdiPlus" to="/finance/invoices">{{ t('invoices.new') }}</v-btn>
+  <div class="space-y-6">
+    <!-- Hero -->
+    <div class="relative overflow-hidden rounded-2xl border border-primary-500/20 bg-gradient-to-br from-primary-500/12 to-primary-500/[0.03] p-6">
+      <div class="relative z-10 max-w-xl">
+        <h1 class="text-2xl font-bold">{{ t('pages.dashboard.heading') }}, {{ firstName }} 👋</h1>
+        <p class="mt-1 text-sm text-[var(--ll-muted)]">{{ t('pages.dashboard.subtitle') }}</p>
+        <Btn v-if="auth.can('finance')" variant="solid" icon="add" class="mt-4" @click="$router.push('/finance/invoices')">{{ t('invoices.new') }}</Btn>
       </div>
-      <v-spacer />
-      <span class="msym d-none d-sm-block" style="font-size:120px;opacity:.16">insights</span>
-    </v-card>
+      <Icon name="insights" class="pointer-events-none absolute -right-2 top-1/2 hidden -translate-y-1/2 text-primary-500/15 sm:block" :size="150" />
+    </div>
 
-    <v-row v-if="auth.can('finance')">
-      <v-col v-for="s in stats" :key="s.key" cols="12" sm="6" lg="3">
-        <v-card rounded="lg" border flat class="pa-4">
-          <div class="d-flex align-center justify-space-between mb-2">
-            <v-avatar :color="s.tone" variant="tonal" rounded="lg" size="42"><span class="msym" style="font-size:22px">{{ s.icon }}</span></v-avatar>
-            <v-chip v-if="s.trend != null" size="x-small" :color="s.trend >= 0 ? 'success' : 'error'" variant="tonal">{{ s.trend >= 0 ? '+' : '' }}{{ s.trend }}%</v-chip>
-          </div>
-          <div class="ll-label">{{ t(s.label) }}</div>
-          <div class="text-h5 font-weight-bold ll-mono mt-1">{{ s.value }}</div>
-        </v-card>
-      </v-col>
-    </v-row>
+    <!-- KPI cards -->
+    <div v-if="auth.can('finance')" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Card v-for="s in stats" :key="s.key" :body-class="'p-4'">
+        <div class="mb-2 flex items-center justify-between">
+          <span class="grid h-10 w-10 place-items-center rounded-lg" :class="s.tint"><Icon :name="s.icon" :size="20" /></span>
+          <Badge v-if="s.trend != null" :tone="s.trend >= 0 ? 'success' : 'error'">{{ s.trend >= 0 ? '+' : '' }}{{ s.trend }}%</Badge>
+        </div>
+        <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t(s.label) }}</div>
+        <div class="mt-1 font-mono text-2xl font-bold tabular-nums">{{ s.value }}</div>
+      </Card>
+    </div>
 
-    <v-row class="mt-2">
-      <v-col cols="12" lg="8" v-if="auth.can('finance')">
-        <v-card rounded="lg" border flat>
-          <v-toolbar flat color="surface" density="comfortable">
-            <v-toolbar-title class="text-subtitle-1 font-weight-medium">{{ t('invoices.tab_invoices') }}</v-toolbar-title>
-            <v-spacer />
-            <v-btn variant="text" size="small" to="/finance/invoices">{{ t('common.open') }}</v-btn>
-          </v-toolbar>
-          <v-divider />
-          <v-table density="comfortable">
-            <thead><tr>
-              <th class="text-left">{{ t('invoices.col_number') }}</th><th class="text-left">{{ t('invoices.col_customer') }}</th>
-              <th class="text-right">{{ t('invoices.col_total') }}</th><th class="text-left">{{ t('common.status') }}</th>
-            </tr></thead>
-            <tbody>
-              <tr v-for="i in recent" :key="i.id" style="cursor:pointer" @click="$router.push('/finance/invoices')">
-                <td class="ll-mono">{{ i.number || '—' }}</td>
-                <td>{{ custName(i) }}</td>
-                <td class="text-right ll-mono">{{ money(Number(i.gross ?? 0)) }}</td>
-                <td><v-chip size="x-small" :color="statusColor(i.status)" variant="tonal">{{ t('invoices.status_' + i.status) }}</v-chip></td>
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <!-- Recent invoices -->
+      <Card v-if="auth.can('finance')" class="lg:col-span-2" :title="t('invoices.tab_invoices')" :body-class="'p-0'">
+        <template #actions><Btn variant="ghost" size="sm" @click="$router.push('/finance/invoices')">{{ t('common.open') }}</Btn></template>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+              <tr class="border-b border-[var(--ll-border)]">
+                <th class="px-4 py-2.5 font-medium">{{ t('invoices.col_number') }}</th>
+                <th class="px-4 py-2.5 font-medium">{{ t('invoices.col_customer') }}</th>
+                <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.col_total') }}</th>
+                <th class="px-4 py-2.5 font-medium">{{ t('common.status') }}</th>
               </tr>
-              <tr v-if="!recent.length"><td colspan="4" class="text-center text-medium-emphasis py-6">{{ t('common.none') }}</td></tr>
+            </thead>
+            <tbody>
+              <tr v-for="i in recent" :key="i.id" class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5" @click="$router.push('/finance/invoices')">
+                <td class="px-4 py-2.5 font-mono">{{ i.number || '—' }}</td>
+                <td class="px-4 py-2.5">{{ custName(i) }}</td>
+                <td class="px-4 py-2.5 text-right font-mono tabular-nums">{{ money(Number(i.gross ?? 0)) }}</td>
+                <td class="px-4 py-2.5"><Badge :tone="statusTone(i.status)">{{ t('invoices.status_' + i.status) }}</Badge></td>
+              </tr>
+              <tr v-if="!recent.length"><td colspan="4" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</td></tr>
             </tbody>
-          </v-table>
-        </v-card>
-      </v-col>
+          </table>
+        </div>
+      </Card>
 
-      <v-col cols="12" :lg="auth.can('finance') ? 4 : 12">
-        <v-card rounded="lg" border flat class="pa-2">
-          <v-list density="comfortable" nav>
-            <v-list-subheader class="ll-label">{{ t('settings.personal_heading') }}</v-list-subheader>
-            <v-list-item v-for="m in modules" :key="m.to" :to="m.to" rounded="lg">
-              <template #prepend><v-avatar :color="m.tone" variant="tonal" rounded="lg" size="38"><span class="msym" style="font-size:20px">{{ m.icon }}</span></v-avatar></template>
-              <v-list-item-title>{{ t(m.label) }}</v-list-item-title>
-              <template #append><span class="msym text-disabled">chevron_right</span></template>
-            </v-list-item>
-          </v-list>
-        </v-card>
-      </v-col>
-    </v-row>
+      <!-- Module shortcuts -->
+      <Card :class="auth.can('finance') ? '' : 'lg:col-span-3'" :title="t('settings.personal_heading')">
+        <div class="space-y-1">
+          <button
+            v-for="m in modules" :key="m.to"
+            class="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-black/[0.04] dark:hover:bg-white/5"
+            @click="$router.push(m.to)"
+          >
+            <span class="grid h-9 w-9 place-items-center rounded-lg" :class="m.tint"><Icon :name="m.icon" :size="20" /></span>
+            <span class="flex-1 text-sm font-medium">{{ t(m.label) }}</span>
+            <Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" />
+          </button>
+        </div>
+      </Card>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
-import { mdiPlus } from '@mdi/js';
+import { Icon, Card, Btn, Badge } from '@spa/ui';
 import { api } from '@spa/api/client';
 import { useAuthStore } from '@spa/stores/auth';
 
@@ -84,21 +85,21 @@ const fmt = computed(() => new Intl.NumberFormat(document.documentElement.lang |
 function money(n: number) { return fmt.value.format(n || 0); }
 const firstName = computed(() => (auth.user?.name ?? '').split(' ')[0] || '');
 function custName(i: Inv) { return i.customer?.name ?? '—'; }
-function statusColor(s: string) { return s === 'paid' ? 'success' : s === 'sent' ? 'info' : s === 'final' ? 'warning' : 'secondary'; }
+function statusTone(s: string): 'success' | 'info' | 'warning' | 'gray' { return s === 'paid' ? 'success' : s === 'sent' ? 'info' : s === 'final' ? 'warning' : 'gray'; }
 
 const stats = computed(() => [
-  { key: 'rev', label: 'invoices.stat_revenue', icon: 'trending_up', tone: 'primary', value: money(kpis.value?.net ?? 0), trend: kpis.value?.growthPct ?? null },
-  { key: 'open', label: 'invoices.outstanding_total', icon: 'schedule', tone: 'warning', value: money(openGross.value), trend: null },
-  { key: 'vat', label: 'invoices.vat_payable', icon: 'receipt_long', tone: 'info', value: money(vatPayable.value), trend: null },
-  { key: 'cnt', label: 'invoices.invoice_count', icon: 'description', tone: 'secondary', value: String(kpis.value?.count ?? 0), trend: null },
+  { key: 'rev', label: 'invoices.stat_revenue', icon: 'trending_up', tint: 'bg-primary-500/12 text-primary-600 dark:text-primary-300', value: money(kpis.value?.net ?? 0), trend: kpis.value?.growthPct ?? null },
+  { key: 'open', label: 'invoices.outstanding_total', icon: 'schedule', tint: 'bg-amber-500/15 text-amber-600 dark:text-amber-400', value: money(openGross.value), trend: null },
+  { key: 'vat', label: 'invoices.vat_payable', icon: 'receipt_long', tint: 'bg-blue-500/12 text-blue-600 dark:text-blue-400', value: money(vatPayable.value), trend: null },
+  { key: 'cnt', label: 'invoices.invoice_count', icon: 'description', tint: 'bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10', value: String(kpis.value?.count ?? 0), trend: null },
 ]);
 
 const modules = computed(() => {
-  const m: { to: string; label: string; icon: string; tone: string }[] = [];
-  if (auth.can('finance')) m.push({ to: '/finance/invoices', label: 'invoices.tab_invoices', icon: 'account_balance_wallet', tone: 'primary' });
-  if (auth.can('files')) m.push({ to: '/files', label: 'messages.nav.files', icon: 'folder', tone: 'info' });
-  if (auth.can('contacts')) m.push({ to: '/contacts', label: 'messages.nav.contacts', icon: 'contacts', tone: 'success' });
-  m.push({ to: '/profile', label: 'pages.profile.title', icon: 'account_circle', tone: 'secondary' });
+  const m: { to: string; label: string; icon: string; tint: string }[] = [];
+  if (auth.can('finance')) m.push({ to: '/finance/invoices', label: 'invoices.tab_invoices', icon: 'account_balance_wallet', tint: 'bg-primary-500/12 text-primary-600 dark:text-primary-300' });
+  if (auth.can('files')) m.push({ to: '/files', label: 'messages.nav.files', icon: 'folder', tint: 'bg-blue-500/12 text-blue-600 dark:text-blue-400' });
+  if (auth.can('contacts')) m.push({ to: '/contacts', label: 'messages.nav.contacts', icon: 'contacts', tint: 'bg-emerald-500/12 text-emerald-600 dark:text-emerald-400' });
+  m.push({ to: '/profile', label: 'pages.profile.title', icon: 'account_circle', tint: 'bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10' });
   return m;
 });
 
@@ -114,7 +115,3 @@ onMounted(async () => {
   } catch { /* finance disabled */ }
 });
 </script>
-
-<style scoped>
-.ll-hero { background: linear-gradient(120deg, rgba(112,102,245,.16), rgba(158,112,250,.06)); border: 1px solid rgba(167,139,250,.18); }
-</style>

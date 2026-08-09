@@ -1,61 +1,47 @@
 <template>
   <div>
     <!-- Export -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title>{{ t('account.export_heading') }}</v-card-title>
-      <v-card-text>
-        <p class="text-medium-emphasis mb-4">{{ t('account.export_hint') }}</p>
-        <v-btn variant="tonal" :prepend-icon="mdiDownload" href="/api/v1/account/export">{{ t('account.export_button') }}</v-btn>
-      </v-card-text>
-    </v-card>
+    <Card :title="t('account.export_heading')" class="mb-4">
+      <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('account.export_hint') }}</p>
+      <Btn variant="soft" icon="download" tag="a" href="/api/v1/account/export">{{ t('account.export_button') }}</Btn>
+    </Card>
 
     <!-- Active web sessions -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title>{{ t('account.sessions_heading') }}</v-card-title>
-      <v-card-text class="pb-0">
-        <p class="text-medium-emphasis">{{ t('account.sessions_hint') }}</p>
-      </v-card-text>
-      <v-list>
-        <v-list-item v-for="s in p.sessions" :key="s.id" :title="s.user_agent || t('account.sessions_unknown')" :subtitle="sessionSub(s)">
-          <template #append>
-            <v-chip v-if="s.current" size="x-small" color="primary" variant="tonal" class="mr-2">{{ t('account.sessions_current') }}</v-chip>
-            <v-btn v-else variant="text" size="small" color="error" :icon="mdiLogout" @click="onRevokeSession(s.id)" />
-          </template>
-        </v-list-item>
-        <v-list-item v-if="!p.sessions.length" :title="t('account.sessions_none')" class="text-medium-emphasis" />
-      </v-list>
-    </v-card>
+    <Card :title="t('account.sessions_heading')" body-class="p-0" class="mb-4">
+      <p class="px-5 py-3 text-sm text-[var(--ll-muted)]">{{ t('account.sessions_hint') }}</p>
+      <div v-for="s in p.sessions" :key="s.id" class="flex items-center gap-3 border-t border-[var(--ll-border)] px-5 py-3">
+        <div class="min-w-0 flex-1">
+          <div class="truncate text-sm font-medium">{{ s.user_agent || t('account.sessions_unknown') }}</div>
+          <div class="truncate text-xs text-[var(--ll-muted)]">{{ sessionSub(s) }}</div>
+        </div>
+        <Badge v-if="s.current" tone="primary">{{ t('account.sessions_current') }}</Badge>
+        <button v-else class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-red-600 hover:bg-red-500/10" :title="t('common.delete')" @click="onRevokeSession(s.id)">
+          <Icon name="logout" :size="18" />
+        </button>
+      </div>
+      <div v-if="!p.sessions.length" class="border-t border-[var(--ll-border)] px-5 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('account.sessions_none') }}</div>
+    </Card>
 
     <!-- Delete account -->
-    <v-card rounded="xl" border flat>
-      <v-card-title>{{ t('account.delete_heading') }}</v-card-title>
-      <v-card-text>
-        <p class="text-medium-emphasis mb-4">{{ t('account.delete_hint') }}</p>
-        <v-btn variant="text" color="error" :prepend-icon="mdiDeleteAlert" @click="confirmDelete = true">{{ t('account.delete_button') }}</v-btn>
-      </v-card-text>
-    </v-card>
+    <Card :title="t('account.delete_heading')">
+      <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('account.delete_hint') }}</p>
+      <Btn variant="ghost" icon="delete" class="text-red-600 hover:bg-red-500/10" @click="confirmDelete = true">{{ t('account.delete_button') }}</Btn>
+    </Card>
 
     <!-- Delete account: type the account email to confirm -->
-    <v-dialog v-model="confirmDelete" max-width="480">
-      <v-card rounded="xl">
-        <v-card-title>{{ t('account.delete_modal_title') }}</v-card-title>
-        <v-card-text>
-          <p class="mb-3">{{ t('account.delete_modal_warning') }}</p>
-          <v-text-field
-            v-model="delConfirm"
-            :label="t('account.delete_confirm_label')"
-            :error-messages="delMismatch ? [t('account.delete_confirm_mismatch')] : []"
-            variant="outlined"
-            autocomplete="off"
-          />
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="confirmDelete = false">{{ t('common.cancel') }}</v-btn>
-          <v-btn color="error" :loading="delBusy" :disabled="!deleteReady" @click="onDelete">{{ t('account.delete_button') }}</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <Modal v-model="confirmDelete" :title="t('account.delete_modal_title')" width="480px">
+      <p class="mb-3 text-sm">{{ t('account.delete_modal_warning') }}</p>
+      <TextField
+        v-model="delConfirm"
+        :label="t('account.delete_confirm_label')"
+        :error="delMismatch ? t('account.delete_confirm_mismatch') : ''"
+        autocomplete="off"
+      />
+      <template #footer>
+        <Btn variant="ghost" @click="confirmDelete = false">{{ t('common.cancel') }}</Btn>
+        <Btn variant="danger" :loading="delBusy" :disabled="!deleteReady" @click="onDelete">{{ t('account.delete_button') }}</Btn>
+      </template>
+    </Modal>
   </div>
 </template>
 
@@ -63,7 +49,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
-import { mdiDownload, mdiDeleteAlert, mdiLogout } from '@mdi/js';
+import { Card, Btn, Badge, Icon, Modal, TextField } from '@spa/ui';
 import { useAuthStore } from '@spa/stores/auth';
 import { useProfileStore, type Session } from '@spa/stores/profile';
 import { useToast } from '@spa/composables/useToast';

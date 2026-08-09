@@ -10,6 +10,7 @@ return [
     'password' => 'Password',
     'remember' => 'Keep me signed in',
     'sign_in' => 'Sign in',
+    'invalid_credentials' => 'Wrong email or password.',
     'forgot' => 'Forgot your password?',
     'no_account' => 'No account yet?',
     'register_link' => 'Create one',

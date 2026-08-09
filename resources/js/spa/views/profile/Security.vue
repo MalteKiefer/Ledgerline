@@ -1,113 +1,101 @@
 <template>
   <div>
     <!-- Change password -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title>{{ t('account.password_title') }}</v-card-title>
-      <v-card-text>
-        <v-form @submit.prevent="onPassword">
-          <v-text-field v-model="pw.current" :label="t('account.password_current')" type="password" variant="outlined" density="comfortable" :error-messages="pwErr.current_password" />
-          <v-text-field v-model="pw.next" :label="t('account.password_new')" type="password" variant="outlined" density="comfortable" :error-messages="pwErr.password" />
-          <v-text-field v-model="pw.confirm" :label="t('account.password_confirm')" type="password" variant="outlined" density="comfortable" />
-          <v-btn type="submit" color="primary" :loading="pwBusy">{{ t('common.save') }}</v-btn>
-        </v-form>
-      </v-card-text>
-    </v-card>
+    <Card :title="t('account.password_title')" class="mb-4">
+      <form class="space-y-4" @submit.prevent="onPassword">
+        <TextField v-model="pw.current" :label="t('account.password_current')" type="password" :error="pwErr.current_password?.[0] ?? ''" />
+        <TextField v-model="pw.next" :label="t('account.password_new')" type="password" :error="pwErr.password?.[0] ?? ''" />
+        <TextField v-model="pw.confirm" :label="t('account.password_confirm')" type="password" />
+        <Btn type="submit" variant="solid" :loading="pwBusy">{{ t('common.save') }}</Btn>
+      </form>
+    </Card>
 
     <!-- Two-factor authentication -->
-    <v-card rounded="xl" border flat>
-      <v-card-title class="d-flex align-center ga-2">
-        <v-icon :icon="mdiShieldCheck" size="small" />
-        <span>{{ t('account.twofa_title') }}</span>
-        <v-spacer />
-        <v-chip size="small" :color="twofa.status === 'on' ? 'success' : undefined" label>
+    <Card>
+      <template #header>
+        <Icon name="security" :size="18" />
+        <span class="text-sm font-semibold">{{ t('account.twofa_title') }}</span>
+      </template>
+      <template #actions>
+        <Badge :tone="twofa.status === 'on' ? 'success' : 'gray'">
           {{ twofa.status === 'on' ? t('account.twofa_on') : t('account.twofa_off') }}
-        </v-chip>
-      </v-card-title>
-      <v-card-text>
-        <p class="text-medium-emphasis mb-4">{{ t('account.twofa_desc') }}</p>
+        </Badge>
+      </template>
 
-        <!-- Disabled → offer to enable -->
-        <template v-if="twofa.status === 'off'">
-          <v-btn variant="tonal" color="primary" :prepend-icon="mdiShieldCheck" :loading="twofa.busy" @click="onEnable">
-            {{ t('account.twofa_enable') }}
-          </v-btn>
-        </template>
+      <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('account.twofa_desc') }}</p>
 
-        <!-- Pending: secret generated, awaiting confirmation -->
-        <template v-else-if="twofa.status === 'pending'">
-          <p class="mb-3">{{ t('account.twofa_scan') }}</p>
-          <!-- Trusted server-generated (Fortify/BaconQrCode) SVG markup. -->
-          <div v-if="twofa.qr?.svg" class="d-inline-block bg-white rounded-lg pa-3 mb-3 qr-box" v-html="twofa.qr.svg" />
-          <v-text-field v-if="twofa.qr?.secret" :model-value="twofa.qr.secret" readonly variant="outlined" density="compact" class="mb-3 secret-field" label="secret" hide-details />
-          <v-form class="d-flex flex-wrap align-start ga-2" @submit.prevent="onConfirm">
-            <v-text-field
-              v-model="twofa.code"
-              :label="t('account.twofa_code')"
-              inputmode="numeric"
-              autocomplete="one-time-code"
-              variant="outlined"
-              density="comfortable"
-              style="max-width: 200px"
-              :error-messages="twofa.codeErr"
-            />
-            <v-btn type="submit" color="primary" :loading="twofa.busy">{{ t('account.twofa_confirm') }}</v-btn>
-            <v-btn variant="text" :disabled="twofa.busy" @click="onCancelPending">{{ t('account.twofa_cancel') }}</v-btn>
-          </v-form>
-        </template>
+      <!-- Disabled → offer to enable -->
+      <template v-if="twofa.status === 'off'">
+        <Btn variant="soft" icon="security" :loading="twofa.busy" @click="onEnable">
+          {{ t('account.twofa_enable') }}
+        </Btn>
+      </template>
 
-        <!-- Enabled: recovery codes + disable -->
-        <template v-else>
-          <div class="rounded-lg border pa-3 mb-4">
-            <p class="text-caption text-medium-emphasis mb-2">{{ t('account.twofa_recovery_codes') }}</p>
-            <div v-if="twofa.recovery.length" class="recovery-grid mb-3">
-              <code v-for="c in twofa.recovery" :key="c">{{ c }}</code>
-            </div>
-            <div class="d-flex ga-2">
-              <v-btn variant="tonal" size="small" :prepend-icon="mdiRefresh" :loading="twofa.busy" @click="onRegenerate">
-                {{ t('account.twofa_regenerate') }}
-              </v-btn>
-              <v-btn v-if="twofa.recovery.length" variant="text" size="small" :prepend-icon="mdiContentCopy" @click="copyRecovery">
-                {{ t('account.cli_copy') }}
-              </v-btn>
-            </div>
+      <!-- Pending: secret generated, awaiting confirmation -->
+      <template v-else-if="twofa.status === 'pending'">
+        <p class="mb-3 text-sm">{{ t('account.twofa_scan') }}</p>
+        <!-- Trusted server-generated (Fortify/BaconQrCode) SVG markup. -->
+        <div v-if="twofa.qr?.svg" class="mb-3 inline-block rounded-lg bg-white p-3 [&_svg]:block [&_svg]:h-40 [&_svg]:w-40" v-html="twofa.qr.svg" />
+        <TextField v-if="twofa.qr?.secret" class="mb-3 max-w-xs font-mono" :model-value="twofa.qr.secret" label="secret" disabled />
+        <form class="flex flex-wrap items-start gap-2" @submit.prevent="onConfirm">
+          <TextField
+            v-model="twofa.code"
+            class="max-w-[200px]"
+            :label="t('account.twofa_code')"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            :error="twofa.codeErr?.[0] ?? ''"
+          />
+          <Btn type="submit" variant="solid" :loading="twofa.busy">{{ t('account.twofa_confirm') }}</Btn>
+          <Btn variant="ghost" :disabled="twofa.busy" @click="onCancelPending">{{ t('account.twofa_cancel') }}</Btn>
+        </form>
+      </template>
+
+      <!-- Enabled: recovery codes + disable -->
+      <template v-else>
+        <div class="mb-4 rounded-lg border border-[var(--ll-border)] p-3">
+          <p class="mb-2 text-xs text-[var(--ll-muted)]">{{ t('account.twofa_recovery_codes') }}</p>
+          <div v-if="twofa.recovery.length" class="mb-3 grid grid-cols-2 gap-1 font-mono text-[0.8rem]">
+            <code v-for="c in twofa.recovery" :key="c">{{ c }}</code>
           </div>
-          <v-btn variant="tonal" color="error" :prepend-icon="mdiShieldOff" :loading="twofa.busy" @click="onDisable">
-            {{ t('account.twofa_disable') }}
-          </v-btn>
-        </template>
-      </v-card-text>
-    </v-card>
+          <div class="flex gap-2">
+            <Btn variant="soft" size="sm" icon="key" :loading="twofa.busy" @click="onRegenerate">
+              {{ t('account.twofa_regenerate') }}
+            </Btn>
+            <Btn v-if="twofa.recovery.length" variant="ghost" size="sm" @click="copyRecovery">
+              {{ t('account.cli_copy') }}
+            </Btn>
+          </div>
+        </div>
+        <Btn variant="ghost" icon="close" class="text-red-600 hover:bg-red-500/10" :loading="twofa.busy" @click="onDisable">
+          {{ t('account.twofa_disable') }}
+        </Btn>
+      </template>
+    </Card>
 
     <!-- Password step-up (enable / disable / regenerate recovery codes) -->
-    <v-dialog v-model="pwPrompt.show" max-width="420" persistent>
-      <v-card rounded="xl">
-        <v-card-title>{{ t('account.password_current') }}</v-card-title>
-        <v-card-text>
-          <v-form @submit.prevent="submitPassword">
-            <v-text-field
-              v-model="pwPrompt.value"
-              :label="t('account.password_current')"
-              type="password"
-              autocomplete="current-password"
-              variant="outlined"
-              autofocus
-            />
-          </v-form>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="cancelPassword">{{ t('common.cancel') }}</v-btn>
-          <v-btn color="primary" :disabled="!pwPrompt.value" @click="submitPassword">{{ t('common.confirm') }}</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <Modal :model-value="pwPrompt.show" :title="t('account.password_current')" width="420px" @update:model-value="(v) => { if (!v) cancelPassword(); }">
+      <form @submit.prevent="submitPassword">
+        <TextField
+          v-model="pwPrompt.value"
+          :label="t('account.password_current')"
+          type="password"
+          autocomplete="current-password"
+          autofocus
+        />
+      </form>
+      <template #footer>
+        <Btn variant="ghost" @click="cancelPassword">{{ t('common.cancel') }}</Btn>
+        <Btn variant="solid" :disabled="!pwPrompt.value" @click="submitPassword">{{ t('common.confirm') }}</Btn>
+      </template>
+    </Modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
-import { mdiShieldCheck, mdiShieldOff, mdiRefresh, mdiContentCopy } from '@mdi/js';
+import { Card, Btn, Icon, Badge, TextField, Modal } from '@spa/ui';
 import { useAuthStore } from '@spa/stores/auth';
 import { useProfileStore } from '@spa/stores/profile';
 import { useToast } from '@spa/composables/useToast';
@@ -305,10 +293,3 @@ async function copyRecovery() {
   }
 }
 </script>
-
-<style scoped>
-.qr-box :deep(svg) { display: block; width: 160px; height: 160px; }
-.recovery-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; font-family: monospace; font-size: 0.8rem; }
-.secret-field { max-width: 320px; }
-.secret-field :deep(input) { font-family: monospace; letter-spacing: 0.05em; }
-</style>

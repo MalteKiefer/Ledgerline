@@ -1,134 +1,100 @@
 <template>
-  <div class="mx-auto" style="max-width: 960px">
+  <div class="mx-auto max-w-3xl">
     <!-- Mail (SMTP) -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiEmailOutline" size="small" />
-        {{ t('settings.notify_mail_heading') }}
-        <v-spacer />
-        <v-switch v-model="form.mail_enabled" color="primary" density="compact" hide-details inset />
-      </v-card-title>
-      <v-divider />
-      <v-card-text v-show="form.mail_enabled">
-        <v-row dense>
-          <v-col cols="12" sm="8">
-            <v-text-field v-model="form.smtp_host" :label="t('settings.smtp_host')" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="4">
-            <v-text-field v-model.number="form.smtp_port" :label="t('settings.smtp_port')" type="number" min="1" max="65535" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="4">
-            <v-select v-model="form.smtp_encryption" :items="encryptionItems" :label="t('settings.smtp_encryption')" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="8">
-            <v-text-field v-model="form.smtp_username" :label="t('settings.smtp_username')" autocomplete="off" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12">
-            <v-text-field
-              v-model="form.smtp_password"
-              :label="t('settings.smtp_password')"
-              type="password"
-              autocomplete="new-password"
-              :hint="form.has_smtp_password ? t('settings.notify_secret_keep_hint') : undefined"
-              :persistent-hint="form.has_smtp_password"
-              variant="outlined"
-              density="comfortable"
-              hide-details="auto"
-            />
-          </v-col>
-          <v-col cols="12" sm="6">
-            <v-text-field v-model="form.smtp_from_address" :label="t('settings.smtp_from_address')" type="email" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="6">
-            <v-text-field v-model="form.smtp_from_name" :label="t('settings.smtp_from_name')" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-        </v-row>
-        <v-btn class="mt-3" variant="tonal" :prepend-icon="mdiSend" :loading="testing === 'mail'" :disabled="!form.mail_enabled || saving" @click="test('mail')">
+    <Card class="mb-4">
+      <template #header>
+        <Icon name="notifications" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.notify_mail_heading') }}</h2>
+      </template>
+      <template #actions>
+        <label class="relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center">
+          <input v-model="form.mail_enabled" type="checkbox" class="peer sr-only">
+          <span class="pointer-events-none absolute inset-0 rounded-full bg-black/10 transition-colors peer-checked:bg-primary-500 dark:bg-white/15" />
+          <span class="pointer-events-none absolute left-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
+        </label>
+      </template>
+      <div v-show="form.mail_enabled" class="space-y-4">
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <TextField class="sm:col-span-2" v-model="form.smtp_host" :label="t('settings.smtp_host')" />
+          <TextField v-model="form.smtp_port" :label="t('settings.smtp_port')" type="number" />
+        </div>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Select v-model="form.smtp_encryption" :label="t('settings.smtp_encryption')" :options="encryptionItems" />
+          <TextField class="sm:col-span-2" v-model="form.smtp_username" :label="t('settings.smtp_username')" autocomplete="off" />
+        </div>
+        <TextField
+          v-model="form.smtp_password" :label="t('settings.smtp_password')" type="password" autocomplete="new-password"
+          :hint="form.has_smtp_password ? t('settings.notify_secret_keep_hint') : undefined"
+        />
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <TextField v-model="form.smtp_from_address" :label="t('settings.smtp_from_address')" type="email" />
+          <TextField v-model="form.smtp_from_name" :label="t('settings.smtp_from_name')" />
+        </div>
+        <Btn variant="soft" :loading="testing === 'mail'" :disabled="!form.mail_enabled || saving" @click="test('mail')">
           {{ t('settings.notify_test_send', { channel: 'Mail' }) }}
-        </v-btn>
-      </v-card-text>
-    </v-card>
+        </Btn>
+      </div>
+    </Card>
 
     <!-- NTFY -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiBellOutline" size="small" />
-        {{ t('settings.notify_ntfy_heading') }}
-        <v-spacer />
-        <v-switch v-model="form.ntfy_enabled" color="primary" density="compact" hide-details inset />
-      </v-card-title>
-      <v-divider />
-      <v-card-text v-show="form.ntfy_enabled">
-        <v-row dense>
-          <v-col cols="12" sm="7">
-            <v-text-field v-model="form.ntfy_url" :label="t('settings.ntfy_url')" type="url" placeholder="https://ntfy.sh" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="5">
-            <v-text-field v-model="form.ntfy_topic" :label="t('settings.ntfy_topic')" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12">
-            <v-text-field
-              v-model="form.ntfy_token"
-              :label="t('settings.ntfy_token')"
-              type="password"
-              autocomplete="new-password"
-              :hint="form.has_ntfy_token ? t('settings.notify_secret_keep_hint') : undefined"
-              :persistent-hint="form.has_ntfy_token"
-              variant="outlined"
-              density="comfortable"
-              hide-details="auto"
-            />
-          </v-col>
-        </v-row>
-        <v-btn class="mt-3" variant="tonal" :prepend-icon="mdiSend" :loading="testing === 'ntfy'" :disabled="!form.ntfy_enabled || saving" @click="test('ntfy')">
+    <Card class="mb-4">
+      <template #header>
+        <Icon name="notifications" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.notify_ntfy_heading') }}</h2>
+      </template>
+      <template #actions>
+        <label class="relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center">
+          <input v-model="form.ntfy_enabled" type="checkbox" class="peer sr-only">
+          <span class="pointer-events-none absolute inset-0 rounded-full bg-black/10 transition-colors peer-checked:bg-primary-500 dark:bg-white/15" />
+          <span class="pointer-events-none absolute left-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
+        </label>
+      </template>
+      <div v-show="form.ntfy_enabled" class="space-y-4">
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <TextField class="sm:col-span-2" v-model="form.ntfy_url" :label="t('settings.ntfy_url')" type="url" placeholder="https://ntfy.sh" />
+          <TextField v-model="form.ntfy_topic" :label="t('settings.ntfy_topic')" />
+        </div>
+        <TextField
+          v-model="form.ntfy_token" :label="t('settings.ntfy_token')" type="password" autocomplete="new-password"
+          :hint="form.has_ntfy_token ? t('settings.notify_secret_keep_hint') : undefined"
+        />
+        <Btn variant="soft" :loading="testing === 'ntfy'" :disabled="!form.ntfy_enabled || saving" @click="test('ntfy')">
           {{ t('settings.notify_test_send', { channel: 'ntfy' }) }}
-        </v-btn>
-      </v-card-text>
-    </v-card>
+        </Btn>
+      </div>
+    </Card>
 
     <!-- Webhook -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiWebhook" size="small" />
-        {{ t('settings.notify_webhook_heading') }}
-        <v-spacer />
-        <v-switch v-model="form.webhook_enabled" color="primary" density="compact" hide-details inset />
-      </v-card-title>
-      <v-divider />
-      <v-card-text v-show="form.webhook_enabled">
-        <v-row dense>
-          <v-col cols="12">
-            <v-text-field v-model="form.webhook_url" :label="t('settings.webhook_url')" type="url" placeholder="https://…" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12">
-            <v-text-field
-              v-model="form.webhook_secret"
-              :label="t('settings.webhook_secret')"
-              type="password"
-              autocomplete="new-password"
-              :hint="form.has_webhook_secret ? t('settings.notify_secret_keep_hint') : undefined"
-              :persistent-hint="form.has_webhook_secret"
-              variant="outlined"
-              density="comfortable"
-              hide-details="auto"
-            />
-          </v-col>
-        </v-row>
-        <v-btn class="mt-3" variant="tonal" :prepend-icon="mdiSend" :loading="testing === 'webhook'" :disabled="!form.webhook_enabled || saving" @click="test('webhook')">
+    <Card class="mb-4">
+      <template #header>
+        <Icon name="notifications" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.notify_webhook_heading') }}</h2>
+      </template>
+      <template #actions>
+        <label class="relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center">
+          <input v-model="form.webhook_enabled" type="checkbox" class="peer sr-only">
+          <span class="pointer-events-none absolute inset-0 rounded-full bg-black/10 transition-colors peer-checked:bg-primary-500 dark:bg-white/15" />
+          <span class="pointer-events-none absolute left-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
+        </label>
+      </template>
+      <div v-show="form.webhook_enabled" class="space-y-4">
+        <TextField v-model="form.webhook_url" :label="t('settings.webhook_url')" type="url" placeholder="https://…" />
+        <TextField
+          v-model="form.webhook_secret" :label="t('settings.webhook_secret')" type="password" autocomplete="new-password"
+          :hint="form.has_webhook_secret ? t('settings.notify_secret_keep_hint') : undefined"
+        />
+        <Btn variant="soft" :loading="testing === 'webhook'" :disabled="!form.webhook_enabled || saving" @click="test('webhook')">
           {{ t('settings.notify_test_send', { channel: 'Webhook' }) }}
-        </v-btn>
-      </v-card-text>
-    </v-card>
+        </Btn>
+      </div>
+    </Card>
 
     <!-- Sticky save bar -->
-    <v-card rounded="xl" border flat color="surface" style="position: sticky; bottom: 12px; z-index: 2">
-      <v-card-actions class="px-4 py-3">
-        <v-spacer />
-        <v-btn color="primary" variant="flat" :prepend-icon="mdiContentSave" :loading="saving" :disabled="loading" @click="save">
-          {{ t('settings.save') }}
-        </v-btn>
-      </v-card-actions>
-    </v-card>
+    <div class="sticky bottom-3 z-10 flex justify-end rounded-xl border border-[var(--ll-border)] bg-[var(--ll-surface)] px-4 py-3 shadow-sm">
+      <Btn variant="solid" :loading="saving" :disabled="loading" @click="save">
+        {{ t('settings.save') }}
+      </Btn>
+    </div>
   </div>
 </template>
 
@@ -137,7 +103,7 @@ import { reactive, ref, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { api, ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
-import { mdiEmailOutline, mdiBellOutline, mdiWebhook, mdiSend, mdiContentSave } from '@mdi/js';
+import { Icon, Btn, Card, TextField, Select } from '@spa/ui';
 
 type Channel = 'mail' | 'ntfy' | 'webhook';
 
@@ -183,7 +149,7 @@ interface FormState {
 
 const { success, error } = useToast();
 
-const encryptionItems = ['tls', 'ssl', 'none'];
+const encryptionItems = ['tls', 'ssl', 'none'].map((v) => ({ title: v, value: v }));
 
 const form = reactive<FormState>({
   mail_enabled: false,

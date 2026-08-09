@@ -1,132 +1,130 @@
 <template>
-  <v-navigation-drawer v-model="drawer" :rail="rail" @update:rail="rail = $event" color="surface" width="272" class="ll-nav">
-    <div class="d-flex align-center px-4 py-3">
-      <div class="ll-brand-logo d-flex align-center justify-center mr-2">
-        <span class="msym" style="font-size:20px">bolt</span>
+  <div class="flex min-h-screen bg-[var(--ll-bg)] text-[var(--ll-fg)]">
+    <!-- Sidebar -->
+    <aside
+      class="fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-[var(--ll-border)] bg-[var(--ll-surface)] transition-transform lg:static lg:translate-x-0"
+      :class="drawer ? 'translate-x-0' : '-translate-x-full'"
+    >
+      <div class="flex items-center gap-2.5 px-4 h-16">
+        <span class="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 text-white"><Icon name="bolt" :size="18" /></span>
+        <span class="text-base font-bold">Ledgerline</span>
       </div>
-      <span v-if="!rail" class="text-h6 font-weight-bold">Ledgerline</span>
-      <v-spacer />
-      <v-btn v-if="!rail" variant="text" size="small" :icon="mdiChevronLeft" @click="rail = true" />
-    </div>
-
-    <v-list density="compact" nav class="px-2">
-      <div v-for="grp in menu" :key="grp.key">
-        <v-list-subheader v-if="!rail && grp.title" class="ll-subheader">{{ t(grp.title) }}</v-list-subheader>
-        <template v-for="item in grp.items" :key="item.to || item.key">
-          <v-list-group v-if="item.children" :value="item.key">
-            <template #activator="{ props }">
-              <v-list-item v-bind="props" :title="t(item.label)">
-                <template #prepend><span class="msym ll-nav-ic">{{ item.icon }}</span></template>
-              </v-list-item>
-            </template>
-            <v-list-item
-              v-for="c in item.children"
-              :key="c.to"
-              :to="c.to"
-              :title="t(c.label)"
-              :active="isActive(c.to)"
-              class="ll-sub"
+      <nav class="flex-1 overflow-y-auto px-3 pb-4 space-y-4">
+        <div v-for="grp in menu" :key="grp.key">
+          <div v-if="grp.title" class="px-2 pt-3 pb-1 text-[0.66rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t(grp.title) }}</div>
+          <template v-for="item in grp.items" :key="item.to || item.key">
+            <div v-if="item.children">
+              <button
+                class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5"
+                @click="toggle(item.key!)"
+              >
+                <Icon :name="item.icon!" :size="20" class="text-[var(--ll-muted)]" />
+                <span class="flex-1 text-left">{{ t(item.label) }}</span>
+                <Icon name="expand_more" :size="18" class="text-[var(--ll-muted)] transition-transform" :class="open[item.key!] ? 'rotate-180' : ''" />
+              </button>
+              <div v-show="open[item.key!]" class="mt-0.5 space-y-0.5 pl-3">
+                <RouterLink
+                  v-for="c in item.children" :key="c.to" :to="c.to"
+                  class="flex items-center gap-2.5 rounded-lg py-1.5 pl-4 pr-2.5 text-sm hover:bg-black/[0.04] dark:hover:bg-white/5"
+                  :class="isActive(c.to) ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300 font-medium' : 'text-[var(--ll-muted)]'"
+                >
+                  <span class="h-1.5 w-1.5 rounded-full" :class="isActive(c.to) ? 'bg-primary-500' : 'bg-current opacity-40'" />
+                  {{ t(c.label) }}
+                </RouterLink>
+              </div>
+            </div>
+            <RouterLink
+              v-else :to="item.to!"
+              class="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5"
+              :class="isActive(item.to) ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
             >
-              <template #prepend><span class="ll-dot" /></template>
-            </v-list-item>
-          </v-list-group>
-          <v-list-item v-else :to="item.to" :title="t(item.label)" :active="isActive(item.to)">
-            <template #prepend><span class="msym ll-nav-ic">{{ item.icon }}</span></template>
-          </v-list-item>
-        </template>
-      </div>
-    </v-list>
-  </v-navigation-drawer>
+              <Icon :name="item.icon!" :size="20" :class="isActive(item.to) ? 'text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'" />
+              {{ t(item.label) }}
+            </RouterLink>
+          </template>
+        </div>
+      </nav>
+    </aside>
+    <div v-if="drawer" class="fixed inset-0 z-20 bg-black/30 lg:hidden" @click="drawer = false" />
 
-  <v-app-bar flat height="64" class="ll-appbar px-2">
-    <v-btn variant="text" :icon="mdiMenu" @click="rail ? (rail = false) : (drawer = !drawer)" />
-    <div class="d-none d-sm-flex align-center ga-1 text-body-2">
-      <span class="text-medium-emphasis">{{ crumbRoot }}</span>
-      <template v-if="crumbLeaf">
-        <span class="msym text-disabled" style="font-size:16px">chevron_right</span>
-        <span class="font-weight-medium">{{ crumbLeaf }}</span>
-      </template>
-    </div>
-    <v-spacer />
-    <v-text-field
-      v-model="globalSearch"
-      :placeholder="t('common.search')"
-      :prepend-inner-icon="mdiMagnify"
-      variant="solo-filled" flat density="compact" hide-details single-line rounded
-      class="d-none d-md-block mr-2" style="max-width:280px"
-      @keyup.enter="runSearch"
-    />
-    <v-btn variant="text" :icon="mdiThemeLightDark" @click="toggleTheme" />
-    <v-menu>
-      <template #activator="{ props }">
-        <v-btn variant="text" v-bind="props" size="small" class="text-body-2">{{ locale.toUpperCase() }}</v-btn>
-      </template>
-      <v-list density="compact">
-        <v-list-item v-for="l in locales" :key="l" :active="l === locale" @click="setLocale(l)"><v-list-item-title>{{ l.toUpperCase() }}</v-list-item-title></v-list-item>
-      </v-list>
-    </v-menu>
-    <v-menu @update:model-value="(o: boolean) => o && loadNotes()">
-      <template #activator="{ props }">
-        <v-btn icon v-bind="props"><v-badge :model-value="unread > 0" :content="unread" color="error"><v-icon :icon="mdiBellOutline" /></v-badge></v-btn>
-      </template>
-      <v-list width="340" density="compact">
-        <v-list-subheader>{{ t('notifications.title') }}</v-list-subheader>
-        <v-list-item v-for="n in notes" :key="n.id" :title="n.title" :subtitle="n.body" :class="{ 'bg-surface-variant': !n.read }" @click="readNote(n)" />
-        <v-list-item v-if="!notes.length" :title="t('common.none')" class="text-medium-emphasis" />
-        <template v-if="notes.length"><v-divider /><v-list-item class="text-primary" :title="t('notifications.mark_all_read')" @click="markAllNotes" /></template>
-      </v-list>
-    </v-menu>
-    <v-menu>
-      <template #activator="{ props }">
-        <v-btn variant="text" v-bind="props" class="ll-user pl-1 pr-2">
-          <v-avatar size="34" color="primary" class="mr-2">
-            <v-img v-if="avatarUrl" :src="avatarUrl" />
-            <span v-else class="text-body-2">{{ initials }}</span>
-          </v-avatar>
-          <div class="d-none d-sm-block text-left" style="line-height:1.1">
-            <div class="text-body-2 font-weight-medium">{{ auth.user?.name }}</div>
-            <div class="text-caption text-medium-emphasis">{{ auth.isAdmin() ? 'Admin' : 'User' }}</div>
+    <!-- Main column -->
+    <div class="flex min-w-0 flex-1 flex-col">
+      <header class="sticky top-0 z-10 flex h-16 items-center gap-2 border-b border-[var(--ll-border)] bg-[var(--ll-surface)]/80 px-3 backdrop-blur">
+        <button class="grid h-9 w-9 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10 lg:hidden" @click="drawer = !drawer"><Icon name="menu" :size="20" /></button>
+        <nav class="hidden items-center gap-1.5 text-sm sm:flex">
+          <span class="text-[var(--ll-muted)]">{{ crumbRoot }}</span>
+          <template v-if="crumbLeaf"><Icon name="chevron_right" :size="16" class="text-[var(--ll-muted)]" /><span class="font-medium">{{ crumbLeaf }}</span></template>
+        </nav>
+        <div class="ml-auto flex items-center gap-1">
+          <div class="relative hidden md:block">
+            <Icon name="search" :size="18" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ll-muted)]" />
+            <input v-model="globalSearch" :placeholder="t('common.search')" class="w-56 rounded-lg border border-[var(--ll-border)] bg-transparent py-1.5 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/40" @keyup.enter="runSearch">
           </div>
-        </v-btn>
-      </template>
-      <v-list width="220" density="compact">
-        <v-list-item :prepend-icon="mdiAccountCircleOutline" :title="t('pages.profile.title')" to="/profile" />
-        <v-list-item v-if="auth.isAdmin()" :prepend-icon="mdiCogOutline" :title="t('settings.heading')" to="/settings" />
-        <v-divider />
-        <v-list-item :prepend-icon="mdiLogout" :title="t('messages.menu.logout')" base-color="error" @click="logout" />
-      </v-list>
-    </v-menu>
-  </v-app-bar>
+          <button class="grid h-9 w-9 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" @click="toggleTheme"><Icon :name="dark ? 'light_mode' : 'dark_mode'" :size="20" /></button>
 
-  <v-main class="ll-main">
-    <v-container fluid class="pa-4 pa-md-6">
-      <router-view />
-    </v-container>
-  </v-main>
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger class="grid h-9 min-w-9 place-items-center rounded-lg px-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10">{{ locale.toUpperCase() }}</DropdownMenuTrigger>
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" class="z-50 min-w-32 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+              <DropdownMenuItem v-for="l in locales" :key="l" class="cursor-pointer rounded-md px-3 py-1.5 text-sm outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" @select="setLocale(l)">{{ l.toUpperCase() }}</DropdownMenuItem>
+            </DropdownMenuContent></DropdownMenuPortal>
+          </DropdownMenuRoot>
+
+          <DropdownMenuRoot @update:open="(o) => o && loadNotes()">
+            <DropdownMenuTrigger class="relative grid h-9 w-9 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10">
+              <Icon name="notifications" :size="20" />
+              <span v-if="unread" class="absolute right-1.5 top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] text-white">{{ unread }}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-50 w-80 rounded-xl border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+              <div class="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('notifications.title') }}</div>
+              <button v-for="n in notes" :key="n.id" class="block w-full rounded-md px-3 py-2 text-left hover:bg-black/[0.05] dark:hover:bg-white/10" :class="n.read ? '' : 'bg-primary-500/5'" @click="readNote(n)">
+                <div class="text-sm font-medium">{{ n.title }}</div><div class="text-xs text-[var(--ll-muted)]">{{ n.body }}</div>
+              </button>
+              <div v-if="!notes.length" class="px-3 py-4 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</div>
+              <template v-if="notes.length"><div class="my-1 border-t border-[var(--ll-border)]" /><button class="w-full rounded-md px-3 py-1.5 text-left text-sm text-primary-600 dark:text-primary-300 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="markAllNotes">{{ t('notifications.mark_all_read') }}</button></template>
+            </DropdownMenuContent></DropdownMenuPortal>
+          </DropdownMenuRoot>
+
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger class="ml-1 flex items-center gap-2 rounded-lg py-1 pl-1 pr-2 hover:bg-black/[0.05] dark:hover:bg-white/10">
+              <span class="grid h-8 w-8 place-items-center overflow-hidden rounded-full bg-primary-500 text-sm font-medium text-white">
+                <img v-if="avatarUrl" :src="avatarUrl" class="h-full w-full object-cover" ><template v-else>{{ initials }}</template>
+              </span>
+              <span class="hidden text-left leading-tight sm:block"><span class="block text-sm font-medium">{{ auth.user?.name }}</span><span class="block text-xs text-[var(--ll-muted)]">{{ auth.isAdmin() ? 'Admin' : 'User' }}</span></span>
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-50 w-52 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+              <DropdownMenuItem class="flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" @select="router.push('/profile')"><Icon name="account_circle" :size="18" />{{ t('pages.profile.title') }}</DropdownMenuItem>
+              <DropdownMenuItem v-if="auth.isAdmin()" class="flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" @select="router.push('/settings')"><Icon name="settings" :size="18" />{{ t('settings.heading') }}</DropdownMenuItem>
+              <div class="my-1 border-t border-[var(--ll-border)]" />
+              <DropdownMenuItem class="flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm text-red-600 outline-none hover:bg-red-500/10" @select="logout"><Icon name="logout" :size="18" />{{ t('messages.menu.logout') }}</DropdownMenuItem>
+            </DropdownMenuContent></DropdownMenuPortal>
+          </DropdownMenuRoot>
+        </div>
+      </header>
+
+      <main class="flex-1 p-4 md:p-6"><RouterView /></main>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useTheme } from 'vuetify';
-import { useRouter, useRoute } from 'vue-router';
+import { ref, reactive, computed, onMounted } from 'vue';
+import { useRouter, useRoute, RouterLink, RouterView } from 'vue-router';
 import { trans as t, loadLanguageAsync, getActiveLanguage } from 'laravel-vue-i18n';
-import {
-  mdiMenu, mdiChevronLeft, mdiMagnify, mdiThemeLightDark, mdiBellOutline, mdiLogout,
-  mdiAccountCircleOutline, mdiCogOutline,
-} from '@mdi/js';
+import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
+import { Icon } from '@spa/ui';
 import { useAuthStore } from '@spa/stores/auth';
 import { api } from '@spa/api/client';
 
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
-const theme = useTheme();
-const drawer = ref(true);
-const rail = ref(false);
+const drawer = ref(false);
+const dark = ref(document.documentElement.classList.contains('dark'));
 const locales = ['de', 'en', 'ru'] as const;
 const locale = ref(getActiveLanguage() || 'de');
 const globalSearch = ref('');
 const avatarBust = ref(0);
+const open = reactive<Record<string, boolean>>({ finance: true, settings: true });
 
 const avatarUrl = computed(() => (auth.user?.has_avatar ? api.streamUrl(`/api/v1/avatar?v=${avatarBust.value}`) : ''));
 const initials = computed(() => (auth.user?.name ?? '?').slice(0, 1).toUpperCase());
@@ -136,56 +134,29 @@ interface NavItem { key?: string; to?: string; label: string; icon?: string; chi
 interface NavGroup { key: string; title?: string; items: NavItem[] }
 
 const menu = computed<NavGroup[]>(() => {
-  const groups: NavGroup[] = [
-    { key: 'main', items: [{ to: '/', label: 'pages.dashboard.title', icon: 'space_dashboard' }] },
-  ];
+  const groups: NavGroup[] = [{ key: 'main', items: [{ to: '/', label: 'pages.dashboard.title', icon: 'space_dashboard' }] }];
   const mods: NavItem[] = [];
-  if (auth.can('finance')) mods.push({
-    key: 'finance', label: 'messages.nav.finance', icon: 'account_balance_wallet',
-    children: [
-      { to: '/finance/dashboard', label: 'invoices.tab_dashboard' },
-      { to: '/finance/invoices', label: 'invoices.tab_invoices' },
-      { to: '/finance/payments', label: 'invoices.tab_payments' },
-      { to: '/finance/receipts', label: 'invoices.tab_receipts' },
-      { to: '/finance/projects', label: 'invoices.tab_projects' },
-      { to: '/finance/partners', label: 'invoices.tab_partners' },
-      { to: '/finance/stats', label: 'invoices.tab_stats' },
-    ],
-  });
+  if (auth.can('finance')) mods.push({ key: 'finance', label: 'messages.nav.finance', icon: 'account_balance_wallet', children: [
+    { to: '/finance/dashboard', label: 'invoices.tab_dashboard' }, { to: '/finance/invoices', label: 'invoices.tab_invoices' },
+    { to: '/finance/payments', label: 'invoices.tab_payments' }, { to: '/finance/receipts', label: 'invoices.tab_receipts' },
+    { to: '/finance/projects', label: 'invoices.tab_projects' }, { to: '/finance/partners', label: 'invoices.tab_partners' },
+    { to: '/finance/stats', label: 'invoices.tab_stats' },
+  ] });
   if (auth.can('files')) mods.push({ to: '/files', label: 'messages.nav.files', icon: 'folder' });
   if (auth.can('contacts')) mods.push({ to: '/contacts', label: 'messages.nav.contacts', icon: 'contacts' });
   groups.push({ key: 'modules', title: 'settings.personal_heading', items: mods });
-
-  if (auth.isAdmin()) {
-    groups.push({
-      key: 'admin', title: 'settings.admin_heading',
-      items: [{
-        key: 'settings', label: 'settings.heading', icon: 'settings',
-        children: [
-          { to: '/settings/users', label: 'settings.users_section' },
-          { to: '/settings/groups', label: 'settings.groups_section' },
-          { to: '/settings/company', label: 'settings.company_section' },
-          { to: '/settings/notifications-config', label: 'settings.notifications_section' },
-          { to: '/settings/security', label: 'settings.security_section' },
-          { to: '/settings/files-limits', label: 'settings.files_limits_heading' },
-          { to: '/settings/backup', label: 'settings.backup_section' },
-          { to: '/settings/paperless', label: 'settings.paperless_section' },
-          { to: '/settings/system', label: 'settings.system_section' },
-          { to: '/settings/security-log', label: 'settings.seclog_title' },
-        ],
-      }],
-    });
-  }
-  groups.push({ key: 'account', title: 'account.hub_account_heading', items: [
-    { to: '/profile', label: 'pages.profile.title', icon: 'account_circle' },
-  ] });
+  if (auth.isAdmin()) groups.push({ key: 'admin', title: 'settings.admin_heading', items: [{ key: 'settings', label: 'settings.heading', icon: 'settings', children: [
+    { to: '/settings/users', label: 'settings.users_section' }, { to: '/settings/groups', label: 'settings.groups_section' },
+    { to: '/settings/company', label: 'settings.company_section' }, { to: '/settings/notifications-config', label: 'settings.notifications_section' },
+    { to: '/settings/security', label: 'settings.security_section' }, { to: '/settings/files-limits', label: 'settings.files_limits_heading' },
+    { to: '/settings/backup', label: 'settings.backup_section' }, { to: '/settings/paperless', label: 'settings.paperless_section' },
+    { to: '/settings/system', label: 'settings.system_section' }, { to: '/settings/security-log', label: 'settings.seclog_title' },
+  ] }] });
+  groups.push({ key: 'account', title: 'account.hub_account_heading', items: [{ to: '/profile', label: 'pages.profile.title', icon: 'account_circle' }] });
   return groups;
 });
 
-const routeTitles: Record<string, string> = {
-  home: 'pages.dashboard.title', files: 'messages.nav.files',
-  contacts: 'messages.nav.contacts', profile: 'pages.profile.title',
-};
+const routeTitles: Record<string, string> = { home: 'pages.dashboard.title', files: 'messages.nav.files', contacts: 'messages.nav.contacts', profile: 'pages.profile.title' };
 const crumbRoot = computed(() => {
   const name = String(route.name ?? '');
   if (name.startsWith('settings')) return t('settings.heading');
@@ -193,31 +164,22 @@ const crumbRoot = computed(() => {
   if (name === 'finance') return t('messages.nav.finance');
   return t(routeTitles[name] ?? 'pages.dashboard.title');
 });
+const leafMap: Record<string, string> = {
+  'settings.users': 'settings.users_section', 'settings.groups': 'settings.groups_section', 'settings.company': 'settings.company_section',
+  'settings.backup': 'settings.backup_section', 'settings.security-log': 'settings.seclog_title', 'settings.notifications-config': 'settings.notifications_section',
+  'settings.security': 'settings.security_section', 'settings.files-limits': 'settings.files_limits_heading', 'settings.system': 'settings.system_section', 'settings.paperless': 'settings.paperless_section',
+  'profile.account': 'account.nav_account', 'profile.appearance': 'account.nav_appearance', 'profile.security': 'account.nav_security', 'profile.devices': 'account.nav_devices', 'profile.data': 'account.hub_data_heading',
+};
 const crumbLeaf = computed(() => {
   const name = String(route.name ?? '');
-  const map: Record<string, string> = {
-    'settings.users': 'settings.users_section', 'settings.groups': 'settings.groups_section',
-    'settings.company': 'settings.company_section', 'settings.backup': 'settings.backup_section',
-    'settings.security-log': 'settings.seclog_title', 'settings.notifications': 'settings.notifications_section',
-    'settings.notifications-config': 'settings.notifications_section', 'settings.security': 'settings.security_section',
-    'settings.files-limits': 'settings.files_limits_heading', 'settings.system': 'settings.system_section',
-    'settings.paperless': 'settings.paperless_section',
-    'profile.account': 'account.nav_account', 'profile.appearance': 'account.nav_appearance',
-    'profile.security': 'account.nav_security', 'profile.devices': 'account.nav_devices',
-    'profile.data': 'account.hub_data_heading',
-  };
-  if (map[name]) return t(map[name]);
+  if (leafMap[name]) return t(leafMap[name]);
   if (name === 'finance' && route.params.section) return t(`invoices.tab_${String(route.params.section)}`);
   return '';
 });
 
-function isActive(to?: string): boolean {
-  if (!to) return false;
-  if (to === '/') return route.path === '/';
-  return route.path === to || route.path.startsWith(to + '/');
-}
-
-function toggleTheme() { theme.global.name.value = theme.global.current.value.dark ? 'light' : 'dark'; }
+function toggle(k: string) { open[k] = !open[k]; }
+function isActive(to?: string): boolean { if (!to) return false; if (to === '/') return route.path === '/'; return route.path === to || route.path.startsWith(to + '/'); }
+function toggleTheme() { dark.value = !dark.value; document.documentElement.classList.toggle('dark', dark.value); localStorage.setItem('ll_theme', dark.value ? 'dark' : 'light'); }
 async function setLocale(l: string) { await loadLanguageAsync(l); locale.value = l; try { await api.post('/api/v1/locale', { locale: l }); } catch { /* non-fatal */ } }
 function runSearch() { if (globalSearch.value.trim()) router.push({ path: '/files', query: { q: globalSearch.value.trim() } }); }
 async function logout() { await auth.logout(); router.push({ name: 'login' }); }
@@ -225,23 +187,8 @@ async function logout() { await auth.logout(); router.push({ name: 'login' }); }
 interface Note { id: string | number; title: string; body: string; read: boolean }
 const notes = ref<Note[]>([]);
 const unread = ref(0);
-async function loadNotes() {
-  try {
-    const r = await api.get<{ unread?: number; items?: Note[] }>('/api/v1/notifications');
-    notes.value = r.items ?? []; unread.value = r.unread ?? 0;
-  } catch { /* ignore */ }
-}
+async function loadNotes() { try { const r = await api.get<{ unread?: number; items?: Note[] }>('/api/v1/notifications'); notes.value = r.items ?? []; unread.value = r.unread ?? 0; } catch { /* ignore */ } }
 async function readNote(n: Note) { if (n.read) return; await api.post(`/api/v1/notifications/${n.id}/read`); n.read = true; unread.value = Math.max(0, unread.value - 1); }
 async function markAllNotes() { await api.post('/api/v1/notifications/read-all'); notes.value.forEach((n) => (n.read = true)); unread.value = 0; }
-onMounted(loadNotes);
+onMounted(() => { loadNotes(); });
 </script>
-
-<style scoped>
-.ll-brand-logo { width: 34px; height: 34px; border-radius: 9px; background: linear-gradient(135deg, #7066f5, #9e70fa); color: #fff; }
-.ll-subheader { font-size: 0.66rem !important; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.55; min-height: 28px !important; padding-top: 12px; }
-.ll-nav-ic { font-family: 'Material Symbols Outlined'; font-size: 20px; width: 24px; text-align: center; }
-.ll-sub :deep(.v-list-item__prepend) { width: 24px; }
-.ll-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: 0.4; margin-left: 9px; }
-.ll-user { text-transform: none; height: 48px; }
-.ll-appbar { border-bottom: 1px solid rgba(255,255,255,0.06); }
-</style>

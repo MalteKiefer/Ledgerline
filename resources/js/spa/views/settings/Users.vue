@@ -1,66 +1,92 @@
 <template>
-  <v-card rounded="xl" border flat>
-    <v-toolbar flat color="surface">
-      <v-toolbar-title>{{ t('settings.users_section') }}</v-toolbar-title>
-      <v-spacer />
-      <v-btn color="primary" variant="tonal" :prepend-icon="mdiPlus" @click="openNew">{{ t('common.add') }}</v-btn>
-    </v-toolbar>
-    <v-divider />
-    <v-data-table :headers="headers" :items="s.users" :loading="loading" density="comfortable">
-      <template #[`item.role`]="{ item }">
-        <v-chip size="small" :color="item.role === 'admin' ? 'primary' : undefined">{{ item.role }}</v-chip>
-      </template>
-      <template #[`item.two_factor`]="{ item }">
-        <v-icon :icon="item.two_factor ? mdiCheck : mdiClose" :color="item.two_factor ? 'success' : undefined" size="small" />
-      </template>
-      <template #[`item.actions`]="{ item }">
-        <v-menu>
-          <template #activator="{ props }"><v-btn variant="text" size="small" :icon="mdiDotsVertical" v-bind="props" /></template>
-          <v-list density="compact">
-            <v-list-item :prepend-icon="mdiPencil" :title="t('common.edit')" @click="openEdit(item)" />
-            <v-list-item :prepend-icon="mdiKey" :title="t('settings.users_reset')" @click="onResetPw(item)" />
-            <v-list-item v-if="item.two_factor" :prepend-icon="mdiShieldRefresh" title="Reset 2FA" @click="s.reset2fa(item.id)" />
-            <v-list-item :prepend-icon="mdiLinkVariant" :title="t('settings.users_invite_create')" @click="onInvite(item)" />
-            <v-divider />
-            <v-list-item :prepend-icon="mdiDelete" :title="t('common.delete')" base-color="error" @click="onDelete(item)" />
-          </v-list>
-        </v-menu>
-      </template>
-    </v-data-table>
-  </v-card>
+  <Card :title="t('settings.users_section')" body-class="p-0">
+    <template #actions>
+      <Btn variant="solid" size="sm" icon="add" @click="openNew">{{ t('common.add') }}</Btn>
+    </template>
 
-  <v-dialog v-model="dialog" max-width="520">
-    <v-card rounded="xl">
-      <v-card-title>{{ editing ? t('common.edit') : t('common.add') }}</v-card-title>
-      <v-card-text>
-        <v-text-field v-model="form.name" :label="t('settings.users_name')" variant="outlined" density="comfortable" :error-messages="err.name" />
-        <v-text-field v-model="form.email" :label="t('settings.users_email')" type="email" variant="outlined" density="comfortable" :error-messages="err.email" />
-        <v-text-field v-if="!editing" v-model="form.password" :label="t('settings.users_password')" type="password" variant="outlined" density="comfortable" :error-messages="err.password" />
-        <v-select v-model="form.role" :items="['user','admin']" :label="t('settings.users_role')" variant="outlined" density="comfortable" />
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer />
-        <v-btn variant="text" @click="dialog = false">{{ t('common.cancel') }}</v-btn>
-        <v-btn color="primary" :loading="saving" @click="save">{{ t('common.save') }}</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+          <tr class="border-b border-[var(--ll-border)]">
+            <th class="px-4 py-2.5 font-medium">{{ t('settings.users_name') }}</th>
+            <th class="px-4 py-2.5 font-medium">{{ t('settings.users_email') }}</th>
+            <th class="px-4 py-2.5 font-medium">{{ t('settings.users_role') }}</th>
+            <th class="px-4 py-2.5 font-medium">2FA</th>
+            <th class="px-4 py-2.5 font-medium text-right"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="loading"><td colspan="5" class="px-4 py-8 text-center text-[var(--ll-muted)]">…</td></tr>
+          <template v-else>
+            <tr
+              v-for="u in s.users" :key="u.id"
+              class="border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5"
+            >
+              <td class="px-4 py-2.5 font-medium">{{ u.name }}</td>
+              <td class="px-4 py-2.5 text-[var(--ll-muted)]">{{ u.email }}</td>
+              <td class="px-4 py-2.5"><Badge :tone="u.role === 'admin' ? 'primary' : 'gray'">{{ u.role }}</Badge></td>
+              <td class="px-4 py-2.5">
+                <Icon v-if="u.two_factor" name="check" :size="18" class="text-emerald-600 dark:text-emerald-400" />
+                <Icon v-else name="close" :size="18" class="text-[var(--ll-muted)]" />
+              </td>
+              <td class="px-4 py-2.5">
+                <div class="flex items-center justify-end gap-1">
+                  <button class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('common.edit')" @click="openEdit(u)">
+                    <Icon name="edit" :size="18" />
+                  </button>
+                  <button class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('settings.users_reset')" @click="onResetPw(u)">
+                    <Icon name="key" :size="18" />
+                  </button>
+                  <button v-if="u.two_factor" class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" title="Reset 2FA" @click="s.reset2fa(u.id)">
+                    <Icon name="lock_reset" :size="18" />
+                  </button>
+                  <button class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('settings.users_invite_create')" @click="onInvite(u)">
+                    <Icon name="add" :size="18" />
+                  </button>
+                  <button class="grid h-8 w-8 place-items-center rounded-lg text-red-600 hover:bg-red-500/10" :title="t('common.delete')" @click="onDelete(u)">
+                    <Icon name="delete" :size="18" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!s.users.length"><td colspan="5" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</td></tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </Card>
 
-  <v-dialog v-model="linkDialog" max-width="560">
-    <v-card rounded="xl">
-      <v-card-title>{{ t('settings.users_invite_create') }}</v-card-title>
-      <v-card-text>
-        <v-text-field :model-value="link" readonly variant="outlined" append-inner-icon="mdiContentCopy" @click:append-inner="copy" />
-      </v-card-text>
-      <v-card-actions><v-spacer /><v-btn variant="text" @click="linkDialog = false">{{ t('common.close') }}</v-btn></v-card-actions>
-    </v-card>
-  </v-dialog>
+  <Modal v-model="dialog" :title="editing ? t('common.edit') : t('common.add')">
+    <div class="space-y-4">
+      <TextField v-model="form.name" :label="t('settings.users_name')" :error="err.name?.[0]" />
+      <TextField v-model="form.email" :label="t('settings.users_email')" type="email" :error="err.email?.[0]" />
+      <TextField v-if="!editing" v-model="form.password" :label="t('settings.users_password')" type="password" :error="err.password?.[0]" />
+      <Select v-model="form.role" :label="t('settings.users_role')" :options="roleOptions" />
+    </div>
+    <template #footer>
+      <Btn variant="ghost" @click="dialog = false">{{ t('common.cancel') }}</Btn>
+      <Btn variant="solid" :loading="saving" @click="save">{{ t('common.save') }}</Btn>
+    </template>
+  </Modal>
+
+  <Modal v-model="linkDialog" :title="t('settings.users_invite_create')" width="560px">
+    <div class="flex items-center gap-2">
+      <input
+        :value="link" readonly
+        class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+      >
+      <Btn variant="soft" size="sm" @click="copy">Copy</Btn>
+    </div>
+    <template #footer>
+      <Btn variant="ghost" @click="linkDialog = false">{{ t('common.close') }}</Btn>
+    </template>
+  </Modal>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
-import { mdiPlus, mdiPencil, mdiDelete, mdiKey, mdiShieldRefresh, mdiLinkVariant, mdiDotsVertical, mdiCheck, mdiClose } from '@mdi/js';
+import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useSettingsStore, type AdminUser } from '@spa/stores/settings';
 import { useToast } from '@spa/composables/useToast';
 import { ApiError } from '@spa/api/client';
@@ -74,13 +100,11 @@ const editing = ref<AdminUser | null>(null);
 const linkDialog = ref(false);
 const link = ref('');
 
-const headers = [
-  { title: t('settings.users_name'), key: 'name' },
-  { title: t('settings.users_email'), key: 'email' },
-  { title: t('settings.users_role'), key: 'role' },
-  { title: '2FA', key: 'two_factor' },
-  { title: '', key: 'actions', sortable: false, align: 'end' as const },
+const roleOptions = [
+  { title: 'user', value: 'user' },
+  { title: 'admin', value: 'admin' },
 ];
+
 const form = reactive({ name: '', email: '', password: '', role: 'user' });
 const err = reactive<Record<string, string[] | undefined>>({});
 

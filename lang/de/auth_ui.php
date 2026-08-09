@@ -10,6 +10,7 @@ return [
     'password' => 'Passwort',
     'remember' => 'Angemeldet bleiben',
     'sign_in' => 'Anmelden',
+    'invalid_credentials' => 'E-Mail oder Passwort falsch.',
     'forgot' => 'Passwort vergessen?',
     'no_account' => 'Noch kein Konto?',
     'register_link' => 'Konto erstellen',

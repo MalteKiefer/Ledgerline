@@ -1,26 +1,25 @@
 <template>
-  <v-card rounded="xl" border flat class="mb-4">
-    <v-card-title>{{ t('account.nav_account') }}</v-card-title>
-    <v-card-text class="d-flex align-center ga-4">
-      <v-avatar size="64" color="primary">
-        <v-img v-if="avatarUrl" :src="avatarUrl" />
-        <span v-else class="text-h6">{{ initials }}</span>
-      </v-avatar>
-      <div class="flex-grow-1">
-        <div class="text-body-1 font-weight-medium">{{ auth.user?.name }}</div>
-        <div class="text-medium-emphasis">{{ auth.user?.email }}</div>
+  <Card :title="t('account.nav_account')">
+    <div class="flex flex-wrap items-center gap-4">
+      <span class="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full bg-primary-500 text-lg font-medium text-white">
+        <img v-if="avatarUrl" :src="avatarUrl" class="h-full w-full object-cover" >
+        <template v-else>{{ initials }}</template>
+      </span>
+      <div class="min-w-0 flex-1">
+        <div class="text-sm font-medium">{{ auth.user?.name }}</div>
+        <div class="text-sm text-[var(--ll-muted)]">{{ auth.user?.email }}</div>
       </div>
-      <v-btn variant="tonal" :prepend-icon="mdiUpload" @click="pickAvatar">{{ t('pages.profile.avatar_change') }}</v-btn>
-      <v-btn v-if="avatarUrl" variant="text" color="error" @click="onRemoveAvatar">{{ t('common.delete') }}</v-btn>
-      <input ref="avatarInput" type="file" accept="image/*" class="d-none" @change="onAvatar" >
-    </v-card-text>
-  </v-card>
+      <Btn variant="soft" @click="pickAvatar">{{ t('pages.profile.avatar_change') }}</Btn>
+      <Btn v-if="avatarUrl" variant="danger" icon="delete" @click="onRemoveAvatar">{{ t('common.delete') }}</Btn>
+      <input ref="avatarInput" type="file" accept="image/*" class="hidden" @change="onAvatar" >
+    </div>
+  </Card>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
-import { mdiUpload } from '@mdi/js';
+import { Card, Btn } from '@spa/ui';
 import { useAuthStore } from '@spa/stores/auth';
 import { useProfileStore } from '@spa/stores/profile';
 import { useToast } from '@spa/composables/useToast';

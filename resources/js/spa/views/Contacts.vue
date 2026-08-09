@@ -1,213 +1,303 @@
 <template>
-  <div class="d-flex flex-column flex-md-row ga-4" style="min-height:calc(100vh - 120px)">
+  <div class="flex min-h-[calc(100vh-120px)] flex-col gap-4 md:flex-row">
     <!-- Books / groups rail -->
-    <v-card rounded="xl" border flat width="220" class="flex-shrink-0" style="align-self:flex-start">
-      <div class="pa-3">
-        <v-btn color="primary" block :prepend-icon="mdiPlus" @click="openNew">{{ t('contacts.ui.new_contact') }}</v-btn>
+    <Card body-class="p-0" class="w-full shrink-0 self-start md:w-[220px]">
+      <div class="p-3">
+        <Btn variant="solid" icon="add" block @click="openNew">{{ t('contacts.ui.new_contact') }}</Btn>
       </div>
-      <v-list density="compact" nav>
-        <v-list-subheader>{{ t('contacts.ui.books') }}</v-list-subheader>
-        <v-list-item :active="!bookId && !favOnly && groupId === null" :prepend-icon="mdiAccountMultiple" :title="t('contacts.ui.all_books')" @click="pick(null, false)" />
-        <v-list-item :active="favOnly" :prepend-icon="mdiStar" :title="t('contacts.ui.favorites')" @click="pick(null, true)" />
-        <v-list-item v-for="b in c.books" :key="b.id" :active="bookId === b.id" :prepend-icon="mdiBookOpenPageVariant" :title="b.name" @click="pick(b.id, false)" />
-        <v-list-item :prepend-icon="mdiFolderPlus" :title="t('contacts.ui.new_book')" @click="newBook" />
+      <nav class="space-y-0.5 px-2 pb-3">
+        <div class="px-2 pb-1 pt-2 text-[0.66rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('contacts.ui.books') }}</div>
+        <button
+          class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5"
+          :class="!bookId && !favOnly && groupId === null ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
+          @click="pick(null, false)"
+        >
+          <Icon name="contacts" :size="20" :class="!bookId && !favOnly && groupId === null ? '' : 'text-[var(--ll-muted)]'" />
+          {{ t('contacts.ui.all_books') }}
+        </button>
+        <button
+          class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5"
+          :class="favOnly ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
+          @click="pick(null, true)"
+        >
+          <Icon name="star" :fill="favOnly" :size="20" :class="favOnly ? 'text-amber-500' : 'text-[var(--ll-muted)]'" />
+          {{ t('contacts.ui.favorites') }}
+        </button>
+        <button
+          v-for="b in c.books" :key="b.id"
+          class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5"
+          :class="bookId === b.id ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
+          @click="pick(b.id, false)"
+        >
+          <Icon name="contacts" :size="20" :class="bookId === b.id ? '' : 'text-[var(--ll-muted)]'" />
+          <span class="truncate">{{ b.name }}</span>
+        </button>
+        <button class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[var(--ll-muted)] hover:bg-black/[0.04] dark:hover:bg-white/5" @click="newBook">
+          <Icon name="add" :size="20" />{{ t('contacts.ui.new_book') }}
+        </button>
 
-        <v-list-subheader>{{ t('contacts.ui.groups') }}</v-list-subheader>
-        <v-list-item v-for="g in c.groups" :key="g.id" :active="groupId === g.id" :prepend-icon="mdiAccountGroup" :title="g.name" @click="pickGroup(g.id)">
-          <template #append>
-            <v-btn variant="text" size="x-small" :icon="mdiDelete" :title="t('common.delete')" @click.stop="removeGroup(g)" />
-          </template>
-        </v-list-item>
-        <v-list-item :prepend-icon="mdiAccountMultiplePlus" :title="t('contacts.ui.new_group')" @click="newGroup" />
-      </v-list>
-    </v-card>
+        <div class="px-2 pb-1 pt-3 text-[0.66rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('contacts.ui.groups') }}</div>
+        <div v-for="g in c.groups" :key="g.id" class="group flex items-center">
+          <button
+            class="flex flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5"
+            :class="groupId === g.id ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
+            @click="pickGroup(g.id)"
+          >
+            <Icon name="person" :size="20" :class="groupId === g.id ? '' : 'text-[var(--ll-muted)]'" />
+            <span class="truncate">{{ g.name }}</span>
+          </button>
+          <Btn variant="ghost" size="xs" icon="delete" :title="t('common.delete')" class="mr-1 opacity-0 group-hover:opacity-100" @click.stop="removeGroup(g)" />
+        </div>
+        <button class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[var(--ll-muted)] hover:bg-black/[0.04] dark:hover:bg-white/5" @click="newGroup">
+          <Icon name="add" :size="20" />{{ t('contacts.ui.new_group') }}
+        </button>
+      </nav>
+    </Card>
 
     <!-- List -->
-    <v-card rounded="xl" border flat width="340" class="flex-shrink-0 d-flex flex-column" style="align-self:stretch">
+    <Card body-class="flex flex-1 flex-col overflow-hidden p-0" class="flex h-full w-full shrink-0 flex-col self-stretch md:w-[340px]">
       <!-- Toolbar -->
-      <div class="pa-2 border-b d-flex ga-1 align-center">
-        <v-btn variant="text" size="small" :prepend-icon="mdiUpload" @click="openImport">{{ t('contacts.ui.import') }}</v-btn>
-        <v-btn variant="text" size="small" :prepend-icon="mdiContentDuplicate" @click="openDuplicates">{{ t('contacts.ui.duplicates') }}</v-btn>
-        <v-spacer />
-        <v-btn variant="text" size="small" :icon="mdiDownload" :href="c.exportUrl(bookId ?? undefined)" :title="t('contacts.ui.export')" />
+      <div class="flex shrink-0 items-center gap-1 border-b border-[var(--ll-border)] p-2">
+        <Btn variant="ghost" size="sm" @click="openImport">{{ t('contacts.ui.import') }}</Btn>
+        <Btn variant="ghost" size="sm" @click="openDuplicates">{{ t('contacts.ui.duplicates') }}</Btn>
+        <Btn variant="ghost" size="sm" tag="a" class="ml-auto" :href="c.exportUrl(bookId ?? undefined)" :title="t('contacts.ui.export')">{{ t('contacts.ui.export') }}</Btn>
       </div>
-      <div class="pa-3 border-b">
-        <v-text-field v-model="query" :placeholder="t('common.search')" :prepend-inner-icon="mdiMagnify" variant="solo-filled" flat density="compact" hide-details single-line @update:model-value="debouncedLoad" />
+      <div class="shrink-0 border-b border-[var(--ll-border)] p-3">
+        <TextField v-model="query" :placeholder="t('common.search')" icon="search" @update:model-value="debouncedLoad" />
       </div>
       <!-- Selection bar -->
-      <div v-if="selected_ids.length" class="px-3 py-2 border-b d-flex align-center ga-1">
-        <span class="text-caption text-medium-emphasis">{{ t('contacts.ui.selected_count', { count: String(selected_ids.length) }) }}</span>
-        <v-spacer />
-        <v-btn variant="text" size="x-small" @click="selectAll">{{ t('contacts.ui.select_all') }}</v-btn>
-        <v-btn variant="text" size="x-small" @click="clearSelection">{{ t('contacts.ui.clear_selection') }}</v-btn>
-        <v-btn variant="text" size="x-small" color="error" :loading="bulkBusy" @click="deleteSelected">{{ t('contacts.ui.delete_selected') }}</v-btn>
+      <div v-if="selected_ids.length" class="flex shrink-0 items-center gap-1 border-b border-[var(--ll-border)] px-3 py-2">
+        <span class="text-xs text-[var(--ll-muted)]">{{ t('contacts.ui.selected_count', { count: String(selected_ids.length) }) }}</span>
+        <div class="ml-auto flex items-center gap-1">
+          <Btn variant="ghost" size="xs" @click="selectAll">{{ t('contacts.ui.select_all') }}</Btn>
+          <Btn variant="ghost" size="xs" @click="clearSelection">{{ t('contacts.ui.clear_selection') }}</Btn>
+          <Btn variant="danger" size="xs" :loading="bulkBusy" @click="deleteSelected">{{ t('contacts.ui.delete_selected') }}</Btn>
+        </div>
       </div>
-      <div class="flex-grow-1 overflow-y-auto">
-        <v-list density="comfortable">
-          <v-list-item v-for="row in c.contacts" :key="row.id" :active="selected?.id === row.id" @click="openDetail(row)">
-            <template #prepend>
-              <v-checkbox-btn :model-value="selected_ids.includes(row.id)" density="compact" class="mr-1" @click.stop="toggleSelect(row.id)" />
-              <v-avatar size="40" :color="color(row)">
-                <v-img v-if="c.avatarUrl(row)" :src="bust(c.avatarUrl(row))!" />
-                <span v-else class="text-body-2">{{ initials(row) }}</span>
-              </v-avatar>
-            </template>
-            <v-list-item-title>{{ row.fn || (row.first_name + ' ' + row.last_name) }}</v-list-item-title>
-            <v-list-item-subtitle>{{ row.org || row.emails[0]?.value || '' }}</v-list-item-subtitle>
-            <template #append><v-icon v-if="row.favorite" :icon="mdiStar" color="amber" size="small" /></template>
-          </v-list-item>
-          <v-list-item v-if="!c.contacts.length" :title="t('contacts.ui.empty')" class="text-medium-emphasis" />
-        </v-list>
+      <div class="flex-1 overflow-y-auto">
+        <button
+          v-for="row in c.contacts" :key="row.id"
+          class="flex w-full items-center gap-3 border-b border-[var(--ll-border)] px-3 py-2.5 text-left last:border-0 hover:bg-black/[0.03] dark:hover:bg-white/5"
+          :class="selected?.id === row.id ? 'bg-primary-500/[0.06]' : ''"
+          @click="openDetail(row)"
+        >
+          <input
+            type="checkbox" class="h-4 w-4 shrink-0 rounded border-[var(--ll-border)] accent-[var(--color-primary-500)]"
+            :checked="selected_ids.includes(row.id)" @click.stop="toggleSelect(row.id)"
+          >
+          <span class="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full text-sm font-medium" :class="TONE_BG[color(row)]">
+            <img v-if="c.avatarUrl(row)" :src="bust(c.avatarUrl(row))!" class="h-full w-full object-cover">
+            <template v-else>{{ initials(row) }}</template>
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-sm font-medium">{{ row.fn || (row.first_name + ' ' + row.last_name) }}</span>
+            <span class="block truncate text-xs text-[var(--ll-muted)]">{{ row.org || row.emails[0]?.value || '' }}</span>
+          </span>
+          <Icon v-if="row.favorite" name="star" fill :size="16" class="shrink-0 text-amber-500" />
+        </button>
+        <div v-if="!c.contacts.length" class="px-3 py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('contacts.ui.empty') }}</div>
       </div>
-    </v-card>
+    </Card>
 
     <!-- Detail -->
-    <v-card rounded="xl" border flat class="flex-grow-1" style="min-width:0">
+    <Card body-class="flex flex-1 flex-col overflow-hidden p-0" class="flex h-full min-w-0 flex-1 flex-col">
       <template v-if="detail">
-        <v-toolbar flat color="surface">
-          <v-avatar size="48" :color="'primary'" class="ml-2">
-            <v-img v-if="selected && c.avatarUrl(selected)" :src="bust(c.avatarUrl(selected))!" />
-            <span v-else>{{ selected ? initials(selected) : '' }}</span>
-          </v-avatar>
-          <v-toolbar-title class="ml-3">{{ str(detail.fn) }}</v-toolbar-title>
-          <v-spacer />
-          <v-btn variant="text" :icon="selected?.favorite ? mdiStar : mdiStarOutline" :title="selected?.favorite ? t('contacts.ui.favorite_remove') : t('contacts.ui.favorite_add')" @click="toggleFav" />
-          <v-btn variant="text" :icon="mdiPencil" :title="t('common.edit')" @click="openEdit" />
-          <v-btn variant="text" color="error" :icon="mdiDelete" :title="t('common.delete')" @click="onDelete" />
-        </v-toolbar>
-        <v-divider />
-        <v-card-text>
-          <div v-if="str(detail.org)" class="mb-4 text-medium-emphasis">{{ str(detail.org) }}<span v-if="str(detail.title)"> · {{ str(detail.title) }}</span></div>
-          <v-list density="comfortable">
-            <v-list-item v-for="(e, i) in arr(detail.emails)" :key="'e'+i" :prepend-icon="mdiEmail" :title="e.value" :subtitle="e.type" :href="'mailto:' + e.value" />
-            <v-list-item v-for="(p, i) in arr(detail.phones)" :key="'p'+i" :prepend-icon="mdiPhone" :title="p.value" :subtitle="p.type" :href="'tel:' + p.value" />
-            <v-list-item v-for="(u, i) in arr(detail.urls)" :key="'u'+i" :prepend-icon="mdiWeb" :title="u.value" :subtitle="t('contacts.ui.website')" :href="u.value" target="_blank" />
-          </v-list>
+        <div class="flex shrink-0 items-center gap-3 border-b border-[var(--ll-border)] p-4">
+          <span class="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-primary-500 text-base font-medium text-white">
+            <img v-if="selected && c.avatarUrl(selected)" :src="bust(c.avatarUrl(selected))!" class="h-full w-full object-cover">
+            <template v-else>{{ selected ? initials(selected) : '' }}</template>
+          </span>
+          <h2 class="min-w-0 flex-1 truncate text-lg font-semibold">{{ str(detail.fn) }}</h2>
+          <button
+            class="grid h-9 w-9 shrink-0 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10"
+            :title="selected?.favorite ? t('contacts.ui.favorite_remove') : t('contacts.ui.favorite_add')"
+            @click="toggleFav"
+          >
+            <Icon name="star" :fill="!!selected?.favorite" :size="20" :class="selected?.favorite ? 'text-amber-500' : 'text-[var(--ll-muted)]'" />
+          </button>
+          <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="openEdit" />
+          <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="onDelete" />
+        </div>
+        <div class="flex-1 overflow-y-auto p-5">
+          <div v-if="str(detail.org)" class="mb-4 text-sm text-[var(--ll-muted)]">{{ str(detail.org) }}<span v-if="str(detail.title)"> · {{ str(detail.title) }}</span></div>
+          <div class="space-y-1">
+            <a v-for="(e, i) in arr(detail.emails)" :key="'e'+i" :href="'mailto:' + e.value" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
+              <Icon name="mail" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm">{{ e.value }}</span>
+                <span class="block text-xs text-[var(--ll-muted)]">{{ e.type }}</span>
+              </span>
+            </a>
+            <a v-for="(p, i) in arr(detail.phones)" :key="'p'+i" :href="'tel:' + p.value" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
+              <Icon name="call" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm">{{ p.value }}</span>
+                <span class="block text-xs text-[var(--ll-muted)]">{{ p.type }}</span>
+              </span>
+            </a>
+            <a v-for="(u, i) in arr(detail.urls)" :key="'u'+i" :href="u.value" target="_blank" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
+              <span class="w-5 shrink-0"></span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm">{{ u.value }}</span>
+                <span class="block text-xs text-[var(--ll-muted)]">{{ t('contacts.ui.website') }}</span>
+              </span>
+            </a>
+          </div>
           <!-- Addresses -->
           <template v-if="addressList(detail).length">
-            <div class="text-caption text-medium-emphasis mt-3 mb-1">{{ t('contacts.ui.addresses') }}</div>
-            <v-list density="comfortable">
-              <v-list-item v-for="(a, i) in addressList(detail)" :key="'a'+i" :prepend-icon="mdiMapMarker" :title="a.text" :subtitle="a.type">
-                <template #append>
-                  <v-btn variant="text" size="small" :icon="mdiMapSearch" :href="mapUrl(a.text)" target="_blank" rel="noopener" :title="t('contacts.ui.map_open_osm')" />
-                </template>
-              </v-list-item>
-            </v-list>
+            <div class="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.addresses') }}</div>
+            <div class="space-y-1">
+              <div v-for="(a, i) in addressList(detail)" :key="'a'+i" class="flex items-center gap-3 rounded-lg px-2 py-2">
+                <Icon name="location_on" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-sm">{{ a.text }}</span>
+                  <span class="block text-xs text-[var(--ll-muted)]">{{ a.type }}</span>
+                </span>
+                <Btn variant="ghost" size="xs" tag="a" :href="mapUrl(a.text)" target="_blank" rel="noopener" :title="t('contacts.ui.map_open_osm')">{{ t('contacts.ui.map_open_osm') }}</Btn>
+              </div>
+            </div>
           </template>
-          <div v-if="str(detail.note)" class="mt-4"><div class="text-caption text-medium-emphasis">{{ t('contacts.ui.note') }}</div>{{ str(detail.note) }}</div>
-        </v-card-text>
+          <div v-if="str(detail.note)" class="mt-4">
+            <div class="text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.note') }}</div>
+            <div class="mt-1 text-sm">{{ str(detail.note) }}</div>
+          </div>
+        </div>
       </template>
-      <div v-else class="d-flex align-center justify-center fill-height text-medium-emphasis" style="min-height:300px">{{ t('contacts.ui.empty') }}</div>
-    </v-card>
+      <div v-else class="grid flex-1 place-items-center p-6 text-sm text-[var(--ll-muted)]">{{ t('contacts.ui.empty') }}</div>
+    </Card>
   </div>
 
   <!-- Editor -->
-  <v-dialog v-model="editor" max-width="640" scrollable>
-    <v-card rounded="xl">
-      <v-card-title>{{ editing ? t('contacts.ui.edit_contact') : t('contacts.ui.new_contact') }}</v-card-title>
-      <v-card-text>
-        <!-- Avatar (only once the contact exists) -->
-        <div v-if="editing && selected" class="d-flex align-center ga-3 mb-3">
-          <v-avatar size="56" color="primary">
-            <v-img v-if="c.avatarUrl(selected)" :src="bust(c.avatarUrl(selected))!" />
-            <span v-else>{{ initials(selected) }}</span>
-          </v-avatar>
-          <v-btn variant="tonal" size="small" :prepend-icon="mdiCamera" :loading="avatarBusy" @click="pickAvatar">{{ t('contacts.ui.avatar_change') }}</v-btn>
-          <input ref="avatarInput" type="file" accept="image/*" class="d-none" @change="onAvatarPicked">
+  <Modal v-model="editor" :title="editing ? t('contacts.ui.edit_contact') : t('contacts.ui.new_contact')" width="640px">
+    <div class="space-y-4">
+      <!-- Avatar (only once the contact exists) -->
+      <div v-if="editing && selected" class="flex items-center gap-3">
+        <span class="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-full bg-primary-500 text-lg font-medium text-white">
+          <img v-if="c.avatarUrl(selected)" :src="bust(c.avatarUrl(selected))!" class="h-full w-full object-cover">
+          <template v-else>{{ initials(selected) }}</template>
+        </span>
+        <Btn variant="soft" size="sm" :loading="avatarBusy" @click="pickAvatar">{{ t('contacts.ui.avatar_change') }}</Btn>
+        <input ref="avatarInput" type="file" accept="image/*" class="hidden" @change="onAvatarPicked">
+      </div>
+      <Select v-model="form.book_id" :label="t('contacts.ui.books')" :options="bookItems" />
+      <div class="grid grid-cols-2 gap-3">
+        <TextField v-model="form.first_name" :label="t('contacts.ui.first_name')" />
+        <TextField v-model="form.last_name" :label="t('contacts.ui.last_name')" />
+      </div>
+      <TextField v-model="form.org" :label="t('contacts.ui.org')" />
+      <TextField v-model="form.title" :label="t('contacts.ui.title')" />
+
+      <div>
+        <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.email') }}</div>
+        <div v-for="(e, i) in form.emails" :key="'fe'+i" class="mb-2 flex items-center gap-2">
+          <TextField v-model="e.value" type="email" class="flex-1" />
+          <Btn variant="ghost" size="sm" icon="close" @click="form.emails.splice(i,1)" />
         </div>
-        <v-select v-model="form.book_id" :items="bookItems" :label="t('contacts.ui.books')" variant="outlined" density="comfortable" />
-        <v-row dense>
-          <v-col cols="6"><v-text-field v-model="form.first_name" :label="t('contacts.ui.first_name')" variant="outlined" density="compact" /></v-col>
-          <v-col cols="6"><v-text-field v-model="form.last_name" :label="t('contacts.ui.last_name')" variant="outlined" density="compact" /></v-col>
-        </v-row>
-        <v-text-field v-model="form.org" :label="t('contacts.ui.org')" variant="outlined" density="compact" />
-        <v-text-field v-model="form.title" :label="t('contacts.ui.title')" variant="outlined" density="compact" />
-        <div class="text-caption text-medium-emphasis mt-2">{{ t('contacts.ui.email') }}</div>
-        <div v-for="(e, i) in form.emails" :key="'fe'+i" class="d-flex ga-2">
-          <v-text-field v-model="e.value" type="email" variant="outlined" density="compact" class="flex-grow-1" />
-          <v-btn variant="text" :icon="mdiClose" @click="form.emails.splice(i,1)" />
+        <Btn variant="ghost" size="sm" icon="add" @click="form.emails.push({ value: '', type: 'home' })">{{ t('common.add') }}</Btn>
+      </div>
+
+      <div>
+        <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.phone') }}</div>
+        <div v-for="(p, i) in form.phones" :key="'fp'+i" class="mb-2 flex items-center gap-2">
+          <TextField v-model="p.value" class="flex-1" />
+          <Btn variant="ghost" size="sm" icon="close" @click="form.phones.splice(i,1)" />
         </div>
-        <v-btn size="small" variant="text" :prepend-icon="mdiPlus" @click="form.emails.push({ value: '', type: 'home' })">{{ t('common.add') }}</v-btn>
-        <div class="text-caption text-medium-emphasis mt-2">{{ t('contacts.ui.phone') }}</div>
-        <div v-for="(p, i) in form.phones" :key="'fp'+i" class="d-flex ga-2">
-          <v-text-field v-model="p.value" variant="outlined" density="compact" class="flex-grow-1" />
-          <v-btn variant="text" :icon="mdiClose" @click="form.phones.splice(i,1)" />
-        </div>
-        <v-btn size="small" variant="text" :prepend-icon="mdiPlus" @click="form.phones.push({ value: '', type: 'cell' })">{{ t('common.add') }}</v-btn>
-        <v-textarea v-model="form.note" :label="t('contacts.ui.note')" rows="2" variant="outlined" density="compact" class="mt-2" />
-      </v-card-text>
-      <v-card-actions><v-spacer /><v-btn variant="text" @click="editor = false">{{ t('common.cancel') }}</v-btn><v-btn color="primary" :loading="saving" @click="save">{{ t('common.save') }}</v-btn></v-card-actions>
-    </v-card>
-  </v-dialog>
+        <Btn variant="ghost" size="sm" icon="add" @click="form.phones.push({ value: '', type: 'cell' })">{{ t('common.add') }}</Btn>
+      </div>
+
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.note') }}</span>
+        <textarea
+          v-model="form.note" rows="2"
+          class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+        ></textarea>
+      </label>
+    </div>
+    <template #footer>
+      <Btn variant="ghost" @click="editor = false">{{ t('common.cancel') }}</Btn>
+      <Btn variant="solid" :loading="saving" @click="save">{{ t('common.save') }}</Btn>
+    </template>
+  </Modal>
 
   <!-- Import -->
-  <v-dialog v-model="importDialog" max-width="480">
-    <v-card rounded="xl">
-      <v-card-title>{{ t('contacts.ui.import') }}</v-card-title>
-      <v-card-text>
-        <v-select v-model="importBookId" :items="bookItems" :label="t('contacts.ui.books')" variant="outlined" density="comfortable" />
-        <v-file-input v-model="importFile" accept=".vcf,text/vcard" :label="t('contacts.ui.import')" :prepend-icon="mdiFileUpload" variant="outlined" density="comfortable" hide-details />
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer />
-        <v-btn variant="text" @click="importDialog = false">{{ t('common.cancel') }}</v-btn>
-        <v-btn color="primary" :loading="importing" :disabled="!importFile || !importBookId" @click="runImport">{{ t('contacts.ui.import') }}</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  <Modal v-model="importDialog" :title="t('contacts.ui.import')" width="480px">
+    <div class="space-y-4">
+      <Select v-model="importBookId" :label="t('contacts.ui.books')" :options="bookItems" />
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.import') }}</span>
+        <input
+          type="file" accept=".vcf,text/vcard"
+          class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] file:mr-3 file:rounded-md file:border-0 file:bg-primary-500/10 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-600 dark:file:text-primary-300"
+          @change="importFile = (($event.target as HTMLInputElement).files ? Array.from((($event.target as HTMLInputElement).files as FileList)) : null)"
+        >
+      </label>
+    </div>
+    <template #footer>
+      <Btn variant="ghost" @click="importDialog = false">{{ t('common.cancel') }}</Btn>
+      <Btn variant="solid" :loading="importing" :disabled="!importFile || !importBookId" @click="runImport">{{ t('contacts.ui.import') }}</Btn>
+    </template>
+  </Modal>
 
   <!-- Duplicates -->
-  <v-dialog v-model="dupDialog" max-width="720" scrollable>
-    <v-card rounded="xl">
-      <v-card-title class="d-flex align-center ga-2">
-        <span class="msym" style="font-size:22px">content_copy</span>{{ t('contacts.ui.duplicates') }}
-      </v-card-title>
-      <v-card-text>
-        <div v-if="dupLoading" class="d-flex justify-center pa-6"><v-progress-circular indeterminate /></div>
-        <div v-else-if="!dupGroups.length" class="text-medium-emphasis text-center pa-6">{{ t('contacts.dup.empty') }}</div>
-        <v-card v-for="g in dupGroups" :key="g.signature" rounded="lg" border flat class="mb-3">
-          <div class="px-3 pt-2 d-flex align-center ga-2 flex-wrap">
-            <span class="text-caption text-medium-emphasis">{{ t('contacts.dup.matched_by') }}:</span>
-            <v-chip v-for="r in g.reasons" :key="r" size="x-small" variant="tonal" color="primary">{{ r }}</v-chip>
+  <Modal v-model="dupDialog" :title="t('contacts.ui.duplicates')" width="720px">
+    <div v-if="dupLoading" class="flex justify-center py-10">
+      <span class="h-8 w-8 animate-spin rounded-full border-[3px] border-primary-500/25 border-t-primary-500"></span>
+    </div>
+    <div v-else-if="!dupGroups.length" class="py-10 text-center text-sm text-[var(--ll-muted)]">{{ t('contacts.dup.empty') }}</div>
+    <div v-else class="space-y-3">
+      <Card v-for="g in dupGroups" :key="g.signature" body-class="p-0">
+        <div class="flex flex-wrap items-center gap-2 px-3 pt-3">
+          <span class="text-xs text-[var(--ll-muted)]">{{ t('contacts.dup.matched_by') }}:</span>
+          <Badge v-for="r in g.reasons" :key="r" tone="primary">{{ r }}</Badge>
+        </div>
+        <div class="px-1 py-2">
+          <label v-for="m in g.contacts" :key="m.id" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
+            <input
+              type="radio" class="h-4 w-4 shrink-0 accent-[var(--color-primary-500)]" :name="'dup-' + g.signature"
+              :checked="dupPrimary[g.signature] === m.id" @change="dupPrimary[g.signature] = m.id"
+            >
+            <span class="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full text-sm font-medium" :class="TONE_BG[dupColor(m.id)]">
+              <img v-if="m.avatar" :src="m.avatar" class="h-full w-full object-cover">
+              <template v-else>{{ dupInitials(m) }}</template>
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-medium">{{ m.fn || [m.first_name, m.last_name].filter(Boolean).join(' ') || '—' }}</span>
+              <span class="block truncate text-xs text-[var(--ll-muted)]">{{ [m.org, m.emails[0], m.phones[0]].filter(Boolean).join(' · ') }}</span>
+            </span>
+          </label>
+        </div>
+        <div class="flex items-center gap-2 border-t border-[var(--ll-border)] px-3 py-2.5">
+          <span class="text-xs text-[var(--ll-muted)]">{{ t('contacts.dup.keep_as_primary') }}</span>
+          <div class="ml-auto flex items-center gap-2">
+            <Btn variant="ghost" size="sm" :loading="dupBusy === g.signature" @click="dismissGroup(g)">{{ t('contacts.dup.dismiss') }}</Btn>
+            <Btn variant="soft" size="sm" :loading="dupBusy === g.signature" @click="mergeGroup(g)">{{ t('contacts.dup.merge') }}</Btn>
           </div>
-          <v-radio-group :model-value="dupPrimary[g.signature]" hide-details density="compact" class="px-1" @update:model-value="(v: unknown) => (dupPrimary[g.signature] = String(v))">
-            <v-list density="comfortable">
-              <v-list-item v-for="m in g.contacts" :key="m.id">
-                <template #prepend>
-                  <v-radio :value="m.id" class="mr-1" />
-                  <v-avatar size="36" :color="dupColor(m.id)">
-                    <v-img v-if="m.avatar" :src="m.avatar" />
-                    <span v-else class="text-body-2">{{ dupInitials(m) }}</span>
-                  </v-avatar>
-                </template>
-                <v-list-item-title>{{ m.fn || [m.first_name, m.last_name].filter(Boolean).join(' ') || '—' }}</v-list-item-title>
-                <v-list-item-subtitle>{{ [m.org, m.emails[0], m.phones[0]].filter(Boolean).join(' · ') }}</v-list-item-subtitle>
-              </v-list-item>
-            </v-list>
-          </v-radio-group>
-          <v-card-actions>
-            <span class="text-caption text-medium-emphasis ml-2">{{ t('contacts.dup.keep_as_primary') }}</span>
-            <v-spacer />
-            <v-btn variant="text" size="small" :loading="dupBusy === g.signature" @click="dismissGroup(g)">{{ t('contacts.dup.dismiss') }}</v-btn>
-            <v-btn variant="tonal" size="small" color="primary" :prepend-icon="mdiMerge" :loading="dupBusy === g.signature" @click="mergeGroup(g)">{{ t('contacts.dup.merge') }}</v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-card-text>
-      <v-card-actions><v-spacer /><v-btn variant="text" @click="dupDialog = false">{{ t('common.close') }}</v-btn></v-card-actions>
-    </v-card>
-  </v-dialog>
+        </div>
+      </Card>
+    </div>
+    <template #footer>
+      <Btn variant="ghost" @click="dupDialog = false">{{ t('common.close') }}</Btn>
+    </template>
+  </Modal>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
-import {
-  mdiPlus, mdiAccountMultiple, mdiStar, mdiStarOutline, mdiBookOpenPageVariant, mdiFolderPlus, mdiMagnify,
-  mdiEmail, mdiPhone, mdiWeb, mdiMapMarker, mdiPencil, mdiDelete, mdiClose, mdiAccountGroup, mdiAccountMultiplePlus,
-  mdiUpload, mdiDownload, mdiContentDuplicate, mdiMerge, mdiCamera, mdiFileUpload, mdiMapSearch,
-} from '@mdi/js';
+import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useContactsStore, type ContactRow, type ContactDetail, type ContactGroup, type DuplicateGroup, type DuplicateContact } from '@spa/stores/contacts';
 import { useToast } from '@spa/composables/useToast';
+
+// Presentational-only: maps the existing Vuetify-style color name (still returned
+// by color()/dupColor() below) onto an avatar tint. No behavior/semantics changed.
+const TONE_BG: Record<string, string> = {
+  primary: 'bg-primary-500/15 text-primary-600 dark:text-primary-300',
+  secondary: 'bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-400',
+  success: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+  warning: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+  error: 'bg-red-500/15 text-red-600 dark:text-red-400',
+  info: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
+};
 
 const c = useContactsStore();
 const { success, error } = useToast();

@@ -1,25 +1,44 @@
 <template>
-  <v-card rounded="xl" border flat>
-    <v-toolbar flat color="surface">
-      <v-toolbar-title>{{ t('settings.seclog_title') }}</v-toolbar-title>
-      <v-spacer />
-      <v-btn variant="tonal" :prepend-icon="mdiDownload" href="/api/v1/security-log/export?export=csv">CSV</v-btn>
-    </v-toolbar>
-    <v-divider />
-    <v-data-table :headers="headers" :items="s.audit" :loading="loading" density="compact" :items-per-page="25">
-      <template #[`item.at`]="{ item }"><span class="ll-mono text-caption">{{ fmtDate(item.at) }}</span></template>
-      <template #[`item.action`]="{ item }"><v-chip size="x-small" variant="tonal" label>{{ item.action }}</v-chip></template>
-      <template #[`item.meta`]="{ item }">
-        <code class="text-caption text-medium-emphasis">{{ item.meta && Object.keys(item.meta).length ? JSON.stringify(item.meta) : '' }}</code>
-      </template>
-    </v-data-table>
-  </v-card>
+  <Card :body-class="'p-0'">
+    <template #header>
+      <Icon name="security" :size="18" class="text-[var(--ll-muted)]" />
+      <h2 class="text-sm font-semibold">{{ t('settings.seclog_title') }}</h2>
+    </template>
+    <template #actions><Btn tag="a" variant="soft" size="sm" icon="download" href="/api/v1/security-log/export?export=csv">CSV</Btn></template>
+    <div v-if="loading" class="h-0.5 w-full overflow-hidden bg-primary-500/15">
+      <div class="h-full w-1/3 animate-pulse bg-primary-500" />
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+          <tr class="border-b border-[var(--ll-border)]">
+            <th class="px-4 py-2.5 font-medium">{{ t('common.date') }}</th>
+            <th class="px-4 py-2.5 font-medium">{{ t('settings.seclog_col_action') }}</th>
+            <th class="px-4 py-2.5 font-medium">{{ t('settings.seclog_col_user') }}</th>
+            <th class="px-4 py-2.5 font-medium">{{ t('settings.seclog_col_ip') }}</th>
+            <th class="px-4 py-2.5 font-medium">{{ t('settings.seclog_col_meta') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in s.audit" :key="item.id" class="border-b border-[var(--ll-border)] last:border-0">
+            <td class="whitespace-nowrap px-4 py-2.5 font-mono text-xs">{{ fmtDate(item.at) }}</td>
+            <td class="px-4 py-2.5"><Badge tone="gray">{{ item.action }}</Badge></td>
+            <td class="px-4 py-2.5">{{ item.actor }}</td>
+            <td class="px-4 py-2.5 font-mono text-xs">{{ item.ip }}</td>
+            <td class="px-4 py-2.5">
+              <code class="text-xs text-[var(--ll-muted)]">{{ item.meta && Object.keys(item.meta).length ? JSON.stringify(item.meta) : '' }}</code>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </Card>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
-import { mdiDownload } from '@mdi/js';
+import { Icon, Btn, Card, Badge } from '@spa/ui';
 import { useSettingsStore } from '@spa/stores/settings';
 
 const s = useSettingsStore();

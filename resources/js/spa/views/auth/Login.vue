@@ -1,26 +1,30 @@
 <template>
-  <v-container class="fill-height" fluid>
-    <v-row justify="center" align="center">
-      <v-col cols="12" sm="8" md="5" lg="4">
-        <v-card class="pa-6" rounded="xl" border flat>
-          <h1 class="text-h5 mb-6">Ledgerline</h1>
-          <v-alert v-if="error" type="error" variant="tonal" class="mb-4" :text="error" />
-          <v-form @submit.prevent="submit">
-            <v-text-field v-model="email" :label="t('auth_ui.email')" type="email" variant="outlined" autocomplete="username" :disabled="needs2fa" required />
-            <v-text-field v-model="password" :label="t('auth_ui.password')" type="password" variant="outlined" autocomplete="current-password" :disabled="needs2fa" required />
-            <v-text-field v-if="needs2fa" v-model="code" :label="t('auth_ui.twofa_code')" inputmode="numeric" variant="outlined" autofocus />
-            <v-btn type="submit" color="primary" block size="large" :loading="busy">{{ t('auth_ui.sign_in') }}</v-btn>
-          </v-form>
-        </v-card>
-      </v-col>
-    </v-row>
-  </v-container>
+  <div class="grid min-h-screen place-items-center bg-[var(--ll-bg)] p-4 text-[var(--ll-fg)]">
+    <div class="w-full max-w-sm">
+      <div class="mb-6 flex items-center justify-center gap-2.5">
+        <span class="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 text-white"><Icon name="bolt" :size="22" /></span>
+        <span class="text-xl font-bold">Ledgerline</span>
+      </div>
+      <Card :body-class="'p-6'">
+        <h1 class="mb-1 text-lg font-semibold">{{ t('auth_ui.sign_in') }}</h1>
+        <p class="mb-5 text-sm text-[var(--ll-muted)]">{{ t('pages.login.subtitle') }}</p>
+        <div v-if="error" class="mb-4 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{{ error }}</div>
+        <form class="space-y-4" @submit.prevent="submit">
+          <TextField v-model="email" :label="t('auth_ui.email')" type="email" icon="mail" autocomplete="username" :disabled="needs2fa" @enter="submit" />
+          <TextField v-model="password" :label="t('auth_ui.password')" type="password" icon="lock" autocomplete="current-password" :disabled="needs2fa" @enter="submit" />
+          <TextField v-if="needs2fa" v-model="code" :label="t('auth_ui.twofa_code')" icon="pin" inputmode="numeric" autofocus @enter="submit" />
+          <Btn type="submit" variant="solid" size="lg" class="w-full" :loading="busy">{{ t('auth_ui.sign_in') }}</Btn>
+        </form>
+      </Card>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
+import { Icon, Card, TextField, Btn } from '@spa/ui';
 import { useAuthStore } from '@spa/stores/auth';
 import { ApiError } from '@spa/api/client';
 
@@ -41,7 +45,7 @@ async function submit() {
     if (twoFactor) { needs2fa.value = true; return; }
     router.push({ name: 'home' });
   } catch (e) {
-    error.value = e instanceof ApiError && e.status === 422 ? t('auth.failed') : String(e);
+    error.value = e instanceof ApiError && e.status === 422 ? t('auth_ui.invalid_credentials') : String(e);
   } finally {
     busy.value = false;
   }

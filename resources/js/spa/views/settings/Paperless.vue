@@ -1,70 +1,61 @@
 <template>
-  <div class="mx-auto" style="max-width: 960px">
+  <div class="mx-auto max-w-3xl">
     <!-- Connection config -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiFileDocumentMultipleOutline" size="small" />
-        {{ t('settings.paperless_heading') }}
-        <v-spacer />
-        <v-switch v-model="cfg.paperless_enabled" color="primary" density="compact" hide-details inset />
-      </v-card-title>
-      <v-divider />
-      <v-card-text>
-        <v-alert type="info" variant="tonal" density="compact" class="mb-4" :text="t('settings.paperless_desc')" />
-        <v-row dense>
-          <v-col cols="12">
-            <v-text-field v-model="cfg.paperless_url" :label="t('settings.paperless_url')" type="url" placeholder="https://…" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12">
-            <v-text-field
-              v-model="cfg.paperless_token"
-              :label="t('settings.paperless_token')"
-              type="password"
-              autocomplete="new-password"
-              :hint="t('settings.paperless_token_hint')"
-              persistent-hint
-              variant="outlined"
-              density="comfortable"
-            />
-          </v-col>
-        </v-row>
-        <div class="d-flex align-center ga-2 mt-3">
-          <v-btn color="primary" variant="flat" :prepend-icon="mdiContentSave" :loading="savingCfg" :disabled="loadingCfg" @click="saveConfig">
-            {{ t('settings.save') }}
-          </v-btn>
-          <v-btn variant="tonal" :prepend-icon="mdiConnection" :loading="testing" :disabled="savingCfg" @click="testConnection">
-            {{ t('settings.paperless_test') }}
-          </v-btn>
-        </div>
-      </v-card-text>
-    </v-card>
+    <Card class="mb-4">
+      <template #header>
+        <Icon name="description" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.paperless_heading') }}</h2>
+      </template>
+      <template #actions>
+        <label class="relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center">
+          <input v-model="cfg.paperless_enabled" type="checkbox" class="peer sr-only">
+          <span class="pointer-events-none absolute inset-0 rounded-full bg-black/10 transition-colors peer-checked:bg-primary-500 dark:bg-white/15" />
+          <span class="pointer-events-none absolute left-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
+        </label>
+      </template>
+      <div class="rounded-lg bg-blue-500/10 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 mb-4">{{ t('settings.paperless_desc') }}</div>
+      <div class="space-y-4">
+        <TextField v-model="cfg.paperless_url" :label="t('settings.paperless_url')" type="url" placeholder="https://…" />
+        <TextField
+          v-model="cfg.paperless_token" :label="t('settings.paperless_token')" type="password" autocomplete="new-password"
+          :hint="t('settings.paperless_token_hint')"
+        />
+      </div>
+      <div class="mt-3 flex items-center gap-2">
+        <Btn variant="solid" :loading="savingCfg" :disabled="loadingCfg" @click="saveConfig">
+          {{ t('settings.save') }}
+        </Btn>
+        <Btn variant="soft" icon="refresh" :loading="testing" :disabled="savingCfg" @click="testConnection">
+          {{ t('settings.paperless_test') }}
+        </Btn>
+      </div>
+    </Card>
 
     <!-- Cached quick-pick terms (existing) -->
-    <v-card rounded="xl" border flat>
-      <v-toolbar flat color="surface">
-        <v-toolbar-title>{{ t('settings.paperless_cache_heading') }}</v-toolbar-title>
-        <v-spacer />
-        <v-btn variant="tonal" color="primary" :prepend-icon="mdiSync" :loading="syncing" @click="sync">{{ t('settings.paperless_sync_now') }}</v-btn>
-      </v-toolbar>
-      <v-divider />
-      <v-card-text>
-        <v-row>
-          <v-col cols="12" md="4"><TermList :title="t('settings.paperless_tags')" :items="terms.tags" /></v-col>
-          <v-col cols="12" md="4"><TermList :title="t('settings.paperless_document_types')" :items="terms.document_types" /></v-col>
-          <v-col cols="12" md="4"><TermList :title="t('settings.paperless_correspondents')" :items="terms.correspondents" /></v-col>
-        </v-row>
-        <p class="text-caption text-medium-emphasis mt-3">{{ t('settings.paperless_never_synced') }}: {{ syncedAt || '—' }}</p>
-      </v-card-text>
-    </v-card>
+    <Card :body-class="'p-0'">
+      <template #header>
+        <Icon name="description" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.paperless_cache_heading') }}</h2>
+      </template>
+      <template #actions><Btn variant="soft" size="sm" icon="refresh" :loading="syncing" @click="sync">{{ t('settings.paperless_sync_now') }}</Btn></template>
+      <div class="p-5">
+        <div class="grid grid-cols-1 gap-6 sm:grid-cols-3">
+          <TermList :title="t('settings.paperless_tags')" :items="terms.tags" />
+          <TermList :title="t('settings.paperless_document_types')" :items="terms.document_types" />
+          <TermList :title="t('settings.paperless_correspondents')" :items="terms.correspondents" />
+        </div>
+        <p class="mt-3 text-xs text-[var(--ll-muted)]">{{ t('settings.paperless_never_synced') }}: {{ syncedAt || '—' }}</p>
+      </div>
+    </Card>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, defineComponent, h } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
-import { mdiSync, mdiFileDocumentMultipleOutline, mdiContentSave, mdiConnection } from '@mdi/js';
 import { api, ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
+import { Icon, Btn, Card, TextField, Badge } from '@spa/ui';
 
 const { success, error } = useToast();
 const syncing = ref(false);
@@ -96,10 +87,10 @@ const TermList = defineComponent({
   props: { title: { type: String, required: true }, items: { type: Array as () => string[], default: () => [] } },
   setup(p) {
     return () => h('div', [
-      h('div', { class: 'text-overline text-medium-emphasis mb-1' }, p.title),
+      h('div', { class: 'mb-1.5 text-[0.66rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]' }, p.title),
       p.items.length
-        ? h('div', { class: 'd-flex flex-wrap ga-1' }, p.items.slice(0, 40).map((x) => h('span', { class: 'v-chip v-chip--size-small text-caption px-2 py-1', style: 'background:rgba(167,139,250,.12);border-radius:6px' }, x)))
-        : h('div', { class: 'text-caption text-disabled' }, '—'),
+        ? h('div', { class: 'flex flex-wrap gap-1' }, p.items.slice(0, 40).map((x) => h(Badge, { tone: 'primary' }, () => x)))
+        : h('div', { class: 'text-sm text-[var(--ll-muted)]' }, '—'),
     ]);
   },
 });

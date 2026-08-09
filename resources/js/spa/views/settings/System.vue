@@ -1,119 +1,112 @@
 <template>
-  <div class="mx-auto" style="max-width: 960px">
+  <div class="mx-auto max-w-3xl">
     <!-- Scheduled tasks -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiClockOutline" size="small" />
-        {{ t('settings.system_cron_heading') }}
-      </v-card-title>
-      <v-divider />
-      <v-table density="comfortable">
-        <thead>
-          <tr>
-            <th class="text-left">{{ t('settings.system_task') }}</th>
-            <th class="text-left">{{ t('settings.system_schedule') }}</th>
-            <th class="text-left">{{ t('settings.system_last_run') }}</th>
-            <th class="text-left">{{ t('common.status') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="task in tasks" :key="task.name">
-            <td class="text-body-2">{{ task.name }}</td>
-            <td><code class="text-caption">{{ task.expression }}</code></td>
-            <td class="text-caption text-medium-emphasis">{{ task.lastAt ? fmtDate(task.lastAt) : t('settings.system_never') }}</td>
-            <td>
-              <v-icon
-                :icon="task.lastOk ? mdiCheckCircle : mdiAlertCircle"
-                :color="task.lastOk ? 'success' : (task.lastAt ? 'error' : 'disabled')"
-                size="small"
-              />
-            </td>
-          </tr>
-          <tr v-if="!tasks.length">
-            <td colspan="4" class="text-caption text-disabled">{{ t('common.none') }}</td>
-          </tr>
-        </tbody>
-      </v-table>
-    </v-card>
+    <Card class="mb-4" :body-class="'p-0'">
+      <template #header>
+        <Icon name="refresh" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.system_cron_heading') }}</h2>
+      </template>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+            <tr class="border-b border-[var(--ll-border)]">
+              <th class="px-4 py-2.5 font-medium">{{ t('settings.system_task') }}</th>
+              <th class="px-4 py-2.5 font-medium">{{ t('settings.system_schedule') }}</th>
+              <th class="px-4 py-2.5 font-medium">{{ t('settings.system_last_run') }}</th>
+              <th class="px-4 py-2.5 font-medium">{{ t('common.status') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="task in tasks" :key="task.name" class="border-b border-[var(--ll-border)] last:border-0">
+              <td class="px-4 py-2.5">{{ task.name }}</td>
+              <td class="px-4 py-2.5"><code class="text-xs text-[var(--ll-muted)]">{{ task.expression }}</code></td>
+              <td class="px-4 py-2.5 text-xs text-[var(--ll-muted)]">{{ task.lastAt ? fmtDate(task.lastAt) : t('settings.system_never') }}</td>
+              <td class="px-4 py-2.5">
+                <Icon
+                  :name="task.lastOk ? 'check' : 'close'"
+                  :size="18"
+                  :class="task.lastOk ? 'text-emerald-500' : (task.lastAt ? 'text-red-500' : 'text-[var(--ll-muted)]')"
+                />
+              </td>
+            </tr>
+            <tr v-if="!tasks.length">
+              <td colspan="4" class="px-4 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
 
     <!-- Status snapshot -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiGaugeFull" size="small" />
-        {{ t('settings.system_status_heading') }}
-      </v-card-title>
-      <v-divider />
-      <v-card-text>
-        <v-row dense>
-          <v-col v-for="tile in statusTiles" :key="tile.label" cols="6" sm="4" md="3">
-            <div class="pa-3 rounded-lg" style="background: rgba(0,0,0,.03)">
-              <div class="text-overline text-medium-emphasis">{{ tile.label }}</div>
-              <div class="text-h6">{{ tile.value }}</div>
-            </div>
-          </v-col>
-          <v-col v-if="!statusTiles.length" cols="12">
-            <span class="text-caption text-disabled">{{ t('common.none') }}</span>
-          </v-col>
-        </v-row>
-
-        <div class="mt-4 text-caption text-medium-emphasis">
-          <template v-if="trend && trend.points.length">
-            {{ t('settings.system_trend') }}: {{ fmtBytes(trend.deltaBytes) }} {{ t('settings.system_trend_days', { n: String(trend.deltaDays) }) }}
-          </template>
-          <template v-else>
-            {{ t('settings.system_trend_collecting') }}
-          </template>
+    <Card class="mb-4">
+      <template #header>
+        <Icon name="storage" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.system_status_heading') }}</h2>
+      </template>
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+        <div v-for="tile in statusTiles" :key="tile.label" class="rounded-lg bg-black/[0.03] p-3 dark:bg-white/5">
+          <div class="text-[0.66rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ tile.label }}</div>
+          <div class="mt-0.5 text-lg font-semibold">{{ tile.value }}</div>
         </div>
-      </v-card-text>
-    </v-card>
+        <div v-if="!statusTiles.length" class="col-span-full">
+          <span class="text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</span>
+        </div>
+      </div>
+
+      <div class="mt-4 text-xs text-[var(--ll-muted)]">
+        <template v-if="trend && trend.points.length">
+          {{ t('settings.system_trend') }}: {{ fmtBytes(trend.deltaBytes) }} {{ t('settings.system_trend_days', { n: String(trend.deltaDays) }) }}
+        </template>
+        <template v-else>
+          {{ t('settings.system_trend_collecting') }}
+        </template>
+      </div>
+    </Card>
 
     <!-- Open errors -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiAlertOctagonOutline" size="small" />
-        {{ t('settings.system_errors_heading') }}
-      </v-card-title>
-      <v-divider />
-      <v-list v-if="unresolvedErrors.length" lines="two">
-        <v-list-item v-for="err in unresolvedErrors" :key="err.id">
-          <v-list-item-title class="text-body-2">
-            <v-chip v-if="err.level" size="x-small" color="error" variant="tonal" class="mr-2">{{ err.level }}</v-chip>
-            {{ err.message || err.exception }}
-          </v-list-item-title>
-          <v-list-item-subtitle class="text-caption">
-            <span v-if="err.file">{{ err.file }}<span v-if="err.line">:{{ err.line }}</span> · </span>
-            <span v-if="err.count">{{ t('settings.system_error_count', { n: String(err.count) }) }} · </span>
-            <span v-if="err.last_seen_at">{{ fmtDate(err.last_seen_at) }}</span>
-          </v-list-item-subtitle>
-          <template #append>
-            <v-btn size="small" variant="tonal" :prepend-icon="mdiCheck" :loading="resolving === err.id" @click="resolve(err)">
-              {{ t('settings.system_error_resolve') }}
-            </v-btn>
-          </template>
-        </v-list-item>
-      </v-list>
-      <v-card-text v-else class="text-caption text-medium-emphasis">{{ t('settings.system_no_errors') }}</v-card-text>
-    </v-card>
+    <Card class="mb-4" :body-class="'p-0'">
+      <template #header>
+        <h2 class="text-sm font-semibold">{{ t('settings.system_errors_heading') }}</h2>
+      </template>
+      <div v-if="unresolvedErrors.length" class="divide-y divide-[var(--ll-border)]">
+        <div v-for="err in unresolvedErrors" :key="err.id" class="flex items-center gap-3 px-5 py-3">
+          <div class="min-w-0 flex-1">
+            <div class="text-sm">
+              <Badge v-if="err.level" tone="error" class="mr-2">{{ err.level }}</Badge>
+              {{ err.message || err.exception }}
+            </div>
+            <div class="mt-0.5 text-xs text-[var(--ll-muted)]">
+              <span v-if="err.file">{{ err.file }}<span v-if="err.line">:{{ err.line }}</span> · </span>
+              <span v-if="err.count">{{ t('settings.system_error_count', { n: String(err.count) }) }} · </span>
+              <span v-if="err.last_seen_at">{{ fmtDate(err.last_seen_at) }}</span>
+            </div>
+          </div>
+          <Btn variant="soft" size="sm" icon="check" :loading="resolving === err.id" @click="resolve(err)">
+            {{ t('settings.system_error_resolve') }}
+          </Btn>
+        </div>
+      </div>
+      <div v-else class="px-5 py-6 text-sm text-[var(--ll-muted)]">{{ t('settings.system_no_errors') }}</div>
+    </Card>
 
     <!-- Recent audit -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiFormatListBulletedSquare" size="small" />
-        {{ t('settings.system_audit_heading') }}
-      </v-card-title>
-      <v-divider />
-      <v-list v-if="audit.length" lines="two">
-        <v-list-item v-for="row in audit" :key="row.id">
-          <v-list-item-title class="text-body-2">{{ row.action }}</v-list-item-title>
-          <v-list-item-subtitle class="text-caption">
+    <Card :body-class="'p-0'">
+      <template #header>
+        <Icon name="description" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.system_audit_heading') }}</h2>
+      </template>
+      <div v-if="audit.length" class="divide-y divide-[var(--ll-border)]">
+        <div v-for="row in audit" :key="row.id" class="px-5 py-3">
+          <div class="text-sm">{{ row.action }}</div>
+          <div class="mt-0.5 text-xs text-[var(--ll-muted)]">
             <span v-if="row.actor">{{ row.actor }} · </span>
             <span v-if="row.ip">{{ row.ip }} · </span>
             <span>{{ fmtDate(row.created_at) }}</span>
-          </v-list-item-subtitle>
-        </v-list-item>
-      </v-list>
-      <v-card-text v-else class="text-caption text-medium-emphasis">{{ t('settings.system_no_audit') }}</v-card-text>
-    </v-card>
+          </div>
+        </div>
+      </div>
+      <div v-else class="px-5 py-6 text-sm text-[var(--ll-muted)]">{{ t('settings.system_no_audit') }}</div>
+    </Card>
   </div>
 </template>
 
@@ -122,15 +115,7 @@ import { ref, computed, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { api } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
-import {
-  mdiClockOutline,
-  mdiCheckCircle,
-  mdiAlertCircle,
-  mdiGaugeFull,
-  mdiAlertOctagonOutline,
-  mdiCheck,
-  mdiFormatListBulletedSquare,
-} from '@mdi/js';
+import { Icon, Btn, Card, Badge } from '@spa/ui';
 
 interface Task {
   name: string;

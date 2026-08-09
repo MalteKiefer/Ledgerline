@@ -1,38 +1,25 @@
 <template>
-  <div class="mx-auto" style="max-width: 720px">
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiShieldAccountOutline" size="small" />
-        {{ t('settings.security_devices_heading') }}
-      </v-card-title>
-      <v-divider />
-      <v-card-text>
-        <v-row dense>
-          <v-col cols="12" sm="6">
-            <v-text-field
-              v-model.number="form.max_connected_devices"
-              :label="t('settings.security_max_devices')"
-              type="number"
-              min="1"
-              max="100"
-              variant="outlined"
-              density="comfortable"
-              hide-details="auto"
-            />
-          </v-col>
-        </v-row>
-      </v-card-text>
-    </v-card>
+  <div class="mx-auto max-w-2xl">
+    <Card class="mb-4">
+      <template #header>
+        <Icon name="security" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.security_devices_heading') }}</h2>
+      </template>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <TextField
+          v-model="form.max_connected_devices"
+          :label="t('settings.security_max_devices')"
+          type="number"
+        />
+      </div>
+    </Card>
 
     <!-- Sticky save bar -->
-    <v-card rounded="xl" border flat color="surface" style="position: sticky; bottom: 12px; z-index: 2">
-      <v-card-actions class="px-4 py-3">
-        <v-spacer />
-        <v-btn color="primary" variant="flat" :prepend-icon="mdiContentSave" :loading="saving" :disabled="loading" @click="save">
-          {{ t('settings.save') }}
-        </v-btn>
-      </v-card-actions>
-    </v-card>
+    <div class="sticky bottom-3 z-10 flex justify-end rounded-xl border border-[var(--ll-border)] bg-[var(--ll-surface)] px-4 py-3 shadow-sm">
+      <Btn variant="solid" :loading="saving" :disabled="loading" @click="save">
+        {{ t('settings.save') }}
+      </Btn>
+    </div>
   </div>
 </template>
 
@@ -41,7 +28,7 @@ import { reactive, ref, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { api } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
-import { mdiShieldAccountOutline, mdiContentSave } from '@mdi/js';
+import { Icon, Btn, Card, TextField } from '@spa/ui';
 
 interface SecurityResponse {
   max_connected_devices: number;

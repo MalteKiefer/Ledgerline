@@ -1,214 +1,172 @@
 <template>
-  <div class="mx-auto" style="max-width: 960px">
+  <div class="mx-auto max-w-3xl space-y-4 pb-20">
     <!-- Identity -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiOfficeBuilding" size="small" />
-        {{ t('settings.company_identity_heading') }}
-      </v-card-title>
-      <v-divider />
-      <v-card-text>
-        <v-row dense>
-          <v-col cols="12">
-            <v-text-field v-model="form.company_name" :label="t('settings.company_name')" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12">
-            <v-textarea v-model="form.company_address" :label="t('settings.company_address')" rows="3" auto-grow variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="6">
-            <v-text-field v-model="form.company_email" :label="t('settings.company_email')" type="email" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="6">
-            <v-text-field v-model="form.company_phone" :label="t('settings.company_phone')" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="6">
-            <v-text-field v-model="form.company_tax_id" :label="t('settings.company_tax_id')" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="6">
-            <v-text-field v-model="form.company_vat_id" :label="t('settings.company_vat_id')" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-        </v-row>
-      </v-card-text>
-    </v-card>
+    <Card>
+      <template #header>
+        <Icon name="business" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.company_identity_heading') }}</h2>
+      </template>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <TextField v-model="form.company_name" :label="t('settings.company_name')" class="sm:col-span-2" />
+        <label class="block sm:col-span-2">
+          <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('settings.company_address') }}</span>
+          <textarea v-model="form.company_address" rows="3" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500"></textarea>
+        </label>
+        <TextField v-model="form.company_email" :label="t('settings.company_email')" type="email" />
+        <TextField v-model="form.company_phone" :label="t('settings.company_phone')" />
+        <TextField v-model="form.company_tax_id" :label="t('settings.company_tax_id')" />
+        <TextField v-model="form.company_vat_id" :label="t('settings.company_vat_id')" />
+      </div>
+    </Card>
 
     <!-- Bank details -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiBank" size="small" />
-        {{ t('settings.company_bank_heading') }}
-      </v-card-title>
-      <v-divider />
-      <v-card-text>
-        <v-row dense>
-          <v-col cols="12" sm="4">
-            <v-text-field v-model="form.company_bank_name" :label="t('settings.company_bank_name')" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="5">
-            <v-text-field v-model="form.company_iban" :label="t('settings.company_iban')" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="3">
-            <v-text-field v-model="form.company_bic" :label="t('settings.company_bic')" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-        </v-row>
-      </v-card-text>
-    </v-card>
+    <Card>
+      <template #header>
+        <Icon name="key" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.company_bank_heading') }}</h2>
+      </template>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <TextField v-model="form.company_bank_name" :label="t('settings.company_bank_name')" />
+        <TextField v-model="form.company_iban" :label="t('settings.company_iban')" />
+        <TextField v-model="form.company_bic" :label="t('settings.company_bic')" />
+      </div>
+    </Card>
 
     <!-- Website + contact persons -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiWeb" size="small" />
-        {{ t('settings.company_contacts_heading') }}
-      </v-card-title>
-      <v-divider />
-      <v-card-text>
-        <v-row dense>
-          <v-col cols="12">
-            <v-text-field v-model="form.company_website" :label="t('settings.company_website')" type="url" placeholder="https://…" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-        </v-row>
+    <Card>
+      <template #header>
+        <Icon name="badge" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.company_contacts_heading') }}</h2>
+      </template>
+      <TextField v-model="form.company_website" :label="t('settings.company_website')" type="url" placeholder="https://…" />
 
-        <p class="text-caption text-medium-emphasis mt-4 mb-2">{{ t('settings.company_contacts_hint') }}</p>
+      <p class="mb-2 mt-4 text-xs text-[var(--ll-muted)]">{{ t('settings.company_contacts_hint') }}</p>
 
-        <v-row v-for="(row, i) in form.company_contacts" :key="i" dense align="center">
-          <v-col cols="12" sm="3">
-            <v-text-field v-model="row.name" :label="t('settings.company_contact_name')" variant="outlined" density="compact" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="3">
-            <v-text-field v-model="row.role" :label="t('settings.company_contact_role')" variant="outlined" density="compact" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="3">
-            <v-text-field v-model="row.email" :label="t('settings.company_contact_email')" type="email" variant="outlined" density="compact" hide-details="auto" />
-          </v-col>
-          <v-col cols="10" sm="2">
-            <v-text-field v-model="row.phone" :label="t('settings.company_contact_phone')" variant="outlined" density="compact" hide-details="auto" />
-          </v-col>
-          <v-col cols="2" sm="1" class="text-center">
-            <v-btn :icon="mdiDelete" variant="text" density="comfortable" color="error" :aria-label="t('common.delete')" @click="form.company_contacts.splice(i, 1)" />
-          </v-col>
-        </v-row>
+      <div v-for="(row, i) in form.company_contacts" :key="i" class="mb-3 grid grid-cols-12 items-center gap-2">
+        <TextField v-model="row.name" :label="t('settings.company_contact_name')" class="col-span-12 sm:col-span-3" />
+        <TextField v-model="row.role" :label="t('settings.company_contact_role')" class="col-span-12 sm:col-span-3" />
+        <TextField v-model="row.email" :label="t('settings.company_contact_email')" type="email" class="col-span-12 sm:col-span-3" />
+        <TextField v-model="row.phone" :label="t('settings.company_contact_phone')" class="col-span-10 sm:col-span-2" />
+        <div class="col-span-2 flex justify-center sm:col-span-1">
+          <button class="grid h-9 w-9 place-items-center rounded-lg text-red-600 hover:bg-red-500/10" :aria-label="t('common.delete')" @click="form.company_contacts.splice(i, 1)">
+            <Icon name="delete" :size="18" />
+          </button>
+        </div>
+      </div>
 
-        <v-btn class="mt-2" variant="tonal" size="small" :prepend-icon="mdiPlus" @click="addContact">
-          {{ t('settings.company_contact_add') }}
-        </v-btn>
-      </v-card-text>
-    </v-card>
+      <Btn variant="soft" size="sm" icon="add" @click="addContact">{{ t('settings.company_contact_add') }}</Btn>
+    </Card>
 
     <!-- Invoice defaults -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiFileDocument" size="small" />
-        {{ t('settings.company_invoice_heading') }}
-      </v-card-title>
-      <v-divider />
-      <v-card-text>
-        <p class="text-caption text-medium-emphasis mb-3">{{ t('settings.company_invoice_hint') }}</p>
-        <v-row dense>
-          <v-col cols="12" sm="6">
-            <v-text-field v-model="form.invoice_number_format" :label="t('settings.invoice_number_format')" placeholder="YYYY-NNNN" :hint="t('settings.invoice_number_format_hint')" persistent-hint variant="outlined" density="comfortable" />
-          </v-col>
-          <v-col cols="12" sm="3">
-            <v-text-field v-model.number="form.invoice_next_number" :label="t('settings.invoice_next_number')" type="number" min="1" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="3">
-            <v-text-field v-model.number="form.invoice_default_vat_rate" :label="t('settings.invoice_default_vat_rate')" type="number" step="0.01" min="0" max="100" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="6">
-            <v-text-field v-model.number="form.invoice_payment_terms_days" :label="t('settings.invoice_payment_terms_days')" type="number" min="0" max="365" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="6" class="d-flex align-center">
-            <v-switch v-model="form.small_business" :label="t('settings.invoice_small_business_label')" color="primary" density="comfortable" :hint="t('settings.invoice_small_business_hint')" persistent-hint hide-details="auto" />
-          </v-col>
-          <v-col cols="12">
-            <v-textarea v-model="form.invoice_payment_terms_text" :label="t('settings.invoice_payment_terms_text')" rows="2" auto-grow variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12">
-            <v-textarea v-model="form.invoice_payment_methods" :label="t('settings.invoice_payment_methods')" rows="2" auto-grow variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12">
-            <v-textarea v-model="form.invoice_footer_text" :label="t('settings.invoice_footer_text')" rows="2" auto-grow variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-        </v-row>
-      </v-card-text>
-    </v-card>
+    <Card>
+      <template #header>
+        <Icon name="edit" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.company_invoice_heading') }}</h2>
+      </template>
+      <p class="mb-3 text-xs text-[var(--ll-muted)]">{{ t('settings.company_invoice_hint') }}</p>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <TextField v-model="form.invoice_number_format" :label="t('settings.invoice_number_format')" placeholder="YYYY-NNNN" :hint="t('settings.invoice_number_format_hint')" class="sm:col-span-2" />
+        <TextField v-model="invoiceNextNumberStr" :label="t('settings.invoice_next_number')" type="number" inputmode="numeric" />
+        <TextField v-model="invoiceDefaultVatRateStr" :label="t('settings.invoice_default_vat_rate')" type="number" inputmode="decimal" />
+        <TextField v-model="invoicePaymentTermsDaysStr" :label="t('settings.invoice_payment_terms_days')" type="number" inputmode="numeric" />
+        <label class="flex items-center justify-between gap-3">
+          <span class="text-sm font-medium">{{ t('settings.invoice_small_business_label') }}</span>
+          <button
+            type="button" role="switch" :aria-checked="form.small_business"
+            class="relative h-6 w-10 flex-shrink-0 rounded-full transition-colors" :class="form.small_business ? 'bg-primary-500' : 'bg-black/10 dark:bg-white/15'"
+            @click="form.small_business = !form.small_business"
+          >
+            <span class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform" :class="form.small_business ? 'translate-x-4' : ''" />
+          </button>
+        </label>
+        <p class="-mt-2 text-xs text-[var(--ll-muted)] sm:col-span-2">{{ t('settings.invoice_small_business_hint') }}</p>
+
+        <label class="block sm:col-span-2">
+          <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('settings.invoice_payment_terms_text') }}</span>
+          <textarea v-model="form.invoice_payment_terms_text" rows="2" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500"></textarea>
+        </label>
+        <label class="block sm:col-span-2">
+          <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('settings.invoice_payment_methods') }}</span>
+          <textarea v-model="form.invoice_payment_methods" rows="2" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500"></textarea>
+        </label>
+        <label class="block sm:col-span-2">
+          <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('settings.invoice_footer_text') }}</span>
+          <textarea v-model="form.invoice_footer_text" rows="2" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500"></textarea>
+        </label>
+      </div>
+    </Card>
 
     <!-- Design -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiPalette" size="small" />
-        {{ t('settings.invoice_design_heading') }}
-      </v-card-title>
-      <v-divider />
-      <v-card-text>
-        <v-row dense>
-          <v-col cols="12" sm="6">
-            <v-select v-model="form.invoice_template" :items="templateItems" :label="t('settings.invoice_template')" variant="outlined" density="comfortable" hide-details="auto" />
-          </v-col>
-          <v-col cols="12" sm="6">
-            <v-text-field v-model="form.invoice_font" :label="t('settings.invoice_font')" :hint="t('settings.invoice_font_hint')" persistent-hint variant="outlined" density="comfortable" />
-          </v-col>
+    <Card>
+      <template #header>
+        <Icon name="image" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.invoice_design_heading') }}</h2>
+      </template>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Select v-model="form.invoice_template" :options="templateItems" :label="t('settings.invoice_template')" />
+        <TextField v-model="form.invoice_font" :label="t('settings.invoice_font')" :hint="t('settings.invoice_font_hint')" />
 
-          <v-col cols="12" sm="6">
-            <div class="d-flex align-center ga-3">
-              <input type="color" v-model="form.invoice_accent_color" style="width:44px;height:44px;border:none;background:none;cursor:pointer;border-radius:8px" :aria-label="t('settings.invoice_accent_color')" >
-              <v-text-field v-model="form.invoice_accent_color" :label="t('settings.invoice_accent_color')" variant="outlined" density="comfortable" hide-details="auto" />
-            </div>
-          </v-col>
-          <v-col cols="12" sm="6">
-            <div class="d-flex align-center ga-3">
-              <input type="color" v-model="form.invoice_heading_color" style="width:44px;height:44px;border:none;background:none;cursor:pointer;border-radius:8px" :aria-label="t('settings.invoice_heading_color')" >
-              <v-text-field v-model="form.invoice_heading_color" :label="t('settings.invoice_heading_color')" variant="outlined" density="comfortable" hide-details="auto" />
-            </div>
-          </v-col>
+        <label class="block">
+          <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('settings.invoice_accent_color') }}</span>
+          <span class="flex items-center gap-3">
+            <input v-model="form.invoice_accent_color" type="color" class="h-9 w-11 cursor-pointer rounded-lg border border-[var(--ll-border)] bg-transparent" :aria-label="t('settings.invoice_accent_color')">
+            <input v-model="form.invoice_accent_color" type="text" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500">
+          </span>
+        </label>
+        <label class="block">
+          <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('settings.invoice_heading_color') }}</span>
+          <span class="flex items-center gap-3">
+            <input v-model="form.invoice_heading_color" type="color" class="h-9 w-11 cursor-pointer rounded-lg border border-[var(--ll-border)] bg-transparent" :aria-label="t('settings.invoice_heading_color')">
+            <input v-model="form.invoice_heading_color" type="text" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500">
+          </span>
+        </label>
 
-          <v-col cols="12">
-            <v-switch v-model="form.invoice_vat_ist" :label="t('settings.invoice_vat_ist')" color="primary" density="comfortable" :hint="t('settings.invoice_vat_ist_hint')" persistent-hint hide-details="auto" />
-          </v-col>
-        </v-row>
-      </v-card-text>
-    </v-card>
+        <label class="flex items-center justify-between gap-3 sm:col-span-2">
+          <span class="text-sm font-medium">{{ t('settings.invoice_vat_ist') }}</span>
+          <button
+            type="button" role="switch" :aria-checked="form.invoice_vat_ist"
+            class="relative h-6 w-10 flex-shrink-0 rounded-full transition-colors" :class="form.invoice_vat_ist ? 'bg-primary-500' : 'bg-black/10 dark:bg-white/15'"
+            @click="form.invoice_vat_ist = !form.invoice_vat_ist"
+          >
+            <span class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform" :class="form.invoice_vat_ist ? 'translate-x-4' : ''" />
+          </button>
+        </label>
+        <p class="-mt-2 text-xs text-[var(--ll-muted)] sm:col-span-2">{{ t('settings.invoice_vat_ist_hint') }}</p>
+      </div>
+    </Card>
 
     <!-- Logo -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title class="d-flex align-center ga-2 py-4">
-        <v-icon :icon="mdiImage" size="small" />
-        {{ t('settings.company_logo_heading') }}
-      </v-card-title>
-      <v-divider />
-      <v-card-text>
-        <div class="d-flex align-center ga-4 flex-wrap">
-          <v-img v-if="logoSrc" :src="logoSrc" max-height="72" max-width="200" contain class="rounded border pa-1" style="background:#fff" />
-          <v-file-input
-            v-model="logoInput"
-            :label="t('settings.company_logo_heading')"
-            accept="image/png,image/jpeg,image/gif,image/webp"
-            :prepend-icon="mdiImage"
-            variant="outlined"
-            density="comfortable"
-            hide-details="auto"
-            class="flex-grow-1"
-          />
-        </div>
-        <v-checkbox
-          v-if="form.has_logo"
-          v-model="removeLogo"
-          :label="t('settings.company_logo_remove')"
-          color="error"
-          density="comfortable"
-          hide-details="auto"
-          class="mt-1"
-        />
-      </v-card-text>
-    </v-card>
+    <Card>
+      <template #header>
+        <Icon name="image" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.company_logo_heading') }}</h2>
+      </template>
+      <div class="flex flex-wrap items-center gap-4">
+        <span v-if="logoSrc" class="grid h-[72px] w-[200px] place-items-center rounded-lg border border-[var(--ll-border)] bg-white p-1">
+          <img :src="logoSrc" class="max-h-16 max-w-48 object-contain">
+        </span>
+        <input ref="fileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="hidden" @change="onFileChange">
+        <Btn variant="outline" icon="upload" @click="fileInputEl?.click()">{{ t('settings.company_logo_heading') }}</Btn>
+        <span v-if="selectedLogo()" class="text-xs text-[var(--ll-muted)]">{{ selectedLogo()?.name }}</span>
+      </div>
+      <label v-if="form.has_logo" class="mt-3 flex items-center gap-3">
+        <button
+          type="button" role="switch" :aria-checked="removeLogo"
+          class="relative h-6 w-10 flex-shrink-0 rounded-full transition-colors" :class="removeLogo ? 'bg-red-500' : 'bg-black/10 dark:bg-white/15'"
+          @click="removeLogo = !removeLogo"
+        >
+          <span class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform" :class="removeLogo ? 'translate-x-4' : ''" />
+        </button>
+        <span class="text-sm font-medium text-red-600">{{ t('settings.company_logo_remove') }}</span>
+      </label>
+    </Card>
 
     <!-- Sticky save bar -->
-    <v-card rounded="xl" border flat color="surface" style="position: sticky; bottom: 12px; z-index: 2">
-      <v-card-actions class="px-4 py-3">
-        <v-spacer />
-        <v-btn color="primary" variant="flat" :prepend-icon="mdiContentSave" :loading="saving" :disabled="loading" @click="save">
-          {{ t('settings.save') }}
-        </v-btn>
-      </v-card-actions>
-    </v-card>
+    <div class="sticky bottom-3 z-10 flex justify-end rounded-xl border border-[var(--ll-border)] bg-[var(--ll-surface)] px-4 py-3 shadow-lg">
+      <Btn variant="solid" icon="check" :loading="saving" :disabled="loading" @click="save">
+        {{ t('settings.save') }}
+      </Btn>
+    </div>
   </div>
 </template>
 
@@ -217,7 +175,7 @@ import { reactive, ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { api } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
-import { mdiOfficeBuilding, mdiBank, mdiWeb, mdiFileDocument, mdiPalette, mdiImage, mdiPlus, mdiDelete, mdiContentSave } from '@mdi/js';
+import { Icon, Btn, Card, TextField, Select } from '@spa/ui';
 
 interface CompanyContact {
   name: string;
@@ -324,10 +282,25 @@ const templateItems = computed(() =>
   })),
 );
 
+// TextField only emits strings — bridge the strongly-typed numeric form fields for the kit's input contract.
+const invoiceNextNumberStr = computed<string>({
+  get: () => (form.invoice_next_number == null ? '' : String(form.invoice_next_number)),
+  set: (v: string) => { form.invoice_next_number = v === '' ? null : Number(v); },
+});
+const invoiceDefaultVatRateStr = computed<string>({
+  get: () => (form.invoice_default_vat_rate == null ? '' : String(form.invoice_default_vat_rate)),
+  set: (v: string) => { form.invoice_default_vat_rate = v === '' ? null : Number(v); },
+});
+const invoicePaymentTermsDaysStr = computed<string>({
+  get: () => (form.invoice_payment_terms_days == null ? '' : String(form.invoice_payment_terms_days)),
+  set: (v: string) => { form.invoice_payment_terms_days = v === '' ? null : Number(v); },
+});
+
 const loading = ref(true);
 const saving = ref(false);
 
 // Logo state
+const fileInputEl = ref<HTMLInputElement | null>(null);
 const logoInput = ref<File | File[] | null>(null);
 const logoPreview = ref<string | null>(null);
 const removeLogo = ref(false);
@@ -335,6 +308,11 @@ const logoVersion = ref(Date.now());
 
 function selectedLogo(): File | null {
   return Array.isArray(logoInput.value) ? (logoInput.value[0] ?? null) : logoInput.value;
+}
+
+function onFileChange(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0] ?? null;
+  logoInput.value = file;
 }
 
 const logoSrc = computed<string | null>(() => {

@@ -1,89 +1,87 @@
 <template>
   <div>
     <!-- Mobile app: QR device pairing -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title>{{ t('account.devices_heading') }}</v-card-title>
-      <v-card-text>
-        <p class="text-medium-emphasis mb-4">{{ t('account.devices_hint') }}</p>
+    <Card :title="t('account.devices_heading')" class="mb-4">
+      <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('account.devices_hint') }}</p>
 
-        <v-btn v-if="!pairing.active" variant="tonal" color="primary" :prepend-icon="mdiQrcode" :loading="pairing.busy" @click="onStartPairing">
-          {{ t('account.devices_connect') }}
-        </v-btn>
+      <Btn v-if="!pairing.active" variant="soft" icon="smartphone" :loading="pairing.busy" @click="onStartPairing">
+        {{ t('account.devices_connect') }}
+      </Btn>
 
-        <template v-else>
-          <div v-if="pairing.status === 'pending_scan' || pairing.status === 'pending_approval'" class="d-flex flex-column flex-sm-row align-start ga-4">
-            <v-img v-if="pairing.qr" :src="pairing.qr" width="160" height="160" class="flex-grow-0 rounded-lg border bg-white pa-1" cover />
-            <div>
-              <p v-if="pairing.status === 'pending_scan'" class="text-medium-emphasis">{{ t('account.devices_scan_hint') }}</p>
-              <div v-else>
-                <p class="mb-2">{{ t('account.devices_approve_q') }} “{{ pairing.deviceName }}”?</p>
-                <div class="d-flex ga-2">
-                  <v-btn color="primary" :loading="pairing.busy" @click="onApprovePairing">{{ t('account.devices_allow') }}</v-btn>
-                  <v-btn variant="tonal" :disabled="pairing.busy" @click="onRejectPairing">{{ t('account.devices_deny') }}</v-btn>
-                </div>
+      <template v-else>
+        <div v-if="pairing.status === 'pending_scan' || pairing.status === 'pending_approval'" class="flex flex-col items-start gap-4 sm:flex-row">
+          <img v-if="pairing.qr" :src="pairing.qr" class="h-40 w-40 shrink-0 rounded-lg border border-[var(--ll-border)] bg-white object-cover p-1" >
+          <div>
+            <p v-if="pairing.status === 'pending_scan'" class="text-sm text-[var(--ll-muted)]">{{ t('account.devices_scan_hint') }}</p>
+            <div v-else>
+              <p class="mb-2 text-sm">{{ t('account.devices_approve_q') }} “{{ pairing.deviceName }}”?</p>
+              <div class="flex gap-2">
+                <Btn variant="solid" :loading="pairing.busy" @click="onApprovePairing">{{ t('account.devices_allow') }}</Btn>
+                <Btn variant="soft" :disabled="pairing.busy" @click="onRejectPairing">{{ t('account.devices_deny') }}</Btn>
               </div>
             </div>
           </div>
-          <div v-else>
-            <p v-if="pairing.status === 'approved' || pairing.status === 'consumed'" class="text-success font-weight-medium">{{ t('account.devices_connected') }}</p>
-            <p v-else-if="pairing.status === 'rejected'" class="text-medium-emphasis">{{ t('account.devices_rejected') }}</p>
-            <p v-else class="text-medium-emphasis">{{ t('account.devices_expired') }}</p>
-            <v-btn variant="text" class="mt-2 px-0" @click="resetPairing">{{ t('account.devices_again') }}</v-btn>
-          </div>
-        </template>
-      </v-card-text>
-    </v-card>
+        </div>
+        <div v-else>
+          <p v-if="pairing.status === 'approved' || pairing.status === 'consumed'" class="text-sm font-medium text-emerald-600 dark:text-emerald-400">{{ t('account.devices_connected') }}</p>
+          <p v-else-if="pairing.status === 'rejected'" class="text-sm text-[var(--ll-muted)]">{{ t('account.devices_rejected') }}</p>
+          <p v-else class="text-sm text-[var(--ll-muted)]">{{ t('account.devices_expired') }}</p>
+          <Btn variant="ghost" size="sm" class="mt-2" @click="resetPairing">{{ t('account.devices_again') }}</Btn>
+        </div>
+      </template>
+    </Card>
 
     <!-- Connected devices -->
-    <v-card rounded="xl" border flat class="mb-4">
-      <v-card-title>{{ t('account.devices_list_heading') }}</v-card-title>
-      <v-list>
-        <v-list-item v-for="d in p.devices" :key="d.id" :title="d.name" :subtitle="deviceSub(d)">
-          <template #prepend><v-avatar size="34" variant="tonal" :color="d.current ? 'primary' : undefined"><span class="msym" style="font-size:18px">smartphone</span></v-avatar></template>
-          <template #append>
-            <v-chip v-if="d.current" size="x-small" color="primary" variant="tonal" class="mr-2">{{ t('account.sessions_current') }}</v-chip>
-            <v-chip v-if="d.wipeRequested" size="small" color="warning" variant="tonal" class="mr-2">{{ t('account.devices_wipe_pending') }}</v-chip>
-            <v-btn variant="text" size="small" :icon="mdiCellphoneRemove" @click="p.wipeDevice(d.id)" />
-            <v-btn variant="text" size="small" color="error" :icon="mdiDelete" @click="p.revokeDevice(d.id)" />
-          </template>
-        </v-list-item>
-        <v-list-item v-if="!p.devices.length" :title="t('common.none')" class="text-medium-emphasis" />
-      </v-list>
-    </v-card>
+    <Card :title="t('account.devices_list_heading')" body-class="p-0" class="mb-4">
+      <div v-for="d in p.devices" :key="d.id" class="flex items-center gap-3 border-t border-[var(--ll-border)] px-5 py-3 first:border-t-0">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg" :class="d.current ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300' : 'bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10'">
+          <Icon name="smartphone" :size="18" />
+        </span>
+        <div class="min-w-0 flex-1">
+          <div class="truncate text-sm font-medium">{{ d.name }}</div>
+          <div class="truncate text-xs text-[var(--ll-muted)]">{{ deviceSub(d) }}</div>
+        </div>
+        <Badge v-if="d.current" tone="primary">{{ t('account.sessions_current') }}</Badge>
+        <Badge v-if="d.wipeRequested" tone="warning">{{ t('account.devices_wipe_pending') }}</Badge>
+        <button class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('account.devices_wipe_pending')" @click="p.wipeDevice(d.id)">
+          <Icon name="close" :size="18" />
+        </button>
+        <button class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-red-600 hover:bg-red-500/10" :title="t('common.delete')" @click="p.revokeDevice(d.id)">
+          <Icon name="delete" :size="18" />
+        </button>
+      </div>
+      <div v-if="!p.devices.length" class="border-t border-[var(--ll-border)] px-5 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</div>
+    </Card>
 
     <!-- WebDAV access -->
-    <v-card rounded="xl" border flat>
-      <v-card-title>{{ t('account.webdav_title') }}</v-card-title>
-      <v-card-text>
-        <p class="text-medium-emphasis mb-4">{{ t('account.webdav_desc') }}</p>
-        <template v-if="webdav.enabled">
-          <v-text-field :model-value="webdav.url" :label="t('account.webdav_url')" readonly variant="outlined" density="comfortable" hide-details class="mb-3" />
-          <v-text-field :model-value="webdav.username" :label="t('account.webdav_user')" readonly variant="outlined" density="comfortable" hide-details class="mb-3" />
-        </template>
-        <v-form @submit.prevent="onSaveWebdav">
-          <v-text-field
-            v-model="webdavPassword"
-            :label="t('account.webdav_password')"
-            type="password"
-            autocomplete="new-password"
-            variant="outlined"
-            density="comfortable"
-            :error-messages="webdavErr"
-          />
-          <div class="d-flex ga-2 flex-wrap">
-            <v-btn type="submit" color="primary" :loading="webdavBusy">{{ t('account.webdav_save') }}</v-btn>
-            <v-btn v-if="webdav.enabled" variant="text" color="error" :loading="webdavBusy" @click="onClearWebdav">{{ t('account.webdav_disable') }}</v-btn>
-          </div>
-        </v-form>
-      </v-card-text>
-    </v-card>
+    <Card :title="t('account.webdav_title')">
+      <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('account.webdav_desc') }}</p>
+      <template v-if="webdav.enabled">
+        <TextField class="mb-3" :model-value="webdav.url" :label="t('account.webdav_url')" disabled />
+        <TextField class="mb-3" :model-value="webdav.username" :label="t('account.webdav_user')" disabled />
+      </template>
+      <form @submit.prevent="onSaveWebdav">
+        <TextField
+          v-model="webdavPassword"
+          class="mb-3"
+          :label="t('account.webdav_password')"
+          type="password"
+          autocomplete="new-password"
+          :error="webdavErr && webdavErr.length ? webdavErr[0] : ''"
+        />
+        <div class="flex flex-wrap gap-2">
+          <Btn type="submit" variant="solid" :loading="webdavBusy">{{ t('account.webdav_save') }}</Btn>
+          <Btn v-if="webdav.enabled" variant="ghost" class="text-red-600 hover:bg-red-500/10" :loading="webdavBusy" @click="onClearWebdav">{{ t('account.webdav_disable') }}</Btn>
+        </div>
+      </form>
+    </Card>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
-import { mdiCellphoneRemove, mdiDelete, mdiQrcode } from '@mdi/js';
+import { Card, Btn, Icon, Badge, TextField } from '@spa/ui';
 import { useProfileStore, type DeviceToken, type WebDavAccess } from '@spa/stores/profile';
 import { useToast } from '@spa/composables/useToast';
 import { ApiError } from '@spa/api/client';

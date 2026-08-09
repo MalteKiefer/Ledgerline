@@ -1,15 +1,18 @@
 <template>
-  <v-container class="fill-height" fluid>
-    <v-row justify="center" align="center">
-      <v-col cols="12" class="text-center">
-        <div class="text-h2 text-medium-emphasis mb-2">404</div>
-        <p class="text-medium-emphasis mb-4">{{ t('common.not_found') }}</p>
-        <v-btn color="primary" variant="tonal" to="/">{{ t('common.back') }}</v-btn>
-      </v-col>
-    </v-row>
-  </v-container>
+  <div class="grid min-h-[60vh] place-items-center text-center">
+    <div>
+      <Icon name="close" :size="48" class="mx-auto mb-3 text-[var(--ll-muted)]" />
+      <div class="mb-1 text-4xl font-bold text-[var(--ll-muted)]">404</div>
+      <p class="mb-5 text-sm text-[var(--ll-muted)]">{{ t('common.not_found') }}</p>
+      <Btn variant="soft" @click="router.push('/')">{{ t('common.back') }}</Btn>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { trans as t } from 'laravel-vue-i18n';
+import { useRouter } from 'vue-router';
+import { Icon, Btn } from '@spa/ui';
+
+const router = useRouter();
 </script>

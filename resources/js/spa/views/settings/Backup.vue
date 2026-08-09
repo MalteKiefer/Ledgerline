@@ -1,160 +1,209 @@
 <template>
   <!-- DESTINATIONS -->
-  <v-card rounded="xl" border flat class="mb-4">
-    <v-toolbar flat color="surface">
-      <v-toolbar-title>{{ t('settings.backup_destinations_heading') }}</v-toolbar-title>
-      <v-spacer />
-      <v-btn color="primary" variant="tonal" :prepend-icon="mdiPlus" @click="newDest">{{ t('settings.backup_add_destination') }}</v-btn>
-    </v-toolbar>
-    <v-divider />
-    <v-list>
-      <v-list-item v-for="d in s.destinations" :key="d.id" :title="d.name">
-        <template #prepend><v-chip size="small" variant="tonal" class="me-3">{{ d.driver }}</v-chip></template>
-        <template #append>
-          <v-btn variant="text" size="small" :icon="mdiPencil" :title="t('common.edit')" @click="editDest(d)" />
-          <v-btn variant="text" size="small" color="error" :icon="mdiDelete" :title="t('common.delete')" @click="delDest(d)" />
-        </template>
-      </v-list-item>
-      <v-list-item v-if="!s.destinations.length" :title="t('settings.backup_no_destinations')" class="text-medium-emphasis" />
-    </v-list>
-  </v-card>
+  <Card class="mb-4" :body-class="'p-0'">
+    <template #header>
+      <Icon name="backup" :size="18" class="text-[var(--ll-muted)]" />
+      <h2 class="text-sm font-semibold">{{ t('settings.backup_destinations_heading') }}</h2>
+    </template>
+    <template #actions><Btn variant="soft" size="sm" icon="add" @click="newDest">{{ t('settings.backup_add_destination') }}</Btn></template>
+    <div class="divide-y divide-[var(--ll-border)]">
+      <div v-for="d in s.destinations" :key="d.id" class="flex items-center gap-3 px-5 py-3">
+        <Badge tone="gray">{{ d.driver }}</Badge>
+        <span class="flex-1 text-sm font-medium">{{ d.name }}</span>
+        <button class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.04] dark:hover:bg-white/5" :title="t('common.edit')" @click="editDest(d)"><Icon name="edit" :size="17" class="text-[var(--ll-muted)]" /></button>
+        <button class="grid h-8 w-8 place-items-center rounded-lg text-red-500 hover:bg-red-500/10" :title="t('common.delete')" @click="delDest(d)"><Icon name="delete" :size="17" /></button>
+      </div>
+      <div v-if="!s.destinations.length" class="px-5 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('settings.backup_no_destinations') }}</div>
+    </div>
+  </Card>
 
   <!-- JOBS -->
-  <v-card rounded="xl" border flat class="mb-4">
-    <v-toolbar flat color="surface">
-      <v-toolbar-title>{{ t('settings.backup_jobs_heading') }}</v-toolbar-title>
-      <v-spacer />
-      <v-btn color="primary" variant="tonal" :prepend-icon="mdiPlus" :disabled="!s.destinations.length" @click="newJob">{{ t('settings.backup_add_job') }}</v-btn>
-    </v-toolbar>
-    <v-divider />
-    <v-list>
-      <v-list-item v-for="j in s.jobs" :key="j.id" :title="j.name" :subtitle="jobSubtitle(j)">
-        <template #append>
-          <v-btn variant="text" size="small" :icon="mdiPlay" :loading="running === j.id" :title="t('settings.backup_run_now')" @click="onRun(j)" />
-          <v-btn variant="text" size="small" :icon="mdiPencil" :title="t('common.edit')" @click="editJob(j)" />
-          <v-btn variant="text" size="small" color="error" :icon="mdiDelete" :title="t('common.delete')" @click="delJob(j)" />
-        </template>
-      </v-list-item>
-      <v-list-item v-if="!s.jobs.length" :title="t('settings.backup_no_jobs')" class="text-medium-emphasis" />
-    </v-list>
-  </v-card>
+  <Card class="mb-4" :body-class="'p-0'">
+    <template #header>
+      <Icon name="backup" :size="18" class="text-[var(--ll-muted)]" />
+      <h2 class="text-sm font-semibold">{{ t('settings.backup_jobs_heading') }}</h2>
+    </template>
+    <template #actions><Btn variant="soft" size="sm" icon="add" :disabled="!s.destinations.length" @click="newJob">{{ t('settings.backup_add_job') }}</Btn></template>
+    <div class="divide-y divide-[var(--ll-border)]">
+      <div v-for="j in s.jobs" :key="j.id" class="flex items-center gap-3 px-5 py-3">
+        <div class="min-w-0 flex-1">
+          <div class="truncate text-sm font-medium">{{ j.name }}</div>
+          <div class="truncate text-xs text-[var(--ll-muted)]">{{ jobSubtitle(j) }}</div>
+        </div>
+        <button class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.04] dark:hover:bg-white/5 disabled:opacity-50" :disabled="running === j.id" :title="t('settings.backup_run_now')" @click="onRun(j)">
+          <Icon :name="running === j.id ? 'refresh' : 'play_arrow'" :size="17" class="text-[var(--ll-muted)]" :class="running === j.id ? 'animate-spin' : ''" />
+        </button>
+        <button class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.04] dark:hover:bg-white/5" :title="t('common.edit')" @click="editJob(j)"><Icon name="edit" :size="17" class="text-[var(--ll-muted)]" /></button>
+        <button class="grid h-8 w-8 place-items-center rounded-lg text-red-500 hover:bg-red-500/10" :title="t('common.delete')" @click="delJob(j)"><Icon name="delete" :size="17" /></button>
+      </div>
+      <div v-if="!s.jobs.length" class="px-5 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('settings.backup_no_jobs') }}</div>
+    </div>
+  </Card>
 
   <!-- RUNS -->
-  <v-card rounded="xl" border flat>
-    <v-toolbar flat color="surface"><v-toolbar-title>{{ t('settings.backup_runs_heading') }}</v-toolbar-title></v-toolbar>
-    <v-divider />
-    <v-data-table :headers="headers" :items="s.runs" density="compact" :items-per-page="10" :no-data-text="t('settings.backup_no_runs')">
-      <template #[`item.startedHuman`]="{ item }"><span class="ll-mono text-caption">{{ item.startedHuman || fmtIso(item.startedIso) || '—' }}</span></template>
-      <template #[`item.status`]="{ item }">
-        <v-chip size="small" variant="tonal" :color="statusColor(item.status)">{{ item.status }}</v-chip>
-      </template>
-      <template #[`item.size`]="{ item }">{{ item.size || '—' }}</template>
-      <template #[`item.act`]="{ item }">
-        <div class="d-flex flex-column ga-1 py-1" style="align-items:flex-end">
-          <v-btn v-if="item.cancellable" variant="tonal" size="x-small" color="warning" :prepend-icon="mdiCancel" @click="onCancel(item)">{{ t('settings.backup_cancel') }}</v-btn>
-          <span v-else-if="item.cancelling" class="text-caption text-medium-emphasis">{{ t('settings.backup_cancelling') }}</span>
-          <div v-for="a in (item.archives || [])" :key="a.source" class="d-flex align-center ga-1">
-            <v-chip size="x-small" variant="tonal">{{ sourceLabel(a.source) }}</v-chip>
-            <v-btn variant="text" size="x-small" :icon="mdiDownload" :href="s.downloadRunUrl(item.id, a.source)" :title="t('settings.backup_download')" />
-            <v-btn variant="text" size="x-small" :icon="mdiCheckDecagram" :title="t('settings.backup_verify')" @click="onVerify(item, a)" />
-            <v-btn v-if="a.encrypted" variant="text" size="x-small" :icon="mdiLockOpenVariant" :title="t('settings.backup_decrypt')" @click="onDecrypt(item, a)" />
-            <v-btn v-if="a.restorable" variant="text" size="x-small" color="warning" :icon="mdiRestore" :title="t('settings.backup_restore')" @click="onRestore(item, a)" />
-          </div>
-        </div>
-      </template>
-    </v-data-table>
-  </v-card>
+  <Card :body-class="'p-0'">
+    <template #header>
+      <Icon name="backup" :size="18" class="text-[var(--ll-muted)]" />
+      <h2 class="text-sm font-semibold">{{ t('settings.backup_runs_heading') }}</h2>
+    </template>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+          <tr class="border-b border-[var(--ll-border)]">
+            <th class="px-4 py-2.5 font-medium">{{ t('common.date') }}</th>
+            <th class="px-4 py-2.5 font-medium">{{ t('common.status') }}</th>
+            <th class="px-4 py-2.5 font-medium">{{ t('common.size') }}</th>
+            <th class="px-4 py-2.5 text-right font-medium"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in s.runs" :key="item.id" class="border-b border-[var(--ll-border)] last:border-0 align-top">
+            <td class="whitespace-nowrap px-4 py-2.5 font-mono text-xs">{{ item.startedHuman || fmtIso(item.startedIso) || '—' }}</td>
+            <td class="px-4 py-2.5"><Badge :tone="statusColor(item.status)">{{ item.status }}</Badge></td>
+            <td class="px-4 py-2.5">{{ item.size || '—' }}</td>
+            <td class="px-4 py-2.5">
+              <div class="flex flex-col items-end gap-1.5">
+                <Btn v-if="item.cancellable" variant="soft" size="xs" icon="close" @click="onCancel(item)">{{ t('settings.backup_cancel') }}</Btn>
+                <span v-else-if="item.cancelling" class="text-xs text-[var(--ll-muted)]">{{ t('settings.backup_cancelling') }}</span>
+                <div v-for="a in (item.archives || [])" :key="a.source" class="flex items-center gap-1">
+                  <Badge tone="gray">{{ sourceLabel(a.source) }}</Badge>
+                  <Btn tag="a" variant="ghost" size="xs" icon="download" :href="s.downloadRunUrl(item.id, a.source)" :title="t('settings.backup_download')" />
+                  <Btn variant="ghost" size="xs" icon="verified" :title="t('settings.backup_verify')" @click="onVerify(item, a)" />
+                  <Btn v-if="a.encrypted" variant="ghost" size="xs" icon="security" :title="t('settings.backup_decrypt')" @click="onDecrypt(item, a)" />
+                  <Btn v-if="a.restorable" variant="ghost" size="xs" icon="refresh" :title="t('settings.backup_restore')" @click="onRestore(item, a)" />
+                </div>
+              </div>
+            </td>
+          </tr>
+          <tr v-if="!s.runs.length"><td colspan="4" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('settings.backup_no_runs') }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </Card>
 
   <!-- Destination dialog -->
-  <v-dialog v-model="destDialog" max-width="620">
-    <v-card rounded="xl">
-      <v-card-title>{{ editingDest ? t('common.edit') : t('settings.backup_add_destination') }}</v-card-title>
-      <v-card-text>
-        <v-text-field v-model="destForm.name" :label="t('settings.backup_name')" variant="outlined" density="comfortable" :error-messages="destErr.name" />
-        <v-select v-model="destForm.driver" :items="driverItems" :label="t('settings.backup_driver')" variant="outlined" density="comfortable" />
+  <Modal v-model="destDialog" :title="editingDest ? t('common.edit') : t('settings.backup_add_destination')" width="620px">
+    <div class="space-y-4">
+      <TextField v-model="destForm.name" :label="t('settings.backup_name')" :error="destErr.name?.[0]" />
+      <Select v-model="destForm.driver" :label="t('settings.backup_driver')" :options="driverItems" />
 
-        <template v-if="destForm.driver === 's3' || destForm.driver === 'b2'">
-          <v-text-field v-model="destForm.bucket" :label="t('settings.backup_bucket')" variant="outlined" density="comfortable" />
-          <v-text-field v-model="destForm.region" :label="t('settings.backup_region')" variant="outlined" density="comfortable" />
-          <v-text-field v-model="destForm.key" :label="t('settings.backup_key')" variant="outlined" density="comfortable" autocomplete="off" />
-          <v-text-field v-model="destForm.secret" :label="t('settings.backup_secret')" type="password" variant="outlined" density="comfortable" autocomplete="off" :placeholder="editingDest ? '••••••••' : ''" :hint="editingDest ? t('settings.notify_secret_keep_hint') : ''" persistent-hint />
-          <v-text-field v-model="destForm.endpoint" :label="t('settings.backup_endpoint')" variant="outlined" density="comfortable" />
-          <v-switch v-model="destForm.use_path_style" :label="t('settings.backup_use_path_style')" color="primary" density="comfortable" hide-details />
-          <v-text-field v-model="destForm.path" :label="t('settings.backup_path')" variant="outlined" density="comfortable" :hint="t('settings.backup_path_hint')" persistent-hint />
-        </template>
+      <template v-if="destForm.driver === 's3' || destForm.driver === 'b2'">
+        <TextField v-model="destForm.bucket" :label="t('settings.backup_bucket')" />
+        <TextField v-model="destForm.region" :label="t('settings.backup_region')" />
+        <TextField v-model="destForm.key" :label="t('settings.backup_key')" autocomplete="off" />
+        <TextField v-model="destForm.secret" :label="t('settings.backup_secret')" type="password" autocomplete="off" :placeholder="editingDest ? '••••••••' : ''" :hint="editingDest ? t('settings.notify_secret_keep_hint') : undefined" />
+        <TextField v-model="destForm.endpoint" :label="t('settings.backup_endpoint')" />
+        <label class="flex items-center gap-3">
+          <span class="relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center">
+            <input v-model="destForm.use_path_style" type="checkbox" class="peer sr-only">
+            <span class="pointer-events-none absolute inset-0 rounded-full bg-black/10 transition-colors peer-checked:bg-primary-500 dark:bg-white/15" />
+            <span class="pointer-events-none absolute left-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
+          </span>
+          <span class="text-sm font-medium">{{ t('settings.backup_use_path_style') }}</span>
+        </label>
+        <TextField v-model="destForm.path" :label="t('settings.backup_path')" :hint="t('settings.backup_path_hint')" />
+      </template>
 
-        <template v-else-if="destForm.driver === 'sftp'">
-          <v-text-field v-model="destForm.host" :label="t('settings.backup_host')" variant="outlined" density="comfortable" />
-          <v-text-field v-model.number="destForm.port" :label="t('settings.backup_port')" type="number" variant="outlined" density="comfortable" />
-          <v-text-field v-model="destForm.username" :label="t('settings.backup_username')" variant="outlined" density="comfortable" autocomplete="off" />
-          <v-text-field v-model="destForm.password" :label="t('settings.backup_password')" type="password" variant="outlined" density="comfortable" autocomplete="off" :placeholder="editingDest ? '••••••••' : ''" :hint="editingDest ? t('settings.notify_secret_keep_hint') : ''" persistent-hint />
-          <v-text-field v-model="destForm.path" :label="t('settings.backup_path')" variant="outlined" density="comfortable" :hint="t('settings.backup_path_hint')" persistent-hint />
-        </template>
+      <template v-else-if="destForm.driver === 'sftp'">
+        <TextField v-model="destForm.host" :label="t('settings.backup_host')" />
+        <TextField v-model="destForm.port" :label="t('settings.backup_port')" type="number" />
+        <TextField v-model="destForm.username" :label="t('settings.backup_username')" autocomplete="off" />
+        <TextField v-model="destForm.password" :label="t('settings.backup_password')" type="password" autocomplete="off" :placeholder="editingDest ? '••••••••' : ''" :hint="editingDest ? t('settings.notify_secret_keep_hint') : undefined" />
+        <TextField v-model="destForm.path" :label="t('settings.backup_path')" :hint="t('settings.backup_path_hint')" />
+      </template>
 
-        <template v-else-if="destForm.driver === 'webdav'">
-          <v-text-field v-model="destForm.base_uri" :label="t('settings.backup_base_uri')" variant="outlined" density="comfortable" />
-          <v-text-field v-model="destForm.username" :label="t('settings.backup_username')" variant="outlined" density="comfortable" autocomplete="off" />
-          <v-text-field v-model="destForm.password" :label="t('settings.backup_password')" type="password" variant="outlined" density="comfortable" autocomplete="off" :placeholder="editingDest ? '••••••••' : ''" :hint="editingDest ? t('settings.notify_secret_keep_hint') : ''" persistent-hint />
-          <v-text-field v-model="destForm.path" :label="t('settings.backup_path')" variant="outlined" density="comfortable" :hint="t('settings.backup_path_hint')" persistent-hint />
-        </template>
-      </v-card-text>
-      <v-card-actions>
-        <v-btn variant="text" :prepend-icon="mdiConnection" :loading="testing" @click="testConn">{{ t('settings.backup_test') }}</v-btn>
-        <v-spacer />
-        <v-btn variant="text" @click="destDialog = false">{{ t('common.cancel') }}</v-btn>
-        <v-btn color="primary" :loading="savingDest" @click="saveDest">{{ t('settings.backup_save') }}</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+      <template v-else-if="destForm.driver === 'webdav'">
+        <TextField v-model="destForm.base_uri" :label="t('settings.backup_base_uri')" />
+        <TextField v-model="destForm.username" :label="t('settings.backup_username')" autocomplete="off" />
+        <TextField v-model="destForm.password" :label="t('settings.backup_password')" type="password" autocomplete="off" :placeholder="editingDest ? '••••••••' : ''" :hint="editingDest ? t('settings.notify_secret_keep_hint') : undefined" />
+        <TextField v-model="destForm.path" :label="t('settings.backup_path')" :hint="t('settings.backup_path_hint')" />
+      </template>
+    </div>
+    <template #footer>
+      <Btn variant="ghost" icon="refresh" :loading="testing" @click="testConn">{{ t('settings.backup_test') }}</Btn>
+      <div class="flex-1" />
+      <Btn variant="ghost" @click="destDialog = false">{{ t('common.cancel') }}</Btn>
+      <Btn variant="solid" :loading="savingDest" @click="saveDest">{{ t('settings.backup_save') }}</Btn>
+    </template>
+  </Modal>
 
   <!-- Job dialog -->
-  <v-dialog v-model="jobDialog" max-width="620">
-    <v-card rounded="xl">
-      <v-card-title>{{ editingJob ? t('common.edit') : t('settings.backup_add_job') }}</v-card-title>
-      <v-card-text>
-        <v-text-field v-model="jobForm.name" :label="t('settings.backup_name')" variant="outlined" density="comfortable" :error-messages="jobErr.name" />
-        <v-select v-model="jobForm.backup_destination_id" :items="destItems" :label="t('settings.backup_destination')" variant="outlined" density="comfortable" :error-messages="jobErr.backup_destination_id" />
-        <v-select v-model="jobForm.sources" :items="sourceItems" :label="t('settings.backup_sources')" multiple chips variant="outlined" density="comfortable" :error-messages="jobErr.sources" />
-        <v-select v-model="jobForm.mode" :items="modeItems" :label="t('settings.backup_mode')" variant="outlined" density="comfortable" :hint="t('settings.backup_mode_hint')" persistent-hint />
-        <v-text-field v-model="jobForm.cron" :label="t('settings.backup_cron')" variant="outlined" density="comfortable" :hint="t('settings.backup_cron_hint')" persistent-hint :error-messages="jobErr.cron" />
-        <div class="text-caption text-medium-emphasis mt-4 mb-1">{{ t('settings.backup_retention_gfs') }}</div>
-        <div class="d-flex ga-3">
-          <v-text-field v-model.number="jobForm.keep_daily" :label="t('settings.backup_keep_daily')" type="number" min="0" variant="outlined" density="comfortable" :error-messages="jobErr.keep_daily" />
-          <v-text-field v-model.number="jobForm.keep_weekly" :label="t('settings.backup_keep_weekly')" type="number" min="0" variant="outlined" density="comfortable" />
-          <v-text-field v-model.number="jobForm.keep_monthly" :label="t('settings.backup_keep_monthly')" type="number" min="0" variant="outlined" density="comfortable" />
+  <Modal v-model="jobDialog" :title="editingJob ? t('common.edit') : t('settings.backup_add_job')" width="620px">
+    <div class="space-y-4">
+      <TextField v-model="jobForm.name" :label="t('settings.backup_name')" :error="jobErr.name?.[0]" />
+      <Select v-model="jobForm.backup_destination_id" :label="t('settings.backup_destination')" :options="destItems" />
+
+      <div>
+        <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('settings.backup_sources') }}</span>
+        <div class="flex flex-wrap gap-1.5">
+          <label
+            v-for="src in sourceItems" :key="src.value"
+            class="inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors"
+            :class="jobForm.sources.includes(src.value) ? 'border-primary-500/30 bg-primary-500/10 text-primary-600 dark:text-primary-300' : 'border-[var(--ll-border)] text-[var(--ll-muted)] hover:bg-black/[0.03] dark:hover:bg-white/5'"
+          >
+            <input v-model="jobForm.sources" type="checkbox" :value="src.value" class="hidden">
+            {{ src.title }}
+          </label>
         </div>
-        <v-switch v-model="jobForm.encrypt" :label="t('settings.backup_encrypt')" color="primary" density="comfortable" hide-details />
-        <v-text-field v-if="jobForm.encrypt" v-model="jobForm.passphrase" :label="t('settings.backup_passphrase')" type="password" variant="outlined" density="comfortable" autocomplete="new-password" :placeholder="editingJob ? '••••••••' : ''" :hint="editingJob ? t('settings.notify_secret_keep_hint') : ''" persistent-hint :error-messages="jobErr.passphrase" />
-        <v-switch v-model="jobForm.notify" :label="t('settings.backup_notify')" color="primary" density="comfortable" hide-details />
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer />
-        <v-btn variant="text" @click="jobDialog = false">{{ t('common.cancel') }}</v-btn>
-        <v-btn color="primary" :loading="savingJob" @click="saveJob">{{ t('settings.backup_save') }}</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+        <span v-if="jobErr.sources?.[0]" class="mt-1 block text-xs text-red-500">{{ jobErr.sources[0] }}</span>
+      </div>
+
+      <Select v-model="jobForm.mode" :label="t('settings.backup_mode')" :options="modeItems" />
+      <p class="text-xs text-[var(--ll-muted)]">{{ t('settings.backup_mode_hint') }}</p>
+      <TextField v-model="jobForm.cron" :label="t('settings.backup_cron')" :hint="t('settings.backup_cron_hint')" :error="jobErr.cron?.[0]" />
+
+      <div>
+        <div class="mb-1 mt-2 text-xs text-[var(--ll-muted)]">{{ t('settings.backup_retention_gfs') }}</div>
+        <div class="flex gap-3">
+          <TextField v-model="jobForm.keep_daily" :label="t('settings.backup_keep_daily')" type="number" :error="jobErr.keep_daily?.[0]" />
+          <TextField v-model="jobForm.keep_weekly" :label="t('settings.backup_keep_weekly')" type="number" />
+          <TextField v-model="jobForm.keep_monthly" :label="t('settings.backup_keep_monthly')" type="number" />
+        </div>
+      </div>
+
+      <label class="flex items-center gap-3">
+        <span class="relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center">
+          <input v-model="jobForm.encrypt" type="checkbox" class="peer sr-only">
+          <span class="pointer-events-none absolute inset-0 rounded-full bg-black/10 transition-colors peer-checked:bg-primary-500 dark:bg-white/15" />
+          <span class="pointer-events-none absolute left-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
+        </span>
+        <span class="text-sm font-medium">{{ t('settings.backup_encrypt') }}</span>
+      </label>
+      <TextField
+        v-if="jobForm.encrypt" v-model="jobForm.passphrase" :label="t('settings.backup_passphrase')" type="password" autocomplete="new-password"
+        :placeholder="editingJob ? '••••••••' : ''" :hint="editingJob ? t('settings.notify_secret_keep_hint') : undefined" :error="jobErr.passphrase?.[0]"
+      />
+      <label class="flex items-center gap-3">
+        <span class="relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center">
+          <input v-model="jobForm.notify" type="checkbox" class="peer sr-only">
+          <span class="pointer-events-none absolute inset-0 rounded-full bg-black/10 transition-colors peer-checked:bg-primary-500 dark:bg-white/15" />
+          <span class="pointer-events-none absolute left-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
+        </span>
+        <span class="text-sm font-medium">{{ t('settings.backup_notify') }}</span>
+      </label>
+    </div>
+    <template #footer>
+      <div class="flex-1" />
+      <Btn variant="ghost" @click="jobDialog = false">{{ t('common.cancel') }}</Btn>
+      <Btn variant="solid" :loading="savingJob" @click="saveJob">{{ t('settings.backup_save') }}</Btn>
+    </template>
+  </Modal>
 
   <!-- Passphrase dialog (verify / decrypt) -->
-  <v-dialog v-model="ppDialog" max-width="440">
-    <v-card rounded="xl">
-      <v-card-title>{{ ppMode === 'decrypt' ? t('settings.backup_decrypt') : t('settings.backup_verify') }}</v-card-title>
-      <v-card-text>
-        <v-text-field v-model="ppValue" :label="t('settings.backup_passphrase')" type="password" variant="outlined" density="comfortable" autocomplete="off" autofocus />
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer />
-        <v-btn variant="text" @click="ppDialog = false">{{ t('common.cancel') }}</v-btn>
-        <v-btn color="primary" :loading="ppBusy" @click="ppConfirm">{{ ppMode === 'decrypt' ? t('settings.backup_decrypt') : t('settings.backup_verify') }}</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  <Modal v-model="ppDialog" :title="ppMode === 'decrypt' ? t('settings.backup_decrypt') : t('settings.backup_verify')" width="440px">
+    <TextField v-model="ppValue" :label="t('settings.backup_passphrase')" type="password" autocomplete="off" />
+    <template #footer>
+      <div class="flex-1" />
+      <Btn variant="ghost" @click="ppDialog = false">{{ t('common.cancel') }}</Btn>
+      <Btn variant="solid" :loading="ppBusy" @click="ppConfirm">{{ ppMode === 'decrypt' ? t('settings.backup_decrypt') : t('settings.backup_verify') }}</Btn>
+    </template>
+  </Modal>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
-import { mdiPlay, mdiDelete, mdiDownload, mdiCheckDecagram, mdiLockOpenVariant, mdiRestore, mdiCancel, mdiPencil, mdiConnection, mdiPlus } from '@mdi/js';
+import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useSettingsStore, type BackupJob, type BackupDestination, type BackupRun, type BackupArchive } from '@spa/stores/settings';
 import { useToast } from '@spa/composables/useToast';
 import { ApiError } from '@spa/api/client';

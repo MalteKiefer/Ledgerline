@@ -1,20 +1,22 @@
 <template>
   <div>
-    <h1 class="text-h5 mb-4">{{ t('pages.profile.title') }}</h1>
-    <div class="d-flex flex-column flex-md-row ga-4">
-      <v-card rounded="xl" border flat class="flex-shrink-0" width="240" style="align-self:flex-start">
-        <v-list density="compact" nav>
-          <v-list-item
-            v-for="s in sections"
-            :key="s.to"
-            :to="{ name: s.to }"
-            :prepend-icon="s.icon"
-            :title="t(s.label)"
-          />
-        </v-list>
-      </v-card>
-      <div class="flex-grow-1 min-width-0">
-        <router-view />
+    <h1 class="mb-4 text-xl font-bold">{{ t('pages.profile.title') }}</h1>
+    <div class="flex flex-col gap-4 md:flex-row">
+      <Card body-class="p-0" class="w-full flex-shrink-0 self-start md:w-60">
+        <RouterLink
+          v-for="s in sections" :key="s.to" :to="{ name: s.to }"
+          class="flex w-full items-center gap-3 border-b border-[var(--ll-border)] px-4 py-3 last:border-0 hover:bg-black/[0.04] dark:hover:bg-white/5"
+          :class="isActive(s.to) ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
+        >
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg" :class="isActive(s.to) ? 'bg-primary-500/15' : 'bg-black/[0.05] dark:bg-white/10'">
+            <Icon :name="s.icon" :size="20" />
+          </span>
+          <span class="flex-1 text-sm font-medium">{{ t(s.label) }}</span>
+          <Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" />
+        </RouterLink>
+      </Card>
+      <div class="min-w-0 flex-1">
+        <RouterView />
       </div>
     </div>
   </div>
@@ -22,17 +24,18 @@
 
 <script setup lang="ts">
 import { trans as t } from 'laravel-vue-i18n';
-import { mdiAccountCircle, mdiPalette, mdiShieldCheck, mdiCellphone, mdiDatabase } from '@mdi/js';
+import { useRoute, RouterLink, RouterView } from 'vue-router';
+import { Icon, Card } from '@spa/ui';
+
+const route = useRoute();
 
 const sections = [
-  { to: 'profile.account', icon: mdiAccountCircle, label: 'account.nav_account' },
-  { to: 'profile.appearance', icon: mdiPalette, label: 'account.nav_appearance' },
-  { to: 'profile.security', icon: mdiShieldCheck, label: 'account.nav_security' },
-  { to: 'profile.devices', icon: mdiCellphone, label: 'account.nav_devices' },
-  { to: 'profile.data', icon: mdiDatabase, label: 'account.hub_data_heading' },
+  { to: 'profile.account', icon: 'account_circle', label: 'account.nav_account' },
+  { to: 'profile.appearance', icon: 'palette', label: 'account.nav_appearance' },
+  { to: 'profile.security', icon: 'security', label: 'account.nav_security' },
+  { to: 'profile.devices', icon: 'smartphone', label: 'account.nav_devices' },
+  { to: 'profile.data', icon: 'database', label: 'account.hub_data_heading' },
 ];
-</script>
 
-<style scoped>
-.min-width-0 { min-width: 0; }
-</style>
+function isActive(name: string): boolean { return route.name === name; }
+</script>
