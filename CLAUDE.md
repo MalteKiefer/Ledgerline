@@ -434,7 +434,16 @@ Register aller bewussten Sicherheits-Trade-offs. **Jede neue Aufweichung hier ei
 
 ---
 
-## DEPLOY-RITUAL (server.p37.nexus) — pro Deploy explizite User-Freigabe (Klassifikator blockt sonst)
+## DEPLOY-RITUAL — GHCR-Pull bevorzugt (2026-08-09)
+**Bevorzugt (Box zu schwach für On-Box-Builds):** GitHub Actions (`.github/workflows/build-image.yml`) baut das Image bei jedem Push auf `main`/`develop`/`feat/vue-vuetify-spa`/Tags und pusht nach **`ghcr.io/maltekiefer/ledgerline:<branch-slug|sha-…|vX.Y.Z>`**. Die Box **zieht nur**:
+```
+ssh -p 2222 -i ~/.ssh/id_priv root@<box> \
+  bash -lc "'cd /srv/ledgerline && git fetch -q origin <branch> && git branch -f <branch> FETCH_HEAD \
+  && ./scripts/deploy-pull.sh <tag>'"
+```
+`deploy-pull.sh` setzt `LEDGERLINE_IMAGE=ghcr.io/…:<tag>` in `.env`, `docker compose pull app` + `up -d` (app/worker/scheduler teilen den Anchor), Health-Wait, Migrationen beim App-Start. **GHCR-Auth:** Package public ODER einmalig auf der Box `docker login ghcr.io` mit read:packages-PAT. Preview-Box `192.168.3.200:8300` (LAN, `APP_BIND=0.0.0.0`), öffentlich über NetBird `https://home.pinlo.me`.
+
+**Legacy On-Box-Build (server.p37.nexus, langsam — nur wenn CI/GHCR nicht verfügbar):** pro Deploy explizite User-Freigabe (Klassifikator blockt sonst).
 Remote-Shell = **fish** → in `bash -lc '…'` wrappen.
 ```
 ssh -p 2222 -i ~/.ssh/id_priv -o StrictHostKeyChecking=no root@server.p37.nexus \

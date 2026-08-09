@@ -8,7 +8,11 @@
 # Rolling release: scripts/deploy.sh <version>.
 
 x-app-image: &app-image
-  image: ledgerline:${IMAGE_TAG:-local}
+  # Pull-deploy: LEDGERLINE_IMAGE points at the CI-built GHCR image
+  # (ghcr.io/maltekiefer/ledgerline:<tag>) so the box PULLS instead of building
+  # on-box (scripts/deploy-pull.sh). Falls back to the local build tag for
+  # `docker compose build` (dev / scripts/deploy.sh).
+  image: ${LEDGERLINE_IMAGE:-ledgerline:${IMAGE_TAG:-local}}
   build:
     context: .
     # Build on the host network: this host's Docker daemon has no external DNS
