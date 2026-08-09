@@ -48,6 +48,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property ?string $company_smtp_password
  * @property ?string $company_smtp_from_address
  * @property ?string $company_smtp_from_name
+ * @property ?string $mail_signature
  */
 #[Fillable([
     'user_id',
@@ -69,6 +70,9 @@ use Illuminate\Database\Eloquent\Model;
     // (tracking-pixel protection) + allow scripts in the sandboxed body iframe.
     'mail_load_remote',
     'mail_allow_scripts',
+    // Per-user plaintext mail signature appended to composed/reply/forward
+    // bodies (non-secret presentation, not encrypted/hidden).
+    'mail_signature',
     // Per-user company identity + invoice numbering (formerly workspace-global).
     'company_name', 'company_address', 'company_email', 'company_phone', 'company_tax_id',
     'company_vat_id', 'company_iban', 'company_bic', 'company_bank_name', 'company_logo_path',

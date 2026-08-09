@@ -31,6 +31,7 @@ use App\Http\Controllers\MailPushbackController;
 use App\Http\Controllers\MailRuleController;
 use App\Http\Controllers\MailSavedSearchController;
 use App\Http\Controllers\MailSeenController;
+use App\Http\Controllers\MailSendController;
 use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\MailTrashController;
 use App\Http\Controllers\MetricsController;
@@ -440,6 +441,9 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/mail/stats', [MailStatsController::class, 'index'])->middleware('throttle:120,1')->name('mail.stats');
         Route::post('/mail/messages/{message}/pushback', MailPushbackController::class)->whereUuid('message')->middleware('throttle:30,1')->name('mail.messages.pushback');
         Route::post('/mail/messages/{message}/delete-origin', MailDeleteOriginController::class)->whereUuid('message')->middleware('throttle:30,1')->name('mail.messages.delete-origin');
+        Route::post('/mail/messages/compose', [MailSendController::class, 'compose'])->middleware('throttle:30,1')->name('mail.messages.compose');
+        Route::post('/mail/messages/{message}/reply', [MailSendController::class, 'reply'])->whereUuid('message')->middleware('throttle:30,1')->name('mail.messages.reply');
+        Route::post('/mail/messages/{message}/forward', [MailSendController::class, 'forward'])->whereUuid('message')->middleware('throttle:30,1')->name('mail.messages.forward');
         Route::get('/mail/attachments/{attachment}/raw', [MailAttachmentController::class, 'raw'])->whereUuid('attachment')->middleware('throttle:3000,1')->name('mail.attachments.raw');
         Route::post('/mail/attachments/{attachment}/save', [MailAttachmentController::class, 'save'])->whereUuid('attachment')->middleware('throttle:60,1')->name('mail.attachments.save');
         Route::get('/mail/keys', [MailKeyController::class, 'index'])->name('mail.keys.index');

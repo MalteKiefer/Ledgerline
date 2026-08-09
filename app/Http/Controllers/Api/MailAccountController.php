@@ -10,6 +10,7 @@ use App\Models\MailAccount;
 use App\Rules\SafeHost;
 use App\Support\KeepBlankSecrets;
 use App\Support\Mail\ImapProbe;
+use App\Support\Mail\SmtpProbe;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
@@ -59,7 +60,7 @@ class MailAccountController extends Controller
     {
         $this->authorizeOwner($request, $account);
 
-        $data = KeepBlankSecrets::preserve($this->validated($request, isUpdate: true), ['password']);
+        $data = KeepBlankSecrets::preserve($this->validated($request, isUpdate: true), ['password', 'smtp_password']);
         $account->update($data);
 
         return response()->json(['account' => $this->present($account->fresh() ?? $account)]);
@@ -89,15 +90,20 @@ class MailAccountController extends Controller
     }
 
     /**
-     * Probe the account's IMAP login with its stored credentials, without
-     * changing anything. SSRF-guarded (ImapProbe checks OutboundUrl before any
-     * socket). Returns {ok, detail}; the detail is redacted (no credential leak).
+     * Probe the account's IMAP (and, when configured, SMTP) login with its
+     * stored credentials, without changing anything. Both probes are SSRF-guarded
+     * (OutboundUrl before any socket). The top-level {ok, detail} is the IMAP
+     * result (backward-compatible); an SMTP verdict is added under `smtp` only
+     * when SMTP is configured. Both details are redacted (no credential leak).
      */
-    public function test(Request $request, MailAccount $account, ImapProbe $probe): JsonResponse
+    public function test(Request $request, MailAccount $account, ImapProbe $probe, SmtpProbe $smtpProbe): JsonResponse
     {
         $this->authorizeOwner($request, $account);
 
         $result = $probe->probe($account);
+        if ($account->hasSmtp()) {
+            $result['smtp'] = $smtpProbe->probe($account);
+        }
 
         return response()->json($result)->header('Cache-Control', 'no-store');
     }
@@ -157,6 +163,15 @@ class MailAccountController extends Controller
             // the stored value when sent blank).
             'password' => [$isUpdate ? 'nullable' : 'required', 'string', 'max:2000'],
             'encryption' => ['required', 'string', Rule::in(MailAccount::ENCRYPTIONS)],
+            // SMTP (compose/reply/forward) — all optional; smtp_host SSRF-guarded,
+            // smtp_password blank-preserved on update (KeepBlankSecrets).
+            'smtp_host' => ['nullable', 'string', 'max:255', new SafeHost],
+            'smtp_port' => ['nullable', 'integer', 'min:1', 'max:65535'],
+            'smtp_username' => ['nullable', 'string', 'max:255'],
+            'smtp_password' => ['nullable', 'string', 'max:2000'],
+            'smtp_encryption' => ['nullable', 'string', Rule::in(MailAccount::ENCRYPTIONS)],
+            'from_name' => ['nullable', 'string', 'max:255'],
+            'from_email' => ['nullable', 'email:rfc', 'max:255'],
             'folders' => ['nullable', 'array'],
             'folders.*' => ['string', 'max:255'],
             'backfill_since' => ['nullable', 'date'],
@@ -174,6 +189,22 @@ class MailAccountController extends Controller
             'password' => $request->string('password')->value(),
             'encryption' => $request->string('encryption')->value(),
         ];
+        // SMTP fields: present → set (empty string → null so the user can clear
+        // an address/host); smtp_password is never emptied here — a blank submit
+        // is preserved by KeepBlankSecrets on update (like the IMAP password).
+        foreach (['smtp_host', 'smtp_username', 'smtp_encryption', 'from_name', 'from_email'] as $key) {
+            if ($request->has($key)) {
+                $value = $request->string($key)->value();
+                $data[$key] = $value === '' ? null : $value;
+            }
+        }
+        if ($request->has('smtp_port')) {
+            $port = $request->input('smtp_port');
+            $data['smtp_port'] = ($port === null || $port === '') ? null : $request->integer('smtp_port');
+        }
+        if ($request->has('smtp_password')) {
+            $data['smtp_password'] = $request->string('smtp_password')->value();
+        }
         if ($request->has('folders')) {
             $data['folders'] = $request->input('folders');
         }
@@ -207,6 +238,15 @@ class MailAccountController extends Controller
             'port' => $account->port,
             'username' => $account->username,
             'encryption' => $account->encryption,
+            // SMTP config for compose/reply/forward — the password is NEVER
+            // serialised; `has_smtp_password` tells the client whether one is set.
+            'smtp_host' => $account->smtp_host,
+            'smtp_port' => $account->smtp_port,
+            'smtp_username' => $account->smtp_username,
+            'smtp_encryption' => $account->smtp_encryption,
+            'from_name' => $account->from_name,
+            'from_email' => $account->from_email,
+            'has_smtp_password' => is_string($account->smtp_password) && $account->smtp_password !== '',
             'folders' => $account->folders,
             'backfill_since' => $account->backfill_since?->toDateString(),
             'delete_after_import' => $account->delete_after_import,

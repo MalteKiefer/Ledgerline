@@ -30,6 +30,13 @@ use Illuminate\Support\Carbon;
  * @property string $username
  * @property ?string $password
  * @property string $encryption
+ * @property ?string $smtp_host
+ * @property ?int $smtp_port
+ * @property ?string $smtp_username
+ * @property ?string $smtp_password
+ * @property ?string $smtp_encryption
+ * @property ?string $from_name
+ * @property ?string $from_email
  * @property ?array<int,string> $folders
  * @property ?Carbon $backfill_since
  * @property bool $delete_after_import
@@ -44,13 +51,16 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable([
     'name', 'host', 'port', 'username', 'password', 'encryption',
+    // Per-account SMTP for compose/reply/forward (smtp_password is the one new
+    // encrypted-at-rest secret; from_name/from_email set the composed From).
+    'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'smtp_encryption', 'from_name', 'from_email',
     'folders', 'backfill_since', 'delete_after_import', 'skip_spam', 'enabled', 'status', 'last_error', 'last_synced_at',
     'sync_interval_minutes',
 ])]
 // Defence in depth on top of the API controllers' explicit present() arrays
-// (which never add this key): even a stray toArray()/toJson() can never leak
-// the IMAP password.
-#[Hidden(['password'])]
+// (which never add these keys): even a stray toArray()/toJson() can never leak
+// the IMAP or SMTP password.
+#[Hidden(['password', 'smtp_password'])]
 class MailAccount extends Model
 {
     use AssignsOwner;
@@ -66,6 +76,8 @@ class MailAccount extends Model
     {
         return [
             'password' => 'encrypted',
+            'smtp_password' => 'encrypted',
+            'smtp_port' => 'integer',
             'folders' => 'array',
             'backfill_since' => 'date',
             'delete_after_import' => 'boolean',
@@ -86,6 +98,18 @@ class MailAccount extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(MailMessage::class, 'account_id');
+    }
+
+    /**
+     * True when this account has enough SMTP configuration to send: a host and
+     * a From address. Gates the compose/reply/forward endpoints (else no_smtp).
+     */
+    public function hasSmtp(): bool
+    {
+        $host = is_string($this->smtp_host) ? trim($this->smtp_host) : '';
+        $from = is_string($this->from_email) ? trim($this->from_email) : '';
+
+        return $host !== '' && $from !== '';
     }
 
     /**

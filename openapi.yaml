@@ -6451,6 +6451,144 @@ paths:
         "422": { description: "Source account deleted or no Message-Id." }
         "429": { $ref: "#/components/responses/RateLimited" }
         "502": { description: "Origin IMAP delete failed." }
+  /mail/messages/compose:
+    post:
+      tags: [Mail]
+      operationId: mailCompose
+      summary: Compose and send a new message over the account's SMTP
+      description: >
+        Throttle 30/min. Owner-scoped. Sends over the account's OWN encrypted
+        SMTP credentials (SSRF-guarded) and appends the sent copy to the origin
+        Sent folder. Opt-in — an account with no SMTP configured returns
+        `no_smtp` (422). Attachments may be uploaded (multipart) and/or referenced
+        by the caller's own archived attachment ids.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id]
+              properties:
+                account_id: { type: integer }
+                to: { type: array, items: { type: string, format: email } }
+                cc: { type: array, items: { type: string, format: email } }
+                bcc: { type: array, items: { type: string, format: email } }
+                subject: { type: [string, "null"] }
+                text: { type: [string, "null"] }
+                html: { type: [string, "null"] }
+                attachment_ids: { type: array, items: { type: string, format: uuid } }
+                sent_folder: { type: [string, "null"] }
+          multipart/form-data:
+            schema:
+              type: object
+              required: [account_id]
+              properties:
+                account_id: { type: integer }
+                "to[]": { type: array, items: { type: string, format: email } }
+                subject: { type: string }
+                text: { type: string }
+                html: { type: string }
+                "attachments[]": { type: array, items: { type: string, format: binary } }
+      responses:
+        "200":
+          description: Sent.
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, message_id: { type: [string, "null"] }, appended_to_sent: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: >
+            Validation failure ({ ok:false, error:validation, errors }) OR a business
+            rejection with a machine `error` code (no_recipient, empty_body, no_smtp,
+            account_deleted).
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, error: { type: string }, errors: { type: object, additionalProperties: true } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { description: "SMTP send failed." }
+  /mail/messages/{message}/reply:
+    post:
+      tags: [Mail]
+      operationId: mailReply
+      summary: Reply to a message (quotes the original, threads via References)
+      description: >
+        Throttle 30/min. Owner-scoped. Recipient = the original Reply-To (else
+        From); `all=true` adds the original To+Cc (minus self) as Cc. Quotes the
+        original body, subject prefixed `Re:`. Sends over the account SMTP +
+        appends to Sent. `no_smtp`/`account_deleted` → 422.
+      parameters:
+        - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: [string, "null"] }
+                html: { type: [string, "null"] }
+                all: { type: [boolean, "null"], description: "Reply-all." }
+                sent_folder: { type: [string, "null"] }
+      responses:
+        "200":
+          description: Sent.
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, message_id: { type: [string, "null"] }, appended_to_sent: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "Validation failure OR business rejection (no_smtp, account_deleted, no_recipient)."
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, error: { type: string }, errors: { type: object, additionalProperties: true } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { description: "SMTP send failed." }
+  /mail/messages/{message}/forward:
+    post:
+      tags: [Mail]
+      operationId: mailForward
+      summary: Forward a message (attaches the original .eml, subject Fwd:)
+      description: >
+        Throttle 30/min. Owner-scoped. Attaches the immutable original `.eml`
+        (message/rfc822 — carrying its own attachments) and a forwarded-message
+        header block; subject prefixed `Fwd:`. Sends over the account SMTP +
+        appends to Sent. `no_smtp`/`account_deleted` → 422; missing `to` → 422.
+      parameters:
+        - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to]
+              properties:
+                to: { type: array, minItems: 1, items: { type: string, format: email } }
+                cc: { type: array, items: { type: string, format: email } }
+                text: { type: [string, "null"] }
+                html: { type: [string, "null"] }
+                sent_folder: { type: [string, "null"] }
+      responses:
+        "200":
+          description: Sent.
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, message_id: { type: [string, "null"] }, appended_to_sent: { type: boolean } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "Validation failure ({ ok:false, error:validation, errors }) OR business rejection (no_smtp, account_deleted)."
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean }, error: { type: string }, errors: { type: object, additionalProperties: true } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { description: "SMTP send failed." }
   /mail/keys:
     get:
       tags: [Mail]
