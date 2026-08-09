@@ -53,12 +53,20 @@ class PublicFileShareController extends Controller
             return response()->json(['found' => false], 404);
         }
 
+        // Withhold the target's real name (which may itself be sensitive, e.g.
+        // "Q3-layoffs.xlsx") until a password-gated share is unlocked. A holder
+        // of only the token, no password, learns whether a password is needed
+        // and the link lifecycle — never the content name. A share with no
+        // password has no secret to protect, so its name is shown as before.
+        $unlocked = $this->shareUnlocked($request, $share);
+        $reveal = ! $share->needsPassword() || $unlocked;
+
         return response()->json([
             'found' => true,
             'kind' => $share->kind,
-            'name' => $name,
+            'name' => $reveal ? $name : null,
             'needsPassword' => $share->needsPassword(),
-            'unlocked' => $this->shareUnlocked($request, $share),
+            'unlocked' => $unlocked,
             'allowDownload' => $share->allow_download,
             'expiresAt' => $share->expires_at?->toIso8601String(),
         ]);

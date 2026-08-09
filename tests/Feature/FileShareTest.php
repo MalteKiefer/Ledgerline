@@ -85,9 +85,10 @@ class FileShareTest extends TestCase
         ['share' => $share, 'sub' => $sub, 'f2' => $f2] = $this->seedFolderShare();
         $token = $share->token;
 
-        // meta: 200, password required, locked
+        // meta: 200, password required, locked — the NAME is withheld pre-unlock
         $this->get(route('public.file-share.meta', $token))->assertOk()
-            ->assertJson(['found' => true, 'kind' => 'folder', 'name' => 'Shared', 'needsPassword' => true, 'unlocked' => false, 'allowDownload' => true]);
+            ->assertJson(['found' => true, 'kind' => 'folder', 'needsPassword' => true, 'unlocked' => false, 'allowDownload' => true])
+            ->assertJsonPath('name', null);
 
         // manifest before unlock: 403
         $this->get(route('public.file-share.manifest', $token))->assertForbidden();
@@ -95,6 +96,11 @@ class FileShareTest extends TestCase
         // unlock with the correct password
         $this->post(route('public.file-share.unlock', $token), ['password' => 'secret'])->assertOk()
             ->assertJson(['ok' => true]);
+
+        // meta after unlock now reveals the name
+        $this->get(route('public.file-share.meta', $token))->assertOk()
+            ->assertJson(['unlocked' => true])
+            ->assertJsonPath('name', 'Shared');
 
         // manifest lists the subtree (root + sub folder, both files)
         $manifest = $this->get(route('public.file-share.manifest', $token))->assertOk()->json();
