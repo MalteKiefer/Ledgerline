@@ -8,7 +8,7 @@ return [
     'hub_admin_heading' => 'Администрирование',
     'nav_account' => 'Данные аккаунта',
     'nav_account_desc' => 'Имя, email и идентификация',
-    'nav_devices' => 'Устройства',
+    'nav_devices' => 'Устройства и сеансы',
     'nav_devices_desc' => 'Подключённые приложения и клиенты командной строки',
     'nav_sessions' => 'Веб-сеансы',
     'nav_sessions_desc' => 'Браузеры, вошедшие в ваш аккаунт',

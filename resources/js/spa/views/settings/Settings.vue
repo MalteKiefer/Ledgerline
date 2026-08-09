@@ -35,11 +35,14 @@ const sections = [
   { to: 'settings.company', icon: 'business', label: 'settings.company_section' },
   { to: 'settings.notifications-config', icon: 'notifications', label: 'settings.notifications_section' },
   { to: 'settings.security', icon: 'security', label: 'settings.security_section' },
+  { to: 'settings.security-log', icon: 'lock_reset', label: 'settings.seclog_title' },
+  { to: 'settings.request-log', icon: 'monitoring', label: 'settings.request_log_section' },
+  { to: 'settings.blocks', icon: 'block', label: 'settings.blocks_section' },
+  { to: 'settings.sessions', icon: 'devices', label: 'settings.sessions_section' },
   { to: 'settings.files-limits', icon: 'folder', label: 'settings.files_limits_heading' },
   { to: 'settings.backup', icon: 'backup', label: 'settings.backup_section' },
   { to: 'settings.paperless', icon: 'description', label: 'settings.paperless_section' },
   { to: 'settings.system', icon: 'dns', label: 'settings.system_section' },
-  { to: 'settings.security-log', icon: 'lock_reset', label: 'settings.seclog_title' },
 ];
 
 function isActive(name: string): boolean { return route.name === name; }

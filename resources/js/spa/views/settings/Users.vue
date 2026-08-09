@@ -37,7 +37,12 @@
               v-for="u in s.users" :key="u.id"
               class="border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5"
             >
-              <td class="px-4 py-2.5 font-medium">{{ u.name }}</td>
+              <td class="px-4 py-2.5 font-medium">
+                <span class="inline-flex items-center gap-2">
+                  {{ u.name }}
+                  <Badge v-if="isBlocked(u)" tone="error">{{ t('settings.users_blocked_badge') }}</Badge>
+                </span>
+              </td>
               <td class="px-4 py-2.5 text-[var(--ll-muted)]">{{ u.email }}</td>
               <td class="px-4 py-2.5"><Badge :tone="u.role === 'admin' ? 'primary' : 'gray'">{{ u.role }}</Badge></td>
               <td class="px-4 py-2.5">
@@ -57,6 +62,12 @@
                   </button>
                   <button class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('settings.users_invite_create')" @click="onInvite(u)">
                     <Icon name="add" :size="18" />
+                  </button>
+                  <button v-if="!isBlocked(u)" class="grid h-8 w-8 place-items-center rounded-lg text-red-600 hover:bg-red-500/10" :title="t('settings.users_block')" @click="onBlockUser(u)">
+                    <Icon name="block" :size="18" />
+                  </button>
+                  <button v-else class="grid h-8 w-8 place-items-center rounded-lg text-emerald-600 hover:bg-emerald-500/10" :title="t('settings.users_unblock')" @click="onUnblockUser(u)">
+                    <Icon name="lock_open" :size="18" />
                   </button>
                   <button class="grid h-8 w-8 place-items-center rounded-lg text-red-600 hover:bg-red-500/10" :title="t('common.delete')" @click="onDelete(u)">
                     <Icon name="delete" :size="18" />
@@ -103,11 +114,13 @@ import { ref, reactive, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useSettingsStore, type AdminUser } from '@spa/stores/settings';
+import { useSecurityStore } from '@spa/stores/security';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { ApiError } from '@spa/api/client';
 
 const s = useSettingsStore();
+const sec = useSecurityStore();
 const { success, error } = useToast();
 const loading = ref(false);
 const dialog = ref(false);
@@ -123,6 +136,24 @@ const roleOptions = [
 
 const form = reactive({ name: '', email: '', password: '', role: 'user' });
 const err = reactive<Record<string, string[] | undefined>>({});
+
+// Per-user block toggle. NOTE: the /api/v1/users list does not currently expose
+// `blocked_at`, so blocked-state is tracked optimistically here (seeded from an
+// optional `blocked_at` if a future backend adds it). The users list SHOULD
+// expose `blocked_at` so this survives a page reload.
+const blockedOverride = reactive<Record<number, boolean>>({});
+function isBlocked(u: AdminUser): boolean {
+  if (u.id in blockedOverride) return blockedOverride[u.id];
+  return !!(u as { blocked_at?: string | null }).blocked_at;
+}
+async function onBlockUser(u: AdminUser) {
+  if (!await confirmAsk(t('settings.users_block_confirm'), { danger: true })) return;
+  try { await sec.blockUser(u.id); blockedOverride[u.id] = true; success(t('common.saved')); } catch { error(t('common.error')); }
+}
+async function onUnblockUser(u: AdminUser) {
+  if (!await confirmAsk(t('settings.users_unblock_confirm'))) return;
+  try { await sec.unblockUser(u.id); blockedOverride[u.id] = false; success(t('common.saved')); } catch { error(t('common.error')); }
+}
 
 // Workspace self-registration toggle (admin only; this view is already admin-gated).
 const regAllow = ref(false);

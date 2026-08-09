@@ -53,6 +53,25 @@
       <div v-if="!p.devices.length" class="border-t border-[var(--ll-border)] px-5 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</div>
     </Card>
 
+    <!-- Active web sessions -->
+    <Card :title="t('account.sessions_heading')" body-class="p-0" class="mb-4">
+      <p class="px-5 py-3 text-sm text-[var(--ll-muted)]">{{ t('account.sessions_hint') }}</p>
+      <div v-for="s in p.sessions" :key="s.id" class="flex items-center gap-3 border-t border-[var(--ll-border)] px-5 py-3">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10">
+          <Icon name="public" :size="18" />
+        </span>
+        <div class="min-w-0 flex-1">
+          <div class="truncate text-sm font-medium">{{ s.user_agent || t('account.sessions_unknown') }}</div>
+          <div class="truncate text-xs text-[var(--ll-muted)]">{{ sessionSub(s) }}</div>
+        </div>
+        <Badge v-if="s.current" tone="primary">{{ t('account.sessions_current') }}</Badge>
+        <button v-else class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-red-600 hover:bg-red-500/10" :title="t('common.delete')" @click="onRevokeSession(s.id)">
+          <Icon name="logout" :size="18" />
+        </button>
+      </div>
+      <div v-if="!p.sessions.length" class="border-t border-[var(--ll-border)] px-5 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('account.sessions_none') }}</div>
+    </Card>
+
     <!-- WebDAV access -->
     <Card :title="t('account.webdav_title')">
       <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('account.webdav_desc') }}</p>
@@ -82,7 +101,7 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, Icon, Badge, TextField } from '@spa/ui';
-import { useProfileStore, type DeviceToken, type WebDavAccess } from '@spa/stores/profile';
+import { useProfileStore, type DeviceToken, type Session, type WebDavAccess } from '@spa/stores/profile';
 import { useToast } from '@spa/composables/useToast';
 import { ApiError } from '@spa/api/client';
 
@@ -102,13 +121,26 @@ const webdavErr = ref<string[] | undefined>(undefined);
 const webdavBusy = ref(false);
 
 onMounted(async () => {
-  await Promise.all([p.loadDevices(), loadWebdav()]);
+  await Promise.all([p.loadDevices(), p.loadSessions(), loadWebdav()]);
 });
 
 onUnmounted(() => clearTimeout(pollTimer));
 
 function deviceSub(d: DeviceToken): string {
   return [d.meta, d.version].filter(Boolean).join(' · ');
+}
+
+function sessionSub(s: Session): string {
+  return [s.ip, s.last_active].filter(Boolean).join(' · ');
+}
+
+async function onRevokeSession(id: string) {
+  try {
+    await p.revokeSession(id);
+    success(t('account.session_revoked'));
+  } catch {
+    error(t('common.error'));
+  }
 }
 
 async function loadWebdav() {
