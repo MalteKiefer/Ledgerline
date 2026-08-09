@@ -4551,8 +4551,8 @@ paths:
       summary: List recovery codes
       description: "Only after 2FA is confirmed (else 404). Requires a fresh `current_password` step-up (in the JSON body, not a query string) so a stolen device token cannot exfiltrate a standing second factor. Throttle 30/min."
       requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password } } } } }
+        required: false
+        content: { application/json: { schema: { type: object, properties: { current_password: { type: string, format: password, description: "Required for web sessions + the web SPA bearer; OPTIONAL for a native device token (install_id set, biometric-sealed)." } } } } }
       responses:
         "200": { description: "Codes.", content: { application/json: { schema: { type: object, required: [recovery_codes], properties: { recovery_codes: { type: array, items: { type: string } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -4565,8 +4565,8 @@ paths:
       summary: Regenerate recovery codes
       description: "Invalidates the old set and returns a fresh one. Requires a fresh `current_password` step-up. Throttle 10/min."
       requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password } } } } }
+        required: false
+        content: { application/json: { schema: { type: object, properties: { current_password: { type: string, format: password, description: "Required for web sessions + the web SPA bearer; OPTIONAL for a native device token (install_id set, biometric-sealed)." } } } } }
       responses:
         "200": { description: "New codes.", content: { application/json: { schema: { type: object, required: [recovery_codes], properties: { recovery_codes: { type: array, items: { type: string } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -4579,8 +4579,8 @@ paths:
       summary: Disable 2FA
       description: "Clears the TOTP secret, recovery codes, and confirmed flag. Idempotent. Requires a fresh `current_password` step-up so a stolen device token cannot disable 2FA. Throttle 10/min."
       requestBody:
-        required: true
-        content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password } } } } }
+        required: false
+        content: { application/json: { schema: { type: object, properties: { current_password: { type: string, format: password, description: "Required for web sessions + the web SPA bearer; OPTIONAL for a native device token (install_id set, biometric-sealed)." } } } } }
       responses:
         "200": { description: "Disabled.", content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean, enum: [false] } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -4894,7 +4894,7 @@ paths:
       tags: [Settings]
       operationId: adminNotificationsTest
       summary: Send a test notification (admin)
-      description: "Sends a test message over one channel using the saved settings. Throttle 20/min."
+      description: "Sends a test message over one channel using the saved settings. A connection/send FAILURE returns 200 {ok:false, detail} (unified test-endpoint convention, matches backup/destinations/test); only request validation is 422. Throttle 20/min."
       requestBody:
         required: true
         content:
@@ -4905,10 +4905,10 @@ paths:
               properties:
                 channel: { type: string, enum: [mail, ntfy, webhook] }
       responses:
-        "200": { description: "Sent.", content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "200": { description: "{ ok: boolean, detail?: string } — ok:false means the test send failed.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, detail: { type: string } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "422": { description: "Validation failed, or the test send failed ({ ok:false, detail })." }
+        "422": { description: "Request validation failed (bad channel)." }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /admin/security:

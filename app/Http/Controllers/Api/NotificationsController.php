@@ -90,13 +90,16 @@ class NotificationsController extends Controller
         ]);
         $channel = $request->string('channel')->value();
 
+        // Unified "test" convention: a connection FAILURE is a functional result,
+        // not an HTTP error — return 200 {ok:false, detail} (matches
+        // backup/destinations/test). Only request VALIDATION (bad channel) is 422.
         try {
             $notifier->test($channel);
         } catch (\Throwable $e) {
             return response()->json([
                 'ok' => false,
                 'detail' => Str::limit($e->getMessage(), 200),
-            ], 422);
+            ]);
         }
 
         return response()->json(['ok' => true]);

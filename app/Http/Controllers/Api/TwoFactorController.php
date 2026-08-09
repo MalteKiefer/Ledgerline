@@ -15,6 +15,7 @@ use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
 use Laravel\Fortify\Actions\EnableTwoFactorAuthentication;
 use Laravel\Fortify\Actions\GenerateNewRecoveryCodes;
 use Laravel\Fortify\Fortify;
+use Laravel\Sanctum\PersonalAccessToken;
 
 /**
  * Mobile 2FA management surface.
@@ -102,13 +103,26 @@ class TwoFactorController extends Controller
      */
     /**
      * Password step-up for sensitive 2FA operations (disable / view or regenerate
-     * recovery codes). Mirrors the web confirmPassword gate: a stolen device token
-     * cannot disable 2FA or read recovery codes without the account password.
+     * recovery codes). Mirrors the web confirmPassword gate: a stolen web token or
+     * session cannot disable 2FA or read recovery codes without the account password.
+     *
+     * EXCEPTION — a NATIVE device token (a PersonalAccessToken carrying a non-empty
+     * install_id, minted only by QR pairing / the native mobile login) is skipped:
+     * that token is AES-256-GCM-sealed in the device keystore behind a per-use
+     * biometric/PIN unlock, so every native call already required a fresh biometric
+     * step-up — a re-typed login password on the device is redundant and there is no
+     * natural place to prompt for it. The web SPA bearer (no install_id, kept in
+     * localStorage) and web sessions get NO bypass and still require the password.
      *
      * @throws ValidationException
      */
     private function requireCurrentPassword(Request $request, User $user): void
     {
+        $token = $request->user()?->currentAccessToken();
+        if ($token instanceof PersonalAccessToken && is_string($token->install_id) && $token->install_id !== '') {
+            return; // native, biometric-sealed device — biometric unlock is the step-up
+        }
+
         $pw = $request->string('current_password')->value();
         if ($pw === '' || ! Hash::check($pw, (string) $user->password)) {
             throw ValidationException::withMessages([
