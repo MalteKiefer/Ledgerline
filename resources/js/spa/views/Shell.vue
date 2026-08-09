@@ -158,6 +158,7 @@ const menu = computed<NavGroup[]>(() => {
   // so the sidebar shows them as single entries — no expandable children here.
   if (auth.can('finance')) mods.push({ to: '/finance', label: 'messages.nav.finance', icon: 'account_balance_wallet' });
   if (auth.can('files')) mods.push({ to: '/files', label: 'messages.nav.files', icon: 'folder' });
+  if (auth.can('files')) mods.push({ to: '/shared-with-me', label: 'files.shared_with_me', icon: 'folder_shared' });
   if (auth.can('contacts')) mods.push({ to: '/contacts', label: 'messages.nav.contacts', icon: 'contacts' });
   if (auth.can('calendar')) mods.push({ to: '/calendar', label: 'messages.nav.calendar', icon: 'calendar_month' });
   if (auth.can('mail')) mods.push({ to: '/mail', label: 'messages.nav.mail', icon: 'mail' });
@@ -169,7 +170,7 @@ const menu = computed<NavGroup[]>(() => {
   return groups;
 });
 
-const routeTitles: Record<string, string> = { home: 'pages.dashboard.title', files: 'messages.nav.files', contacts: 'messages.nav.contacts', calendar: 'messages.nav.calendar', mail: 'messages.nav.mail', profile: 'pages.profile.title' };
+const routeTitles: Record<string, string> = { home: 'pages.dashboard.title', files: 'messages.nav.files', 'shared-with-me': 'files.shared_with_me', contacts: 'messages.nav.contacts', calendar: 'messages.nav.calendar', mail: 'messages.nav.mail', profile: 'pages.profile.title' };
 const crumbRoot = computed(() => {
   const name = String(route.name ?? '');
   if (name.startsWith('settings')) return t('settings.heading');

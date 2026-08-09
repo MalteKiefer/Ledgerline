@@ -116,6 +116,7 @@
                   </template>
                   <template v-else-if="row._folder && view!=='trash'">
                     <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
+                    <DropdownMenuItem :class="menuItemCls" @select="openShare(row)"><Icon name="share" :size="18" />{{ t('files.share') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemDangerCls" @select="doTrash(row)"><Icon name="delete" :size="18" />{{ t('files.trash') }}</DropdownMenuItem>
                   </template>
                   <template v-else>
@@ -254,9 +255,20 @@
     </template>
   </Modal>
 
-  <!-- Share dialog -->
-  <Modal v-model="shareDlg.show" :title="t('files.share_dialog_title')" width="520px">
-    <div class="flex flex-col gap-3">
+  <!-- Share dialog: public link (file + folder) + share-with-a-user (folder only) -->
+  <Modal v-model="shareDlg.show" :title="t('files.share_title')" width="520px">
+    <!-- Tab bar (only folders can also be shared with a registered user) -->
+    <div v-if="shareDlg.kind==='folder'" class="mb-4 flex gap-1 rounded-lg bg-black/[0.04] p-0.5 dark:bg-white/5">
+      <button
+        v-for="tab in shareTabs" :key="tab.v" type="button"
+        class="flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
+        :class="shareDlg.tab===tab.v ? 'bg-[var(--ll-surface)] text-primary-600 shadow-sm dark:text-primary-300' : 'text-[var(--ll-muted)]'"
+        @click="shareDlg.tab = tab.v"
+      >{{ t(tab.label) }}</button>
+    </div>
+
+    <!-- Public link -->
+    <div v-show="shareDlg.tab==='link'" class="flex flex-col gap-3">
       <template v-if="shareDlg.share">
         <div>
           <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('files.share_link_label') }}</span>
@@ -278,12 +290,38 @@
       </button>
       <TextField v-model="shareDlg.password" :label="t('files.share_password')" type="password" autocomplete="new-password" />
       <TextField v-model="shareDlg.expires" :label="t('files.share_expiry')" type="date" />
+      <div class="flex items-center gap-2 pt-1">
+        <Btn v-if="shareDlg.share" variant="danger" icon="delete" size="sm" :loading="shareDlg.busy" class="mr-auto" @click="revokeShare">{{ t('files.share_revoke') }}</Btn>
+        <Btn v-if="!shareDlg.share" variant="solid" size="sm" class="ml-auto" :loading="shareDlg.busy" @click="createShareLink">{{ t('files.share_create_link') }}</Btn>
+        <Btn v-else variant="solid" size="sm" :loading="shareDlg.busy" @click="updateShareLink">{{ t('files.share_update') }}</Btn>
+      </div>
+    </div>
+
+    <!-- Share with a registered user (folder only) -->
+    <div v-if="shareDlg.kind==='folder'" v-show="shareDlg.tab==='users'" class="flex flex-col gap-3">
+      <div class="flex items-end gap-2">
+        <div class="flex-1"><TextField v-model="shareDlg.inviteEmail" :label="t('files.sf_recipient_email')" type="email" autocomplete="off" @enter="inviteUser" /></div>
+        <div class="w-32"><Select v-model="shareDlg.inviteRole" :label="t('files.sf_role')" :options="roleOptions" /></div>
+      </div>
+      <Btn variant="solid" size="sm" icon="person_add" :loading="shareDlg.inviteBusy" @click="inviteUser">{{ t('files.folder_share_add') }}</Btn>
+
+      <div v-if="shareDlg.members.length" class="mt-1 divide-y divide-[var(--ll-border)]">
+        <div v-for="m in shareDlg.members" :key="m.user_id" class="flex items-center gap-2 py-2">
+          <span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary-500/15 text-xs font-medium text-primary-600 dark:text-primary-300">
+            {{ (m.name || m.email || '?').slice(0, 1).toUpperCase() }}
+          </span>
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-sm">{{ m.name || m.email }}</div>
+            <div v-if="m.name" class="truncate text-xs text-[var(--ll-muted)]">{{ m.email }}</div>
+          </div>
+          <div class="w-28 shrink-0"><Select :model-value="m.role" :options="roleOptions" @update:model-value="changeMemberRole(m, $event as 'viewer'|'editor')" /></div>
+          <Btn variant="ghost" size="sm" icon="person_remove" class="text-red-600" :title="t('files.sf_remove_member')" @click="removeMember(m)" />
+        </div>
+      </div>
+      <div v-else class="py-4 text-center text-sm text-[var(--ll-muted)]">{{ t('files.folder_members') }} —</div>
     </div>
     <template #footer>
-      <Btn v-if="shareDlg.share" variant="danger" icon="delete" :loading="shareDlg.busy" class="mr-auto" @click="revokeShare">{{ t('files.share_revoke') }}</Btn>
       <Btn variant="ghost" @click="shareDlg.show=false">{{ t('common.close') }}</Btn>
-      <Btn v-if="!shareDlg.share" variant="solid" :loading="shareDlg.busy" @click="createShareLink">{{ t('files.share_create_link') }}</Btn>
-      <Btn v-else variant="solid" :loading="shareDlg.busy" @click="updateShareLink">{{ t('files.share_update') }}</Btn>
     </template>
   </Modal>
 
@@ -455,8 +493,9 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
-import { Icon, Btn, Card, TextField, Badge, Modal } from '@spa/ui';
-import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats } from '@spa/stores/files';
+import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
+import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShareMember } from '@spa/stores/files';
+import { ApiError } from '@spa/api/client';
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
@@ -491,7 +530,13 @@ const menuItemDangerCls = 'flex cursor-pointer items-center gap-2.5 rounded-md p
 
 const info = ref<{ show: boolean; busy: boolean; file: FileEntry | null; name: string; tags: string; note: string; labelIds: number[] }>({ show: false, busy: false, file: null, name: '', tags: '', note: '', labelIds: [] });
 const versionsDlg = ref<{ show: boolean; loading: boolean; file: FileEntry | null; list: FileVersion[] }>({ show: false, loading: false, file: null, list: [] });
-const shareDlg = ref<{ show: boolean; busy: boolean; file: FileEntry | null; share: FileShare | null; allowDownload: boolean; password: string; expires: string }>({ show: false, busy: false, file: null, share: null, allowDownload: true, password: '', expires: '' });
+const shareDlg = ref<{
+  show: boolean; busy: boolean; kind: 'file' | 'folder'; targetId: number; tab: 'link' | 'users';
+  share: FileShare | null; allowDownload: boolean; password: string; expires: string;
+  folderShareId: number | null; members: FolderShareMember[]; inviteEmail: string; inviteRole: 'viewer' | 'editor'; inviteBusy: boolean;
+}>({ show: false, busy: false, kind: 'file', targetId: 0, tab: 'link', share: null, allowDownload: true, password: '', expires: '', folderShareId: null, members: [], inviteEmail: '', inviteRole: 'viewer', inviteBusy: false });
+const shareTabs = [{ v: 'link' as const, label: 'files.share_link_label' }, { v: 'users' as const, label: 'files.folder_share_add' }];
+const roleOptions = computed(() => [{ title: t('files.sf_role_viewer'), value: 'viewer' }, { title: t('files.sf_role_editor'), value: 'editor' }]);
 const labelsDlg = ref<{ show: boolean; busy: boolean; editing: FileLabel | null; name: string; color: string }>({ show: false, busy: false, editing: null, name: '', color: '#6b7280' });
 const storageDlg = ref<{ show: boolean; loading: boolean; data: FileStats | null }>({ show: false, loading: false, data: null });
 
@@ -685,24 +730,68 @@ async function restoreVersion(version: number) {
 }
 
 // ---- Share ----
-function openShare(row: Row) {
-  const f = row.raw as FileEntry;
-  shareDlg.value = { show: true, busy: false, file: f, share: null, allowDownload: true, password: '', expires: '' };
+async function openShare(row: Row) {
+  shareDlg.value = {
+    show: true, busy: false, kind: row._folder ? 'folder' : 'file', targetId: row.id, tab: 'link',
+    share: null, allowDownload: true, password: '', expires: '',
+    folderShareId: null, members: [], inviteEmail: '', inviteRole: 'viewer', inviteBusy: false,
+  };
+  if (row._folder) await loadFolderMembers();
+}
+async function loadFolderMembers() {
+  try {
+    const r = await s.loadFolderShares();
+    const sh = r.shares.find((x) => x.file_folder_id === shareDlg.value.targetId);
+    shareDlg.value.folderShareId = sh?.id ?? null;
+    shareDlg.value.members = sh?.members ?? [];
+  } catch { /* non-fatal: the member list stays empty */ }
 }
 async function createShareLink() {
-  const f = shareDlg.value.file;
-  if (!f) return;
+  if (!shareDlg.value.targetId) return;
   shareDlg.value.busy = true;
   try {
-    const r = await s.createShare(f.id, {
+    const payload = {
       allow_download: shareDlg.value.allowDownload,
       password: shareDlg.value.password || undefined,
       expires_at: shareDlg.value.expires || null,
-    });
+    };
+    const r = shareDlg.value.kind === 'folder'
+      ? await s.createFolderShareLink(shareDlg.value.targetId, payload)
+      : await s.createShare(shareDlg.value.targetId, payload);
     shareDlg.value.share = r.share;
     success(t('common.saved'));
   } catch { error(t('common.error')); }
   finally { shareDlg.value.busy = false; }
+}
+// ---- Share with a registered user (folder only) ----
+async function inviteUser() {
+  const email = shareDlg.value.inviteEmail.trim();
+  if (!email || !shareDlg.value.targetId) return;
+  shareDlg.value.inviteBusy = true;
+  try {
+    const r = await s.shareToUser({ file_folder_id: shareDlg.value.targetId, email, role: shareDlg.value.inviteRole });
+    shareDlg.value.folderShareId = r.share.id;
+    shareDlg.value.members = r.share.members;
+    shareDlg.value.inviteEmail = '';
+    success(t('files.folder_shared'));
+  } catch (e) {
+    error(e instanceof ApiError && e.status === 422 ? t('files.sf_recipient_not_found') : t('common.error'));
+  } finally { shareDlg.value.inviteBusy = false; }
+}
+async function changeMemberRole(m: FolderShareMember, role: 'viewer' | 'editor') {
+  if (shareDlg.value.folderShareId == null || m.role === role) return;
+  try {
+    const r = await s.updateShareMember(shareDlg.value.folderShareId, { user_id: m.user_id, role });
+    shareDlg.value.members = r.share.members;
+  } catch { error(t('common.error')); }
+}
+async function removeMember(m: FolderShareMember) {
+  if (shareDlg.value.folderShareId == null) return;
+  if (!await confirmAsk(t('files.sf_remove_member'), { danger: true })) return;
+  try {
+    await s.removeShareMember(shareDlg.value.folderShareId, m.user_id);
+    shareDlg.value.members = shareDlg.value.members.filter((x) => x.user_id !== m.user_id);
+  } catch { error(t('common.error')); }
 }
 async function updateShareLink() {
   const sh = shareDlg.value.share;
