@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -40,6 +41,16 @@ class AppServiceProvider extends ServiceProvider
         // and never in the test env, so it can't mask a real failure with a
         // lazy-load error.
         Model::preventLazyLoading(app()->environment('local'));
+
+        // Behind a TLS-terminating reverse proxy (e.g. NetBird) that forwards to
+        // the app over plain HTTP, Laravel would otherwise generate http:// asset
+        // URLs, form actions and redirects — which the https page then blocks as
+        // mixed content / CSP scheme mismatches. When FORCE_HTTPS is set, emit
+        // every generated URL as https deterministically (independent of whether
+        // the proxy sends X-Forwarded-Proto).
+        if ((bool) config('app.force_https')) {
+            URL::forceScheme('https');
+        }
 
         // Keep a file's searchable text (search_text/indexed_at) in sync with its bytes.
         FileEntry::observe(FileEntryObserver::class);
