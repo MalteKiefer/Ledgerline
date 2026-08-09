@@ -292,6 +292,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useContactsStore, type ContactRow, type ContactDetail, type ContactGroup, type DuplicateGroup, type DuplicateContact } from '@spa/stores/contacts';
 import { useToast } from '@spa/composables/useToast';
+import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
 // Presentational-only: maps the existing Vuetify-style color name (still returned
 // by color()/dupColor() below) onto an avatar tint. No behavior/semantics changed.
@@ -386,7 +387,7 @@ async function toggleFav() {
   selected.value.favorite = next;
 }
 async function onDelete() {
-  if (!selected.value || !confirm(t('contacts.ui.delete_confirm'))) return;
+  if (!selected.value || !await confirmAsk(t('contacts.ui.delete_confirm'), { danger: true })) return;
   await c.destroy(selected.value.id);
   detail.value = null; selected.value = null; await reload();
 }
@@ -400,7 +401,7 @@ function toggleSelect(id: string) {
 function selectAll() { selected_ids.value = c.contacts.map((r) => r.id); }
 function clearSelection() { selected_ids.value = []; }
 async function deleteSelected() {
-  if (!selected_ids.value.length || !confirm(t('contacts.ui.delete_selected_confirm', { count: String(selected_ids.value.length) }))) return;
+  if (!selected_ids.value.length || !await confirmAsk(t('contacts.ui.delete_selected_confirm', { count: String(selected_ids.value.length) }), { danger: true })) return;
   bulkBusy.value = true;
   try {
     await c.bulkDestroy([...selected_ids.value]);
@@ -443,17 +444,17 @@ async function save() {
   } catch { error(t('common.error')); } finally { saving.value = false; }
 }
 
-async function newBook() { const name = prompt(t('contacts.ui.new_book')); if (name) { await c.createBook(name); await c.load(); } }
+async function newBook() { const name = await promptAsk(t('contacts.ui.new_book')); if (name) { await c.createBook(name); await c.load(); } }
 
 // --- Groups ---
 async function newGroup() {
-  const name = prompt(t('contacts.ui.new_group'));
+  const name = await promptAsk(t('contacts.ui.new_group'));
   if (!name) return;
   try { await c.createGroup(name); await reload(); success(t('contacts.ui.saved')); }
   catch { error(t('common.error')); }
 }
 async function removeGroup(g: ContactGroup) {
-  if (!confirm(t('contacts.ui.delete_group_confirm'))) return;
+  if (!await confirmAsk(t('contacts.ui.delete_group_confirm'), { danger: true })) return;
   try {
     await c.deleteGroup(g.id);
     if (groupId.value === g.id) { groupId.value = null; }
@@ -492,7 +493,7 @@ async function openDuplicates() {
 }
 async function mergeGroup(g: DuplicateGroup) {
   const primary = dupPrimary[g.signature] || g.contacts[0]?.id;
-  if (!primary || !confirm(t('contacts.dup.merge_confirm'))) return;
+  if (!primary || !await confirmAsk(t('contacts.dup.merge_confirm'), { danger: true })) return;
   dupBusy.value = g.signature;
   try {
     await c.mergeDuplicates({ primary_id: primary, ids: g.contacts.map((m) => m.id) });

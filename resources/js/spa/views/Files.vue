@@ -459,6 +459,7 @@ import { Icon, Btn, Card, TextField, Badge, Modal } from '@spa/ui';
 import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats } from '@spa/stores/files';
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
 import { useToast } from '@spa/composables/useToast';
+import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
 interface Row { _k: string; _folder: boolean; _icon: string; _tint: string; _img: boolean; _labels: FileLabel[]; id: number; name: string; raw: FileEntry | FileFolder }
 
@@ -602,12 +603,12 @@ async function onUpload(e: Event) {
   catch { error(t('common.error')); }
 }
 async function newFolder() {
-  const name = prompt(t('files.new_folder'));
+  const name = await promptAsk(t('files.new_folder'));
   if (name) { await s.createFolder(name, cwd.value); }
 }
 async function fav(f: FileEntry) { await s.toggleFav(f); await s.load(); }
 async function doRename(row: Row) {
-  const name = prompt(t('files.rename'), row.name);
+  const name = await promptAsk(t('files.rename'), { value: row.name });
   if (!name) return;
   if (row._folder) await s.renameFolder(row.raw as FileFolder, name); else await s.rename(row.raw as FileEntry, name);
   await s.load();
@@ -617,8 +618,8 @@ async function doTrash(row: Row) {
   await s.load();
 }
 async function doRestore(row: Row) { await s.restoreFile(row.id); await setView('trash'); await s.load(); }
-async function doForce(row: Row) { if (!confirm(t('common.confirm_delete'))) return; await s.forceFile(row.id); await setView('trash'); }
-async function emptyTrash() { if (!confirm(t('common.confirm_delete'))) return; await s.emptyTrash(); await setView('trash'); await s.load(); }
+async function doForce(row: Row) { if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return; await s.forceFile(row.id); await setView('trash'); }
+async function emptyTrash() { if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return; await s.emptyTrash(); await setView('trash'); await s.load(); }
 
 // ---- Label filter ----
 function toggleLabelFilter(id: number) {
@@ -674,7 +675,7 @@ function downloadVersion(version: number) {
 async function restoreVersion(version: number) {
   const f = versionsDlg.value.file;
   if (!f) return;
-  if (!confirm(t('files.version_restore_confirm'))) return;
+  if (!await confirmAsk(t('files.version_restore_confirm'), { danger: true })) return;
   try {
     await s.restoreVersion(f, version);
     await s.load();
@@ -750,7 +751,7 @@ async function saveLabel() {
   finally { labelsDlg.value.busy = false; }
 }
 async function removeLabel(l: FileLabel) {
-  if (!confirm(t('common.confirm_delete'))) return;
+  if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return;
   try {
     await s.deleteLabel(l.id);
     const i = activeLabels.value.indexOf(l.id);
@@ -785,7 +786,7 @@ async function previewFav() {
 async function previewRename() {
   const f = preview.value;
   if (!f) return;
-  const name = prompt(t('files.rename'), f.name);
+  const name = await promptAsk(t('files.rename'), { value: f.name });
   if (!name) return;
   try { await s.rename(f, name); await s.load(); syncPreview(); }
   catch { error(t('common.error')); }

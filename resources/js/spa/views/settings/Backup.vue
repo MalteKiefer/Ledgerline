@@ -206,6 +206,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useSettingsStore, type BackupJob, type BackupDestination, type BackupRun, type BackupArchive } from '@spa/stores/settings';
 import { useToast } from '@spa/composables/useToast';
+import { confirmAsk } from '@spa/composables/useConfirm';
 import { ApiError } from '@spa/api/client';
 
 const s = useSettingsStore();
@@ -299,7 +300,7 @@ async function saveDest() {
   } finally { savingDest.value = false; }
 }
 async function delDest(d: BackupDestination) {
-  if (!confirm(t('settings.backup_delete_confirm'))) return;
+  if (!await confirmAsk(t('settings.backup_delete_confirm'), { danger: true })) return;
   try { await s.deleteDestination(d.id); await s.loadBackup(); } catch { error(t('common.error')); }
 }
 
@@ -373,7 +374,7 @@ async function onRun(j: BackupJob) {
   finally { running.value = null; }
 }
 async function delJob(j: BackupJob) {
-  if (!confirm(t('settings.backup_delete_confirm'))) return;
+  if (!await confirmAsk(t('settings.backup_delete_confirm'), { danger: true })) return;
   try { await s.deleteJob(j.id); await s.loadBackup(); } catch { error(t('common.error')); }
 }
 
@@ -418,7 +419,7 @@ async function doDecrypt(run: BackupRun, archive: BackupArchive, passphrase: str
   } catch { error(t('settings.backup_decrypt_failed')); }
 }
 async function onRestore(run: BackupRun, archive: BackupArchive) {
-  if (!confirm(t('settings.backup_restore_confirm', { source: sourceLabel(archive.source) }))) return;
+  if (!await confirmAsk(t('settings.backup_restore_confirm', { source: sourceLabel(archive.source) }), { danger: true })) return;
   try {
     const r = await s.restoreRun(run.id, archive.source);
     success(t('settings.backup_restore_done', { count: String(r.files ?? 0) }));

@@ -1,6 +1,7 @@
 <template>
   <div class="min-h-screen bg-[var(--ll-bg)] text-[var(--ll-fg)]">
     <router-view />
+    <ConfirmDialog />
     <Transition
       enter-active-class="transition duration-200" enter-from-class="translate-y-2 opacity-0"
       leave-active-class="transition duration-150" leave-to-class="translate-y-2 opacity-0"
@@ -20,7 +21,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { toastState } from '@spa/composables/useToast';
-import { Icon } from '@spa/ui';
+import { Icon, ConfirmDialog } from '@spa/ui';
 
 const toastClass = computed(() => ({
   success: 'bg-emerald-600',

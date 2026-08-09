@@ -277,6 +277,7 @@ import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { api, ApiError } from '@spa/api/client';
 import { useCalendarStore, type CalendarCol, type Occurrence } from '@spa/stores/calendar';
 import { useToast } from '@spa/composables/useToast';
+import { confirmAsk } from '@spa/composables/useConfirm';
 
 const store = useCalendarStore();
 const { success, error } = useToast();
@@ -562,7 +563,7 @@ async function save(): Promise<void> {
   } finally { saving.value = false; }
 }
 async function onDelete(): Promise<void> {
-  if (!editingId.value || !confirm(t('calendar.ui.delete_confirm'))) return;
+  if (!editingId.value || !await confirmAsk(t('calendar.ui.delete_confirm'), { danger: true })) return;
   deleting.value = true;
   try {
     await store.destroy(editingId.value);
@@ -611,7 +612,7 @@ async function regenerateCal(c: CalendarCol): Promise<void> {
   } catch { error(t('common.error')); }
 }
 async function removeCalendar(c: CalendarCol): Promise<void> {
-  if (!confirm(t('calendar.ui.delete_calendar'))) return;
+  if (!await confirmAsk(t('calendar.ui.delete_calendar'), { danger: true })) return;
   try {
     await store.deleteCalendar(c.id);
     activeCalendars.value.delete(c.id);

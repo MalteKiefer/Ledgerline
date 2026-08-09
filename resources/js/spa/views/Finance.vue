@@ -869,6 +869,7 @@ import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
+import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, VersionConflict } from '@spa/api/client';
 import {
   type PrintInvoice, type PrintCompany, type PrintLine,
@@ -1035,7 +1036,7 @@ async function finalize() {
   try { const r = await f.finalizeInvoice(draft.value.id); draft.value = { ...r.invoice }; await f.load(); success(t('common.saved')); }
   catch { error(t('common.error')); }
 }
-async function delInvoice(i: Invoice) { if (!confirm(t('common.confirm_delete'))) return; await f.deleteInvoice(i.id); await f.load(); await loadReports(); }
+async function delInvoice(i: Invoice) { if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return; await f.deleteInvoice(i.id); await f.load(); await loadReports(); }
 
 async function doStorno(i: Invoice) {
   try { await f.stornoInvoice(i.id); invDialog.value = false; await f.load(); await loadReports(); success(t('invoices.storno_created')); }
@@ -1177,7 +1178,7 @@ async function savePartnerForm() {
   } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); } finally { saving.value = false; }
 }
 async function delPartner(p: Partner) {
-  if (!confirm(t('invoices.partner_delete_confirm'))) return;
+  if (!await confirmAsk(t('invoices.partner_delete_confirm'), { danger: true })) return;
   try { await f.deletePartner(p.id); backToPartners(); await f.load(); success(t('common.saved')); }
   catch { error(t('common.error')); }
 }
@@ -1216,7 +1217,7 @@ async function saveReceipt() {
     rDialog.value = false; await f.load(); success(t('common.saved'));
   } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); } finally { saving.value = false; }
 }
-async function delReceipt(r: Receipt) { if (!confirm(t('invoices.receipt_delete_confirm'))) return; await f.deleteReceipt(r.id); await f.load(); }
+async function delReceipt(r: Receipt) { if (!await confirmAsk(t('invoices.receipt_delete_confirm'), { danger: true })) return; await f.deleteReceipt(r.id); await f.load(); }
 
 // ---- Projects ----
 function newProject() { Object.assign(prjForm, { id: undefined, version: undefined, name: '', parent_id: null, note: '' }); prjDialog.value = true; }
@@ -1230,7 +1231,7 @@ async function saveProject() {
     prjDialog.value = false; await f.load(); success(t('common.saved'));
   } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); } finally { saving.value = false; }
 }
-async function delProject(p: Project) { if (!confirm(t('invoices.project_delete_confirm'))) return; await f.deleteProject(p.id); await f.load(); }
+async function delProject(p: Project) { if (!await confirmAsk(t('invoices.project_delete_confirm'), { danger: true })) return; await f.deleteProject(p.id); await f.load(); }
 
 // ---- Invoice PDF generation (client-side, ported from the Blade print pipeline) ----
 interface CompanyProfile {

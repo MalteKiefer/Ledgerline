@@ -104,6 +104,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useSettingsStore, type AdminUser } from '@spa/stores/settings';
 import { useToast } from '@spa/composables/useToast';
+import { confirmAsk } from '@spa/composables/useConfirm';
 import { ApiError } from '@spa/api/client';
 
 const s = useSettingsStore();
@@ -165,7 +166,7 @@ async function onInvite(u: AdminUser) {
   link.value = r.url; linkDialog.value = true;
 }
 async function onDelete(u: AdminUser) {
-  if (!confirm(t('common.confirm_delete'))) return;
+  if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return;
   try { await s.deleteUser(u.id); await load(); } catch { error(t('common.error')); }
 }
 function copy() { navigator.clipboard?.writeText(link.value); success(t('common.copied')); }

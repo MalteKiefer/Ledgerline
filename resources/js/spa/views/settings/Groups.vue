@@ -55,6 +55,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Modal } from '@spa/ui';
 import { useSettingsStore, type Group } from '@spa/stores/settings';
 import { useToast } from '@spa/composables/useToast';
+import { confirmAsk } from '@spa/composables/useConfirm';
 
 const s = useSettingsStore();
 const { success, error } = useToast();
@@ -89,5 +90,5 @@ async function save() {
     dialog.value = false; await s.loadGroups(); success(t('common.saved'));
   } catch { error(t('common.error')); } finally { saving.value = false; }
 }
-async function onDelete(g: Group) { if (!confirm(t('common.confirm_delete'))) return; await s.deleteGroup(g.id); await s.loadGroups(); }
+async function onDelete(g: Group) { if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return; await s.deleteGroup(g.id); await s.loadGroups(); }
 </script>
