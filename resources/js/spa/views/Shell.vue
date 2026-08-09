@@ -136,23 +136,16 @@ interface NavGroup { key: string; title?: string; items: NavItem[] }
 const menu = computed<NavGroup[]>(() => {
   const groups: NavGroup[] = [{ key: 'main', items: [{ to: '/', label: 'pages.dashboard.title', icon: 'space_dashboard' }] }];
   const mods: NavItem[] = [];
-  if (auth.can('finance')) mods.push({ key: 'finance', label: 'messages.nav.finance', icon: 'account_balance_wallet', children: [
-    { to: '/finance/dashboard', label: 'invoices.tab_dashboard' }, { to: '/finance/invoices', label: 'invoices.tab_invoices' },
-    { to: '/finance/payments', label: 'invoices.tab_payments' }, { to: '/finance/receipts', label: 'invoices.tab_receipts' },
-    { to: '/finance/projects', label: 'invoices.tab_projects' }, { to: '/finance/partners', label: 'invoices.tab_partners' },
-    { to: '/finance/stats', label: 'invoices.tab_stats' },
-  ] });
+  // Finance + Settings carry their own in-page left submenu (like Profile),
+  // so the sidebar shows them as single entries — no expandable children here.
+  if (auth.can('finance')) mods.push({ to: '/finance', label: 'messages.nav.finance', icon: 'account_balance_wallet' });
   if (auth.can('files')) mods.push({ to: '/files', label: 'messages.nav.files', icon: 'folder' });
   if (auth.can('contacts')) mods.push({ to: '/contacts', label: 'messages.nav.contacts', icon: 'contacts' });
   if (auth.can('calendar')) mods.push({ to: '/calendar', label: 'messages.nav.calendar', icon: 'calendar_month' });
   groups.push({ key: 'modules', title: 'settings.personal_heading', items: mods });
-  if (auth.isAdmin()) groups.push({ key: 'admin', title: 'settings.admin_heading', items: [{ key: 'settings', label: 'settings.heading', icon: 'settings', children: [
-    { to: '/settings/users', label: 'settings.users_section' }, { to: '/settings/groups', label: 'settings.groups_section' },
-    { to: '/settings/company', label: 'settings.company_section' }, { to: '/settings/notifications-config', label: 'settings.notifications_section' },
-    { to: '/settings/security', label: 'settings.security_section' }, { to: '/settings/files-limits', label: 'settings.files_limits_heading' },
-    { to: '/settings/backup', label: 'settings.backup_section' }, { to: '/settings/paperless', label: 'settings.paperless_section' },
-    { to: '/settings/system', label: 'settings.system_section' }, { to: '/settings/security-log', label: 'settings.seclog_title' },
-  ] }] });
+  if (auth.isAdmin()) groups.push({ key: 'admin', title: 'settings.admin_heading', items: [
+    { to: '/settings', label: 'settings.heading', icon: 'settings' },
+  ] });
   groups.push({ key: 'account', title: 'account.hub_account_heading', items: [{ to: '/profile', label: 'pages.profile.title', icon: 'account_circle' }] });
   return groups;
 });

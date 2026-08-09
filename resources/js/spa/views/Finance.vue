@@ -1,16 +1,24 @@
 <template>
   <div>
-    <!-- Section tabs (segmented pill row) -->
-    <div class="mb-5 flex flex-wrap gap-1">
-      <button
-        v-for="tt in ['dashboard', 'invoices', 'payments', 'receipts', 'projects', 'partners', 'stats']"
-        :key="tt"
-        class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-        :class="tab === tt ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)] hover:bg-black/[0.04] dark:hover:bg-white/5'"
-        @click="go(tt)"
-      >{{ t('invoices.tab_' + tt) }}</button>
-    </div>
+    <h1 class="mb-4 text-xl font-bold">{{ t('messages.nav.finance') }}</h1>
+    <div class="flex flex-col gap-4 md:flex-row">
+      <!-- In-page left submenu (like Profile / Settings) -->
+      <Card body-class="p-0" class="w-full flex-shrink-0 self-start md:w-64">
+        <button
+          v-for="tt in sections" :key="tt"
+          class="flex w-full items-center gap-3 border-b border-[var(--ll-border)] px-4 py-3 last:border-0 hover:bg-black/[0.04] dark:hover:bg-white/5"
+          :class="tab === tt ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
+          @click="go(tt)"
+        >
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg" :class="tab === tt ? 'bg-primary-500/15' : 'bg-black/[0.05] dark:bg-white/10'">
+            <Icon :name="secIcon[tt]" :size="20" />
+          </span>
+          <span class="flex-1 text-left text-sm font-medium">{{ t('invoices.tab_' + tt) }}</span>
+          <Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" />
+        </button>
+      </Card>
 
+      <div class="min-w-0 flex-1">
     <!-- Dashboard -->
     <div v-show="tab === 'dashboard'">
       <div v-if="kpis" class="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -384,6 +392,8 @@
         <Btn variant="solid" :loading="saving" @click="saveProject">{{ t('common.save') }}</Btn>
       </template>
     </Modal>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -406,6 +416,13 @@ const tab = computed(() => {
   return VALID.includes(s) ? s : 'dashboard';
 });
 function go(v: unknown) { router.push(`/finance/${String(v)}`); }
+
+// In-page left submenu sections (mirrors the Profile/Settings hub layout).
+const sections = ['dashboard', 'invoices', 'payments', 'receipts', 'projects', 'partners', 'stats'] as const;
+const secIcon: Record<string, string> = {
+  dashboard: 'space_dashboard', invoices: 'receipt_long', payments: 'account_balance_wallet',
+  receipts: 'receipt', projects: 'account_tree', partners: 'groups', stats: 'insights',
+};
 const q = ref('');
 
 const kpis = ref<{ year: number; net: number; count: number; growthPct: number | null } | null>(null);
