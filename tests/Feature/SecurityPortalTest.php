@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\BlockGuard;
 use App\Models\BlockedIp;
 use App\Models\RequestLog;
 use App\Models\User;
@@ -64,7 +65,7 @@ class SecurityPortalTest extends TestCase
     public function test_blocked_ip_is_refused_by_the_guard(): void
     {
         BlockedIp::create(['cidr' => '198.51.100.0/24']);
-        Cache::forget(\App\Http\Middleware\BlockGuard::CACHE_KEY);
+        Cache::forget(BlockGuard::CACHE_KEY);
         // A request from within the blocked range → 403 (BlockGuard runs on web/api,
         // not on the framework health route /up).
         $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.42'])->get('/login')->assertForbidden();
@@ -97,6 +98,68 @@ class SecurityPortalTest extends TestCase
         [$admin, $token] = $this->admin();
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson("/api/v1/admin/users/{$admin->id}/block")->assertStatus(422);
+    }
+
+    public function test_request_log_redacts_bearer_grant_and_invite_tokens(): void
+    {
+        [, $token] = $this->admin();
+
+        // Media/stream URLs carry the bearer as ?_token=, shares as ?grant=.
+        // These must NEVER be persisted verbatim into the request-log PII store.
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/me?_token=leakedbearer123&grant=grantval456&api_key=akv789&x=1')
+            ->assertOk();
+
+        $row = RequestLog::query()->where('path', 'like', '%/api/v1/me%')->latest('id')->first();
+        $this->assertNotNull($row);
+        $path = (string) $row->path;
+        $this->assertStringContainsString('_token=[redacted]', $path);
+        $this->assertStringContainsString('grant=[redacted]', $path);
+        $this->assertStringContainsString('api_key=[redacted]', $path);
+        // Non-secret params are kept for diagnostics.
+        $this->assertStringContainsString('x=1', $path);
+        // No secret value survives anywhere in the stored path.
+        $this->assertStringNotContainsString('leakedbearer123', $path);
+        $this->assertStringNotContainsString('grantval456', $path);
+        $this->assertStringNotContainsString('akv789', $path);
+
+        // Invite/reset consumption carries a single-use token in the URL PATH.
+        $this->getJson('/api/v1/invite/1/supersecretinvitetoken')->assertStatus(404);
+        $invite = RequestLog::query()->where('path', 'like', '%/invite/%')->latest('id')->first();
+        $this->assertNotNull($invite);
+        $this->assertStringContainsString('/invite/1/[redacted]', (string) $invite->path);
+        $this->assertStringNotContainsString('supersecretinvitetoken', (string) $invite->path);
+    }
+
+    public function test_request_log_redacts_tokens_from_referer(): void
+    {
+        [, $token] = $this->admin();
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->withHeader('referer', 'https://home.example/invite/1/reftoken999?_token=refbearer000')
+            ->getJson('/api/v1/me')->assertOk();
+
+        $row = RequestLog::query()->whereNotNull('referer')->latest('id')->first();
+        $this->assertNotNull($row);
+        $ref = (string) $row->referer;
+        $this->assertStringContainsString('/invite/1/[redacted]', $ref);
+        $this->assertStringContainsString('_token=[redacted]', $ref);
+        $this->assertStringNotContainsString('reftoken999', $ref);
+        $this->assertStringNotContainsString('refbearer000', $ref);
+    }
+
+    public function test_already_authenticated_blocked_user_is_forbidden_on_next_request(): void
+    {
+        $user = User::factory()->create(['password' => 'supersecret12']);
+        $token = $user->createToken('t', ['device'])->plainTextToken;
+
+        // The account is blocked but this token still exists (defense-in-depth:
+        // BlockGuard must refuse the very next request, not only rely on the
+        // one-shot token teardown at block time).
+        $user->forceFill(['blocked_at' => now()])->save();
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/me')->assertStatus(403);
     }
 
     public function test_cidr_matcher(): void

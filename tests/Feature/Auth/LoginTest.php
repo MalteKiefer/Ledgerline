@@ -45,6 +45,27 @@ class LoginTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_blocked_user_cannot_log_in_via_fortify(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'blocked@example.com',
+            'password' => 'super-secret-123',
+            'blocked_at' => now(),
+        ]);
+
+        // Correct credentials, but the account is blocked: generic failure, no
+        // enumeration, and no session (the block gate returns null).
+        $this->post('/login', ['email' => 'blocked@example.com', 'password' => 'super-secret-123'])
+            ->assertSessionHasErrors('email');
+        $this->assertGuest();
+
+        // Unblocking restores login.
+        $user->forceFill(['blocked_at' => null])->save();
+        $this->post('/login', ['email' => 'blocked@example.com', 'password' => 'super-secret-123'])
+            ->assertRedirect('/finance');
+        $this->assertAuthenticatedAs($user->fresh());
+    }
+
     public function test_password_is_hashed_and_gate_keys_on_role(): void
     {
         $admin = User::factory()->admin()->create(['password' => 'super-secret-123']);

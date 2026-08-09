@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
 use App\Models\AuditLog;
+use App\Rules\SafeHost;
 use App\Rules\SafeUrl;
 use App\Services\Backup\BackupNotifier;
 use App\Support\CheckboxFlags;
@@ -36,7 +37,11 @@ class NotificationsController extends Controller
     {
         $request->validate([
             'mail_enabled' => ['sometimes', 'boolean'],
-            'smtp_host' => ['nullable', 'string', 'max:255'],
+            // SSRF/port-scan guard, parity with ntfy_url/webhook_url: refuse a host
+            // that resolves to link-local / cloud-metadata ranges. The test-send
+            // path also re-checks via OutboundUrl::hostAllowed at socket time
+            // (ChannelNotifier::mailTo), so this rejects at input time too.
+            'smtp_host' => ['nullable', 'string', 'max:255', new SafeHost],
             'smtp_port' => ['nullable', 'integer', 'min:1', 'max:65535'],
             'smtp_encryption' => ['nullable', Rule::in(['tls', 'ssl'])],
             'smtp_username' => ['nullable', 'string', 'max:255'],
