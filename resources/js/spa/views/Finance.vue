@@ -156,21 +156,119 @@
       </div>
     </Card>
 
-    <!-- Partners -->
-    <Card v-show="tab === 'partners'" :title="t('invoices.tab_partners')">
-      <template #actions><Btn variant="solid" size="sm" icon="add" @click="newPartner">{{ t('common.add') }}</Btn></template>
-      <div class="divide-y divide-[var(--ll-border)]">
-        <div v-for="p in f.partners" :key="p.id" class="flex items-center gap-3 py-2.5">
-          <div class="min-w-0 flex-1">
-            <div class="truncate text-sm font-medium">{{ p.name }}</div>
-            <div class="truncate text-xs text-[var(--ll-muted)]">{{ [p.email, p.vat_id].filter(Boolean).join(' · ') }}</div>
-          </div>
-          <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editPartner(p)" />
-          <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="f.deletePartner(p.id).then(f.load)" />
+    <!-- Partners (business partners / Geschäftspartner): list ↔ detail -->
+    <div v-show="tab === 'partners'">
+      <!-- LIST / TABLE -->
+      <Card v-if="partnersView === 'list'" :body-class="'p-0'">
+        <template #header>
+          <TextField v-model="partnerSearch" :placeholder="t('invoices.partners_search')" icon="search" class="w-full sm:w-72" />
+        </template>
+        <template #actions><Btn variant="solid" size="sm" icon="add" @click="newPartner">{{ t('invoices.partner_add') }}</Btn></template>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+              <tr class="border-b border-[var(--ll-border)]">
+                <th class="px-4 py-2.5 font-medium">{{ t('invoices.partner_name') }}</th>
+                <th class="hidden px-4 py-2.5 font-medium md:table-cell">{{ t('invoices.partner_contact_person') }}</th>
+                <th class="hidden px-4 py-2.5 font-medium lg:table-cell">{{ t('invoices.partner_email') }}</th>
+                <th class="hidden px-4 py-2.5 font-medium lg:table-cell">{{ t('invoices.partner_phone') }}</th>
+                <th class="hidden px-4 py-2.5 font-medium md:table-cell">{{ t('invoices.partner_vat') }}</th>
+                <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.partner_links') }}</th>
+                <th class="px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in filteredPartners" :key="p.id" class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5" @click="openPartner(p)">
+                <td class="px-4 py-2.5">
+                  <div class="flex items-center gap-3">
+                    <img v-if="logoSrc(p.logo)" :src="logoSrc(p.logo)" alt="" class="h-8 w-8 shrink-0 rounded-lg border border-[var(--ll-border)] bg-white object-contain">
+                    <span v-else class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10"><Icon name="groups" :size="18" /></span>
+                    <span class="font-medium">{{ p.name }}</span>
+                  </div>
+                </td>
+                <td class="hidden px-4 py-2.5 text-[var(--ll-muted)] md:table-cell">{{ partnerContactName(p) || '—' }}</td>
+                <td class="hidden px-4 py-2.5 text-[var(--ll-muted)] lg:table-cell">{{ p.email || '—' }}</td>
+                <td class="hidden px-4 py-2.5 text-[var(--ll-muted)] tabular-nums lg:table-cell">{{ p.phone || '—' }}</td>
+                <td class="hidden px-4 py-2.5 text-[var(--ll-muted)] tabular-nums md:table-cell">{{ p.vat_id || '—' }}</td>
+                <td class="px-4 py-2.5 text-right text-[var(--ll-muted)] tabular-nums">{{ partnerLinkCount(p.id) }}</td>
+                <td class="px-4 py-2.5 text-right"><Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" /></td>
+              </tr>
+              <tr v-if="!filteredPartners.length"><td colspan="7" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.partners_empty') }}</td></tr>
+            </tbody>
+          </table>
         </div>
-        <div v-if="!f.partners.length" class="py-8 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</div>
+      </Card>
+
+      <!-- DETAIL (info + linked invoices/receipts) -->
+      <div v-else-if="partnersView === 'detail' && openPartnerRec" class="space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex min-w-0 items-center gap-3">
+            <Btn variant="ghost" size="sm" icon="arrow_back" :title="t('common.back')" @click="backToPartners" />
+            <img v-if="logoSrc(openPartnerRec.logo)" :src="logoSrc(openPartnerRec.logo)" alt="" class="h-10 w-10 shrink-0 rounded-xl border border-[var(--ll-border)] bg-white object-contain">
+            <span v-else class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10"><Icon name="groups" :size="22" /></span>
+            <h2 class="min-w-0 truncate text-lg font-semibold">{{ openPartnerRec.name }}</h2>
+          </div>
+          <div class="flex items-center gap-2">
+            <Btn variant="soft" size="sm" icon="edit" @click="editPartner(openPartnerRec)">{{ t('common.edit') }}</Btn>
+            <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delPartner(openPartnerRec)" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <!-- Info -->
+          <Card class="lg:col-span-1" :title="t('invoices.partner_info')">
+            <dl class="space-y-2.5 text-sm">
+              <div v-if="openPartnerRec.vat_id"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_vat') }}</dt><dd class="tabular-nums">{{ openPartnerRec.vat_id }}</dd></div>
+              <div v-if="openPartnerRec.email"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_email') }}</dt><dd><a :href="'mailto:' + openPartnerRec.email" class="text-primary-600 hover:underline dark:text-primary-300">{{ openPartnerRec.email }}</a></dd></div>
+              <div v-if="openPartnerRec.invoice_email"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_invoice_email') }}</dt><dd><a :href="'mailto:' + openPartnerRec.invoice_email" class="text-primary-600 hover:underline dark:text-primary-300">{{ openPartnerRec.invoice_email }}</a></dd></div>
+              <div v-if="openPartnerRec.hourly_rate != null && openPartnerRec.hourly_rate !== ''"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_hourly_rate') }}</dt><dd class="tabular-nums">{{ fmtRate(openPartnerRec) }}</dd></div>
+              <div v-if="openPartnerRec.currency"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_currency') }}</dt><dd>{{ openPartnerRec.currency }}</dd></div>
+              <div v-if="openPartnerRec.phone"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_phone') }}</dt><dd class="tabular-nums">{{ openPartnerRec.phone }}</dd></div>
+              <div v-if="openPartnerRec.url"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_url') }}</dt><dd><a :href="openPartnerRec.url" target="_blank" rel="noopener" class="break-all text-primary-600 hover:underline dark:text-primary-300">{{ openPartnerRec.url }}</a></dd></div>
+              <div v-if="openPartnerRec.address"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_address') }}</dt><dd class="whitespace-pre-line">{{ openPartnerRec.address }}</dd></div>
+              <div v-if="openPartnerRec.category"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.receipt_category') }}</dt><dd class="mt-0.5"><Badge tone="gray">{{ openPartnerRec.category }}</Badge></dd></div>
+              <div v-if="openPartnerRec.note"><dt class="text-xs text-[var(--ll-muted)]">{{ t('invoices.receipt_note') }}</dt><dd class="whitespace-pre-line">{{ openPartnerRec.note }}</dd></div>
+            </dl>
+            <!-- Contact persons -->
+            <div v-if="openPartnerRec.contacts && openPartnerRec.contacts.length" class="mt-4 border-t border-[var(--ll-border)] pt-3">
+              <h3 class="text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.partner_contacts') }}</h3>
+              <ul class="mt-2 space-y-2">
+                <li v-for="(c, i) in openPartnerRec.contacts" :key="c.id ?? i" class="text-sm">
+                  <div class="font-medium">{{ c.name }}<span v-if="c.role" class="ml-1 text-xs font-normal text-[var(--ll-muted)]">· {{ c.role }}</span></div>
+                  <div class="text-xs text-[var(--ll-muted)]">{{ [c.email, c.phone].filter(Boolean).join(' · ') }}</div>
+                </li>
+              </ul>
+            </div>
+          </Card>
+
+          <!-- Linked invoices + receipts -->
+          <div class="space-y-4 lg:col-span-2">
+            <Card :body-class="'p-0'">
+              <template #header><h2 class="text-sm font-semibold">{{ t('invoices.partner_linked_invoices') }} <span class="text-[var(--ll-muted)]">({{ invoicesForPartner(openPartnerRec.id).length }})</span></h2></template>
+              <div class="divide-y divide-[var(--ll-border)]">
+                <button v-for="inv in invoicesForPartner(openPartnerRec.id)" :key="inv.id" type="button" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/5" @click="editInvoice(inv)">
+                  <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-500/12 text-primary-600 dark:text-primary-300"><Icon name="receipt_long" :size="18" /></span>
+                  <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium tabular-nums">{{ inv.number || '—' }}</span><span class="block text-xs text-[var(--ll-muted)] tabular-nums">{{ fmtDate(inv.issue_date) }}</span></span>
+                  <span class="shrink-0 text-sm tabular-nums">{{ money(Number(inv.gross ?? 0)) }}</span>
+                </button>
+                <p v-if="!invoicesForPartner(openPartnerRec.id).length" class="px-4 py-3 text-sm text-[var(--ll-muted)]">—</p>
+              </div>
+            </Card>
+            <Card :body-class="'p-0'">
+              <template #header><h2 class="text-sm font-semibold">{{ t('invoices.partner_linked_receipts') }} <span class="text-[var(--ll-muted)]">({{ receiptsForPartner(openPartnerRec.id).length }})</span></h2></template>
+              <div class="divide-y divide-[var(--ll-border)]">
+                <button v-for="r in receiptsForPartner(openPartnerRec.id)" :key="r.id" type="button" class="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/5" @click="editReceipt(r)">
+                  <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-500/12 text-primary-600 dark:text-primary-300"><Icon name="receipt" :size="18" /></span>
+                  <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">{{ r.name }}</span><span class="block text-xs text-[var(--ll-muted)] tabular-nums">{{ fmtDate(r.date ?? r.created_at) }}</span></span>
+                  <span class="shrink-0 text-sm tabular-nums">{{ r.amount != null ? money(Number(r.amount)) : '—' }}</span>
+                </button>
+                <p v-if="!receiptsForPartner(openPartnerRec.id).length" class="px-4 py-3 text-sm text-[var(--ll-muted)]">—</p>
+              </div>
+            </Card>
+          </div>
+        </div>
       </div>
-    </Card>
+    </div>
 
     <!-- Stats / Reports -->
     <div v-show="tab === 'stats'" class="space-y-4">
@@ -303,22 +401,92 @@
       </template>
     </Modal>
 
-    <!-- Partner/payment editors -->
+    <!-- Payment-method editor -->
     <Modal v-model="pDialog" :title="pForm.id ? t('common.edit') : t('common.add')" width="480px">
       <div class="space-y-3">
         <TextField v-model="pForm.name" :label="t('common.name')" />
-        <template v-if="pKind === 'partner'">
-          <TextField v-model="pForm.email" label="E-Mail" />
-          <TextField v-model="pForm.vat_id" label="VAT ID" />
-        </template>
-        <template v-else>
-          <Select v-model="pForm.type" label="Type" :options="['bank', 'card', 'paypal', 'cash', 'other'].map((x) => ({ title: x, value: x }))" />
-          <TextField v-model="pForm.iban" label="IBAN" />
-        </template>
+        <Select v-model="pForm.type" label="Type" :options="['bank', 'card', 'paypal', 'cash', 'other'].map((x) => ({ title: x, value: x }))" />
+        <TextField v-model="pForm.iban" label="IBAN" />
       </div>
       <template #footer>
         <Btn variant="ghost" @click="pDialog = false">{{ t('common.cancel') }}</Btn>
         <Btn variant="solid" :loading="saving" @click="savePP">{{ t('common.save') }}</Btn>
+      </template>
+    </Modal>
+
+    <!-- Business-partner editor (all fields + multiple contact persons + logo pull) -->
+    <Modal v-model="pDlg" :title="partnerForm.id ? t('common.edit') : t('invoices.partner_add')" width="640px">
+      <div class="space-y-3">
+        <TextField v-model="partnerForm.name" :label="t('invoices.partner_name') + ' *'" />
+
+        <!-- Website + logo pull -->
+        <div>
+          <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.partner_url') }}</span>
+          <div class="flex items-center gap-2">
+            <img v-if="logoSrc(partnerForm.logo)" :src="logoSrc(partnerForm.logo)" alt="" class="h-9 w-9 shrink-0 rounded-lg border border-[var(--ll-border)] bg-white object-contain">
+            <span v-else class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10"><Icon name="groups" :size="18" /></span>
+            <TextField v-model="partnerForm.url" type="url" placeholder="https://…" class="min-w-0 flex-1" />
+            <Btn variant="soft" size="sm" icon="download" :loading="logoBusy" @click="loadPartnerLogo">{{ t('invoices.partner_load_logo') }}</Btn>
+          </div>
+          <span class="mt-1 block text-xs text-[var(--ll-muted)]">{{ t('invoices.partner_url_hint') }}</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <TextField v-model="partnerForm.email" :label="t('invoices.partner_email')" type="email" />
+          <TextField v-model="partnerForm.phone" :label="t('invoices.partner_phone')" type="tel" />
+        </div>
+
+        <TextField v-model="partnerForm.invoice_email" :label="t('invoices.partner_invoice_email')" type="email" :hint="t('invoices.partner_invoice_email_hint')" />
+
+        <div class="grid grid-cols-2 gap-3">
+          <TextField v-model="partnerForm.hourly_rate" :label="t('invoices.partner_hourly_rate')" type="number" inputmode="decimal" placeholder="0.00" />
+          <Select v-model="partnerForm.currency" :label="t('invoices.partner_currency')" :options="currencyOptions" />
+        </div>
+
+        <TextField v-model="partnerForm.vat_id" :label="t('invoices.partner_vat')" placeholder="DE…" />
+
+        <label class="block">
+          <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.partner_address') }}</span>
+          <textarea
+            v-model="partnerForm.address" rows="2"
+            class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+          />
+        </label>
+
+        <!-- Contact persons (Ansprechpartner) — multiple -->
+        <div>
+          <div class="mb-1.5 flex items-center justify-between">
+            <span class="text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.partner_contacts') }}</span>
+            <Btn variant="ghost" size="xs" icon="add" @click="addContact">{{ t('invoices.partner_contact_add') }}</Btn>
+          </div>
+          <div class="space-y-2">
+            <div v-for="(c, i) in partnerForm.contacts" :key="c.id" class="rounded-lg border border-[var(--ll-border)] p-2">
+              <div class="flex items-center gap-2">
+                <TextField v-model="c.name" :placeholder="t('invoices.partner_contact_person')" class="min-w-0 flex-1" />
+                <TextField v-model="c.role" :placeholder="t('invoices.partner_contact_role')" class="w-28 shrink-0" />
+                <Btn variant="ghost" size="sm" icon="delete" class="shrink-0 text-red-600 dark:text-red-400" :title="t('common.delete')" @click="removeContact(i)" />
+              </div>
+              <div class="mt-2 grid grid-cols-2 gap-2">
+                <TextField v-model="c.email" :placeholder="t('invoices.partner_email')" type="email" />
+                <TextField v-model="c.phone" :placeholder="t('invoices.partner_phone')" type="tel" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <TextField v-model="partnerForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" />
+
+        <label class="block">
+          <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipt_note') }}</span>
+          <textarea
+            v-model="partnerForm.note" rows="2"
+            class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+          />
+        </label>
+      </div>
+      <template #footer>
+        <Btn variant="ghost" @click="pDlg = false">{{ t('common.cancel') }}</Btn>
+        <Btn variant="solid" :loading="saving" @click="savePartnerForm">{{ t('common.save') }}</Btn>
       </template>
     </Modal>
 
@@ -404,7 +572,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
-import { VersionConflict } from '@spa/api/client';
+import { api, VersionConflict } from '@spa/api/client';
 
 const f = useFinanceStore();
 const { success, error } = useToast();
@@ -445,9 +613,8 @@ const custName_ = ref('');
 const saving = ref(false);
 
 const pDialog = ref(false);
-const pKind = ref<'partner' | 'payment'>('partner');
-interface PPForm { id?: number; version?: number; name: string; email?: string | null; vat_id?: string | null; type?: string; iban?: string | null }
-const pForm = reactive<PPForm>({ name: '' });
+interface PPForm { id?: number; version?: number; name: string; type?: string; iban?: string | null }
+const pForm = reactive<PPForm>({ name: '', type: 'bank' });
 
 // Receipt form
 const rDialog = ref(false);
@@ -580,18 +747,137 @@ async function doDun(i: Invoice) {
   catch { error(t('invoices.dun_failed')); }
 }
 
-function resetForm(o: PPForm) { Object.assign(pForm, { id: undefined, version: undefined, name: '', email: '', vat_id: '', type: 'bank', iban: '' }, o); }
-function newPartner() { pKind.value = 'partner'; resetForm({ name: '' }); pDialog.value = true; }
-function editPartner(p: Partner) { pKind.value = 'partner'; resetForm({ id: p.id, name: p.name, email: p.email, vat_id: p.vat_id, version: p.version }); pDialog.value = true; }
-function newPayment() { pKind.value = 'payment'; resetForm({ name: '', type: 'bank' }); pDialog.value = true; }
-function editPayment(p: PaymentMethod) { pKind.value = 'payment'; resetForm({ id: p.id, name: p.name, type: p.type, iban: p.iban, version: p.version }); pDialog.value = true; }
+function resetForm(o: PPForm) { Object.assign(pForm, { id: undefined, version: undefined, name: '', type: 'bank', iban: '' }, o); }
+function newPayment() { resetForm({ name: '', type: 'bank' }); pDialog.value = true; }
+function editPayment(p: PaymentMethod) { resetForm({ id: p.id, name: p.name, type: p.type, iban: p.iban, version: p.version }); pDialog.value = true; }
 async function savePP() {
   saving.value = true;
   try {
-    if (pKind.value === 'partner') await f.savePartner(pForm as unknown as Partial<Partner>);
-    else await f.savePayment(pForm as unknown as Partial<PaymentMethod>);
+    await f.savePayment(pForm as unknown as Partial<PaymentMethod>);
     pDialog.value = false; await f.load(); success(t('common.saved'));
   } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); } finally { saving.value = false; }
+}
+
+// ---- Business partners (Geschäftspartner): list ↔ detail, rich editor ----
+const partnersView = ref<'list' | 'detail'>('list');
+const openPartnerId = ref<number | null>(null);
+const partnerSearch = ref('');
+const pDlg = ref(false);
+const logoBusy = ref(false);
+
+interface PContact { id: string; name: string; email: string; phone: string; role: string }
+interface PartnerForm {
+  id?: number; version?: number;
+  name: string; url: string; logo: string; email: string; invoice_email: string;
+  phone: string; hourly_rate: string; currency: string; vat_id: string;
+  address: string; category: string; note: string; contacts: PContact[];
+}
+function blankPartnerForm(): PartnerForm {
+  return { name: '', url: '', logo: '', email: '', invoice_email: '', phone: '', hourly_rate: '', currency: '', vat_id: '', address: '', category: '', note: '', contacts: [] };
+}
+const partnerForm = reactive<PartnerForm>(blankPartnerForm());
+
+const currencyOptions = computed(() => [
+  { title: t('invoices.partner_currency_default'), value: '' },
+  ...['EUR', 'USD', 'GBP', 'CHF', 'JPY'].map((c) => ({ title: c, value: c })),
+]);
+
+function uid(): string { return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}${Math.random().toString(16).slice(2)}`; }
+function logoSrc(v?: string | null): string { return typeof v === 'string' && /^(data:|https?:)/.test(v) ? v : ''; }
+function partnerContactName(p: Partner): string { return p.contacts?.[0]?.name ?? ''; }
+
+const filteredPartners = computed<Partner[]>(() => {
+  const list = [...f.partners].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const s = partnerSearch.value.trim().toLowerCase();
+  if (!s) return list;
+  return list.filter((p) => [p.name, p.email, p.invoice_email, p.phone, p.vat_id, p.address, p.url, p.category, p.note, ...(p.contacts?.map((c) => c.name) ?? [])]
+    .some((v) => String(v ?? '').toLowerCase().includes(s)));
+});
+const openPartnerRec = computed<Partner | null>(() => f.partners.find((p) => p.id === openPartnerId.value) ?? null);
+
+function invoicesForPartner(id: number): Invoice[] {
+  return f.invoices
+    .filter((i) => i.partner_id === id || (i.customer as { partnerId?: number } | null)?.partnerId === id)
+    .sort((a, b) => String(b.issue_date ?? '').localeCompare(String(a.issue_date ?? '')));
+}
+function receiptsForPartner(id: number): Receipt[] { return f.standaloneReceipts.filter((r) => r.partner_id === id); }
+function partnerLinkCount(id: number): number { return invoicesForPartner(id).length + receiptsForPartner(id).length; }
+
+function fmtRate(p: Partner): string {
+  const n = Number(p.hourly_rate ?? 0);
+  const cur = p.currency || 'EUR';
+  try { return new Intl.NumberFormat(document.documentElement.lang || 'de', { style: 'currency', currency: cur }).format(n); }
+  catch { return `${n.toFixed(2)} ${cur}`; }
+}
+
+function openPartner(p: Partner) { openPartnerId.value = p.id; partnersView.value = 'detail'; }
+function backToPartners() { partnersView.value = 'list'; openPartnerId.value = null; }
+
+function newPartner() { Object.assign(partnerForm, blankPartnerForm()); pDlg.value = true; }
+function editPartner(p: Partner) {
+  Object.assign(partnerForm, blankPartnerForm(), {
+    id: p.id, version: p.version, name: p.name ?? '', url: p.url ?? '', logo: p.logo ?? '',
+    email: p.email ?? '', invoice_email: p.invoice_email ?? '', phone: p.phone ?? '',
+    hourly_rate: p.hourly_rate != null ? String(p.hourly_rate) : '', currency: p.currency ?? '',
+    vat_id: p.vat_id ?? '', address: p.address ?? '', category: p.category ?? '', note: p.note ?? '',
+    contacts: Array.isArray(p.contacts)
+      ? p.contacts.map((c) => ({ id: c.id ?? uid(), name: c.name ?? '', email: c.email ?? '', phone: c.phone ?? '', role: c.role ?? '' }))
+      : [],
+  });
+  pDlg.value = true;
+}
+function addContact() { partnerForm.contacts.push({ id: uid(), name: '', email: '', phone: '', role: '' }); }
+function removeContact(i: number) { partnerForm.contacts.splice(i, 1); }
+
+// Derive a host from the partner URL, else the email domain (used to pull the favicon).
+function partnerHost(...vals: (string | undefined)[]): string {
+  for (const raw of vals) {
+    const s = (raw ?? '').trim();
+    if (!s) continue;
+    if (s.includes('@')) { const d = s.split('@').pop()?.trim(); if (d?.includes('.')) return d; continue; }
+    if (!s.includes('.')) continue;
+    try { return new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`).hostname; } catch { /* try next */ }
+  }
+  return '';
+}
+async function loadPartnerLogo() {
+  const host = partnerHost(partnerForm.url, partnerForm.email, partnerForm.invoice_email);
+  if (!host) { error(t('common.error')); return; }
+  logoBusy.value = true;
+  try {
+    const r = await api.get<{ icon: string | null }>(`/api/v1/passwords/icon?domain=${encodeURIComponent(host)}`);
+    const icon = r?.icon ?? null;
+    if (!icon) { error(t('invoices.partner_logo_none')); return; }
+    if (icon.length > 2000) { error(t('invoices.partner_logo_too_large')); return; } // backend `logo` column caps at 2000 chars
+    partnerForm.logo = icon;
+  } catch { error(t('common.error')); } finally { logoBusy.value = false; }
+}
+
+async function savePartnerForm() {
+  if (!partnerForm.name.trim()) { error(t('common.error')); return; }
+  saving.value = true;
+  const body: Partial<Partner> & { version?: number } = {
+    name: partnerForm.name.trim(),
+    url: partnerForm.url || null, logo: partnerForm.logo || null,
+    email: partnerForm.email || null, invoice_email: partnerForm.invoice_email || null,
+    phone: partnerForm.phone || null, vat_id: partnerForm.vat_id || null,
+    currency: partnerForm.currency || null, address: partnerForm.address || null,
+    category: partnerForm.category || null, note: partnerForm.note || null,
+    hourly_rate: partnerForm.hourly_rate.trim() === '' ? null : Number(partnerForm.hourly_rate),
+    contacts: partnerForm.contacts
+      .filter((c) => `${c.name}${c.email}${c.phone}${c.role}`.trim() !== '')
+      .map((c) => ({ id: c.id, name: c.name, email: c.email, phone: c.phone, role: c.role })),
+  };
+  if (partnerForm.id) { body.id = partnerForm.id; body.version = partnerForm.version; }
+  try {
+    await f.savePartner(body);
+    pDlg.value = false; await f.load(); success(t('common.saved'));
+  } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); } finally { saving.value = false; }
+}
+async function delPartner(p: Partner) {
+  if (!confirm(t('invoices.partner_delete_confirm'))) return;
+  try { await f.deletePartner(p.id); backToPartners(); await f.load(); success(t('common.saved')); }
+  catch { error(t('common.error')); }
 }
 
 // ---- Receipts ----

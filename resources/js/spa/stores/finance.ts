@@ -10,7 +10,14 @@ export interface Invoice {
   partner_id: number | null; customer: Record<string, unknown> | null; lines: InvoiceLine[] | null;
   note: string | null; paid_at: string | null; version: number;
 }
-export interface Partner { id: number; name: string; email: string | null; vat_id: string | null; version: number }
+export interface PartnerContact { id?: string; name?: string; email?: string; phone?: string; role?: string }
+export interface Partner {
+  id: number; name: string;
+  category: string | null; kind: string | null; url: string | null; logo: string | null;
+  note: string | null; address: string | null; email: string | null; invoice_email: string | null;
+  phone: string | null; vat_id: string | null; hourly_rate: string | number | null; currency: string | null;
+  contacts: PartnerContact[] | null; version: number;
+}
 export interface PaymentMethod { id: number; name: string; type: string; iban: string | null; version: number }
 export interface Project { id: number; name: string; parent_id: number | null; note: string | null; version: number }
 export interface Receipt {
