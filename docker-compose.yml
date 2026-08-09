@@ -95,7 +95,11 @@ services:
       AUTORUN_LARAVEL_VIEW_CACHE: "true"
       AUTORUN_LARAVEL_EVENT_CACHE: "true"
     ports:
-      - "127.0.0.1:${APP_PORT:-8300}:8080"
+      # Bind host is configurable: default 127.0.0.1 (prod sits behind Caddy on the
+      # host loopback). A LAN-only preview box sets APP_BIND=0.0.0.0 in .env to
+      # expose the port directly — no compose edit needed (a local edit would abort
+      # every `git checkout` deploy).
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8300}:8080"
     deploy:
       resources:
         limits:
