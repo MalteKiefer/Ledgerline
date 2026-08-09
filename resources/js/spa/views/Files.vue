@@ -96,7 +96,7 @@
           >
             <div class="flex h-28 items-center justify-center bg-black/[0.03] dark:bg-white/5">
               <img v-if="row._img" :src="s.thumbUrl(row.raw as FileEntry)" class="h-full w-full object-cover" >
-              <Icon v-else :name="row._icon" :size="40" :style="{ color: row._tint }" />
+              <Icon v-else :name="row._icon" :size="40" :class="row._folder ? 'text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'" />
             </div>
             <div class="flex items-center gap-1 p-2">
               <span class="flex-1 truncate text-xs" :title="row.name">{{ row.name }}</span>
@@ -146,8 +146,11 @@
                 </td>
                 <td class="py-2 pl-2 pr-3">
                   <div class="flex items-center gap-3">
-                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg" :style="{ background: row._tint }">
-                      <Icon :name="row._icon" :size="20" class="text-white" />
+                    <span
+                      class="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
+                      :class="row._folder ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300' : 'bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10'"
+                    >
+                      <Icon :name="row._icon" :size="20" />
                     </span>
                     <div class="min-w-0">
                       <div class="truncate">{{ row.name }}</div>
@@ -340,20 +343,11 @@
     </template>
   </Modal>
 
-  <!-- File preview -->
-  <Modal v-model="previewOpen" :title="preview?.name" width="1100px">
-    <template v-if="preview">
-      <div class="mb-3 flex items-center gap-1">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary-500/10">
-          <Icon :name="categoryMsym(preview.name, preview.mime)" :size="18" class="text-primary-600 dark:text-primary-300" />
-        </span>
-        <div class="ml-auto flex items-center gap-1">
-          <Btn variant="ghost" size="sm" icon="info" @click="openInfo(mapFile(preview))" />
-          <Btn variant="ghost" size="sm" icon="download" tag="a" :href="s.rawUrl(preview)" />
-          <Btn variant="ghost" size="sm" icon="open_in_new" tag="a" :href="s.rawUrl(preview)" target="_blank" />
-        </div>
-      </div>
-      <div class="flex h-[70vh] items-center justify-center overflow-auto rounded-lg bg-black/[0.03] dark:bg-white/5">
+  <!-- File preview: preview pane + always-visible info sidebar -->
+  <Modal v-model="previewOpen" :title="preview?.name" width="64rem">
+    <div v-if="preview" class="flex flex-col md:h-[calc(70vh-2.5rem)] md:flex-row">
+      <!-- Preview pane -->
+      <div class="flex min-h-[45vh] flex-1 items-center justify-center overflow-auto rounded-lg bg-black/[0.03] dark:bg-white/5 md:min-h-0">
         <img v-if="previewKind(preview) === 'image'" :src="s.rawUrl(preview)" class="max-h-full max-w-full object-contain" >
         <iframe v-else-if="previewKind(preview) === 'pdf'" :src="s.rawUrl(preview)" class="h-full w-full border-0"></iframe>
         <video v-else-if="previewKind(preview) === 'video'" :src="s.rawUrl(preview)" controls class="max-h-full max-w-full"></video>
@@ -365,7 +359,66 @@
           <Btn variant="soft" icon="download" tag="a" :href="s.rawUrl(preview)" class="mt-4">{{ t('files.download') }}</Btn>
         </div>
       </div>
-    </template>
+
+      <!-- Info sidebar (always visible on md+, stacks below on mobile) -->
+      <aside class="mt-4 shrink-0 md:mt-0 md:ml-4 md:w-72 md:overflow-y-auto md:border-l md:border-[var(--ll-border)] md:pl-4">
+        <div class="flex items-center gap-2">
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-500/15 text-primary-600 dark:text-primary-300">
+            <Icon :name="categoryMsym(preview.name, preview.mime)" :size="20" />
+          </span>
+          <div class="min-w-0">
+            <div class="truncate text-sm font-medium" :title="preview.name">{{ preview.name }}</div>
+            <div class="truncate text-xs text-[var(--ll-muted)]">{{ preview.mime || '—' }}</div>
+          </div>
+        </div>
+
+        <dl class="mt-4 space-y-3 text-sm">
+          <div>
+            <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_size') }}</dt>
+            <dd class="ll-mono">{{ fmt(preview.size) }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_modified') }}</dt>
+            <dd>{{ preview.updated_at ? new Date(preview.updated_at).toLocaleString() : '—' }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.folder') }}</dt>
+            <dd class="break-words">{{ folderPath(preview.file_folder_id) }}</dd>
+          </div>
+          <div v-if="preview.tags?.length">
+            <dt class="mb-1 text-xs text-[var(--ll-muted)]">{{ t('files.info_tags') }}</dt>
+            <dd class="flex flex-wrap gap-1">
+              <span v-for="tg in preview.tags" :key="tg" class="rounded bg-black/[0.05] px-1.5 py-0.5 text-xs dark:bg-white/10">{{ tg }}</span>
+            </dd>
+          </div>
+          <div v-if="preview.labels?.length">
+            <dt class="mb-1 text-xs text-[var(--ll-muted)]">{{ t('files.info_labels') }}</dt>
+            <dd class="flex flex-wrap gap-1">
+              <span
+                v-for="l in preview.labels" :key="l.id"
+                class="rounded px-1.5 py-0.5 text-xs font-medium"
+                :style="{ background: `color-mix(in srgb, ${l.color} 15%, transparent)`, color: l.color }"
+              >{{ l.name }}</span>
+            </dd>
+          </div>
+          <div v-if="preview.note">
+            <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.note') }}</dt>
+            <dd class="whitespace-pre-wrap break-words">{{ preview.note }}</dd>
+          </div>
+          <div v-if="preview.favorite" class="flex items-center gap-1.5 text-primary-600 dark:text-primary-300">
+            <Icon name="star" :size="18" fill />
+            <span class="text-xs font-medium">{{ t('files.favorite') }}</span>
+          </div>
+        </dl>
+
+        <div class="mt-4 flex flex-col gap-1.5 border-t border-[var(--ll-border)] pt-3">
+          <Btn variant="soft" size="sm" block icon="download" tag="a" :href="s.rawUrl(preview)">{{ t('files.download') }}</Btn>
+          <Btn variant="ghost" size="sm" block icon="open_in_new" tag="a" :href="s.rawUrl(preview)" target="_blank">{{ t('common.open') }}</Btn>
+          <Btn variant="ghost" size="sm" block icon="drive_file_rename_outline" @click="doRename(mapFile(preview))">{{ t('files.rename') }}</Btn>
+          <Btn variant="ghost" size="sm" block icon="info" @click="openInfo(mapFile(preview))">{{ t('files.info') }}</Btn>
+        </div>
+      </aside>
+    </div>
   </Modal>
 </template>
 
@@ -447,6 +500,21 @@ const rows = computed<Row[]>(() => {
   if (q) out = out.filter((r) => r.name.toLowerCase().includes(q));
   return out;
 });
+
+// Human-readable folder path for the preview sidebar (root → … → parent).
+function folderPath(folderId: number | null): string {
+  const stack: string[] = [];
+  const guard = new Set<number>();
+  let id = folderId;
+  while (id != null && !guard.has(id)) {
+    guard.add(id);
+    const fo = (s.folders as FileFolder[]).find((x) => x.id === id);
+    if (!fo) break;
+    stack.unshift(fo.name);
+    id = fo.parent_id;
+  }
+  return [t('files.all_files'), ...stack].join(' / ');
+}
 
 const crumbs = computed(() => {
   const chain: { title: string; value: number | null }[] = [{ title: t('files.all_files'), value: null }];

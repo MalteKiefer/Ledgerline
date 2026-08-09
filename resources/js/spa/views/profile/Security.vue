@@ -170,23 +170,14 @@ function stepUpMessage(e: unknown): string {
   return t('common.error');
 }
 
-onMounted(() => { void refresh2fa(); });
-
-async function refresh2fa() {
-  // Authoritative confirmed-state now comes from /me (auth.user.two_factor).
-  if (auth.user?.two_factor) { twofa.status = 'on'; return; }
-  try {
-    const s = await p.twoFactorState();
-    if (s.pending) {
-      twofa.status = 'pending';
-      twofa.qr = { svg: s.svg, secret: s.secret, uri: s.uri };
-    } else {
-      twofa.status = 'off';
-    }
-  } catch {
-    twofa.status = 'off';
-  }
-}
+onMounted(() => {
+  // Authoritative confirmed-state comes from /me (auth.user.two_factor). We must
+  // NOT probe the enrollment QR endpoint on mount: it is enrollment-only and 404s
+  // unless a secret is mid-enrollment, which would surface a spurious console 404
+  // on every normal page load. The QR is fetched only after "Enable 2FA"
+  // (password step-up → POST /enable → GET /qr) inside onEnable().
+  twofa.status = auth.user?.two_factor ? 'on' : 'off';
+});
 
 async function onEnable() {
   const password = await askPassword();

@@ -1,7 +1,7 @@
 <template>
   <div class="flex min-h-[calc(100vh-120px)] flex-col gap-4 md:flex-row">
     <!-- Books / groups rail -->
-    <Card body-class="p-0" class="w-full shrink-0 self-start md:w-[220px]">
+    <Card body-class="p-0" class="w-full shrink-0 self-start md:w-64">
       <div class="p-3">
         <Btn variant="solid" icon="add" block @click="openNew">{{ t('contacts.ui.new_contact') }}</Btn>
       </div>
@@ -54,17 +54,18 @@
       </nav>
     </Card>
 
-    <!-- List -->
-    <Card body-class="flex flex-1 flex-col overflow-hidden p-0" class="flex h-full w-full shrink-0 flex-col self-stretch md:w-[340px]">
-      <!-- Toolbar -->
-      <div class="flex shrink-0 items-center gap-1 border-b border-[var(--ll-border)] p-2">
-        <Btn variant="ghost" size="sm" @click="openImport">{{ t('contacts.ui.import') }}</Btn>
-        <Btn variant="ghost" size="sm" @click="openDuplicates">{{ t('contacts.ui.duplicates') }}</Btn>
-        <Btn variant="ghost" size="sm" tag="a" class="ml-auto" :href="c.exportUrl(bookId ?? undefined)" :title="t('contacts.ui.export')">{{ t('contacts.ui.export') }}</Btn>
+    <!-- Main: toolbar + contacts list/detail -->
+    <Card body-class="flex flex-1 flex-col overflow-hidden p-0" class="flex w-full min-w-0 flex-1 flex-col self-stretch">
+      <!-- Toolbar: search on the left, actions on the right -->
+      <div class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] p-3">
+        <TextField v-model="query" :placeholder="t('common.search')" icon="search" class="w-full sm:w-64" @update:model-value="debouncedLoad" />
+        <div class="ml-auto flex items-center gap-1.5">
+          <Btn variant="outline" size="sm" icon="upload" @click="openImport">{{ t('contacts.ui.import') }}</Btn>
+          <Btn variant="soft" size="sm" icon="content_copy" @click="openDuplicates">{{ t('contacts.ui.duplicates') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="download" tag="a" :href="c.exportUrl(bookId ?? undefined)" :title="t('contacts.ui.export')">{{ t('contacts.ui.export') }}</Btn>
+        </div>
       </div>
-      <div class="shrink-0 border-b border-[var(--ll-border)] p-3">
-        <TextField v-model="query" :placeholder="t('common.search')" icon="search" @update:model-value="debouncedLoad" />
-      </div>
+
       <!-- Selection bar -->
       <div v-if="selected_ids.length" class="flex shrink-0 items-center gap-1 border-b border-[var(--ll-border)] px-3 py-2">
         <span class="text-xs text-[var(--ll-muted)]">{{ t('contacts.ui.selected_count', { count: String(selected_ids.length) }) }}</span>
@@ -74,96 +75,100 @@
           <Btn variant="danger" size="xs" :loading="bulkBusy" @click="deleteSelected">{{ t('contacts.ui.delete_selected') }}</Btn>
         </div>
       </div>
-      <div class="flex-1 overflow-y-auto">
-        <button
-          v-for="row in c.contacts" :key="row.id"
-          class="flex w-full items-center gap-3 border-b border-[var(--ll-border)] px-3 py-2.5 text-left last:border-0 hover:bg-black/[0.03] dark:hover:bg-white/5"
-          :class="selected?.id === row.id ? 'bg-primary-500/[0.06]' : ''"
-          @click="openDetail(row)"
-        >
-          <input
-            type="checkbox" class="h-4 w-4 shrink-0 rounded border-[var(--ll-border)] accent-[var(--color-primary-500)]"
-            :checked="selected_ids.includes(row.id)" @click.stop="toggleSelect(row.id)"
-          >
-          <span class="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full text-sm font-medium" :class="TONE_BG[color(row)]">
-            <img v-if="c.avatarUrl(row)" :src="bust(c.avatarUrl(row))!" class="h-full w-full object-cover">
-            <template v-else>{{ initials(row) }}</template>
-          </span>
-          <span class="min-w-0 flex-1">
-            <span class="block truncate text-sm font-medium">{{ row.fn || (row.first_name + ' ' + row.last_name) }}</span>
-            <span class="block truncate text-xs text-[var(--ll-muted)]">{{ row.org || row.emails[0]?.value || '' }}</span>
-          </span>
-          <Icon v-if="row.favorite" name="star" fill :size="16" class="shrink-0 text-amber-500" />
-        </button>
-        <div v-if="!c.contacts.length" class="px-3 py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('contacts.ui.empty') }}</div>
-      </div>
-    </Card>
 
-    <!-- Detail -->
-    <Card body-class="flex flex-1 flex-col overflow-hidden p-0" class="flex h-full min-w-0 flex-1 flex-col">
-      <template v-if="detail">
-        <div class="flex shrink-0 items-center gap-3 border-b border-[var(--ll-border)] p-4">
-          <span class="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-primary-500 text-base font-medium text-white">
-            <img v-if="selected && c.avatarUrl(selected)" :src="bust(c.avatarUrl(selected))!" class="h-full w-full object-cover">
-            <template v-else>{{ selected ? initials(selected) : '' }}</template>
-          </span>
-          <h2 class="min-w-0 flex-1 truncate text-lg font-semibold">{{ str(detail.fn) }}</h2>
+      <!-- Contact list + detail -->
+      <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+        <!-- List -->
+        <div class="w-full shrink-0 overflow-y-auto border-b border-[var(--ll-border)] md:w-[320px] md:border-b-0 md:border-r">
           <button
-            class="grid h-9 w-9 shrink-0 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10"
-            :title="selected?.favorite ? t('contacts.ui.favorite_remove') : t('contacts.ui.favorite_add')"
-            @click="toggleFav"
+            v-for="row in c.contacts" :key="row.id"
+            class="flex w-full items-center gap-3 border-b border-[var(--ll-border)] px-3 py-2.5 text-left last:border-0 hover:bg-black/[0.03] dark:hover:bg-white/5"
+            :class="selected?.id === row.id ? 'bg-primary-500/[0.06]' : ''"
+            @click="openDetail(row)"
           >
-            <Icon name="star" :fill="!!selected?.favorite" :size="20" :class="selected?.favorite ? 'text-amber-500' : 'text-[var(--ll-muted)]'" />
+            <input
+              type="checkbox" class="h-4 w-4 shrink-0 rounded border-[var(--ll-border)] accent-[var(--color-primary-500)]"
+              :checked="selected_ids.includes(row.id)" @click.stop="toggleSelect(row.id)"
+            >
+            <span class="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full text-sm font-medium" :class="TONE_BG[color(row)]">
+              <img v-if="c.avatarUrl(row)" :src="bust(c.avatarUrl(row))!" class="h-full w-full object-cover">
+              <template v-else>{{ initials(row) }}</template>
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-medium">{{ row.fn || (row.first_name + ' ' + row.last_name) }}</span>
+              <span class="block truncate text-xs text-[var(--ll-muted)]">{{ row.org || row.emails[0]?.value || '' }}</span>
+            </span>
+            <Icon v-if="row.favorite" name="star" fill :size="16" class="shrink-0 text-amber-500" />
           </button>
-          <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="openEdit" />
-          <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="onDelete" />
+          <div v-if="!c.contacts.length" class="px-3 py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('contacts.ui.empty') }}</div>
         </div>
-        <div class="flex-1 overflow-y-auto p-5">
-          <div v-if="str(detail.org)" class="mb-4 text-sm text-[var(--ll-muted)]">{{ str(detail.org) }}<span v-if="str(detail.title)"> · {{ str(detail.title) }}</span></div>
-          <div class="space-y-1">
-            <a v-for="(e, i) in arr(detail.emails)" :key="'e'+i" :href="'mailto:' + e.value" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
-              <Icon name="mail" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
-              <span class="min-w-0 flex-1">
-                <span class="block truncate text-sm">{{ e.value }}</span>
-                <span class="block text-xs text-[var(--ll-muted)]">{{ e.type }}</span>
+
+        <!-- Detail -->
+        <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <template v-if="detail">
+            <div class="flex shrink-0 items-center gap-3 border-b border-[var(--ll-border)] p-4">
+              <span class="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-primary-500 text-base font-medium text-white">
+                <img v-if="selected && c.avatarUrl(selected)" :src="bust(c.avatarUrl(selected))!" class="h-full w-full object-cover">
+                <template v-else>{{ selected ? initials(selected) : '' }}</template>
               </span>
-            </a>
-            <a v-for="(p, i) in arr(detail.phones)" :key="'p'+i" :href="'tel:' + p.value" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
-              <Icon name="call" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
-              <span class="min-w-0 flex-1">
-                <span class="block truncate text-sm">{{ p.value }}</span>
-                <span class="block text-xs text-[var(--ll-muted)]">{{ p.type }}</span>
-              </span>
-            </a>
-            <a v-for="(u, i) in arr(detail.urls)" :key="'u'+i" :href="u.value" target="_blank" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
-              <span class="w-5 shrink-0"></span>
-              <span class="min-w-0 flex-1">
-                <span class="block truncate text-sm">{{ u.value }}</span>
-                <span class="block text-xs text-[var(--ll-muted)]">{{ t('contacts.ui.website') }}</span>
-              </span>
-            </a>
-          </div>
-          <!-- Addresses -->
-          <template v-if="addressList(detail).length">
-            <div class="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.addresses') }}</div>
-            <div class="space-y-1">
-              <div v-for="(a, i) in addressList(detail)" :key="'a'+i" class="flex items-center gap-3 rounded-lg px-2 py-2">
-                <Icon name="location_on" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
-                <span class="min-w-0 flex-1">
-                  <span class="block truncate text-sm">{{ a.text }}</span>
-                  <span class="block text-xs text-[var(--ll-muted)]">{{ a.type }}</span>
-                </span>
-                <Btn variant="ghost" size="xs" tag="a" :href="mapUrl(a.text)" target="_blank" rel="noopener" :title="t('contacts.ui.map_open_osm')">{{ t('contacts.ui.map_open_osm') }}</Btn>
+              <h2 class="min-w-0 flex-1 truncate text-lg font-semibold">{{ str(detail.fn) }}</h2>
+              <button
+                class="grid h-9 w-9 shrink-0 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10"
+                :title="selected?.favorite ? t('contacts.ui.favorite_remove') : t('contacts.ui.favorite_add')"
+                @click="toggleFav"
+              >
+                <Icon name="star" :fill="!!selected?.favorite" :size="20" :class="selected?.favorite ? 'text-amber-500' : 'text-[var(--ll-muted)]'" />
+              </button>
+              <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="openEdit" />
+              <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="onDelete" />
+            </div>
+            <div class="flex-1 overflow-y-auto p-5">
+              <div v-if="str(detail.org)" class="mb-4 text-sm text-[var(--ll-muted)]">{{ str(detail.org) }}<span v-if="str(detail.title)"> · {{ str(detail.title) }}</span></div>
+              <div class="space-y-1">
+                <a v-for="(e, i) in arr(detail.emails)" :key="'e'+i" :href="'mailto:' + e.value" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
+                  <Icon name="mail" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm">{{ e.value }}</span>
+                    <span class="block text-xs text-[var(--ll-muted)]">{{ e.type }}</span>
+                  </span>
+                </a>
+                <a v-for="(p, i) in arr(detail.phones)" :key="'p'+i" :href="'tel:' + p.value" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
+                  <Icon name="call" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm">{{ p.value }}</span>
+                    <span class="block text-xs text-[var(--ll-muted)]">{{ p.type }}</span>
+                  </span>
+                </a>
+                <a v-for="(u, i) in arr(detail.urls)" :key="'u'+i" :href="u.value" target="_blank" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
+                  <span class="w-5 shrink-0"></span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm">{{ u.value }}</span>
+                    <span class="block text-xs text-[var(--ll-muted)]">{{ t('contacts.ui.website') }}</span>
+                  </span>
+                </a>
+              </div>
+              <!-- Addresses -->
+              <template v-if="addressList(detail).length">
+                <div class="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.addresses') }}</div>
+                <div class="space-y-1">
+                  <div v-for="(a, i) in addressList(detail)" :key="'a'+i" class="flex items-center gap-3 rounded-lg px-2 py-2">
+                    <Icon name="location_on" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-sm">{{ a.text }}</span>
+                      <span class="block text-xs text-[var(--ll-muted)]">{{ a.type }}</span>
+                    </span>
+                    <Btn variant="ghost" size="xs" tag="a" :href="mapUrl(a.text)" target="_blank" rel="noopener" :title="t('contacts.ui.map_open_osm')">{{ t('contacts.ui.map_open_osm') }}</Btn>
+                  </div>
+                </div>
+              </template>
+              <div v-if="str(detail.note)" class="mt-4">
+                <div class="text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.note') }}</div>
+                <div class="mt-1 text-sm">{{ str(detail.note) }}</div>
               </div>
             </div>
           </template>
-          <div v-if="str(detail.note)" class="mt-4">
-            <div class="text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.note') }}</div>
-            <div class="mt-1 text-sm">{{ str(detail.note) }}</div>
-          </div>
         </div>
-      </template>
-      <div v-else class="grid flex-1 place-items-center p-6 text-sm text-[var(--ll-muted)]">{{ t('contacts.ui.empty') }}</div>
+      </div>
     </Card>
   </div>
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-2xl">
+  <div>
     <Card class="mb-4">
       <template #header>
         <Icon name="folder" :size="18" class="text-[var(--ll-muted)]" />
@@ -9,11 +9,6 @@
         <TextField
           v-model="form.files_max_upload_mb"
           :label="t('settings.files_max_upload')"
-          type="number"
-        />
-        <TextField
-          v-model="form.files_blob_orphan_grace_hours"
-          :label="t('settings.files_orphan_grace')"
           type="number"
         />
       </div>
@@ -37,14 +32,12 @@ import { Icon, Btn, Card, TextField } from '@spa/ui';
 
 interface FilesLimitsResponse {
   files_max_upload_mb: number;
-  files_blob_orphan_grace_hours: number;
 }
 
 const { success, error } = useToast();
 
-const form = reactive<{ files_max_upload_mb: number | null; files_blob_orphan_grace_hours: number | null }>({
+const form = reactive<{ files_max_upload_mb: number | null }>({
   files_max_upload_mb: null,
-  files_blob_orphan_grace_hours: null,
 });
 
 const loading = ref(true);
@@ -52,7 +45,6 @@ const saving = ref(false);
 
 function apply(c: FilesLimitsResponse) {
   form.files_max_upload_mb = c.files_max_upload_mb;
-  form.files_blob_orphan_grace_hours = c.files_blob_orphan_grace_hours;
 }
 
 async function save() {
@@ -61,7 +53,6 @@ async function save() {
     apply(
       await api.put<FilesLimitsResponse>('/api/v1/admin/files-limits', {
         files_max_upload_mb: form.files_max_upload_mb,
-        files_blob_orphan_grace_hours: form.files_blob_orphan_grace_hours,
       }),
     );
     success(t('common.saved'));

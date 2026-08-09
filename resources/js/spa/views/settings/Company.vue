@@ -1,7 +1,18 @@
 <template>
-  <div class="mx-auto max-w-3xl space-y-4 pb-20">
+  <div class="space-y-4 pb-20">
+    <!-- Section sub-nav (pill row) -->
+    <div class="flex flex-wrap gap-1 rounded-xl border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1">
+      <button
+        v-for="s in sections" :key="s.id"
+        type="button"
+        class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+        :class="section === s.id ? 'bg-primary-500 text-white shadow-sm' : 'text-[var(--ll-muted)] hover:bg-black/[0.04] dark:hover:bg-white/5'"
+        @click="section = s.id"
+      >{{ t(s.label) }}</button>
+    </div>
+
     <!-- Identity -->
-    <Card>
+    <Card v-show="section === 'identity'">
       <template #header>
         <Icon name="business" :size="18" class="text-[var(--ll-muted)]" />
         <h2 class="text-sm font-semibold">{{ t('settings.company_identity_heading') }}</h2>
@@ -20,7 +31,7 @@
     </Card>
 
     <!-- Bank details -->
-    <Card>
+    <Card v-show="section === 'bank'">
       <template #header>
         <Icon name="key" :size="18" class="text-[var(--ll-muted)]" />
         <h2 class="text-sm font-semibold">{{ t('settings.company_bank_heading') }}</h2>
@@ -33,7 +44,7 @@
     </Card>
 
     <!-- Website + contact persons -->
-    <Card>
+    <Card v-show="section === 'contact'">
       <template #header>
         <Icon name="badge" :size="18" class="text-[var(--ll-muted)]" />
         <h2 class="text-sm font-semibold">{{ t('settings.company_contacts_heading') }}</h2>
@@ -58,7 +69,7 @@
     </Card>
 
     <!-- Invoice defaults -->
-    <Card>
+    <Card v-show="section === 'invoice'">
       <template #header>
         <Icon name="edit" :size="18" class="text-[var(--ll-muted)]" />
         <h2 class="text-sm font-semibold">{{ t('settings.company_invoice_heading') }}</h2>
@@ -97,7 +108,7 @@
     </Card>
 
     <!-- Design -->
-    <Card>
+    <Card v-show="section === 'design'">
       <template #header>
         <Icon name="image" :size="18" class="text-[var(--ll-muted)]" />
         <h2 class="text-sm font-semibold">{{ t('settings.invoice_design_heading') }}</h2>
@@ -136,7 +147,7 @@
     </Card>
 
     <!-- Logo -->
-    <Card>
+    <Card v-show="section === 'design'">
       <template #header>
         <Icon name="image" :size="18" class="text-[var(--ll-muted)]" />
         <h2 class="text-sm font-semibold">{{ t('settings.company_logo_heading') }}</h2>
@@ -246,6 +257,16 @@ const DEFAULT_ACCENT = '#111827';
 const DEFAULT_HEADING = '#6b7280';
 
 const { success, error } = useToast();
+
+type CompanySection = 'identity' | 'bank' | 'contact' | 'invoice' | 'design';
+const section = ref<CompanySection>('identity');
+const sections: { id: CompanySection; label: string }[] = [
+  { id: 'identity', label: 'settings.company_identity_heading' },
+  { id: 'bank', label: 'settings.company_bank_heading' },
+  { id: 'contact', label: 'settings.company_contacts_heading' },
+  { id: 'invoice', label: 'settings.company_invoice_heading' },
+  { id: 'design', label: 'settings.invoice_design_heading' },
+];
 
 const form = reactive<FormState>({
   company_name: '',

@@ -65,10 +65,10 @@
 
       <!-- MONTH -->
       <div v-else-if="view === 'month'" class="flex flex-1 flex-col overflow-hidden">
-        <div class="grid grid-cols-7 border-b border-[var(--ll-border)] text-center text-[0.7rem] font-medium uppercase tracking-wide text-[var(--ll-muted)]">
+        <div class="grid w-full border-b border-[var(--ll-border)] text-center text-[0.7rem] font-medium uppercase tracking-wide text-[var(--ll-muted)]" :style="cols7">
           <div v-for="w in weekdayLabels" :key="w" class="py-2">{{ w }}</div>
         </div>
-        <div class="grid flex-1 grid-cols-7 overflow-y-auto">
+        <div class="grid w-full flex-1 overflow-y-auto" :style="cols7">
           <div
             v-for="day in monthDays" :key="ymd(day)"
             class="min-h-[96px] cursor-pointer border-b border-r border-[var(--ll-border)] p-1"
@@ -102,46 +102,53 @@
 
       <!-- WEEK -->
       <div v-else-if="view === 'week'" class="flex flex-1 flex-col overflow-hidden">
-        <div class="grid" :style="weekCols">
-          <div class="border-b border-[var(--ll-border)]" />
-          <div
-            v-for="day in weekDays" :key="'h' + ymd(day)"
-            class="border-b border-l border-[var(--ll-border)] py-2 text-center text-xs"
-            :class="isToday(day) ? 'font-semibold text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'"
-          >
-            <div>{{ day.toLocaleDateString(locale, { weekday: 'short' }) }}</div>
-            <div class="text-sm">{{ day.getDate() }}</div>
-          </div>
-        </div>
-        <!-- all-day row -->
-        <div class="grid border-b border-[var(--ll-border)]" :style="weekCols">
-          <div class="py-1 pr-1 text-right text-[10px] uppercase text-[var(--ll-muted)]">{{ t('calendar.ui.all_day') }}</div>
-          <div v-for="day in weekDays" :key="'ad' + ymd(day)" class="min-h-[28px] space-y-0.5 border-l border-[var(--ll-border)] p-0.5">
-            <button
-              v-for="o in cellEvents(day).filter((e) => e.all_day)" :key="o.id + o.start"
-              class="w-full truncate rounded px-1 py-0.5 text-left text-[11px]"
-              :style="{ backgroundColor: chipBg(o) }"
-              @click.stop="openEdit(o)"
-            >{{ o.summary || '—' }}</button>
-          </div>
-        </div>
-        <!-- hour grid -->
-        <div class="flex-1 overflow-y-auto">
-          <div class="grid" :style="weekCols">
-            <div>
-              <div v-for="h in 24" :key="'hl' + h" class="h-12 pr-1 text-right text-[10px] text-[var(--ll-muted)]">{{ hourLabel(h - 1) }}</div>
-            </div>
-            <div v-for="day in weekDays" :key="'col' + ymd(day)" class="relative border-l border-[var(--ll-border)]" @click="openCreate(ymd(day) + 'T09:00')">
-              <div v-for="h in 24" :key="'row' + h" class="h-12 border-b border-[var(--ll-border)]" />
-              <button
-                v-for="o in cellEvents(day).filter((e) => !e.all_day)" :key="o.id + o.start"
-                class="absolute inset-x-0.5 overflow-hidden rounded px-1 text-left text-[11px] leading-tight ring-1 ring-inset ring-black/5"
-                :style="{ top: occTop(o) + 'px', height: occHeight(o) + 'px', backgroundColor: chipBg(o) }"
-                @click.stop="openEdit(o)"
+        <!-- One horizontal-scroll container keeps the weekday header, the all-day
+             row and the hour grid locked to the SAME 8 tracks (gutter + 7 days). -->
+        <div class="flex flex-1 flex-col overflow-x-auto">
+          <div class="flex min-w-[720px] flex-1 flex-col">
+            <!-- weekday header -->
+            <div class="grid w-full shrink-0" :style="weekCols">
+              <div class="border-b border-[var(--ll-border)]" />
+              <div
+                v-for="day in weekDays" :key="'h' + ymd(day)"
+                class="border-b border-l border-[var(--ll-border)] py-2 text-center text-xs"
+                :class="isToday(day) ? 'font-semibold text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'"
               >
-                <div class="truncate font-medium">{{ o.summary || '—' }}</div>
-                <div class="truncate text-[10px] text-[var(--ll-muted)]">{{ timeLabel(o) }}</div>
-              </button>
+                <div>{{ day.toLocaleDateString(locale, { weekday: 'short' }) }}</div>
+                <div class="text-sm">{{ day.getDate() }}</div>
+              </div>
+            </div>
+            <!-- all-day row -->
+            <div class="grid w-full shrink-0 border-b border-[var(--ll-border)]" :style="weekCols">
+              <div class="py-1 pr-1 text-right text-[10px] uppercase text-[var(--ll-muted)]">{{ t('calendar.ui.all_day') }}</div>
+              <div v-for="day in weekDays" :key="'ad' + ymd(day)" class="min-h-[28px] space-y-0.5 border-l border-[var(--ll-border)] p-0.5">
+                <button
+                  v-for="o in cellEvents(day).filter((e) => e.all_day)" :key="o.id + o.start"
+                  class="w-full truncate rounded px-1 py-0.5 text-left text-[11px]"
+                  :style="{ backgroundColor: chipBg(o) }"
+                  @click.stop="openEdit(o)"
+                >{{ o.summary || '—' }}</button>
+              </div>
+            </div>
+            <!-- hour grid -->
+            <div class="flex-1 overflow-y-auto">
+              <div class="grid w-full" :style="weekCols">
+                <div>
+                  <div v-for="h in 24" :key="'hl' + h" class="h-12 pr-1 text-right text-[10px] text-[var(--ll-muted)]">{{ hourLabel(h - 1) }}</div>
+                </div>
+                <div v-for="day in weekDays" :key="'col' + ymd(day)" class="relative border-l border-[var(--ll-border)]" @click="openCreate(ymd(day) + 'T09:00')">
+                  <div v-for="h in 24" :key="'row' + h" class="h-12 border-b border-[var(--ll-border)]" />
+                  <button
+                    v-for="o in cellEvents(day).filter((e) => !e.all_day)" :key="o.id + o.start"
+                    class="absolute inset-x-0.5 overflow-hidden rounded px-1 text-left text-[11px] leading-tight ring-1 ring-inset ring-black/5"
+                    :style="{ top: occTop(o) + 'px', height: occHeight(o) + 'px', backgroundColor: chipBg(o) }"
+                    @click.stop="openEdit(o)"
+                  >
+                    <div class="truncate font-medium">{{ o.summary || '—' }}</div>
+                    <div class="truncate text-[10px] text-[var(--ll-muted)]">{{ timeLabel(o) }}</div>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -295,7 +302,10 @@ const weekStart = computed<number>(() => store.settings.week_start);
 const monthDays = computed<Date[]>(() => eachDayFrom(startOfWeek(startOfMonth(cursor.value), weekStart.value), endOfWeek(endOfMonth(cursor.value), weekStart.value)));
 const weekStartDay = computed<Date>(() => startOfWeek(cursor.value, weekStart.value));
 const weekDays = computed<Date[]>(() => eachDayFrom(weekStartDay.value, addDays(weekStartDay.value, 6)));
-const weekCols = { gridTemplateColumns: '3rem repeat(7, minmax(0, 1fr))' };
+// Explicit grid templates so month (7 equal cols) and week (time gutter + 7
+// equal cols) render correctly regardless of utility-class generation order.
+const cols7 = { gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' };
+const weekCols = { gridTemplateColumns: '4rem repeat(7, minmax(0, 1fr))' };
 
 const weekdayLabels = computed<string[]>(() => {
   const base = new Date(2023, 0, 1); // Sunday

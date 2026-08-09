@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-3xl">
+  <div>
     <!-- Scheduled tasks -->
     <Card class="mb-4" :body-class="'p-0'">
       <template #header>
@@ -97,7 +97,7 @@
       </template>
       <div v-if="audit.length" class="divide-y divide-[var(--ll-border)]">
         <div v-for="row in audit" :key="row.id" class="px-5 py-3">
-          <div class="text-sm">{{ row.action }}</div>
+          <div class="text-sm">{{ actionLabel(row.action) }}</div>
           <div class="mt-0.5 text-xs text-[var(--ll-muted)]">
             <span v-if="row.actor">{{ row.actor }} · </span>
             <span v-if="row.ip">{{ row.ip }} · </span>
@@ -239,6 +239,23 @@ async function resolve(err: ErrorRow) {
   } finally {
     resolving.value = null;
   }
+}
+
+/** Humanize a dotted/underscored action code, e.g. `backup.job.created` → "Backup · Job created". */
+function humanizeAction(code: string): string {
+  const parts = code.split('.').filter(Boolean);
+  if (!parts.length) return code;
+  const head = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+  const rest = parts.slice(1).join(' ').replace(/_/g, ' ').trim();
+  return rest ? `${head} · ${rest.charAt(0).toUpperCase() + rest.slice(1)}` : head;
+}
+
+/** Localized audit-action label; falls back to a humanized string when the `audit.*` key is absent. */
+function actionLabel(code: string): string {
+  if (!code) return '';
+  const key = `audit.${code}`;
+  const r = t(key);
+  return r === key ? humanizeAction(code) : r;
 }
 
 onMounted(async () => {

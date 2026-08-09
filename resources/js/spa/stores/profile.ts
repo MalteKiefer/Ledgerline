@@ -117,11 +117,12 @@ export const useProfileStore = defineStore('profile', () => {
   }
 
   // --- Two-factor authentication ---------------------------------------------
-  // The API exposes no passive "is 2FA on?" read (/me omits it). We infer state
-  // from the enrollment QR endpoint: it returns 200 ONLY while a secret exists but
-  // is unconfirmed. 404 => either off or already-confirmed (ambiguous); the enable
-  // flow resolves it (enable is idempotent on a confirmed account and the QR stays
-  // 404, revealing the account is already on).
+  // Confirmed on/off state is read from /me (auth.user.two_factor) — callers must
+  // rely on that on mount and NEVER probe the QR endpoint passively. The enrollment
+  // QR endpoint is enrollment-only: it returns 200 ONLY while a secret exists but is
+  // unconfirmed, and 404s otherwise (off or already-confirmed). Probing it on a
+  // normal load would log a spurious console 404, so twoFactorState() below is only
+  // called AFTER an explicit "Enable 2FA" (post-POST /enable), never on mount.
 
   /** GET the enrollment QR/secret. `pending:false` when 2FA is not mid-setup (404). */
   async function twoFactorState(): Promise<TwoFactorEnrollment> {

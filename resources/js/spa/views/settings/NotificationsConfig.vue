@@ -149,6 +149,14 @@ interface FormState {
 
 const { success, error } = useToast();
 
+type NotifySection = 'mail' | 'ntfy' | 'webhook';
+const section = ref<NotifySection>('mail');
+const sections: { id: NotifySection; label: string }[] = [
+  { id: 'mail', label: 'settings.notify_mail_heading' },
+  { id: 'ntfy', label: 'settings.notify_ntfy_heading' },
+  { id: 'webhook', label: 'settings.notify_webhook_heading' },
+];
+
 const encryptionItems = ['tls', 'ssl', 'none'].map((v) => ({ title: v, value: v }));
 
 const form = reactive<FormState>({

@@ -22,7 +22,7 @@
         <tbody>
           <tr v-for="item in s.audit" :key="item.id" class="border-b border-[var(--ll-border)] last:border-0">
             <td class="whitespace-nowrap px-4 py-2.5 font-mono text-xs">{{ fmtDate(item.at) }}</td>
-            <td class="px-4 py-2.5"><Badge tone="gray">{{ item.action }}</Badge></td>
+            <td class="px-4 py-2.5"><Badge tone="gray">{{ actionLabel(item.action) }}</Badge></td>
             <td class="px-4 py-2.5">{{ item.actor }}</td>
             <td class="px-4 py-2.5 font-mono text-xs">{{ item.ip }}</td>
             <td class="px-4 py-2.5">
@@ -54,6 +54,27 @@ function fmtDate(v: string | null): string {
   if (!v) return '';
   const d = new Date(v);
   return isNaN(d.getTime()) ? String(v) : d.toLocaleString(document.documentElement.lang || 'de');
+}
+
+/** Humanize a dotted/underscored action code, e.g. `backup.job.created` → "Backup · Job created". */
+function humanizeAction(code: string): string {
+  const parts = code.split('.').filter(Boolean);
+  if (!parts.length) return code;
+  const head = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+  const rest = parts.slice(1).join(' ').replace(/_/g, ' ').trim();
+  return rest ? `${head} · ${rest.charAt(0).toUpperCase() + rest.slice(1)}` : head;
+}
+
+/**
+ * Localized label for an audit action code. Tries the (not-yet-existing) `audit.*`
+ * namespace first; laravel-vue-i18n returns the key unchanged when missing, so we
+ * detect that and fall back to a humanized string.
+ */
+function actionLabel(code: string): string {
+  if (!code) return '';
+  const key = `audit.${code}`;
+  const r = t(key);
+  return r === key ? humanizeAction(code) : r;
 }
 onMounted(async () => { loading.value = true; try { await s.loadAudit(); } finally { loading.value = false; } });
 </script>

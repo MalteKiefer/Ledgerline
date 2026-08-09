@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-2xl">
+  <div>
     <Card class="mb-4">
       <template #header>
         <Icon name="security" :size="18" class="text-[var(--ll-muted)]" />
