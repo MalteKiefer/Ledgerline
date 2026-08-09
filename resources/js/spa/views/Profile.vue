@@ -23,19 +23,24 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { useRoute, RouterLink, RouterView } from 'vue-router';
 import { Icon, Card } from '@spa/ui';
+import { useAuthStore } from '@spa/stores/auth';
 
 const route = useRoute();
+const auth = useAuthStore();
 
-const sections = [
+const sections = computed(() => [
   { to: 'profile.account', icon: 'account_circle', label: 'account.nav_account' },
   { to: 'profile.appearance', icon: 'palette', label: 'account.nav_appearance' },
   { to: 'profile.security', icon: 'security', label: 'account.nav_security' },
   { to: 'profile.devices', icon: 'smartphone', label: 'account.nav_devices' },
+  // Calendar settings only surface when the calendar module is enabled for the user.
+  ...(auth.can('calendar') ? [{ to: 'profile.calendar', icon: 'calendar_month', label: 'messages.nav.calendar' }] : []),
   { to: 'profile.data', icon: 'database', label: 'account.hub_data_heading' },
-];
+]);
 
 function isActive(name: string): boolean { return route.name === name; }
 </script>

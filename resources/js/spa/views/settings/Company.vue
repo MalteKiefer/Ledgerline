@@ -115,7 +115,10 @@
       </template>
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Select v-model="form.invoice_template" :options="templateItems" :label="t('settings.invoice_template')" />
-        <TextField v-model="form.invoice_font" :label="t('settings.invoice_font')" :hint="t('settings.invoice_font_hint')" />
+        <div>
+          <Select v-model="form.invoice_font" :options="fontOptions" :label="t('settings.invoice_font')" />
+          <p class="mt-1.5 text-xs text-[var(--ll-muted)]">{{ t('settings.invoice_font_hint') }}</p>
+        </div>
 
         <label class="block">
           <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('settings.invoice_accent_color') }}</span>
@@ -320,6 +323,13 @@ const invoicePaymentTermsDaysStr = computed<string>({
 const loading = ref(true);
 const saving = ref(false);
 
+// Invoice-font options (CSS family value => label) from the company GET.
+const fonts = ref<Record<string, string>>({});
+const fontOptions = computed(() => [
+  { value: '', title: t('common.none') },
+  ...Object.entries(fonts.value).map(([value, title]) => ({ value, title })),
+]);
+
 // Logo state
 const fileInputEl = ref<HTMLInputElement | null>(null);
 const logoInput = ref<File | File[] | null>(null);
@@ -470,8 +480,9 @@ async function save() {
 
 onMounted(async () => {
   try {
-    const res = await api.get<{ company: CompanyResponse }>('/api/v1/company');
+    const res = await api.get<{ company: CompanyResponse; fonts?: Record<string, string> }>('/api/v1/company');
     apply(res.company);
+    fonts.value = res.fonts ?? {};
   } catch {
     error(t('common.error'));
   } finally {

@@ -47,6 +47,7 @@ return [
         'view_month' => 'Month',
         'view_week' => 'Week',
         'view_agenda' => 'Agenda',
+        'default_view' => 'Default view',
         'today' => 'Today',
         'no_events' => 'No events',
         'import' => 'Import .ics',

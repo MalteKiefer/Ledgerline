@@ -67,6 +67,7 @@
               <td class="px-4 py-2.5">
                 <div class="flex items-center justify-end gap-0.5">
                   <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editInvoice(item)" />
+                  <Btn variant="ghost" size="sm" icon="print" :title="t('invoices.print')" :loading="pdfBusy && printingId === item.id" @click="doPrint(item)" />
                   <Btn v-if="item.number" tag="a" variant="ghost" size="sm" icon="picture_as_pdf" :href="f.invoicePdfUrl(item.id)" target="_blank" />
                   <Btn v-if="item.number" variant="ghost" size="sm" icon="mail" :title="t('invoices.email_send')" @click="doEmail(item)" />
                   <Btn v-if="item.number" variant="ghost" size="sm" icon="gavel" :title="t('invoices.dun_send')" @click="doDun(item)" />
@@ -395,7 +396,10 @@
         </div>
       </div>
       <template #footer>
-        <Btn v-if="draft && draft.id && !draft.number" variant="soft" class="mr-auto" @click="finalize">{{ t('invoices.finalize') }}</Btn>
+        <div class="mr-auto flex items-center gap-2">
+          <Btn v-if="draft && draft.id" variant="soft" icon="print" :loading="pdfBusy" @click="doPrintDraft">{{ t('invoices.print') }}</Btn>
+          <Btn v-if="draft && draft.id && !draft.number" variant="soft" @click="finalize">{{ t('invoices.finalize') }}</Btn>
+        </div>
         <Btn variant="ghost" @click="invDialog = false">{{ t('common.cancel') }}</Btn>
         <Btn variant="solid" :loading="saving" @click="saveInvoice">{{ t('common.save') }}</Btn>
       </template>
@@ -562,17 +566,316 @@
     </Modal>
       </div>
     </div>
+
+    <!-- ============ Off-screen invoice print sheet (rasterised to PDF) ============ -->
+    <div
+      v-if="printInv"
+      id="spa-invoice-print"
+      :class="{ 'has-inv-font': !!printCompany.font }"
+      :style="[{ position: 'fixed', left: '-10000px', top: '0', width: '794px', background: '#fff', zIndex: '-1' }, printCompany.font ? { ['--inv-font']: printCompany.font } : {}]"
+    >
+      <!-- ---------- MODERN (accent band + cards) ---------- -->
+      <div v-if="printTpl === 'modern'" style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:10.5px; line-height:1.5; color:#1f2937;">
+        <div style="color:#fff; padding:22px 16mm 20px; display:flex; justify-content:space-between; align-items:flex-start; gap:20px;" :style="'background:' + printCompany.accent">
+          <div>
+            <img v-if="printCompany.logo" :src="printCompany.logo" alt="" style="max-height:40px; margin-bottom:8px;">
+            <div style="font-weight:800; font-size:16px; letter-spacing:-.01em;">{{ printCompany.name }}</div>
+            <div style="opacity:.85; font-size:9.5px; margin-top:2px;">{{ [printCompany.address ? printCompany.address.replace(/\n/g, ' · ') : '', printCompany.email, printCompany.phone].filter(Boolean).join(' · ') }}</div>
+          </div>
+          <div style="text-align:right; white-space:nowrap;">
+            <div style="font-size:26px; font-weight:800; letter-spacing:.02em; line-height:1; text-transform:uppercase;">{{ docTitle(printInv) }}</div>
+            <div style="opacity:.9; margin-top:4px;" class="tabular-nums">{{ pl('invoice_number') + ' ' + (printInv.number || '—') }}</div>
+          </div>
+        </div>
+        <div style="padding:22px 16mm 24px;">
+          <div style="display:flex; gap:14px; align-items:stretch;">
+            <div style="flex:1; background:#f5f6fb; border-radius:12px; padding:12px 14px;">
+              <div style="font-size:8px; text-transform:uppercase; letter-spacing:.1em; font-weight:700;" :style="'color:' + printCompany.heading">{{ pl('bill_to') }}</div>
+              <div style="font-weight:700; font-size:12px; margin-top:4px;">{{ printInv.customer?.name }}</div>
+              <div v-show="printInv.customer?.attn" style="color:#4b5563;">{{ printInv.customer?.attn }}</div>
+              <div style="color:#4b5563; white-space:pre-line;">{{ printInv.customer?.address }}</div>
+              <div v-show="printInv.customer?.email" style="color:#4b5563;">{{ printInv.customer?.email }}</div>
+              <div v-show="printInv.customer?.vatId" style="color:#4b5563;">{{ pl('vat_id_label') + ': ' + printInv.customer?.vatId }}</div>
+            </div>
+            <div style="width:200px; background:#f5f6fb; border-radius:12px; padding:12px 14px;">
+              <div style="display:flex; justify-content:space-between; padding:2px 0;"><span :style="'color:' + printCompany.heading">{{ pl('invoice_date') }}</span><span class="tabular-nums" style="font-weight:600;">{{ printInv.issueDate }}</span></div>
+              <div style="display:flex; justify-content:space-between; padding:2px 0;"><span :style="'color:' + printCompany.heading">{{ pl('due') }}</span><span class="tabular-nums" style="font-weight:600;">{{ printInv.dueDate }}</span></div>
+              <div v-show="printCompany.vat_id" style="display:flex; justify-content:space-between; padding:2px 0;"><span :style="'color:' + printCompany.heading">{{ pl('vat_id_label') }}</span><span class="tabular-nums">{{ printCompany.vat_id }}</span></div>
+            </div>
+          </div>
+          <table style="width:100%; margin-top:22px; border-collapse:collapse;">
+            <thead><tr style="text-align:left; font-size:8.5px; text-transform:uppercase; letter-spacing:.07em; font-weight:700;" :style="'color:' + printCompany.heading + '; border-bottom:2px solid ' + printCompany.accent">
+              <th style="padding:0 8px 8px 0;">{{ pl('line_desc') }}</th>
+              <th style="padding:0 8px 8px; text-align:right;">{{ pl('line_qty') }}</th>
+              <th style="padding:0 8px 8px; text-align:right;">{{ pl('line_price') }}</th>
+              <th style="padding:0 0 8px 8px; text-align:right;">{{ pl('amount') }}</th>
+            </tr></thead>
+            <tbody>
+              <tr v-for="(l, i) in printInv.lines" :key="i" style="border-bottom:1px solid #eef0f4;">
+                <td style="padding:9px 8px 9px 0; font-weight:500; vertical-align:top; white-space:pre-line;">{{ l.desc }}</td>
+                <td style="padding:9px 8px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ fmtQty(l.qty, printInv.lang) + (l.unit ? ' ' + l.unit : '') }}</td>
+                <td style="padding:9px 8px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ pmoney(l.unitPrice, printInv.currency, printInv.lang) }}</td>
+                <td style="padding:9px 0 9px 8px; text-align:right; white-space:nowrap; font-weight:600; vertical-align:top;" class="tabular-nums">{{ pmoney(lineNet(l), printInv.currency, printInv.lang) }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="display:flex; justify-content:flex-end; margin-top:18px;">
+            <div style="width:250px;">
+              <div style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span>{{ pl('subtotal') }}</span><span class="tabular-nums">{{ pmoney(hasDiscount(printInv) ? printTotals.grossNet : printTotals.net, printInv.currency, printInv.lang) }}</span></div>
+              <div v-show="hasDiscount(printInv)" style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span>{{ pl('discount') }}</span><span class="tabular-nums">{{ '−' + pmoney(Math.abs(printTotals.discount), printInv.currency, printInv.lang) }}</span></div>
+              <div v-for="rate in printVatRates" :key="rate" style="display:flex; justify-content:space-between; padding:3px 12px; color:#6b7280;"><span>{{ pl('vat_at').replace(':rate', String(rate)) }}</span><span class="tabular-nums">{{ pmoney(printTotals.vatByRate[rate], printInv.currency, printInv.lang) }}</span></div>
+              <div style="display:flex; justify-content:space-between; padding:10px 12px; margin-top:6px; color:#fff; border-radius:10px; font-weight:800; font-size:13px;" :style="'background:' + printCompany.accent"><span>{{ pl('gross') }}</span><span class="tabular-nums">{{ pmoney(printTotals.gross, printInv.currency, printInv.lang) }}</span></div>
+              <div v-show="printCompany.small_business" style="margin-top:8px; font-size:10px; color:#6b7280;">{{ pl('vat_kleinunternehmer_note') }}</div>
+            </div>
+          </div>
+          <div v-show="printInv.note" style="margin-top:20px;">
+            <div style="font-size:8px; text-transform:uppercase; letter-spacing:.08em; font-weight:700;" :style="'color:' + printCompany.heading">{{ pl('notes_heading') }}</div>
+            <div style="white-space:pre-line; color:#4b5563; margin-top:2px;">{{ printInv.note }}</div>
+          </div>
+          <div style="margin-top:28px; padding-top:12px; border-top:1px solid #eef0f4; display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; font-size:9px; color:#4b5563;">
+            <div v-show="printCompany.payment_terms_text"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + printCompany.heading">{{ pl('payment_terms_heading') }}</div><div style="white-space:pre-line;">{{ printCompany.payment_terms_text }}</div></div>
+            <div v-show="skontoDate(printInv)" style="margin-top:4px; font-weight:600;">{{ pl('skonto_note').replace(':percent', String(printInv.skontoPercent)).replace(':date', skontoDate(printInv)) }}</div>
+            <div v-show="printCompany.payment_methods"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + printCompany.heading">{{ pl('payment_methods_heading') }}</div><div style="white-space:pre-line;">{{ printCompany.payment_methods }}</div></div>
+            <div v-show="printCompany.bank_name || printCompany.iban"><div style="font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:8px;" :style="'color:' + printCompany.heading">{{ pl('bank_details') }}</div><div>{{ [printCompany.bank_name, printCompany.iban ? 'IBAN ' + printCompany.iban : '', printCompany.bic ? 'BIC ' + printCompany.bic : ''].filter(Boolean).join(' · ') }}</div></div>
+          </div>
+          <div v-show="printQr" style="margin-top:10px; text-align:center;"><img :src="printQr" style="width:80px; height:80px;"><div style="font-size:8px; color:#8a8a8a; margin-top:2px;">{{ pl('giro_hint') }}</div></div>
+          <div v-show="printInv.footer || printCompany.footer_text" style="margin-top:12px; text-align:center; font-size:9px; color:#6b7280; white-space:pre-line;">{{ printInv.footer || printCompany.footer_text }}</div>
+        </div>
+      </div>
+
+      <!-- ---------- ELEGANT (serif + minimal) ---------- -->
+      <div v-else-if="printTpl === 'elegant'" style="font-family:Georgia,'Times New Roman',serif; font-size:10.5px; line-height:1.55; color:#2b2b2b; padding:20mm;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; border-bottom:1px solid #222; padding-bottom:10px;">
+          <div style="font-size:16px; font-weight:700; letter-spacing:.01em;">{{ printCompany.name }}</div>
+          <div style="font-size:17px; letter-spacing:.3em; text-transform:uppercase;" :style="'color:' + printCompany.accent">{{ docTitle(printInv) }}</div>
+        </div>
+        <div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#777; font-size:8.5px; margin-top:6px; letter-spacing:.02em;">{{ [printCompany.address ? printCompany.address.replace(/\n/g, ' · ') : '', printCompany.email, printCompany.phone, printCompany.vat_id ? pl('vat_id_label') + ' ' + printCompany.vat_id : ''].filter(Boolean).join(' · ') }}</div>
+        <div style="display:flex; justify-content:space-between; gap:24px; margin-top:26px;">
+          <div>
+            <div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:8px; text-transform:uppercase; letter-spacing:.16em; color:#9a9a9a;">{{ pl('bill_to') }}</div>
+            <div style="font-weight:700; font-size:12.5px; margin-top:3px;">{{ printInv.customer?.name }}</div>
+            <div v-show="printInv.customer?.attn" style="color:#555;">{{ printInv.customer?.attn }}</div>
+            <div style="color:#555; white-space:pre-line;">{{ printInv.customer?.address }}</div>
+            <div v-show="printInv.customer?.email" style="color:#555;">{{ printInv.customer?.email }}</div>
+            <div v-show="printInv.customer?.vatId" style="color:#555;">{{ pl('vat_id_label') + ' ' + printInv.customer?.vatId }}</div>
+          </div>
+          <table style="font-size:10px; border-collapse:collapse; height:fit-content;">
+            <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; text-align:right; padding:1px 16px 1px 0; color:#9a9a9a; letter-spacing:.04em;">{{ pl('invoice_number') }}</td><td style="text-align:right; font-weight:700;" class="tabular-nums">{{ printInv.number || '—' }}</td></tr>
+            <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; text-align:right; padding:1px 16px 1px 0; color:#9a9a9a; letter-spacing:.04em;">{{ pl('invoice_date') }}</td><td style="text-align:right;" class="tabular-nums">{{ printInv.issueDate }}</td></tr>
+            <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; text-align:right; padding:1px 16px 1px 0; color:#9a9a9a; letter-spacing:.04em;">{{ pl('due') }}</td><td style="text-align:right;" class="tabular-nums">{{ printInv.dueDate }}</td></tr>
+          </table>
+        </div>
+        <table style="width:100%; margin-top:28px; border-collapse:collapse;">
+          <thead><tr style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; text-align:left; font-size:8px; text-transform:uppercase; letter-spacing:.14em; color:#9a9a9a; border-bottom:1px solid #cfcfcf;">
+            <th style="padding:0 6px 7px 0; font-weight:600;">{{ pl('line_desc') }}</th>
+            <th style="padding:0 6px 7px; text-align:right; font-weight:600;">{{ pl('line_qty') }}</th>
+            <th style="padding:0 6px 7px; text-align:right; font-weight:600;">{{ pl('line_price') }}</th>
+            <th style="padding:0 0 7px 6px; text-align:right; font-weight:600;">{{ pl('amount') }}</th>
+          </tr></thead>
+          <tbody>
+            <tr v-for="(l, i) in printInv.lines" :key="i" style="border-bottom:1px solid #ededed;">
+              <td style="padding:9px 6px 9px 0; vertical-align:top; white-space:pre-line;">{{ l.desc }}</td>
+              <td style="padding:9px 6px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ fmtQty(l.qty, printInv.lang) + (l.unit ? ' ' + l.unit : '') }}</td>
+              <td style="padding:9px 6px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ pmoney(l.unitPrice, printInv.currency, printInv.lang) }}</td>
+              <td style="padding:9px 0 9px 6px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums">{{ pmoney(lineNet(l), printInv.currency, printInv.lang) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="display:flex; justify-content:flex-end; margin-top:18px;">
+          <table style="min-width:250px; border-collapse:collapse;">
+            <tr><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;">{{ pl('subtotal') }}</td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums">{{ pmoney(hasDiscount(printInv) ? printTotals.grossNet : printTotals.net, printInv.currency, printInv.lang) }}</td></tr>
+            <tr v-show="hasDiscount(printInv)"><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;">{{ pl('discount') }}</td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums">{{ '−' + pmoney(Math.abs(printTotals.discount), printInv.currency, printInv.lang) }}</td></tr>
+            <tr v-for="rate in printVatRates" :key="rate"><td style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:3px 6px; color:#777;">{{ pl('vat_at').replace(':rate', String(rate)) }}</td><td style="padding:3px 0 3px 6px; text-align:right;" class="tabular-nums">{{ pmoney(printTotals.vatByRate[rate], printInv.currency, printInv.lang) }}</td></tr>
+            <tr style="border-top:1px solid #222;"><td style="padding:7px 6px; letter-spacing:.1em; text-transform:uppercase;" :style="'color:' + printCompany.accent">{{ pl('gross') }}</td><td style="padding:7px 0 7px 6px; text-align:right; font-weight:700; font-size:13px;" :style="'color:' + printCompany.accent" class="tabular-nums">{{ pmoney(printTotals.gross, printInv.currency, printInv.lang) }}</td></tr>
+            <tr v-show="printCompany.small_business"><td colspan="2" style="padding:6px 6px 0; font-size:10px; color:#6b7280;">{{ pl('vat_kleinunternehmer_note') }}</td></tr>
+          </table>
+        </div>
+        <div v-show="printInv.note || printInv.footer || printCompany.footer_text" style="margin-top:34px; text-align:center; font-style:italic; color:#555; white-space:pre-line;">{{ printInv.note || printInv.footer || printCompany.footer_text }}</div>
+        <div v-show="printQr" style="margin-top:16px; text-align:center;"><img :src="printQr" style="width:82px; height:82px;"><div style="font-size:8px; color:#8a8a8a; margin-top:2px;">{{ pl('giro_hint') }}</div></div>
+        <div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; margin-top:20px; padding-top:10px; border-top:1px solid #ededed; text-align:center; font-size:8.5px; color:#8a8a8a; letter-spacing:.02em;">{{ [printCompany.payment_terms_text, printCompany.payment_methods, printCompany.bank_name, printCompany.iban ? 'IBAN ' + printCompany.iban : '', printCompany.bic ? 'BIC ' + printCompany.bic : ''].filter(Boolean).join(' · ') }}</div>
+      </div>
+
+      <!-- ---------- EDITORIAL (single-ink, accent rule) ---------- -->
+      <div v-else-if="printTpl === 'editorial'" class="ie" :style="{ '--ac': printCompany.accent }">
+        <div class="ie-page">
+          <div class="ie-header">
+            <div class="ie-brand">
+              <div v-if="printCompany.logo" class="ie-logo"><img :src="printCompany.logo" alt=""></div>
+              <div v-else class="ie-brand-text"><div class="ie-co-name">{{ printCompany.name }}</div></div>
+            </div>
+            <div class="ie-doc-meta">
+              <div class="ie-doc-kind">{{ docTitle(printInv) }}</div>
+              <div class="ie-doc-no num">{{ printInv.number || '—' }}</div>
+            </div>
+          </div>
+          <div class="ie-meta-grid">
+            <div class="ie-meta-cell"><div class="ie-m-lbl">{{ pl('invoice_date') }}</div><div class="ie-m-val num">{{ printInv.issueDate }}</div></div>
+            <div class="ie-meta-cell"><div class="ie-m-lbl">{{ pl('due') }}</div><div class="ie-m-val num">{{ printInv.dueDate }}</div></div>
+            <div class="ie-meta-cell"><div class="ie-m-lbl">{{ pl('status_label') }}</div><div class="ie-m-val"><span class="ie-pill" :class="'ie-' + printInv.status">{{ statusLabelP(printInv.status) }}</span></div></div>
+          </div>
+          <div class="ie-parties">
+            <div class="ie-party">
+              <div class="ie-p-lbl">{{ pl('invoice_from') }}</div>
+              <div class="ie-p-name">{{ printCompany.name }}</div>
+              <div v-for="(ln, i) in [...(printCompany.address || '').split('\n'), [printCompany.email, printCompany.phone].filter(Boolean).join(' · '), printCompany.vat_id ? pl('vat_id_label') + ' ' + printCompany.vat_id : ''].filter(Boolean)" :key="i" class="ie-p-line">{{ ln }}</div>
+            </div>
+            <div class="ie-party">
+              <div class="ie-p-lbl">{{ pl('bill_to') }}</div>
+              <div class="ie-p-name">{{ printInv.customer?.name }}</div>
+              <div v-for="(ln, i) in [printInv.customer?.attn, ...((printInv.customer?.address || '').split('\n')), printInv.customer?.email, printInv.customer?.vatId ? pl('vat_id_label') + ' ' + printInv.customer.vatId : ''].filter(Boolean)" :key="i" class="ie-p-line">{{ ln }}</div>
+            </div>
+          </div>
+          <div class="ie-tbl-wrap">
+            <table>
+              <thead><tr>
+                <th>{{ pl('line_desc') }}</th>
+                <th class="r">{{ pl('line_qty') }}</th>
+                <th class="r">{{ pl('line_price') }}</th>
+                <th class="r">{{ pl('amount') }}</th>
+              </tr></thead>
+              <tbody>
+                <tr v-for="(l, i) in printInv.lines" :key="i">
+                  <td><div class="ie-d-title" style="white-space:pre-line;">{{ l.desc }}</div></td>
+                  <td class="r num">{{ fmtQty(l.qty, printInv.lang) + (l.unit ? ' ' + l.unit : '') }}</td>
+                  <td class="r num">{{ pmoney(l.unitPrice, printInv.currency, printInv.lang) }}</td>
+                  <td class="r num ie-amt">{{ pmoney(lineNet(l), printInv.currency, printInv.lang) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="ie-sum-area"><div class="ie-sum">
+            <div class="ie-sr"><span class="l">{{ pl('subtotal') }}</span><span class="v num">{{ pmoney(hasDiscount(printInv) ? printTotals.grossNet : printTotals.net, printInv.currency, printInv.lang) }}</span></div>
+            <div v-show="hasDiscount(printInv)" class="ie-sr"><span class="l">{{ pl('discount') }}</span><span class="v num">{{ '−' + pmoney(Math.abs(printTotals.discount), printInv.currency, printInv.lang) }}</span></div>
+            <div v-for="rate in printVatRates" :key="rate" class="ie-sr"><span class="l">{{ pl('vat_at').replace(':rate', String(rate)) }}</span><span class="v num">{{ pmoney(printTotals.vatByRate[rate], printInv.currency, printInv.lang) }}</span></div>
+            <div class="ie-grand"><span class="ie-gl">{{ pl('gross') }}</span><span class="ie-gv num">{{ pmoney(printTotals.gross, printInv.currency, printInv.lang) }}</span></div>
+            <div v-show="printCompany.small_business" style="margin-top:8px; font-size:10px; color:#6b7280;">{{ pl('vat_kleinunternehmer_note') }}</div>
+          </div></div>
+          <div v-show="printInv.footer || printCompany.footer_text" class="ie-notice">{{ printInv.footer || printCompany.footer_text }}</div>
+          <div v-show="printInv.note" class="ie-notes-area">
+            <div class="ie-n-lbl">{{ pl('notes_heading') }}</div>
+            <div class="ie-note-text">{{ printInv.note }}</div>
+          </div>
+          <div v-show="printCompany.payment_terms_text || printCompany.payment_methods || printCompany.bank_name || printCompany.iban" class="ie-pay-area">
+            <div class="ie-pay-grid">
+              <div v-show="printCompany.payment_terms_text"><div class="ie-pc-lbl">{{ pl('payment_terms_heading') }}</div><div class="ie-pc-val">{{ printCompany.payment_terms_text }}</div></div>
+              <div v-show="skontoDate(printInv)" class="ie-pc-val" style="font-weight:600;">{{ pl('skonto_note').replace(':percent', String(printInv.skontoPercent)).replace(':date', skontoDate(printInv)) }}</div>
+              <div v-show="printCompany.payment_methods"><div class="ie-pc-lbl">{{ pl('payment_methods_heading') }}</div><div class="ie-pc-val">{{ printCompany.payment_methods }}</div></div>
+              <div v-show="printCompany.bank_name || printCompany.iban"><div class="ie-pc-lbl">{{ pl('bank_details') }}</div><div class="ie-pc-val"><span>{{ printCompany.bank_name }}</span><span v-if="printCompany.iban"><br v-show="printCompany.bank_name">IBAN: <span>{{ printCompany.iban }}</span></span><span v-if="printCompany.bic"><br>BIC: <span>{{ printCompany.bic }}</span></span></div></div>
+              <div v-show="printQr"><img :src="printQr" style="width:78px; height:78px;"><div class="ie-pc-lbl" style="margin-top:2px;">{{ pl('giro_hint') }}</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="ie-foot"><strong>{{ printCompany.name }}</strong><span>{{ [printCompany.address ? ' · ' + printCompany.address.replace(/\n/g, ', ') : '', printCompany.email ? ' · ' + printCompany.email : '', printCompany.phone ? ' · ' + printCompany.phone : ''].join('') }}</span></div>
+      </div>
+
+      <!-- ---------- KLASSISCH (traditional German business sheet) ---------- -->
+      <div v-else-if="printTpl === 'klassisch'" style="font-family:Arial,'Helvetica Neue',Helvetica,sans-serif; font-size:10.5px; line-height:1.5; color:#222; padding:20mm 20mm 12mm 25mm;">
+        <table style="width:100%; border-collapse:collapse;"><tbody><tr><td style="padding:0; vertical-align:top;">
+          <div style="min-height:56px; text-align:right; margin-bottom:30px;">
+            <img v-if="printCompany.logo" :src="printCompany.logo" alt="" style="max-height:60px; display:inline-block;">
+            <div v-else style="font-size:26px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:#2c3542;">{{ printCompany.name }}</div>
+          </div>
+
+          <div style="font-size:8.5px; color:#333; border-bottom:1px solid #222; padding-bottom:2px; display:inline-block;">{{ [printCompany.name, printCompany.address ? printCompany.address.replace(/\n/g, ', ') : ''].filter(Boolean).join(', ') }}</div>
+
+          <div style="margin-top:8px; line-height:1.55;">
+            <div>{{ printInv.customer?.name }}</div>
+            <div v-show="printInv.customer?.attn">{{ printInv.customer?.attn }}</div>
+            <div style="white-space:pre-line;">{{ printInv.customer?.address }}</div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end; margin-top:44px;">
+            <div style="width:270px;">
+              <div style="font-size:15px; font-weight:700; border-bottom:1px solid #222; padding-bottom:3px; margin-bottom:5px;">{{ docTitle(printInv) }}</div>
+              <table style="width:100%; border-collapse:collapse; font-size:10px;">
+                <tr><td style="padding:1px 0; color:#333;">{{ pl('invoice_number') + ':' }}</td><td style="padding:1px 0; text-align:right;" class="tabular-nums">{{ printInv.number || '—' }}</td></tr>
+                <tr v-show="printInv.customer?.vatId"><td style="padding:1px 0; color:#333;">{{ pl('vat_id_label') + ':' }}</td><td style="padding:1px 0; text-align:right;">{{ printInv.customer?.vatId }}</td></tr>
+                <tr><td style="padding:1px 0; color:#333;">{{ pl('invoice_date') + ':' }}</td><td style="padding:1px 0; text-align:right;" class="tabular-nums">{{ printInv.issueDate }}</td></tr>
+                <tr><td style="padding:1px 0; color:#333;">{{ pl('due') + ':' }}</td><td style="padding:1px 0; text-align:right;" class="tabular-nums">{{ printInv.dueDate }}</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <table style="width:100%; margin-top:34px; border-collapse:collapse; font-size:10px;">
+            <thead><tr style="background:#ededed; text-align:left;">
+              <th style="border:1px solid #cfcfcf; padding:6px 7px; font-weight:600;">{{ pl('line_desc') }}</th>
+              <th style="border:1px solid #cfcfcf; padding:6px 7px; font-weight:600; text-align:right; white-space:nowrap;">{{ pl('line_qty') }}</th>
+              <th style="border:1px solid #cfcfcf; padding:6px 7px; font-weight:600; white-space:nowrap;">{{ pl('line_unit') }}</th>
+              <th style="border:1px solid #cfcfcf; padding:6px 7px; font-weight:600; text-align:right; white-space:nowrap;">{{ pl('line_price') }}</th>
+              <th style="border:1px solid #cfcfcf; padding:6px 7px; font-weight:600; text-align:right; white-space:nowrap;">{{ pl('amount') }}</th>
+            </tr></thead>
+            <tbody>
+              <tr v-for="(l, i) in printInv.lines" :key="i">
+                <td style="border:1px solid #cfcfcf; padding:6px 7px; vertical-align:top; white-space:pre-line;">{{ l.desc }}</td>
+                <td style="border:1px solid #cfcfcf; padding:6px 7px; text-align:right; vertical-align:top; white-space:nowrap;" class="tabular-nums">{{ fmtQty(l.qty, printInv.lang) }}</td>
+                <td style="border:1px solid #cfcfcf; padding:6px 7px; vertical-align:top; white-space:nowrap;">{{ l.unit || '' }}</td>
+                <td style="border:1px solid #cfcfcf; padding:6px 7px; text-align:right; vertical-align:top; white-space:nowrap;" class="tabular-nums">{{ pmoney(l.unitPrice, printInv.currency, printInv.lang) }}</td>
+                <td style="border:1px solid #cfcfcf; padding:6px 7px; text-align:right; vertical-align:top; white-space:nowrap;" class="tabular-nums">{{ pmoney(lineNet(l), printInv.currency, printInv.lang) }}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style="display:flex; justify-content:flex-end; margin-top:14px;">
+            <div style="width:300px; font-size:10px;">
+              <div style="display:flex; justify-content:space-between; padding:2px 0; color:#333;"><span>{{ pl('subtotal') }}</span><span class="tabular-nums">{{ pmoney(printTotals.subtotal, printInv.currency, printInv.lang) }}</span></div>
+              <div v-show="printTotals.discountAmount > 0" style="display:flex; justify-content:space-between; padding:2px 0; color:#333;"><span>{{ pl('discount') }}</span><span class="tabular-nums">{{ '−' + pmoney(printTotals.discountAmount, printInv.currency, printInv.lang) }}</span></div>
+              <div v-for="rate in printVatRates" :key="rate" style="display:flex; justify-content:space-between; padding:2px 0; color:#333;"><span>{{ pl('vat_at').replace(':rate', String(rate)) }}</span><span class="tabular-nums">{{ pmoney(printTotals.vatByRate[rate], printInv.currency, printInv.lang) }}</span></div>
+              <div style="display:flex; justify-content:space-between; padding:6px 0 2px; margin-top:2px; font-weight:700; font-size:12.5px;"><span>{{ pl('payable') }}</span><span class="tabular-nums">{{ pmoney(printTotals.gross, printInv.currency, printInv.lang) }}</span></div>
+            </div>
+          </div>
+
+          <div style="margin-top:30px; color:#333; line-height:1.55;">
+            <div v-if="printInv.note" style="white-space:pre-line;">{{ printInv.note }}</div>
+            <div v-else>
+              <div>{{ pl('thanks_line') }}</div>
+              <div>{{ pl('pay_until_line').replace(':date', printInv.dueDate || '') }}</div>
+            </div>
+            <div v-show="printInv.footer || printCompany.footer_text" style="margin-top:8px; white-space:pre-line;">{{ printInv.footer || printCompany.footer_text }}</div>
+          </div>
+
+          <div v-show="printQr" style="margin-top:20px;"><img :src="printQr" style="width:84px; height:84px;"><div style="font-size:8px; color:#666; margin-top:2px;">{{ pl('giro_hint') }}</div></div>
+        </td></tr></tbody>
+        <tfoot><tr><td style="height:24mm; padding-top:16px; vertical-align:bottom;">
+          <table class="inv-foot" style="width:100%; border-top:1px solid #cfcfcf; border-collapse:collapse; font-size:8px; color:#555; line-height:1.5;">
+            <tr style="vertical-align:top;">
+              <td style="width:34%; padding:8px 8px 0 0;">
+                <div style="font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#374151;">{{ printCompany.name }}</div>
+                <div v-show="printCompany.address" style="white-space:pre-line;">{{ printCompany.address }}</div>
+                <div v-show="printCompany.vat_id">{{ pl('vat_id_label') + ' ' + printCompany.vat_id }}</div>
+              </td>
+              <td style="width:33%; padding:8px 8px 0;">
+                <div v-show="printCompany.website">{{ printCompany.website }}</div>
+                <div v-show="printCompany.email">{{ printCompany.email }}</div>
+                <div v-show="printCompany.phone">{{ printCompany.phone }}</div>
+                <div v-for="(c, ci) in (printCompany.contacts || [])" :key="ci">{{ [c.name, c.role].filter(Boolean).join(' · ') }}</div>
+              </td>
+              <td v-show="printCompany.bank_name || printCompany.iban" style="width:33%; padding:8px 0 0 8px;">
+                <div v-show="printCompany.iban">{{ 'IBAN: ' + printCompany.iban }}</div>
+                <div v-show="printCompany.bic">{{ 'BIC: ' + printCompany.bic }}</div>
+                <div v-show="printCompany.bank_name">{{ 'Bank: ' + printCompany.bank_name }}</div>
+              </td>
+            </tr>
+          </table>
+        </td></tr></tfoot></table>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { trans as t } from 'laravel-vue-i18n';
+import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { api, VersionConflict } from '@spa/api/client';
+import {
+  type PrintInvoice, type PrintCompany, type PrintLine,
+  computeTotals as printComputeTotals, vatRatesOf as printVatRatesOf,
+  lineNet, fmtMoney as pmoney, fmtQty, hasDiscount, skontoDate,
+  epcQrDataUrl, renderInvoicePdfBlob, ensureInvoiceFonts,
+} from '@spa/shared/invoice-print';
 
 const f = useFinanceStore();
 const { success, error } = useToast();
@@ -627,7 +930,7 @@ const prjDialog = ref(false);
 interface PrjForm { id?: number; version?: number; name: string; parent_id: number | null; note: string }
 const prjForm = reactive<PrjForm>({ name: '', parent_id: null, note: '' });
 
-onMounted(async () => { await f.load(); await loadReports(); });
+onMounted(async () => { await f.load(); await loadReports(); void loadPrintCompany(); });
 
 async function loadReports(year?: number) {
   try {
@@ -929,4 +1232,200 @@ async function saveProject() {
 }
 async function delProject(p: Project) { if (!confirm(t('invoices.project_delete_confirm'))) return; await f.deleteProject(p.id); await f.load(); }
 
+// ---- Invoice PDF generation (client-side, ported from the Blade print pipeline) ----
+interface CompanyProfile {
+  company_name?: string | null; company_address?: string | null; company_email?: string | null;
+  company_phone?: string | null; company_vat_id?: string | null; company_iban?: string | null;
+  company_bic?: string | null; company_bank_name?: string | null; company_website?: string | null;
+  company_contacts?: { name?: string; role?: string; email?: string; phone?: string }[] | null;
+  invoice_accent_color?: string | null; invoice_heading_color?: string | null;
+  invoice_template?: string | null; invoice_font?: string | null; invoice_footer_text?: string | null;
+  invoice_payment_terms_text?: string | null; invoice_payment_methods?: string | null;
+  small_business?: boolean; has_logo?: boolean;
+}
+
+const printCompany = reactive<PrintCompany>({
+  name: '', address: '', email: '', phone: '', vat_id: '', iban: '', bic: '', bank_name: '',
+  website: '', contacts: [], logo: null, accent: '#111827', heading: '#6b7280',
+  template: 'editorial', font: '', footer_text: '', payment_terms_text: '', payment_methods: '',
+  small_business: false, currency: 'EUR',
+});
+const pdfBusy = ref(false);
+const printingId = ref<number | null>(null);
+const printInv = ref<PrintInvoice | null>(null);
+const printQr = ref('');
+
+// The current invoice's template (schlicht is rendered with the elegant sheet).
+const printTpl = computed(() => (printCompany.template === 'schlicht' ? 'elegant' : (printCompany.template || 'editorial')));
+const printTotals = computed(() => printComputeTotals(printInv.value));
+const printVatRates = computed(() => printVatRatesOf(printInv.value, printCompany.small_business));
+
+async function loadPrintCompany() {
+  try {
+    const res = await api.get<{ company: CompanyProfile }>('/api/v1/company');
+    const c = res.company ?? {};
+    Object.assign(printCompany, {
+      name: c.company_name ?? '', address: c.company_address ?? '', email: c.company_email ?? '',
+      phone: c.company_phone ?? '', vat_id: c.company_vat_id ?? '', iban: c.company_iban ?? '',
+      bic: c.company_bic ?? '', bank_name: c.company_bank_name ?? '', website: c.company_website ?? '',
+      contacts: Array.isArray(c.company_contacts) ? c.company_contacts : [],
+      accent: c.invoice_accent_color || '#111827', heading: c.invoice_heading_color || '#6b7280',
+      template: c.invoice_template || 'editorial', font: c.invoice_font || '',
+      footer_text: c.invoice_footer_text ?? '', payment_terms_text: c.invoice_payment_terms_text ?? '',
+      payment_methods: c.invoice_payment_methods ?? '', small_business: !!c.small_business, currency: 'EUR',
+    });
+    if (c.has_logo) void loadPrintLogo();
+  } catch { /* ignore — printing still works without company defaults */ }
+}
+async function loadPrintLogo() {
+  try {
+    const res = await fetch(api.streamUrl('/api/v1/company/logo'));
+    if (!res.ok) return;
+    const blob = await res.blob();
+    printCompany.logo = await new Promise<string>((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result));
+      fr.onerror = () => reject(fr.error);
+      fr.readAsDataURL(blob);
+    });
+  } catch { /* ignore */ }
+}
+
+const printLang = (): 'de' | 'en' => (getActiveLanguage() === 'en' ? 'en' : 'de');
+const PL_FALLBACK: Record<'de' | 'en', Record<string, string>> = {
+  de: { print_title_credit: 'Gutschrift', thanks_line: 'Vielen Dank für Ihren Auftrag.', pay_until_line: 'Bitte überweisen Sie den Betrag bis zum :date.' },
+  en: { print_title_credit: 'Credit note', thanks_line: 'Thank you for your business.', pay_until_line: 'Please transfer the amount by :date.' },
+};
+// Print label: the invoices.* key, with a fallback for the few print keys not in the lang files.
+function pl(key: string): string {
+  const full = 'invoices.' + key;
+  const s = t(full);
+  if (s && s !== full && s !== key) return s;
+  return PL_FALLBACK[printLang()][key] ?? key;
+}
+function docTitle(inv: PrintInvoice | null): string { return pl(inv?.type === 'credit_note' ? 'print_title_credit' : 'print_title'); }
+function statusLabelP(s: string): string { return t('invoices.status_' + s); }
+
+function readCustomer(c: Record<string, unknown> | null | undefined) {
+  const o = (c ?? {}) as Record<string, unknown>;
+  const str = (v: unknown): string => (v == null ? '' : String(v));
+  return { name: str(o.name), attn: str(o.attn), address: str(o.address), email: str(o.email), vatId: str(o.vatId ?? o.vat_id) };
+}
+function toPrintLine(l: InvoiceLine & { unit?: string }): PrintLine {
+  return { desc: String(l.desc ?? ''), qty: Number(l.qty) || 0, unit: l.unit ? String(l.unit) : '', unitPrice: Number(l.unitPrice) || 0, vatRate: Number(l.vatRate) || 0 };
+}
+function buildPrintInvoice(src: Partial<Invoice>, lineRows: (InvoiceLine & { unit?: string })[], customerName?: string): PrintInvoice {
+  const cust = readCustomer(src.customer as Record<string, unknown> | null);
+  if (customerName != null) cust.name = customerName;
+  return {
+    number: src.number ?? null,
+    status: src.status ?? 'draft',
+    type: src.type ?? 'invoice',
+    issueDate: String(src.issue_date ?? '').slice(0, 10),
+    dueDate: String(src.due_date ?? '').slice(0, 10),
+    currency: src.currency || 'EUR',
+    lang: printLang(),
+    customer: cust,
+    lines: (lineRows ?? []).map(toPrintLine),
+    note: src.note ?? '',
+    footer: '',
+    imported: !!src.imported,
+    gross: src.gross ?? null,
+    vatRate: src.vat_rate ?? null,
+    discountType: null, discountValue: null, skontoPercent: null, skontoDays: null,
+  };
+}
+
+async function generateAndUpload(snap: PrintInvoice, id: number) {
+  pdfBusy.value = true;
+  printingId.value = id;
+  try {
+    await ensureInvoiceFonts();
+    printQr.value = await epcQrDataUrl(snap, printCompany, printComputeTotals(snap));
+    printInv.value = snap;
+    await nextTick();
+    await new Promise((r) => setTimeout(r, 80));
+    const node = document.getElementById('spa-invoice-print');
+    if (!node) { printInv.value = null; return; }
+    const blob = await renderInvoicePdfBlob(node);
+    printInv.value = null;
+    const fd = new FormData();
+    fd.append('file', new File([blob], `${snap.number || 'invoice'}.pdf`, { type: 'application/pdf' }));
+    await api.upload(`/api/v1/finance/invoices/${id}/pdf`, fd);
+    await f.load();
+    success(t('common.saved'));
+    window.open(f.invoicePdfUrl(id), '_blank', 'noopener');
+  } catch { printInv.value = null; error(t('common.error')); }
+  finally { pdfBusy.value = false; printingId.value = null; }
+}
+// Generate + upload the PDF for a list-row invoice.
+async function doPrint(inv: Invoice) {
+  await generateAndUpload(buildPrintInvoice(inv, (Array.isArray(inv.lines) ? inv.lines : []) as InvoiceLine[]), inv.id);
+}
+// Generate + upload the PDF for the invoice open in the editor (uses on-screen edits).
+async function doPrintDraft() {
+  if (!draft.value?.id) return;
+  await generateAndUpload(buildPrintInvoice(draft.value, lines.value, custName_.value), draft.value.id);
+}
+
 </script>
+
+<!-- Editorial invoice-template styles (scope-prefixed to the off-screen print sheet;
+     rasterised by html2canvas). Ported from resources/views/invoices/index.blade.php. -->
+<style>
+#spa-invoice-print.has-inv-font, #spa-invoice-print.has-inv-font * { font-family: var(--inv-font) !important; }
+#spa-invoice-print .ie { font-family:'Inter','SF Pro Text',system-ui,-apple-system,sans-serif; color:#313a4a; background:#fff; font-size:10px; line-height:1.55; --ink:#0b1220; --body:#313a4a; --soft:#5d6878; --faint:#97a1b1; --hair:#e6eaef; --wash:#f6f8fb; }
+#spa-invoice-print .ie .num { font-variant-numeric:tabular-nums; }
+#spa-invoice-print .ie-page { padding:46px 56px 78px; }
+#spa-invoice-print .ie-header { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:20px; margin-bottom:26px; border-bottom:1px solid var(--ink); position:relative; }
+#spa-invoice-print .ie-header::after { content:""; position:absolute; left:0; bottom:-1px; width:96px; height:2px; background:var(--ac); }
+#spa-invoice-print .ie-brand { display:flex; align-items:center; gap:16px; }
+#spa-invoice-print .ie-logo img { height:52px; display:block; }
+#spa-invoice-print .ie-co-name { font-size:14px; font-weight:600; color:var(--ink); letter-spacing:-0.2px; }
+#spa-invoice-print .ie-doc-meta { text-align:right; }
+#spa-invoice-print .ie-doc-kind { font-size:9px; font-weight:600; letter-spacing:3.5px; text-transform:uppercase; color:var(--faint); }
+#spa-invoice-print .ie-doc-no { font-size:28px; font-weight:600; color:var(--ink); letter-spacing:-0.8px; margin-top:6px; line-height:1; }
+#spa-invoice-print .ie-meta-grid { display:grid; grid-template-columns:repeat(3,1fr); margin-bottom:26px; border-top:1px solid var(--hair); border-bottom:1px solid var(--hair); }
+#spa-invoice-print .ie-meta-cell { padding:11px 18px 11px 0; border-right:1px solid var(--hair); }
+#spa-invoice-print .ie-meta-cell:last-child { border-right:none; padding-right:0; }
+#spa-invoice-print .ie-meta-cell:not(:first-child) { padding-left:18px; }
+#spa-invoice-print .ie-m-lbl { font-size:7.5px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--faint); margin-bottom:5px; }
+#spa-invoice-print .ie-m-val { font-size:11px; font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
+#spa-invoice-print .ie-pill { display:inline-block; padding:2px 10px; border-radius:2px; font-size:8px; font-weight:700; letter-spacing:1px; text-transform:uppercase; background:var(--ink); color:#fff; }
+#spa-invoice-print .ie-pill.ie-paid { background:#0f7a4d; }
+#spa-invoice-print .ie-pill.ie-final { background:#c07d1a; }
+#spa-invoice-print .ie-pill.ie-draft { background:var(--faint); }
+#spa-invoice-print .ie-parties { display:grid; grid-template-columns:1fr 1fr; gap:56px; margin-bottom:30px; }
+#spa-invoice-print .ie-p-lbl { font-size:7.5px; font-weight:600; letter-spacing:1.6px; text-transform:uppercase; color:var(--faint); padding-bottom:8px; margin-bottom:14px; border-bottom:1px solid var(--hair); }
+#spa-invoice-print .ie-p-name { font-size:15px; font-weight:600; color:var(--ink); margin-bottom:8px; letter-spacing:-0.2px; line-height:1.25; }
+#spa-invoice-print .ie-p-line { font-size:9.5px; color:var(--soft); line-height:1.85; }
+#spa-invoice-print .ie-tbl-wrap { margin-bottom:22px; }
+#spa-invoice-print .ie table { width:100%; border-collapse:collapse; }
+#spa-invoice-print .ie thead th { padding:9px 0; font-size:7.5px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--faint); text-align:left; border-bottom:1.5px solid var(--ink); border-top:1px solid var(--hair); }
+#spa-invoice-print .ie thead th.r { text-align:right; }
+#spa-invoice-print .ie thead th:not(:first-child) { padding-left:16px; }
+#spa-invoice-print .ie tbody tr { page-break-inside:avoid; }
+#spa-invoice-print .ie tbody td { padding:11px 0; vertical-align:top; border-bottom:1px solid var(--hair); font-size:10px; }
+#spa-invoice-print .ie tbody td:not(:first-child) { padding-left:16px; }
+#spa-invoice-print .ie td.r { text-align:right; font-variant-numeric:tabular-nums; }
+#spa-invoice-print .ie-d-title { font-weight:600; color:var(--ink); font-size:10.5px; line-height:1.45; }
+#spa-invoice-print .ie-amt { font-weight:600; color:var(--ink); }
+#spa-invoice-print .ie-sum-area { display:flex; justify-content:flex-end; margin-bottom:26px; }
+#spa-invoice-print .ie-sum { width:340px; }
+#spa-invoice-print .ie-sr { display:flex; justify-content:space-between; padding:8px 0; font-size:10px; border-bottom:1px solid var(--hair); }
+#spa-invoice-print .ie-sr .l { color:var(--soft); }
+#spa-invoice-print .ie-sr .v { font-variant-numeric:tabular-nums; color:var(--ink); font-weight:500; }
+#spa-invoice-print .ie-grand { display:flex; justify-content:space-between; align-items:baseline; padding:14px 0 8px; border-top:2px solid var(--ink); margin-top:6px; }
+#spa-invoice-print .ie-gl { font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:2.4px; color:var(--ink); }
+#spa-invoice-print .ie-gv { font-size:26px; font-weight:600; color:var(--ink); letter-spacing:-0.6px; font-variant-numeric:tabular-nums; line-height:1; }
+#spa-invoice-print .ie-notes-area { margin-bottom:20px; }
+#spa-invoice-print .ie-n-lbl { font-size:7.5px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--faint); margin-bottom:10px; }
+#spa-invoice-print .ie-note-text { font-size:10px; color:var(--soft); line-height:1.7; max-width:480px; white-space:pre-line; }
+#spa-invoice-print .ie-notice { font-size:8.5px; color:var(--faint); margin-bottom:22px; line-height:1.65; max-width:520px; white-space:pre-line; }
+#spa-invoice-print .ie-pay-area { margin-top:26px; }
+#spa-invoice-print .ie-pay-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:32px; padding-top:18px; border-top:1px solid var(--hair); }
+#spa-invoice-print .ie-pc-lbl { font-size:7.5px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--faint); margin-bottom:8px; }
+#spa-invoice-print .ie-pc-val { font-size:9.5px; color:var(--ink); line-height:1.75; font-variant-numeric:tabular-nums; white-space:pre-line; }
+#spa-invoice-print .ie-foot { text-align:center; font-size:7.5px; color:var(--faint); padding:14px 64px; line-height:1.8; border-top:1px solid var(--hair); background:#fff; letter-spacing:0.2px; }
+#spa-invoice-print .ie-foot strong { color:var(--ink); font-weight:600; }
+</style>

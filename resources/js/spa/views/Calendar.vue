@@ -30,9 +30,9 @@
         <div v-if="!store.calendars.length" class="px-2 py-3 text-xs text-[var(--ll-muted)]">{{ t('calendar.ui.no_events') }}</div>
       </nav>
       <div class="space-y-2 border-t border-[var(--ll-border)] p-3">
-        <div class="flex gap-2">
-          <Btn variant="soft" size="sm" icon="upload" block @click="openImport">{{ t('calendar.ui.import') }}</Btn>
-          <Btn variant="soft" size="sm" icon="download" tag="a" block :href="exportHref" :title="t('calendar.ui.export')">{{ t('calendar.ui.export') }}</Btn>
+        <div class="flex flex-col gap-2">
+          <Btn variant="outline" size="sm" icon="upload" class="w-full justify-start" @click="openImport">{{ t('calendar.ui.import') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="download" tag="a" class="w-full justify-start" :href="exportHref" :title="t('calendar.ui.export')">{{ t('calendar.ui.export') }}</Btn>
         </div>
         <Select v-model="weekStartModel" :label="t('calendar.ui.week_start')" :options="weekStartOptions" />
       </div>

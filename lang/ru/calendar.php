@@ -47,6 +47,7 @@ return [
         'view_month' => 'Месяц',
         'view_week' => 'Неделя',
         'view_agenda' => 'Повестка',
+        'default_view' => 'Вид по умолчанию',
         'today' => 'Сегодня',
         'no_events' => 'Нет событий',
         'import' => 'Импорт .ics',

@@ -25,6 +25,7 @@ const routes: RouteRecordRaw[] = [
           { path: 'appearance', name: 'profile.appearance', component: () => import('@spa/views/profile/Appearance.vue') },
           { path: 'security', name: 'profile.security', component: () => import('@spa/views/profile/Security.vue') },
           { path: 'devices', name: 'profile.devices', component: () => import('@spa/views/profile/Devices.vue') },
+          { path: 'calendar', name: 'profile.calendar', component: () => import('@spa/views/profile/Calendar.vue') },
           { path: 'data', name: 'profile.data', component: () => import('@spa/views/profile/Data.vue') },
         ],
       },

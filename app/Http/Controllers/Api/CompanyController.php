@@ -33,10 +33,13 @@ class CompanyController extends Controller
         'company_website', 'company_contacts', 'invoice_font', 'invoice_vat_ist',
     ];
 
-    /** Return the caller's company profile. */
+    /** Return the caller's company profile + the invoice-font option map (value => label). */
     public function show(Request $request): JsonResponse
     {
-        return response()->json(['company' => $this->present(UserSetting::for($this->requireUser($request)->id))]);
+        return response()->json([
+            'company' => $this->present(UserSetting::for($this->requireUser($request)->id)),
+            'fonts' => (array) config('fonts.families'),
+        ]);
     }
 
     /** Update the caller's company profile (JSON fields; optional multipart logo). */
