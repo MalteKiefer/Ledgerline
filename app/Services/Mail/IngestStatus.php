@@ -21,4 +21,7 @@ enum IngestStatus: string
     // skip_spam on: not archived (the immutable archive never receives spam).
     // The local Maildir copy is unlinked; the origin mailbox is untouched.
     case SkippedSpam = 'skipped_spam';
+    // A user ingest rule with the "skip" action matched: not archived. The
+    // local Maildir copy is unlinked; the origin mailbox is untouched.
+    case SkippedRule = 'skipped_rule';
 }

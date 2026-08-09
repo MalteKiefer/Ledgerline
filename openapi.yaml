@@ -1420,7 +1420,50 @@ components:
         html: { type: [string, "null"], description: "Server-sanitised HTML (show only)." }
         headers_raw: { type: [string, "null"], description: "Raw RFC822 header block (show only)." }
         attachments: { type: array, description: "show only.", items: { $ref: '#/components/schemas/MailAttachment' } }
+        labels: { type: array, items: { $ref: '#/components/schemas/MailLabel' } }
       required: [id, folder, size, seen, trashed]
+
+    MailLabel:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        color: { type: string }
+        message_count: { type: integer, description: "index only." }
+      required: [id, name, color]
+
+    MailRule:
+      type: object
+      description: "A sieve-lite ingest rule (matched at ingest)."
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        enabled: { type: boolean }
+        priority: { type: integer }
+        match:
+          type: object
+          properties:
+            from: { type: [string, "null"] }
+            to: { type: [string, "null"] }
+            subject: { type: [string, "null"] }
+            folder: { type: [string, "null"] }
+            has_attachment: { type: [boolean, "null"] }
+        action:
+          type: object
+          properties:
+            add_label: { type: [integer, "null"] }
+            mark_read: { type: [boolean, "null"] }
+            trash: { type: [boolean, "null"] }
+            skip: { type: [boolean, "null"] }
+      required: [id, name, enabled, priority]
+
+    MailSavedSearch:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        filters: { type: object, additionalProperties: true }
+      required: [id, name]
 
     MailAttachment:
       type: object
@@ -6146,6 +6189,7 @@ paths:
         - { name: seen, in: query, required: false, schema: { type: boolean } }
         - { name: spam, in: query, required: false, schema: { type: boolean } }
         - { name: thread_id, in: query, required: false, schema: { type: string } }
+        - { name: label, in: query, required: false, schema: { type: integer }, description: "Filter by label id." }
         - { name: q, in: query, required: false, schema: { type: string }, description: "Full-text query." }
         - { name: from, in: query, required: false, schema: { type: string, format: date }, description: "Date-range start (message Date)." }
         - { name: to, in: query, required: false, schema: { type: string, format: date } }
@@ -6471,6 +6515,235 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/messages/labels:
+    post:
+      tags: [Mail]
+      operationId: mailMessagesLabels
+      summary: Bulk attach / detach labels across messages
+      description: "Throttle 120/min. Owner-scoped; only the caller's messages + labels are touched."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids: { type: array, maxItems: 1000, items: { type: string, format: uuid } }
+                add: { type: array, items: { type: integer } }
+                remove: { type: array, items: { type: integer } }
+              required: [ids]
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { updated: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/labels:
+    get:
+      tags: [Mail]
+      operationId: mailLabelsIndex
+      summary: List labels (with message counts)
+      responses:
+        "200": { description: Labels., content: { application/json: { schema: { type: object, properties: { labels: { type: array, items: { $ref: '#/components/schemas/MailLabel' } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Mail]
+      operationId: mailLabelsStore
+      summary: Create a label
+      description: "Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 100 }
+                color: { type: [string, "null"], description: "Hex color." }
+              required: [name]
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { label: { $ref: '#/components/schemas/MailLabel' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/labels/{label}:
+    put:
+      tags: [Mail]
+      operationId: mailLabelsUpdate
+      summary: Rename / recolor a label
+      description: "Throttle 60/min."
+      parameters: [{ name: label, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { name: { type: string }, color: { type: [string, "null"] } }, required: [name] }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { label: { $ref: '#/components/schemas/MailLabel' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Mail]
+      operationId: mailLabelsDestroy
+      summary: Delete a label
+      description: "Throttle 60/min."
+      parameters: [{ name: label, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/rules:
+    get:
+      tags: [Mail]
+      operationId: mailRulesIndex
+      summary: List ingest rules
+      responses:
+        "200": { description: Rules., content: { application/json: { schema: { type: object, properties: { rules: { type: array, items: { $ref: '#/components/schemas/MailRule' } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Mail]
+      operationId: mailRulesStore
+      summary: Create an ingest rule
+      description: "Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MailRule' }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { rule: { $ref: '#/components/schemas/MailRule' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/rules/{rule}:
+    put:
+      tags: [Mail]
+      operationId: mailRulesUpdate
+      summary: Update an ingest rule
+      description: "Throttle 60/min."
+      parameters: [{ name: rule, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MailRule' }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { rule: { $ref: '#/components/schemas/MailRule' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Mail]
+      operationId: mailRulesDestroy
+      summary: Delete an ingest rule
+      description: "Throttle 60/min."
+      parameters: [{ name: rule, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/saved-searches:
+    get:
+      tags: [Mail]
+      operationId: mailSavedSearchesIndex
+      summary: List saved searches
+      responses:
+        "200": { description: Saved searches., content: { application/json: { schema: { type: object, properties: { saved_searches: { type: array, items: { $ref: '#/components/schemas/MailSavedSearch' } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Mail]
+      operationId: mailSavedSearchesStore
+      summary: Create a saved search
+      description: "Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { name: { type: string }, filters: { type: object, additionalProperties: true } }, required: [name, filters] }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { saved_search: { $ref: '#/components/schemas/MailSavedSearch' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/saved-searches/{search}:
+    delete:
+      tags: [Mail]
+      operationId: mailSavedSearchesDestroy
+      summary: Delete a saved search
+      description: "Throttle 60/min."
+      parameters: [{ name: search, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/export:
+    post:
+      tags: [Mail]
+      operationId: mailExport
+      summary: Export messages as .mbox or a ZIP of .eml
+      description: >
+        Throttle 30/min. Owner-scoped. Selection = ids[] OR folder OR label.
+        format=mbox streams an mboxrd file; format=zip a ZIP of .eml files.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                format: { type: string, enum: [mbox, zip] }
+                ids: { type: array, items: { type: string, format: uuid } }
+                folder: { type: [string, "null"] }
+                label: { type: [integer, "null"] }
+              required: [format]
+      responses:
+        "200":
+          description: Export stream.
+          content:
+            application/mbox: { schema: { type: string, format: binary } }
+            application/zip: { schema: { type: string, format: binary } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/stats:
+    get:
+      tags: [Mail]
+      operationId: mailStats
+      summary: Storage stats (totals + per account/folder)
+      description: "Throttle 120/min. Owner-scoped."
+      responses:
+        "200":
+          description: Stats.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_messages: { type: integer }
+                  total_bytes: { type: integer }
+                  per_account: { type: array, items: { type: object, properties: { account_id: { type: [integer, "null"] }, count: { type: integer }, bytes: { type: integer } } } }
+                  per_folder: { type: array, items: { type: object, properties: { account_id: { type: [integer, "null"] }, folder: { type: string }, count: { type: integer }, bytes: { type: integer } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /mail/raw/{blob}:
     get:

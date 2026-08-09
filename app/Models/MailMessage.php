@@ -8,6 +8,7 @@ use App\Models\Concerns\AssignsOwner;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
@@ -107,5 +108,11 @@ class MailMessage extends Model
     public function attachments(): HasMany
     {
         return $this->hasMany(MailAttachment::class, 'message_id');
+    }
+
+    /** @return BelongsToMany<MailLabel, $this> */
+    public function labels(): BelongsToMany
+    {
+        return $this->belongsToMany(MailLabel::class, 'mail_label_message', 'mail_message_id', 'mail_label_id');
     }
 }

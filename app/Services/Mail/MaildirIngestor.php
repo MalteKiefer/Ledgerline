@@ -7,11 +7,17 @@ namespace App\Services\Mail;
 use App\Models\MailAccount;
 use App\Models\MailAttachment;
 use App\Models\MailBlob;
+use App\Models\MailLabel;
 use App\Models\MailMessage;
+use App\Models\MailRule;
+use App\Services\Files\FileTextIndex;
 use App\Support\BlobStore;
 use App\Support\Mail\MailHtmlSanitizer;
 use App\Support\Mail\MimeParser;
+use App\Support\Mail\RuleEvaluator;
 use App\Support\Mail\SpamHeaders;
+use App\Support\Mail\ThreadId;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -56,10 +62,19 @@ class MaildirIngestor
     /** Cap the stored full-text search string (the body can be large). */
     private const SEARCH_TEXT_MAX = 200_000;
 
+    /** Max attachments per message we OCR/extract text from into the index. */
+    private const OCR_ATTACHMENTS_MAX = 3;
+
+    /** Per-user enabled-rule cache for one ingestFolder run (avoids N queries). */
+    /** @var array<int, Collection<int, MailRule>> */
+    private array $rulesCache = [];
+
     public function __construct(
         private readonly MimeParser $parser = new MimeParser,
         private readonly MailHtmlSanitizer $sanitizer = new MailHtmlSanitizer,
         private readonly MailDecryptor $decryptor = new MailDecryptor,
+        private readonly RuleEvaluator $ruleEvaluator = new RuleEvaluator,
+        private readonly FileTextIndex $textIndex = new FileTextIndex,
     ) {}
 
     /**
@@ -143,7 +158,27 @@ class MaildirIngestor
         }
         $attachmentCount = $decrypt->status === 'ok' ? count($attachments) : $parsed->attachmentCount;
         $htmlSanitized = $this->sanitizer->sanitize($htmlBody);
-        $searchText = $this->buildSearchText($parsed, $textBody, $attachments);
+
+        // Ingest rules (sieve-lite): match the parsed envelope; a "skip" action
+        // drops the message (like spam), the rest adjust how it is stored.
+        $rule = $this->ruleEvaluator->evaluate(
+            $this->rulesFor((int) $account->user_id),
+            [
+                'from' => trim(($parsed->fromName ?? '').' '.($parsed->fromEmail ?? '')),
+                'to' => $this->addressText($parsed),
+                'subject' => (string) $parsed->subject,
+                'folder' => $folder,
+                'has_attachment' => $attachmentCount > 0,
+            ],
+        );
+        if ($rule['skip']) {
+            @unlink($path);
+
+            return IngestResult::skippedRule($hash);
+        }
+
+        $threadId = ThreadId::for($parsed->references, $parsed->inReplyTo, $parsed->messageId, $parsed->subject);
+        $searchText = $this->buildSearchText($parsed, $textBody, $attachments, $this->attachmentText($attachments));
 
         // The message's own id doubles as the raw blob's primary key: one fresh
         // UUID names both `mail/{id}` on disk and the mail_messages row. A client
@@ -169,10 +204,11 @@ class MaildirIngestor
         }
 
         // Origin \Seen state from the Maildir filename flags (cur/ carries
-        // ":2,<flags>" where S = Seen; new/ files are unseen).
-        $seen = $this->maildirSeen($path);
+        // ":2,<flags>" where S = Seen; new/ files are unseen). A mark_read rule
+        // forces seen; a trash rule stores the message soft-hidden.
+        $seen = $this->maildirSeen($path) || $rule['mark_read'];
 
-        DB::transaction(function () use ($account, $folder, $hash, $rawSize, $blobId, $seen, $spam, $parsed, $textBody, $htmlSanitized, $searchText, $attachmentBlobs, $attachmentCount, $decrypt): void {
+        DB::transaction(function () use ($account, $folder, $hash, $rawSize, $blobId, $seen, $spam, $parsed, $textBody, $htmlSanitized, $searchText, $attachmentBlobs, $attachmentCount, $decrypt, $threadId, $rule): void {
             // Hour-snapped archived-at (mirrors every other module's created_at).
             $now = now()->startOfHour();
 
@@ -184,7 +220,8 @@ class MaildirIngestor
                 'created_at' => $now,
             ])->save();
 
-            (new MailMessage)->forceFill([
+            $message = new MailMessage;
+            $message->forceFill([
                 'id' => $blobId,
                 'user_id' => $account->user_id,
                 'account_id' => $account->id,
@@ -194,6 +231,7 @@ class MaildirIngestor
                 'message_id' => $this->cap($parsed->messageId, 255),
                 'in_reply_to' => $this->cap($parsed->inReplyTo, 255),
                 'references' => $parsed->references,
+                'thread_id' => $threadId,
                 'subject' => $parsed->subject,
                 'from_name' => $this->cap($parsed->fromName, 255),
                 'from_email' => $this->cap($parsed->fromEmail, 255),
@@ -213,10 +251,12 @@ class MaildirIngestor
                 'decrypt_status' => $decrypt->status,
                 'seen' => $seen,
                 'seen_at' => null,
+                'trashed_at' => $rule['trash'] ? $now : null,
                 'created_at' => $now,
                 'search_text' => $searchText,
                 'indexed_at' => $now,
-            ])->save();
+            ]);
+            $message->save();
 
             foreach ($attachmentBlobs as $entry) {
                 $attachment = $entry['attachment'];
@@ -242,6 +282,18 @@ class MaildirIngestor
                     'created_at' => $now,
                 ])->save();
             }
+
+            // Ingest-rule labels: only labels the user actually owns.
+            if ($rule['label_ids'] !== []) {
+                $ownLabelIds = MailLabel::query()
+                    ->ownedBy($account->user_id)
+                    ->whereIn('id', $rule['label_ids'])
+                    ->pluck('id')
+                    ->all();
+                if ($ownLabelIds !== []) {
+                    $message->labels()->syncWithoutDetaching($ownLabelIds);
+                }
+            }
         });
 
         // Ledger row committed → the Maildir plaintext is redundant. Shred it.
@@ -261,11 +313,11 @@ class MaildirIngestor
      * loop — the remaining valid messages are still archived, and nothing that
      * failed is lost (its Maildir file stays for a retry, or was quarantined).
      *
-     * @return array{stored:int, duplicate:int, quarantined:int, skipped_old:int, skipped_spam:int, failed:int}
+     * @return array{stored:int, duplicate:int, quarantined:int, skipped_old:int, skipped_spam:int, skipped_rule:int, failed:int}
      */
     public function ingestFolder(MailAccount $account, string $folder, string $maildirPath): array
     {
-        $summary = ['stored' => 0, 'duplicate' => 0, 'quarantined' => 0, 'skipped_old' => 0, 'skipped_spam' => 0, 'failed' => 0];
+        $summary = ['stored' => 0, 'duplicate' => 0, 'quarantined' => 0, 'skipped_old' => 0, 'skipped_spam' => 0, 'skipped_rule' => 0, 'failed' => 0];
 
         foreach (['cur', 'new'] as $sub) {
             $dir = rtrim($maildirPath, '/').'/'.$sub;
@@ -303,6 +355,63 @@ class MaildirIngestor
     }
 
     /**
+     * The user's enabled ingest rules (priority order), cached per user for the
+     * duration of one ingestFolder run so a big mailbox doesn't re-query per file.
+     *
+     * @return Collection<int, MailRule>
+     */
+    private function rulesFor(int $userId): Collection
+    {
+        return $this->rulesCache[$userId] ??= MailRule::query()
+            ->ownedBy($userId)
+            ->where('enabled', true)
+            ->orderBy('priority')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /** Combined recipient text (to + cc, names + emails) for rule matching. */
+    private function addressText(ParsedMessage $parsed): string
+    {
+        $parts = [];
+        foreach ([...$parsed->to, ...$parsed->cc] as $addr) {
+            $parts[] = $addr['name'];
+            $parts[] = $addr['email'];
+        }
+
+        return trim(implode(' ', array_filter($parts, static fn (?string $p): bool => $p !== null && $p !== '')));
+    }
+
+    /**
+     * Best-effort OCR/text extraction of the first few PDF/image attachments,
+     * folded into the search index. Bounded (count + FileTextIndex's own size /
+     * timeout caps); any failure is silently skipped.
+     *
+     * @param  list<ParsedAttachment>  $attachments
+     */
+    private function attachmentText(array $attachments): ?string
+    {
+        $out = [];
+        $done = 0;
+        foreach ($attachments as $att) {
+            if ($done >= self::OCR_ATTACHMENTS_MAX) {
+                break;
+            }
+            $mime = strtolower((string) $att->contentType);
+            if ($mime !== 'application/pdf' && ! str_starts_with($mime, 'image/') && ! str_starts_with($mime, 'text/')) {
+                continue;
+            }
+            $done++;
+            $text = $this->textIndex->extractBytes($att->bytes, $mime);
+            if ($text !== null && $text !== '') {
+                $out[] = $text;
+            }
+        }
+
+        return $out === [] ? null : implode(' ', $out);
+    }
+
+    /**
      * The server-side full-text search string: envelope (subject + participants
      * from the outer headers) + the resolved plaintext body + attachment
      * filenames. For decrypted mail the body/attachments come from the inner
@@ -310,7 +419,7 @@ class MaildirIngestor
      *
      * @param  list<ParsedAttachment>  $attachments
      */
-    private function buildSearchText(ParsedMessage $parsed, ?string $textBody, array $attachments): ?string
+    private function buildSearchText(ParsedMessage $parsed, ?string $textBody, array $attachments, ?string $ocrText = null): ?string
     {
         $parts = [$parsed->subject, $parsed->fromName, $parsed->fromEmail];
         foreach ([...$parsed->to, ...$parsed->cc] as $addr) {
@@ -321,6 +430,7 @@ class MaildirIngestor
         foreach ($attachments as $attachment) {
             $parts[] = $attachment->filename;
         }
+        $parts[] = $ocrText;
 
         $text = trim(implode(' ', array_filter(
             $parts,

@@ -80,7 +80,7 @@ class IngestMailChunk implements ShouldQueue
             return; // account deleted mid-run; nothing to archive to.
         }
 
-        $summary = ['stored' => 0, 'duplicate' => 0, 'quarantined' => 0, 'skipped_old' => 0, 'skipped_spam' => 0, 'failed' => 0];
+        $summary = ['stored' => 0, 'duplicate' => 0, 'quarantined' => 0, 'skipped_old' => 0, 'skipped_spam' => 0, 'skipped_rule' => 0, 'failed' => 0];
         /** @var list<string> $deleteUids Origin UIDs of freshly-stored messages (delete-after-import). */
         $deleteUids = [];
 

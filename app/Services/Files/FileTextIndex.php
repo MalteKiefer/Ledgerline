@@ -94,6 +94,53 @@ final class FileTextIndex
         }
     }
 
+    /**
+     * Derive searchable text directly from in-memory bytes + a MIME type
+     * (text / PDF / image), or null if not indexable / fails. Used to fold mail
+     * attachment text into a message's search index without a FileEntry. Same
+     * caps, binaries and RAII temp-file discipline as extract().
+     */
+    public function extractBytes(string $bytes, string $mime): ?string
+    {
+        try {
+            $mime = strtolower($mime);
+            if ($bytes === '' || strlen($bytes) > self::MAX_BINARY_BYTES) {
+                return null;
+            }
+
+            if ($this->isTextMime($mime)) {
+                return $this->cap($this->sanitize(substr($bytes, 0, self::READ_CAP)));
+            }
+
+            if ($mime === 'application/pdf') {
+                if (! BinaryProcess::available('pdftotext')) {
+                    return null;
+                }
+                $tmp = DiskTempFile::create('mailatt')->withExtension('pdf');
+                file_put_contents($tmp->path(), $bytes);
+                $text = BinaryProcess::run(['pdftotext', '-layout', '-enc', 'UTF-8', $tmp->path(), '-'], self::TIMEOUT);
+
+                return $text === null ? null : $this->cap($this->sanitize($text));
+            }
+
+            if (str_starts_with($mime, 'image/')) {
+                $ext = self::IMAGE_EXT[$mime] ?? null;
+                if ($ext === null || ! BinaryProcess::available('tesseract')) {
+                    return null;
+                }
+                $tmp = DiskTempFile::create('mailatt')->withExtension($ext);
+                file_put_contents($tmp->path(), $bytes);
+                $text = BinaryProcess::run(['tesseract', $tmp->path(), 'stdout', '-l', self::OCR_LANG], self::TIMEOUT);
+
+                return $text === null ? null : $this->cap($this->sanitize($text));
+            }
+
+            return null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
     private function diskName(): string
     {
         $disk = config('files.disk');

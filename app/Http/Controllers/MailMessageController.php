@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MailAttachment;
 use App\Models\MailBlob;
+use App\Models\MailLabel;
 use App\Models\MailMessage;
 use App\Models\UserSetting;
 use App\Services\Mail\MailDecryptor;
@@ -51,11 +52,13 @@ class MailMessageController extends Controller
 
         $query = MailMessage::query()
             ->ownedBy($user->id)
+            ->with('labels')
             // Trashed = hidden. Excluded by default; ?trashed=1 returns ONLY those.
             ->when($wantTrashed, fn (Builder $q) => $q->whereNotNull('trashed_at'), fn (Builder $q) => $q->whereNull('trashed_at'))
             ->when($request->filled('account_id'), fn (Builder $q) => $q->where('account_id', $request->integer('account_id')))
             ->when($request->filled('folder'), fn (Builder $q) => $q->where('folder', $request->string('folder')->value()))
             ->when($request->filled('thread_id'), fn (Builder $q) => $q->where('thread_id', $request->string('thread_id')->value()))
+            ->when($request->filled('label'), fn (Builder $q) => $q->whereHas('labels', fn (Builder $l) => $l->where('mail_labels.id', $request->integer('label'))))
             ->when($request->has('seen'), fn (Builder $q) => $q->where('seen', $request->boolean('seen')))
             ->when($request->has('spam'), fn (Builder $q) => $q->where('spam', $request->boolean('spam')));
 
@@ -80,6 +83,7 @@ class MailMessageController extends Controller
     {
         $this->authorizeOwner($request, $message);
         $this->lazyDecrypt($message);
+        $message->load('labels');
 
         return response()->json(['message' => $this->presentFull($message)]);
     }
@@ -349,6 +353,9 @@ class MailMessageController extends Controller
             'encrypted_type' => $m->encrypted_type,
             'decrypt_status' => $m->decrypt_status,
             'created_at' => $m->created_at?->toIso8601String(),
+            'labels' => $m->relationLoaded('labels')
+                ? $m->labels->map(fn (MailLabel $l): array => ['id' => $l->id, 'name' => $l->name, 'color' => $l->color])->all()
+                : [],
         ];
     }
 
