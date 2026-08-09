@@ -106,32 +106,48 @@ class OpenHolidaysClient
      */
     private function holidays(string $path, string $country, ?string $subdivision, string $from, string $to, string $lang): array
     {
-        $params = [
-            'countryIsoCode' => strtoupper(trim($country)),
-            'validFrom' => $from,
-            'validTo' => $to,
-            'languageIsoCode' => $this->langCode($lang),
-        ];
         $subdivision = $subdivision !== null ? trim($subdivision) : '';
-        if ($subdivision !== '') {
-            $params['subdivisionCode'] = $subdivision;
+        $fromYear = (int) substr($from, 0, 4);
+        $toYear = (int) substr($to, 0, 4);
+        if ($fromYear < 1 || $toYear < $fromYear) {
+            return [];
         }
 
+        // OpenHolidays rejects a validFrom..validTo span wider than ~1 year (HTTP
+        // 400), so request ONE calendar year at a time and merge. Dedupe by
+        // start+name (a period appears once even if a boundary year overlaps).
         $out = [];
-        foreach ($this->get($path, $params) as $row) {
-            if (! is_array($row)) {
-                continue;
+        $seen = [];
+        for ($year = $fromYear; $year <= $toYear; $year++) {
+            $params = [
+                'countryIsoCode' => strtoupper(trim($country)),
+                'validFrom' => max($from, sprintf('%04d-01-01', $year)),
+                'validTo' => min($to, sprintf('%04d-12-31', $year)),
+                'languageIsoCode' => $this->langCode($lang),
+            ];
+            if ($subdivision !== '') {
+                $params['subdivisionCode'] = $subdivision;
             }
-            $start = is_string($row['startDate'] ?? null) ? trim($row['startDate']) : '';
-            if ($start === '') {
-                continue;
+            foreach ($this->get($path, $params) as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $start = is_string($row['startDate'] ?? null) ? trim($row['startDate']) : '';
+                if ($start === '') {
+                    continue;
+                }
+                $end = is_string($row['endDate'] ?? null) && trim($row['endDate']) !== '' ? trim($row['endDate']) : $start;
+                $name = $this->localizedName($row['name'] ?? null, $lang, '');
+                if ($name === '') {
+                    continue;
+                }
+                $key = $start.'|'.$name;
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $out[] = ['startDate' => $start, 'endDate' => $end, 'name' => $name, 'allDay' => true];
             }
-            $end = is_string($row['endDate'] ?? null) && trim($row['endDate']) !== '' ? trim($row['endDate']) : $start;
-            $name = $this->localizedName($row['name'] ?? null, $lang, '');
-            if ($name === '') {
-                continue;
-            }
-            $out[] = ['startDate' => $start, 'endDate' => $end, 'name' => $name, 'allDay' => true];
         }
 
         return $out;

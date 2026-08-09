@@ -20,15 +20,16 @@
             <span class="h-3.5 w-3.5 shrink-0 rounded-[4px] border" :style="{ backgroundColor: isVisible(cal.id) ? (cal.color || '#6750a4') : 'transparent', borderColor: cal.color || '#6750a4' }" />
             <span class="truncate" :class="isVisible(cal.id) ? '' : 'text-[var(--ll-muted)] opacity-60'">{{ cal.name }}</span>
           </button>
-          <button v-if="cal.kind !== 'normal'" class="hidden h-7 w-7 place-items-center rounded hover:bg-black/[0.05] group-hover:grid dark:hover:bg-white/10" :title="t('calendar.ui.regenerate')" @click="regenerateCal(cal)">
-            <Icon name="refresh" :size="16" class="text-[var(--ll-muted)]" />
-          </button>
-          <button class="hidden h-7 w-7 place-items-center rounded hover:bg-black/[0.05] group-hover:grid dark:hover:bg-white/10" :title="t('calendar.ui.rename_calendar')" @click="openEditCalendar(cal)">
-            <Icon name="edit" :size="16" class="text-[var(--ll-muted)]" />
-          </button>
-          <button class="hidden h-7 w-7 place-items-center rounded text-red-600 hover:bg-red-500/10 group-hover:grid dark:text-red-400" :title="t('calendar.ui.delete_calendar')" @click="removeCalendar(cal)">
-            <Icon name="delete" :size="16" />
-          </button>
+          <!-- Special (system) calendars are managed only in Settings → Calendar;
+               here they are view-only (color + visibility toggle above). -->
+          <template v-if="cal.kind === 'normal'">
+            <button class="hidden h-7 w-7 place-items-center rounded hover:bg-black/[0.05] group-hover:grid dark:hover:bg-white/10" :title="t('calendar.ui.rename_calendar')" @click="openEditCalendar(cal)">
+              <Icon name="edit" :size="16" class="text-[var(--ll-muted)]" />
+            </button>
+            <button class="hidden h-7 w-7 place-items-center rounded text-red-600 hover:bg-red-500/10 group-hover:grid dark:text-red-400" :title="t('calendar.ui.delete_calendar')" @click="removeCalendar(cal)">
+              <Icon name="delete" :size="16" />
+            </button>
+          </template>
         </div>
         <div v-if="!store.calendars.length" class="px-2 py-3 text-xs text-[var(--ll-muted)]">{{ t('calendar.ui.no_events') }}</div>
       </nav>
@@ -597,13 +598,6 @@ async function saveCalendar(): Promise<void> {
     await reloadRange();
     success(t('common.saved'));
   } catch { error(t('common.error')); } finally { calSaving.value = false; }
-}
-async function regenerateCal(c: CalendarCol): Promise<void> {
-  try {
-    await store.regenerate(c.id);
-    await reloadRange();
-    success(t('calendar.ui.regenerate_done'));
-  } catch { error(t('common.error')); }
 }
 async function removeCalendar(c: CalendarCol): Promise<void> {
   if (!await confirmAsk(t('calendar.ui.delete_calendar'), { danger: true })) return;
