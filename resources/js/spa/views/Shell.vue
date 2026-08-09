@@ -44,6 +44,23 @@
           </template>
         </div>
       </nav>
+      <!-- Pinned account footer: avatar + name → profile, with the app version. -->
+      <div class="mt-auto border-t border-[var(--ll-border)] p-2">
+        <RouterLink
+          to="/profile"
+          class="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-black/[0.04] dark:hover:bg-white/5"
+          :class="isActive('/profile') ? 'bg-primary-500/10' : ''"
+        >
+          <span class="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-primary-500 text-sm font-medium text-white">
+            <img v-if="avatarUrl" :src="avatarUrl" class="h-full w-full object-cover" alt=""><template v-else>{{ initials }}</template>
+          </span>
+          <span class="min-w-0 flex-1 leading-tight">
+            <span class="block truncate text-sm font-medium" :class="isActive('/profile') ? 'text-primary-600 dark:text-primary-300' : ''">{{ auth.user?.name }}</span>
+            <span class="block truncate text-xs text-[var(--ll-muted)]">{{ auth.user?.email }}</span>
+          </span>
+        </RouterLink>
+        <div class="px-2 pt-1.5 text-[0.66rem] text-[var(--ll-muted)]">v{{ version }}</div>
+      </div>
     </aside>
     <div v-if="drawer" class="fixed inset-0 z-20 bg-black/30 lg:hidden" @click="drawer = false" />
 
@@ -128,6 +145,7 @@ const open = reactive<Record<string, boolean>>({ finance: true, settings: true }
 
 const avatarUrl = computed(() => (auth.user?.has_avatar ? api.streamUrl(`/api/v1/avatar?v=${avatarBust.value}`) : ''));
 const initials = computed(() => (auth.user?.name ?? '?').slice(0, 1).toUpperCase());
+const version = document.querySelector('meta[name="ll-version"]')?.getAttribute('content') || '';
 
 interface NavChild { to: string; label: string }
 interface NavItem { key?: string; to?: string; label: string; icon?: string; children?: NavChild[] }
@@ -146,7 +164,7 @@ const menu = computed<NavGroup[]>(() => {
   if (auth.isAdmin()) groups.push({ key: 'admin', title: 'settings.admin_heading', items: [
     { to: '/settings', label: 'settings.heading', icon: 'settings' },
   ] });
-  groups.push({ key: 'account', title: 'account.hub_account_heading', items: [{ to: '/profile', label: 'pages.profile.title', icon: 'account_circle' }] });
+  // Profile is pinned to the sidebar footer (with avatar) — not a nav group.
   return groups;
 });
 

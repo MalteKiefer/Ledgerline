@@ -42,7 +42,12 @@
       <div v-if="specialCalendars.length" class="border-t border-[var(--ll-border)] pt-4">
         <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('calendar.ui.calendars') }}</div>
         <div v-for="cal in specialCalendars" :key="cal.id" class="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-black/[0.03] dark:hover:bg-white/5">
-          <span class="h-3.5 w-3.5 shrink-0 rounded-[4px]" :style="{ backgroundColor: cal.color || '#6750a4' }" />
+          <input
+            type="color" :value="cal.color || '#6750a4'"
+            class="h-6 w-6 shrink-0 cursor-pointer rounded border border-[var(--ll-border)] bg-transparent p-0"
+            :title="t('calendar.ui.color')"
+            @change="setColor(cal, ($event.target as HTMLInputElement).value)"
+          >
           <span class="min-w-0 flex-1 truncate text-sm">{{ cal.name }}</span>
           <Btn variant="ghost" size="sm" icon="refresh" :loading="busy === cal.id" :title="t('calendar.ui.regenerate')" @click="regenerate(cal)" />
           <Btn variant="ghost" size="sm" icon="delete" :title="t('calendar.ui.delete_calendar')" @click="removeSpecial(cal)" />
@@ -172,6 +177,12 @@ async function regenerate(cal: CalendarCol): Promise<void> {
     await store.regenerate(cal.id);
     success(t('calendar.ui.regenerate_done'));
   } catch { error(t('common.error')); } finally { busy.value = ''; }
+}
+async function setColor(cal: CalendarCol, color: string): Promise<void> {
+  try {
+    await store.updateCalendar(cal.id, { color });
+    await store.loadData();
+  } catch { error(t('common.error')); }
 }
 async function removeSpecial(cal: CalendarCol): Promise<void> {
   if (!await confirmAsk(t('calendar.ui.delete_calendar'), { danger: true })) return;
