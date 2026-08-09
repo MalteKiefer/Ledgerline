@@ -8,11 +8,15 @@ use App\Models\FolderShare;
 use App\Models\User;
 
 /**
- * Access control for plaintext cross-user folder shares (pivot). Fail-closed:
- * before() returns null (no admin/owner super-bypass — every ability is decided
- * on its own merits). Callers translate a denial to 404 when they must hide the
- * share's existence (a non-member), and to 403 for a member who is authenticated
- * on the share but lacks the mutation role (a viewer trying to write).
+ * Access control for plaintext cross-user shares (pivot) — a folder subtree OR a
+ * single file. Fail-closed: before() returns null (no admin/owner super-bypass —
+ * every ability is decided on its own merits). Abilities are decided on the SHARE
+ * (owner vs member/role); the per-target containment — a folder share authorizes
+ * its whole subtree, a file share authorizes EXACTLY its one file — is enforced by
+ * SharedWithMeController::resolveMemberFile (a mismatch → 404). Callers translate
+ * a denial to 404 when they must hide the share's existence (a non-member), and to
+ * 403 for a member authenticated on the share but lacking the mutation role (a
+ * viewer trying to write, or any member trying to delete a lone shared file).
  */
 class FolderSharePolicy
 {

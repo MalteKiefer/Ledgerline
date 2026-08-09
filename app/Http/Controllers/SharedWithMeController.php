@@ -72,7 +72,7 @@ class SharedWithMeController extends Controller
 
     // ---- Listing ----
 
-    /** Everything shared with the authenticated user (folder name, owner, role). */
+    /** Everything shared with the authenticated user (folder or file, owner, role). */
     public function index(Request $request): JsonResponse
     {
         $uid = (int) $this->requireUser($request)->id;
@@ -85,6 +85,29 @@ class SharedWithMeController extends Controller
             if (! $share instanceof FolderShare) {
                 continue;
             }
+            $owner = User::query()->find($share->owner_id);
+            $ownerPayload = ['id' => $owner?->id, 'name' => $owner?->name, 'email' => $owner?->email];
+
+            if ($share->isFile()) {
+                $name = FileEntry::withoutGlobalScopes()
+                    ->where('user_id', $share->owner_id)
+                    ->whereKey($share->file_id)
+                    ->whereNull('deleted_at')
+                    ->value('name');
+                if (! is_string($name)) {
+                    continue; // shared file is gone or trashed
+                }
+                $out[] = [
+                    'id' => $share->id,
+                    'kind' => 'file',
+                    'file_name' => $name,
+                    'role' => $m->role,
+                    'owner' => $ownerPayload,
+                ];
+
+                continue;
+            }
+
             $name = FileFolder::withoutGlobalScopes()
                 ->where('user_id', $share->owner_id)
                 ->whereKey($share->file_folder_id)
@@ -93,12 +116,12 @@ class SharedWithMeController extends Controller
             if (! is_string($name)) {
                 continue; // shared folder is gone or trashed
             }
-            $owner = User::query()->find($share->owner_id);
             $out[] = [
                 'id' => $share->id,
+                'kind' => 'folder',
                 'folder_name' => $name,
                 'role' => $m->role,
-                'owner' => ['id' => $owner?->id, 'name' => $owner?->name, 'email' => $owner?->email],
+                'owner' => $ownerPayload,
             ];
         }
 
@@ -107,10 +130,30 @@ class SharedWithMeController extends Controller
 
     // ---- Browse ----
 
-    /** The shared folder's whole subtree (folders + files), owner-scoped. */
+    /** The shared folder's whole subtree (folders + files), or a lone shared file. */
     public function browse(Request $request, int $share): JsonResponse
     {
         $shareModel = $this->resolveForMember($request, $share);
+
+        // A file-share resolves to exactly its one file (no folders, no subtree).
+        if ($shareModel->isFile()) {
+            $row = $this->sharedSingleFile($shareModel);
+            abort_unless($row instanceof FileEntry, 404); // shared file gone / trashed
+
+            return response()->json([
+                'share_id' => $shareModel->id,
+                'role' => $this->memberRole($request, $shareModel),
+                'kind' => 'file',
+                'file' => [
+                    'id' => $row->id,
+                    'name' => $row->name,
+                    'mime' => $row->mime,
+                    'size' => $row->size,
+                    'updated_at' => $row->updated_at?->toIso8601String(),
+                ],
+            ]);
+        }
+
         $ids = $this->subtreeFolderIds($shareModel);
         abort_if($ids === [], 404); // shared folder gone / trashed
 
@@ -131,6 +174,7 @@ class SharedWithMeController extends Controller
         return response()->json([
             'share_id' => $shareModel->id,
             'role' => $this->memberRole($request, $shareModel),
+            'kind' => 'folder',
             'root_id' => $shareModel->file_folder_id,
             'folders' => $folders->map(fn (FileFolder $d): array => [
                 'id' => $d->id,
@@ -152,7 +196,7 @@ class SharedWithMeController extends Controller
     public function raw(Request $request, int $share, int $file): StreamedResponse
     {
         $shareModel = $this->resolveForMember($request, $share);
-        $row = $this->subtreeFile($shareModel, $file);
+        $row = $this->resolveMemberFile($shareModel, $file);
         abort_unless($row instanceof FileEntry, 404);
         if (! $this->fs()->exists($row->storage_path)) {
             abort(404);
@@ -172,6 +216,7 @@ class SharedWithMeController extends Controller
     public function upload(Request $request, int $share): JsonResponse
     {
         $shareModel = $this->resolveForMember($request, $share);
+        abort_if($shareModel->isFile(), 422); // a lone file-share has no folder to upload into
         abort_unless($this->requireUser($request)->can('contribute', $shareModel), 403);
         $request->validate([
             'file' => ['required', 'file', 'max:'.$this->maxUploadKb()],
@@ -234,7 +279,7 @@ class SharedWithMeController extends Controller
         abort_unless($this->requireUser($request)->can('contribute', $shareModel), 403);
         $request->validate(['name' => ['required', 'string', 'max:500']]);
 
-        $row = $this->subtreeFile($shareModel, $file);
+        $row = $this->resolveMemberFile($shareModel, $file);
         abort_unless($row instanceof FileEntry, 404);
         $row->forceFill(['name' => $request->string('name')->value()]);
         $row->version = $row->version + 1;
@@ -243,10 +288,20 @@ class SharedWithMeController extends Controller
         return response()->json(['file' => $row]);
     }
 
-    /** Soft-delete a file within the shared subtree (editor only). */
+    /**
+     * Soft-delete a file within the shared subtree (editor only).
+     *
+     * A LONE file-share is deliberately non-deletable by a member (403, even for
+     * an editor): unlike a folder share — a mutable workspace the owner offered —
+     * a file-share targets exactly the one file the owner explicitly shared;
+     * letting a recipient trash the owner's only shared object is a surprising,
+     * destructive side effect that would leave the share dangling. Rename
+     * (reversible metadata) stays allowed for an editor; deletion does not.
+     */
     public function destroy(Request $request, int $share, int $file): JsonResponse
     {
         $shareModel = $this->resolveForMember($request, $share);
+        abort_if($shareModel->isFile(), 403); // members cannot delete the owner's lone shared file
         abort_unless($this->requireUser($request)->can('contribute', $shareModel), 403);
 
         $row = $this->subtreeFile($shareModel, $file);
@@ -278,6 +333,35 @@ class SharedWithMeController extends Controller
         $role = $share->members()->where('user_id', $uid)->value('role');
 
         return is_string($role) ? $role : 'viewer';
+    }
+
+    /**
+     * Resolve the file a member is addressing, for either share kind. A folder
+     * share authorizes any file within its subtree; a file share authorizes
+     * EXACTLY its one file (a mismatched id → 404, hiding it). Both are scoped to
+     * the share owner + non-trashed.
+     */
+    private function resolveMemberFile(FolderShare $share, int $fileId): ?FileEntry
+    {
+        if ($share->isFile()) {
+            return $fileId === (int) $share->file_id ? $this->sharedSingleFile($share) : null;
+        }
+
+        return $this->subtreeFile($share, $fileId);
+    }
+
+    /** The lone non-trashed file targeted by a file-share, owned by the share owner. */
+    private function sharedSingleFile(FolderShare $share): ?FileEntry
+    {
+        if ($share->file_id === null) {
+            return null;
+        }
+
+        return FileEntry::withoutGlobalScopes()
+            ->where('user_id', $share->owner_id)
+            ->whereKey($share->file_id)
+            ->whereNull('deleted_at')
+            ->first();
     }
 
     /** A single non-trashed file inside the shared subtree, owned by the share owner. */

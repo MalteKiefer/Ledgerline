@@ -22,19 +22,25 @@ export interface FolderShareMember {
   id: number; user_id: number; name: string | null; email: string | null; role: 'viewer' | 'editor';
 }
 export interface FolderShare {
-  id: number; file_folder_id: number; folder_name: string | null; members: FolderShareMember[];
+  id: number; kind: 'file' | 'folder';
+  file_folder_id: number | null; folder_name: string | null;
+  file_id: number | null; file_name: string | null;
+  members: FolderShareMember[];
 }
 export interface SharedWithMeEntry {
-  id: number; folder_name: string; role: 'owner' | 'viewer' | 'editor';
+  id: number; kind: 'file' | 'folder';
+  folder_name?: string | null; file_name?: string | null;
+  role: 'owner' | 'viewer' | 'editor';
   owner: { id: number | null; name: string | null; email: string | null };
 }
 export interface SharedFolderNode { id: number; name: string; parent_id: number | null }
 export interface SharedFileNode {
   id: number; name: string; mime: string | null; size: number; file_folder_id: number | null; updated_at: string | null;
 }
+export interface SharedFileTarget { id: number; name: string; mime: string | null; size: number; updated_at: string | null }
 export interface SharedBrowse {
-  share_id: number; role: 'owner' | 'viewer' | 'editor'; root_id: number | null;
-  folders: SharedFolderNode[]; files: SharedFileNode[];
+  share_id: number; role: 'owner' | 'viewer' | 'editor'; kind: 'file' | 'folder'; root_id: number | null;
+  file?: SharedFileTarget; folders?: SharedFolderNode[]; files?: SharedFileNode[];
 }
 export interface DuplicateFile { id: number; name: string; size: number; path: string }
 export interface FileStats {
@@ -107,7 +113,7 @@ export const useFilesStore = defineStore('files', () => {
 
   // ---- Cross-user folder sharing: owner side ----
   const loadFolderShares = () => api.get<{ shares: FolderShare[] }>('/api/v1/files/folder-shares');
-  const shareToUser = (payload: { file_folder_id: number; email: string; role: 'viewer' | 'editor' }) =>
+  const shareToUser = (payload: { kind?: 'file' | 'folder'; file_folder_id?: number; file_id?: number; email: string; role: 'viewer' | 'editor' }) =>
     api.post<{ share: FolderShare }>('/api/v1/files/folder-shares', payload);
   const updateShareMember = (shareId: number, payload: { user_id: number; role: 'viewer' | 'editor' }) =>
     api.put<{ share: FolderShare }>(`/api/v1/files/folder-shares/${shareId}/members`, payload);

@@ -255,10 +255,10 @@
     </template>
   </Modal>
 
-  <!-- Share dialog: public link (file + folder) + share-with-a-user (folder only) -->
+  <!-- Share dialog: public link + share-with-a-registered-user (both files and folders) -->
   <Modal v-model="shareDlg.show" :title="t('files.share_title')" width="520px">
-    <!-- Tab bar (only folders can also be shared with a registered user) -->
-    <div v-if="shareDlg.kind==='folder'" class="mb-4 flex gap-1 rounded-lg bg-black/[0.04] p-0.5 dark:bg-white/5">
+    <!-- Tab bar: public link vs. share with a registered user (both share kinds) -->
+    <div class="mb-4 flex gap-1 rounded-lg bg-black/[0.04] p-0.5 dark:bg-white/5">
       <button
         v-for="tab in shareTabs" :key="tab.v" type="button"
         class="flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
@@ -297,8 +297,8 @@
       </div>
     </div>
 
-    <!-- Share with a registered user (folder only) -->
-    <div v-if="shareDlg.kind==='folder'" v-show="shareDlg.tab==='users'" class="flex flex-col gap-3">
+    <!-- Share with a registered user (files and folders) -->
+    <div v-show="shareDlg.tab==='users'" class="flex flex-col gap-3">
       <div class="flex items-end gap-2">
         <div class="flex-1"><TextField v-model="shareDlg.inviteEmail" :label="t('files.sf_recipient_email')" type="email" autocomplete="off" @enter="inviteUser" /></div>
         <div class="w-32"><Select v-model="shareDlg.inviteRole" :label="t('files.sf_role')" :options="roleOptions" /></div>
@@ -736,12 +736,16 @@ async function openShare(row: Row) {
     share: null, allowDownload: true, password: '', expires: '',
     folderShareId: null, members: [], inviteEmail: '', inviteRole: 'viewer', inviteBusy: false,
   };
-  if (row._folder) await loadFolderMembers();
+  await loadShareMembers();
 }
-async function loadFolderMembers() {
+// Load the existing cross-user share (folder OR file) for the current target so
+// its member roster shows when the dialog opens.
+async function loadShareMembers() {
   try {
     const r = await s.loadFolderShares();
-    const sh = r.shares.find((x) => x.file_folder_id === shareDlg.value.targetId);
+    const sh = shareDlg.value.kind === 'file'
+      ? r.shares.find((x) => x.kind === 'file' && x.file_id === shareDlg.value.targetId)
+      : r.shares.find((x) => x.kind === 'folder' && x.file_folder_id === shareDlg.value.targetId);
     shareDlg.value.folderShareId = sh?.id ?? null;
     shareDlg.value.members = sh?.members ?? [];
   } catch { /* non-fatal: the member list stays empty */ }
@@ -769,7 +773,9 @@ async function inviteUser() {
   if (!email || !shareDlg.value.targetId) return;
   shareDlg.value.inviteBusy = true;
   try {
-    const r = await s.shareToUser({ file_folder_id: shareDlg.value.targetId, email, role: shareDlg.value.inviteRole });
+    const r = await s.shareToUser(shareDlg.value.kind === 'file'
+      ? { kind: 'file', file_id: shareDlg.value.targetId, email, role: shareDlg.value.inviteRole }
+      : { kind: 'folder', file_folder_id: shareDlg.value.targetId, email, role: shareDlg.value.inviteRole });
     shareDlg.value.folderShareId = r.share.id;
     shareDlg.value.members = r.share.members;
     shareDlg.value.inviteEmail = '';
