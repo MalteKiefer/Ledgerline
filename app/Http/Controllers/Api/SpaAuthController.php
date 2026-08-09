@@ -60,6 +60,11 @@ class SpaAuthController extends Controller
         if (! $user instanceof User || ! is_string($user->password) || ! Hash::check($password, $user->password)) {
             throw ValidationException::withMessages(['email' => [__('auth.failed')]]);
         }
+        // A blocked account cannot obtain a token (generic message, no distinction
+        // from bad credentials to avoid signalling that the account exists).
+        if ($user->isBlocked()) {
+            throw ValidationException::withMessages(['email' => [__('auth.failed')]]);
+        }
 
         if ($user->two_factor_secret !== null && $user->two_factor_confirmed_at !== null) {
             if (! $this->passesTwoFactor($user, $twoFactor, $request->string('code')->value(), $request->string('recovery_code')->value())) {

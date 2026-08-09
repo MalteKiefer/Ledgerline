@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\PaperlessController as ApiPaperlessController;
 use App\Http\Controllers\Api\PasswordController as ApiPasswordController;
 use App\Http\Controllers\Api\SecurityController as ApiSecurityController;
 use App\Http\Controllers\Api\SecurityLogController as ApiSecurityLogController;
+use App\Http\Controllers\Api\SecurityPortalController;
 use App\Http\Controllers\Api\SettingsController as ApiSettingsController;
 use App\Http\Controllers\Api\SpaAuthController;
 use App\Http\Controllers\Api\SystemController as ApiSystemController;
@@ -389,6 +390,17 @@ Route::prefix('v1')->group(function (): void {
             // Workspace self-registration toggle (mirrors Settings/UsersController@registration).
             Route::get('/registration', [ApiUsersController::class, 'registrationShow'])->name('registration.show');
             Route::put('/registration', [ApiUsersController::class, 'registration'])->middleware('throttle:60,1')->name('registration.update');
+
+            // Security portal: verbose request log, IP block-list, per-user block,
+            // and a cross-user session/device overview. Admin-gated.
+            Route::get('/request-log', [SecurityPortalController::class, 'requestLog'])->middleware('throttle:120,1')->name('request-log');
+            Route::get('/request-log/export', [SecurityPortalController::class, 'requestLogExport'])->middleware('throttle:10,1')->name('request-log.export');
+            Route::get('/blocked-ips', [SecurityPortalController::class, 'blocks'])->name('blocked-ips.index');
+            Route::post('/blocked-ips', [SecurityPortalController::class, 'blockIp'])->middleware('throttle:60,1')->name('blocked-ips.store');
+            Route::delete('/blocked-ips/{blockedIp}', [SecurityPortalController::class, 'unblockIp'])->whereNumber('blockedIp')->middleware('throttle:60,1')->name('blocked-ips.destroy');
+            Route::post('/users/{user}/block', [SecurityPortalController::class, 'blockUser'])->whereNumber('user')->middleware('throttle:60,1')->name('users.block');
+            Route::post('/users/{user}/unblock', [SecurityPortalController::class, 'unblockUser'])->whereNumber('user')->middleware('throttle:60,1')->name('users.unblock');
+            Route::get('/sessions', [SecurityPortalController::class, 'sessions'])->middleware('throttle:60,1')->name('sessions.index');
         });
 
         // Admin group management (workspace-wide limit templates + shareable flag).

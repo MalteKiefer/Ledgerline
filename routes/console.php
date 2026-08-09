@@ -39,6 +39,7 @@ Schedule::command('audit:prune')->dailyAt('00:20')->withoutOverlapping();
 
 // Enforce the (shorter) retention on the high-volume device access trail.
 Schedule::command('device-access-log:prune')->dailyAt('00:25')->withoutOverlapping();
+Schedule::command('request-log:prune')->dailyAt('00:27')->withoutOverlapping();
 
 // Verify the latest successful backup restores, and alert on staleness/failure.
 Schedule::command('backups:verify')->dailyAt('04:30')->withoutOverlapping();
