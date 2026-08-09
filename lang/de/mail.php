@@ -121,6 +121,23 @@ return [
         'level_error' => 'Fehler',
     ],
 
+    'keys' => [
+        'title' => 'Verschlüsselungsschlüssel',
+        'subtitle' => 'PGP-/S-MIME-Schlüssel zum Lesen verschlüsselter Mail (serverseitig).',
+        'none' => 'Noch keine Schlüssel.',
+        'import_pgp' => 'PGP-Schlüssel importieren',
+        'import_smime' => 'S/MIME (.p12) importieren',
+        'label' => 'Bezeichnung',
+        'passphrase' => 'Passphrase',
+        'armored_private_key' => 'Privater Schlüssel (ASCII-armored)',
+        'p12_file' => 'PKCS#12-Bündel (.p12/.pfx)',
+        'fingerprint' => 'Fingerabdruck',
+        'add' => 'Importieren',
+        'delete' => 'Schlüssel löschen',
+        'delete_confirm' => 'Diesen Schlüssel löschen? Verschlüsselte Mail ist danach nicht mehr lesbar.',
+        'imported' => 'Schlüssel importiert.',
+        'import_failed' => 'Schlüssel konnte nicht importiert werden.',
+    ],
     'toast' => [
         'saved' => 'Konto gespeichert.',
         'deleted' => 'Konto gelöscht.',

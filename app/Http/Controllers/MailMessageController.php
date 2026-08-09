@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\MailAttachment;
+use App\Models\MailBlob;
 use App\Models\MailMessage;
 use App\Models\UserSetting;
+use App\Services\Mail\MailDecryptor;
 use App\Support\BlobStore;
 use App\Support\Mail\MailHtmlSanitizer;
 use App\Support\Mail\MimeParser;
@@ -17,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Read-only, owner-scoped access to the archived-message ledger. `index`
@@ -76,8 +79,83 @@ class MailMessageController extends Controller
     public function show(Request $request, MailMessage $message): JsonResponse
     {
         $this->authorizeOwner($request, $message);
+        $this->lazyDecrypt($message);
 
         return response()->json(['message' => $this->presentFull($message)]);
+    }
+
+    /**
+     * If an encrypted message was archived without a key (decrypt_status !=
+     * ok) and the owner has since imported a matching key, decrypt it now and
+     * persist the plaintext body + attachments + refreshed search index. The
+     * raw .eml is never rewritten. Best-effort — any failure leaves the row as
+     * it was. Same transient-plaintext posture as the ingest decrypt path.
+     */
+    private function lazyDecrypt(MailMessage $message): void
+    {
+        if ($message->encrypted_type === null || $message->decrypt_status === 'ok') {
+            return;
+        }
+
+        $raw = BlobStore::disk()->get('mail/'.$message->id);
+        if (! is_string($raw) || $raw === '') {
+            return;
+        }
+
+        $out = (new MailDecryptor)->attempt($raw, (int) $message->user_id);
+        if ($out->status !== 'ok' || $out->plaintext === null) {
+            if ($out->status !== null && $out->status !== $message->decrypt_status) {
+                $message->forceFill(['decrypt_status' => $out->status])->saveQuietly();
+            }
+
+            return;
+        }
+
+        $textBody = $out->plaintext;
+        $htmlBody = null;
+        $attachments = [];
+        if ($out->isMime) {
+            $inner = (new MimeParser)->parse($out->plaintext);
+            $textBody = $inner->textBody;
+            $htmlBody = $inner->htmlBody;
+            $attachments = $inner->attachments;
+        }
+        $html = (new MailHtmlSanitizer)->sanitize($htmlBody);
+
+        DB::transaction(function () use ($message, $textBody, $html, $attachments): void {
+            $now = now()->startOfHour();
+            foreach ($attachments as $att) {
+                $blobId = (string) Str::uuid();
+                BlobStore::disk()->put('mail/att/'.$blobId, $att->bytes);
+                (new MailBlob)->forceFill([
+                    'blob' => $blobId, 'user_id' => $message->user_id, 'kind' => 'attachment',
+                    'size' => $att->size(), 'created_at' => $now,
+                ])->save();
+                (new MailAttachment)->forceFill([
+                    'id' => (string) Str::uuid(),
+                    'message_id' => $message->id, 'user_id' => $message->user_id, 'blob' => $blobId,
+                    'filename' => $att->filename !== null ? mb_substr($att->filename, 0, 500) : null,
+                    'content_type' => $att->contentType !== null ? mb_substr($att->contentType, 0, 255) : null,
+                    'content_id' => $att->contentId !== null ? mb_substr($att->contentId, 0, 512) : null,
+                    'inline' => $att->inline, 'size' => $att->size(), 'created_at' => $now,
+                ])->save();
+            }
+
+            $filenames = implode(' ', array_filter(array_map(static fn ($a): ?string => $a->filename, $attachments)));
+            $search = trim(implode(' ', array_filter([
+                $message->subject, $message->from_name, $message->from_email, $textBody, $filenames,
+            ], static fn (?string $p): bool => $p !== null && $p !== '')));
+
+            $message->forceFill([
+                'text_body' => $textBody,
+                'html_sanitized' => $html,
+                'decrypt_status' => 'ok',
+                'has_attachment' => $attachments !== [],
+                'attachment_count' => count($attachments),
+                'search_text' => $search === '' ? null : mb_substr($search, 0, 200_000),
+                'indexed_at' => $now,
+            ])->saveQuietly();
+        });
     }
 
     /**

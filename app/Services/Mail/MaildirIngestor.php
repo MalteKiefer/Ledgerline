@@ -59,6 +59,7 @@ class MaildirIngestor
     public function __construct(
         private readonly MimeParser $parser = new MimeParser,
         private readonly MailHtmlSanitizer $sanitizer = new MailHtmlSanitizer,
+        private readonly MailDecryptor $decryptor = new MailDecryptor,
     ) {}
 
     /**
@@ -119,8 +120,30 @@ class MaildirIngestor
 
         // Server-side MIME parse + HTML sanitise (replaces the ZK client parse).
         $parsed = $this->parser->parse($raw);
-        $htmlSanitized = $this->sanitizer->sanitize($parsed->htmlBody);
-        $searchText = $this->buildSearchText($parsed);
+
+        // PGP / S-MIME: if the message is encrypted and the owner has a matching
+        // key, decrypt server-side (transient — the raw .eml stays as received)
+        // and take the body + attachments from the DECRYPTED inner message. The
+        // envelope (from/to/subject/date) always stays from the outer headers.
+        $decrypt = $this->decryptor->attempt($raw, (int) $account->user_id);
+        $textBody = $parsed->textBody;
+        $htmlBody = $parsed->htmlBody;
+        $attachments = $parsed->attachments;
+        if ($decrypt->status === 'ok' && $decrypt->plaintext !== null) {
+            if ($decrypt->isMime) {
+                $inner = $this->parser->parse($decrypt->plaintext);
+                $textBody = $inner->textBody;
+                $htmlBody = $inner->htmlBody;
+                $attachments = $inner->attachments;
+            } else {
+                $textBody = $decrypt->plaintext;
+                $htmlBody = null;
+                $attachments = [];
+            }
+        }
+        $attachmentCount = $decrypt->status === 'ok' ? count($attachments) : $parsed->attachmentCount;
+        $htmlSanitized = $this->sanitizer->sanitize($htmlBody);
+        $searchText = $this->buildSearchText($parsed, $textBody, $attachments);
 
         // The message's own id doubles as the raw blob's primary key: one fresh
         // UUID names both `mail/{id}` on disk and the mail_messages row. A client
@@ -137,7 +160,7 @@ class MaildirIngestor
         //
         // @var list<array{blob:string, attachment:\App\Services\Mail\ParsedAttachment}> $attachmentBlobs
         $attachmentBlobs = [];
-        foreach ($parsed->attachments as $attachment) {
+        foreach ($attachments as $attachment) {
             $attBlobId = (string) Str::uuid();
             if (BlobStore::disk()->put('mail/att/'.$attBlobId, $attachment->bytes) === false) {
                 throw new RuntimeException('MaildirIngestor: failed to write mail attachment blob to disk.');
@@ -149,7 +172,7 @@ class MaildirIngestor
         // ":2,<flags>" where S = Seen; new/ files are unseen).
         $seen = $this->maildirSeen($path);
 
-        DB::transaction(function () use ($account, $folder, $hash, $rawSize, $blobId, $seen, $spam, $parsed, $htmlSanitized, $searchText, $attachmentBlobs): void {
+        DB::transaction(function () use ($account, $folder, $hash, $rawSize, $blobId, $seen, $spam, $parsed, $textBody, $htmlSanitized, $searchText, $attachmentBlobs, $attachmentCount, $decrypt): void {
             // Hour-snapped archived-at (mirrors every other module's created_at).
             $now = now()->startOfHour();
 
@@ -178,14 +201,16 @@ class MaildirIngestor
                 'cc_json' => $parsed->cc,
                 'reply_to' => $this->cap($parsed->replyTo, 255),
                 'date' => $parsed->date,
-                'has_attachment' => $parsed->hasAttachment(),
-                'attachment_count' => $parsed->attachmentCount,
-                'text_body' => $parsed->textBody,
+                'has_attachment' => $attachmentCount > 0,
+                'attachment_count' => $attachmentCount,
+                'text_body' => $textBody,
                 'html_sanitized' => $htmlSanitized,
                 'spam' => $spam,
                 'spf' => $parsed->spf,
                 'dkim' => $parsed->dkim,
                 'dmarc' => $parsed->dmarc,
+                'encrypted_type' => $decrypt->type,
+                'decrypt_status' => $decrypt->status,
                 'seen' => $seen,
                 'seen_at' => null,
                 'created_at' => $now,
@@ -278,18 +303,22 @@ class MaildirIngestor
     }
 
     /**
-     * The server-side full-text search string: subject + participants + the
-     * plaintext body. Attachment filenames + OCR fold in during a later phase.
+     * The server-side full-text search string: envelope (subject + participants
+     * from the outer headers) + the resolved plaintext body + attachment
+     * filenames. For decrypted mail the body/attachments come from the inner
+     * message, so they are passed in rather than read off $parsed.
+     *
+     * @param  list<ParsedAttachment>  $attachments
      */
-    private function buildSearchText(ParsedMessage $parsed): ?string
+    private function buildSearchText(ParsedMessage $parsed, ?string $textBody, array $attachments): ?string
     {
         $parts = [$parsed->subject, $parsed->fromName, $parsed->fromEmail];
         foreach ([...$parsed->to, ...$parsed->cc] as $addr) {
             $parts[] = $addr['name'];
             $parts[] = $addr['email'];
         }
-        $parts[] = $parsed->textBody;
-        foreach ($parsed->attachments as $attachment) {
+        $parts[] = $textBody;
+        foreach ($attachments as $attachment) {
             $parts[] = $attachment->filename;
         }
 

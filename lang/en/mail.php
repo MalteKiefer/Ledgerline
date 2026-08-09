@@ -121,6 +121,23 @@ return [
         'level_error' => 'Error',
     ],
 
+    'keys' => [
+        'title' => 'Encryption keys',
+        'subtitle' => 'PGP / S-MIME keys used to read encrypted mail (server-side).',
+        'none' => 'No keys yet.',
+        'import_pgp' => 'Import PGP key',
+        'import_smime' => 'Import S/MIME (.p12)',
+        'label' => 'Label',
+        'passphrase' => 'Passphrase',
+        'armored_private_key' => 'Armored private key',
+        'p12_file' => 'PKCS#12 bundle (.p12/.pfx)',
+        'fingerprint' => 'Fingerprint',
+        'add' => 'Import',
+        'delete' => 'Delete key',
+        'delete_confirm' => 'Delete this key? Encrypted mail will no longer be readable.',
+        'imported' => 'Key imported.',
+        'import_failed' => 'Could not import the key.',
+    ],
     'toast' => [
         'saved' => 'Account saved.',
         'deleted' => 'Account deleted.',

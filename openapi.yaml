@@ -1436,6 +1436,24 @@ components:
         inline: { type: boolean }
       required: [id, size, inline]
 
+    MailKey:
+      type: object
+      description: >
+        A user's PGP / S-MIME decryption key — PUBLIC material only. The private
+        key + passphrase are stored encrypted and are never serialised.
+      properties:
+        id: { type: integer }
+        type: { type: string, enum: [pgp, smime] }
+        label: { type: string }
+        key_fingerprint: { type: [string, "null"] }
+        key_id: { type: [string, "null"] }
+        public_key: { type: [string, "null"] }
+        identities: { type: [array, "null"], items: { $ref: '#/components/schemas/MailAddress' } }
+        has_cert: { type: boolean }
+        expires_at: { type: [string, "null"], format: date-time }
+        created_at: { type: [string, "null"], format: date-time }
+      required: [id, type, label, has_cert]
+
     MailLog:
       type: object
       properties:
@@ -6389,6 +6407,71 @@ paths:
         "422": { description: "Source account deleted or no Message-Id." }
         "429": { $ref: "#/components/responses/RateLimited" }
         "502": { description: "Origin IMAP delete failed." }
+  /mail/keys:
+    get:
+      tags: [Mail]
+      operationId: mailKeysIndex
+      summary: List the user's PGP / S-MIME decryption keys
+      description: >
+        Owner-scoped. Returns PUBLIC material only — the private key and
+        passphrase are stored encrypted + hidden and are NEVER returned.
+      responses:
+        "200":
+          description: Keys.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys: { type: array, items: { $ref: '#/components/schemas/MailKey' } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Mail]
+      operationId: mailKeysStore
+      summary: Import a PGP secret key or an S-MIME PKCS#12 bundle
+      description: >
+        Throttle 60/min. Import only. type=pgp needs armored_private_key
+        (+optional passphrase); type=smime needs p12_base64 (base64 PKCS#12,
+        +optional passphrase, converted to PEM server-side). Used only for
+        server-side decryption of encrypted archived mail.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: { type: string, enum: [pgp, smime] }
+                label: { type: string, maxLength: 200 }
+                passphrase: { type: [string, "null"] }
+                armored_private_key: { type: [string, "null"], description: "PGP: armored secret key." }
+                p12_base64: { type: [string, "null"], description: "S-MIME: base64 PKCS#12 bundle." }
+              required: [type, label]
+      responses:
+        "201":
+          description: Imported.
+          content:
+            application/json:
+              schema: { type: object, properties: { key: { $ref: '#/components/schemas/MailKey' } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/keys/{key}:
+    delete:
+      tags: [Mail]
+      operationId: mailKeysDestroy
+      summary: Delete a decryption key
+      description: "Throttle 60/min. Owner-scoped."
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /mail/raw/{blob}:
     get:
       tags: [Mail]
