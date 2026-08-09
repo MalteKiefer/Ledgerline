@@ -107,7 +107,8 @@
     <Card body-class="flex flex-1 flex-col overflow-hidden p-0" class="flex w-full min-w-0 flex-1 flex-col self-stretch">
       <!-- Toolbar -->
       <div class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] p-3">
-        <TextField v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="w-full sm:w-64" @update:model-value="debouncedReload" @enter="reload" />
+        <Btn variant="solid" size="sm" icon="edit_square" @click="openCompose">{{ t('mail.send.compose') }}</Btn>
+        <TextField v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="w-full sm:w-56" @update:model-value="debouncedReload" @enter="reload" />
         <div class="flex items-center gap-1.5">
           <TextField v-model="dateFrom" type="date" :placeholder="t('mail.list.date_from')" class="w-36" @update:model-value="onDate" />
           <TextField v-model="dateTo" type="date" :placeholder="t('mail.list.date_to')" class="w-36" @update:model-value="onDate" />
@@ -227,8 +228,15 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-1.5 border-y border-[var(--ll-border)] py-2">
-        <Btn variant="ghost" size="sm" icon="reply" @click="doPushBack(reader)">{{ mt('mail.actions.push_back', 'Push back to origin') }}</Btn>
-        <Btn variant="ghost" size="sm" icon="delete_sweep" class="text-red-600 dark:text-red-400" @click="doDeleteOrigin(reader)">{{ mt('mail.actions.delete_origin', 'Delete from origin') }}</Btn>
+        <template v-if="readerCanSend">
+          <Btn variant="soft" size="sm" icon="reply" @click="openReply(false)">{{ t('mail.send.reply') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="reply_all" @click="openReply(true)">{{ t('mail.send.reply_all') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="forward" @click="openForward">{{ t('mail.send.forward') }}</Btn>
+          <span class="mx-0.5 h-4 w-px bg-[var(--ll-border)]" />
+        </template>
+        <span v-else class="mr-1 inline-flex items-center gap-1 text-xs text-[var(--ll-muted)]"><Icon name="info" :size="14" />{{ t('mail.send.no_smtp') }}</span>
+        <Btn variant="ghost" size="sm" icon="move_to_inbox" @click="doPushBack(reader)">{{ t('mail.actions.push_back') }}</Btn>
+        <Btn variant="ghost" size="sm" icon="delete_sweep" class="text-red-600 dark:text-red-400" @click="doDeleteOrigin(reader)">{{ t('mail.actions.delete_origin') }}</Btn>
         <Btn variant="ghost" size="sm" icon="download" tag="a" :href="s.rawUrl(reader.id, true)">{{ t('mail.reader.download_eml') }}</Btn>
         <Btn v-if="!reader.trashed" variant="ghost" size="sm" icon="delete" @click="readerTrash(reader)">{{ t('mail.actions.trash') }}</Btn>
         <Btn v-else variant="ghost" size="sm" icon="restore" @click="readerRestore(reader)">{{ t('mail.actions.restore') }}</Btn>
@@ -287,6 +295,25 @@
       <TextField v-model="editor.form.username" :label="t('mail.form.username')" autocomplete="off" />
       <TextField v-model="editor.form.password" :label="t('mail.form.password')" type="password" autocomplete="new-password" :hint="editor.id ? t('mail.form.password_keep') : undefined" />
       <Select v-model="editor.form.encryption" :label="t('mail.form.encryption')" :options="encItems" />
+
+      <!-- SMTP (outgoing) — enables compose / reply / forward -->
+      <div class="mt-1 border-t border-[var(--ll-border)] pt-3">
+        <div class="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--ll-muted)]"><Icon name="send" :size="15" />{{ t('mail.send.compose') }}</div>
+        <div class="grid grid-cols-3 gap-3">
+          <div class="col-span-2"><TextField v-model="editor.form.smtp_host" :label="t('mail.send.smtp_host')" autocomplete="off" /></div>
+          <TextField v-model.number="editor.form.smtp_port" :label="t('mail.send.smtp_port')" type="number" inputmode="numeric" />
+        </div>
+        <div class="mt-3 grid grid-cols-2 gap-3">
+          <TextField v-model="editor.form.smtp_username" :label="t('mail.send.smtp_username')" autocomplete="off" />
+          <TextField v-model="editor.form.smtp_password" :label="t('mail.send.smtp_password')" type="password" autocomplete="new-password" :hint="editor.id && editor.hasSmtpPassword ? t('mail.form.password_keep') : undefined" />
+        </div>
+        <div class="mt-3"><Select v-model="editor.form.smtp_encryption" :label="t('mail.send.smtp_encryption')" :options="encItems" /></div>
+        <div class="mt-3 grid grid-cols-2 gap-3">
+          <TextField v-model="editor.form.from_name" :label="t('mail.send.from_name')" />
+          <TextField v-model="editor.form.from_email" :label="t('mail.send.from_email')" type="email" inputmode="email" autocomplete="off" />
+        </div>
+      </div>
+
       <div>
         <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.form.folders') }}</div>
         <div class="mb-1.5 flex flex-wrap gap-1.5">
@@ -399,6 +426,60 @@
     </template>
     <template #footer><Btn variant="ghost" @click="statsDlg.show = false">{{ t('common.close') }}</Btn></template>
   </Modal>
+
+  <!-- Compose / reply / forward modal -->
+  <Modal v-model="compose.show" :title="composeTitle" width="40rem">
+    <div class="space-y-3">
+      <!-- Account picker (compose only) -->
+      <Select v-if="compose.mode === 'compose'" v-model.number="compose.accountId" :label="t('mail.send.from_email')" :options="composeAccountItems" />
+
+      <!-- Reply recipient (server-derived, read-only) -->
+      <div v-if="compose.mode === 'reply'" class="rounded-lg bg-black/[0.03] px-3 py-2 text-xs dark:bg-white/5">
+        <span class="font-medium">{{ t('mail.send.to') }}:</span> {{ compose.recipientHint || '—' }}
+        <span v-if="compose.replyAll" class="ml-1 text-[var(--ll-muted)]">· {{ t('mail.send.reply_all') }}</span>
+      </div>
+
+      <!-- Recipients (compose / forward) -->
+      <template v-if="compose.mode !== 'reply'">
+        <TextField v-model="compose.to" :label="t('mail.send.to')" placeholder="name@example.com, …" autocomplete="off" />
+        <TextField v-model="compose.cc" :label="t('mail.send.cc')" placeholder="name@example.com, …" autocomplete="off" />
+        <TextField v-if="compose.mode === 'compose'" v-model="compose.bcc" :label="t('mail.send.bcc')" placeholder="name@example.com, …" autocomplete="off" />
+      </template>
+
+      <!-- Subject (compose only; reply/forward derive Re:/Fwd: server-side) -->
+      <TextField v-if="compose.mode === 'compose'" v-model="compose.subject" :label="t('mail.send.subject')" />
+
+      <!-- Body -->
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.send.body') }}</span>
+        <textarea
+          v-model="compose.body" rows="8"
+          class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] placeholder:text-[var(--ll-muted)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+          :placeholder="t('mail.send.body')"
+        ></textarea>
+      </label>
+
+      <!-- Attachments (compose only, multipart upload) -->
+      <div v-if="compose.mode === 'compose'">
+        <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--ll-border)] px-3 py-1.5 text-sm hover:bg-black/[0.03] dark:hover:bg-white/5">
+          <Icon name="attach_file" :size="16" />{{ t('mail.send.attachments') }}
+          <input type="file" multiple class="hidden" @change="onComposeFiles">
+        </label>
+        <div v-if="compose.files.length" class="mt-2 space-y-1">
+          <div v-for="(f, i) in compose.files" :key="i" class="flex items-center gap-2 rounded-lg bg-black/[0.03] px-2.5 py-1.5 text-sm dark:bg-white/5">
+            <Icon name="attach_file" :size="15" class="shrink-0 text-[var(--ll-muted)]" />
+            <span class="min-w-0 flex-1 truncate">{{ f.name }}</span>
+            <span class="shrink-0 text-xs text-[var(--ll-muted)]">{{ fmtBytes(f.size) }}</span>
+            <button type="button" class="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[var(--ll-muted)] hover:bg-black/[0.06] hover:text-red-600 dark:hover:bg-white/10" @click="removeComposeFile(i)"><Icon name="close" :size="14" /></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <template #footer>
+      <Btn variant="ghost" @click="compose.show = false">{{ t('mail.form.cancel') }}</Btn>
+      <Btn variant="solid" icon="send" :loading="compose.sending" @click="doSend">{{ t('mail.send.send') }}</Btn>
+    </template>
+  </Modal>
 </template>
 
 <script setup lang="ts">
@@ -406,7 +487,8 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
-import { useMailStore, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody } from '@spa/stores/mail';
+import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody } from '@spa/stores/mail';
+import { ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
@@ -426,14 +508,17 @@ const frameKey = ref(0);
 const dateFrom = ref('');
 const dateTo = ref('');
 
-// laravel-vue-i18n returns the key itself when missing; fall back to a literal
-// for the two capabilities the shared mail.* bundle does not yet have strings for
-// (push-back / delete-from-origin). Same fallback across locales — noted in report.
-function mt(key: string, fallback: string): string { const v = t(key); return v === key ? fallback : v; }
-
 const isUnified = computed(() => filters.accountId === null && filters.label === null && !filters.trashed);
 const hasHtml = computed(() => reader.value?.html != null);
 const allSelected = computed(() => s.messages.length > 0 && s.messages.every((m) => s.selected.includes(m.id)));
+
+// Accounts that can send (mirror backend hasSmtp: smtp_host + from_email set).
+const sendableAccounts = computed(() => s.accounts.filter(accountCanSend));
+const readerAccount = computed(() => {
+  const id = reader.value?.account_id;
+  return id != null ? (s.accounts.find((a) => a.id === id) ?? null) : null;
+});
+const readerCanSend = computed(() => !!readerAccount.value && accountCanSend(readerAccount.value));
 
 const encItems = [
   { title: t('mail.form.enc_ssl'), value: 'ssl' },
@@ -528,11 +613,11 @@ async function readerTrash(m: MailMessage) { try { await s.trash([m.id]); reader
 async function readerRestore(m: MailMessage) { try { await s.restore([m.id]); readerOpen.value = false; await reload(); } catch { error(t('common.error')); } }
 
 async function doPushBack(m: MailMessage) {
-  if (!await confirmAsk(mt('mail.actions.confirm_push_back', 'Append this message back to its origin mailbox?'))) return;
+  if (!await confirmAsk(t('mail.actions.confirm_push_back'))) return;
   try { await s.pushBack(m.id, m.folder); success(t('common.saved')); } catch { error(t('common.error')); }
 }
 async function doDeleteOrigin(m: MailMessage) {
-  if (!await confirmAsk(mt('mail.actions.confirm_delete_origin', 'Delete this message from the origin mailbox? The archived copy is kept.'), { danger: true })) return;
+  if (!await confirmAsk(t('mail.actions.confirm_delete_origin'), { danger: true })) return;
   try { await s.deleteOrigin(m.id, m.folder); success(t('common.saved')); } catch { error(t('common.error')); }
 }
 async function saveAtt(attId: string, target: 'files' | 'paperless') {
@@ -548,18 +633,19 @@ async function bulkLabel(id: number) { if (!s.selected.length) return; try { awa
 
 // --- Accounts ----------------------------------------------------------------
 const folderInput = ref('');
-const editor = reactive<{ show: boolean; id: number | null; saving: boolean; testing: boolean; folders: string[]; testResult: { ok: boolean; detail: string } | null; form: AccountBody }>({
-  show: false, id: null, saving: false, testing: false, folders: [], testResult: null,
-  form: { name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', folders: null, backfill_since: null, delete_after_import: false, skip_spam: true, enabled: true, sync_interval_minutes: null },
+const editor = reactive<{ show: boolean; id: number | null; saving: boolean; testing: boolean; folders: string[]; hasSmtpPassword: boolean; testResult: { ok: boolean; detail: string } | null; form: AccountBody }>({
+  show: false, id: null, saving: false, testing: false, folders: [], hasSmtpPassword: false, testResult: null,
+  form: { name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', smtp_host: '', smtp_port: null, smtp_username: '', smtp_password: '', smtp_encryption: 'starttls', from_name: '', from_email: '', folders: null, backfill_since: null, delete_after_import: false, skip_spam: true, enabled: true, sync_interval_minutes: null },
 });
 function openAccountEditor(a: MailAccount | null) {
   editor.testResult = null; folderInput.value = '';
+  editor.hasSmtpPassword = a?.has_smtp_password ?? false;
   if (a) {
     editor.id = a.id; editor.folders = [...(a.folders ?? [])];
-    Object.assign(editor.form, { name: a.name, host: a.host, port: a.port, username: a.username, password: '', encryption: a.encryption, folders: a.folders, backfill_since: a.backfill_since, delete_after_import: a.delete_after_import, skip_spam: a.skip_spam, enabled: a.enabled, sync_interval_minutes: a.sync_interval_minutes });
+    Object.assign(editor.form, { name: a.name, host: a.host, port: a.port, username: a.username, password: '', encryption: a.encryption, smtp_host: a.smtp_host ?? '', smtp_port: a.smtp_port, smtp_username: a.smtp_username ?? '', smtp_password: '', smtp_encryption: a.smtp_encryption ?? 'starttls', from_name: a.from_name ?? '', from_email: a.from_email ?? '', folders: a.folders, backfill_since: a.backfill_since, delete_after_import: a.delete_after_import, skip_spam: a.skip_spam, enabled: a.enabled, sync_interval_minutes: a.sync_interval_minutes });
   } else {
     editor.id = null; editor.folders = [];
-    Object.assign(editor.form, { name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', folders: null, backfill_since: null, delete_after_import: false, skip_spam: true, enabled: true, sync_interval_minutes: null });
+    Object.assign(editor.form, { name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', smtp_host: '', smtp_port: null, smtp_username: '', smtp_password: '', smtp_encryption: 'starttls', from_name: '', from_email: '', folders: null, backfill_since: null, delete_after_import: false, skip_spam: true, enabled: true, sync_interval_minutes: null });
   }
   editor.show = true;
 }
@@ -663,4 +749,87 @@ async function doExport(format: 'mbox' | 'zip') {
 }
 const statsDlg = reactive<{ show: boolean; loading: boolean; data: MailStats | null }>({ show: false, loading: false, data: null });
 async function openStats() { statsDlg.show = true; statsDlg.loading = true; try { statsDlg.data = await s.loadStats(); } catch { error(t('common.error')); } finally { statsDlg.loading = false; } }
+
+// --- Compose / reply / forward -----------------------------------------------
+const compose = reactive<{
+  show: boolean; mode: 'compose' | 'reply' | 'forward'; sending: boolean;
+  sourceId: string | null; replyAll: boolean; accountId: number | null; recipientHint: string;
+  to: string; cc: string; bcc: string; subject: string; body: string; files: File[];
+}>({ show: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', files: [] });
+
+const composeTitle = computed(() =>
+  compose.mode === 'reply' ? (compose.replyAll ? t('mail.send.reply_all') : t('mail.send.reply'))
+    : compose.mode === 'forward' ? t('mail.send.forward') : t('mail.send.compose'));
+const composeAccountItems = computed(() => sendableAccounts.value.map((a) => ({ title: `${a.name} · ${a.from_email}`, value: a.id })));
+
+function parseEmails(str: string): string[] { return str.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean); }
+function resetComposeFields() { Object.assign(compose, { to: '', cc: '', bcc: '', subject: '', body: '', files: [], recipientHint: '', replyAll: false, sourceId: null }); }
+
+function openCompose() {
+  if (!sendableAccounts.value.length) { error(t('mail.send.no_smtp')); return; }
+  resetComposeFields();
+  compose.mode = 'compose';
+  compose.accountId = sendableAccounts.value[0].id;
+  compose.show = true;
+}
+function openReply(all: boolean) {
+  if (!reader.value || !readerCanSend.value) { error(t('mail.send.no_smtp')); return; }
+  resetComposeFields();
+  compose.mode = 'reply';
+  compose.sourceId = reader.value.id;
+  compose.replyAll = all;
+  compose.accountId = reader.value.account_id;
+  compose.recipientHint = reader.value.reply_to || reader.value.from_email || reader.value.from_name || '';
+  compose.show = true;
+}
+function openForward() {
+  if (!reader.value || !readerCanSend.value) { error(t('mail.send.no_smtp')); return; }
+  resetComposeFields();
+  compose.mode = 'forward';
+  compose.sourceId = reader.value.id;
+  compose.accountId = reader.value.account_id;
+  compose.show = true;
+}
+
+function onComposeFiles(e: Event) {
+  const input = e.target as HTMLInputElement;
+  if (input.files) compose.files.push(...Array.from(input.files));
+  input.value = '';
+}
+function removeComposeFile(i: number) { compose.files.splice(i, 1); }
+
+// Surface the backend's machine error code (ApiError body { ok:false, error }) as a toast.
+function sendErr(e: unknown): string {
+  if (e instanceof ApiError) {
+    const code = (e.body as { error?: string } | null)?.error;
+    if (code === 'no_smtp') return t('mail.send.no_smtp');
+    if (code === 'no_recipient') return t('mail.send.no_recipient');
+    if (code === 'empty_body') return t('mail.send.empty_body');
+  }
+  return t('mail.send.send_failed');
+}
+
+async function doSend() {
+  compose.sending = true;
+  try {
+    if (compose.mode === 'compose') {
+      const to = parseEmails(compose.to);
+      const cc = parseEmails(compose.cc);
+      const bcc = parseEmails(compose.bcc);
+      if (!to.length && !cc.length && !bcc.length) { error(t('mail.send.no_recipient')); return; }
+      if (!compose.body.trim() && !compose.files.length) { error(t('mail.send.empty_body')); return; }
+      await s.compose({ account_id: Number(compose.accountId), to, cc, bcc, subject: compose.subject || null, text: compose.body || null, files: compose.files });
+    } else if (compose.mode === 'reply') {
+      if (!compose.body.trim()) { error(t('mail.send.empty_body')); return; }
+      await s.reply(String(compose.sourceId), { text: compose.body, all: compose.replyAll });
+    } else {
+      const to = parseEmails(compose.to);
+      if (!to.length) { error(t('mail.send.no_recipient')); return; }
+      // Forward needs no body — the server attaches the original .eml + a header.
+      await s.forward(String(compose.sourceId), { to, cc: parseEmails(compose.cc), text: compose.body || null });
+    }
+    compose.show = false;
+    success(t('mail.send.sent'));
+  } catch (e) { error(sendErr(e)); } finally { compose.sending = false; }
+}
 </script>

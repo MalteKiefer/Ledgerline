@@ -1377,6 +1377,13 @@ components:
         skip_spam: { type: boolean }
         enabled: { type: boolean }
         sync_interval_minutes: { type: [integer, "null"], description: "Per-account override; null = workspace default." }
+        smtp_host: { type: [string, "null"], description: "Outgoing SMTP for compose/reply/forward (opt-in)." }
+        smtp_port: { type: [integer, "null"] }
+        smtp_username: { type: [string, "null"] }
+        smtp_encryption: { type: [string, "null"], enum: [ssl, tls, starttls, none, null] }
+        from_name: { type: [string, "null"] }
+        from_email: { type: [string, "null"] }
+        has_smtp_password: { type: boolean, description: "The SMTP password itself is NEVER returned; this flags whether one is stored." }
         status: { type: string, enum: [idle, syncing, error] }
         last_error: { type: [string, "null"] }
         last_synced_at: { type: [string, "null"], format: date-time }
@@ -5971,6 +5978,13 @@ paths:
                 skip_spam: { type: [boolean, "null"] }
                 enabled: { type: [boolean, "null"] }
                 sync_interval_minutes: { type: [integer, "null"], minimum: 1, maximum: 1440 }
+                smtp_host: { type: [string, "null"], maxLength: 255, description: "SSRF-guarded (SafeHost). Enables compose/reply/forward." }
+                smtp_port: { type: [integer, "null"], minimum: 1, maximum: 65535 }
+                smtp_username: { type: [string, "null"], maxLength: 255 }
+                smtp_password: { type: [string, "null"], maxLength: 2000, description: "Write-only; never returned." }
+                smtp_encryption: { type: [string, "null"], enum: [ssl, tls, starttls, none, null] }
+                from_name: { type: [string, "null"], maxLength: 255 }
+                from_email: { type: [string, "null"], format: email, maxLength: 255 }
               required: [name, host, port, username, password, encryption]
       responses:
         "201":
@@ -6009,6 +6023,13 @@ paths:
                 skip_spam: { type: [boolean, "null"] }
                 enabled: { type: [boolean, "null"] }
                 sync_interval_minutes: { type: [integer, "null"], minimum: 1, maximum: 1440 }
+                smtp_host: { type: [string, "null"], maxLength: 255 }
+                smtp_port: { type: [integer, "null"], minimum: 1, maximum: 65535 }
+                smtp_username: { type: [string, "null"], maxLength: 255 }
+                smtp_password: { type: [string, "null"], maxLength: 2000, description: "Blank keeps the current SMTP password." }
+                smtp_encryption: { type: [string, "null"], enum: [ssl, tls, starttls, none, null] }
+                from_name: { type: [string, "null"], maxLength: 255 }
+                from_email: { type: [string, "null"], format: email, maxLength: 255 }
               required: [name, host, port, username, encryption]
       responses:
         "200":

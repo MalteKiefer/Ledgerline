@@ -13,6 +13,15 @@ export interface MailAccount {
   port: number;
   username: string;
   encryption: 'ssl' | 'tls' | 'starttls' | 'none';
+  // SMTP (compose/reply/forward). The password is never returned —
+  // `has_smtp_password` tells the client whether one is stored.
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_username: string | null;
+  smtp_encryption: 'ssl' | 'tls' | 'starttls' | 'none' | null;
+  from_name: string | null;
+  from_email: string | null;
+  has_smtp_password: boolean;
   folders: string[] | null;
   backfill_since: string | null;
   delete_after_import: boolean;
@@ -23,6 +32,11 @@ export interface MailAccount {
   last_error: string | null;
   last_synced_at: string | null;
   message_count: number;
+}
+
+/** Whether an account can send — mirrors the backend MailAccount::hasSmtp(). */
+export function accountCanSend(a: MailAccount): boolean {
+  return !!(a.smtp_host && a.smtp_host.trim() && a.from_email && a.from_email.trim());
 }
 
 export interface MailAttachment {
@@ -101,7 +115,23 @@ export interface AccountBody {
   name: string; host: string; port: number; username: string; password?: string | null;
   encryption: string; folders: string[] | null; backfill_since: string | null;
   delete_after_import: boolean; skip_spam: boolean; enabled: boolean; sync_interval_minutes: number | null;
+  // SMTP — optional; smtp_password is blank-kept on update (KeepBlankSecrets).
+  smtp_host: string | null; smtp_port: number | null; smtp_username: string | null;
+  smtp_password?: string | null; smtp_encryption: string; from_name: string | null; from_email: string | null;
 }
+
+/** Result of a compose/reply/forward send. */
+export interface SendResult { ok: boolean; message_id: string | null; appended_to_sent: boolean }
+
+export interface ComposePayload {
+  account_id: number;
+  to: string[]; cc?: string[]; bcc?: string[];
+  subject?: string | null; text?: string | null; html?: string | null;
+  attachment_ids?: string[]; sent_folder?: string | null;
+  files?: File[];
+}
+export interface ReplyPayload { text?: string | null; html?: string | null; all?: boolean; sent_folder?: string | null }
+export interface ForwardPayload { to: string[]; cc?: string[]; text?: string | null; html?: string | null; sent_folder?: string | null }
 
 function defaultFilters(): MailFilters {
   return { accountId: null, folder: null, q: '', seen: null, spam: null, label: null, dateFrom: null, dateTo: null, trashed: false, threadId: null };
@@ -197,6 +227,36 @@ export const useMailStore = defineStore('mail', () => {
   const deleteOrigin = (id: string, folder?: string | null) => api.post<{ ok: boolean; expunged: number }>(`/api/v1/mail/messages/${id}/delete-origin`, { folder: folder ?? null });
   const setLabels = (ids: string[], add: number[], remove: number[]) => api.post<{ updated: number }>('/api/v1/mail/messages/labels', { ids, add, remove });
 
+  // --- Compose / reply / forward (SMTP send) --------------------------------
+  // Business rejections come back as ApiError(422/502) with body { ok:false, error }.
+  async function compose(p: ComposePayload): Promise<SendResult> {
+    if (p.files && p.files.length) {
+      const form = new FormData();
+      form.append('account_id', String(p.account_id));
+      for (const r of p.to) form.append('to[]', r);
+      for (const r of p.cc ?? []) form.append('cc[]', r);
+      for (const r of p.bcc ?? []) form.append('bcc[]', r);
+      if (p.subject != null) form.append('subject', p.subject);
+      if (p.text != null) form.append('text', p.text);
+      if (p.html != null) form.append('html', p.html);
+      for (const id of p.attachment_ids ?? []) form.append('attachment_ids[]', id);
+      for (const f of p.files) form.append('attachments[]', f);
+      if (p.sent_folder != null) form.append('sent_folder', p.sent_folder);
+      return api.upload<SendResult>('/api/v1/mail/messages/compose', form);
+    }
+    return api.post<SendResult>('/api/v1/mail/messages/compose', {
+      account_id: p.account_id, to: p.to, cc: p.cc ?? [], bcc: p.bcc ?? [],
+      subject: p.subject ?? null, text: p.text ?? null, html: p.html ?? null,
+      attachment_ids: p.attachment_ids ?? [], sent_folder: p.sent_folder ?? null,
+    });
+  }
+  const reply = (id: string, p: ReplyPayload) => api.post<SendResult>(`/api/v1/mail/messages/${id}/reply`, {
+    text: p.text ?? null, html: p.html ?? null, all: p.all ?? false, sent_folder: p.sent_folder ?? null,
+  });
+  const forward = (id: string, p: ForwardPayload) => api.post<SendResult>(`/api/v1/mail/messages/${id}/forward`, {
+    to: p.to, cc: p.cc ?? [], text: p.text ?? null, html: p.html ?? null, sent_folder: p.sent_folder ?? null,
+  });
+
   // --- Labels ---------------------------------------------------------------
   async function loadLabels() {
     const r = await api.get<{ labels: MailLabel[] }>('/api/v1/mail/labels');
@@ -268,6 +328,7 @@ export const useMailStore = defineStore('mail', () => {
     loadAccounts, saveAccount, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
     setSeen, trash, restore, pushBack, deleteOrigin, setLabels,
+    compose, reply, forward,
     loadLabels, createLabel, updateLabel, deleteLabel,
     loadRules, createRule, updateRule, deleteRule,
     loadSavedSearches, saveSearch, deleteSavedSearch,
