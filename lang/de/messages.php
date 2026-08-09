@@ -9,6 +9,7 @@ return [
         'files' => 'Dateien',
         'contacts' => 'Kontakte',
         'calendar' => 'Kalender',
+        'mail' => 'E-Mail',
         'more' => 'Mehr',
     ],
     'menu' => [

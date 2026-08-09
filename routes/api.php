@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\FilesLimitsController as ApiFilesLimitsController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
 use App\Http\Controllers\Api\InviteLinkController as ApiInviteLinkController;
 use App\Http\Controllers\Api\InvoiceOcrController;
+use App\Http\Controllers\Api\MailAccountController;
 use App\Http\Controllers\Api\NotificationsController as ApiNotificationsController;
 use App\Http\Controllers\Api\PaperlessController as ApiPaperlessController;
 use App\Http\Controllers\Api\PasswordController as ApiPasswordController;
@@ -36,6 +37,11 @@ use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MailBlobController;
+use App\Http\Controllers\MailLogController;
+use App\Http\Controllers\MailMessageController;
+use App\Http\Controllers\MailSeenController;
+use App\Http\Controllers\MailTrashController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
@@ -284,6 +290,28 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/shared-with-me/{share}/upload', [SharedWithMeController::class, 'upload'])->whereNumber('share')->middleware('throttle:1200,1')->name('api.shared-with-me.upload');
             Route::put('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'rename'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('api.shared-with-me.rename');
             Route::delete('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'destroy'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('api.shared-with-me.destroy');
+        });
+
+        // Mail archive (Phase 1) — plaintext-relational IMAP account config +
+        // pull-only sync + the archived-message ledger/reader. Owner-scoped;
+        // gated by module:mail on top of device auth. Immutable archive: only
+        // seen/trash toggles mutate; raw .eml served sandboxed.
+        Route::middleware('module:mail')->group(function (): void {
+            Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('api.mail.accounts.index');
+            Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.accounts.store');
+            Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.update');
+            Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.destroy');
+            Route::post('/mail/accounts/{account}/sync', [MailAccountController::class, 'sync'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.sync');
+            Route::post('/mail/accounts/{account}/sync/cancel', [MailAccountController::class, 'cancelSync'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.sync-cancel');
+            Route::post('/mail/accounts/{account}/test', [MailAccountController::class, 'test'])->whereNumber('account')->middleware('throttle:6,1')->name('api.mail.accounts.test');
+            Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->whereNumber('account')->name('api.mail.accounts.status');
+            Route::get('/mail/accounts/{account}/logs', [MailLogController::class, 'index'])->whereNumber('account')->middleware('throttle:600,1')->name('api.mail.accounts.logs');
+            Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware('throttle:1200,1')->name('api.mail.messages.index');
+            Route::get('/mail/messages/{message}', [MailMessageController::class, 'show'])->whereUuid('message')->middleware('throttle:1200,1')->name('api.mail.messages.show');
+            Route::post('/mail/messages/seen', [MailSeenController::class, 'update'])->middleware('throttle:120,1')->name('api.mail.messages.seen');
+            Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware('throttle:60,1')->name('api.mail.messages.trash');
+            Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware('throttle:60,1')->name('api.mail.messages.restore');
+            Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->whereUuid('blob')->middleware('throttle:600,1')->name('api.mail.raw');
         });
 
         // Per-user Paperless-ngx integration: cached term quick-picks, live term

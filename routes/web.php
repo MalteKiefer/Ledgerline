@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AddressBookController;
+use App\Http\Controllers\Api\MailAccountController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\CalendarBookController;
 use App\Http\Controllers\CalendarController;
@@ -17,6 +18,11 @@ use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\InviteLinkController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MailBlobController;
+use App\Http\Controllers\MailLogController;
+use App\Http\Controllers\MailMessageController;
+use App\Http\Controllers\MailSeenController;
+use App\Http\Controllers\MailTrashController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
@@ -387,6 +393,28 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/settings/calendar/profile', [SettingsCalendarController::class, 'profile'])->name('settings.calendar.profile');
     });
 
+    // Mail archive (Phase 1). The /mail page render is served by the SPA (see
+    // the catch-all); the data endpoints are module-gated here. Guard-agnostic
+    // controllers (shared 1:1 with /api/v1). Immutable archive: only seen/trash
+    // toggle; the raw .eml is served sandboxed.
+    Route::middleware('module:mail')->group(function (): void {
+        Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('mail.accounts.index');
+        Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware('throttle:60,1')->name('mail.accounts.store');
+        Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->whereNumber('account')->middleware('throttle:60,1')->name('mail.accounts.update');
+        Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->whereNumber('account')->middleware('throttle:60,1')->name('mail.accounts.destroy');
+        Route::post('/mail/accounts/{account}/sync', [MailAccountController::class, 'sync'])->whereNumber('account')->middleware('throttle:60,1')->name('mail.accounts.sync');
+        Route::post('/mail/accounts/{account}/sync/cancel', [MailAccountController::class, 'cancelSync'])->whereNumber('account')->middleware('throttle:60,1')->name('mail.accounts.sync-cancel');
+        Route::post('/mail/accounts/{account}/test', [MailAccountController::class, 'test'])->whereNumber('account')->middleware('throttle:6,1')->name('mail.accounts.test');
+        Route::get('/mail/accounts/{account}/status', [MailAccountController::class, 'status'])->whereNumber('account')->name('mail.accounts.status');
+        Route::get('/mail/accounts/{account}/logs', [MailLogController::class, 'index'])->whereNumber('account')->middleware('throttle:600,1')->name('mail.accounts.logs');
+        Route::get('/mail/messages', [MailMessageController::class, 'index'])->middleware('throttle:1200,1')->name('mail.messages.index');
+        Route::get('/mail/messages/{message}', [MailMessageController::class, 'show'])->whereUuid('message')->middleware('throttle:1200,1')->name('mail.messages.show');
+        Route::post('/mail/messages/seen', [MailSeenController::class, 'update'])->middleware('throttle:120,1')->name('mail.messages.seen');
+        Route::post('/mail/messages/trash', [MailTrashController::class, 'trash'])->middleware('throttle:60,1')->name('mail.messages.trash');
+        Route::post('/mail/messages/restore', [MailTrashController::class, 'restore'])->middleware('throttle:60,1')->name('mail.messages.restore');
+        Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->whereUuid('blob')->middleware('throttle:3000,1')->name('mail.raw');
+    });
+
     // Per-user company profile + invoice defaults (printed on every invoice). The
     // edit page render is served by the SPA; update + logo image stay here.
     Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
@@ -411,6 +439,7 @@ Route::get('/finance', $spa)->name('finance.index');
 Route::get('/files', $spa)->name('files.index');
 Route::get('/contacts', $spa)->name('contacts.index');
 Route::get('/calendar', $spa)->name('calendar.index');
+Route::get('/mail', $spa)->name('mail.index');
 Route::get('/profile', $spa)->name('profile');
 Route::get('/settings/users', $spa)->name('settings.users');
 Route::get('/settings/groups', $spa)->name('settings.groups');

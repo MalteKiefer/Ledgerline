@@ -17,5 +17,6 @@ return [
         'files' => ['label' => 'messages.nav.files', 'route' => 'files.index'],
         'contacts' => ['label' => 'messages.nav.contacts', 'route' => 'contacts.index'],
         'calendar' => ['label' => 'messages.nav.calendar', 'route' => 'calendar.index'],
+        'mail' => ['label' => 'messages.nav.mail', 'route' => 'mail.index'],
     ],
 ];

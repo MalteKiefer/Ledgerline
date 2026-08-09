@@ -43,3 +43,10 @@ Schedule::command('request-log:prune')->dailyAt('00:27')->withoutOverlapping();
 
 // Verify the latest successful backup restores, and alert on staleness/failure.
 Schedule::command('backups:verify')->dailyAt('04:30')->withoutOverlapping();
+
+// Mail archive: dispatch a pull-only IMAP sync for every enabled account that is
+// due (each account's own interval decides due-ness); reclaim orphaned mail
+// blobs daily; prune the diagnostic log.
+Schedule::command('mail:sync-accounts')->everyMinute()->withoutOverlapping();
+Schedule::command('mail:sweep-orphans')->daily()->withoutOverlapping();
+Schedule::command('mail-logs:prune')->dailyAt('00:35')->withoutOverlapping();
