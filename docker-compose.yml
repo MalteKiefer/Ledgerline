@@ -88,9 +88,19 @@ services:
     # prevents races); worker/scheduler skip it.
     environment:
       # Repeated from the x-app-image anchor: an explicit `environment:` here
-      # overrides (not merges with) the anchor's, so the IMDS opt-out must be
-      # restated or the web app would lose it and hang on S3 access.
+      # REPLACES (does not merge with) the anchor's, so anything the web app needs
+      # from the anchor must be restated or it is lost. Verified with
+      # `docker compose config`: without restating these the app service falls
+      # back to serversideup's default nginx body size (which rejects big uploads)
+      # and would hang on S3 without the IMDS opt-out.
       AWS_EC2_METADATA_DISABLED: "true"
+      # Only this service runs nginx. Restate the upload ceiling (>= the app's
+      # 550 MB max upload / PHP post_max_size / Caddy request_body) and turn off
+      # nginx version disclosure in the Server header + its own error pages
+      # (the app middleware strips Server/X-Powered-By on app responses, but nginx
+      # emits its own error responses e.g. 413/400 before PHP is reached).
+      NGINX_CLIENT_MAX_BODY_SIZE: "560M"
+      NGINX_SERVER_TOKENS: "off"
       AUTORUN_ENABLED: "true"
       AUTORUN_LARAVEL_MIGRATION: "true"
       AUTORUN_LARAVEL_STORAGE_LINK: "true"
@@ -107,7 +117,10 @@ services:
     deploy:
       resources:
         limits:
-          # Hard ceiling for the web app (nginx + php-fpm children).
+          # Hard ceiling for the web app (nginx + php-fpm children). CPU is a
+          # throttle (never OOM-kills) — a high, env-overridable default so it
+          # only bites a runaway, keeping one service from starving the host.
+          cpus: "${APP_CPU_LIMIT:-4}"
           memory: ${APP_MEMORY_LIMIT:-8g}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/up"]
@@ -137,6 +150,7 @@ services:
       replicas: ${WORKER_REPLICAS:-1}
       resources:
         limits:
+          cpus: "${WORKER_CPU_LIMIT:-2}"
           memory: ${WORKER_MEMORY_LIMIT:-2g}
     healthcheck:
       test: ["CMD-SHELL", "grep -la queue:work /proc/*/cmdline >/dev/null 2>&1 || exit 1"]
@@ -181,6 +195,12 @@ services:
     networks:
       - internal
     restart: unless-stopped
+    # NOTE: read_only rootfs is NOT used on Postgres — the official entrypoint
+    # writes runtime state OUTSIDE the data volume (the /var/run/postgresql
+    # socket dir + a postmaster PID/lock, and it can regenerate config on boot);
+    # a read-only root reliably breaks the cluster start, and this is the
+    # crown-jewel datastore. Hardened instead via non-root, cap_drop:[ALL],
+    # no-new-privileges, a secret-file password, and the internal-only network.
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -191,6 +211,15 @@ services:
       - SETGID
       - DAC_OVERRIDE
       - FOWNER
+    deploy:
+      resources:
+        limits:
+          # Generous, env-overridable ceilings: a bound so a runaway query can't
+          # exhaust host RAM/CPU and take the whole (internet-facing) box down,
+          # while staying well above a personal instance's working set so it
+          # never OOM-kills normal operation. Lower on a small box via env.
+          cpus: "${DB_CPU_LIMIT:-2}"
+          memory: ${DB_MEMORY_LIMIT:-4g}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-ledgerline} -d ${DB_DATABASE:-ledgerline}"]
       interval: 10s
@@ -207,6 +236,14 @@ services:
       - redis_password
     volumes:
       - valkey-data:/data
+    # Read-only root filesystem: every write path is accounted for — the custom
+    # command writes the generated config to /tmp (tmpfs below) and valkey writes
+    # AOF/RDB to the /data volume; run in foreground with no pidfile/logfile/unix
+    # socket, so nothing else touches the rootfs. The /run/secrets/* password is a
+    # separate Docker mount and stays readable under a read-only root.
+    read_only: true
+    tmpfs:
+      - /tmp
     networks:
       - internal
     restart: unless-stopped
@@ -222,6 +259,14 @@ services:
       - SETUID
       - SETGID
       - DAC_OVERRIDE
+    deploy:
+      resources:
+        limits:
+          # Ceiling so a session/cache/queue-store blow-up can't take the host
+          # down; generous vs a two-user working set. Lower via env on a small
+          # box (ideally also set a valkey maxmemory + eviction policy).
+          cpus: "${VALKEY_CPU_LIMIT:-1}"
+          memory: ${VALKEY_MEMORY_LIMIT:-2g}
     healthcheck:
       test: ["CMD-SHELL", "valkey-cli -a \"$$(cat /run/secrets/redis_password)\" ping | grep -q PONG"]
       interval: 10s
@@ -351,7 +396,9 @@ services:
       JAVA_OPTS: ${GRAPHHOPPER_JAVA_OPTS:--Xmx2g -Xms1g}
     volumes:
       # region.osm.pbf + config-example.yml supplied by the operator; graph persists.
-      - ./data/graphhopper:/data
+      # Mounted read-only: GraphHopper only READS the .pbf + config here and writes
+      # the built graph to the separate cache volume (-o /graphhopper-graph-cache).
+      - ./data/graphhopper:/data:ro
       - graphhopper-data:/graphhopper-graph-cache
     networks:
       - internal

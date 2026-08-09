@@ -20,3 +20,14 @@ tests
 scripts/*.log
 .phpunit.cache
 .DS_Store
+# Never bake a SQLite database into an image layer: `ledgerline` is the
+# git-tracked dev DB at the repo root (prod uses Postgres), and any *.sqlite is
+# dev/test data — leaking it into the production image is a data-exposure risk.
+ledgerline
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+# Operator-supplied runtime data (e.g. GraphHopper OSM extracts) is bind-mounted
+# at deploy time, not part of the app image — excluding it keeps multi-GB
+# extracts out of the build context and image layers.
+data/
