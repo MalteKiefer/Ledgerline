@@ -8,8 +8,20 @@ export interface CalendarCol {
   name: string;
   uri: string;
   color: string | null;
-  kind: 'normal' | 'holidays' | 'birthdays';
+  kind: 'normal' | 'holidays' | 'school_holidays' | 'birthdays';
+  country?: string | null;
+  subdivision?: string | null;
   owned: boolean;
+}
+
+// Country / subdivision options for the special-calendar dialog (from OpenHolidays).
+export interface HolidayCountry {
+  isoCode: string;
+  name: string;
+}
+export interface HolidaySubdivision {
+  code: string;
+  name: string;
 }
 
 // A recurrence-expanded occurrence returned by the range query. `id`/`uid`
@@ -84,10 +96,28 @@ export const useCalendarStore = defineStore('calendar', () => {
   const updateCalendar = (id: string, body: Record<string, unknown>) => api.put(`/api/v1/calendars/${id}`, body);
   const deleteCalendar = (id: string) => api.delete(`/api/v1/calendars/${id}`);
 
-  // Special (generated, read-only) calendars — holidays / birthdays.
-  const createSpecial = (kind: 'holidays' | 'birthdays', name: string, color?: string) =>
-    api.post<{ id: string; created: number }>('/api/v1/calendars/special', { kind, name, color });
+  // Special (generated, read-only) calendars — public/school holidays / birthdays.
+  // Holiday kinds carry an optional country + region (subdivision); birthdays ignore them.
+  const createSpecial = (
+    kind: 'holidays' | 'school_holidays' | 'birthdays',
+    opts: { name: string; color?: string; country?: string; subdivision?: string },
+  ) =>
+    api.post<{ id: string; created: number }>('/api/v1/calendars/special', {
+      kind,
+      name: opts.name,
+      color: opts.color,
+      country: opts.country || undefined,
+      subdivision: opts.subdivision || undefined,
+    });
   const regenerate = (id: string) => api.post<{ ok: boolean; created: number }>(`/api/v1/calendars/${id}/regenerate`, {});
+
+  // OpenHolidays country / subdivision lists (server-proxied + cached) for the dialog selects.
+  const loadHolidayCountries = () =>
+    api.get<{ countries: HolidayCountry[] }>('/api/v1/calendar/holiday-countries').then((r) => r.countries);
+  const loadHolidaySubdivisions = (country: string) =>
+    api
+      .get<{ subdivisions: HolidaySubdivision[] }>(`/api/v1/calendar/holiday-subdivisions?country=${encodeURIComponent(country)}`)
+      .then((r) => r.subdivisions);
 
   const saveSettings = (s: CalSettings) => api.post('/api/v1/calendar/settings', s);
 
@@ -106,5 +136,6 @@ export const useCalendarStore = defineStore('calendar', () => {
     calendars, settings, events,
     loadData, loadRange, show, create, update, destroy,
     createCalendar, updateCalendar, deleteCalendar, createSpecial, regenerate, saveSettings, importIcs, exportUrl,
+    loadHolidayCountries, loadHolidaySubdivisions,
   };
 });

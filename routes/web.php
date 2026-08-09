@@ -377,6 +377,9 @@ Route::middleware('auth')->group(function (): void {
     Route::middleware('module:calendar')->group(function (): void {
         Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
         Route::get('/calendar/data', [CalendarController::class, 'data'])->name('calendar.data');
+        // OpenHolidays proxies (SSRF-guarded) so the SPA selects load under CSP connect-src 'self'.
+        Route::get('/calendar/holiday-countries', [CalendarController::class, 'holidayCountries'])->middleware('throttle:60,1')->name('calendar.holiday-countries');
+        Route::get('/calendar/holiday-subdivisions', [CalendarController::class, 'holidaySubdivisions'])->middleware('throttle:60,1')->name('calendar.holiday-subdivisions');
         Route::get('/calendar/events', [CalendarController::class, 'events'])->name('calendar.events');
         Route::get('/calendar/export', [CalendarController::class, 'export'])->name('calendar.export');
         Route::post('/calendar/import', [CalendarController::class, 'import'])->middleware('throttle:60,1')->name('calendar.import');

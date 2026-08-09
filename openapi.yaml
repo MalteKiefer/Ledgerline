@@ -401,7 +401,9 @@ components:
         name: { type: string }
         uri: { type: string }
         color: { type: [string, "null"], description: "#RRGGBB or #RRGGBBAA (Apple CALENDAR-COLOR)." }
-        kind: { type: string, enum: [normal, holidays, birthdays], description: "normal = editable; holidays/birthdays = generated + read-only." }
+        kind: { type: string, enum: [normal, holidays, school_holidays, birthdays], description: "normal = editable; holidays/school_holidays/birthdays = generated + read-only." }
+        country: { type: [string, "null"], description: "ISO 3166-1 alpha-2 (holiday kinds), remembered for regenerate. e.g. DE." }
+        subdivision: { type: [string, "null"], description: "OpenHolidays subdivision code (holiday kinds), e.g. DE-BY; null = national." }
         owned: { type: boolean }
 
     CalendarOccurrence:
@@ -1568,6 +1570,63 @@ paths:
                   settings: { $ref: '#/components/schemas/CalendarSettings' }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
+  /calendar/holiday-countries:
+    get:
+      tags: [Calendar]
+      operationId: calendarHolidayCountries
+      summary: OpenHolidays country list (proxied + cached) for the special-calendar dialog
+      description: >
+        Server-proxied OpenHolidays `/Countries` (SSRF-guarded, cached ~1 day) so
+        the SPA can populate the country select under CSP connect-src 'self'. Names
+        are in the current UI language. An upstream failure degrades to an empty list.
+      responses:
+        "200":
+          description: Country list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  countries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        isoCode: { type: string, description: "ISO 3166-1 alpha-2, e.g. DE." }
+                        name: { type: string }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/holiday-subdivisions:
+    get:
+      tags: [Calendar]
+      operationId: calendarHolidaySubdivisions
+      summary: OpenHolidays subdivisions (regions / Bundesländer) for a country
+      description: >
+        Server-proxied OpenHolidays `/Subdivisions?countryIsoCode=..` (SSRF-guarded,
+        cached ~1 day). German Bundesländer come back as DE-BW, DE-BY, … An upstream
+        failure degrades to an empty list.
+      parameters:
+        - { name: country, in: query, required: true, schema: { type: string, pattern: '^[A-Za-z-]{2,8}$' }, description: "ISO 3166-1 alpha-2, e.g. DE." }
+      responses:
+        "200":
+          description: Subdivision list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subdivisions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code: { type: string, description: "OpenHolidays subdivision code, e.g. DE-BY." }
+                        name: { type: string }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
   /calendar/events:
     get:
       tags: [Calendar]
@@ -1695,8 +1754,14 @@ paths:
       operationId: calendarsStoreSpecial
       summary: Create a special (generated, read-only) calendar and populate it
       description: >
-        Creates a calendar of kind `holidays` (German national public holidays) or
-        `birthdays` (from the owner's contacts) and generates its events. Its events
+        Creates a calendar of kind `holidays` (public holidays for a country +
+        optional region), `school_holidays` (Ferien, multi-day ranges) or
+        `birthdays` (from the owner's contacts) and generates its events. The
+        holiday kinds pull from the OpenHolidays API for the given `country`
+        (default DE) + optional `subdivision`, falling back to locally-computed
+        German national holidays if the API is unreachable and the calendar is DE
+        with no subdivision. `country`/`subdivision` are ignored for `birthdays`
+        and are persisted so a later regenerate re-queries the same region. Events
         are server-generated and not user-editable.
       requestBody:
         required: true
@@ -1708,7 +1773,9 @@ paths:
               properties:
                 name: { type: string, maxLength: 255 }
                 color: { type: [string, "null"], maxLength: 9 }
-                kind: { type: string, enum: [holidays, birthdays] }
+                kind: { type: string, enum: [holidays, school_holidays, birthdays] }
+                country: { type: [string, "null"], description: "ISO 3166-1 alpha-2 (holiday kinds). Default DE.", pattern: '^[A-Za-z-]{2,8}$' }
+                subdivision: { type: [string, "null"], description: "OpenHolidays subdivision code (holiday kinds), e.g. DE-BY; omit for national.", pattern: '^[A-Za-z0-9-]{2,16}$' }
       responses:
         "201": { description: Created + populated., content: { application/json: { schema: { type: object, properties: { id: { type: string }, created: { type: integer, description: "Number of events generated." } } } } } }
         "401": { $ref: '#/components/responses/Unauthorized' }

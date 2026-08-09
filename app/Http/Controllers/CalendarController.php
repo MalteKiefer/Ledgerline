@@ -10,11 +10,13 @@ use App\Models\UserSetting;
 use App\Services\Calendar\CalendarEventService;
 use App\Services\Calendar\CalendarImporter;
 use App\Services\Calendar\CalendarWriter;
+use App\Services\Calendar\OpenHolidaysClient;
 use App\Services\Calendar\SpecialCalendarGenerator;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -62,13 +64,15 @@ class CalendarController extends Controller
         $settings = UserSetting::for($userId);
 
         return response()->json([
-            'calendars' => Calendar::query()->orderBy('name')->get(['id', 'name', 'uri', 'color', 'kind', 'user_id'])
+            'calendars' => Calendar::query()->orderBy('name')->get(['id', 'name', 'uri', 'color', 'kind', 'country', 'subdivision', 'user_id'])
                 ->map(fn (Calendar $c): array => [
                     'id' => $c->id,
                     'name' => $c->name,
                     'uri' => $c->uri,
                     'color' => $c->color,
                     'kind' => $c->kind,
+                    'country' => $c->country,
+                    'subdivision' => $c->subdivision,
                     'owned' => (int) $c->user_id === $userId,
                 ]),
             'settings' => [
@@ -191,9 +195,11 @@ class CalendarController extends Controller
     }
 
     /**
-     * Create a SPECIAL (generated, read-only) calendar — "holidays" (German
-     * national public holidays) or "birthdays" (from contacts) — and populate it.
-     * Normal calendars keep going through CalendarBookController@store.
+     * Create a SPECIAL (generated, read-only) calendar — "holidays" (public
+     * holidays for a country + optional region), "school_holidays" (Ferien) or
+     * "birthdays" (from contacts) — and populate it. The country/subdivision are
+     * persisted so a later regenerate re-queries the same region. Normal calendars
+     * keep going through CalendarBookController@store.
      */
     public function storeSpecial(Request $request, SpecialCalendarGenerator $generator): JsonResponse
     {
@@ -201,8 +207,12 @@ class CalendarController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'color' => ['nullable', 'string', 'max:9'],
             'kind' => ['required', 'in:'.implode(',', Calendar::SPECIAL_KINDS)],
+            'country' => ['nullable', 'string', 'regex:/^[A-Za-z-]{2,8}$/'],
+            'subdivision' => ['nullable', 'string', 'regex:/^[A-Za-z0-9-]{2,16}$/'],
         ]);
         $name = (string) $request->string('name');
+        // country/subdivision only apply to the holiday kinds; birthdays ignore them.
+        $regional = in_array($request->string('kind')->toString(), [Calendar::KIND_HOLIDAYS, Calendar::KIND_SCHOOL_HOLIDAYS], true);
 
         $calendar = Calendar::create([
             'user_id' => $this->requireUser($request)->id,
@@ -210,6 +220,8 @@ class CalendarController extends Controller
             'uri' => Str::slug($name).'-'.Str::lower(Str::random(4)),
             'color' => $request->filled('color') ? (string) $request->string('color') : null,
             'kind' => (string) $request->string('kind'),
+            'country' => $regional && $request->filled('country') ? strtoupper((string) $request->string('country')) : null,
+            'subdivision' => $regional && $request->filled('subdivision') ? (string) $request->string('subdivision') : null,
             'timezone' => 'UTC',
             'synctoken' => 1,
         ]);
@@ -217,6 +229,54 @@ class CalendarController extends Controller
         $created = $generator->regenerate($calendar);
 
         return response()->json(['id' => $calendar->id, 'created' => $created], 201);
+    }
+
+    /**
+     * Proxy the OpenHolidays country list so the SPA can populate the country
+     * select under CSP connect-src 'self'. Cached a day to avoid hammering the API;
+     * an upstream failure degrades to an empty list (the SPA keeps DE as default).
+     */
+    public function holidayCountries(Request $request, OpenHolidaysClient $client): JsonResponse
+    {
+        $lang = $this->uiLang();
+        try {
+            $countries = Cache::remember(
+                "openholidays.countries.{$lang}",
+                now()->addDay(),
+                static fn (): array => $client->countries($lang),
+            );
+        } catch (Throwable) {
+            $countries = [];
+        }
+
+        return response()->json(['countries' => $countries]);
+    }
+
+    /** Proxy the OpenHolidays subdivisions (Bundesländer/regions) for a country. */
+    public function holidaySubdivisions(Request $request, OpenHolidaysClient $client): JsonResponse
+    {
+        $request->validate(['country' => ['required', 'string', 'regex:/^[A-Za-z-]{2,8}$/']]);
+        $country = strtoupper((string) $request->string('country'));
+        $lang = $this->uiLang();
+        try {
+            $subdivisions = Cache::remember(
+                "openholidays.subdivisions.{$country}.{$lang}",
+                now()->addDay(),
+                static fn (): array => $client->subdivisions($country, $lang),
+            );
+        } catch (Throwable) {
+            $subdivisions = [];
+        }
+
+        return response()->json(['subdivisions' => $subdivisions]);
+    }
+
+    /** The 2-letter uppercase UI language for OpenHolidays name localization. */
+    private function uiLang(): string
+    {
+        $lang = strtoupper(substr(app()->getLocale(), 0, 2));
+
+        return $lang !== '' ? $lang : 'EN';
     }
 
     /** Rebuild a special calendar's generated events from the current source. */

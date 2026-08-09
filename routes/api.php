@@ -213,6 +213,9 @@ Route::prefix('v1')->group(function (): void {
         // Owner-scope is controller-side; 409 on etag mismatch.
         Route::middleware('module:calendar')->group(function (): void {
             Route::get('/calendar/data', [CalendarController::class, 'data'])->name('api.calendar.data');
+            // OpenHolidays proxies (SSRF-guarded) so the SPA selects load under CSP connect-src 'self'.
+            Route::get('/calendar/holiday-countries', [CalendarController::class, 'holidayCountries'])->middleware('throttle:60,1')->name('api.calendar.holiday-countries');
+            Route::get('/calendar/holiday-subdivisions', [CalendarController::class, 'holidaySubdivisions'])->middleware('throttle:60,1')->name('api.calendar.holiday-subdivisions');
             Route::get('/calendar/events', [CalendarController::class, 'events'])->name('api.calendar.events');
             Route::get('/calendar/export', [CalendarController::class, 'export'])->name('api.calendar.export');
             Route::post('/calendar/import', [CalendarController::class, 'import'])->middleware('throttle:60,1')->name('api.calendar.import');

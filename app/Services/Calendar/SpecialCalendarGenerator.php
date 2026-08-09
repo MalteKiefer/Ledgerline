@@ -9,17 +9,22 @@ use App\Models\CalendarEvent;
 use App\Models\Contact;
 use App\Services\Contacts\VCardService;
 use Carbon\CarbonImmutable;
+use Throwable;
 
 /**
  * Generates the events of a "special" (read-only) calendar as REAL calendar_events
  * rows, so they render in the UI and sync via CalDAV like any other event.
  *
- *  - birthdays: one all-day, FREQ=YEARLY event per owner contact that has a BDAY.
- *  - holidays:  German NATIONAL (bundeseinheitliche) public holidays as one all-day
- *               event per holiday per year over [currentYear-1 .. currentYear+3].
- *               Computed locally (no composer dependency): fixed dates + Easter-based
- *               dates via the Gauss/Meeus/Butcher algorithm. Bundesland/country
- *               selection is future scope — national only for now.
+ *  - birthdays:       one all-day, FREQ=YEARLY event per owner contact with a BDAY.
+ *  - holidays:        public holidays for the calendar's country (default DE) +
+ *                     optional subdivision, fetched from OpenHolidays over
+ *                     [currentYear-1 .. currentYear+3] as one all-day event each.
+ *                     If OpenHolidays is unreachable AND the calendar is DE with no
+ *                     subdivision, falls back to the locally-computed German
+ *                     national holidays (fixed dates + Easter-based dates via the
+ *                     Gauss/Meeus/Butcher algorithm).
+ *  - school_holidays: school holidays (Ferien) for the country + subdivision from
+ *                     OpenHolidays — each a multi-day all-day range (e.g. Sommerferien).
  *
  * Regeneration is idempotent-ish: it clears the calendar's existing events (logging
  * CalDAV tombstones) and rebuilds from the current source, all through CalendarWriter
@@ -36,6 +41,7 @@ class SpecialCalendarGenerator
     public function __construct(
         private readonly CalendarWriter $writer,
         private readonly VCardService $vcards,
+        private readonly OpenHolidaysClient $holidays,
     ) {}
 
     /**
@@ -51,6 +57,7 @@ class SpecialCalendarGenerator
         return match ($calendar->kind) {
             Calendar::KIND_BIRTHDAYS => $this->generateBirthdays($calendar),
             Calendar::KIND_HOLIDAYS => $this->generateHolidays($calendar),
+            Calendar::KIND_SCHOOL_HOLIDAYS => $this->generateSchoolHolidays($calendar),
             default => 0,
         };
     }
@@ -90,8 +97,70 @@ class SpecialCalendarGenerator
         return $created;
     }
 
-    /** German national public holidays across the rolling window. */
+    /**
+     * Public holidays for the calendar's country (+ optional subdivision) across
+     * the rolling window, from OpenHolidays. If the API is unreachable AND the
+     * calendar is DE with no subdivision, fall back to locally-computed German
+     * national holidays.
+     */
     private function generateHolidays(Calendar $calendar): int
+    {
+        $country = $this->country($calendar);
+        $subdivision = $this->subdivision($calendar);
+        [$from, $to] = $this->window();
+
+        try {
+            $rows = $this->holidays->publicHolidays($country, $subdivision, $from, $to, $this->lang());
+        } catch (Throwable) {
+            // Offline fallback only for the German national set.
+            if ($country === 'DE' && $subdivision === null) {
+                return $this->generateGermanFallback($calendar);
+            }
+
+            return 0;
+        }
+
+        return $this->createRangeEvents($calendar, $rows);
+    }
+
+    /** School holidays (Ferien) for the calendar's country + subdivision. */
+    private function generateSchoolHolidays(Calendar $calendar): int
+    {
+        [$from, $to] = $this->window();
+
+        try {
+            $rows = $this->holidays->schoolHolidays($this->country($calendar), $this->subdivision($calendar), $from, $to, $this->lang());
+        } catch (Throwable) {
+            return 0;
+        }
+
+        return $this->createRangeEvents($calendar, $rows);
+    }
+
+    /**
+     * Create one all-day event per normalized holiday range. A single-day holiday
+     * (start == end) gets no DTEND; a multi-day Ferien range gets an all-day DTEND
+     * of endDate+1 (RFC 5545 all-day DTEND is exclusive).
+     *
+     * @param  list<array{startDate: string, endDate: string, name: string, allDay: bool}>  $rows
+     */
+    private function createRangeEvents(Calendar $calendar, array $rows): int
+    {
+        $created = 0;
+        foreach ($rows as $row) {
+            $data = ['summary' => $row['name'], 'dtstart' => $row['startDate'], 'all_day' => true];
+            if ($row['endDate'] > $row['startDate']) {
+                $data['dtend'] = CarbonImmutable::parse($row['endDate'])->addDay()->format('Y-m-d');
+            }
+            $this->writer->create($calendar, $data);
+            $created++;
+        }
+
+        return $created;
+    }
+
+    /** Locally-computed German NATIONAL holidays across the rolling window (offline fallback). */
+    private function generateGermanFallback(Calendar $calendar): int
     {
         $current = (int) CarbonImmutable::now()->format('Y');
         $created = 0;
@@ -108,6 +177,42 @@ class SpecialCalendarGenerator
         }
 
         return $created;
+    }
+
+    /** The calendar's ISO 3166-1 alpha-2 country (default DE). */
+    private function country(Calendar $calendar): string
+    {
+        $country = strtoupper(trim((string) ($calendar->country ?? '')));
+
+        return $country !== '' ? $country : 'DE';
+    }
+
+    /** The calendar's OpenHolidays subdivision code, or null for the national set. */
+    private function subdivision(Calendar $calendar): ?string
+    {
+        $subdivision = trim((string) ($calendar->subdivision ?? ''));
+
+        return $subdivision !== '' ? $subdivision : null;
+    }
+
+    /** Names come back in the current UI language (best-effort; falls back upstream). */
+    private function lang(): string
+    {
+        $lang = strtoupper(substr(app()->getLocale(), 0, 2));
+
+        return $lang !== '' ? $lang : 'EN';
+    }
+
+    /**
+     * The rolling [currentYear-1 .. currentYear+3] fetch window as ISO Y-m-d bounds.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function window(): array
+    {
+        $current = (int) CarbonImmutable::now()->format('Y');
+
+        return [sprintf('%04d-01-01', $current - 1), sprintf('%04d-12-31', $current + 3)];
     }
 
     /**
