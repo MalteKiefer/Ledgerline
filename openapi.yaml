@@ -4883,18 +4883,19 @@ paths:
       tags: [TwoFactor]
       operationId: twoFactorEnable
       summary: Enable TOTP (generate secret + recovery codes)
-      description: "Generates a new TOTP secret + recovery codes (stored encrypted). NOT yet active — call /confirm with a live code. Idempotent. Requires a fresh `current_password` step-up (matches the web confirmPassword contract) so a stolen device token can't bind 2FA to an attacker — EXCEPT for a native device token (install_id set, biometric-sealed), which is skipped. Throttle 10/min."
+      description: "Generates a new TOTP secret + recovery codes (stored encrypted). NOT yet active — call /confirm with a live code. Idempotent. Requires `current_password` (guard-agnostic Hash::check) on EVERY path — web and native alike; native device tokens no longer bypass it (max-security, internet-facing). Throttle 10/min."
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [current_password]
               properties:
                 current_password:
                   type: string
                   format: password
-                  description: "Required for web sessions + the web SPA bearer; OPTIONAL for a native device token (install_id set, biometric-sealed)."
+                  description: "Required on every path (web + native). 422 {errors:{current_password}} if missing/wrong."
       responses:
         "200": { description: "Secret generated.", content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean, enum: [true] } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -4929,8 +4930,8 @@ paths:
       summary: List recovery codes
       description: "Only after 2FA is confirmed (else 404). Requires a fresh `current_password` step-up (in the JSON body, not a query string) so a stolen device token cannot exfiltrate a standing second factor. Throttle 30/min."
       requestBody:
-        required: false
-        content: { application/json: { schema: { type: object, properties: { current_password: { type: string, format: password, description: "Required for web sessions + the web SPA bearer; OPTIONAL for a native device token (install_id set, biometric-sealed)." } } } } }
+        required: true
+        content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password, description: "Required on every path (web + native); native device tokens no longer bypass it. 422 if missing/wrong." } } } } }
       responses:
         "200": { description: "Codes.", content: { application/json: { schema: { type: object, required: [recovery_codes], properties: { recovery_codes: { type: array, items: { type: string } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -4943,8 +4944,8 @@ paths:
       summary: Regenerate recovery codes
       description: "Invalidates the old set and returns a fresh one. Requires a fresh `current_password` step-up. Throttle 10/min."
       requestBody:
-        required: false
-        content: { application/json: { schema: { type: object, properties: { current_password: { type: string, format: password, description: "Required for web sessions + the web SPA bearer; OPTIONAL for a native device token (install_id set, biometric-sealed)." } } } } }
+        required: true
+        content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password, description: "Required on every path (web + native); native device tokens no longer bypass it. 422 if missing/wrong." } } } } }
       responses:
         "200": { description: "New codes.", content: { application/json: { schema: { type: object, required: [recovery_codes], properties: { recovery_codes: { type: array, items: { type: string } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -4957,8 +4958,8 @@ paths:
       summary: Disable 2FA
       description: "Clears the TOTP secret, recovery codes, and confirmed flag. Idempotent. Requires a fresh `current_password` step-up so a stolen device token cannot disable 2FA. Throttle 10/min."
       requestBody:
-        required: false
-        content: { application/json: { schema: { type: object, properties: { current_password: { type: string, format: password, description: "Required for web sessions + the web SPA bearer; OPTIONAL for a native device token (install_id set, biometric-sealed)." } } } } }
+        required: true
+        content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password, description: "Required on every path (web + native); native device tokens no longer bypass it. 422 if missing/wrong." } } } } }
       responses:
         "200": { description: "Disabled.", content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean, enum: [false] } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -5712,7 +5713,10 @@ paths:
         is now matched against a stored sha256 hash). Reports the target name/kind,
         whether a password is required, and the download policy. Trashing (soft-
         deleting) the shared file/folder now revokes the link — a previously-valid
-        share returns 404 once its target is trashed (v1.562.0).
+        share returns 404 once its target is trashed (v1.562.0). PRIVACY: on a
+        password-protected share, `name` is withheld (null) until the share is
+        unlocked (valid X-Share-Grant / ?grant / session); a no-password share and
+        an unlocked share return the real name.
       security: []
       parameters:
         - { name: token, in: path, required: true, schema: { type: string } }
@@ -5726,7 +5730,7 @@ paths:
                 properties:
                   found: { type: boolean }
                   kind: { type: string, enum: [file, folder] }
-                  name: { type: string }
+                  name: { type: [string, "null"], description: "Null until unlocked on a password-protected share." }
                   needsPassword: { type: boolean }
                   unlocked: { type: boolean }
                   allowDownload: { type: boolean }
