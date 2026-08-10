@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.611.0
+  version: 1.613.0
   license:
     name: Proprietary
   description: >
@@ -1157,6 +1157,7 @@ components:
         size: { type: integer }
         favorite: { type: boolean }
         thumb: { type: boolean, description: "Whether the WebP thumbnail is ready (generated off the web path by a worker). While false the client shows a spinner and reloads." }
+        motion: { type: boolean, description: "Whether a Live Photo motion clip is attached (served at /gallery/{photo}/motion)." }
         rotation: { type: integer, enum: [0, 90, 180, 270], description: "Clockwise display rotation; non-invasive (original bytes untouched)." }
         flip_h: { type: boolean, description: "Horizontal mirror; non-invasive." }
         taken_at: { type: string, format: date-time, nullable: true, description: "EXIF capture date (falls back to created_at for ordering); editable." }
@@ -5174,16 +5175,44 @@ paths:
       tags: [Gallery]
       operationId: galleryUpload
       summary: Upload a photo (whole; multipart)
-      description: "Image MIME allow-list (jpg/jpeg/png/webp/gif/heic/heif). Bytes stored plaintext under gallery/{uuid}; size/sha256/dimensions server-computed. 413 when over the combined files+gallery quota."
+      description: "Image MIME allow-list (jpg/jpeg/png/webp/gif/heic/heif). Bytes stored plaintext under gallery/{uuid}; size/sha256/dimensions server-computed. De-duplicated by sha256: identical bytes return 200 with the existing photo and duplicate=true (no new row). 413 when over the combined files+gallery quota."
       security: [ { bearerAuth: [] } ]
       requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
       responses:
         "201": { description: Created., content: { application/json: { schema: { type: object, properties: { photo: { $ref: "#/components/schemas/GalleryPhoto" } } } } } }
+        "200": { description: "Duplicate — existing photo returned.", content: { application/json: { schema: { type: object, properties: { photo: { $ref: "#/components/schemas/GalleryPhoto" }, duplicate: { type: boolean } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "413": { description: "Over storage quota (error=quota)." }
         "415": { description: "Not an image." }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /gallery/{photo}/motion:
+    get:
+      tags: [Gallery]
+      operationId: galleryMotion
+      summary: Stream a Live Photo's motion clip (sandboxed, best-effort)
+      description: "The clip is stored as received (no transcode; ffmpeg is not in the image), so a QuickTime .MOV plays in Safari but may not in every browser."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "video/mp4 clip (nosniff + sandbox CSP)." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Gallery]
+      operationId: galleryAttachMotion
+      summary: Attach a Live Photo motion clip (.MOV/.MP4) to a still
+      description: "Merges the pair into ONE entry: the client resolves the matching still (by base name / already in the library) and posts the clip here. Video-only; quota-counted; replaces any prior clip."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
+      responses:
+        "200": { description: Attached., content: { application/json: { schema: { type: object, properties: { photo: { $ref: "#/components/schemas/GalleryPhoto" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { description: "Over storage quota (error=quota)." }
+        "415": { description: "Not a video." }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /gallery/chunk/init:
     post:
       tags: [Gallery]

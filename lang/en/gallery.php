@@ -39,4 +39,7 @@ return [
     'dl_edited' => 'Download edited',
     'edit_conflict' => 'This photo changed elsewhere — reloaded. Please repeat your edit.',
     'thumb_pending' => 'Thumbnail is being generated…',
+    'dupes_skipped' => ':n duplicate(s) skipped.',
+    'motion_unmatched' => ':n motion clip(s) had no matching photo.',
+    'play_motion' => 'Play Live motion',
 ];

@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\GalleryController;
 use App\Jobs\GenerateGalleryThumbnail;
 use App\Models\GalleryAlbum;
 use App\Models\GalleryPhoto;
 use App\Models\User;
+use App\Support\ImageManagerFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
@@ -69,13 +71,46 @@ class GalleryFeatureTest extends TestCase
 
         // Running the job generates the cached WebP; the endpoint then serves it.
         (new GenerateGalleryThumbnail($id))->handle(
-            app(\App\Http\Controllers\GalleryController::class),
-            app(\App\Support\ImageManagerFactory::class),
+            app(GalleryController::class),
+            app(ImageManagerFactory::class),
         );
         $v = GalleryPhoto::findOrFail($id)->version;
         Storage::disk(config('files.disk'))->assertExists('gallery/thumb/'.$id.'-'.$v.'.webp');
         $this->get(route('gallery.thumb', ['photo' => $id]))->assertOk()
             ->assertHeader('Content-Type', 'image/webp');
+    }
+
+    public function test_duplicate_upload_is_skipped(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $img = UploadedFile::fake()->image('dup.jpg', 100, 100);
+        $bytes = file_get_contents($img->getRealPath());
+
+        $a = $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->createWithContent('one.jpg', (string) $bytes)])->assertCreated();
+        $id = (int) $a->json('photo.id');
+
+        // Same bytes again → no new row, returns the existing photo flagged duplicate.
+        $b = $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->createWithContent('again.jpg', (string) $bytes)])->assertOk();
+        $this->assertTrue((bool) $b->json('duplicate'));
+        $this->assertSame($id, (int) $b->json('photo.id'));
+        $this->assertSame(1, GalleryPhoto::count());
+    }
+
+    public function test_attach_motion_merges_into_one_entry(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $id = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('IMG_1.heic')])->json('photo.id');
+
+        $mov = UploadedFile::fake()->create('IMG_1.mov', 40, 'video/quicktime');
+        $res = $this->post(route('gallery.motion.attach', ['photo' => $id]), ['file' => $mov])->assertOk();
+        $this->assertTrue((bool) $res->json('photo.motion'));
+
+        // Still exactly one gallery entry (the .MOV is merged, not a second photo).
+        $this->assertSame(1, GalleryPhoto::count());
+        $photo = GalleryPhoto::findOrFail($id);
+        Storage::disk(config('files.disk'))->assertExists((string) $photo->motion_path);
+        $this->get(route('gallery.motion', ['photo' => $id]))->assertOk()
+            ->assertHeader('Content-Type', 'video/mp4');
     }
 
     public function test_owner_scope_blocks_cross_user_access(): void
@@ -150,8 +185,10 @@ class GalleryFeatureTest extends TestCase
         $foreign = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('x.jpg')])->json('photo.id');
 
         $this->actingAs($owner);
-        $a = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('a.jpg')])->json('photo.id');
-        $b = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('b.jpg')])->json('photo.id');
+        // Distinct dimensions → distinct bytes (fake images of equal size are
+        // byte-identical, which the new sha256 de-dup would collapse into one).
+        $a = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('a.jpg', 10, 10)])->json('photo.id');
+        $b = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('b.jpg', 20, 20)])->json('photo.id');
 
         $this->post(route('gallery.bulk-destroy'), ['ids' => [$a, $b, $foreign]])->assertOk();
 
@@ -165,8 +202,8 @@ class GalleryFeatureTest extends TestCase
     public function test_album_lifecycle_attach_filter_detach(): void
     {
         $this->actingAs(User::factory()->create());
-        $p1 = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('1.jpg')])->json('photo.id');
-        $p2 = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('2.jpg')])->json('photo.id');
+        $p1 = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('1.jpg', 10, 10)])->json('photo.id');
+        $p2 = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('2.jpg', 20, 20)])->json('photo.id');
 
         $albumId = (int) $this->post(route('gallery.albums.store'), ['name' => 'Trip'])->assertCreated()->json('album.id');
 
