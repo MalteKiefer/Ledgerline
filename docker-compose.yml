@@ -43,6 +43,15 @@ x-app-image: &app-image
     # recorded exception and the run is later reaped as "Interrupted (no
     # progress)". The worker service overrides this higher (see below).
     PHP_MEMORY_LIMIT: "${PHP_MEMORY_LIMIT:-512M}"
+    # Image + PHP scratch on the roomy storage volume, NOT the small RAM /tmp
+    # tmpfs below. A large HEIC decode makes ImageMagick disk-cache hundreds of
+    # MB of scratch; on the 2 GB tmpfs that fills it and thumbnail writes fail
+    # (404). The storage volume has terabytes free. AppServiceProvider ensures
+    # the dir exists before the first tempnam/Imagick call.
+    TMPDIR: /var/www/html/storage/app/imgtmp
+    TMP: /var/www/html/storage/app/imgtmp
+    MAGICK_TMPDIR: /var/www/html/storage/app/imgtmp
+    MAGICK_TEMPORARY_PATH: /var/www/html/storage/app/imgtmp
   restart: unless-stopped
   # NOTE: a fully read-only root filesystem is NOT used — the serversideup base
   # renders /etc/nginx/nginx.conf from a template at boot (entrypoint
@@ -72,10 +81,10 @@ x-app-image: &app-image
     - internal
   volumes:
     - app-storage:/var/www/html/storage/app
-    # The /gallery/process transform decrypts each original to the system temp
-    # dir before deriving renditions and unlinking it. Back that dir with a
-    # size-capped tmpfs so the plaintext lives only in RAM and never lands on the
-    # container's writable layer (crash/backup/forensic recovery of ZK content).
+    # A size-capped RAM tmpfs for /tmp (legacy: the removed ZK gallery decrypted
+    # originals here so plaintext never hit disk). Heavy image scratch now goes to
+    # the storage volume via TMPDIR/MAGICK_TMPDIR above — this stays small for any
+    # remaining incidental temp use.
     - type: tmpfs
       target: /tmp
       tmpfs:

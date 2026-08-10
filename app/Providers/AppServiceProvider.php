@@ -38,6 +38,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Image/PHP scratch dir. The container's /tmp is a small RAM tmpfs; a
+        // large HEIC decode makes ImageMagick disk-cache hundreds of MB there and
+        // fill it, so thumbnail writes fail (404). When TMPDIR points at a dir on
+        // the roomy storage volume, make sure it exists before the first tempnam/
+        // Imagick call (env is read at process fork; the dir must be present).
+        $tmp = getenv('TMPDIR');
+        if (is_string($tmp) && $tmp !== '' && ! is_dir($tmp)) {
+            @mkdir($tmp, 0775, true);
+        }
+
         // Dev tripwire: surface any accidental N+1 (a relation lazy-loaded in a
         // loop) as a loud exception while developing. Local only — never in prod
         // and never in the test env, so it can't mask a real failure with a
