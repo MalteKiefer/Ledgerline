@@ -34,6 +34,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'shared-with-me', name: 'shared-with-me', component: () => import('@spa/views/SharedWithMe.vue') },
       { path: 'contacts', name: 'contacts', component: () => import('@spa/views/Contacts.vue') },
       { path: 'calendar', name: 'calendar', component: () => import('@spa/views/Calendar.vue') },
+      { path: 'tasks', name: 'tasks', component: () => import('@spa/views/Tasks.vue') },
       { path: 'mail', name: 'mail', component: () => import('@spa/views/Mail.vue') },
       // Settings is a hub layout (left submenu + RouterView), like Profile —
       // its submenu lives in the page, not in the sidebar rail.
