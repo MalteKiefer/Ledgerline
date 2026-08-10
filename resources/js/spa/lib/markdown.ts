@@ -38,8 +38,9 @@ export function renderMarkdown(md: string, resolve?: (title: string) => number |
       'input', // task-list checkboxes (GFM)
     ],
     ALLOWED_ATTR: ['href', 'title', 'src', 'alt', 'type', 'checked', 'disabled', 'class', 'data-note-id'],
-    // Links only to http(s)/mailto/anchor; images only http(s)/data-image — no javascript: URIs.
-    ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|data:image\/(?:png|jpe?g|gif|webp);|#)/i,
+    // http(s)/mailto/anchor + same-origin relative paths (attachment images live
+    // at /api/v1/notes/…/raw) + data:image; never javascript: URIs.
+    ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|data:image\/(?:png|jpe?g|gif|webp);|#|\/)/i,
     ADD_ATTR: ['target', 'rel'],
   });
 }
