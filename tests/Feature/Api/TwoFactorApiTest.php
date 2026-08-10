@@ -130,7 +130,7 @@ class TwoFactorApiTest extends TestCase
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
         $response = $this->withToken($token)
-            ->json('GET', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'password'])
+            ->json('POST', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'password'])
             ->assertOk();
 
         $codes = $response->json('recovery_codes');
@@ -147,7 +147,7 @@ class TwoFactorApiTest extends TestCase
 
         // A stolen device token alone cannot exfiltrate the standing recovery codes.
         $this->withToken($token)
-            ->json('GET', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'wrong'])
+            ->json('POST', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'wrong'])
             ->assertUnprocessable()->assertJsonValidationErrors(['current_password']);
     }
 
@@ -157,7 +157,7 @@ class TwoFactorApiTest extends TestCase
         $token = $this->deviceToken($user);
 
         $this->withToken($token)
-            ->json('GET', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'password'])
+            ->json('POST', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'password'])
             ->assertNotFound();
     }
 
@@ -182,12 +182,12 @@ class TwoFactorApiTest extends TestCase
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
         // No current_password → 422 even for a native install (bypass removed).
-        $this->withToken($token)->getJson('/api/v1/user/two-factor/recovery-codes')
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/recovery-codes')
             ->assertUnprocessable()->assertJsonValidationErrors(['current_password']);
 
         // With the correct password → OK.
         $this->withToken($token)
-            ->json('GET', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'password'])
+            ->json('POST', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'password'])
             ->assertOk()->assertJsonStructure(['recovery_codes']);
     }
 
@@ -228,7 +228,7 @@ class TwoFactorApiTest extends TestCase
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
         $firstCodes = $this->withToken($token)
-            ->json('GET', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'password'])
+            ->json('POST', '/api/v1/user/two-factor/recovery-codes', ['current_password' => 'password'])
             ->json('recovery_codes');
 
         $newCodes = $this->withToken($token)
@@ -291,7 +291,7 @@ class TwoFactorApiTest extends TestCase
         $this->withToken($token)->postJson('/api/v1/user/two-factor/confirm', ['code' => $this->currentOtp($user)]);
 
         // recovery-codes read, regenerate and disable all reject a passwordless device token.
-        $this->withToken($token)->getJson('/api/v1/user/two-factor/recovery-codes')
+        $this->withToken($token)->postJson('/api/v1/user/two-factor/recovery-codes')
             ->assertUnprocessable()->assertJsonValidationErrors(['current_password']);
         $this->withToken($token)->postJson('/api/v1/user/two-factor/recovery-codes/regenerate')
             ->assertUnprocessable()->assertJsonValidationErrors(['current_password']);
@@ -362,7 +362,7 @@ class TwoFactorApiTest extends TestCase
         $this->postJson('/api/v1/user/two-factor/enable', ['current_password' => 'password'])->assertUnauthorized();
         $this->getJson('/api/v1/user/two-factor/qr')->assertUnauthorized();
         $this->postJson('/api/v1/user/two-factor/confirm', ['code' => '123456'])->assertUnauthorized();
-        $this->getJson('/api/v1/user/two-factor/recovery-codes')->assertUnauthorized();
+        $this->postJson('/api/v1/user/two-factor/recovery-codes')->assertUnauthorized();
         $this->postJson('/api/v1/user/two-factor/recovery-codes/regenerate', ['current_password' => 'password'])->assertUnauthorized();
         $this->deleteJson('/api/v1/user/two-factor', ['current_password' => 'password'])->assertUnauthorized();
         $this->putJson('/api/v1/user/password', [])->assertUnauthorized();
