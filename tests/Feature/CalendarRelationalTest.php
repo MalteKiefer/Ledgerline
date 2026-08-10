@@ -267,6 +267,79 @@ class CalendarRelationalTest extends TestCase
         $this->assertDatabaseCount('calendar_events', 2);
     }
 
+    public function test_event_round_trips_geo_coordinates_and_writes_geo_into_ics(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendar($user->id);
+
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id,
+            'summary' => 'Meetup',
+            'location' => 'Alexanderplatz, Berlin',
+            'geo_lat' => 52.5219184,
+            'geo_lon' => 13.4132147,
+            'dtstart' => '2026-08-15T18:00:00Z',
+            'dtend' => '2026-08-15T20:00:00Z',
+        ])->assertStatus(201);
+
+        $event = CalendarEvent::firstOrFail();
+        // Denormalised columns + the authoritative ICS both carry the coordinate.
+        $this->assertSame(52.5219184, (float) $event->geo_lat);
+        $this->assertSame(13.4132147, (float) $event->geo_lon);
+        $this->assertStringContainsString('GEO:52.5219184;13.4132147', $event->ics);
+        // LOCATION stays the human address, GEO is the coordinate.
+        $this->assertStringContainsString('LOCATION:Alexanderplatz', $event->ics);
+
+        // show() returns the coordinate for the editor + map marker.
+        $this->getJson(route('calendar.events.show', $event))->assertOk()
+            ->assertJsonPath('geo_lat', 52.5219184)
+            ->assertJsonPath('geo_lon', 13.4132147);
+
+        // The range/occurrence shape carries it too (marker on the calendar map).
+        $this->getJson(route('calendar.events', ['from' => '2026-08-01T00:00:00Z', 'to' => '2026-09-01T00:00:00Z']))
+            ->assertOk()
+            ->assertJsonPath('events.0.geo_lat', 52.5219184)
+            ->assertJsonPath('events.0.geo_lon', 13.4132147);
+    }
+
+    public function test_event_without_geo_reports_null_and_omits_geo_property(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendar($user->id);
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'No place', 'dtstart' => '2026-08-15T10:00:00Z',
+        ])->assertStatus(201);
+
+        $event = CalendarEvent::firstOrFail();
+        $this->assertNull($event->geo_lat);
+        $this->assertNull($event->geo_lon);
+        $this->assertStringNotContainsString('GEO:', $event->ics);
+        $this->getJson(route('calendar.events.show', $event))->assertOk()
+            ->assertJsonPath('geo_lat', null)
+            ->assertJsonPath('geo_lon', null);
+    }
+
+    public function test_out_of_range_coordinates_are_rejected(): void
+    {
+        // Exercised on the /api/v1 twin, which renders a clean JSON 422 (the web
+        // route flashes validation to the session + redirects, app-wide).
+        $user = $this->signIn();
+        $calendar = $this->calendar($user->id);
+        $headers = ['Authorization' => 'Bearer '.$user->createToken('iphone', ['device'])->plainTextToken];
+
+        $this->postJson(route('api.calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'x', 'dtstart' => '2026-08-15T10:00:00Z',
+            'geo_lat' => 120, 'geo_lon' => 13.4,
+        ], $headers)->assertStatus(422)->assertJsonValidationErrors('geo_lat');
+
+        $this->postJson(route('api.calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'x', 'dtstart' => '2026-08-15T10:00:00Z',
+            'geo_lat' => 52.5, 'geo_lon' => 200,
+        ], $headers)->assertStatus(422)->assertJsonValidationErrors('geo_lon');
+
+        $this->assertDatabaseCount('calendar_events', 0);
+    }
+
     private function parseUid(CalendarEvent $event): ?string
     {
         $uid = app(CalendarEventService::class)->parse($event->ics)['uid'] ?? null;

@@ -398,6 +398,9 @@ class CalendarController extends Controller
             'summary' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
             'location' => ['nullable', 'string', 'max:255'],
+            // Coordinate of the picked location (LOCATION stays the human address).
+            'geo_lat' => ['nullable', 'numeric', 'between:-90,90'],
+            'geo_lon' => ['nullable', 'numeric', 'between:-180,180'],
             'dtstart' => ['required', 'date'],
             'dtend' => ['nullable', 'date', 'after_or_equal:dtstart'],
             'all_day' => ['nullable', 'boolean'],

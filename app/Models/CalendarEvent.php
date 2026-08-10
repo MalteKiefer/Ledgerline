@@ -26,6 +26,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $summary
  * @property string|null $description
  * @property string|null $location
+ * @property float|null $geo_lat
+ * @property float|null $geo_lon
  * @property CarbonImmutable|null $dtstart
  * @property CarbonImmutable|null $dtend
  * @property bool $all_day
@@ -37,7 +39,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 #[Fillable([
     'calendar_id', 'uri', 'etag', 'uid', 'component', 'ics',
-    'summary', 'description', 'location', 'dtstart', 'dtend', 'all_day',
+    'summary', 'description', 'location', 'geo_lat', 'geo_lon', 'dtstart', 'dtend', 'all_day',
     'rrule', 'recurrence_until', 'status', 'sequence',
 ])]
 class CalendarEvent extends Model
@@ -52,6 +54,8 @@ class CalendarEvent extends Model
             'recurrence_until' => 'immutable_datetime',
             'all_day' => 'boolean',
             'sequence' => 'integer',
+            'geo_lat' => 'float',
+            'geo_lon' => 'float',
         ];
     }
 

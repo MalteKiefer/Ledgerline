@@ -171,6 +171,15 @@ tags:
       DAV-native etag (409 on mismatch). Owner-scope is enforced controller-side.
       CalDAV itself is served over the unified `/dav` Sabre endpoint (HTTP Basic,
       not `/api/v1`) — the same surface as CardDAV, absent from this document.
+  - name: Geo
+    description: >
+      App-generic forward geocoding (address autocomplete). Server-proxied to
+      OpenStreetMap Nominatim through the SSRF-guarded outbound client
+      (rate-limited, cached); the query + coordinates are never logged and the
+      response is `no-store`. Authenticated (device auth on `/api/v1`) but NOT
+      module-gated — both the calendar event editor and the contacts map preview
+      use it. A query shorter than 3 chars returns an empty list without an
+      upstream call.
   - name: Mail
     description: >
       Plaintext-relational IMAP mail archive (Phase 1). Per-user IMAP accounts
@@ -468,6 +477,8 @@ components:
         summary: { type: [string, "null"] }
         location: { type: [string, "null"] }
         description: { type: [string, "null"] }
+        geo_lat: { type: [number, "null"], description: "Picked location latitude (-90..90); null if none set." }
+        geo_lon: { type: [number, "null"], description: "Picked location longitude (-180..180); null if none set." }
         start: { type: string, format: date-time }
         end: { type: string, format: date-time }
         all_day: { type: boolean }
@@ -485,6 +496,8 @@ components:
         summary: { type: [string, "null"] }
         description: { type: [string, "null"] }
         location: { type: [string, "null"] }
+        geo_lat: { type: [number, "null"], description: "Picked location latitude (-90..90); null if none set." }
+        geo_lon: { type: [number, "null"], description: "Picked location longitude (-180..180); null if none set." }
         dtstart: { type: [string, "null"], format: date-time }
         dtend: { type: [string, "null"], format: date-time }
         all_day: { type: boolean }
@@ -501,6 +514,8 @@ components:
         summary: { type: [string, "null"], maxLength: 255 }
         description: { type: [string, "null"], maxLength: 5000 }
         location: { type: [string, "null"], maxLength: 255 }
+        geo_lat: { type: [number, "null"], minimum: -90, maximum: 90, description: "Picked location latitude; stored as VEVENT GEO. Emitted only with geo_lon." }
+        geo_lon: { type: [number, "null"], minimum: -180, maximum: 180, description: "Picked location longitude; stored as VEVENT GEO. Emitted only with geo_lat." }
         dtstart: { type: string, format: date-time }
         dtend: { type: [string, "null"], format: date-time, description: "after_or_equal dtstart." }
         all_day: { type: boolean }
@@ -1986,6 +2001,42 @@ paths:
         "200": { description: Deleted. }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "404": { $ref: '#/components/responses/NotFound' }
+
+  # --------------------------------------------------------------------------
+  # Geo (address autocomplete — app-generic, authenticated, not module-gated)
+  # --------------------------------------------------------------------------
+
+  /geo/search:
+    get:
+      tags: [Geo]
+      operationId: geoSearch
+      summary: Forward-geocode an address / place (autocomplete)
+      description: >
+        Server-proxied Nominatim forward geocode. Returns up to 8 candidate
+        matches with coordinates for a location autocomplete + mini-map marker.
+        A query shorter than 3 characters returns an empty list without hitting
+        the upstream. Response is `no-store`; the query is never logged.
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string }, description: "Free-text address or place. < 3 chars → empty results." }
+      responses:
+        "200":
+          description: Candidate matches (possibly empty).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    maxItems: 8
+                    items:
+                      type: object
+                      properties:
+                        display: { type: string, description: "Human-readable place name." }
+                        lat: { type: number, description: "Latitude." }
+                        lon: { type: number, description: "Longitude." }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "429": { $ref: '#/components/responses/RateLimited' }
 
   # --------------------------------------------------------------------------
   # Calendar (CalDAV-backed, module:calendar)

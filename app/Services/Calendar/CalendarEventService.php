@@ -79,6 +79,14 @@ class CalendarEventService
             }
         }
 
+        // GEO carries the picked coordinate (RFC 5545 "GEO:lat;lon"); LOCATION
+        // stays the human address. Emit only when BOTH are present + in range.
+        $lat = $this->coord($data['geo_lat'] ?? null, 90.0);
+        $lon = $this->coord($data['geo_lon'] ?? null, 180.0);
+        if ($lat !== null && $lon !== null) {
+            $event->add('GEO', $lat.';'.$lon);
+        }
+
         $status = strtoupper(trim($this->str($data['status'] ?? null)));
         if (in_array($status, ['CONFIRMED', 'TENTATIVE', 'CANCELLED'], true)) {
             $event->add('STATUS', $status);
@@ -97,7 +105,7 @@ class CalendarEventService
     /**
      * Parse a VCALENDAR into structured editor data (first VEVENT).
      *
-     * @return array<string, mixed> {uid,summary,description,location,dtstart,dtend,all_day,rrule,status,sequence}
+     * @return array<string, mixed> {uid,summary,description,location,geo_lat,geo_lon,dtstart,dtend,all_day,rrule,status,sequence}
      */
     public function parse(string $ics): array
     {
@@ -105,18 +113,22 @@ class CalendarEventService
         if ($event === null) {
             return [
                 'uid' => null, 'summary' => null, 'description' => null, 'location' => null,
+                'geo_lat' => null, 'geo_lon' => null,
                 'dtstart' => null, 'dtend' => null, 'all_day' => false, 'rrule' => null,
                 'status' => null, 'sequence' => 0,
             ];
         }
 
         $allDay = $this->isAllDay($event);
+        $geo = $this->geo($event);
 
         return [
             'uid' => $this->s($event->UID ?? null),
             'summary' => $this->s($event->SUMMARY ?? null),
             'description' => $this->s($event->DESCRIPTION ?? null),
             'location' => $this->s($event->LOCATION ?? null),
+            'geo_lat' => $geo['lat'],
+            'geo_lon' => $geo['lon'],
             'dtstart' => $this->propIso($event->DTSTART ?? null, $allDay),
             'dtend' => $this->propIso($event->DTEND ?? null, $allDay),
             'all_day' => $allDay,
@@ -130,6 +142,7 @@ class CalendarEventService
      * Mirror a few fields into calendar_events columns for list/range/search.
      *
      * @return array{uid: ?string, summary: ?string, description: ?string, location: ?string,
+     *   geo_lat: ?float, geo_lon: ?float,
      *   dtstart: ?CarbonImmutable, dtend: ?CarbonImmutable, all_day: bool, rrule: ?string,
      *   recurrence_until: ?CarbonImmutable, status: ?string, sequence: int}
      */
@@ -139,18 +152,22 @@ class CalendarEventService
         if ($event === null) {
             return [
                 'uid' => null, 'summary' => null, 'description' => null, 'location' => null,
+                'geo_lat' => null, 'geo_lon' => null,
                 'dtstart' => null, 'dtend' => null, 'all_day' => false, 'rrule' => null,
                 'recurrence_until' => null, 'status' => null, 'sequence' => 0,
             ];
         }
 
         $rrule = $this->s($event->RRULE ?? null);
+        $geo = $this->geo($event);
 
         return [
             'uid' => $this->s($event->UID ?? null),
             'summary' => $this->s($event->SUMMARY ?? null),
             'description' => $this->s($event->DESCRIPTION ?? null),
             'location' => $this->s($event->LOCATION ?? null),
+            'geo_lat' => $geo['lat'],
+            'geo_lon' => $geo['lon'],
             'dtstart' => $this->propDate($event->DTSTART ?? null),
             'dtend' => $this->propDate($event->DTEND ?? null),
             'all_day' => $this->isAllDay($event),
@@ -166,7 +183,7 @@ class CalendarEventService
      * events pass through if they overlap the window.
      *
      * @return list<array{uid: string, summary: ?string, location: ?string, description: ?string,
-     *   start: string, end: string, all_day: bool, status: ?string, recurring: bool}>
+     *   geo_lat: ?float, geo_lon: ?float, start: string, end: string, all_day: bool, status: ?string, recurring: bool}>
      */
     public function expand(CalendarEvent $event, CarbonImmutable $from, CarbonImmutable $to): array
     {
@@ -182,6 +199,7 @@ class CalendarEventService
         $description = $this->s($vevent->DESCRIPTION ?? null);
         $status = $this->s($vevent->STATUS ?? null);
         $allDay = $this->isAllDay($vevent);
+        $geo = $this->geo($vevent);
 
         // Single (non-recurring) event: emit once if it overlaps the window.
         if ($this->s($vevent->RRULE ?? null) === null) {
@@ -196,17 +214,19 @@ class CalendarEventService
 
             return [[
                 'uid' => $uid, 'summary' => $summary, 'location' => $location, 'description' => $description,
+                'geo_lat' => $geo['lat'], 'geo_lon' => $geo['lon'],
                 'start' => $start->toIso8601ZuluString(), 'end' => $end->toIso8601ZuluString(),
                 'all_day' => $allDay, 'status' => $status, 'recurring' => false,
             ]];
         }
 
-        return $this->expandRecurring($cal, $uid, $from, $to, $summary, $location, $description, $status, $allDay);
+        return $this->expandRecurring($cal, $uid, $from, $to, $summary, $location, $description, $status, $allDay, $geo);
     }
 
     /**
+     * @param  array{lat: ?float, lon: ?float}  $geo
      * @return list<array{uid: string, summary: ?string, location: ?string, description: ?string,
-     *   start: string, end: string, all_day: bool, status: ?string, recurring: bool}>
+     *   geo_lat: ?float, geo_lon: ?float, start: string, end: string, all_day: bool, status: ?string, recurring: bool}>
      */
     private function expandRecurring(
         VCalendar $cal,
@@ -218,6 +238,7 @@ class CalendarEventService
         ?string $description,
         ?string $status,
         bool $allDay,
+        array $geo,
     ): array {
         try {
             $it = new EventIterator($cal, $uid);
@@ -241,6 +262,7 @@ class CalendarEventService
             if ($endUtc > $from) {
                 $out[] = [
                     'uid' => $uid, 'summary' => $summary, 'location' => $location, 'description' => $description,
+                    'geo_lat' => $geo['lat'], 'geo_lon' => $geo['lon'],
                     'start' => $start->toIso8601ZuluString(), 'end' => $endUtc->toIso8601ZuluString(),
                     'all_day' => $allDay, 'status' => $status, 'recurring' => true,
                 ];
@@ -383,6 +405,39 @@ class CalendarEventService
         } catch (Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Read the VEVENT GEO property ("lat;lon") into a validated {lat,lon} pair.
+     * Either component out of range or unparseable → both null (drop the pair).
+     *
+     * @return array{lat: ?float, lon: ?float}
+     */
+    private function geo(VEvent $event): array
+    {
+        $raw = $this->s($event->GEO ?? null);
+        if ($raw === null || ! str_contains($raw, ';')) {
+            return ['lat' => null, 'lon' => null];
+        }
+        [$latRaw, $lonRaw] = explode(';', $raw, 2);
+        $lat = $this->coord(trim($latRaw), 90.0);
+        $lon = $this->coord(trim($lonRaw), 180.0);
+        if ($lat === null || $lon === null) {
+            return ['lat' => null, 'lon' => null];
+        }
+
+        return ['lat' => $lat, 'lon' => $lon];
+    }
+
+    /** A numeric coordinate within ±$max, or null (out of range / non-numeric). */
+    private function coord(mixed $value, float $max): ?float
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+        $n = (float) $value;
+
+        return ($n >= -$max && $n <= $max) ? $n : null;
     }
 
     /** Trimmed string or null. */
