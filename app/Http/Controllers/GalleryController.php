@@ -14,11 +14,16 @@ use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Intervention\Image\Direction;
+use Intervention\Image\Encoders\JpegEncoder;
+use Intervention\Image\Encoders\PngEncoder;
 use Intervention\Image\Encoders\WebpEncoder;
+use Intervention\Image\Interfaces\ImageInterface;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -279,7 +284,8 @@ class GalleryController extends Controller
                 if (is_array($dims) && (int) $dims[0] * (int) $dims[1] > self::THUMB_MAX_PIXELS) {
                     abort(404);
                 }
-                $webp = (string) $images->make()->decodePath($tmp->path())->cover(400, 400)->encode(new WebpEncoder(quality: 78));
+                $img = $this->applyEdits($images->make()->decodePath($tmp->path()), $photo);
+                $webp = (string) $img->cover(400, 400)->encode(new WebpEncoder(quality: 78));
                 $this->fs()->put($thumbPath, $webp);
             } catch (\Throwable) {
                 abort(404);
@@ -302,6 +308,122 @@ class GalleryController extends Controller
         $photo->forceFill(['favorite' => $request->boolean('favorite')])->save();
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Non-invasive light edit: capture date/time, place + coordinates, rotation
+     * and horizontal mirror. The original bytes are never rewritten — rotation/
+     * flip are baked only into the thumbnail (regenerated via the version bump)
+     * and the "edited" download variant. Optimistic version → 409 on mismatch.
+     */
+    public function update(Request $request, GalleryPhoto $photo): JsonResponse
+    {
+        $this->requireUser($request);
+        $request->validate([
+            'taken_at' => ['sometimes', 'nullable', 'date'],
+            'place' => ['sometimes', 'nullable', 'string', 'max:500'],
+            'lat' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'lng' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
+            'rotation' => ['sometimes', 'integer', 'in:0,90,180,270'],
+            'flip_h' => ['sometimes', 'boolean'],
+            'version' => ['sometimes', 'integer', 'min:0'],
+        ]);
+
+        return DB::transaction(function () use ($request, $photo): JsonResponse {
+            /** @var GalleryPhoto $fresh */
+            $fresh = GalleryPhoto::query()->whereKey($photo->getKey())->lockForUpdate()->firstOrFail();
+            if ($request->has('version') && $request->integer('version') !== (int) $fresh->version) {
+                return response()->json(['error' => 'version_conflict', 'version' => $fresh->version], 409);
+            }
+            $patch = [];
+            if ($request->has('taken_at')) {
+                $ta = $request->input('taken_at');
+                $patch['taken_at'] = is_string($ta) && $ta !== '' ? Carbon::parse($ta, 'UTC') : null;
+            }
+            if ($request->has('place')) {
+                $patch['place'] = $request->filled('place') ? $request->string('place')->value() : null;
+            }
+            if ($request->has('lat')) {
+                $lat = $request->input('lat');
+                $patch['lat'] = is_numeric($lat) ? (float) $lat : null;
+            }
+            if ($request->has('lng')) {
+                $lng = $request->input('lng');
+                $patch['lng'] = is_numeric($lng) ? (float) $lng : null;
+            }
+            if ($request->has('rotation')) {
+                $patch['rotation'] = $request->integer('rotation');
+            }
+            if ($request->has('flip_h')) {
+                $patch['flip_h'] = $request->boolean('flip_h');
+            }
+            $patch['version'] = (int) $fresh->version + 1;
+            $fresh->forceFill($patch)->save();
+
+            return response()->json(['photo' => $this->row($fresh)]);
+        });
+    }
+
+    public function download(Request $request, GalleryPhoto $photo, ImageManagerFactory $images): StreamedResponse
+    {
+        $this->requireUser($request);
+        $src = (string) $photo->storage_path;
+        abort_unless(str_starts_with($src, 'gallery/') && $this->fs()->exists($src), 404);
+
+        $wantsEdited = $request->query('variant') === 'edited';
+        $hasEdit = (int) $photo->rotation !== 0 || $photo->flip_h;
+
+        // Original (or an edited request with no actual transform) → raw bytes.
+        if (! $wantsEdited || ! $hasEdit) {
+            return $this->fs()->response($src, $this->safeName($photo->name), [], 'attachment');
+        }
+
+        abort_if((int) $photo->size > self::THUMB_MAX_SRC_BYTES, 404);
+        try {
+            $tmp = DiskTempFile::create('llgdl')->withExtension('img');
+            $in = $this->fs()->readStream($src);
+            $dst = fopen($tmp->path(), 'wb');
+            if (! is_resource($in) || $dst === false) {
+                abort(404);
+            }
+            stream_copy_to_stream($in, $dst);
+            fclose($in);
+            fclose($dst);
+            $dims = @getimagesize($tmp->path());
+            if (is_array($dims) && (int) $dims[0] * (int) $dims[1] > self::THUMB_MAX_PIXELS) {
+                abort(404);
+            }
+            $img = $this->applyEdits($images->make()->decodePath($tmp->path()), $photo);
+            $mime = (string) $photo->mime;
+            $bytes = match (true) {
+                str_contains($mime, 'png') => (string) $img->encode(new PngEncoder),
+                str_contains($mime, 'jpeg'), str_contains($mime, 'jpg') => (string) $img->encode(new JpegEncoder(quality: 90)),
+                default => (string) $img->encode(new WebpEncoder(quality: 90)),
+            };
+        } catch (\Throwable) {
+            // Baking failed — fall back to the untouched original.
+            return $this->fs()->response($src, $this->safeName($photo->name), [], 'attachment');
+        }
+
+        return response()->streamDownload(function () use ($bytes): void {
+            echo $bytes;
+        }, $this->safeName($photo->name), ['Content-Type' => (string) $photo->mime ?: 'application/octet-stream']);
+    }
+
+    /** Apply the stored non-invasive transforms (mirror then rotate). */
+    private function applyEdits(ImageInterface $img, GalleryPhoto $photo): ImageInterface
+    {
+        if ($photo->flip_h) {
+            $img->flip(Direction::HORIZONTAL);
+        }
+        $deg = (int) $photo->rotation % 360;
+        if ($deg !== 0) {
+            // Stored rotation is clockwise; Intervention rotates counter-clockwise
+            // for a positive angle, so negate.
+            $img->rotate(-$deg);
+        }
+
+        return $img;
     }
 
     public function destroy(Request $request, GalleryPhoto $photo): JsonResponse
@@ -465,7 +587,7 @@ class GalleryController extends Controller
         ];
     }
 
-    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,taken_at:?string,camera:?string,lat:?float,lng:?float,created_at:?string} */
+    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,rotation:int,flip_h:bool,taken_at:?string,camera:?string,place:?string,lat:?float,lng:?float,version:int,created_at:?string} */
     private function row(GalleryPhoto $p): array
     {
         return [
@@ -476,10 +598,14 @@ class GalleryController extends Controller
             'height' => $p->height,
             'size' => $p->size,
             'favorite' => (bool) $p->favorite,
+            'rotation' => (int) $p->rotation,
+            'flip_h' => (bool) $p->flip_h,
             'taken_at' => $p->taken_at?->toIso8601String(),
             'camera' => $p->camera,
+            'place' => $p->place,
             'lat' => $p->lat,
             'lng' => $p->lng,
+            'version' => (int) $p->version,
             'created_at' => $p->created_at?->toIso8601String(),
         ];
     }

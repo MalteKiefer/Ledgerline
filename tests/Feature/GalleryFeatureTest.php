@@ -163,6 +163,44 @@ class GalleryFeatureTest extends TestCase
         $this->assertNull(GalleryAlbum::find($albumId));
     }
 
+    public function test_edit_sets_metadata_and_transforms_non_invasively(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $up = $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('e.jpg', 300, 200)]);
+        $id = (int) $up->json('photo.id');
+        $origBytes = Storage::disk(config('files.disk'))->get(GalleryPhoto::findOrFail($id)->storage_path);
+
+        $res = $this->putJson(route('gallery.update', ['photo' => $id]), [
+            'taken_at' => '2021-07-04 09:30:00',
+            'place' => 'Berlin, Germany',
+            'lat' => 52.52, 'lng' => 13.405,
+            'rotation' => 90, 'flip_h' => true,
+            'version' => 0,
+        ])->assertOk();
+
+        $this->assertSame(90, (int) $res->json('photo.rotation'));
+        $this->assertTrue((bool) $res->json('photo.flip_h'));
+        $this->assertSame('Berlin, Germany', $res->json('photo.place'));
+        $this->assertEqualsWithDelta(52.52, (float) $res->json('photo.lat'), 0.001);
+        $this->assertSame(1, (int) $res->json('photo.version'));
+
+        // Original bytes untouched (non-invasive).
+        $this->assertSame($origBytes, Storage::disk(config('files.disk'))->get(GalleryPhoto::findOrFail($id)->storage_path));
+        // Original download returns the untouched bytes.
+        $this->get(route('gallery.download', ['photo' => $id, 'variant' => 'original']))->assertOk();
+    }
+
+    public function test_edit_rejects_stale_version(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $id = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('v.jpg')])->json('photo.id');
+        // bump to version 1
+        $this->putJson(route('gallery.update', ['photo' => $id]), ['rotation' => 90, 'version' => 0])->assertOk();
+        // stale write
+        $this->putJson(route('gallery.update', ['photo' => $id]), ['rotation' => 180, 'version' => 0])
+            ->assertStatus(409)->assertJson(['error' => 'version_conflict']);
+    }
+
     public function test_exif_capture_date_and_gps_are_extracted(): void
     {
         $this->actingAs(User::factory()->create());

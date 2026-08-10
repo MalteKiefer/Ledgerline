@@ -5,8 +5,15 @@ import { api, uploadWithProgress } from '@spa/api/client';
 export interface Photo {
   id: number; name: string; mime: string | null;
   width: number | null; height: number | null; size: number;
-  favorite: boolean; taken_at: string | null; camera: string | null;
-  lat: number | null; lng: number | null; created_at: string | null;
+  favorite: boolean; rotation: number; flip_h: boolean;
+  taken_at: string | null; camera: string | null; place: string | null;
+  lat: number | null; lng: number | null; version: number; created_at: string | null;
+}
+
+export interface PhotoEdit {
+  taken_at?: string | null; place?: string | null;
+  lat?: number | null; lng?: number | null;
+  rotation?: number; flip_h?: boolean; version?: number;
 }
 
 export interface Album {
@@ -53,6 +60,8 @@ export const useGalleryStore = defineStore('gallery', () => {
   }
 
   const favorite = (id: number, fav: boolean) => api.patch(`/api/v1/gallery/${id}/favorite`, { favorite: fav });
+  const update = (id: number, patch: PhotoEdit) => api.put<{ photo: Photo }>(`/api/v1/gallery/${id}`, patch);
+  const downloadUrl = (id: number, variant: 'original' | 'edited') => api.streamUrl(`/api/v1/gallery/${id}/download?variant=${variant}`);
   const destroy = (id: number) => api.delete(`/api/v1/gallery/${id}`);
   const bulkDestroy = (ids: number[]) => api.post('/api/v1/gallery/bulk-destroy', { ids });
   const restore = (id: number) => api.post(`/api/v1/gallery/${id}/restore`);
@@ -70,7 +79,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   const rawUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/raw`);
 
   return {
-    photos, albums, load, trash, loadAlbums, upload, favorite, destroy, bulkDestroy,
+    photos, albums, load, trash, loadAlbums, upload, favorite, update, downloadUrl, destroy, bulkDestroy,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, rawUrl,
   };

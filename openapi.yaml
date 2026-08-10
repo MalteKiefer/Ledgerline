@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.609.0
+  version: 1.610.0
   license:
     name: Proprietary
   description: >
@@ -1156,10 +1156,14 @@ components:
         height: { type: integer, nullable: true }
         size: { type: integer }
         favorite: { type: boolean }
-        taken_at: { type: string, format: date-time, nullable: true, description: "EXIF capture date (falls back to created_at for ordering)." }
+        rotation: { type: integer, enum: [0, 90, 180, 270], description: "Clockwise display rotation; non-invasive (original bytes untouched)." }
+        flip_h: { type: boolean, description: "Horizontal mirror; non-invasive." }
+        taken_at: { type: string, format: date-time, nullable: true, description: "EXIF capture date (falls back to created_at for ordering); editable." }
         camera: { type: string, nullable: true }
+        place: { type: string, nullable: true, description: "Human location label (from OSM autocomplete)." }
         lat: { type: number, format: float, nullable: true }
         lng: { type: number, format: float, nullable: true }
+        version: { type: integer }
         created_at: { type: string, format: date-time, nullable: true }
     GalleryAlbum:
       type: object
@@ -5263,6 +5267,20 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /gallery/{photo}:
+    put:
+      tags: [Gallery]
+      operationId: galleryUpdate
+      summary: Non-invasive light edit (date/time, place+coords, rotation, mirror)
+      description: "Original bytes are never rewritten; rotation/flip_h are baked only into the thumbnail (via version bump) and the edited download variant. Optimistic version → 409."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { taken_at: { type: string, nullable: true }, place: { type: string, nullable: true }, lat: { type: number, nullable: true }, lng: { type: number, nullable: true }, rotation: { type: integer, enum: [0, 90, 180, 270] }, flip_h: { type: boolean }, version: { type: integer, minimum: 0 } } } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { photo: { $ref: "#/components/schemas/GalleryPhoto" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/VersionConflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       tags: [Gallery]
       operationId: galleryDestroy
@@ -5271,6 +5289,20 @@ paths:
       parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
       responses:
         "200": { description: Trashed., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/{photo}/download:
+    get:
+      tags: [Gallery]
+      operationId: galleryDownload
+      summary: Download original or edited variant
+      description: "variant=original (default) streams the untouched bytes; variant=edited bakes rotation/flip into a full-res render (falls back to original when there is no transform)."
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: photo, in: path, required: true, schema: { type: integer } }
+        - { name: variant, in: query, required: false, schema: { type: string, enum: [original, edited] } }
+      responses:
+        "200": { description: "Image bytes (Content-Disposition attachment)." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /gallery/{id}/restore:
