@@ -11,5 +11,7 @@ return [
     'task_due' => 'Задача к выполнению: :task',
     'task_due_on' => 'Срок: :date',
     'task_overdue_since' => 'Просрочено с :date',
+    'event_soon' => 'Скоро: :event',
+    'event_at' => 'Начало в :time',
     'backup_failed' => 'Резервная копия «:name» завершилась ошибкой',
 ];
