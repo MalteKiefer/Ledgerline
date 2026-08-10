@@ -9,6 +9,7 @@ return [
     'enable_desktop' => 'Включить уведомления рабочего стола',
     'backup_ok' => 'Резервная копия «:name» успешно создана',
     'task_due' => 'Задача к выполнению: :task',
+    'task_reminder_at' => 'Срок: :time',
     'task_due_on' => 'Срок: :date',
     'task_overdue_since' => 'Просрочено с :date',
     'event_soon' => 'Скоро: :event',

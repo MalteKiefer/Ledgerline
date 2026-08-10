@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Models\AppNotification;
 use App\Models\CalendarTodo;
+use App\Services\Calendar\CalendarTodoService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -53,6 +54,11 @@ class RemindTasks extends Command
     {
         $due = $todo->due;
         if ($due === null) {
+            return false;
+        }
+        // Skip tasks that carry a per-task reminder (VALARM) — the precise
+        // `tasks:remind-alarms` command already covers them; avoid a double push.
+        if (app(CalendarTodoService::class)->alarmMinutes($todo->ics) !== null) {
             return false;
         }
         // One reminder per task per due-date; re-arms if the due date changes.
