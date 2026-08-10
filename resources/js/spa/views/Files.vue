@@ -4,7 +4,9 @@
     <Card :body-class="'p-0'" class="w-full shrink-0 self-start md:w-60">
       <div class="p-3">
         <Btn variant="solid" block icon="upload" @click="pickUpload">{{ t('files.upload') }}</Btn>
+        <Btn variant="ghost" size="sm" block icon="drive_folder_upload" class="mt-1" @click="pickUploadDir">{{ t('files.upload_folder') }}</Btn>
         <input ref="uploadInput" type="file" multiple class="hidden" @change="onUpload" >
+        <input ref="uploadDirInput" type="file" webkitdirectory multiple class="hidden" @change="onUploadDir" >
       </div>
       <nav class="space-y-0.5 px-2 pb-2">
         <button
@@ -109,6 +111,7 @@
                     <DropdownMenuItem as="a" :href="s.rawUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
+                    <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openInfo(row)"><Icon name="info" :size="18" />{{ t('files.info') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openVersions(row)"><Icon name="history" :size="18" />{{ t('files.versions') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openShare(row)"><Icon name="share" :size="18" />{{ t('files.share') }}</DropdownMenuItem>
@@ -116,6 +119,7 @@
                   </template>
                   <template v-else-if="row._folder && view!=='trash'">
                     <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
+                    <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openShare(row)"><Icon name="share" :size="18" />{{ t('files.share') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemDangerCls" @select="doTrash(row)"><Icon name="delete" :size="18" />{{ t('files.trash') }}</DropdownMenuItem>
                   </template>
@@ -176,6 +180,7 @@
                         <DropdownMenuItem as="a" :href="s.rawUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
+                    <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="openInfo(row)"><Icon name="info" :size="18" />{{ t('files.info') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="openVersions(row)"><Icon name="history" :size="18" />{{ t('files.versions') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="openShare(row)"><Icon name="share" :size="18" />{{ t('files.share') }}</DropdownMenuItem>
@@ -183,6 +188,7 @@
                       </template>
                       <template v-else-if="row._folder && view!=='trash'">
                         <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
+                    <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemDangerCls" @select="doTrash(row)"><Icon name="delete" :size="18" />{{ t('files.trash') }}</DropdownMenuItem>
                       </template>
                       <template v-else>
@@ -381,6 +387,22 @@
     </template>
   </Modal>
 
+  <!-- Move file/folder into another folder -->
+  <Modal v-model="moveDlg.show" :title="t('files.move')" width="440px">
+    <template v-if="moveDlg.row">
+      <p class="mb-2 truncate text-sm text-[var(--ll-muted)]">{{ moveDlg.row.name }}</p>
+      <div class="max-h-80 overflow-y-auto">
+        <button
+          v-for="o in moveTargets" :key="String(o.id)"
+          class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-black/[0.04] dark:hover:bg-white/5"
+          @click="doMove(o.id)"
+        >
+          <Icon name="folder" :size="18" class="text-[var(--ll-muted)]" />{{ o.label }}
+        </button>
+      </div>
+    </template>
+  </Modal>
+
   <!-- File preview: preview pane + always-visible info sidebar -->
   <Modal v-model="previewOpen" :title="preview?.name" width="64rem">
     <div v-if="preview" class="flex flex-col md:h-[calc(70vh-2.5rem)] md:flex-row">
@@ -513,6 +535,8 @@ const serverResults = ref<FileEntry[] | null>(null);
 const activeLabels = ref<number[]>([]);
 const selected = ref<number[]>([]);
 const uploadInput = ref<HTMLInputElement | null>(null);
+const uploadDirInput = ref<HTMLInputElement | null>(null);
+const moveDlg = ref<{ show: boolean; row: Row | null }>({ show: false, row: null });
 const trashFiles = ref<FileEntry[]>([]);
 const trashFolders = ref<FileFolder[]>([]);
 const preview = ref<FileEntry | null>(null);
@@ -641,6 +665,57 @@ function previewKind(f: FileEntry): 'image' | 'pdf' | 'video' | 'audio' | 'text'
   return 'other';
 }
 function pickUpload() { uploadInput.value?.click(); }
+function pickUploadDir() { uploadDirInput.value?.click(); }
+async function onUploadDir(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const list = input.files;
+  if (!list || !list.length) { input.value = ''; return; }
+  try {
+    // Rebuild the picked directory tree, then place each file. `webkitRelativePath`
+    // is "root/sub/file.ext"; folders are created once and memoised by path.
+    const dirCache = new Map<string, number | null>();
+    dirCache.set('', cwd.value);
+    const ensureDir = async (rel: string): Promise<number | null> => {
+      if (dirCache.has(rel)) return dirCache.get(rel) ?? null;
+      const slash = rel.lastIndexOf('/');
+      const parentRel = slash >= 0 ? rel.slice(0, slash) : '';
+      const name = slash >= 0 ? rel.slice(slash + 1) : rel;
+      const parentId = await ensureDir(parentRel);
+      const id = await s.createFolderId(name, parentId);
+      dirCache.set(rel, id);
+      return id;
+    };
+    for (const f of Array.from(list)) {
+      const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? '';
+      const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
+      await s.upload(f, await ensureDir(dir));
+    }
+    await s.load();
+    success(t('common.saved'));
+  } catch { error(t('common.error')); }
+  finally { input.value = ''; }
+}
+function openMove(row: Row) { moveDlg.value = { show: true, row }; }
+async function doMove(target: number | null) {
+  const row = moveDlg.value.row;
+  if (!row) return;
+  try {
+    if (row._folder) await s.moveFolder(row.raw as FileFolder, target);
+    else await s.move(row.raw as FileEntry, target);
+    moveDlg.value.show = false;
+    await s.load();
+    success(t('common.saved'));
+  } catch { error(t('common.error')); }
+}
+const moveTargets = computed(() => {
+  const opts: { id: number | null; label: string }[] = [{ id: null, label: t('files.all_files') }];
+  const selfId = moveDlg.value.row?._folder ? moveDlg.value.row.id : null;
+  for (const fo of s.folders as FileFolder[]) {
+    if (fo.id === selfId) continue; // a folder can't move into itself (subtree guarded server-side)
+    opts.push({ id: fo.id, label: folderPath(fo.id) });
+  }
+  return opts;
+});
 async function onUpload(e: Event) {
   const list = (e.target as HTMLInputElement).files;
   if (!list) return;
