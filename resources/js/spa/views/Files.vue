@@ -5,7 +5,7 @@
   >
     <!-- Full-view drag & drop upload overlay -->
     <div v-show="dragDepth > 0 && !uploadState.active" class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-500/10">
-      <div class="rounded-xl bg-[var(--ll-card)] px-6 py-4 text-center shadow-lg">
+      <div class="rounded-xl bg-[var(--ll-elevated)] px-6 py-4 text-center shadow-lg">
         <Icon name="upload" :size="32" class="text-primary-500" />
         <div class="mt-1 text-sm font-medium">{{ t('files.drop_here') }}</div>
         <div class="text-xs text-[var(--ll-muted)]">{{ folderPath(cwd) || t('files.root') }}</div>
@@ -15,7 +15,7 @@
     <!-- Upload name-conflict prompt (teleported, above everything) -->
     <Teleport to="body">
       <div v-if="conflict.show" class="fixed inset-0 z-[2100] flex items-center justify-center bg-black/40">
-        <div class="w-96 max-w-[92%] rounded-xl bg-[var(--ll-card)] px-6 py-5 shadow-xl">
+        <div class="w-96 max-w-[92%] rounded-xl bg-[var(--ll-elevated)] px-6 py-5 shadow-xl">
           <div class="text-sm font-semibold">{{ t('files.conflict_title') }}</div>
           <p class="mt-1 break-words text-sm text-[var(--ll-muted)]">{{ t('files.conflict_body', { name: conflict.name }) }}</p>
           <label class="mt-3 flex items-center gap-2 text-sm">
@@ -34,7 +34,7 @@
     <!-- Upload progress modal (teleported so it sits above all page content) -->
     <Teleport to="body">
       <div v-show="uploadState.active && !conflict.show" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/30">
-        <div class="w-80 max-w-[90%] rounded-xl bg-[var(--ll-card)] px-6 py-5 shadow-xl">
+        <div class="w-80 max-w-[90%] rounded-xl bg-[var(--ll-elevated)] px-6 py-5 shadow-xl">
           <div class="flex items-center gap-2 text-sm font-medium">
             <Icon name="upload" :size="20" class="text-primary-500" />
             {{ t('files.uploading') }} <span class="ml-auto tabular-nums text-[var(--ll-muted)]">{{ uploadState.done }} / {{ uploadState.total }}</span>

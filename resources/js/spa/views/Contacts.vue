@@ -5,7 +5,7 @@
   >
     <!-- Full-view drag & drop vCard import overlay -->
     <div v-show="dragDepth > 0" class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-500/10">
-      <div class="rounded-xl bg-[var(--ll-card)] px-6 py-4 text-center shadow-lg">
+      <div class="rounded-xl bg-[var(--ll-elevated)] px-6 py-4 text-center shadow-lg">
         <Icon name="upload" :size="32" class="text-primary-500" />
         <div class="mt-1 text-sm font-medium">{{ t('contacts.ui.drop_here') }}</div>
       </div>
