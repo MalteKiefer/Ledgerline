@@ -284,6 +284,8 @@ return [
     'tx_purpose' => 'Purpose',
     'tab_bank' => 'Bank',
     'tx_booking_text' => 'Booking text',
+    'tx_receipts' => 'Receipts',
+    'tx_receipt_attach' => 'Attach receipt',
     'tx_all_accounts' => 'All accounts',
     'tx_import' => 'Import CSV',
     'tx_import_no_account' => 'Add a bank account first.',
