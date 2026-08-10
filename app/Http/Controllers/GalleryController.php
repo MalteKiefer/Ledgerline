@@ -46,6 +46,8 @@ class GalleryController extends Controller
 
     private const MIME_ALLOW = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'];
 
+    private const MOTION_ALLOW = ['mov', 'mp4', 'm4v', 'qt'];
+
     // ---- Listings ----
 
     public function data(Request $request): JsonResponse
@@ -89,6 +91,9 @@ class GalleryController extends Controller
 
         $real = $upload->getRealPath();
         $sha = is_string($real) ? (hash_file('sha256', $real) ?: null) : null;
+        if (($dupe = $this->findDuplicate($uid, $sha)) !== null) {
+            return response()->json(['photo' => $this->row($dupe), 'duplicate' => true], 200);
+        }
         $dims = is_string($real) ? @getimagesize($real) : false;
         $meta = is_string($real) ? $this->extractExif($real) : [];
         $path = 'gallery/'.Str::uuid()->toString();
@@ -214,6 +219,12 @@ class GalleryController extends Controller
             Cache::forget($this->sessionKey($uid, $id));
             abort(415);
         }
+        if (($dupe = $this->findDuplicate($uid, $sha)) !== null) {
+            $this->fs()->deleteDirectory($tmpDir);
+            Cache::forget($this->sessionKey($uid, $id));
+
+            return response()->json(['photo' => $this->row($dupe), 'duplicate' => true], 200);
+        }
         $dims = @getimagesize($tmp->path());
         $meta = $this->extractExif($tmp->path());
 
@@ -260,6 +271,23 @@ class GalleryController extends Controller
         $etag = $photo->sha256 !== null && $photo->sha256 !== '' ? $photo->sha256 : (string) $photo->id;
 
         return BlobStore::immutableResponse($this->fs()->response($src, $this->safeName($photo->name), [], 'inline'), $etag);
+    }
+
+    /** Stream a Live Photo's motion clip (sandboxed). Best-effort playback — the
+     *  clip is stored as received (no transcode; ffmpeg is deliberately not in
+     *  the image), so a QuickTime .MOV plays in Safari but may not in every browser. */
+    public function motion(Request $request, GalleryPhoto $photo): StreamedResponse
+    {
+        $this->requireUser($request);
+        $src = (string) $photo->motion_path;
+        abort_unless($src !== '' && str_starts_with($src, 'gallery/') && $this->fs()->exists($src), 404);
+
+        return $this->fs()->response($src, 'motion.mp4', [
+            'Content-Type' => 'video/mp4',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+            'Cache-Control' => 'private, max-age=86400',
+        ], 'inline');
     }
 
     /**
@@ -345,6 +373,48 @@ class GalleryController extends Controller
         $photo->forceFill(['favorite' => $request->boolean('favorite')])->save();
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Attach a Live Photo's motion clip (.MOV/.MP4) to an existing still, so the
+     * pair lands as ONE gallery entry instead of two. The client resolves the
+     * matching still (by base name / already in the library) and posts the clip
+     * here. Video-only, quota-counted; replaces any prior clip.
+     */
+    public function attachMotion(Request $request, GalleryPhoto $photo): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:'.implode(',', self::MOTION_ALLOW), 'max:'.$this->maxUploadKb()],
+        ]);
+        $upload = $request->file('file');
+        if (! $upload instanceof UploadedFile) {
+            abort(422);
+        }
+        $mime = $upload->getMimeType() ?: $upload->getClientMimeType();
+        if (! str_starts_with($mime, 'video/')) {
+            abort(415);
+        }
+        if ($over = $this->overQuota($uid, (int) $upload->getSize())) {
+            return $over;
+        }
+
+        $real = $upload->getRealPath();
+        $contentId = is_string($real) ? $this->extractQuickTimeContentId($real) : null;
+
+        // Replace any existing clip so re-attaching never leaks a blob.
+        $old = $this->safeBlobPath($photo->motion_path);
+        $path = 'gallery/'.Str::uuid()->toString().'-mv';
+        $this->fs()->putFileAs('gallery', $upload, basename($path));
+        $photo->forceFill([
+            'motion_path' => $path,
+            'content_id' => $contentId ?? $photo->content_id,
+        ])->save();
+        if ($old !== null && $old !== $path) {
+            $this->fs()->delete($old);
+        }
+
+        return response()->json(['photo' => $this->row($photo)]);
     }
 
     /**
@@ -626,7 +696,7 @@ class GalleryController extends Controller
         ];
     }
 
-    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,thumb:bool,rotation:int,flip_h:bool,taken_at:?string,camera:?string,place:?string,lat:?float,lng:?float,version:int,created_at:?string} */
+    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,thumb:bool,motion:bool,rotation:int,flip_h:bool,taken_at:?string,camera:?string,place:?string,lat:?float,lng:?float,version:int,created_at:?string} */
     private function row(GalleryPhoto $p): array
     {
         return [
@@ -638,6 +708,7 @@ class GalleryController extends Controller
             'size' => $p->size,
             'favorite' => (bool) $p->favorite,
             'thumb' => $this->fs()->exists($this->thumbPath($p)),
+            'motion' => $p->motion_path !== null && $p->motion_path !== '',
             'rotation' => (int) $p->rotation,
             'flip_h' => (bool) $p->flip_h,
             'taken_at' => $p->taken_at?->toIso8601String(),
@@ -764,9 +835,11 @@ class GalleryController extends Controller
 
     private function purgeBlobs(GalleryPhoto $photo): void
     {
-        $src = $this->safeBlobPath($photo->storage_path);
-        if ($src !== null) {
-            $this->fs()->delete($src);
+        foreach ([$photo->storage_path, $photo->motion_path] as $blob) {
+            $p = $this->safeBlobPath($blob);
+            if ($p !== null) {
+                $this->fs()->delete($p);
+            }
         }
         $this->fs()->delete('gallery/thumb/'.$photo->id.'-'.$photo->version.'.webp');
     }
@@ -778,6 +851,44 @@ class GalleryController extends Controller
         }
 
         return $path;
+    }
+
+    /** An existing non-trashed photo of the same user with identical bytes, if any. */
+    private function findDuplicate(int $uid, ?string $sha): ?GalleryPhoto
+    {
+        if ($sha === null || $sha === '') {
+            return null;
+        }
+
+        return GalleryPhoto::query()->where('user_id', $uid)->where('sha256', $sha)->first();
+    }
+
+    /**
+     * Extract Apple's Live Photo content identifier from a QuickTime .MOV/.MP4:
+     * the value of the `com.apple.quicktime.content.identifier` metadata key.
+     * Best-effort — scans the moov metadata; returns null when absent. Bounded to
+     * the first 512 KiB (Apple writes this near the moov atom).
+     */
+    private function extractQuickTimeContentId(string $path): ?string
+    {
+        $fh = @fopen($path, 'rb');
+        if ($fh === false) {
+            return null;
+        }
+        $head = (string) fread($fh, 512 * 1024);
+        fclose($fh);
+        $needle = 'com.apple.quicktime.content.identifier';
+        $at = strpos($head, $needle);
+        if ($at === false) {
+            return null;
+        }
+        // The value follows the key inside a `data` atom; a Live Photo id is a
+        // UUID. Grab the first UUID-shaped token after the key.
+        if (preg_match('/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/', substr($head, $at, 256), $m) === 1) {
+            return $m[0];
+        }
+
+        return null;
     }
 
     private function disk(): string

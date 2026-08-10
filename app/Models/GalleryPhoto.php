@@ -17,6 +17,8 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $user_id
  * @property string $storage_path
+ * @property string|null $motion_path
+ * @property string|null $content_id
  * @property string $name
  * @property string|null $mime
  * @property int $size

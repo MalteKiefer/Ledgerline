@@ -39,4 +39,7 @@ return [
     'dl_edited' => 'Bearbeitet herunterladen',
     'edit_conflict' => 'Dieses Foto wurde anderswo geändert — neu geladen. Bitte Änderung wiederholen.',
     'thumb_pending' => 'Vorschaubild wird erstellt…',
+    'dupes_skipped' => ':n Duplikat(e) übersprungen.',
+    'motion_unmatched' => ':n Motion-Clip(s) ohne passendes Foto.',
+    'play_motion' => 'Live-Motion abspielen',
 ];

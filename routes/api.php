@@ -281,6 +281,8 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/gallery/{photo}/favorite', [GalleryController::class, 'favorite'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.favorite');
             Route::put('/gallery/{photo}', [GalleryController::class, 'update'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.update');
             Route::get('/gallery/{photo}/download', [GalleryController::class, 'download'])->whereNumber('photo')->middleware('throttle:1200,1')->name('api.gallery.download');
+            Route::get('/gallery/{photo}/motion', [GalleryController::class, 'motion'])->whereNumber('photo')->middleware('throttle:3000,1')->name('api.gallery.motion');
+            Route::post('/gallery/{photo}/motion', [GalleryController::class, 'attachMotion'])->whereNumber('photo')->middleware('throttle:1200,1')->name('api.gallery.motion.attach');
             Route::delete('/gallery/{photo}', [GalleryController::class, 'destroy'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.destroy');
             Route::post('/gallery/{id}/restore', [GalleryController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.gallery.restore');
             Route::delete('/gallery/{id}/force', [GalleryController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.gallery.force');

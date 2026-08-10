@@ -77,6 +77,8 @@
             <div
               class="group relative aspect-square overflow-hidden rounded-lg bg-black/[0.04] dark:bg-white/5"
               :class="selected.has(p.id) ? 'ring-2 ring-primary-500 ring-offset-1 ring-offset-[var(--ll-surface)]' : ''"
+              @mouseenter="p.motion && !showTrash ? hoverId = p.id : null"
+              @mouseleave="hoverId === p.id ? hoverId = -1 : null"
             >
               <img
                 v-if="p.thumb"
@@ -86,6 +88,14 @@
                 @click="showTrash ? undefined : onTileClick($event, i, p)"
                 @error="onThumbError"
               >
+              <video
+                v-if="p.motion && hoverId === p.id"
+                :src="g.motionUrl(p.id)" muted loop autoplay playsinline
+                class="pointer-events-none absolute inset-0 h-full w-full object-cover"
+              />
+              <span v-if="p.motion && !showTrash" class="pointer-events-none absolute bottom-1 right-1 flex items-center gap-0.5 rounded bg-black/50 px-1 py-0.5 text-[9px] font-semibold uppercase text-white">
+                <Icon name="motion_photos_on" :size="11" /> Live
+              </span>
               <button
                 v-else
                 class="flex h-full w-full items-center justify-center text-[var(--ll-muted)]"
@@ -137,7 +147,8 @@
         <button class="absolute right-4 top-4 rounded-full p-2 text-white/80 hover:bg-white/10" @click="viewer = -1"><Icon name="close" :size="24" /></button>
         <button class="absolute left-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/80 hover:bg-white/10" @click="step(-1)"><Icon name="chevron_left" :size="32" /></button>
         <button class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/80 hover:bg-white/10" @click="step(1)"><Icon name="chevron_right" :size="32" /></button>
-        <img v-if="viewerPhoto" :src="g.rawUrl(viewerPhoto.id)" class="max-h-[92vh] max-w-[92vw] object-contain transition-transform" :style="transformStyle(viewerPhoto)">
+        <video v-if="viewerPhoto && motionPlaying && viewerPhoto.motion" :src="g.motionUrl(viewerPhoto.id)" autoplay loop controls playsinline class="max-h-[92vh] max-w-[92vw] object-contain" />
+        <img v-else-if="viewerPhoto" :src="g.rawUrl(viewerPhoto.id)" class="max-h-[92vh] max-w-[92vw] object-contain transition-transform" :style="transformStyle(viewerPhoto)">
         <div class="absolute inset-x-0 bottom-0 flex items-center gap-3 bg-gradient-to-t from-black/70 to-transparent px-6 py-4 text-sm text-white">
           <div class="min-w-0 flex-1">
             <div class="truncate">{{ viewerPhoto?.name }}</div>
@@ -147,6 +158,9 @@
               <span v-else-if="viewerPhoto?.camera"> · {{ viewerPhoto?.camera }}</span>
             </div>
           </div>
+          <button v-if="viewerPhoto?.motion" class="rounded-full p-2 hover:bg-white/10" :class="motionPlaying ? 'text-primary-300' : ''" :title="t('gallery.play_motion')" @click="motionPlaying = !motionPlaying">
+            <Icon name="motion_photos_on" :size="22" />
+          </button>
           <button class="rounded-full p-2 hover:bg-white/10" :title="t('gallery.favorite')" @click="onFav">
             <Icon :name="viewerPhoto?.favorite ? 'star' : 'star_border'" :size="22" :class="viewerPhoto?.favorite ? 'text-amber-400' : ''" />
           </button>
@@ -239,6 +253,8 @@ const dlMenu = ref(false);
 
 const selected = ref<Set<number>>(new Set());
 let anchor = -1;
+const hoverId = ref(-1);
+const motionPlaying = ref(false);
 
 const current = computed<Row[]>(() => {
   if (showTrash.value) return trashPhotos.value as Row[];
@@ -299,19 +315,40 @@ function onDragEnter(e: DragEvent) { if (hasFiles(e)) dragDepth.value++; }
 function onDragLeave(e: DragEvent) { if (hasFiles(e)) dragDepth.value = Math.max(0, dragDepth.value - 1); }
 function onDrop(e: DragEvent) { dragDepth.value = 0; const l = e.dataTransfer?.files; if (l && l.length) void uploadList(l); }
 
+function baseName(name: string): string { return name.replace(/\.[^.]+$/, '').toLowerCase(); }
+function isMotionFile(f: File): boolean { return f.type.startsWith('video/') || /\.(mov|mp4|m4v|qt)$/i.test(f.name); }
+
 async function uploadList(list: FileList) {
-  const files = Array.from(list).filter((f) => f.type.startsWith('image/'));
-  if (!files.length) return;
-  Object.assign(up, { active: true, done: 0, total: files.length, name: '', frac: 0 });
+  const all = Array.from(list);
+  const images = all.filter((f) => f.type.startsWith('image/'));
+  const motions = all.filter(isMotionFile);
+  if (!images.length && !motions.length) return;
+  Object.assign(up, { active: true, done: 0, total: images.length + motions.length, name: '', frac: 0 });
+  // Pair a Live Photo's .MOV to its still by base name (IMG_1234.HEIC ↔ IMG_1234.MOV).
+  // Seed with the existing library so a clip uploaded in a later batch still merges.
+  const idByBase = new Map<string, number>();
+  for (const p of g.photos) idByBase.set(baseName(p.name), p.id);
+  let dupes = 0; let unmatched = 0;
   try {
-    for (const f of files) {
+    for (const f of images) {
       up.name = f.name; up.frac = 0;
-      await g.upload(f, (fr) => { up.frac = fr; });
+      const r = await g.upload(f, (fr) => { up.frac = fr; });
+      if (r.duplicate) dupes++;
+      idByBase.set(baseName(f.name), r.photo.id);
+      up.frac = 0; up.done++;
+    }
+    for (const f of motions) {
+      up.name = f.name; up.frac = 0;
+      const id = idByBase.get(baseName(f.name));
+      if (id !== undefined) await g.attachMotion(id, f, (fr) => { up.frac = fr; });
+      else unmatched++;
       up.frac = 0; up.done++;
     }
     await refresh();
     await g.loadAlbums();
     success(t('common.saved'));
+    if (dupes > 0) success(t('gallery.dupes_skipped', { n: String(dupes) }));
+    if (unmatched > 0) error(t('gallery.motion_unmatched', { n: String(unmatched) }));
   } catch { error(t('common.error')); } finally { up.active = false; }
 }
 function refresh() { return g.load(albumId.value ?? undefined); }
@@ -369,13 +406,13 @@ async function removeSelectedFromAlbum() {
 }
 
 // ---- Lightbox ----
-function openViewer(i: number) { viewer.value = i; dlMenu.value = false; }
+function openViewer(i: number) { viewer.value = i; dlMenu.value = false; motionPlaying.value = false; }
 function step(d: number) {
   if (viewer.value < 0) return;
   const n = g.photos.length;
   if (!n) { viewer.value = -1; return; }
   viewer.value = (viewer.value + d + n) % n;
-  dlMenu.value = false;
+  dlMenu.value = false; motionPlaying.value = false;
 }
 function onKey(e: KeyboardEvent) {
   if (edit.open) return;

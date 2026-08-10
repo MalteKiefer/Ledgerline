@@ -5,7 +5,7 @@ import { api, uploadWithProgress } from '@spa/api/client';
 export interface Photo {
   id: number; name: string; mime: string | null;
   width: number | null; height: number | null; size: number;
-  favorite: boolean; thumb: boolean; rotation: number; flip_h: boolean;
+  favorite: boolean; thumb: boolean; motion: boolean; rotation: number; flip_h: boolean;
   taken_at: string | null; camera: string | null; place: string | null;
   lat: number | null; lng: number | null; version: number; created_at: string | null;
 }
@@ -33,13 +33,15 @@ export const useGalleryStore = defineStore('gallery', () => {
   const trash = () => api.get<{ photos: Photo[] }>('/api/v1/gallery/trash').then((r) => r.photos);
   const loadAlbums = () => api.get<{ albums: Album[] }>('/api/v1/gallery/albums').then((r) => { albums.value = r.albums ?? []; });
 
-  async function upload(file: File, onProgress?: (fr: number) => void) {
-    if (file.size > WHOLE_LIMIT) { await uploadChunked(file, onProgress); return; }
+  type UploadResult = { photo: Photo; duplicate?: boolean };
+
+  async function upload(file: File, onProgress?: (fr: number) => void): Promise<UploadResult> {
+    if (file.size > WHOLE_LIMIT) return uploadChunked(file, onProgress);
     const fd = new FormData();
     fd.append('file', file);
-    await uploadWithProgress('/api/v1/gallery', fd, onProgress);
+    return uploadWithProgress<UploadResult>('/api/v1/gallery', fd, onProgress);
   }
-  async function uploadChunked(file: File, onProgress?: (fr: number) => void) {
+  async function uploadChunked(file: File, onProgress?: (fr: number) => void): Promise<UploadResult> {
     const init = await api.post<{ id: string; partSize: number }>('/api/v1/gallery/chunk/init', { name: file.name, size: file.size });
     const partSize = init.partSize > 0 ? init.partSize : WHOLE_LIMIT;
     const parts = Math.max(1, Math.ceil(file.size / partSize));
@@ -51,13 +53,20 @@ export const useGalleryStore = defineStore('gallery', () => {
         fd.append('file', file.slice(i * partSize, (i + 1) * partSize), file.name);
         await uploadWithProgress('/api/v1/gallery/chunk/part', fd, (pf) => onProgress?.((i + pf) / parts));
       }
-      await api.post('/api/v1/gallery/chunk/complete', { id: init.id });
+      const res = await api.post<UploadResult>('/api/v1/gallery/chunk/complete', { id: init.id });
       onProgress?.(1);
+      return res;
     } catch (e) {
       await api.post('/api/v1/gallery/chunk/abort', { id: init.id }).catch(() => { /* best-effort */ });
       throw e;
     }
   }
+  const attachMotion = (photoId: number, file: File, onProgress?: (fr: number) => void) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return uploadWithProgress<{ photo: Photo }>(`/api/v1/gallery/${photoId}/motion`, fd, onProgress);
+  };
+  const motionUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/motion`);
 
   const favorite = (id: number, fav: boolean) => api.patch(`/api/v1/gallery/${id}/favorite`, { favorite: fav });
   const update = (id: number, patch: PhotoEdit) => api.put<{ photo: Photo }>(`/api/v1/gallery/${id}`, patch);
@@ -79,7 +88,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   const rawUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/raw`);
 
   return {
-    photos, albums, load, trash, loadAlbums, upload, favorite, update, downloadUrl, destroy, bulkDestroy,
+    photos, albums, load, trash, loadAlbums, upload, attachMotion, motionUrl, favorite, update, downloadUrl, destroy, bulkDestroy,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, rawUrl,
   };
