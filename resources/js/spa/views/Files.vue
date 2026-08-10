@@ -33,7 +33,7 @@
 
     <!-- Upload progress modal (teleported so it sits above all page content) -->
     <Teleport to="body">
-      <div v-show="uploadState.active" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/30">
+      <div v-show="uploadState.active && !conflict.show" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/30">
         <div class="w-80 max-w-[90%] rounded-xl bg-[var(--ll-card)] px-6 py-5 shadow-xl">
           <div class="flex items-center gap-2 text-sm font-medium">
             <Icon name="upload" :size="20" class="text-primary-500" />
@@ -824,14 +824,33 @@ async function onUploadDir(e: Event) {
       dirCache.set(rel, id);
       return id;
     };
-    const all = Array.from(list);
-    uploadState.value = { active: true, done: 0, total: all.length, name: '', frac: 0 };
-    for (const f of all) {
+    const allFiles = Array.from(list);
+    conflictAll.value = false;
+    const all: { v: ConflictAction | null } = { v: null };
+    // Existing-name map per target folder (reused across files in that folder).
+    const dirNames = new Map<number | null, Map<string, FileEntry>>();
+    uploadState.value = { active: true, done: 0, total: allFiles.length, name: '', frac: 0 };
+    for (const f of allFiles) {
       const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? '';
       const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
       uploadState.value.name = f.name;
       uploadState.value.frac = 0;
-      await s.upload(f, await ensureDir(dir), (fr) => { uploadState.value.frac = fr; });
+      const targetId = await ensureDir(dir);
+      if (!dirNames.has(targetId)) dirNames.set(targetId, entriesIn(targetId));
+      const existing = dirNames.get(targetId) as Map<string, FileEntry>;
+      const prog = (fr: number) => { uploadState.value.frac = fr; };
+      const action = await decideConflict(f.name, existing, all);
+      if (action === 'skip') { uploadState.value.done++; continue; }
+      if (action === 'overwrite') {
+        await s.replaceContent(existing.get(f.name.toLowerCase()) as FileEntry, f, prog);
+      } else if (action === 'copy') {
+        const name = uniqueName(f.name, new Set([...existing.keys()]));
+        await s.upload(new File([f], name, { type: f.type }), targetId, prog);
+        existing.set(name.toLowerCase(), {} as FileEntry);
+      } else {
+        await s.upload(f, targetId, prog);
+        existing.set(f.name.toLowerCase(), {} as FileEntry);
+      }
       uploadState.value.done++;
     }
     await s.load();
@@ -843,10 +862,18 @@ function openMove(row: Row) { moveDlg.value = { show: true, row }; }
 async function doMove(target: number | null) {
   const row = moveDlg.value.row;
   if (!row) return;
+  moveDlg.value.show = false;
   try {
-    if (row._folder) await s.moveFolder(row.raw as FileFolder, target);
-    else await s.move(row.raw as FileEntry, target);
-    moveDlg.value.show = false;
+    if (row._folder) {
+      await s.moveFolder(row.raw as FileFolder, target);
+    } else {
+      const f = row.raw as FileEntry;
+      const existing = entriesIn(target);
+      conflictAll.value = false;
+      const action = await decideConflict(f.name, existing, { v: null });
+      if (action === 'skip') return;
+      await placeFile(f, target, false, action, existing);
+    }
     await s.load();
     success(t('common.saved'));
   } catch { error(t('common.error')); }
@@ -893,49 +920,47 @@ function uniqueName(name: string, taken: Set<string>): string {
   while (taken.has(candidate.toLowerCase())) { i++; candidate = `${base} (${i})${ext}`; }
   return candidate;
 }
+// Lowercased file names currently in a folder (id or null=root), + the entry
+// (so callers can overwrite/trash the colliding target).
+function entriesIn(folderId: number | null): Map<string, FileEntry> {
+  const m = new Map<string, FileEntry>();
+  for (const fe of s.files as FileEntry[]) if (fe.file_folder_id === folderId) m.set(fe.name.toLowerCase(), fe);
+  return m;
+}
+// Decide what to do for a colliding name; null = no conflict (proceed as-is).
+// `all` carries an "apply to all" choice across the batch.
+async function decideConflict(name: string, existing: Map<string, FileEntry>, all: { v: ConflictAction | null }): Promise<ConflictAction | null> {
+  if (!existing.has(name.toLowerCase())) return null;
+  if (all.v) return all.v;
+  const choice = await askConflict(name);
+  if (choice.startsWith('all-')) { all.v = choice.slice(4) as ConflictAction; return all.v; }
+  return choice as ConflictAction;
+}
 
 async function uploadList(list: FileList | File[]) {
   const files = Array.from(list);
   if (!files.length) return;
-  // Names already in the target folder (lowercased) + the id to overwrite.
-  const existing = new Map<string, FileEntry>();
-  for (const fe of s.files as FileEntry[]) {
-    if (fe.file_folder_id === cwd.value) existing.set(fe.name.toLowerCase(), fe);
-  }
+  const existing = entriesIn(cwd.value);
   conflictAll.value = false;
-  let applyAll: ConflictAction | null = null;
+  const all: { v: ConflictAction | null } = { v: null };
 
   uploadState.value = { active: true, done: 0, total: files.length, name: '', frac: 0 };
   try {
     for (const f of files) {
       uploadState.value.name = f.name;
       uploadState.value.frac = 0;
-      const key = f.name.toLowerCase();
-      let action: ConflictAction = 'copy'; // default when no conflict = plain upload
-      if (existing.has(key)) {
-        if (applyAll) {
-          action = applyAll;
-        } else {
-          const choice = await askConflict(f.name);
-          if (choice.startsWith('all-')) { applyAll = choice.slice(4) as ConflictAction; action = applyAll; }
-          else action = choice as ConflictAction;
-        }
-      }
-
       const prog = (fr: number) => { uploadState.value.frac = fr; };
-      if (existing.has(key) && action === 'skip') {
-        uploadState.value.done++;
-        continue;
-      }
-      if (existing.has(key) && action === 'overwrite') {
-        await s.replaceContent(existing.get(key) as FileEntry, f, prog);
-      } else if (existing.has(key) && action === 'copy') {
+      const action = await decideConflict(f.name, existing, all);
+      if (action === 'skip') { uploadState.value.done++; continue; }
+      if (action === 'overwrite') {
+        await s.replaceContent(existing.get(f.name.toLowerCase()) as FileEntry, f, prog);
+      } else if (action === 'copy') {
         const name = uniqueName(f.name, new Set([...existing.keys()]));
         await s.upload(new File([f], name, { type: f.type }), cwd.value, prog);
         existing.set(name.toLowerCase(), {} as FileEntry);
       } else {
         await s.upload(f, cwd.value, prog);
-        existing.set(key, {} as FileEntry);
+        existing.set(f.name.toLowerCase(), {} as FileEntry);
       }
       uploadState.value.done++;
     }
@@ -1010,15 +1035,46 @@ const bulkTargets = computed(() => {
 async function doBulk(target: number | null) {
   const files = selectedFiles.value;
   if (!files.length) return;
+  const copy = bulkDlg.value.mode === 'copy';
+  bulkDlg.value.show = false;
+  const existing = entriesIn(target);
+  conflictAll.value = false;
+  const all: { v: ConflictAction | null } = { v: null };
   try {
     for (const f of files) {
-      if (bulkDlg.value.mode === 'copy') await s.copy(f, target); else await s.move(f, target);
+      if (f.file_folder_id === target && !copy) continue; // already there (move no-op)
+      const action = await decideConflict(f.name, existing, all);
+      if (action === 'skip') continue;
+      await placeFile(f, target, copy, action, existing);
     }
-    bulkDlg.value.show = false;
     selected.value = [];
     await s.load();
     success(t('common.saved'));
   } catch { error(t('common.error')); }
+}
+// Move/copy one file into `target`, honouring an optional conflict action.
+async function placeFile(f: FileEntry, target: number | null, copy: boolean, action: ConflictAction | null, existing: Map<string, FileEntry>) {
+  const key = f.name.toLowerCase();
+  if (action === 'overwrite') {
+    const victim = existing.get(key);
+    if (victim && victim.id !== f.id) await s.trashFile(victim);
+    existing.delete(key);
+    if (copy) {
+      const r = await s.copy(f, target); // lands as "name (copy)" → rename back to name
+      await s.rename(r.file, f.name);
+    } else {
+      await s.move(f, target);
+    }
+    existing.set(key, {} as FileEntry);
+  } else if (action === 'copy') {
+    // keep both
+    if (copy) { await s.copy(f, target); } // backend appends " (copy)"
+    else { const name = uniqueName(f.name, new Set([...existing.keys()])); const r = await s.rename(f, name); await s.move(r.file, target); existing.set(name.toLowerCase(), {} as FileEntry); }
+  } else {
+    // no conflict
+    if (copy) await s.copy(f, target); else await s.move(f, target);
+    existing.set(key, {} as FileEntry);
+  }
 }
 
 // ---- ZIP ----
