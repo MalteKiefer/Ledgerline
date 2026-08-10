@@ -19,14 +19,24 @@
             </div>
           </div>
 
+          <div v-if="meta.needs_password" class="mb-3">
+            <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('files.ul_password') }}</label>
+            <input
+              v-model="password" type="password" autocomplete="off"
+              class="w-full rounded-lg border bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+              :class="pwError ? 'border-red-400' : 'border-[var(--ll-border)]'"
+            >
+            <p v-if="pwError" class="mt-1 text-xs text-red-500">{{ t('files.ul_password_wrong') }}</p>
+          </div>
+
           <label
-            class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors"
-            :class="drag > 0 ? 'border-primary-500 bg-primary-500/10' : 'border-[var(--ll-border)] hover:bg-black/[0.02] dark:hover:bg-white/[0.03]'"
+            class="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors"
+            :class="[drag > 0 ? 'border-primary-500 bg-primary-500/10' : 'border-[var(--ll-border)] hover:bg-black/[0.02] dark:hover:bg-white/[0.03]', canUpload ? 'cursor-pointer' : 'cursor-not-allowed opacity-50']"
           >
-            <input type="file" multiple class="hidden" @change="onPick" >
+            <input type="file" multiple class="hidden" :disabled="!canUpload" @change="onPick" >
             <Icon name="cloud_upload" :size="32" class="text-[var(--ll-muted)]" />
             <span class="text-sm font-medium">{{ t('files.ul_drop') }}</span>
-            <span class="text-xs text-[var(--ll-muted)]">{{ t('files.ul_or_click') }}</span>
+            <span class="text-xs text-[var(--ll-muted)]">{{ meta.needs_password && !password ? t('files.ul_password_first') : t('files.ul_or_click') }}</span>
           </label>
 
           <div v-if="items.length" class="mt-4 space-y-2">
@@ -53,6 +63,7 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon } from '@spa/ui';
+import { ApiError } from '@spa/api/client';
 import { useFilesStore } from '@spa/stores/files';
 
 const route = useRoute();
@@ -61,24 +72,28 @@ const token = String(route.params.token ?? '');
 
 const loading = ref(true);
 const notFound = ref(false);
-const meta = reactive<{ label: string | null; owner: string }>({ label: null, owner: '' });
+const meta = reactive<{ label: string | null; owner: string; needs_password: boolean }>({ label: null, owner: '', needs_password: false });
 const drag = ref(0);
+const password = ref('');
+const pwError = ref(false);
+const canUpload = computed(() => !meta.needs_password || password.value.length > 0);
 interface Item { name: string; frac: number; done: boolean; error: boolean }
 const items = ref<Item[]>([]);
 const anyDone = computed(() => items.value.some((i) => i.done));
 
 onMounted(async () => {
-  try { const m = await s.uploadLinkMeta(token); meta.label = m.label; meta.owner = m.owner; }
+  try { const m = await s.uploadLinkMeta(token); meta.label = m.label; meta.owner = m.owner; meta.needs_password = m.needs_password; }
   catch { notFound.value = true; }
   finally { loading.value = false; }
 });
 
 async function send(files: File[]) {
+  if (!canUpload.value) return;
   for (const f of files) {
     const it = reactive<Item>({ name: f.name, frac: 0, done: false, error: false });
     items.value.push(it);
-    try { await s.uploadLinkSend(token, f, (fr) => { it.frac = fr; }); it.done = true; }
-    catch { it.error = true; }
+    try { await s.uploadLinkSend(token, f, (fr) => { it.frac = fr; }, password.value || undefined); it.done = true; pwError.value = false; }
+    catch (e) { it.error = true; if (e instanceof ApiError && e.status === 403) pwError.value = true; }
   }
 }
 function onPick(e: Event) {
@@ -88,6 +103,7 @@ function onPick(e: Event) {
 }
 function onDrop(e: DragEvent) {
   drag.value = 0;
+  if (!canUpload.value) return;
   const list = e.dataTransfer?.files;
   if (list && list.length) void send(Array.from(list));
 }

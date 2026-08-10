@@ -18,14 +18,18 @@ use Illuminate\Support\Carbon;
  * @property int|null $file_folder_id
  * @property string $token
  * @property string|null $label
+ * @property string|null $password_hash
  * @property Carbon|null $expires_at
  */
 class FileUploadLink extends Model
 {
     use OwnsUserData;
 
-    /** Server-set: token/user_id/file_folder_id are never mass-assigned. */
+    /** Server-set: token/user_id/file_folder_id/password_hash never mass-assigned. */
     protected $fillable = ['label', 'expires_at'];
+
+    /** The password hash must never leak through serialization. */
+    protected $hidden = ['password_hash'];
 
     protected $casts = [
         'expires_at' => 'datetime',
@@ -34,6 +38,11 @@ class FileUploadLink extends Model
     public function isExpired(): bool
     {
         return $this->expires_at !== null && $this->expires_at->isPast();
+    }
+
+    public function needsPassword(): bool
+    {
+        return $this->password_hash !== null && $this->password_hash !== '';
     }
 
     /** @return BelongsTo<FileFolder, $this> */
