@@ -68,3 +68,51 @@ body { background: var(--ll-bg); color: var(--ll-fg); -webkit-font-smoothing: an
 *::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--ll-muted) 40%, transparent); border-radius: 6px; }
 
 .ll-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* GitHub-Flavored Markdown rendering for note bodies (.ll-prose). Tailwind's
+   preflight strips list markers / heading sizes, so restore a GitHub-like look:
+   headings, lists, tables, code, blockquotes, task lists. Theme-aware via --ll-*. */
+.ll-prose { color: var(--ll-fg); line-height: 1.6; font-size: 0.9375rem; word-wrap: break-word; }
+.ll-prose > *:first-child { margin-top: 0; }
+.ll-prose > *:last-child { margin-bottom: 0; }
+.ll-prose h1, .ll-prose h2, .ll-prose h3, .ll-prose h4, .ll-prose h5, .ll-prose h6 {
+  font-weight: 600; line-height: 1.25; margin: 1.4em 0 0.6em; }
+.ll-prose h1 { font-size: 1.6em; padding-bottom: 0.3em; border-bottom: 1px solid var(--ll-border); }
+.ll-prose h2 { font-size: 1.3em; padding-bottom: 0.3em; border-bottom: 1px solid var(--ll-border); }
+.ll-prose h3 { font-size: 1.15em; }
+.ll-prose h4 { font-size: 1em; }
+.ll-prose h5 { font-size: 0.9em; }
+.ll-prose h6 { font-size: 0.85em; color: var(--ll-muted); }
+.ll-prose p { margin: 0 0 0.9em; }
+.ll-prose a { color: #7c6cf0; text-decoration: none; }
+.ll-prose a:hover { text-decoration: underline; }
+.ll-prose strong { font-weight: 600; }
+.ll-prose ul, .ll-prose ol { margin: 0 0 0.9em; padding-left: 1.6em; }
+.ll-prose ul { list-style: disc; }
+.ll-prose ol { list-style: decimal; }
+.ll-prose li { margin: 0.2em 0; }
+.ll-prose li > ul, .ll-prose li > ol { margin: 0.2em 0; }
+.ll-prose li.task-list-item, .ll-prose li:has(> input[type=checkbox]) { list-style: none; margin-left: -1.4em; }
+.ll-prose input[type=checkbox] { margin-right: 0.5em; vertical-align: middle; }
+.ll-prose blockquote {
+  margin: 0 0 0.9em; padding: 0 1em; color: var(--ll-muted);
+  border-left: 0.25em solid var(--ll-border); }
+.ll-prose code {
+  font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.85em;
+  padding: 0.2em 0.4em; border-radius: 6px;
+  background: color-mix(in srgb, var(--ll-muted) 20%, transparent); }
+.ll-prose pre {
+  margin: 0 0 0.9em; padding: 1em; overflow: auto; border-radius: 8px;
+  background: var(--ll-elevated); border: 1px solid var(--ll-border); }
+.ll-prose pre code { padding: 0; background: none; font-size: 0.85em; }
+.ll-prose hr { height: 1px; border: 0; background: var(--ll-border); margin: 1.4em 0; }
+.ll-prose img { max-width: 100%; border-radius: 6px; }
+.ll-prose table { border-collapse: collapse; margin: 0 0 0.9em; display: block; overflow-x: auto; }
+.ll-prose th, .ll-prose td { padding: 0.4em 0.85em; border: 1px solid var(--ll-border); }
+.ll-prose th { font-weight: 600; background: color-mix(in srgb, var(--ll-muted) 12%, transparent); }
+.ll-prose del { color: var(--ll-muted); }
+
+/* Wikilinks ([[Title]]) — resolved link vs a not-yet-created note. */
+.ll-wikilink { color: #7c6cf0; text-decoration: none; cursor: pointer; border-bottom: 1px dashed color-mix(in srgb, #7c6cf0 55%, transparent); }
+.ll-wikilink:hover { text-decoration: none; border-bottom-style: solid; }
+.ll-wikilink-missing { color: var(--ll-muted); border-bottom: 1px dashed var(--ll-border); cursor: default; }
