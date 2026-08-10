@@ -208,6 +208,7 @@
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Select v-model="form.repeat" :label="t('calendar.ui.repeat')" :options="repeatOptions" />
         <Select v-model="form.status" :label="t('calendar.ui.status')" :options="statusOptions" />
+        <Select v-model="form.reminder" :label="t('calendar.ui.reminder')" :options="reminderOptions" />
       </div>
       <label class="block">
         <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('calendar.ui.description') }}</span>
@@ -455,9 +456,19 @@ const editingId = ref<string | null>(null);
 const currentEtag = ref<string>('');
 const saving = ref(false);
 const deleting = ref(false);
-const form = reactive<{ calendar_id: string; summary: string; description: string; location: string; geoLat: number | null; geoLon: number | null; allDay: boolean; start: string; end: string; repeat: string; rruleRaw: string; status: string }>(
-  { calendar_id: '', summary: '', description: '', location: '', geoLat: null, geoLon: null, allDay: false, start: '', end: '', repeat: 'none', rruleRaw: '', status: 'CONFIRMED' },
+const form = reactive<{ calendar_id: string; summary: string; description: string; location: string; geoLat: number | null; geoLon: number | null; allDay: boolean; start: string; end: string; repeat: string; rruleRaw: string; status: string; reminder: string }>(
+  { calendar_id: '', summary: '', description: '', location: '', geoLat: null, geoLon: null, allDay: false, start: '', end: '', repeat: 'none', rruleRaw: '', status: 'CONFIRMED', reminder: '' },
 );
+// Reminder presets (minutes before start; '' = none). Shared with Tasks.vue keys.
+const reminderOptions = computed(() => [
+  { title: t('calendar.ui.reminder_none'), value: '' },
+  { title: t('calendar.ui.reminder_at'), value: '0' },
+  { title: t('calendar.ui.reminder_5m'), value: '5' },
+  { title: t('calendar.ui.reminder_15m'), value: '15' },
+  { title: t('calendar.ui.reminder_30m'), value: '30' },
+  { title: t('calendar.ui.reminder_1h'), value: '60' },
+  { title: t('calendar.ui.reminder_1d'), value: '1440' },
+]);
 // Only normal calendars can hold user-created events; special ones are generated.
 const editableCalendars = computed(() => store.calendars.filter((c) => c.kind === 'normal'));
 const calendarOptions = computed(() => editableCalendars.value.map((c) => ({ title: c.name, value: c.id })));
@@ -518,7 +529,7 @@ function openCreate(startVal: string): void {
     allDay,
     start: startVal,
     end: allDay ? dayPart : dayPart + 'T10:00',
-    repeat: 'none', rruleRaw: '', status: 'CONFIRMED',
+    repeat: 'none', rruleRaw: '', status: 'CONFIRMED', reminder: '',
   });
   eventModal.value = true;
 }
@@ -538,6 +549,7 @@ async function openEdit(o: Occurrence): Promise<void> {
       // All-day DTEND is exclusive on the wire → show the inclusive last day.
       end: d.dtend ? (d.all_day ? shiftDay(toInput(d.dtend, true), -1) : toInput(d.dtend, false)) : '',
       repeat: rruleToPreset(d.rrule), rruleRaw: d.rrule ?? '', status: d.status ?? 'CONFIRMED',
+      reminder: d.alarm_minutes_before != null ? String(d.alarm_minutes_before) : '',
     });
     eventModal.value = true;
   } catch { error(t('common.error')); }
@@ -571,6 +583,7 @@ function buildBody(): Record<string, unknown> {
     dtend,
     rrule,
     status: form.status,
+    alarm_minutes_before: form.reminder === '' ? null : Number(form.reminder),
   };
 }
 async function save(): Promise<void> {

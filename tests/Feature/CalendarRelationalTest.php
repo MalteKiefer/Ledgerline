@@ -156,7 +156,8 @@ class CalendarRelationalTest extends TestCase
         $event = CalendarEvent::firstOrFail();
 
         // Inject properties the editor does not model (as a CalDAV client would).
-        $extra = "CATEGORIES:Work\r\nURL:https://example.com/x\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT15M\r\nDESCRIPTION:Ping\r\nEND:VALARM\r\nEND:VEVENT";
+        // (VALARM is editor-owned for events — see the reminder round-trip test.)
+        $extra = "CATEGORIES:Work\r\nURL:https://example.com/x\r\nEND:VEVENT";
         $event->ics = str_replace('END:VEVENT', $extra, $event->ics);
         $event->saveQuietly();
 
@@ -168,8 +169,28 @@ class CalendarRelationalTest extends TestCase
         $this->assertStringContainsString('SUMMARY:New', $event->ics);       // modelled field updated
         $this->assertStringContainsString('CATEGORIES:Work', $event->ics);   // unmodelled preserved
         $this->assertStringContainsString('https://example.com/x', $event->ics);
-        $this->assertStringContainsString('BEGIN:VALARM', $event->ics);      // VALARM survives edit
         $this->assertStringNotContainsString('SUMMARY:Orig', $event->ics);
+    }
+
+    public function test_event_round_trips_a_reminder_alarm(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendar($user->id);
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'A', 'dtstart' => '2026-08-03T09:00:00Z', 'alarm_minutes_before' => 15,
+        ])->assertStatus(201);
+        $event = CalendarEvent::firstOrFail();
+        $this->assertStringContainsString('BEGIN:VALARM', $event->ics);
+        $this->assertStringContainsString('TRIGGER:-PT15M', $event->ics);
+
+        $show = $this->getJson(route('calendar.events.show', $event))->assertOk()->json();
+        $this->assertSame(15, $show['alarm_minutes_before']);
+
+        // Clearing the reminder drops the VALARM.
+        $this->putJson(route('calendar.events.update', $event), [
+            'summary' => 'A', 'dtstart' => '2026-08-03T09:00:00Z', 'alarm_minutes_before' => null,
+        ])->assertOk();
+        $this->assertStringNotContainsString('BEGIN:VALARM', $event->refresh()->ics);
     }
 
     public function test_update_rejects_a_stale_etag_with_409(): void

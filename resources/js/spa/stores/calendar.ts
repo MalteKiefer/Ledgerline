@@ -63,6 +63,7 @@ export interface EventDetail extends Record<string, unknown> {
   all_day: boolean;
   rrule: string | null;
   status: string | null;
+  alarm_minutes_before: number | null;
   geo_lat: number | string | null;
   geo_lon: number | string | null;
   sequence: number;

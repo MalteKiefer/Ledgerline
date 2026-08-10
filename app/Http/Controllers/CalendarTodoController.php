@@ -241,6 +241,7 @@ class CalendarTodoController extends Controller
             'completed_at' => $todo->completed_at?->toIso8601ZuluString(),
             'all_day' => $todo->all_day,
             'rrule' => $todo->rrule,
+            'alarm_minutes_before' => app(CalendarTodoService::class)->alarmMinutes($todo->ics),
             'categories' => $todo->categories ?? [],
             'related_to' => $todo->related_to,
             'sequence' => $todo->sequence,

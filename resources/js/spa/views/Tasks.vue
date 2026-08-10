@@ -135,6 +135,7 @@
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Select v-model="form.freq" :label="t('calendar.todos.repeat')" :options="repeatOptions" />
         <TextField v-if="form.freq !== 'none'" v-model="form.interval" :label="t('calendar.todos.interval')" type="number" inputmode="numeric" />
+        <Select v-model="form.reminder" :label="t('calendar.ui.reminder')" :options="reminderOptions" />
       </div>
       <p v-if="form.freq !== 'none'" class="text-xs text-[var(--ll-muted)]">{{ t('calendar.todos.recurring_hint') }}</p>
       <label class="block">
@@ -385,12 +386,21 @@ const catInput = ref('');
 const form = reactive<{
   calendar_id: string; summary: string; description: string; allDay: boolean;
   dtstart: string; due: string; priority: string; status: TodoStatus; percent: number;
-  freq: string; interval: string; rruleRaw: string; categories: string[]; related_to: string;
+  freq: string; interval: string; rruleRaw: string; reminder: string; categories: string[]; related_to: string;
 }>({
   calendar_id: '', summary: '', description: '', allDay: false,
   dtstart: '', due: '', priority: '0', status: 'NEEDS-ACTION', percent: 0,
-  freq: 'none', interval: '1', rruleRaw: '', categories: [], related_to: '',
+  freq: 'none', interval: '1', rruleRaw: '', reminder: '', categories: [], related_to: '',
 });
+const reminderOptions = computed(() => [
+  { title: t('calendar.ui.reminder_none'), value: '' },
+  { title: t('calendar.ui.reminder_at'), value: '0' },
+  { title: t('calendar.ui.reminder_5m'), value: '5' },
+  { title: t('calendar.ui.reminder_15m'), value: '15' },
+  { title: t('calendar.ui.reminder_30m'), value: '30' },
+  { title: t('calendar.ui.reminder_1h'), value: '60' },
+  { title: t('calendar.ui.reminder_1d'), value: '1440' },
+]);
 
 const priorityOptions = computed(() => (['none', 'high', 'medium', 'low'] as Tier[]).map((tier) => ({ title: t('calendar.todos.priority_' + tier), value: TIER_VALUE[tier] })));
 const statusOptions = computed(() => [
@@ -463,7 +473,7 @@ function openNewTask(): void {
     calendar_id: filters.listId || store.taskLists[0]?.id || '',
     summary: '', description: '', allDay: false,
     dtstart: '', due: '', priority: '0', status: 'NEEDS-ACTION' as TodoStatus, percent: 0,
-    freq: 'none', interval: '1', rruleRaw: '', categories: [], related_to: '',
+    freq: 'none', interval: '1', rruleRaw: '', reminder: '', categories: [], related_to: '',
   });
   taskModal.value = true;
 }
@@ -485,6 +495,7 @@ function openEdit(task: CalendarTodo): void {
     freq: rr.freq,
     interval: String(rr.interval),
     rruleRaw: task.rrule ?? '',
+    reminder: task.alarm_minutes_before != null ? String(task.alarm_minutes_before) : '',
     categories: [...(task.categories ?? [])],
     related_to: task.related_to ?? '',
   });
@@ -513,6 +524,7 @@ function buildBody(): CalendarTodoInput {
     priority: Number(form.priority),
     percent_complete: form.percent,
     rrule,
+    alarm_minutes_before: form.reminder === '' ? null : Number(form.reminder),
     categories: form.categories,
     related_to: form.related_to || null,
   };
