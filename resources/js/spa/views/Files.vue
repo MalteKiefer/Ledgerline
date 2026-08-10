@@ -525,31 +525,48 @@
     </div>
   </Modal>
 
-  <!-- Create a public upload link: folder (pick/create), mandatory expiry, optional password -->
-  <Modal v-model="ulDlg" :title="t('files.ul_create')" width="460px">
+  <!-- Create a public upload link: browse the folder tree to pick the target -->
+  <Modal v-model="ulDlg" :title="t('files.ul_create')" width="720px">
     <div class="space-y-3">
+      <!-- Folder browser -->
       <div>
-        <div class="mb-1 flex gap-2 text-sm">
-          <button class="rounded-lg px-2 py-1" :class="ulForm.folderMode==='existing' ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'" @click="ulForm.folderMode='existing'">{{ t('files.ul_folder_existing') }}</button>
-          <button class="rounded-lg px-2 py-1" :class="ulForm.folderMode==='new' ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'" @click="ulForm.folderMode='new'">{{ t('files.ul_folder_new') }}</button>
-        </div>
-        <div v-if="ulForm.folderMode==='existing'" class="rounded-lg border border-[var(--ll-border)]">
-          <div v-if="!folderSelectOptions.length" class="px-3 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('files.ul_no_folders') }}</div>
-          <div v-else class="max-h-56 overflow-y-auto p-1">
+        <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('files.ul_target') }}</label>
+        <div class="rounded-lg border border-[var(--ll-border)]">
+          <!-- Breadcrumb -->
+          <div class="flex flex-wrap items-center gap-1 border-b border-[var(--ll-border)] px-3 py-2 text-sm">
+            <template v-for="(c, i) in pickerCrumbs" :key="String(c.id)">
+              <Icon v-if="i > 0" name="chevron_right" :size="16" class="text-[var(--ll-muted)]" />
+              <button class="rounded px-1.5 py-0.5 hover:bg-black/[0.04] dark:hover:bg-white/5" :class="c.id === pickerCwd ? 'font-semibold text-primary-600 dark:text-primary-300' : ''" @click="pickerCwd = c.id">{{ c.name }}</button>
+            </template>
+          </div>
+          <!-- Children (click a folder to open it) -->
+          <div class="h-64 overflow-y-auto p-1">
             <button
-              v-for="o in folderSelectOptions" :key="o.value" type="button"
-              class="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm"
-              :class="ulForm.folderId === o.value ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300' : 'hover:bg-black/[0.04] dark:hover:bg-white/5'"
-              @click="ulForm.folderId = o.value"
+              v-for="fo in pickerChildren" :key="fo.id" type="button"
+              class="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-black/[0.04] dark:hover:bg-white/5"
+              @click="pickerCwd = fo.id"
             >
-              <Icon name="folder" :size="18" :class="ulForm.folderId === o.value ? '' : 'text-[var(--ll-muted)]'" />
-              <span class="min-w-0 flex-1 truncate">{{ o.title }}</span>
-              <Icon v-if="ulForm.folderId === o.value" name="check" :size="18" />
+              <Icon name="folder" :size="18" class="text-primary-500" />
+              <span class="min-w-0 flex-1 truncate">{{ fo.name }}</span>
+              <Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" />
             </button>
+            <div v-if="!pickerChildren.length" class="px-3 py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('files.ul_empty_folder') }}</div>
+          </div>
+          <!-- New subfolder here -->
+          <div class="flex items-center gap-2 border-t border-[var(--ll-border)] px-3 py-2">
+            <template v-if="ulShowNew">
+              <TextField v-model="ulNewFolder" class="flex-1" :placeholder="t('files.folder_name_ph')" @keydown.enter.prevent="pickerCreateFolder" />
+              <Btn variant="solid" size="sm" :loading="ulBusy" :disabled="!ulNewFolder.trim()" @click="pickerCreateFolder">{{ t('common.add') }}</Btn>
+              <Btn variant="ghost" size="sm" @click="ulShowNew = false">{{ t('common.cancel') }}</Btn>
+            </template>
+            <Btn v-else variant="ghost" size="sm" icon="create_new_folder" @click="ulShowNew = true">{{ t('files.new_folder') }}</Btn>
           </div>
         </div>
-        <TextField v-else v-model="ulForm.newFolder" :placeholder="t('files.folder_name_ph')" />
+        <p class="mt-1 text-xs" :class="pickerCwd == null ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--ll-muted)]'">
+          {{ pickerCwd == null ? t('files.ul_pick_folder') : t('files.ul_target_is', { path: folderPath(pickerCwd) }) }}
+        </p>
       </div>
+
       <TextField v-model="ulForm.label" :label="t('files.ul_label_prompt')" />
       <div>
         <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('files.ul_expiry') }}</label>
@@ -559,7 +576,7 @@
     </div>
     <template #footer>
       <Btn variant="ghost" @click="ulDlg = false">{{ t('common.cancel') }}</Btn>
-      <Btn variant="solid" :loading="ulBusy" @click="submitUploadLink">{{ t('files.ul_create') }}</Btn>
+      <Btn variant="solid" :loading="ulBusy" :disabled="pickerCwd == null" @click="submitUploadLink">{{ t('files.ul_create') }}</Btn>
     </template>
   </Modal>
 
@@ -748,7 +765,6 @@ onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);
 });
 
-const folderSelectOptions = computed(() => (s.folders as FileFolder[]).map((fo) => ({ title: folderPath(fo.id), value: fo.id })));
 const expiryOptions = computed(() => [
   { title: t('files.ul_exp_1d'), value: 1 },
   { title: t('files.ul_exp_7d'), value: 7 },
@@ -854,33 +870,51 @@ async function loadShared() {
     ]);
   } catch { error(t('common.error')); }
 }
-// Create-link flow: pick or create a target folder, mandatory expiry, optional password.
+// Create-link flow: navigate the folder tree like a file browser to pick the
+// target folder (the folder you're viewing IS the target), mandatory expiry,
+// optional password.
 const ulDlg = ref(false);
-const ulForm = reactive<{ folderMode: 'existing' | 'new'; folderId: number | null; newFolder: string; label: string; days: number; password: string }>(
-  { folderMode: 'existing', folderId: null, newFolder: '', label: '', days: 7, password: '' },
-);
+const ulForm = reactive<{ label: string; days: number; password: string }>({ label: '', days: 7, password: '' });
 const ulBusy = ref(false);
+const pickerCwd = ref<number | null>(null); // folder currently browsed = upload target
+const ulNewFolder = ref('');
+const ulShowNew = ref(false);
+
+// Child folders of the browsed folder (a "column" in the file browser).
+const pickerChildren = computed(() => (s.folders as FileFolder[]).filter((fo) => fo.parent_id === pickerCwd.value).sort((a, b) => a.name.localeCompare(b.name)));
+// Breadcrumb from Root down to the browsed folder.
+const pickerCrumbs = computed(() => {
+  const map = new Map((s.folders as FileFolder[]).map((fo) => [fo.id, fo]));
+  const chain: { id: number | null; name: string }[] = [];
+  let id = pickerCwd.value;
+  while (id != null) { const fo = map.get(id); if (!fo) break; chain.unshift({ id: fo.id, name: fo.name }); id = fo.parent_id; }
+  chain.unshift({ id: null, name: t('files.root') });
+  return chain;
+});
+
 function createUploadLink() {
-  const folders = s.folders as FileFolder[];
-  Object.assign(ulForm, {
-    folderMode: folders.length ? 'existing' : 'new',
-    folderId: cwd.value ?? folders[0]?.id ?? null,
-    newFolder: '', label: '', days: 7, password: '',
-  });
+  pickerCwd.value = cwd.value;
+  ulNewFolder.value = ''; ulShowNew.value = false;
+  Object.assign(ulForm, { label: '', days: 7, password: '' });
   ulDlg.value = true;
 }
-async function submitUploadLink() {
+async function pickerCreateFolder() {
+  const name = ulNewFolder.value.trim();
+  if (!name) return;
   ulBusy.value = true;
   try {
-    let folderId = ulForm.folderId;
-    if (ulForm.folderMode === 'new') {
-      const name = ulForm.newFolder.trim();
-      if (!name) { error(t('files.ul_folder_required')); return; }
-      folderId = await s.createFolderId(name, cwd.value);
-    }
-    if (folderId == null) { error(t('files.ul_folder_required')); return; }
+    const id = await s.createFolderId(name, pickerCwd.value);
+    await s.load();
+    pickerCwd.value = id; // descend into the freshly created folder
+    ulNewFolder.value = ''; ulShowNew.value = false;
+  } catch { error(t('common.error')); } finally { ulBusy.value = false; }
+}
+async function submitUploadLink() {
+  if (pickerCwd.value == null) { error(t('files.ul_folder_required')); return; }
+  ulBusy.value = true;
+  try {
     const expires = new Date(Date.now() + ulForm.days * 86_400_000).toISOString();
-    await s.createUploadLink({ file_folder_id: folderId, label: ulForm.label || undefined, expires_at: expires, password: ulForm.password || undefined });
+    await s.createUploadLink({ file_folder_id: pickerCwd.value, label: ulForm.label || undefined, expires_at: expires, password: ulForm.password || undefined });
     ulDlg.value = false;
     await Promise.all([s.load(), loadShared()]);
     success(t('common.saved'));

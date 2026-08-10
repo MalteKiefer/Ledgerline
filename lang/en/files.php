@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 return [
+    'ul_target' => 'Target folder',
+    'ul_empty_folder' => 'No subfolders here.',
+    'ul_pick_folder' => 'Open a folder — uploads cannot go to the root.',
+    'ul_target_is' => 'Uploads land in: :path',
     'ul_no_folders' => 'No folders yet — create one.',
     'ul_folder_existing' => 'Existing folder',
     'ul_folder_new' => 'New folder',
