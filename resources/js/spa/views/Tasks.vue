@@ -3,7 +3,7 @@
     <!-- Task lists rail -->
     <Card body-class="p-0" class="w-full shrink-0 self-start md:w-[240px]">
       <div class="p-3">
-        <Btn variant="solid" icon="add" block :disabled="!taskLists.length" @click="openNewTask">{{ t('calendar.todos.new_task') }}</Btn>
+        <Btn variant="solid" icon="add" block @click="openNewTask">{{ t('calendar.todos.new_task') }}</Btn>
       </div>
       <nav class="space-y-0.5 px-2 pb-2">
         <div class="flex items-center justify-between px-2 pb-1 pt-2">
@@ -106,9 +106,10 @@
           </div>
         </div>
 
-        <div v-if="!orderedRows.length" class="grid place-items-center p-12 text-center text-sm text-[var(--ll-muted)]">
-          <Icon name="task_alt" :size="34" class="mb-2 text-[var(--ll-muted)]" />
-          {{ taskLists.length ? t('calendar.todos.no_tasks') : t('calendar.todos.no_task_lists') }}
+        <div v-if="!orderedRows.length" class="grid place-items-center gap-3 p-12 text-center text-sm text-[var(--ll-muted)]">
+          <Icon name="task_alt" :size="34" class="text-[var(--ll-muted)]" />
+          <span>{{ taskLists.length ? t('calendar.todos.no_tasks') : t('calendar.todos.no_task_lists') }}</span>
+          <Btn v-if="!taskLists.length" variant="solid" icon="add" @click="openNewList">{{ t('calendar.todos.new_task_list') }}</Btn>
         </div>
       </div>
     </Card>
@@ -450,7 +451,9 @@ function onCatKey(e: KeyboardEvent): void {
 function removeCat(i: number): void { form.categories.splice(i, 1); }
 
 function openNewTask(): void {
-  if (!store.taskLists.length) return;
+  // No task list yet → a task can't exist without one. Send the user to create
+  // their first list instead of leaving a dead/greyed button.
+  if (!store.taskLists.length) { openNewList(); return; }
   editingId.value = null;
   currentEtag.value = '';
   catInput.value = '';
