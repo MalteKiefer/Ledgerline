@@ -32,21 +32,49 @@ export interface Receipt {
   amount?: number | null; date?: string | null; created_at?: string | null; file_url?: string | null;
 }
 
+export interface BankTransaction {
+  id: number; payment_method_id: number | null; date: string | null; amount: number;
+  vat_cat: string | null; counterparty: string | null; counterparty_iban: string | null;
+  bic: string | null; purpose: string | null; booking_text: string | null; eref: string | null;
+  invoice_id: number | null; invoice_number: string | null; finance_project_id: number | null;
+  receipts: unknown[] | null; version: number;
+}
+export interface FinanceCategory { id: number; name: string; color: string | null; icon: string | null; version?: number }
+
 export const useFinanceStore = defineStore('finance', () => {
   const invoices = ref<Invoice[]>([]);
   const partners = ref<Partner[]>([]);
   const paymentMethods = ref<PaymentMethod[]>([]);
   const projects = ref<Project[]>([]);
   const standaloneReceipts = ref<Receipt[]>([]);
+  const transactions = ref<BankTransaction[]>([]);
+  const financeCategories = ref<FinanceCategory[]>([]);
 
   async function load() {
     const r = await api.get<{
       invoices: Invoice[]; partners: Partner[]; paymentMethods: PaymentMethod[];
       projects: Project[]; standaloneReceipts: Receipt[];
+      transactions?: BankTransaction[]; financeCategories?: FinanceCategory[];
     }>('/api/v1/finance/data');
     invoices.value = r.invoices; partners.value = r.partners; paymentMethods.value = r.paymentMethods;
     projects.value = r.projects; standaloneReceipts.value = r.standaloneReceipts ?? [];
+    transactions.value = r.transactions ?? []; financeCategories.value = r.financeCategories ?? [];
   }
+
+  // ---- Bank transactions ----
+  const createTransaction = (body: Record<string, unknown>) => api.post<{ transaction: BankTransaction }>('/api/v1/finance/transactions', body);
+  const updateTransaction = (id: number, body: Record<string, unknown>) => api.put<{ transaction: BankTransaction }>(`/api/v1/finance/transactions/${id}`, body);
+  const deleteTransaction = (id: number) => api.delete(`/api/v1/finance/transactions/${id}`);
+  const restoreTransaction = (id: number) => api.post(`/api/v1/finance/transactions/${id}/restore`);
+  const forceTransaction = (id: number) => api.delete(`/api/v1/finance/transactions/${id}/force`);
+  const bulkTransactions = (paymentMethodId: number, rows: Record<string, unknown>[]) =>
+    api.post<{ created: number; skipped: number }>('/api/v1/finance/transactions/bulk', { payment_method_id: paymentMethodId, transactions: rows });
+  const loadTrash = () => api.get<{ transactions: BankTransaction[] }>('/api/v1/finance/trash');
+
+  // ---- Finance categories ----
+  const createCategory = (body: Record<string, unknown>) => api.post<{ category: FinanceCategory }>('/api/v1/finance/categories', body);
+  const updateCategory = (id: number, body: Record<string, unknown>) => api.put<{ category: FinanceCategory }>(`/api/v1/finance/categories/${id}`, body);
+  const deleteCategory = (id: number) => api.delete(`/api/v1/finance/categories/${id}`);
 
   // ---- Reports (read-only) ----
   const reports = (year?: number) => api.get<Record<string, unknown>>(`/api/v1/finance/reports${year ? `?year=${year}` : ''}`);
@@ -93,8 +121,10 @@ export const useFinanceStore = defineStore('finance', () => {
   const deleteProject = (id: number) => api.delete(`/api/v1/finance/projects/${id}`);
 
   return {
-    invoices, partners, paymentMethods, projects, standaloneReceipts,
+    invoices, partners, paymentMethods, projects, standaloneReceipts, transactions, financeCategories,
     load, reports, vatAdvance, euer, accountVat,
+    createTransaction, updateTransaction, deleteTransaction, restoreTransaction, forceTransaction, bulkTransactions, loadTrash,
+    createCategory, updateCategory, deleteCategory,
     createInvoice, updateInvoice, deleteInvoice, finalizeInvoice, stornoInvoice, emailInvoice, dunInvoice, invoicePdfUrl,
     savePartner, deletePartner, savePayment, deletePayment,
     createReceipt, updateReceipt, deleteReceipt, receiptFileUrl,
