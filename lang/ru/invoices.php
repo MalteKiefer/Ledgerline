@@ -411,6 +411,7 @@ return [
     'cats_add_ph' => 'Новая категория',
     'cats_name' => 'Название',
     'cat_color' => 'Цвет',
+    'categories' => 'Категории',
     'cat_icon' => 'Значок',
     'cat_edit' => 'Изменить категорию',
     'cats_delete_confirm' => 'Удалить эту категорию?',
