@@ -193,6 +193,34 @@ class CalendarRelationalTest extends TestCase
         $this->assertStringNotContainsString('BEGIN:VALARM', $event->refresh()->ics);
     }
 
+    public function test_exclude_and_override_a_single_occurrence(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendar($user->id);
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'Weekly sync',
+            'dtstart' => '2026-08-03T07:00:00Z', 'dtend' => '2026-08-03T07:30:00Z', 'rrule' => 'FREQ=WEEKLY;BYDAY=MO',
+        ])->assertStatus(201);
+        $event = CalendarEvent::firstOrFail();
+        $window = ['from' => '2026-08-01T00:00:00Z', 'to' => '2026-09-01T00:00:00Z'];
+
+        // Exclude the Aug 10 occurrence → 5 becomes 4, and the series survives.
+        $this->postJson(route('calendar.events.exclude', $event), ['start' => '2026-08-10T07:00:00Z'])->assertOk();
+        $after = $this->getJson(route('calendar.events', $window))->assertOk()->json('events');
+        $this->assertCount(4, $after);
+        $this->assertEmpty(array_filter($after, fn ($e) => str_starts_with((string) $e['start'], '2026-08-10')));
+
+        // Override the Aug 17 occurrence's summary → that instance only shows the new title.
+        $this->putJson(route('calendar.events.occurrence', $event), [
+            'recurrence_id' => '2026-08-17T07:00:00Z', 'summary' => 'Moved sync', 'dtstart' => '2026-08-17T09:00:00Z',
+        ])->assertOk();
+        $final = $this->getJson(route('calendar.events', $window))->assertOk()->json('events');
+        $this->assertCount(4, $final); // still 4 (exclusion holds, override replaces not adds)
+        $moved = array_values(array_filter($final, fn ($e) => $e['summary'] === 'Moved sync'));
+        $this->assertCount(1, $moved);
+        $this->assertNotEmpty(array_filter($final, fn ($e) => $e['summary'] === 'Weekly sync')); // the rest untouched
+    }
+
     public function test_update_rejects_a_stale_etag_with_409(): void
     {
         $user = $this->signIn();

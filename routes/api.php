@@ -257,6 +257,8 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/calendar/events/{event}', [CalendarController::class, 'show'])->name('api.calendar.events.show');
             Route::put('/calendar/events/{event}', [CalendarController::class, 'update'])->middleware('throttle:600,1')->name('api.calendar.events.update');
             Route::delete('/calendar/events/{event}', [CalendarController::class, 'destroy'])->middleware('throttle:600,1')->name('api.calendar.events.destroy');
+            Route::post('/calendar/events/{event}/exclude', [CalendarController::class, 'excludeOccurrence'])->middleware('throttle:600,1')->name('api.calendar.events.exclude');
+            Route::put('/calendar/events/{event}/occurrence', [CalendarController::class, 'overrideOccurrence'])->middleware('throttle:600,1')->name('api.calendar.events.occurrence');
             // Tasks (VTODO). Static routes before /calendar/todos/{todo} model binding.
             Route::get('/calendar/todos', [CalendarTodoController::class, 'index'])->name('api.calendar.todos');
             Route::get('/calendar/todos/export', [CalendarTodoController::class, 'export'])->name('api.calendar.todos.export');

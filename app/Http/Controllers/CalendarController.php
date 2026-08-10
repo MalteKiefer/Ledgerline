@@ -186,6 +186,29 @@ class CalendarController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /** Delete a single occurrence of a recurring event (EXDATE on the master). */
+    public function excludeOccurrence(Request $request, CalendarEvent $event, CalendarWriter $writer): JsonResponse
+    {
+        $this->authorizeEvent($event);
+        abort_if($event->calendar?->isSpecial() ?? false, 422);
+        $request->validate(['start' => ['required', 'date']]);
+        $updated = $writer->excludeOccurrence($event, (string) $request->string('start'));
+
+        return response()->json(['ok' => true, 'etag' => $updated->etag]);
+    }
+
+    /** Edit a single occurrence of a recurring event (RECURRENCE-ID override). */
+    public function overrideOccurrence(Request $request, CalendarEvent $event, CalendarWriter $writer): JsonResponse
+    {
+        $this->authorizeEvent($event);
+        abort_if($event->calendar?->isSpecial() ?? false, 422);
+        $request->validate(['recurrence_id' => ['required', 'date']]);
+        $data = $this->validated($request);
+        $updated = $writer->overrideOccurrence($event, (string) $request->string('recurrence_id'), $data);
+
+        return response()->json(['ok' => true, 'etag' => $updated->etag]);
+    }
+
     /** Persist the user's calendar view preferences (default view + week start). */
     public function settings(Request $request): JsonResponse
     {

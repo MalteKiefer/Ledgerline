@@ -46,6 +46,26 @@ class CalendarWriter
         return $this->persister->persistUpdate($event, $ics);
     }
 
+    /** Delete a single occurrence of a recurring event (EXDATE on the master). */
+    public function excludeOccurrence(CalendarEvent $event, string $occurrenceStart): CalendarEvent
+    {
+        $ics = $this->events->excludeOccurrence($event->ics, $occurrenceStart, (int) $event->sequence + 1);
+
+        return $this->persister->persistUpdate($event, $ics);
+    }
+
+    /**
+     * Edit a single occurrence of a recurring event (detached RECURRENCE-ID override).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function overrideOccurrence(CalendarEvent $event, string $recurrenceId, array $data): CalendarEvent
+    {
+        $ics = $this->events->overrideOccurrence($event->ics, $recurrenceId, $data, (int) $event->sequence + 1);
+
+        return $this->persister->persistUpdate($event, $ics);
+    }
+
     public function delete(CalendarEvent $event): void
     {
         $calendar = $event->calendar;

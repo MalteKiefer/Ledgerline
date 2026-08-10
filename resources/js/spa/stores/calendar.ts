@@ -103,6 +103,11 @@ export const useCalendarStore = defineStore('calendar', () => {
   const update = (id: string, body: Record<string, unknown>) =>
     api.put<{ ok: boolean; etag: string }>(`/api/v1/calendar/events/${id}`, body); // may 409 { error:'etag_conflict', etag }
   const destroy = (id: string) => api.delete(`/api/v1/calendar/events/${id}`);
+  // Single-occurrence ops for a recurring series (RECURRENCE-ID / EXDATE).
+  const excludeOccurrence = (id: string, start: string) =>
+    api.post<{ ok: boolean; etag: string }>(`/api/v1/calendar/events/${id}/exclude`, { start });
+  const overrideOccurrence = (id: string, recurrenceId: string, body: Record<string, unknown>) =>
+    api.put<{ ok: boolean; etag: string }>(`/api/v1/calendar/events/${id}/occurrence`, { ...body, recurrence_id: recurrenceId });
 
   const createCalendar = (name: string, color?: string) => api.post<{ id: string }>('/api/v1/calendars', { name, color });
   const updateCalendar = (id: string, body: Record<string, unknown>) => api.put(`/api/v1/calendars/${id}`, body);
@@ -150,7 +155,7 @@ export const useCalendarStore = defineStore('calendar', () => {
 
   return {
     calendars, settings, events,
-    loadData, loadRange, show, create, update, destroy,
+    loadData, loadRange, show, create, update, destroy, excludeOccurrence, overrideOccurrence,
     createCalendar, updateCalendar, deleteCalendar, createSpecial, regenerate, saveSettings, importIcs, exportUrl,
     loadHolidayCountries, loadHolidaySubdivisions, geoSearch,
   };

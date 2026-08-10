@@ -209,6 +209,7 @@
         <Select v-model="form.repeat" :label="t('calendar.ui.repeat')" :options="repeatOptions" />
         <Select v-model="form.status" :label="t('calendar.ui.status')" :options="statusOptions" />
         <Select v-model="form.reminder" :label="t('calendar.ui.reminder')" :options="reminderOptions" />
+        <Select v-if="editingId && occRecurring" v-model="editScope" :label="t('calendar.ui.scope')" :options="scopeItems" />
       </div>
       <label class="block">
         <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('calendar.ui.description') }}</span>
@@ -454,6 +455,29 @@ watch([cursor, view], () => { reloadRange(); });
 const eventModal = ref(false);
 const editingId = ref<string | null>(null);
 const currentEtag = ref<string>('');
+// Per-occurrence editing of a recurring series: scope = whole series vs the one
+// clicked occurrence (RECURRENCE-ID override / EXDATE on save/delete).
+const occRecurring = ref(false);
+const occStart = ref(''); // the clicked occurrence's original start (RECURRENCE-ID)
+const occEnd = ref('');
+const masterStart = ref('');
+const masterEnd = ref('');
+const editScope = ref<'series' | 'occurrence'>('series');
+const scopeItems = computed(() => [
+  { title: t('calendar.ui.scope_series'), value: 'series' },
+  { title: t('calendar.ui.scope_occurrence'), value: 'occurrence' },
+]);
+// Swap the shown start/end between the series master and the clicked occurrence.
+watch(editScope, (scope) => {
+  if (!occRecurring.value) return;
+  if (scope === 'occurrence') {
+    form.start = toInput(occStart.value, form.allDay);
+    form.end = occEnd.value ? (form.allDay ? shiftDay(toInput(occEnd.value, true), -1) : toInput(occEnd.value, false)) : '';
+  } else {
+    form.start = masterStart.value;
+    form.end = masterEnd.value;
+  }
+});
 const saving = ref(false);
 const deleting = ref(false);
 const form = reactive<{ calendar_id: string; summary: string; description: string; location: string; geoLat: number | null; geoLon: number | null; allDay: boolean; start: string; end: string; repeat: string; rruleRaw: string; status: string; reminder: string }>(
@@ -551,6 +575,13 @@ async function openEdit(o: Occurrence): Promise<void> {
       repeat: rruleToPreset(d.rrule), rruleRaw: d.rrule ?? '', status: d.status ?? 'CONFIRMED',
       reminder: d.alarm_minutes_before != null ? String(d.alarm_minutes_before) : '',
     });
+    // Remember both anchors so the scope toggle can swap the shown times.
+    masterStart.value = form.start;
+    masterEnd.value = form.end;
+    occRecurring.value = o.recurring;
+    occStart.value = o.start;
+    occEnd.value = o.end ?? '';
+    editScope.value = 'series';
     eventModal.value = true;
   } catch { error(t('common.error')); }
 }
@@ -591,8 +622,12 @@ async function save(): Promise<void> {
   try {
     const body = buildBody();
     if (editingId.value) {
-      body.etag = currentEtag.value;
-      await store.update(editingId.value, body);
+      if (occRecurring.value && editScope.value === 'occurrence') {
+        await store.overrideOccurrence(editingId.value, occStart.value, body);
+      } else {
+        body.etag = currentEtag.value;
+        await store.update(editingId.value, body);
+      }
     } else {
       await store.create(body);
     }
@@ -608,10 +643,13 @@ async function save(): Promise<void> {
   } finally { saving.value = false; }
 }
 async function onDelete(): Promise<void> {
-  if (!editingId.value || !await confirmAsk(t('calendar.ui.delete_confirm'), { danger: true })) return;
+  if (!editingId.value) return;
+  const perOcc = occRecurring.value && editScope.value === 'occurrence';
+  if (!await confirmAsk(perOcc ? t('calendar.ui.delete_occurrence_confirm') : t('calendar.ui.delete_confirm'), { danger: true })) return;
   deleting.value = true;
   try {
-    await store.destroy(editingId.value);
+    if (perOcc) await store.excludeOccurrence(editingId.value, occStart.value);
+    else await store.destroy(editingId.value);
     eventModal.value = false;
     await reloadRange();
     success(t('common.saved'));

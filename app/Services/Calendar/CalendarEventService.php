@@ -86,6 +86,89 @@ class CalendarEventService
     }
 
     /**
+     * Exclude a single occurrence of a recurring event by adding an EXDATE to the
+     * master VEVENT (the CalDAV-canonical way to delete one instance without
+     * touching the series). Sabre's EventIterator honours EXDATE natively, so the
+     * occurrence simply drops out of expand(). No-op if the ICS is unreadable.
+     */
+    public function excludeOccurrence(string $ics, string $occurrenceStart, int $sequence): string
+    {
+        $cal = $this->readCalendar($ics);
+        $event = $this->firstEventOf($cal);
+        $start = $this->parseDateTime($occurrenceStart);
+        if ($cal === null || $event === null || $start === null) {
+            return $ics;
+        }
+        $this->isAllDay($event)
+            ? $event->add('EXDATE', $start->format('Ymd'), ['VALUE' => 'DATE'])
+            : $event->add('EXDATE', $start->format('Ymd\THis\Z'));
+        $this->bumpStamp($event, $sequence);
+
+        $serialized = $cal->serialize();
+
+        return is_string($serialized) ? $serialized : $ics;
+    }
+
+    /**
+     * Override a single occurrence: add (or replace) a detached VEVENT that shares
+     * the master's UID and carries a RECURRENCE-ID pointing at the original
+     * occurrence start, with the edited fields. Sabre's EventIterator applies the
+     * override in place of that instance. The override never carries the RRULE.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function overrideOccurrence(string $ics, string $recurrenceId, array $data, int $sequence): string
+    {
+        $cal = $this->readCalendar($ics);
+        $master = $this->firstEventOf($cal);
+        $recur = $this->parseDateTime($recurrenceId);
+        if ($cal === null || $master === null || $recur === null) {
+            return $ics;
+        }
+        $uid = $this->s($master->UID ?? null) ?? '';
+        $masterAllDay = $this->isAllDay($master);
+
+        // Drop any existing override for the same instant so we replace it.
+        foreach ($this->iter($cal->select('VEVENT')) as $vevent) {
+            if ($vevent instanceof VEvent && $this->recurrenceInstant($vevent) === $recur->format('Ymd\THis')) {
+                $cal->remove($vevent);
+            }
+        }
+
+        /** @var VEvent $override */
+        $override = $cal->add('VEVENT', []);
+        $override->remove('UID');
+        $override->add('UID', $uid);
+        $masterAllDay
+            ? $override->add('RECURRENCE-ID', $recur->format('Ymd'), ['VALUE' => 'DATE'])
+            : $override->add('RECURRENCE-ID', $recur->format('Ymd\THis\Z'));
+        $this->applyCoreFields($override, $data, $sequence);
+        $override->remove('RRULE'); // an override is a single instance, never recurring
+
+        $serialized = $cal->serialize();
+
+        return is_string($serialized) ? $serialized : $ics;
+    }
+
+    /** DTSTAMP refresh + SEQUENCE bump shared by the occurrence mutators. */
+    private function bumpStamp(VEvent $event, int $sequence): void
+    {
+        $event->remove('DTSTAMP');
+        $event->add('DTSTAMP', gmdate('Ymd\THis\Z'));
+        $event->remove('SEQUENCE');
+        $event->add('SEQUENCE', (string) max(0, $sequence));
+    }
+
+    /** A VEVENT's RECURRENCE-ID as a 'YmdHis' UTC key, or null when it has none. */
+    private function recurrenceInstant(VEvent $event): ?string
+    {
+        $prop = $event->{'RECURRENCE-ID'} ?? null;
+        $carbon = $this->propDate($prop);
+
+        return $carbon?->format('Ymd\THis');
+    }
+
+    /**
      * Set the editor-owned properties on a VEVENT (remove-then-add so an update
      * replaces rather than duplicates, and a cleared field is removed). Leaves
      * UID and any unmodelled property untouched.
@@ -358,11 +441,20 @@ class CalendarEventService
             }
             $endUtc = $end ?? $start;
             if ($endUtc > $from) {
+                // Read text fields from THIS occurrence's object so a RECURRENCE-ID
+                // override's edited summary/location/etc win; fall back to the master.
+                $obj = $it->getEventObject();
+                $occGeo = $this->geo($obj);
                 $out[] = [
-                    'uid' => $uid, 'summary' => $summary, 'location' => $location, 'description' => $description,
-                    'geo_lat' => $geo['lat'], 'geo_lon' => $geo['lon'],
+                    'uid' => $uid,
+                    'summary' => $this->s($obj->SUMMARY ?? null) ?? $summary,
+                    'location' => $this->s($obj->LOCATION ?? null) ?? $location,
+                    'description' => $this->s($obj->DESCRIPTION ?? null) ?? $description,
+                    'geo_lat' => $occGeo['lat'] ?? $geo['lat'], 'geo_lon' => $occGeo['lon'] ?? $geo['lon'],
                     'start' => $start->toIso8601ZuluString(), 'end' => $endUtc->toIso8601ZuluString(),
-                    'all_day' => $allDay, 'status' => $status, 'recurring' => true,
+                    'all_day' => $allDay,
+                    'status' => $this->s($obj->STATUS ?? null) ?? $status,
+                    'recurring' => true,
                 ];
             }
             $count++;
