@@ -3,6 +3,12 @@
 declare(strict_types=1);
 
 return [
+    'shared_by_me' => 'Мои общие',
+    'shared_links' => 'Публичные ссылки',
+    'shared_with_users' => 'С пользователями',
+    'share_revoke_confirm' => 'Отозвать этот доступ?',
+    'share_no_download' => 'Без скачивания',
+    'share_expires' => 'Истекает',
     'copy' => 'Копировать',
     'bulk_trash_confirm' => 'Переместить :n элемент(ов) в корзину?',
     'drop_here' => 'Перетащите файлы для загрузки',

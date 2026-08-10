@@ -3,6 +3,12 @@
 declare(strict_types=1);
 
 return [
+    'shared_by_me' => 'Shared by me',
+    'shared_links' => 'Public links',
+    'shared_with_users' => 'Shared with people',
+    'share_revoke_confirm' => 'Revoke this share?',
+    'share_no_download' => 'No download',
+    'share_expires' => 'Expires',
     'copy' => 'Copy',
     'bulk_trash_confirm' => 'Move :n item(s) to trash?',
     'drop_here' => 'Drop files to upload',

@@ -320,6 +320,7 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/files/upload/chunk/abort', [FilesController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('files.rel.chunk.abort');
 
         // Public share links (owner side) — plaintext /file-share/{token}.
+        Route::get('/files/rel-shares', [FilesController::class, 'shares'])->name('files.rel.shares.index');
         Route::post('/files/rel-shares', [FilesController::class, 'storeShare'])->middleware('throttle:60,1')->name('files.rel.shares.store');
         Route::put('/files/rel-shares/{share}', [FilesController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('files.rel.shares.update');
         Route::delete('/files/rel-shares/{share}', [FilesController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('files.rel.shares.destroy');

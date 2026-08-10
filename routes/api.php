@@ -343,6 +343,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/files/upload/chunk/abort', [FilesController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.files.chunk.abort');
 
             // Sharing: public-link owner side + cross-user folder shares + shared-with-me.
+            Route::get('/files/rel-shares', [FilesController::class, 'shares'])->name('api.files.shares.index');
             Route::post('/files/rel-shares', [FilesController::class, 'storeShare'])->middleware('throttle:60,1')->name('api.files.shares.store');
             Route::put('/files/rel-shares/{share}', [FilesController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.shares.update');
             Route::delete('/files/rel-shares/{share}', [FilesController::class, 'destroyShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.shares.destroy');

@@ -202,6 +202,23 @@ class FileShareTest extends TestCase
         $this->assertDatabaseMissing('file_shares', ['id' => $id]);
     }
 
+    public function test_shares_index_lists_owner_links_with_target_name(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $folder = $this->seedFolder($owner, 'Docs');
+        $this->postJson(route('files.rel.shares.store'), ['kind' => 'folder', 'file_folder_id' => $folder->id])->assertCreated();
+
+        $shares = $this->getJson(route('files.rel.shares.index'))->assertOk()->json('shares');
+        $this->assertCount(1, $shares);
+        $this->assertSame('Docs', $shares[0]['name']);
+        $this->assertArrayNotHasKey('password_hash', $shares[0]);
+
+        // Owner-scoped: another user sees none.
+        $this->actingAs(User::factory()->create());
+        $this->getJson(route('files.rel.shares.index'))->assertOk()->assertJsonCount(0, 'shares');
+    }
+
     public function test_crud_is_owner_scoped(): void
     {
         $owner = User::factory()->create();
