@@ -18,6 +18,10 @@ export interface FileShare {
   needs_password: boolean; allow_download: boolean; expires_at: string | null; version: number;
   name?: string;
 }
+export interface UploadLink {
+  id: number; token: string; label: string | null; file_folder_id: number | null;
+  folder_name?: string | null; expires_at: string | null;
+}
 // ---- Cross-user folder sharing (owner side + member side) ----
 export interface FolderShareMember {
   id: number; user_id: number; name: string | null; email: string | null; role: 'viewer' | 'editor';
@@ -145,6 +149,19 @@ export const useFilesStore = defineStore('files', () => {
 
   // ---- Public share links (anonymous, token-gated) ----
   interface SharePayload { password?: string; remove_password?: boolean; allow_download?: boolean; expires_at?: string | null }
+  // Public inbound upload links (owner side + anonymous side).
+  const loadUploadLinks = () => api.get<{ links: UploadLink[] }>('/api/v1/files/upload-links').then((r) => r.links);
+  const createUploadLink = (body: { file_folder_id?: number | null; label?: string; expires_at?: string | null }) =>
+    api.post<{ link: UploadLink }>('/api/v1/files/upload-links', body).then((r) => r.link);
+  const deleteUploadLink = (id: number) => api.delete(`/api/v1/files/upload-links/${id}`);
+  const uploadLinkUrl = (token: string) => `${window.location.origin}/u/${token}`;
+  const uploadLinkMeta = (token: string) => api.get<{ label: string | null; owner: string }>(`/api/v1/upload-link/${encodeURIComponent(token)}`);
+  function uploadLinkSend(token: string, file: File, onProgress?: (fr: number) => void) {
+    const fd = new FormData();
+    fd.append('file', file);
+    return uploadWithProgress(`/api/v1/upload-link/${encodeURIComponent(token)}`, fd, onProgress);
+  }
+
   const loadShares = () => api.get<{ shares: FileShare[] }>('/api/v1/files/rel-shares').then((r) => r.shares);
   const createShare = (fileId: number, payload: SharePayload = {}) =>
     api.post<{ share: FileShare }>('/api/v1/files/rel-shares', { kind: 'file', file_id: fileId, ...payload });
@@ -225,6 +242,7 @@ export const useFilesStore = defineStore('files', () => {
     trashFile, restoreFile, forceFile, renameFolder, moveFolder, trashFolder, restoreFolder, forceFolder, emptyTrash, search,
     updateEntry, createLabel, updateLabel, deleteLabel, setFileLabels,
     versions, restoreVersion, versionRawUrl,
+    loadUploadLinks, createUploadLink, deleteUploadLink, uploadLinkUrl, uploadLinkMeta, uploadLinkSend,
     loadShares, createShare, createFolderShareLink, updateShare, deleteShare, shareUrl,
     loadFolderShares, shareToUser, updateShareMember, removeShareMember, deleteFolderShare,
     loadSharedWithMe, browseShared, sharedRawUrl, uploadToShared, renameShared, deleteShared,

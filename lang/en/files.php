@@ -3,6 +3,17 @@
 declare(strict_types=1);
 
 return [
+    'ul_section' => 'Upload links',
+    'ul_create' => 'Create upload link',
+    'ul_hint' => 'Let external people upload into the current folder without an account.',
+    'ul_label_prompt' => 'Label (optional)',
+    'ul_title' => 'File upload',
+    'ul_from' => 'for :owner',
+    'ul_drop' => 'Drop files here',
+    'ul_or_click' => 'or click to choose',
+    'ul_thanks' => 'Thanks — your files were uploaded.',
+    'ul_failed' => 'failed',
+    'ul_invalid' => 'This upload link is invalid or expired.',
     'conflict_title' => 'File already exists',
     'conflict_body' => 'A file named ":name" already exists here. What should happen?',
     'conflict_apply_all' => 'Apply to all remaining',

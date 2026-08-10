@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Enums\FileType;
+use App\Models\AuditLog;
 use App\Models\FileEntry;
 use App\Models\FileFolder;
 use App\Models\FileLabel;
 use App\Models\FileShare;
+use App\Models\FileUploadLink;
 use App\Models\FileVersion;
 use App\Models\UserSetting;
 use App\Support\DiskTempFile;
@@ -1182,6 +1184,120 @@ class FilesController extends Controller
         ];
     }
     // ---- Public share links (owner side) ----
+
+    // ---- Public inbound upload links (owner side) ----
+
+    /** List the owner's upload links (with target folder name). */
+    public function uploadLinks(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+        $rows = FileUploadLink::query()->orderByDesc('id')->get();
+        $names = FileFolder::query()->whereIn('id', $rows->pluck('file_folder_id')->filter()->all())->pluck('name', 'id');
+
+        return response()->json(['links' => $rows->map(fn (FileUploadLink $l): array => [
+            ...$this->uploadLinkView($l),
+            'folder_name' => is_string($names[$l->file_folder_id] ?? null) ? $names[$l->file_folder_id] : null,
+        ])->all()]);
+    }
+
+    public function storeUploadLink(Request $request): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'file_folder_id' => ['nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'label' => ['nullable', 'string', 'max:200'],
+            'expires_at' => ['nullable', 'date'],
+        ]);
+        $link = new FileUploadLink;
+        $link->forceFill([
+            'user_id' => $uid,
+            'token' => Str::random(48),
+            'file_folder_id' => $request->filled('file_folder_id') ? $request->integer('file_folder_id') : null,
+            'label' => $request->filled('label') ? $request->string('label')->value() : null,
+            'expires_at' => $request->filled('expires_at') ? $request->date('expires_at') : null,
+        ])->save();
+
+        return response()->json(['link' => $this->uploadLinkView($link)], 201);
+    }
+
+    public function destroyUploadLink(Request $request, int $link): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        FileUploadLink::query()->where('id', $link)->where('user_id', $uid)->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** @return array{id:int,token:string,label:?string,file_folder_id:?int,expires_at:?string} */
+    private function uploadLinkView(FileUploadLink $l): array
+    {
+        return [
+            'id' => $l->id,
+            'token' => $l->token,
+            'label' => $l->label,
+            'file_folder_id' => $l->file_folder_id,
+            'expires_at' => $l->expires_at?->toIso8601String(),
+        ];
+    }
+
+    // ---- Public inbound upload links (anonymous side) ----
+
+    /** Public metadata for an upload link (no listing/download). */
+    public function uploadLinkMeta(string $token): JsonResponse
+    {
+        $link = FileUploadLink::query()->withoutGlobalScopes()->where('token', $token)->first();
+        if (! $link instanceof FileUploadLink || $link->isExpired()) {
+            abort(404);
+        }
+
+        return response()->json([
+            'label' => $link->label,
+            'owner' => (string) ($link->owner->name ?? ''),
+        ]);
+    }
+
+    /** Accept one file from an anonymous uploader into the owner's folder. */
+    public function uploadLinkStore(Request $request, string $token): JsonResponse
+    {
+        $link = FileUploadLink::query()->withoutGlobalScopes()->where('token', $token)->first();
+        if (! $link instanceof FileUploadLink || $link->isExpired()) {
+            abort(404);
+        }
+        $request->validate(['file' => ['required', 'file', 'max:'.$this->maxUploadKb()]]);
+        $upload = $request->file('file');
+        if (! $upload instanceof UploadedFile) {
+            abort(422);
+        }
+
+        $uid = (int) $link->user_id;
+        if ($this->overQuota($uid, (int) $upload->getSize())) {
+            return response()->json(['error' => 'quota'], 413);
+        }
+
+        $sha = $this->hashUpload($upload);
+        $path = 'files/'.Str::uuid()->toString();
+        $this->fs()->putFileAs('files', $upload, basename($path));
+        $name = $upload->getClientOriginalName();
+        $mime = $upload->getMimeType() ?: $upload->getClientMimeType();
+
+        DB::transaction(function () use ($link, $uid, $name, $path, $mime, $sha): void {
+            $file = new FileEntry;
+            $file->forceFill([
+                'user_id' => $uid,
+                'file_folder_id' => $link->file_folder_id,
+                'name' => $name !== '' ? $name : 'file',
+                'storage_path' => $path,
+                'size' => (int) $this->fs()->size($path),
+                'mime' => $mime !== '' ? $mime : null,
+                'sha256' => $sha,
+            ]);
+            $file->save();
+        });
+
+        AuditLog::record('files.upload_link_used', null, ['link_id' => $link->id, 'user_id' => $uid]);
+
+        return response()->json(['ok' => true], 201);
+    }
 
     /** List the current user's public share links (with the target's name). */
     public function shares(Request $request): JsonResponse

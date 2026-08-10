@@ -1183,6 +1183,16 @@ components:
         allow_download: { type: boolean }
         expires_at: { type: string, format: date-time, nullable: true }
         version: { type: integer }
+    FileUploadLink:
+      type: object
+      description: "A public inbound upload link (file_upload_links): external people upload INTO the owner's folder (write-only). The token is the capability."
+      properties:
+        id: { type: integer }
+        token: { type: string }
+        label: { type: [string, "null"] }
+        file_folder_id: { type: [integer, "null"] }
+        folder_name: { type: [string, "null"] }
+        expires_at: { type: [string, "null"], format: date-time }
     FileLabel:
       type: object
       description: "A coloured, user-defined label (file_labels). Many-to-many with files."
@@ -5481,6 +5491,14 @@ paths:
     delete: { tags: [Files], operationId: filesRemoveFolderMember, summary: Remove a member (revokes access; DELETE with a JSON body), security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [user_id], properties: { user_id: { type: integer } } } } } }, responses: { "200": { description: Removed. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
   /files/folder-shares/{share}:
     delete: { tags: [Files], operationId: filesDestroyFolderShare, summary: Delete a folder share, security: [ { bearerAuth: [] } ], parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Deleted. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } } }
+  /files/upload-links:
+    get: { tags: [Files], operationId: filesUploadLinks, summary: List the owner's public inbound upload links, security: [ { bearerAuth: [] } ], responses: { "200": { description: Links., content: { application/json: { schema: { type: object, properties: { links: { type: array, items: { $ref: "#/components/schemas/FileUploadLink" } } } } } } }, "401": { $ref: "#/components/responses/Unauthorized" } } }
+    post: { tags: [Files], operationId: filesStoreUploadLink, summary: Create a public inbound upload link into a folder, security: [ { bearerAuth: [] } ], requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { file_folder_id: { type: [integer, "null"], description: "Owned folder (null = root)." }, label: { type: [string, "null"], maxLength: 200 }, expires_at: { type: [string, "null"], format: date-time } } } } } }, responses: { "201": { description: Created., content: { application/json: { schema: { type: object, properties: { link: { $ref: "#/components/schemas/FileUploadLink" } } } } } }, "401": { $ref: "#/components/responses/Unauthorized" }, "422": { $ref: "#/components/responses/ValidationError" } } }
+  /files/upload-links/{link}:
+    delete: { tags: [Files], operationId: filesDestroyUploadLink, summary: Revoke an upload link, security: [ { bearerAuth: [] } ], parameters: [ { name: link, in: path, required: true, schema: { type: integer } } ], responses: { "200": { description: Revoked. }, "401": { $ref: "#/components/responses/Unauthorized" } } }
+  /upload-link/{token}:
+    get: { tags: [Files], operationId: uploadLinkMeta, summary: "Public: upload-link metadata (label + owner). No auth.", parameters: [ { name: token, in: path, required: true, schema: { type: string } } ], responses: { "200": { description: Metadata., content: { application/json: { schema: { type: object, properties: { label: { type: [string, "null"] }, owner: { type: string } } } } } }, "404": { $ref: "#/components/responses/NotFound" } } }
+    post: { tags: [Files], operationId: uploadLinkStore, summary: "Public: upload one file via an upload link (into the owner's folder, owner quota). No auth. Throttle 30/min.", parameters: [ { name: token, in: path, required: true, schema: { type: string } } ], requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }, responses: { "201": { description: Stored., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }, "404": { $ref: "#/components/responses/NotFound" }, "413": { description: Over the owner's quota. } } }
   /shared-with-me:
     get: { tags: [Files], operationId: sharedWithMe, summary: Folders others shared with me, security: [ { bearerAuth: [] } ], responses: { "200": { description: Folders shared with me., content: { application/json: { schema: { type: object, properties: { shares: { type: array, items: { $ref: "#/components/schemas/SharedWithMeItem" } } } } } } }, "401": { $ref: "#/components/responses/Unauthorized" } } }
   /shared-with-me/{share}:

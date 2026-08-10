@@ -104,6 +104,12 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/file/{file}/raw', [PublicFileShareController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('file.raw');
     });
 
+    // Public, unauthenticated inbound upload links: the token in the path is the
+    // credential. meta returns the link label + owner; store accepts one file into
+    // the owner's folder (owner quota + size cap, hard-throttled). Write-only.
+    Route::get('/upload-link/{token}', [FilesController::class, 'uploadLinkMeta'])->middleware('throttle:120,1')->name('api.upload-link.meta');
+    Route::post('/upload-link/{token}', [FilesController::class, 'uploadLinkStore'])->middleware('throttle:30,1')->name('api.upload-link.store');
+
     // Public, unauthenticated invite / password-reset link consumption. The admin
     // CREATE side is /api/v1/users/{user}/invite-link; this is the consume side.
     // show reports validity as JSON (never a redirect); store sets the password and
@@ -343,6 +349,9 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/files/upload/chunk/abort', [FilesController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.files.chunk.abort');
 
             // Sharing: public-link owner side + cross-user folder shares + shared-with-me.
+            Route::get('/files/upload-links', [FilesController::class, 'uploadLinks'])->name('api.files.upload-links.index');
+            Route::post('/files/upload-links', [FilesController::class, 'storeUploadLink'])->middleware('throttle:60,1')->name('api.files.upload-links.store');
+            Route::delete('/files/upload-links/{link}', [FilesController::class, 'destroyUploadLink'])->whereNumber('link')->middleware('throttle:60,1')->name('api.files.upload-links.destroy');
             Route::get('/files/rel-shares', [FilesController::class, 'shares'])->name('api.files.shares.index');
             Route::post('/files/rel-shares', [FilesController::class, 'storeShare'])->middleware('throttle:60,1')->name('api.files.shares.store');
             Route::put('/files/rel-shares/{share}', [FilesController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('api.files.shares.update');

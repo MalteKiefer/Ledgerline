@@ -172,6 +172,26 @@
             </div>
           </div>
         </div>
+        <div>
+          <div class="mb-2 flex items-center justify-between">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('files.ul_section') }}</h3>
+            <Btn variant="soft" size="sm" icon="add_link" @click="createUploadLink">{{ t('files.ul_create') }}</Btn>
+          </div>
+          <p class="mb-2 text-xs text-[var(--ll-muted)]">{{ t('files.ul_hint') }}</p>
+          <div v-if="!myUploadLinks.length" class="text-sm text-[var(--ll-muted)]">{{ t('files.shared_none') }}</div>
+          <div v-for="l in myUploadLinks" :key="'u'+l.id" class="flex items-center gap-3 border-b border-[var(--ll-border)] py-2.5 last:border-0">
+            <Icon name="cloud_upload" :size="20" class="text-[var(--ll-muted)]" />
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-medium">{{ l.label || t('files.ul_title') }}</div>
+              <div class="flex flex-wrap items-center gap-1.5 text-xs text-[var(--ll-muted)]">
+                <span>→ {{ l.folder_name || t('files.root') }}</span>
+                <Badge v-if="l.expires_at" :tone="expiryTone(l.expires_at)">{{ expiresLabel(l.expires_at) }}</Badge>
+              </div>
+            </div>
+            <Btn variant="ghost" size="sm" icon="content_copy" :title="t('files.share_copy')" @click="copyUploadLink(l)" />
+            <Btn variant="ghost" size="sm" icon="link_off" class="text-red-600" :title="t('files.share_revoke')" @click="revokeUploadLink(l)">{{ t('files.share_revoke') }}</Btn>
+          </div>
+        </div>
       </div>
 
       <div v-else class="flex-1 overflow-y-auto p-2">
@@ -618,7 +638,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
-import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember } from '@spa/stores/files';
+import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink } from '@spa/stores/files';
 import { ApiError } from '@spa/api/client';
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
 import { useToast } from '@spa/composables/useToast';
@@ -759,9 +779,29 @@ async function setView(v: 'files' | 'favorites' | 'shared' | 'trash') {
 // ---- Shared by me (public links + cross-user folder shares) ----
 const myLinks = ref<FileShare[]>([]);
 const myFolderShares = ref<FolderShare[]>([]);
+const myUploadLinks = ref<UploadLink[]>([]);
 async function loadShared() {
-  try { [myLinks.value, myFolderShares.value] = await Promise.all([s.loadShares(), s.loadFolderShares().then((r) => r.shares)]); }
-  catch { error(t('common.error')); }
+  try {
+    [myLinks.value, myFolderShares.value, myUploadLinks.value] = await Promise.all([
+      s.loadShares(), s.loadFolderShares().then((r) => r.shares), s.loadUploadLinks(),
+    ]);
+  } catch { error(t('common.error')); }
+}
+async function createUploadLink() {
+  const label = await promptAsk(t('files.ul_label_prompt'), { value: '' });
+  if (label === null) return; // cancelled
+  try {
+    await s.createUploadLink({ file_folder_id: cwd.value, label: label || undefined });
+    await loadShared();
+    success(t('common.saved'));
+  } catch { error(t('common.error')); }
+}
+async function copyUploadLink(l: UploadLink) {
+  try { await navigator.clipboard.writeText(s.uploadLinkUrl(l.token)); success(t('files.share_copied')); } catch { /* ignore */ }
+}
+async function revokeUploadLink(l: UploadLink) {
+  if (!await confirmAsk(t('files.share_revoke_confirm'), { danger: true })) return;
+  try { await s.deleteUploadLink(l.id); await loadShared(); success(t('common.saved')); } catch { error(t('common.error')); }
 }
 // Remaining share time as "noch Xd Yh" (or "abgelaufen"), for links with an expiry.
 function expiresLabel(iso: string): string {

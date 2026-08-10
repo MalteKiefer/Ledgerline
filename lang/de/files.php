@@ -3,6 +3,17 @@
 declare(strict_types=1);
 
 return [
+    'ul_section' => 'Upload-Links',
+    'ul_create' => 'Upload-Link erstellen',
+    'ul_hint' => 'Externe können ohne Konto in den aktuellen Ordner hochladen.',
+    'ul_label_prompt' => 'Bezeichnung (optional)',
+    'ul_title' => 'Datei-Upload',
+    'ul_from' => 'für :owner',
+    'ul_drop' => 'Dateien hier ablegen',
+    'ul_or_click' => 'oder klicken zum Auswählen',
+    'ul_thanks' => 'Danke — deine Dateien wurden hochgeladen.',
+    'ul_failed' => 'fehlgeschlagen',
+    'ul_invalid' => 'Dieser Upload-Link ist ungültig oder abgelaufen.',
     'conflict_title' => 'Datei existiert bereits',
     'conflict_body' => 'Eine Datei namens „:name" existiert hier bereits. Was soll passieren?',
     'conflict_apply_all' => 'Für alle weiteren anwenden',

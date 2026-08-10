@@ -10,6 +10,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/register', name: 'register', component: () => import('@spa/views/auth/Register.vue'), meta: { guest: true } },
   { path: '/invite/:invite/:token', name: 'invite', component: () => import('@spa/views/auth/Invite.vue'), meta: { public: true } },
   { path: '/share/:token', name: 'public-share', component: () => import('@spa/views/PublicShare.vue'), meta: { public: true } },
+  { path: '/u/:token', name: 'upload-link', component: () => import('@spa/views/UploadLink.vue'), meta: { public: true } },
   {
     path: '/',
     component: () => import('@spa/views/Shell.vue'),

@@ -7,8 +7,10 @@ namespace Tests\Feature;
 use App\Models\FileEntry;
 use App\Models\FileFolder;
 use App\Models\FileShare;
+use App\Models\FileUploadLink;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -217,6 +219,33 @@ class FileShareTest extends TestCase
         // Owner-scoped: another user sees none.
         $this->actingAs(User::factory()->create());
         $this->getJson(route('files.rel.shares.index'))->assertOk()->assertJsonCount(0, 'shares');
+    }
+
+    public function test_upload_link_lets_an_anonymous_user_upload_into_owner_folder(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $folder = $this->seedFolder($owner, 'Inbox');
+
+        $token = $this->postJson(route('files.upload-links.store'), ['file_folder_id' => $folder->id, 'label' => 'Send me docs'])
+            ->assertCreated()->json('link.token');
+        $this->assertNotEmpty($token);
+
+        // Anonymous meta + upload (no auth).
+        app('auth')->forgetGuards();
+        $this->getJson(route('api.upload-link.meta', $token))->assertOk()->assertJsonPath('label', 'Send me docs');
+        $this->post(route('api.upload-link.store', $token), ['file' => UploadedFile::fake()->createWithContent('extern.txt', 'hi')])
+            ->assertCreated()->assertJsonPath('ok', true);
+
+        $file = FileEntry::query()->where('user_id', $owner->id)->where('name', 'extern.txt')->firstOrFail();
+        $this->assertSame($folder->id, $file->file_folder_id);
+
+        // Revoke → the link 404s.
+        $this->actingAs($owner);
+        $id = FileUploadLink::query()->firstOrFail()->id;
+        $this->deleteJson(route('files.upload-links.destroy', $id))->assertOk();
+        app('auth')->forgetGuards();
+        $this->getJson(route('api.upload-link.meta', $token))->assertNotFound();
     }
 
     public function test_crud_is_owner_scoped(): void
