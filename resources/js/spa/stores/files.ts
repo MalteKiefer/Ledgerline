@@ -112,7 +112,7 @@ export const useFilesStore = defineStore('files', () => {
     form.append('file', file);
     return uploadWithProgress(`/api/v1/files/entries/${f.id}/content`, form, onProgress);
   }
-  const rename = (f: FileEntry, name: string) => api.put(`/api/v1/files/entries/${f.id}`, { name, version: f.version });
+  const rename = (f: FileEntry, name: string) => api.put<{ file: FileEntry }>(`/api/v1/files/entries/${f.id}`, { name, version: f.version });
   const move = (f: FileEntry, folder: number | null) => api.put(`/api/v1/files/entries/${f.id}`, { file_folder_id: folder, version: f.version });
   const copy = (f: FileEntry, folder: number | null) => api.post<{ file: FileEntry }>(`/api/v1/files/entries/${f.id}/copy`, { file_folder_id: folder });
   const toggleFav = (f: FileEntry) => api.post(`/api/v1/files/entries/${f.id}/toggle`, { field: 'favorite' });
