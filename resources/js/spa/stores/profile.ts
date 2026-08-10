@@ -24,6 +24,7 @@ export interface DeviceToken {
   syncSeen?: string | null;
   wipeRequested?: boolean;
   current?: boolean;
+  pushHost?: string | null;
 }
 
 /** Enrollment QR + secret, returned only while a pending (unconfirmed) 2FA secret exists. */
@@ -95,6 +96,12 @@ export const useProfileStore = defineStore('profile', () => {
     await api.post(`/api/v1/devices/${id}/wipe`);
     const d = devices.value.find((x) => x.id === id);
     if (d) d.wipeRequested = true;
+  }
+
+  async function removeDevicePush(id: number) {
+    await api.delete(`/api/v1/devices/${id}/push`);
+    const d = devices.value.find((x) => x.id === id);
+    if (d) d.pushHost = null;
   }
 
   async function changePassword(current_password: string, password: string, password_confirmation: string) {
@@ -236,7 +243,7 @@ export const useProfileStore = defineStore('profile', () => {
   return {
     prefs, devices, sessions,
     loadPrefs, savePrefs, setTheme, setLocale,
-    loadDevices, revokeDevice, wipeDevice,
+    loadDevices, revokeDevice, wipeDevice, removeDevicePush,
     changePassword, uploadAvatar, removeAvatar, deleteAccount,
     twoFactorState, enable2fa, confirm2fa, recoveryCodes, regenerateRecovery, disable2fa,
     startPairing, pairingStatus, approvePairing, rejectPairing,

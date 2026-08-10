@@ -113,6 +113,9 @@ return [
     'devices_last_sync' => 'last sync',
     'devices_wipe' => 'Remote wipe',
     'devices_wipe_pending' => 'wipe pending',
+    'devices_push_via' => 'Push via :host',
+    'devices_push_remove' => 'remove',
+    'devices_push_removed' => 'Push endpoint removed.',
 
     'export_heading' => 'Export my data',
     'export_hint' => 'Download a copy of your data as JSON.',

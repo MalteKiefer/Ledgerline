@@ -57,4 +57,25 @@ class DevicePushEndpointTest extends TestCase
 
         $this->assertNull($user->tokens()->firstOrFail()->push_endpoint);
     }
+
+    public function test_device_list_exposes_push_host_and_clears_it_per_token(): void
+    {
+        $user = User::factory()->create();
+        $headers = $this->bearer($user);
+        $this->postJson('/api/v1/device/push-endpoint', ['endpoint' => 'https://ntfy.sh/topic/secret'], $headers)->assertOk();
+        $tokenId = $user->tokens()->firstOrFail()->id;
+
+        // The device list shows only scheme+host — never the secret topic path.
+        $list = $this->getJson('/api/v1/devices', $headers)->assertOk()->json('devices');
+        $this->assertSame('https://ntfy.sh', $list[0]['pushHost']);
+        $this->assertStringNotContainsString('secret', json_encode($list) ?: '');
+
+        // Owner clears the endpoint for that specific token.
+        $this->deleteJson("/api/v1/devices/{$tokenId}/push", [], $headers)->assertOk();
+        $this->assertNull($user->tokens()->firstOrFail()->push_endpoint);
+
+        // Another user cannot clear it (owner-scoped: no-op, no error).
+        $other = User::factory()->create();
+        $this->deleteJson("/api/v1/devices/{$tokenId}/push", [], $this->bearer($other))->assertOk();
+    }
 }

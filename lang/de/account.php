@@ -113,6 +113,9 @@ return [
     'devices_last_sync' => 'letzter Sync',
     'devices_wipe' => 'Fernlöschen',
     'devices_wipe_pending' => 'Löschung ausstehend',
+    'devices_push_via' => 'Push über :host',
+    'devices_push_remove' => 'entfernen',
+    'devices_push_removed' => 'Push-Endpunkt entfernt.',
 
     'export_heading' => 'Meine Daten exportieren',
     'export_hint' => 'Lade eine Kopie deiner Daten als JSON herunter.',

@@ -40,6 +40,11 @@
         <div class="min-w-0 flex-1">
           <div class="truncate text-sm font-medium">{{ d.name }}</div>
           <div class="truncate text-xs text-[var(--ll-muted)]">{{ deviceSub(d) }}</div>
+          <div v-if="d.pushHost" class="mt-0.5 flex items-center gap-1 text-xs text-[var(--ll-muted)]">
+            <Icon name="notifications" :size="14" />
+            <span class="truncate">{{ t('account.devices_push_via', { host: d.pushHost }) }}</span>
+            <button class="text-red-600 hover:underline" @click="onRemovePush(d.id)">{{ t('account.devices_push_remove') }}</button>
+          </div>
         </div>
         <Badge v-if="d.current" tone="primary">{{ t('account.sessions_current') }}</Badge>
         <Badge v-if="d.wipeRequested" tone="warning">{{ t('account.devices_wipe_pending') }}</Badge>
@@ -132,6 +137,15 @@ function deviceSub(d: DeviceToken): string {
 
 function sessionSub(s: Session): string {
   return [s.ip, s.last_active].filter(Boolean).join(' · ');
+}
+
+async function onRemovePush(id: number) {
+  try {
+    await p.removeDevicePush(id);
+    success(t('account.devices_push_removed'));
+  } catch {
+    error(t('common.error'));
+  }
 }
 
 async function onRevokeSession(id: string) {
