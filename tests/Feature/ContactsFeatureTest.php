@@ -109,6 +109,32 @@ class ContactsFeatureTest extends TestCase
         $this->assertTrue($jane->favorite);
     }
 
+    public function test_full_update_sets_all_editor_fields_and_groups(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+        $group = ContactGroup::create(['user_id' => $user->id, 'name' => 'Friends']);
+        $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Bare'])->assertStatus(201);
+        $jane = Contact::firstOrFail();
+
+        // The exact payload shape the SPA editor now submits.
+        $this->putJson(route('contacts.update', $jane), [
+            'first_name' => 'Jane', 'last_name' => 'Doe', 'nickname' => 'Jay', 'bday' => '1990-05-01',
+            'urls' => [['value' => 'https://jane.example', 'type' => 'home']],
+            'addresses' => [['type' => 'home', 'street' => 'Main St 1', 'zip' => '10115', 'city' => 'Berlin', 'region' => '', 'country' => 'Germany']],
+            'custom_fields' => [['label' => 'Insurance', 'value' => 'XY-1']],
+            'group_ids' => [(string) $group->id],
+        ])->assertOk();
+
+        $show = $this->getJson(route('contacts.show', $jane))->assertOk()->json();
+        $this->assertSame('Jay', $show['nickname']);
+        $this->assertSame('1990-05-01', $show['bday']);
+        $this->assertSame('https://jane.example', $show['urls'][0]['value']);
+        $this->assertSame('Main St 1', $show['addresses'][0]['street']);
+        $this->assertSame([['label' => 'Insurance', 'value' => 'XY-1']], $show['custom_fields']);
+        $this->assertEqualsCanonicalizing([$group->id], $show['group_ids']);
+    }
+
     public function test_partial_update_preserves_omitted_sections_and_groups(): void
     {
         $user = $this->signIn();
