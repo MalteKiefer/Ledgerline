@@ -116,6 +116,8 @@ return [
         'display_format' => 'Показывать как',
         'display_first_last' => 'Имя Фамилия',
         'display_last_first' => 'Фамилия, Имя',
+        'sort_first' => 'Сортировка: имя',
+        'sort_last' => 'Сортировка: фамилия',
         'importing' => 'Импорт…',
         'import_result' => 'Импортировано: :created новых, :updated обновлено, :skipped пропущено',
         'group_add_placeholder' => 'Добавить группу…',

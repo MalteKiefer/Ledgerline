@@ -116,6 +116,8 @@ return [
         'display_format' => 'Show as',
         'display_first_last' => 'First Last',
         'display_last_first' => 'Last, First',
+        'sort_first' => 'Sort: first name',
+        'sort_last' => 'Sort: last name',
         'importing' => 'Importing…',
         'import_result' => 'Imported: :created new, :updated updated, :skipped skipped',
         'group_add_placeholder' => 'Add group…',

@@ -17,6 +17,7 @@ return [
     'confirm_message' => 'Diese Aktion kann nicht rückgängig gemacht werden.',
     'now' => 'jetzt',
     'clear' => 'Leeren',
+    'rename' => 'Umbenennen',
     'details' => 'Details',
     'zoom' => 'Zoom',
     'add' => 'Hinzufügen',

@@ -116,6 +116,8 @@ return [
         'display_format' => 'Anzeigen als',
         'display_first_last' => 'Vorname Nachname',
         'display_last_first' => 'Nachname, Vorname',
+        'sort_first' => 'Sortierung: Vorname',
+        'sort_last' => 'Sortierung: Nachname',
         'importing' => 'Importiere…',
         'import_result' => 'Importiert: :created neu, :updated aktualisiert, :skipped übersprungen',
         'group_add_placeholder' => 'Gruppe hinzufügen…',

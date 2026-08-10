@@ -23,15 +23,18 @@
           <Icon name="star" :fill="favOnly" :size="20" :class="favOnly ? 'text-amber-500' : 'text-[var(--ll-muted)]'" />
           {{ t('contacts.ui.favorites') }}
         </button>
-        <button
-          v-for="b in c.books" :key="b.id"
-          class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5"
-          :class="bookId === b.id ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
-          @click="pick(b.id, false)"
-        >
-          <Icon name="contacts" :size="20" :class="bookId === b.id ? '' : 'text-[var(--ll-muted)]'" />
-          <span class="truncate">{{ b.name }}</span>
-        </button>
+        <div v-for="b in c.books" :key="b.id" class="group flex items-center">
+          <button
+            class="flex flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5"
+            :class="bookId === b.id ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
+            @click="pick(b.id, false)"
+          >
+            <Icon name="contacts" :size="20" :class="bookId === b.id ? '' : 'text-[var(--ll-muted)]'" />
+            <span class="truncate">{{ b.name }}</span>
+          </button>
+          <Btn variant="ghost" size="xs" icon="edit" :title="t('common.rename')" class="opacity-0 group-hover:opacity-100" @click.stop="renameBook(b)" />
+          <Btn v-if="c.books.length > 1" variant="ghost" size="xs" icon="delete" :title="t('common.delete')" class="mr-1 opacity-0 group-hover:opacity-100" @click.stop="removeBook(b)" />
+        </div>
         <button class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[var(--ll-muted)] hover:bg-black/[0.04] dark:hover:bg-white/5" @click="newBook">
           <Icon name="add" :size="20" />{{ t('contacts.ui.new_book') }}
         </button>
@@ -59,6 +62,8 @@
       <!-- Toolbar: search on the left, actions on the right -->
       <div class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] p-3">
         <TextField v-model="query" :placeholder="t('common.search')" icon="search" class="w-full sm:w-64" @update:model-value="debouncedLoad" />
+        <Select v-model="c.settings.sort" :options="sortItems" class="w-32" @update:model-value="onSettingsChange" />
+        <Select v-model="c.settings.display_format" :options="displayItems" class="w-36" @update:model-value="onSettingsChange" />
         <div class="ml-auto flex items-center gap-1.5">
           <Btn variant="outline" size="sm" icon="upload" @click="openImport">{{ t('contacts.ui.import') }}</Btn>
           <Btn variant="soft" size="sm" icon="content_copy" @click="openDuplicates">{{ t('contacts.ui.duplicates') }}</Btn>
@@ -95,7 +100,7 @@
               <template v-else>{{ initials(row) }}</template>
             </span>
             <span class="min-w-0 flex-1">
-              <span class="block truncate text-sm font-medium">{{ row.fn || (row.first_name + ' ' + row.last_name) }}</span>
+              <span class="block truncate text-sm font-medium">{{ displayName(row) }}</span>
               <span class="block truncate text-xs text-[var(--ll-muted)]">{{ row.org || row.emails[0]?.value || '' }}</span>
             </span>
             <Icon v-if="row.favorite" name="star" fill :size="16" class="shrink-0 text-amber-500" />
@@ -245,6 +250,16 @@
       </div>
 
       <div>
+        <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.anniversaries') }}</div>
+        <div v-for="(a, i) in form.anniversaries" :key="'fan'+i" class="mb-2 flex items-center gap-2">
+          <TextField v-model="a.date" type="date" class="w-44" />
+          <TextField v-model="a.label" :label="t('contacts.ui.field_label')" class="flex-1" />
+          <Btn variant="ghost" size="sm" icon="close" @click="form.anniversaries.splice(i,1)" />
+        </div>
+        <Btn variant="ghost" size="sm" icon="add" @click="form.anniversaries.push({ date: '', label: '' })">{{ t('common.add') }}</Btn>
+      </div>
+
+      <div>
         <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.custom_fields') }}</div>
         <div v-for="(f, i) in form.custom_fields" :key="'fc'+i" class="mb-2 flex items-center gap-2">
           <TextField v-model="f.label" :label="t('contacts.ui.field_label')" class="w-40" />
@@ -344,7 +359,7 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
-import { useContactsStore, type ContactRow, type ContactDetail, type ContactGroup, type DuplicateGroup, type DuplicateContact } from '@spa/stores/contacts';
+import { useContactsStore, type ContactRow, type ContactDetail, type ContactGroup, type DuplicateGroup, type DuplicateContact, type AddressBook } from '@spa/stores/contacts';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
@@ -375,11 +390,12 @@ const avatarVersion = ref(0);
 type Field = { value: string; type?: string };
 type Addr = { type: string; street: string; city: string; region: string; zip: string; country: string };
 type CustomField = { label: string; value: string };
+type Anniversary = { date: string; label: string };
 const form = reactive<{
   book_id: string; first_name: string; last_name: string; org: string; title: string; nickname: string; bday: string; note: string;
-  emails: Field[]; phones: Field[]; urls: Field[]; addresses: Addr[]; custom_fields: CustomField[]; group_ids: number[];
+  emails: Field[]; phones: Field[]; urls: Field[]; addresses: Addr[]; anniversaries: Anniversary[]; custom_fields: CustomField[]; group_ids: number[];
 }>(
-  { book_id: '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', note: '', emails: [], phones: [], urls: [], addresses: [], custom_fields: [], group_ids: [] },
+  { book_id: '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', note: '', emails: [], phones: [], urls: [], addresses: [], anniversaries: [], custom_fields: [], group_ids: [] },
 );
 function blankAddress(): Addr { return { type: 'home', street: '', city: '', region: '', zip: '', country: '' }; }
 
@@ -411,6 +427,24 @@ onMounted(() => c.load());
 function str(v: unknown): string { return typeof v === 'string' ? v : ''; }
 function arr(v: unknown): Field[] { return Array.isArray(v) ? (v as Field[]) : []; }
 function initials(r: ContactRow): string { return ((r.first_name?.[0] ?? '') + (r.last_name?.[0] ?? '') || r.fn?.[0] || '?').toUpperCase(); }
+// Displayed name honours the list display-format preference (last_first → "Last, First").
+function displayName(r: { fn?: string | null; first_name?: string | null; last_name?: string | null }): string {
+  const first = r.first_name || '', last = r.last_name || '';
+  if (c.settings.display_format === 'last_first' && (first || last)) return [last, first].filter(Boolean).join(', ');
+  return r.fn || [first, last].filter(Boolean).join(' ') || '—';
+}
+const sortItems = computed(() => [
+  { title: t('contacts.ui.sort_first'), value: 'first_name' },
+  { title: t('contacts.ui.sort_last'), value: 'last_name' },
+]);
+const displayItems = computed(() => [
+  { title: t('contacts.ui.display_first_last'), value: 'first_last' },
+  { title: t('contacts.ui.display_last_first'), value: 'last_first' },
+]);
+async function onSettingsChange() {
+  try { await c.saveSettings(c.settings.sort, c.settings.display_format); await reload(); }
+  catch { error(t('common.error')); }
+}
 function color(r: ContactRow): string { const p = ['primary', 'secondary', 'success', 'warning', 'error', 'info']; let h = 0; for (const ch of r.id) h = (h + ch.charCodeAt(0)) % p.length; return p[h]; }
 function bust(url: string | null): string | null {
   if (!url) return null;
@@ -474,7 +508,7 @@ async function deleteSelected() {
 
 function openNew() {
   editing.value = false;
-  Object.assign(form, { book_id: c.books[0]?.id ?? '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], addresses: [], custom_fields: [], group_ids: [] });
+  Object.assign(form, { book_id: c.books[0]?.id ?? '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], addresses: [], anniversaries: [], custom_fields: [], group_ids: [] });
   editor.value = true;
 }
 function openEdit() {
@@ -483,12 +517,14 @@ function openEdit() {
   const d = detail.value;
   const addrs = Array.isArray(d.addresses) ? (d.addresses as Record<string, unknown>[]) : [];
   const cfs = Array.isArray(d.custom_fields) ? (d.custom_fields as Record<string, unknown>[]) : [];
+  const anns = Array.isArray(d.anniversaries) ? (d.anniversaries as Record<string, unknown>[]) : [];
   Object.assign(form, {
     book_id: d.book, first_name: str(d.first_name), last_name: str(d.last_name), org: str(d.org), title: str(d.title),
     nickname: str(d.nickname), bday: str(d.bday), note: str(d.note),
     emails: arr(d.emails).map((e) => ({ ...e })), phones: arr(d.phones).map((p) => ({ ...p })),
     urls: arr(d.urls).map((u) => ({ ...u })),
     addresses: addrs.map((a) => ({ type: str(a.type), street: str(a.street), city: str(a.city), region: str(a.region), zip: str(a.zip), country: str(a.country) })),
+    anniversaries: anns.map((a) => ({ date: str(a.date), label: str(a.label) })),
     custom_fields: cfs.map((f) => ({ label: str(f.label), value: str(f.value) })),
     group_ids: [...(d.group_ids ?? [])],
   });
@@ -504,6 +540,7 @@ async function save() {
       emails: form.emails.filter((e) => e.value), phones: form.phones.filter((p) => p.value),
       urls: form.urls.filter((u) => u.value),
       addresses: form.addresses.filter((a) => a.street || a.city || a.zip || a.region || a.country),
+      anniversaries: form.anniversaries.filter((a) => a.date),
       custom_fields: form.custom_fields.filter((f) => f.value),
       group_ids: form.group_ids.map((g) => String(g)),
     };
@@ -517,6 +554,20 @@ async function save() {
 }
 
 async function newBook() { const name = await promptAsk(t('contacts.ui.new_book')); if (name) { await c.createBook(name); await c.load(); } }
+async function renameBook(b: AddressBook) {
+  const name = await promptAsk(t('common.rename'), { value: b.name });
+  if (!name || name === b.name) return;
+  try { await c.updateBook(b.id, name); await c.load(); success(t('contacts.ui.saved')); } catch { error(t('common.error')); }
+}
+async function removeBook(b: AddressBook) {
+  if (!await confirmAsk(t('contacts.ui.delete_book_confirm'), { danger: true })) return;
+  try {
+    await c.deleteBook(b.id);
+    if (bookId.value === b.id) { bookId.value = null; }
+    await reload();
+    success(t('contacts.ui.saved'));
+  } catch { error(t('common.error')); }
+}
 
 // --- Groups ---
 async function newGroup() {
@@ -584,13 +635,30 @@ async function dismissGroup(g: DuplicateGroup) {
 
 // --- Avatar upload ---
 function pickAvatar() { avatarInput.value?.click(); }
+// Center-crop the picked image to a square and downscale to 512px before upload
+// (the backend only aspect-scales, so this is what makes avatars square).
+async function cropSquare(file: File): Promise<Blob> {
+  try {
+    const bmp = await createImageBitmap(file);
+    const side = Math.min(bmp.width, bmp.height);
+    const size = Math.min(512, side);
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
+    return await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b ?? file), 'image/jpeg', 0.88));
+  } catch {
+    return file; // fall back to the raw file if the browser can't decode it
+  }
+}
 async function onAvatarPicked(ev: Event) {
   const input = ev.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file || !selected.value) return;
   avatarBusy.value = true;
   try {
-    await c.uploadAvatar(selected.value.id, file);
+    await c.uploadAvatar(selected.value.id, await cropSquare(file));
     avatarVersion.value = Date.now();
     selected.value.has_photo = true;
     await reload();
