@@ -153,7 +153,7 @@ return [
     ],
 
     'keys' => [
-        'title' => 'Encryption keys',
+        'title' => 'Keys',
         'subtitle' => 'PGP / S-MIME keys used to read encrypted mail (server-side).',
         'none' => 'No keys yet.',
         'import_pgp' => 'Import PGP key',
