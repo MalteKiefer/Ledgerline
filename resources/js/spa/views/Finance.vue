@@ -386,6 +386,34 @@
           <span class="w-28 shrink-0 text-right font-mono tabular-nums">{{ money(Number(m.net ?? 0)) }}</span>
         </div>
       </Card>
+
+      <div class="grid gap-4 md:grid-cols-2">
+        <!-- Possible duplicates -->
+        <Card :title="t('invoices.duplicates_title')">
+          <div v-if="!dupInvoices.length && !dupTransactions.length" class="text-sm text-[var(--ll-muted)]">{{ t('invoices.duplicates_none') }}</div>
+          <div v-for="(g, gi) in dupInvoices" :key="'i' + gi" class="py-1.5 text-sm">
+            <div class="text-xs text-[var(--ll-muted)]">{{ t('invoices.dup_reason_' + g.reason) }}</div>
+            <div class="mt-0.5 flex flex-wrap gap-1.5">
+              <button v-for="id in g.ids" :key="id" class="rounded bg-black/[0.05] px-2 py-0.5 text-xs hover:bg-primary-500/15 dark:bg-white/10" @click="openInvoiceById(id)">{{ invoiceLabel(id) }}</button>
+            </div>
+          </div>
+          <div v-for="(g, gi) in dupTransactions" :key="'t' + gi" class="py-1.5 text-sm">
+            <div class="text-xs text-[var(--ll-muted)]">{{ t('invoices.dup_reason_' + g.reason) }}</div>
+            <div class="mt-0.5 flex flex-wrap gap-1.5">
+              <button v-for="id in g.ids" :key="id" class="rounded bg-black/[0.05] px-2 py-0.5 text-xs hover:bg-primary-500/15 dark:bg-white/10" @click="go('bank')">{{ txLabel(id) }}</button>
+            </div>
+          </div>
+        </Card>
+
+        <!-- Category suggestions (learned merchant → category) -->
+        <Card :title="t('invoices.suggestions_title')">
+          <div v-if="!catSuggestions.length" class="text-sm text-[var(--ll-muted)]">{{ t('invoices.suggestions_none') }}</div>
+          <div v-for="s in catSuggestions" :key="s.tx_id" class="flex items-center justify-between gap-2 py-1 text-sm">
+            <span class="max-w-[55%] truncate">{{ s.merchant }}</span>
+            <Badge tone="gray">{{ s.suggested_category }}</Badge>
+          </div>
+        </Card>
+      </div>
     </div>
 
     <!-- Invoice editor -->
@@ -1014,7 +1042,7 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory } from '@spa/stores/finance';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, VersionConflict } from '@spa/api/client';
@@ -1135,8 +1163,19 @@ async function loadReports(year?: number) {
     vatAdv.value = va;
     if (!year) vatPayable.value = va?.payable ?? r.currentVat?.payable ?? 0;
     euerData.value = await f.euer(year) as typeof euerData.value;
+    const dup = await f.duplicates();
+    dupInvoices.value = dup.invoices ?? [];
+    dupTransactions.value = dup.transactions ?? [];
+    catSuggestions.value = (await f.categorySuggestions()).suggestions ?? [];
   } catch { /* ignore */ }
 }
+// Duplicate + category-suggestion read-outs (stats tab).
+const dupInvoices = ref<DuplicateGroup[]>([]);
+const dupTransactions = ref<DuplicateGroup[]>([]);
+const catSuggestions = ref<CategorySuggestion[]>([]);
+function invoiceLabel(id: number) { const i = f.invoices.find((x) => x.id === id); return i?.number || `#${id}`; }
+function txLabel(id: number) { const x = f.transactions.find((tx) => tx.id === id); return x ? `${x.date ?? ''} ${money(x.amount)}`.trim() : `#${id}`; }
+function openInvoiceById(id: number) { const i = f.invoices.find((x) => x.id === id); if (i) { go('invoices'); editInvoice(i); } }
 function onStatsYear(v: unknown) { void loadReports(Number(v)); }
 
 const fmt = computed(() => new Intl.NumberFormat(document.documentElement.lang || 'de', { style: 'currency', currency: 'EUR' }));
