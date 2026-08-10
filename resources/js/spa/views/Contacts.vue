@@ -210,6 +210,60 @@
         <Btn variant="ghost" size="sm" icon="add" @click="form.phones.push({ value: '', type: 'cell' })">{{ t('common.add') }}</Btn>
       </div>
 
+      <div class="grid grid-cols-2 gap-3">
+        <TextField v-model="form.nickname" :label="t('contacts.ui.nickname')" />
+        <TextField v-model="form.bday" type="date" :label="t('contacts.ui.bday')" />
+      </div>
+
+      <div>
+        <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.url') }}</div>
+        <div v-for="(u, i) in form.urls" :key="'fu'+i" class="mb-2 flex items-center gap-2">
+          <TextField v-model="u.value" type="url" class="flex-1" />
+          <Btn variant="ghost" size="sm" icon="close" @click="form.urls.splice(i,1)" />
+        </div>
+        <Btn variant="ghost" size="sm" icon="add" @click="form.urls.push({ value: '', type: 'home' })">{{ t('common.add') }}</Btn>
+      </div>
+
+      <div>
+        <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.addresses') }}</div>
+        <div v-for="(a, i) in form.addresses" :key="'fa'+i" class="mb-2 rounded-lg border border-[var(--ll-border)] p-2">
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <TextField v-model="a.type" :label="t('contacts.ui.type')" class="w-32" />
+            <Btn variant="ghost" size="sm" icon="close" @click="form.addresses.splice(i,1)" />
+          </div>
+          <TextField v-model="a.street" :label="t('contacts.ui.street')" class="mb-2" />
+          <div class="grid grid-cols-3 gap-2">
+            <TextField v-model="a.zip" :label="t('contacts.ui.zip')" />
+            <TextField v-model="a.city" :label="t('contacts.ui.city')" class="col-span-2" />
+          </div>
+          <div class="mt-2 grid grid-cols-2 gap-2">
+            <TextField v-model="a.region" :label="t('contacts.ui.region')" />
+            <TextField v-model="a.country" :label="t('contacts.ui.country')" />
+          </div>
+        </div>
+        <Btn variant="ghost" size="sm" icon="add" @click="form.addresses.push(blankAddress())">{{ t('common.add') }}</Btn>
+      </div>
+
+      <div>
+        <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.custom_fields') }}</div>
+        <div v-for="(f, i) in form.custom_fields" :key="'fc'+i" class="mb-2 flex items-center gap-2">
+          <TextField v-model="f.label" :label="t('contacts.ui.field_label')" class="w-40" />
+          <TextField v-model="f.value" class="flex-1" />
+          <Btn variant="ghost" size="sm" icon="close" @click="form.custom_fields.splice(i,1)" />
+        </div>
+        <Btn variant="ghost" size="sm" icon="add" @click="form.custom_fields.push({ label: '', value: '' })">{{ t('common.add') }}</Btn>
+      </div>
+
+      <div v-if="c.groups.length">
+        <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.groups') }}</div>
+        <div class="flex flex-wrap gap-2">
+          <label v-for="g in c.groups" :key="g.id" class="flex items-center gap-1.5 rounded-lg border border-[var(--ll-border)] px-2.5 py-1 text-sm">
+            <input v-model="form.group_ids" type="checkbox" class="accent-primary-500" :value="g.id" >
+            {{ g.name }}
+          </label>
+        </div>
+      </div>
+
       <label class="block">
         <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.note') }}</span>
         <textarea
@@ -319,9 +373,15 @@ const saving = ref(false);
 const avatarVersion = ref(0);
 
 type Field = { value: string; type?: string };
-const form = reactive<{ book_id: string; first_name: string; last_name: string; org: string; title: string; note: string; emails: Field[]; phones: Field[] }>(
-  { book_id: '', first_name: '', last_name: '', org: '', title: '', note: '', emails: [], phones: [] },
+type Addr = { type: string; street: string; city: string; region: string; zip: string; country: string };
+type CustomField = { label: string; value: string };
+const form = reactive<{
+  book_id: string; first_name: string; last_name: string; org: string; title: string; nickname: string; bday: string; note: string;
+  emails: Field[]; phones: Field[]; urls: Field[]; addresses: Addr[]; custom_fields: CustomField[]; group_ids: number[];
+}>(
+  { book_id: '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', note: '', emails: [], phones: [], urls: [], addresses: [], custom_fields: [], group_ids: [] },
 );
+function blankAddress(): Addr { return { type: 'home', street: '', city: '', region: '', zip: '', country: '' }; }
 
 // Selection (bulk)
 const selected_ids = ref<string[]>([]);
@@ -414,16 +474,23 @@ async function deleteSelected() {
 
 function openNew() {
   editing.value = false;
-  Object.assign(form, { book_id: c.books[0]?.id ?? '', first_name: '', last_name: '', org: '', title: '', note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }] });
+  Object.assign(form, { book_id: c.books[0]?.id ?? '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], addresses: [], custom_fields: [], group_ids: [] });
   editor.value = true;
 }
 function openEdit() {
   if (!detail.value) return;
   editing.value = true;
   const d = detail.value;
+  const addrs = Array.isArray(d.addresses) ? (d.addresses as Record<string, unknown>[]) : [];
+  const cfs = Array.isArray(d.custom_fields) ? (d.custom_fields as Record<string, unknown>[]) : [];
   Object.assign(form, {
-    book_id: d.book, first_name: str(d.first_name), last_name: str(d.last_name), org: str(d.org), title: str(d.title), note: str(d.note),
+    book_id: d.book, first_name: str(d.first_name), last_name: str(d.last_name), org: str(d.org), title: str(d.title),
+    nickname: str(d.nickname), bday: str(d.bday), note: str(d.note),
     emails: arr(d.emails).map((e) => ({ ...e })), phones: arr(d.phones).map((p) => ({ ...p })),
+    urls: arr(d.urls).map((u) => ({ ...u })),
+    addresses: addrs.map((a) => ({ type: str(a.type), street: str(a.street), city: str(a.city), region: str(a.region), zip: str(a.zip), country: str(a.country) })),
+    custom_fields: cfs.map((f) => ({ label: str(f.label), value: str(f.value) })),
+    group_ids: [...(d.group_ids ?? [])],
   });
   editor.value = true;
 }
@@ -431,9 +498,14 @@ async function save() {
   saving.value = true;
   try {
     const body: Record<string, unknown> = {
-      book_id: form.book_id, first_name: form.first_name, last_name: form.last_name, org: form.org, title: form.title, note: form.note,
+      book_id: form.book_id, first_name: form.first_name, last_name: form.last_name, org: form.org, title: form.title,
+      nickname: form.nickname, bday: form.bday, note: form.note,
       fn: [form.first_name, form.last_name].filter(Boolean).join(' ') || form.org,
       emails: form.emails.filter((e) => e.value), phones: form.phones.filter((p) => p.value),
+      urls: form.urls.filter((u) => u.value),
+      addresses: form.addresses.filter((a) => a.street || a.city || a.zip || a.region || a.country),
+      custom_fields: form.custom_fields.filter((f) => f.value),
+      group_ids: form.group_ids.map((g) => String(g)),
     };
     if (editing.value && selected.value) await c.update(selected.value.id, body);
     else await c.create(body);
