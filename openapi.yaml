@@ -1619,6 +1619,54 @@ components:
         created_at: { type: [string, "null"], format: date-time }
       required: [id, type, label, has_cert]
 
+    MailKeyGenerateRequest:
+      type: object
+      description: >
+        Server-side key generation options. PGP fields (algorithm/key_length/
+        curve/signing_subkey) apply to type=pgp; type=smime always produces a
+        self-signed RSA cert+key (key_length applies). A passphrase, when set,
+        protects the generated private key (PGP: gpg protection; S-MIME: the key
+        PEM is encrypted with it). Private material is never returned.
+      properties:
+        type: { type: string, enum: [pgp, smime] }
+        label: { type: string, maxLength: 200 }
+        passphrase:
+          type: [string, "null"]
+          description: "Optional. Empty = passphrase-less key (warned client-side)."
+        expire_years:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 100
+          description: "Key validity in years; omit for no expiry (PGP) / 2y default (S-MIME)."
+        identities:
+          type: array
+          minItems: 1
+          maxItems: 20
+          description: "User IDs; the first is the primary UID. PGP supports many; S-MIME uses the first."
+          items:
+            type: object
+            properties:
+              name: { type: [string, "null"], maxLength: 200 }
+              email: { type: string, format: email, maxLength: 254 }
+              comment: { type: [string, "null"], maxLength: 200 }
+            required: [email]
+        algorithm:
+          type: [string, "null"]
+          enum: [rsa, ecc, null]
+          description: "PGP only. Default ecc (EdDSA ed25519 + ECDH cv25519)."
+        key_length:
+          type: [integer, "null"]
+          enum: [2048, 3072, 4096, null]
+          description: "RSA key length in bits (PGP algorithm=rsa, or S-MIME). Default 3072."
+        curve:
+          type: [string, "null"]
+          enum: [ed25519, nistp256, nistp384, nistp521, brainpoolP256r1, brainpoolP384r1, brainpoolP512r1, null]
+          description: "PGP algorithm=ecc curve. Default ed25519. NIST/brainpool require gpg support."
+        signing_subkey:
+          type: [boolean, "null"]
+          description: "PGP only. Add a separate signing subkey alongside the encryption subkey."
+      required: [type, label, identities]
+
     MailLog:
       type: object
       properties:
@@ -6944,10 +6992,13 @@ paths:
       operationId: mailKeysStore
       summary: Import a PGP secret key or an S-MIME PKCS#12 bundle
       description: >
-        Throttle 60/min. Import only. type=pgp needs armored_private_key
-        (+optional passphrase); type=smime needs p12_base64 (base64 PKCS#12,
-        +optional passphrase, converted to PEM server-side). Used only for
-        server-side decryption of encrypted archived mail.
+        Throttle 60/min. Import only. type=pgp needs an armored secret key;
+        type=smime needs a PKCS#12 bundle (converted to PEM server-side). The
+        material comes from either an inline upload (source=upload, default:
+        armored_private_key / p12_base64) OR a file already stored in the Files
+        module (source=files + file_id — owner-scoped, a foreign/unknown id is
+        404; the file's bytes are read as the armored key / raw PKCS#12). The
+        private key + passphrase are stored encrypted and are NEVER returned.
       requestBody:
         required: true
         content:
@@ -6958,8 +7009,15 @@ paths:
                 type: { type: string, enum: [pgp, smime] }
                 label: { type: string, maxLength: 200 }
                 passphrase: { type: [string, "null"] }
-                armored_private_key: { type: [string, "null"], description: "PGP: armored secret key." }
-                p12_base64: { type: [string, "null"], description: "S-MIME: base64 PKCS#12 bundle." }
+                source:
+                  type: [string, "null"]
+                  enum: [upload, files, null]
+                  description: "Key-material source. Default upload."
+                file_id:
+                  type: [integer, "null"]
+                  description: "Files module FileEntry id (required when source=files; owner-scoped)."
+                armored_private_key: { type: [string, "null"], description: "PGP inline upload: armored secret key." }
+                p12_base64: { type: [string, "null"], description: "S-MIME inline upload: base64 PKCS#12 bundle." }
               required: [type, label]
       responses:
         "201":
@@ -6969,8 +7027,37 @@ paths:
               schema: { type: object, properties: { key: { $ref: '#/components/schemas/MailKey' } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/keys/generate:
+    post:
+      tags: [Mail]
+      operationId: mailKeysGenerate
+      summary: Generate a PGP keypair or a self-signed S-MIME cert+key server-side
+      description: >
+        Throttle 30/min. Generates a fresh key server-side and persists it —
+        type=pgp via gpg (RSA or modern ECC), type=smime a self-signed X.509
+        cert + RSA key via openssl. The private key + passphrase are stored
+        encrypted and are NEVER returned (response is public material only).
+        Returns 501 when the required toolchain (gpg / openssl) is unavailable so
+        the client can fall back to import.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MailKeyGenerateRequest' }
+      responses:
+        "201":
+          description: Generated.
+          content:
+            application/json:
+              schema: { type: object, properties: { key: { $ref: '#/components/schemas/MailKey' } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "501": { description: "Key-generation toolchain (gpg / openssl) unavailable." }
   /mail/keys/{key}:
     delete:
       tags: [Mail]

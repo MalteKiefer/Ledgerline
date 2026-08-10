@@ -86,7 +86,7 @@ class MailDecryptor
         }
 
         foreach ($keys as $key) {
-            $plaintext = $this->smime->decrypt((string) $key->private_key, (string) $key->cert_pem, $raw);
+            $plaintext = $this->smime->decrypt((string) $key->private_key, (string) $key->cert_pem, $raw, $key->passphrase);
             if ($plaintext !== null && $plaintext !== '') {
                 return DecryptOutcome::ok('smime', $plaintext, true);
             }

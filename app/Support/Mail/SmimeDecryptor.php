@@ -25,9 +25,12 @@ final class SmimeDecryptor
 
     /**
      * Decrypt an S/MIME enveloped-data message. Returns the decrypted MIME
-     * message, or null on any failure.
+     * message, or null on any failure. When the private key PEM is
+     * passphrase-protected (e.g. a server-generated key), pass $passphrase so
+     * openssl can unlock it; null (the default) leaves existing callers with an
+     * unencrypted key unchanged.
      */
-    public function decrypt(string $keyPem, string $certPem, string $smimeMessage): ?string
+    public function decrypt(string $keyPem, string $certPem, string $smimeMessage, ?string $passphrase = null): ?string
     {
         if (! $this->available() || $keyPem === '' || $smimeMessage === '') {
             return null;
@@ -41,6 +44,13 @@ final class SmimeDecryptor
         file_put_contents($msg->path(), $smimeMessage);
 
         $argv = ['openssl', 'smime', '-decrypt', '-inform', 'SMIME', '-in', $msg->path(), '-inkey', $key->path()];
+        if ($passphrase !== null && $passphrase !== '') {
+            // file: (RAII temp) not pass:<value> — no /proc/<pid>/cmdline leak.
+            $passFile = DiskTempFile::create('smime-inpass');
+            file_put_contents($passFile->path(), $passphrase);
+            $argv[] = '-passin';
+            $argv[] = 'file:'.$passFile->path();
+        }
         if (trim($certPem) !== '') {
             $argv[] = '-recip';
             $argv[] = $cert->path();

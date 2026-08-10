@@ -359,6 +359,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/mail/attachments/{attachment}/save', [MailAttachmentController::class, 'save'])->whereUuid('attachment')->middleware('throttle:60,1')->name('api.mail.attachments.save');
             Route::get('/mail/keys', [MailKeyController::class, 'index'])->name('api.mail.keys.index');
             Route::post('/mail/keys', [MailKeyController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.keys.store');
+            Route::post('/mail/keys/generate', [MailKeyController::class, 'generate'])->middleware('throttle:30,1')->name('api.mail.keys.generate');
             Route::delete('/mail/keys/{key}', [MailKeyController::class, 'destroy'])->whereNumber('key')->middleware('throttle:60,1')->name('api.mail.keys.destroy');
             Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->whereUuid('blob')->middleware('throttle:600,1')->name('api.mail.raw');
         });
