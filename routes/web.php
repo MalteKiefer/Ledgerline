@@ -430,6 +430,13 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/gallery/{id}/restore', [GalleryController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('gallery.restore');
         Route::delete('/gallery/{id}/force', [GalleryController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('gallery.force');
         Route::post('/gallery/trash/empty', [GalleryController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('gallery.empty');
+        Route::post('/gallery/bulk-destroy', [GalleryController::class, 'bulkDestroy'])->middleware('throttle:600,1')->name('gallery.bulk-destroy');
+        Route::get('/gallery/albums', [GalleryController::class, 'albums'])->name('gallery.albums');
+        Route::post('/gallery/albums', [GalleryController::class, 'albumStore'])->middleware('throttle:120,1')->name('gallery.albums.store');
+        Route::put('/gallery/albums/{album}', [GalleryController::class, 'albumUpdate'])->whereNumber('album')->middleware('throttle:120,1')->name('gallery.albums.update');
+        Route::delete('/gallery/albums/{album}', [GalleryController::class, 'albumDestroy'])->whereNumber('album')->middleware('throttle:120,1')->name('gallery.albums.destroy');
+        Route::post('/gallery/albums/{album}/photos', [GalleryController::class, 'albumAttach'])->whereNumber('album')->middleware('throttle:600,1')->name('gallery.albums.attach');
+        Route::delete('/gallery/albums/{album}/photos', [GalleryController::class, 'albumDetach'])->whereNumber('album')->middleware('throttle:600,1')->name('gallery.albums.detach');
     });
 
     // Calendar + CalDAV (plaintext-relational). Static collection routes are

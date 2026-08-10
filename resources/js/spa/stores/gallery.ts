@@ -5,16 +5,26 @@ import { api, uploadWithProgress } from '@spa/api/client';
 export interface Photo {
   id: number; name: string; mime: string | null;
   width: number | null; height: number | null; size: number;
-  favorite: boolean; created_at: string | null;
+  favorite: boolean; taken_at: string | null; camera: string | null;
+  lat: number | null; lng: number | null; created_at: string | null;
+}
+
+export interface Album {
+  id: number; name: string; count: number; cover_photo_id: number | null; version: number;
 }
 
 const WHOLE_LIMIT = 8 * 1024 * 1024;
 
 export const useGalleryStore = defineStore('gallery', () => {
   const photos = ref<Photo[]>([]);
+  const albums = ref<Album[]>([]);
 
-  const load = () => api.get<{ photos: Photo[] }>('/api/v1/gallery/data').then((r) => { photos.value = r.photos ?? []; });
+  const load = (albumId?: number) => {
+    const q = albumId ? `?album_id=${albumId}` : '';
+    return api.get<{ photos: Photo[] }>(`/api/v1/gallery/data${q}`).then((r) => { photos.value = r.photos ?? []; });
+  };
   const trash = () => api.get<{ photos: Photo[] }>('/api/v1/gallery/trash').then((r) => r.photos);
+  const loadAlbums = () => api.get<{ albums: Album[] }>('/api/v1/gallery/albums').then((r) => { albums.value = r.albums ?? []; });
 
   async function upload(file: File, onProgress?: (fr: number) => void) {
     if (file.size > WHOLE_LIMIT) { await uploadChunked(file, onProgress); return; }
@@ -44,12 +54,24 @@ export const useGalleryStore = defineStore('gallery', () => {
 
   const favorite = (id: number, fav: boolean) => api.patch(`/api/v1/gallery/${id}/favorite`, { favorite: fav });
   const destroy = (id: number) => api.delete(`/api/v1/gallery/${id}`);
+  const bulkDestroy = (ids: number[]) => api.post('/api/v1/gallery/bulk-destroy', { ids });
   const restore = (id: number) => api.post(`/api/v1/gallery/${id}/restore`);
   const forceDelete = (id: number) => api.delete(`/api/v1/gallery/${id}/force`);
   const emptyTrash = () => api.post('/api/v1/gallery/trash/empty');
 
+  const createAlbum = (name: string) => api.post<{ album: Album }>('/api/v1/gallery/albums', { name });
+  const renameAlbum = (id: number, name: string) => api.put(`/api/v1/gallery/albums/${id}`, { name });
+  const setAlbumCover = (id: number, coverPhotoId: number | null) => api.put(`/api/v1/gallery/albums/${id}`, { cover_photo_id: coverPhotoId });
+  const deleteAlbum = (id: number) => api.delete(`/api/v1/gallery/albums/${id}`);
+  const addToAlbum = (albumId: number, ids: number[]) => api.post(`/api/v1/gallery/albums/${albumId}/photos`, { ids });
+  const removeFromAlbum = (albumId: number, ids: number[]) => api.delete(`/api/v1/gallery/albums/${albumId}/photos`, { ids });
+
   const thumbUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/thumb`);
   const rawUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/raw`);
 
-  return { photos, load, trash, upload, favorite, destroy, restore, forceDelete, emptyTrash, thumbUrl, rawUrl };
+  return {
+    photos, albums, load, trash, loadAlbums, upload, favorite, destroy, bulkDestroy,
+    restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
+    addToAlbum, removeFromAlbum, thumbUrl, rawUrl,
+  };
 });

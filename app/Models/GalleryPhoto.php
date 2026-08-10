@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -21,6 +22,11 @@ use Illuminate\Support\Carbon;
  * @property int $size
  * @property int|null $width
  * @property int|null $height
+ * @property Carbon|null $taken_at
+ * @property string|null $camera
+ * @property float|null $lat
+ * @property float|null $lng
+ * @property array<string,mixed>|null $exif
  * @property bool $favorite
  * @property string|null $sha256
  * @property int $version
@@ -39,7 +45,17 @@ class GalleryPhoto extends Model
         'size' => 'integer',
         'width' => 'integer',
         'height' => 'integer',
+        'taken_at' => 'datetime',
+        'lat' => 'float',
+        'lng' => 'float',
+        'exif' => 'array',
         'favorite' => 'boolean',
         'version' => 'integer',
     ];
+
+    /** @return BelongsToMany<GalleryAlbum, $this> */
+    public function albums(): BelongsToMany
+    {
+        return $this->belongsToMany(GalleryAlbum::class, 'gallery_album_photo');
+    }
 }
