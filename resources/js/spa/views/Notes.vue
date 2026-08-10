@@ -99,7 +99,18 @@
             class="h-full flex-1 resize-none bg-transparent p-4 font-mono text-sm text-[var(--ll-fg)] focus:outline-none"
             :placeholder="t('notes.body_ph')"
           />
-          <div v-else class="ll-prose h-full flex-1 overflow-y-auto p-4" v-html="rendered" />
+          <div v-else class="ll-prose h-full flex-1 overflow-y-auto p-4" @click="onPreviewClick" v-html="rendered" />
+        </div>
+        <div v-if="current.id && current.backlinks && current.backlinks.length" class="border-t border-[var(--ll-border)] p-3">
+          <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('notes.backlinks') }}</div>
+          <button
+            v-for="bl in current.backlinks" :key="bl.id"
+            class="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-black/[0.04] dark:hover:bg-white/5"
+            @click="openNote(bl.id)"
+          >
+            <div class="truncate text-sm font-medium">{{ bl.title || t('notes.untitled') }}</div>
+            <div class="truncate text-xs text-[var(--ll-muted)]">{{ bl.snippet }}</div>
+          </button>
         </div>
         <div class="border-t border-[var(--ll-border)] p-3">
           <div class="flex items-center gap-2">
@@ -142,7 +153,24 @@ const trashNotes = ref<NoteRow[]>([]);
 const tagInput = ref('');
 const folderSel = ref(0);
 
-const rendered = computed(() => renderMarkdown(current.value?.body ?? ''));
+// Resolve a wikilink title → note id from the loaded list (case-insensitive,
+// latest updated wins) so [[Title]] renders as an internal link.
+const notesByTitle = computed(() => {
+  const map = new Map<string, number>();
+  for (const r of [...n.notes].sort((a, b) => (a.updated_at ?? '').localeCompare(b.updated_at ?? ''))) {
+    if (r.title) map.set(r.title.toLowerCase(), r.id);
+  }
+  return map;
+});
+const rendered = computed(() => renderMarkdown(current.value?.body ?? '', (title) => notesByTitle.value.get(title.trim().toLowerCase()) ?? null));
+
+function onPreviewClick(e: MouseEvent) {
+  const a = (e.target as HTMLElement).closest('a[data-note-id]');
+  if (!a) return;
+  e.preventDefault();
+  const id = Number(a.getAttribute('data-note-id'));
+  if (id) openNote(id);
+}
 const folderOptions = computed(() => [
   { title: t('notes.no_folder'), value: 0 },
   ...n.folders.map((f: NoteFolder) => ({ title: f.name, value: f.id })),

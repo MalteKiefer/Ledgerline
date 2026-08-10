@@ -8,6 +8,7 @@ return [
     'folders' => 'Folders',
     'all_notes' => 'All notes',
     'tags' => 'Tags',
+    'backlinks' => 'Linked from',
     'trash' => 'Trash',
     'untitled' => 'Untitled',
     'empty' => 'No notes.',

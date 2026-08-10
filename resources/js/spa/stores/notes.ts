@@ -9,7 +9,8 @@ export interface NoteRow {
   id: number; note_folder_id: number | null; title: string; tags: string[];
   pinned: boolean; favorite: boolean; updated_at: string | null;
 }
-export interface NoteDetail extends NoteRow { body: string; version?: number }
+export interface Backlink { id: number; title: string; snippet: string }
+export interface NoteDetail extends NoteRow { body: string; version?: number; backlinks?: Backlink[] }
 export interface TagCount { name: string; count: number }
 
 export const useNotesStore = defineStore('notes', () => {
@@ -31,6 +32,7 @@ export const useNotesStore = defineStore('notes', () => {
   const favorite = (id: number, fav: boolean) => api.patch(`/api/v1/notes/${id}/favorite`, { favorite: fav });
   const pin = (id: number, pinned: boolean) => api.patch(`/api/v1/notes/${id}/pin`, { pinned });
   const search = (q: string) => api.get<{ notes: NoteRow[] }>(`/api/v1/notes/search?q=${encodeURIComponent(q)}`).then((r) => r.notes);
+  const backlinks = (id: number) => api.get<{ backlinks: Backlink[] }>(`/api/v1/notes/${id}/backlinks`).then((r) => r.backlinks);
 
   const createFolder = (body: Record<string, unknown>) => api.post<{ folder: NoteFolder }>('/api/v1/notes/folders', body).then((r) => r.folder);
   const updateFolder = (id: number, body: Record<string, unknown>) => api.put(`/api/v1/notes/folders/${id}`, body);
@@ -44,7 +46,7 @@ export const useNotesStore = defineStore('notes', () => {
 
   return {
     notes, folders, tags,
-    load, show, create, update, destroy, favorite, pin, search,
+    load, show, create, update, destroy, favorite, pin, search, backlinks,
     createFolder, updateFolder, deleteFolder,
     trash, restore, forceDelete, restoreFolder,
   };

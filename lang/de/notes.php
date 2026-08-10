@@ -8,6 +8,7 @@ return [
     'folders' => 'Ordner',
     'all_notes' => 'Alle Notizen',
     'tags' => 'Schlagworte',
+    'backlinks' => 'Verweist hierauf',
     'trash' => 'Papierkorb',
     'untitled' => 'Ohne Titel',
     'empty' => 'Keine Notizen.',
