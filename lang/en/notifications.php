@@ -9,6 +9,7 @@ return [
     'enable_desktop' => 'Enable desktop notifications',
     'backup_ok' => 'Backup ":name" completed successfully',
     'task_due' => 'Task due: :task',
+    'task_reminder_at' => 'Due at :time',
     'task_due_on' => 'Due on :date',
     'task_overdue_since' => 'Overdue since :date',
     'event_soon' => 'Upcoming: :event',

@@ -9,6 +9,7 @@ return [
     'enable_desktop' => 'Desktop-Benachrichtigungen aktivieren',
     'backup_ok' => 'Backup „:name" erfolgreich ausgeführt',
     'task_due' => 'Aufgabe fällig: :task',
+    'task_reminder_at' => 'Fällig am :time',
     'task_due_on' => 'Fällig am :date',
     'task_overdue_since' => 'Überfällig seit :date',
     'event_soon' => 'Demnächst: :event',

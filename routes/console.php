@@ -27,6 +27,7 @@ Schedule::command('tasks:remind')->dailyAt('07:00')->withoutOverlapping();
 
 // Fire event reminders (VALARM) as their trigger time arrives (short cadence).
 Schedule::command('calendar:remind')->everyFiveMinutes()->withoutOverlapping();
+Schedule::command('tasks:remind-alarms')->everyFiveMinutes()->withoutOverlapping();
 
 // Notify about contacts whose birthday is today (throttled once per contact/year).
 Schedule::command('contacts:birthday-remind')->dailyAt('07:00')->withoutOverlapping();
