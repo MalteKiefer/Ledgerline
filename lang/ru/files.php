@@ -3,6 +3,12 @@
 declare(strict_types=1);
 
 return [
+    'conflict_title' => 'Файл уже существует',
+    'conflict_body' => 'Файл «:name» уже существует здесь. Что сделать?',
+    'conflict_apply_all' => 'Применить ко всем остальным',
+    'conflict_overwrite' => 'Перезаписать',
+    'conflict_skip' => 'Пропустить',
+    'conflict_copy' => 'Сохранить обе',
     'share_expires_in' => 'ещё :d д :h ч',
     'shared_by_me' => 'Мои общие',
     'shared_links' => 'Публичные ссылки',
