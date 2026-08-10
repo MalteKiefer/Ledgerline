@@ -9,6 +9,7 @@ use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use DateTimeZone;
 use Illuminate\Support\Str;
+use Sabre\VObject\Component\VAlarm;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Component\VEvent;
 use Sabre\VObject\Property;
@@ -143,6 +144,58 @@ class CalendarEventService
         if ($rrule !== '') {
             $event->add('RRULE', $rrule);
         }
+
+        // VALARM is editor-owned (alarm_minutes_before → DISPLAY reminder N minutes
+        // before start): replace it wholesale, drop it when cleared.
+        $event->remove('VALARM');
+        $alarm = $this->alarmMinutes($data['alarm_minutes_before'] ?? null);
+        if ($alarm !== null) {
+            /** @var VAlarm $valarm */
+            $valarm = $event->add('VALARM', []);
+            $valarm->add('ACTION', 'DISPLAY');
+            $valarm->add('TRIGGER', '-PT'.$alarm.'M');
+            $desc = $this->str($data['summary'] ?? null);
+            $valarm->add('DESCRIPTION', $desc !== '' ? $desc : 'Reminder');
+        }
+    }
+
+    /** A non-negative alarm-minutes value within a 4-week ceiling, else null. */
+    private function alarmMinutes(mixed $value): ?int
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+        $n = (int) $value;
+
+        return $n >= 0 && $n <= 40320 ? $n : null;
+    }
+
+    /** Minutes-before-start of the first DISPLAY VALARM, or null. */
+    private function parseAlarm(VEvent $event): ?int
+    {
+        foreach ($this->iter($event->select('VALARM')) as $alarm) {
+            if (! $alarm instanceof VAlarm) {
+                continue;
+            }
+            $trigger = $this->str($alarm->TRIGGER ?? null);
+            if (! str_starts_with($trigger, '-P')) {
+                continue;
+            }
+            $minutes = 0;
+            if (preg_match('/(\d+)D/', $trigger, $m) === 1) {
+                $minutes += (int) $m[1] * 1440;
+            }
+            if (preg_match('/T\D*(\d+)H/', $trigger, $m) === 1) {
+                $minutes += (int) $m[1] * 60;
+            }
+            if (preg_match('/T.*?(\d+)M/', $trigger, $m) === 1) {
+                $minutes += (int) $m[1];
+            }
+
+            return $minutes;
+        }
+
+        return null;
     }
 
     /**
@@ -177,6 +230,7 @@ class CalendarEventService
             'all_day' => $allDay,
             'rrule' => $this->s($event->RRULE ?? null),
             'status' => $this->s($event->STATUS ?? null),
+            'alarm_minutes_before' => $this->parseAlarm($event),
             'sequence' => (int) $this->str($event->SEQUENCE ?? null),
         ];
     }

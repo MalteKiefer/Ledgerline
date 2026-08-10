@@ -528,6 +528,14 @@ class CalendarTodoService
      * capture-group shape is trivial; the H/M matches are anchored after T so a date
      * part is never misread. Absolute (DATE-TIME) triggers yield null.
      */
+    /** Minutes-before of the first VTODO's DISPLAY VALARM (for list rows), or null. */
+    public function alarmMinutes(string $ics): ?int
+    {
+        $todo = $this->firstTodo($ics);
+
+        return $todo !== null ? $this->parseAlarmMinutes($todo) : null;
+    }
+
     private function parseAlarmMinutes(VTodo $todo): ?int
     {
         foreach ($this->iter($todo->select('VALARM')) as $alarm) {

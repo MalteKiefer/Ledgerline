@@ -138,6 +138,20 @@ class CalendarTodoTest extends TestCase
         $this->assertSame($uid, app(CalendarTodoService::class)->parse($todo->ics)['uid']);
     }
 
+    public function test_task_reminder_is_stored_and_exposed_in_the_list(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->taskList($user->id);
+        $this->postJson(route('calendar.todos.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'Ping', 'alarm_minutes_before' => 30,
+        ])->assertStatus(201);
+
+        // present() surfaces the alarm on the list row so the editor can prefill it.
+        $todos = $this->getJson(route('calendar.todos'))->assertOk()->json('todos');
+        $this->assertSame(30, $todos[0]['alarm_minutes_before']);
+        $this->assertStringContainsString('TRIGGER:-PT30M', CalendarTodo::firstOrFail()->ics);
+    }
+
     public function test_update_preserves_unmodelled_ics_properties_and_replaces_valarm(): void
     {
         $user = $this->signIn();

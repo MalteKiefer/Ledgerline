@@ -410,6 +410,7 @@ class CalendarController extends Controller
                 }
             }],
             'status' => ['nullable', 'in:CONFIRMED,TENTATIVE,CANCELLED'],
+            'alarm_minutes_before' => ['nullable', 'integer', 'between:0,40320'],
             'etag' => ['nullable', 'string', 'max:64'],
         ]);
 

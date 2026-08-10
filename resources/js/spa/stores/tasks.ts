@@ -32,6 +32,7 @@ export interface CalendarTodo {
   completed_at: string | null;
   all_day: boolean;
   rrule: string | null;
+  alarm_minutes_before: number | null;
   categories: string[];
   related_to: string | null; // parent task UID (subtasks)
   sequence: number;
@@ -53,6 +54,7 @@ export interface CalendarTodoInput extends Record<string, unknown> {
   dtstart?: string | null;
   all_day?: boolean;
   rrule?: string | null;
+  alarm_minutes_before?: number | null;
   categories?: string[];
   related_to?: string | null;
   etag?: string;
