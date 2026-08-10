@@ -2,7 +2,7 @@
   <div class="min-h-screen bg-[var(--ll-bg)] px-4 py-10 text-[var(--ll-fg)]">
     <div class="mx-auto max-w-lg">
       <div
-        class="rounded-2xl border border-[var(--ll-border)] bg-[var(--ll-card)] p-6 shadow-sm"
+        class="rounded-2xl border border-[var(--ll-border)] bg-[var(--ll-elevated)] p-6 shadow-sm"
         @dragenter.prevent="drag++" @dragover.prevent @dragleave.prevent="drag = Math.max(0, drag - 1)" @drop.prevent="onDrop"
       >
         <div v-if="loading" class="py-16 text-center text-sm text-[var(--ll-muted)]">…</div>
