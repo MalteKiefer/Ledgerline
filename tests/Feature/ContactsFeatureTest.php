@@ -109,6 +109,34 @@ class ContactsFeatureTest extends TestCase
         $this->assertTrue($jane->favorite);
     }
 
+    public function test_partial_update_preserves_omitted_sections_and_groups(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+        $group = ContactGroup::create(['user_id' => $user->id, 'name' => 'Work']);
+
+        $this->postJson(route('contacts.store'), [
+            'book_id' => $book->id, 'fn' => 'Jane', 'bday' => '1990-05-01',
+            'addresses' => [['type' => 'home', 'street' => 'Main St 1', 'city' => 'Berlin']],
+            'urls' => [['value' => 'https://jane.example']],
+            'custom_fields' => [['label' => 'Insurance', 'value' => 'XY-1']],
+            'group_ids' => [(string) $group->id],
+        ])->assertStatus(201);
+        $jane = Contact::where('fn', 'Jane')->firstOrFail();
+
+        // A partial edit — exactly what the current SPA editor sends (name only,
+        // no addresses/urls/bday/custom/group_ids) — must not wipe the rest.
+        $this->putJson(route('contacts.update', $jane), ['fn' => 'Jane Renamed'])->assertOk();
+
+        $show = $this->getJson(route('contacts.show', $jane))->assertOk()->json();
+        $this->assertSame('Jane Renamed', $show['fn']);
+        $this->assertSame('Main St 1', $show['addresses'][0]['street']);
+        $this->assertSame('1990-05-01', $show['bday']);
+        $this->assertSame([['label' => 'Insurance', 'value' => 'XY-1']], $show['custom_fields']);
+        $this->assertStringContainsString('https://jane.example', $jane->fresh()->vcard);
+        $this->assertEqualsCanonicalizing([$group->id], $show['group_ids']);
+    }
+
     public function test_editor_paths_serve_the_shell_and_contact_data_is_owner_scoped(): void
     {
         $user = $this->signIn();

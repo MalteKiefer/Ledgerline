@@ -48,10 +48,16 @@ class ContactWriter
         if ($book === null) {
             throw new \RuntimeException('Contact has no address book.');
         }
-        $data['categories'] = $this->groupNames($book->user_id, $groupIds);
+        // Preserve every section the caller didn't submit: a partial editor
+        // payload (the SPA doesn't yet expose addresses/urls/bday/photo/custom
+        // fields) must NOT wipe properties set via CardDAV or another client.
+        // Present keys — including an empty array meant to clear — stay
+        // authoritative; absent keys fall back to the stored card.
         $existing = $this->vcards->parse($contact->vcard);
         $uid = $existing['uid'] ?? null;
-        $vcard = $this->vcards->build($data, is_string($uid) ? $uid : null);
+        $merged = array_merge($existing, $data);
+        $merged['categories'] = $this->groupNames($book->user_id, $groupIds);
+        $vcard = $this->vcards->build($merged, is_string($uid) ? $uid : null);
 
         $this->persister->persistUpdate($contact, $vcard);
         $contact->groups()->sync($this->ownedGroupIds($book->user_id, $groupIds));
