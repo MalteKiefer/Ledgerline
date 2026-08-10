@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Models\AppSettings;
 use App\Models\FileEntry;
+use App\Models\PersonalAccessToken;
 use App\Models\User;
 use App\Observers\FileEntryObserver;
 use App\Support\OutboundUrl;
@@ -20,6 +21,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Sanctum\Sanctum;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -41,6 +43,10 @@ class AppServiceProvider extends ServiceProvider
         // and never in the test env, so it can't mask a real failure with a
         // lazy-load error.
         Model::preventLazyLoading(app()->environment('local'));
+
+        // Resolve device tokens to our subclass so the encrypted push_endpoint
+        // attribute is available on $user->tokens() and currentAccessToken().
+        Sanctum::usePersonalAccessTokenModel(PersonalAccessToken::class);
 
         // Behind a TLS-terminating reverse proxy (e.g. NetBird) that forwards to
         // the app over plain HTTP, Laravel would otherwise generate http:// asset

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Jobs\SendPushJob;
 use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -32,13 +33,16 @@ class AppNotification extends Model
     public static function record(int $userId, string $level, string $title, ?string $body = null, string $category = 'general'): void
     {
         try {
-            static::create([
+            $notification = static::create([
                 'user_id' => $userId,
                 'level' => $level,
                 'category' => $category,
                 'title' => $title,
                 'body' => $body,
             ]);
+            // Single choke point: fan every notification-centre row out to the
+            // user's registered per-device push endpoints (queued, best-effort).
+            SendPushJob::dispatch($notification);
         } catch (\Throwable) {
             // Notifications are best-effort; never propagate.
         }
