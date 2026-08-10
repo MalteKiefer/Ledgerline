@@ -2214,6 +2214,44 @@ paths:
         "403": { $ref: '#/components/responses/Forbidden' }
         "404": { $ref: '#/components/responses/NotFound' }
         "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/events/{event}/exclude:
+    post:
+      tags: [Calendar]
+      operationId: calendarEventsExclude
+      summary: Delete a single occurrence of a recurring event (EXDATE)
+      description: Adds an EXDATE to the master VEVENT so the given occurrence drops out; the series is untouched.
+      security: [ { bearerAuth: [] } ]
+      parameters: [{ name: event, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [start], properties: { start: { type: string, format: date-time, description: "The occurrence's start (RECURRENCE-ID) to exclude." } } } } } }
+      responses:
+        "200": { description: Excluded., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, etag: { type: string } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /calendar/events/{event}/occurrence:
+    put:
+      tags: [Calendar]
+      operationId: calendarEventsOverrideOccurrence
+      summary: Edit a single occurrence of a recurring event (RECURRENCE-ID override)
+      description: Adds/replaces a detached VEVENT with the master's UID + a RECURRENCE-ID, carrying the edited fields for just that instance.
+      security: [ { bearerAuth: [] } ]
+      parameters: [{ name: event, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/CalendarEventInput'
+                - type: object
+                  required: [recurrence_id]
+                  properties:
+                    recurrence_id: { type: string, format: date-time, description: "The occurrence's original start to override." }
+      responses:
+        "200": { description: Overridden., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, etag: { type: string } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+        "422": { $ref: '#/components/responses/ValidationError' }
   /calendar/import:
     post:
       tags: [Calendar]
