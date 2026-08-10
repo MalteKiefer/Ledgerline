@@ -8,5 +8,8 @@ return [
     'mark_all_read' => 'Alle als gelesen',
     'enable_desktop' => 'Desktop-Benachrichtigungen aktivieren',
     'backup_ok' => 'Backup „:name" erfolgreich ausgeführt',
+    'task_due' => 'Aufgabe fällig: :task',
+    'task_due_on' => 'Fällig am :date',
+    'task_overdue_since' => 'Überfällig seit :date',
     'backup_failed' => 'Backup „:name" fehlgeschlagen',
 ];
