@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 return [
+    'share_expires_in' => 'expires in :d d :h h',
     'shared_by_me' => 'Shared by me',
     'shared_links' => 'Public links',
     'shared_with_users' => 'Shared with people',

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 return [
+    'share_expires_in' => 'ещё :d д :h ч',
     'shared_by_me' => 'Мои общие',
     'shared_links' => 'Публичные ссылки',
     'shared_with_users' => 'С пользователями',

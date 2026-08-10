@@ -12,20 +12,22 @@
       </div>
     </div>
 
-    <!-- Upload progress overlay -->
-    <div v-show="uploadState.active" class="absolute inset-0 z-40 flex items-center justify-center bg-black/20">
-      <div class="w-80 max-w-[90%] rounded-xl bg-[var(--ll-card)] px-6 py-5 shadow-xl">
-        <div class="flex items-center gap-2 text-sm font-medium">
-          <Icon name="upload" :size="20" class="text-primary-500" />
-          {{ t('files.uploading') }} <span class="ml-auto tabular-nums text-[var(--ll-muted)]">{{ uploadState.done }} / {{ uploadState.total }}</span>
+    <!-- Upload progress modal (teleported so it sits above all page content) -->
+    <Teleport to="body">
+      <div v-show="uploadState.active" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/30">
+        <div class="w-80 max-w-[90%] rounded-xl bg-[var(--ll-card)] px-6 py-5 shadow-xl">
+          <div class="flex items-center gap-2 text-sm font-medium">
+            <Icon name="upload" :size="20" class="text-primary-500" />
+            {{ t('files.uploading') }} <span class="ml-auto tabular-nums text-[var(--ll-muted)]">{{ uploadState.done }} / {{ uploadState.total }}</span>
+          </div>
+          <div class="mt-1 truncate text-xs text-[var(--ll-muted)]">{{ uploadState.name }}</div>
+          <div class="mt-3 h-2 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/10">
+            <div class="h-full rounded-full bg-primary-500 transition-all" :style="{ width: uploadPct + '%' }" />
+          </div>
+          <div class="mt-1 text-right text-xs tabular-nums text-[var(--ll-muted)]">{{ uploadPct }}%</div>
         </div>
-        <div class="mt-1 truncate text-xs text-[var(--ll-muted)]">{{ uploadState.name }}</div>
-        <div class="mt-3 h-2 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/10">
-          <div class="h-full rounded-full bg-primary-500 transition-all" :style="{ width: uploadPct + '%' }" />
-        </div>
-        <div class="mt-1 text-right text-xs tabular-nums text-[var(--ll-muted)]">{{ uploadPct }}%</div>
       </div>
-    </div>
+    </Teleport>
     <!-- Sidebar -->
     <Card :body-class="'p-0'" class="w-full shrink-0 self-start md:w-60">
       <div class="p-3">
@@ -127,7 +129,7 @@
               <div class="flex flex-wrap items-center gap-1.5 text-xs text-[var(--ll-muted)]">
                 <Badge v-if="sh.needs_password" tone="warning">{{ t('files.share_password') }}</Badge>
                 <Badge v-if="!sh.allow_download" tone="gray">{{ t('files.share_no_download') }}</Badge>
-                <span v-if="sh.expires_at">{{ t('files.share_expires') }}: {{ new Date(sh.expires_at).toLocaleDateString() }}</span>
+                <Badge v-if="sh.expires_at" :tone="expiryTone(sh.expires_at)">{{ expiresLabel(sh.expires_at) }}</Badge>
               </div>
             </div>
             <Btn variant="ghost" size="sm" icon="content_copy" :title="t('files.share_copy')" @click="copyLink(sh)" />
@@ -741,6 +743,18 @@ const myFolderShares = ref<FolderShare[]>([]);
 async function loadShared() {
   try { [myLinks.value, myFolderShares.value] = await Promise.all([s.loadShares(), s.loadFolderShares().then((r) => r.shares)]); }
   catch { error(t('common.error')); }
+}
+// Remaining share time as "noch Xd Yh" (or "abgelaufen"), for links with an expiry.
+function expiresLabel(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return t('files.share_expired');
+  const hours = Math.floor(ms / 3_600_000);
+  const d = Math.floor(hours / 24);
+  const h = hours % 24;
+  return t('files.share_expires_in', { d: String(d), h: String(h) });
+}
+function expiryTone(iso: string): 'warning' | 'gray' {
+  return new Date(iso).getTime() - Date.now() <= 24 * 3_600_000 ? 'warning' : 'gray';
 }
 async function copyLink(sh: FileShare) {
   try { await navigator.clipboard.writeText(s.shareUrl(sh.token)); success(t('files.share_copied')); } catch { /* ignore */ }
