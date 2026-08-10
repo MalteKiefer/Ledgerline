@@ -411,6 +411,7 @@ return [
     'cats_add_ph' => 'Neue Kategorie',
     'cats_name' => 'Name',
     'cat_color' => 'Farbe',
+    'categories' => 'Kategorien',
     'cat_icon' => 'Icon',
     'cat_edit' => 'Kategorie bearbeiten',
     'cats_delete_confirm' => 'Diese Kategorie löschen?',

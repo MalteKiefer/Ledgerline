@@ -138,7 +138,12 @@
 
     <!-- Receipts -->
     <Card v-show="tab === 'receipts'" :title="t('invoices.receipts_title')" :body-class="'p-0'">
-      <template #actions><Btn variant="solid" size="sm" icon="add" @click="newReceipt">{{ t('common.add') }}</Btn></template>
+      <template #actions>
+        <div class="flex items-center gap-2">
+          <Btn variant="ghost" size="sm" icon="sell" @click="catDialog = true">{{ t('invoices.categories') }}</Btn>
+          <Btn variant="solid" size="sm" icon="add" @click="newReceipt">{{ t('common.add') }}</Btn>
+        </div>
+      </template>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
@@ -531,6 +536,35 @@
       </template>
     </Modal>
 
+    <!-- Category suggestions for receipt/partner category inputs -->
+    <datalist id="fin-cats">
+      <option v-for="c in f.financeCategories" :key="c.id" :value="c.name" />
+    </datalist>
+
+    <!-- Finance category manager -->
+    <Modal v-model="catDialog" :title="t('invoices.categories')" width="480px">
+      <div class="space-y-2">
+        <div v-for="c in f.financeCategories" :key="c.id" class="flex items-center gap-2 rounded-lg border border-[var(--ll-border)] px-3 py-2">
+          <span class="h-4 w-4 shrink-0 rounded-full border border-[var(--ll-border)]" :style="{ backgroundColor: c.color || 'transparent' }" />
+          <span class="flex-1 truncate text-sm">{{ c.name }}</span>
+          <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editCat(c)" />
+          <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delCat(c)" />
+        </div>
+        <div v-if="!f.financeCategories.length" class="py-4 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</div>
+        <div class="mt-3 border-t border-[var(--ll-border)] pt-3">
+          <div class="flex items-end gap-2">
+            <TextField v-model="catForm.name" :label="catForm.id ? t('common.edit') : t('common.add')" class="flex-1" />
+            <input v-model="catForm.color" type="color" class="h-9 w-10 shrink-0 rounded border border-[var(--ll-border)] bg-transparent" :title="t('invoices.cat_color')">
+            <Btn variant="solid" :loading="saving" :disabled="!catForm.name.trim()" @click="saveCat">{{ catForm.id ? t('common.save') : t('common.add') }}</Btn>
+            <Btn v-if="catForm.id" variant="ghost" @click="resetCat">{{ t('common.cancel') }}</Btn>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <Btn variant="ghost" @click="catDialog = false">{{ t('common.close') }}</Btn>
+      </template>
+    </Modal>
+
     <!-- Business-partner editor (all fields + multiple contact persons + logo pull) -->
     <Modal v-model="pDlg" :title="partnerForm.id ? t('common.edit') : t('invoices.partner_add')" width="920px">
       <div class="space-y-3">
@@ -591,7 +625,7 @@
           </div>
         </div>
 
-        <TextField v-model="partnerForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" />
+        <TextField v-model="partnerForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" list="fin-cats" />
 
         <label class="block">
           <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipt_note') }}</span>
@@ -619,7 +653,7 @@
           >
         </label>
         <TextField v-model="rForm.name" :label="t('invoices.receipt_rename')" />
-        <TextField v-model="rForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" />
+        <TextField v-model="rForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" list="fin-cats" />
         <div>
           <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipt_tags') }}</span>
           <div class="flex flex-wrap items-center gap-1.5 rounded-lg border border-[var(--ll-border)] px-2 py-1.5">
@@ -980,7 +1014,7 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction } from '@spa/stores/finance';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, VersionConflict } from '@spa/api/client';
@@ -1364,6 +1398,28 @@ function parseBankCsv(text: string): Record<string, unknown>[] {
     });
   }
   return out;
+}
+
+// ---- Finance categories (managed list feeding the receipt/partner category datalist) ----
+const catDialog = ref(false);
+const catForm = reactive<{ id?: number; version?: number; name: string; color: string }>({ name: '', color: '#6750a4' });
+function resetCat() { Object.assign(catForm, { id: undefined, version: undefined, name: '', color: '#6750a4' }); }
+function editCat(c: FinanceCategory) { Object.assign(catForm, { id: c.id, version: c.version, name: c.name, color: c.color ?? '#6750a4' }); }
+async function saveCat() {
+  const name = catForm.name.trim();
+  if (!name) return;
+  saving.value = true;
+  try {
+    const body = { name, color: catForm.color, version: catForm.version };
+    if (catForm.id) await f.updateCategory(catForm.id, body);
+    else await f.createCategory(body);
+    resetCat(); await f.load(); success(t('common.saved'));
+  } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); } finally { saving.value = false; }
+}
+async function delCat(c: FinanceCategory) {
+  if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return;
+  try { await f.deleteCategory(c.id); await f.load(); success(t('common.saved')); }
+  catch { error(t('common.error')); }
 }
 
 // ---- Business partners (Geschäftspartner): list ↔ detail, rich editor ----

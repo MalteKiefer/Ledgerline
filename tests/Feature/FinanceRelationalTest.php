@@ -96,9 +96,16 @@ class FinanceRelationalTest extends TestCase
         // (Web routes redirect on framework validation failures — the app only
         // JSON-renders exceptions for api/* — so assert the validation error, not
         // a status code.)
-        $this->postJson(route('finance.categories.store'), ['name' => 'Travel'])->assertCreated();
+        $catId = $this->postJson(route('finance.categories.store'), ['name' => 'Travel', 'color' => '#6750a4'])
+            ->assertCreated()->assertJsonPath('category.color', '#6750a4')->json('category.id');
         $this->postJson(route('finance.categories.store'), ['name' => 'Travel'])->assertInvalid(['name']);
         $this->assertSame(1, FinanceCategory::query()->count());
+
+        // Recolor + delete (the category manager UI relies on these).
+        $this->putJson(route('finance.categories.update', $catId), ['name' => 'Travel', 'color' => '#123456'])
+            ->assertOk()->assertJsonPath('category.color', '#123456');
+        $this->deleteJson(route('finance.categories.destroy', $catId))->assertOk();
+        $this->assertSame(0, FinanceCategory::query()->count());
     }
 
     public function test_sensitive_columns_stored_plaintext_at_rest(): void

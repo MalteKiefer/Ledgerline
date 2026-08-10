@@ -10,6 +10,7 @@
         :disabled="disabled"
         :autocomplete="autocomplete"
         :inputmode="inputmode"
+        :list="list"
         class="w-full rounded-lg border bg-transparent text-sm text-[var(--ll-fg)] placeholder:text-[var(--ll-muted)] transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500 disabled:opacity-60"
         :class="[icon ? 'pl-10 pr-3' : 'px-3', 'py-2', error ? 'border-red-400' : 'border-[var(--ll-border)]']"
         @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
@@ -26,7 +27,7 @@ import Icon from './Icon.vue';
 defineProps<{
   modelValue?: string | number | null;
   label?: string; placeholder?: string; type?: string; icon?: string;
-  hint?: string; error?: string; disabled?: boolean; autocomplete?: string;
+  hint?: string; error?: string; disabled?: boolean; autocomplete?: string; list?: string;
   inputmode?: 'text' | 'email' | 'search' | 'tel' | 'url' | 'none' | 'numeric' | 'decimal';
 }>();
 defineEmits<{ 'update:modelValue': [string]; enter: [] }>();
