@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 return [
+    'ul_no_folders' => 'Noch keine Ordner — erstelle einen.',
     'ul_folder_existing' => 'Bestehender Ordner',
     'ul_folder_new' => 'Neuer Ordner',
     'ul_folder_required' => 'Bitte einen Ordner wählen oder benennen.',

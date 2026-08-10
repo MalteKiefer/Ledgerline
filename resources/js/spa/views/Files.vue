@@ -533,7 +533,21 @@
           <button class="rounded-lg px-2 py-1" :class="ulForm.folderMode==='existing' ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'" @click="ulForm.folderMode='existing'">{{ t('files.ul_folder_existing') }}</button>
           <button class="rounded-lg px-2 py-1" :class="ulForm.folderMode==='new' ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'" @click="ulForm.folderMode='new'">{{ t('files.ul_folder_new') }}</button>
         </div>
-        <Select v-if="ulForm.folderMode==='existing'" v-model.number="ulForm.folderId" :options="folderSelectOptions" />
+        <div v-if="ulForm.folderMode==='existing'" class="rounded-lg border border-[var(--ll-border)]">
+          <div v-if="!folderSelectOptions.length" class="px-3 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('files.ul_no_folders') }}</div>
+          <div v-else class="max-h-56 overflow-y-auto p-1">
+            <button
+              v-for="o in folderSelectOptions" :key="o.value" type="button"
+              class="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm"
+              :class="ulForm.folderId === o.value ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300' : 'hover:bg-black/[0.04] dark:hover:bg-white/5'"
+              @click="ulForm.folderId = o.value"
+            >
+              <Icon name="folder" :size="18" :class="ulForm.folderId === o.value ? '' : 'text-[var(--ll-muted)]'" />
+              <span class="min-w-0 flex-1 truncate">{{ o.title }}</span>
+              <Icon v-if="ulForm.folderId === o.value" name="check" :size="18" />
+            </button>
+          </div>
+        </div>
         <TextField v-else v-model="ulForm.newFolder" :placeholder="t('files.folder_name_ph')" />
       </div>
       <TextField v-model="ulForm.label" :label="t('files.ul_label_prompt')" />
@@ -847,7 +861,12 @@ const ulForm = reactive<{ folderMode: 'existing' | 'new'; folderId: number | nul
 );
 const ulBusy = ref(false);
 function createUploadLink() {
-  Object.assign(ulForm, { folderMode: 'existing', folderId: cwd.value ?? (s.folders as FileFolder[])[0]?.id ?? null, newFolder: '', label: '', days: 7, password: '' });
+  const folders = s.folders as FileFolder[];
+  Object.assign(ulForm, {
+    folderMode: folders.length ? 'existing' : 'new',
+    folderId: cwd.value ?? folders[0]?.id ?? null,
+    newFolder: '', label: '', days: 7, password: '',
+  });
   ulDlg.value = true;
 }
 async function submitUploadLink() {

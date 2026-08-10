@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 return [
+    'ul_no_folders' => 'Папок ещё нет — создайте.',
     'ul_folder_existing' => 'Существующая папка',
     'ul_folder_new' => 'Новая папка',
     'ul_folder_required' => 'Выберите или назовите папку.',
