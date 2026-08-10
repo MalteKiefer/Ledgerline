@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Jobs\SendPushJob;
 use App\Models\AppNotification;
 use App\Models\User;
+use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -51,6 +52,22 @@ class SendPushJobTest extends TestCase
                 && $body['title'] === 'Due'
                 && $body['body'] === 'Pay up';
         });
+    }
+
+    public function test_job_skips_a_category_the_user_disabled(): void
+    {
+        Http::fake(['*' => Http::response('', 200)]);
+        $user = User::factory()->create();
+        $user->createToken('phone', ['device'])->accessToken
+            ->forceFill(['push_endpoint' => 'https://push.example/x'])->save();
+        UserSetting::for($user->id)->update(['notification_prefs' => ['invoice' => ['push' => false]]]);
+
+        $n = AppNotification::create([
+            'user_id' => $user->id, 'level' => 'info', 'category' => 'invoice', 'title' => 'Due', 'body' => null,
+        ]);
+        (new SendPushJob($n))->handle();
+
+        Http::assertNothingSent();
     }
 
     public function test_job_prunes_an_endpoint_that_is_gone(): void

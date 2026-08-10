@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Models\AppNotification;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
+use App\Models\UserSetting;
 use App\Support\OutboundUrl;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -43,6 +44,12 @@ class SendPushJob implements ShouldQueue
     {
         $user = User::query()->find($this->notification->user_id);
         if ($user === null) {
+            return;
+        }
+
+        // Respect the user's per-category push opt-out (the notification-centre
+        // row still exists; only the push fan-out is suppressed).
+        if (! UserSetting::for($user->id)->pushEnabled((string) $this->notification->category)) {
             return;
         }
 

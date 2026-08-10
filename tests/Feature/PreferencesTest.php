@@ -18,7 +18,7 @@ class PreferencesTest extends TestCase
         $prefs = UserSetting::for($user->id)->displayPrefs();
         $this->assertSame([
             'distance' => 'km', 'elevation' => 'm', 'weight' => 'kg', 'temp' => 'c', 'glucose' => 'mgdl',
-            'time_format' => '24h', 'mail_load_remote' => false, 'mail_signature' => null,
+            'time_format' => '24h', 'mail_load_remote' => false, 'notifications' => [], 'mail_signature' => null,
         ], $prefs);
     }
 
@@ -50,6 +50,22 @@ class PreferencesTest extends TestCase
         // A blank signature clears it back to null.
         $this->post(route('preferences.update'), ['mail_signature' => '   '])->assertRedirect();
         $this->assertNull(UserSetting::for($user->id)->displayPrefs()['mail_signature']);
+    }
+
+    public function test_per_category_push_prefs_merge(): void
+    {
+        $user = $this->signIn();
+
+        $this->post(route('preferences.update'), ['notifications' => ['task' => ['push' => false]]])->assertRedirect();
+        $setting = UserSetting::for($user->id);
+        $this->assertFalse($setting->pushEnabled('task'));
+        $this->assertTrue($setting->pushEnabled('event')); // default for an unset category
+
+        // Setting another category leaves the first untouched (merge, not replace).
+        $this->post(route('preferences.update'), ['notifications' => ['event' => ['push' => false]]])->assertRedirect();
+        $setting = UserSetting::for($user->id);
+        $this->assertFalse($setting->pushEnabled('task'));
+        $this->assertFalse($setting->pushEnabled('event'));
     }
 
     public function test_invalid_value_is_rejected(): void

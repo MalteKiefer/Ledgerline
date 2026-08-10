@@ -639,6 +639,13 @@ components:
         time_format: { type: string, enum: [24h, 12h] }
         mail_load_remote: { type: boolean, description: "Always load remote images in the mail reader (default false)." }
         mail_signature: { type: [string, "null"], description: "Signature appended to outgoing mail; blank clears it to null." }
+        notifications:
+          type: object
+          description: "Per-category push prefs, keyed by notification category (e.g. task/event/birthday/invoice). Absent category = push enabled."
+          additionalProperties:
+            type: object
+            properties:
+              push: { type: boolean, description: "false suppresses push for this category (the centre row is still created)." }
 
     MeUser:
       type: object
@@ -3374,6 +3381,13 @@ paths:
                 mail_signature:
                   type: [string, "null"]
                   maxLength: 5000
+                notifications:
+                  type: object
+                  description: "Per-category push prefs (merged): { \"<category>\": { \"push\": bool } }."
+                  additionalProperties:
+                    type: object
+                    properties:
+                      push: { type: boolean }
       responses:
         "200":
           description: Preferences updated; returns the full preference set.

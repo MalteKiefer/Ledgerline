@@ -29,6 +29,9 @@ class PreferencesController extends Controller
             // Mail display prefs: always-load remote images default + send signature.
             'mail_load_remote' => ['sometimes', 'boolean'],
             'mail_signature' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            // Per-category push toggle: { "<category>": { "push": bool } }.
+            'notifications' => ['sometimes', 'array'],
+            'notifications.*.push' => ['sometimes', 'boolean'],
         ]);
 
         $map = [
@@ -54,6 +57,21 @@ class PreferencesController extends Controller
         }
 
         $setting = UserSetting::for($this->requireUser($request)->id);
+
+        // Merge per-category push prefs so setting one category leaves the rest.
+        if ($request->has('notifications')) {
+            $prefs = is_array($setting->notification_prefs) ? $setting->notification_prefs : [];
+            foreach ((array) $request->input('notifications') as $category => $cfg) {
+                if (! is_array($cfg) || ! array_key_exists('push', $cfg)) {
+                    continue;
+                }
+                $entry = is_array($prefs[$category] ?? null) ? $prefs[$category] : [];
+                $entry['push'] = (bool) $cfg['push'];
+                $prefs[(string) $category] = $entry;
+            }
+            $update['notification_prefs'] = $prefs;
+        }
+
         if ($update !== []) {
             $setting->update($update);
         }

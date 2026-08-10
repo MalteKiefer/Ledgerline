@@ -49,6 +49,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property ?string $company_smtp_from_address
  * @property ?string $company_smtp_from_name
  * @property ?string $mail_signature
+ * @property array<string, mixed>|null $notification_prefs
  */
 #[Fillable([
     'user_id',
@@ -73,6 +74,8 @@ use Illuminate\Database\Eloquent\Model;
     // Per-user plaintext mail signature appended to composed/reply/forward
     // bodies (non-secret presentation, not encrypted/hidden).
     'mail_signature',
+    // Per-user, per-category push preferences: {"<category>": {"push": bool}}.
+    'notification_prefs',
     // Per-user company identity + invoice numbering (formerly workspace-global).
     'company_name', 'company_address', 'company_email', 'company_phone', 'company_tax_id',
     'company_vat_id', 'company_iban', 'company_bic', 'company_bank_name', 'company_logo_path',
@@ -137,8 +140,21 @@ class UserSetting extends Model
             'glucose' => (string) ($this->unit_glucose ?? 'mgdl'),
             'time_format' => (string) ($this->time_format ?? '24h'),
             'mail_load_remote' => (bool) ($this->mail_load_remote ?? false),
+            'notifications' => is_array($this->notification_prefs) ? $this->notification_prefs : [],
             'mail_signature' => $this->mail_signature !== null ? (string) $this->mail_signature : null,
         ];
+    }
+
+    /**
+     * Whether push is enabled for a notification category. Default true — a user
+     * only ever opts a category OUT; unknown/absent categories always push.
+     */
+    public function pushEnabled(string $category): bool
+    {
+        $prefs = is_array($this->notification_prefs) ? $this->notification_prefs : [];
+        $cat = $prefs[$category] ?? null;
+
+        return ! (is_array($cat) && array_key_exists('push', $cat) && $cat['push'] === false);
     }
 
     protected function casts(): array
@@ -160,6 +176,7 @@ class UserSetting extends Model
             'calendar_week_start' => 'integer',
             'mail_load_remote' => 'boolean',
             'mail_allow_scripts' => 'boolean',
+            'notification_prefs' => 'array',
             'invoice_number_padding' => 'integer',
             'invoice_next_number' => 'integer',
             'invoice_payment_terms_days' => 'integer',
