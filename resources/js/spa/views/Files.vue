@@ -1,5 +1,16 @@
 <template>
-  <div class="flex flex-col gap-4 md:flex-row" style="min-height:calc(100vh - 120px)">
+  <div
+    class="relative flex flex-col gap-4 md:flex-row" style="min-height:calc(100vh - 120px)"
+    @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave.prevent="onDragLeave" @drop.prevent="onViewDrop"
+  >
+    <!-- Full-view drag & drop upload overlay -->
+    <div v-show="dragDepth > 0" class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-500/10">
+      <div class="rounded-xl bg-[var(--ll-card)] px-6 py-4 text-center shadow-lg">
+        <Icon name="upload" :size="32" class="text-primary-500" />
+        <div class="mt-1 text-sm font-medium">{{ t('files.drop_here') }}</div>
+        <div class="text-xs text-[var(--ll-muted)]">{{ folderPath(cwd) || t('files.root') }}</div>
+      </div>
+    </div>
     <!-- Sidebar -->
     <Card :body-class="'p-0'" class="w-full shrink-0 self-start md:w-60">
       <div class="p-3">
@@ -716,11 +727,27 @@ const moveTargets = computed(() => {
   }
   return opts;
 });
+async function uploadList(list: FileList | File[]) {
+  const files = Array.from(list);
+  if (!files.length) return;
+  try { for (const f of files) await s.upload(f, cwd.value); await s.load(); success(t('common.saved')); }
+  catch { error(t('common.error')); }
+}
 async function onUpload(e: Event) {
   const list = (e.target as HTMLInputElement).files;
-  if (!list) return;
-  try { for (const f of Array.from(list)) await s.upload(f, cwd.value); await s.load(); success(t('common.saved')); }
-  catch { error(t('common.error')); }
+  if (list) await uploadList(list);
+}
+
+// Full-view drag & drop. A depth counter avoids flicker as the drag crosses
+// child elements (dragleave fires on every child boundary).
+const dragDepth = ref(0);
+function hasFiles(e: DragEvent) { return Array.from(e.dataTransfer?.types ?? []).includes('Files'); }
+function onDragEnter(e: DragEvent) { if (hasFiles(e)) dragDepth.value++; }
+function onDragLeave(e: DragEvent) { if (hasFiles(e)) dragDepth.value = Math.max(0, dragDepth.value - 1); }
+async function onViewDrop(e: DragEvent) {
+  dragDepth.value = 0;
+  const list = e.dataTransfer?.files;
+  if (list && list.length) await uploadList(list);
 }
 async function newFolder() {
   const name = await promptAsk(t('files.new_folder'));

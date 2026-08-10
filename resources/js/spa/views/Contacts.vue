@@ -1,5 +1,15 @@
 <template>
-  <div class="flex min-h-[calc(100vh-120px)] flex-col gap-4 md:flex-row">
+  <div
+    class="relative flex min-h-[calc(100vh-120px)] flex-col gap-4 md:flex-row"
+    @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave.prevent="onDragLeave" @drop.prevent="onViewDrop"
+  >
+    <!-- Full-view drag & drop vCard import overlay -->
+    <div v-show="dragDepth > 0" class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-500/10">
+      <div class="rounded-xl bg-[var(--ll-card)] px-6 py-4 text-center shadow-lg">
+        <Icon name="upload" :size="32" class="text-primary-500" />
+        <div class="mt-1 text-sm font-medium">{{ t('contacts.ui.drop_here') }}</div>
+      </div>
+    </div>
     <!-- Books / groups rail -->
     <Card body-class="p-0" class="w-full shrink-0 self-start md:w-64">
       <div class="p-3">
@@ -583,6 +593,28 @@ async function removeGroup(g: ContactGroup) {
     if (groupId.value === g.id) { groupId.value = null; }
     await reload();
   } catch { error(t('common.error')); }
+}
+
+// --- Full-view drag & drop vCard import ---
+const dragDepth = ref(0);
+function hasFiles(e: DragEvent) { return Array.from(e.dataTransfer?.types ?? []).includes('Files'); }
+function onDragEnter(e: DragEvent) { if (hasFiles(e)) dragDepth.value++; }
+function onDragLeave(e: DragEvent) { if (hasFiles(e)) dragDepth.value = Math.max(0, dragDepth.value - 1); }
+async function onViewDrop(e: DragEvent) {
+  dragDepth.value = 0;
+  const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => /\.vcf$|\.vcard$/i.test(f.name) || f.type === 'text/vcard');
+  const book = bookId.value ?? c.books[0]?.id ?? '';
+  if (!files.length || !book) return;
+  importing.value = true;
+  try {
+    let created = 0; let updated = 0; let skipped = 0;
+    for (const f of files) {
+      const r = await c.importVcf(f, book);
+      created += r.created; updated += r.updated; skipped += r.skipped;
+    }
+    await reload();
+    success(t('contacts.ui.import_result', { created: String(created), updated: String(updated), skipped: String(skipped) }));
+  } catch { error(t('common.error')); } finally { importing.value = false; }
 }
 
 // --- Import / export ---
