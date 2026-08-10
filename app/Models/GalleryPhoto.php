@@ -22,8 +22,11 @@ use Illuminate\Support\Carbon;
  * @property int $size
  * @property int|null $width
  * @property int|null $height
+ * @property int $rotation
+ * @property bool $flip_h
  * @property Carbon|null $taken_at
  * @property string|null $camera
+ * @property string|null $place
  * @property float|null $lat
  * @property float|null $lng
  * @property array<string,mixed>|null $exif
@@ -45,6 +48,8 @@ class GalleryPhoto extends Model
         'size' => 'integer',
         'width' => 'integer',
         'height' => 'integer',
+        'rotation' => 'integer',
+        'flip_h' => 'boolean',
         'taken_at' => 'datetime',
         'lat' => 'float',
         'lng' => 'float',

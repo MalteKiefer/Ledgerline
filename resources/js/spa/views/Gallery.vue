@@ -16,6 +16,10 @@
       <div class="flex items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2.5">
         <h2 class="text-sm font-semibold">{{ showTrash ? t('gallery.trash') : t('messages.nav.gallery') }}</h2>
         <div class="ml-auto flex items-center gap-1">
+          <template v-if="!showTrash">
+            <Btn :variant="viewMode === 'grid' ? 'solid' : 'ghost'" size="sm" icon="grid_view" @click="setView('grid')">{{ t('gallery.view_grid') }}</Btn>
+            <Btn :variant="viewMode === 'map' ? 'solid' : 'ghost'" size="sm" icon="map" @click="setView('map')">{{ t('gallery.view_map') }}</Btn>
+          </template>
           <Btn variant="solid" size="sm" icon="upload" @click="pick">{{ t('gallery.upload') }}</Btn>
           <input ref="fileInput" type="file" accept="image/*" multiple class="hidden" @change="onPick">
           <Btn v-if="showTrash && trashPhotos.length" variant="ghost" size="sm" icon="delete" class="text-red-600" @click="onEmpty">{{ t('gallery.empty_trash') }}</Btn>
@@ -24,11 +28,11 @@
       </div>
 
       <!-- Album chips -->
-      <div v-if="!showTrash" class="flex flex-wrap items-center gap-1.5 border-b border-[var(--ll-border)] px-4 py-2">
+      <div v-if="!showTrash && viewMode === 'grid'" class="flex flex-wrap items-center gap-1.5 border-b border-[var(--ll-border)] px-4 py-2">
         <button class="rounded-full px-3 py-1 text-xs font-medium" :class="albumId === null ? 'bg-primary-500 text-white' : 'bg-black/[0.05] dark:bg-white/10'" @click="selectAlbum(null)">{{ t('gallery.all_photos') }}</button>
         <button
           v-for="a in g.albums" :key="a.id"
-          class="group/album flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium"
+          class="flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium"
           :class="albumId === a.id ? 'bg-primary-500 text-white' : 'bg-black/[0.05] dark:bg-white/10'"
           @click="selectAlbum(a.id)"
         >
@@ -41,7 +45,7 @@
       </div>
 
       <!-- Selection bar -->
-      <div v-if="!showTrash && selected.size" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2 text-sm">
+      <div v-if="!showTrash && viewMode === 'grid' && selected.size" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2 text-sm">
         <span class="font-medium">{{ selected.size }} {{ t('gallery.selected') }}</span>
         <div class="ml-auto flex items-center gap-1">
           <div class="relative">
@@ -58,7 +62,14 @@
         </div>
       </div>
 
-      <div class="p-3">
+      <!-- Map view -->
+      <div v-show="!showTrash && viewMode === 'map'" class="p-3">
+        <div v-if="!mapPhotos.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.no_located') }}</div>
+        <div v-show="mapPhotos.length" ref="mapEl" class="h-[calc(100vh-230px)] w-full overflow-hidden rounded-lg border border-[var(--ll-border)]" />
+      </div>
+
+      <!-- Grid view -->
+      <div v-if="viewMode === 'grid' || showTrash" class="p-3">
         <div v-if="!current.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ showTrash ? t('gallery.trash_empty') : t('gallery.empty') }}</div>
         <div v-else class="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
           <template v-for="(p, i) in current" :key="p.id">
@@ -74,7 +85,6 @@
                 @click="showTrash ? undefined : onTileClick($event, i, p)"
                 @error="onThumbError"
               >
-              <!-- selection checkbox -->
               <button
                 v-if="!showTrash"
                 class="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white/80 shadow transition"
@@ -83,6 +93,7 @@
               >
                 <Icon v-if="selected.has(p.id)" name="check" :size="12" class="text-white" />
               </button>
+              <Icon v-if="p.lat !== null && !showTrash" name="location_on" :size="14" class="absolute bottom-1 left-1 text-white drop-shadow" />
               <Icon v-if="p.favorite && !showTrash" name="star" :size="16" class="absolute right-1 top-1 text-amber-400 drop-shadow" />
               <div v-if="showTrash" class="absolute inset-x-0 bottom-0 flex justify-center gap-1 bg-black/40 p-1">
                 <button class="rounded p-1 text-white hover:bg-white/20" :title="t('common.restore')" @click="onRestore(p.id)"><Icon name="restore" :size="16" /></button>
@@ -117,20 +128,76 @@
         <button class="absolute right-4 top-4 rounded-full p-2 text-white/80 hover:bg-white/10" @click="viewer = -1"><Icon name="close" :size="24" /></button>
         <button class="absolute left-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/80 hover:bg-white/10" @click="step(-1)"><Icon name="chevron_left" :size="32" /></button>
         <button class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/80 hover:bg-white/10" @click="step(1)"><Icon name="chevron_right" :size="32" /></button>
-        <img v-if="viewerPhoto" :src="g.rawUrl(viewerPhoto.id)" class="max-h-[92vh] max-w-[92vw] object-contain">
+        <img v-if="viewerPhoto" :src="g.rawUrl(viewerPhoto.id)" class="max-h-[92vh] max-w-[92vw] object-contain transition-transform" :style="transformStyle(viewerPhoto)">
         <div class="absolute inset-x-0 bottom-0 flex items-center gap-3 bg-gradient-to-t from-black/70 to-transparent px-6 py-4 text-sm text-white">
           <div class="min-w-0 flex-1">
             <div class="truncate">{{ viewerPhoto?.name }}</div>
             <div class="truncate text-xs text-white/70">
               <span v-if="viewerDate">{{ viewerDate }}</span>
-              <span v-if="viewerPhoto?.camera"> · {{ viewerPhoto?.camera }}</span>
+              <span v-if="viewerPhoto?.place"> · {{ viewerPhoto?.place }}</span>
+              <span v-else-if="viewerPhoto?.camera"> · {{ viewerPhoto?.camera }}</span>
             </div>
           </div>
           <button class="rounded-full p-2 hover:bg-white/10" :title="t('gallery.favorite')" @click="onFav">
             <Icon :name="viewerPhoto?.favorite ? 'star' : 'star_border'" :size="22" :class="viewerPhoto?.favorite ? 'text-amber-400' : ''" />
           </button>
-          <a :href="g.rawUrl(viewerPhoto?.id ?? 0)" download class="rounded-full p-2 hover:bg-white/10" :title="t('common.download')"><Icon name="download" :size="22" /></a>
+          <button class="rounded-full p-2 hover:bg-white/10" :title="t('gallery.edit')" @click="openEdit"><Icon name="edit" :size="22" /></button>
+          <!-- download original/edited -->
+          <div class="relative">
+            <button class="rounded-full p-2 hover:bg-white/10" :title="t('common.download')" @click="dlMenu = !dlMenu"><Icon name="download" :size="22" /></button>
+            <div v-if="dlMenu" class="absolute bottom-full right-0 mb-1 w-44 rounded-lg border border-white/10 bg-neutral-900 py-1 text-white shadow-lg">
+              <a :href="g.downloadUrl(viewerPhoto?.id ?? 0, 'original')" download class="block px-3 py-1.5 text-sm hover:bg-white/10" @click="dlMenu = false">{{ t('gallery.dl_original') }}</a>
+              <a v-if="isEdited(viewerPhoto)" :href="g.downloadUrl(viewerPhoto?.id ?? 0, 'edited')" download class="block px-3 py-1.5 text-sm hover:bg-white/10" @click="dlMenu = false">{{ t('gallery.dl_edited') }}</a>
+            </div>
+          </div>
           <button class="rounded-full p-2 text-red-400 hover:bg-white/10" :title="t('common.delete')" @click="onDelete"><Icon name="delete" :size="22" /></button>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Edit modal -->
+    <Teleport to="body">
+      <div v-if="edit.open" class="fixed inset-0 z-[2200] flex items-center justify-center bg-black/50 p-4" @click.self="edit.open = false">
+        <div class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-[var(--ll-elevated)] shadow-xl">
+          <div class="flex items-center justify-between border-b border-[var(--ll-border)] px-5 py-3">
+            <h3 class="text-sm font-semibold">{{ t('gallery.edit') }}</h3>
+            <button class="rounded-full p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="edit.open = false"><Icon name="close" :size="18" /></button>
+          </div>
+          <div class="grid gap-4 p-5 sm:grid-cols-2">
+            <!-- Live preview + rotate/mirror -->
+            <div>
+              <div class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-black/[0.06] dark:bg-white/5">
+                <img v-if="edit.id" :src="g.rawUrl(edit.id)" class="max-h-full max-w-full object-contain transition-transform" :style="previewStyle">
+              </div>
+              <div class="mt-2 flex justify-center gap-1">
+                <Btn variant="ghost" size="sm" icon="rotate_left" @click="rotate(-90)">{{ t('gallery.rotate_left') }}</Btn>
+                <Btn variant="ghost" size="sm" icon="rotate_right" @click="rotate(90)">{{ t('gallery.rotate_right') }}</Btn>
+                <Btn :variant="edit.flip_h ? 'solid' : 'ghost'" size="sm" icon="flip" @click="edit.flip_h = !edit.flip_h">{{ t('gallery.mirror') }}</Btn>
+              </div>
+            </div>
+            <!-- Metadata -->
+            <div class="space-y-3">
+              <label class="block">
+                <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('gallery.date') }}</span>
+                <input v-model="edit.date" type="date" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm">
+              </label>
+              <label class="block">
+                <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('gallery.time') }}</span>
+                <input v-model="edit.time" type="time" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm">
+              </label>
+              <LocationField
+                :model-value="edit.place" :lat="edit.lat" :lon="edit.lng"
+                :label="t('gallery.location')"
+                @update:model-value="edit.place = $event"
+                @update:lat="edit.lat = $event"
+                @update:lon="edit.lng = $event"
+              />
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 border-t border-[var(--ll-border)] px-5 py-3">
+            <Btn variant="ghost" size="sm" @click="edit.open = false">{{ t('common.cancel') }}</Btn>
+            <Btn variant="solid" size="sm" :loading="edit.saving" @click="saveEdit">{{ t('common.save') }}</Btn>
+          </div>
         </div>
       </div>
     </Teleport>
@@ -138,9 +205,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import * as L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, Icon } from '@spa/ui';
+import LocationField from '@spa/components/LocationField.vue';
 import { useGalleryStore, type Photo, type Album } from '@spa/stores/gallery';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
@@ -152,9 +222,11 @@ const { success, error } = useToast();
 
 const fileInput = ref<HTMLInputElement | null>(null);
 const showTrash = ref(false);
+const viewMode = ref<'grid' | 'map'>('grid');
 const trashPhotos = ref<Photo[]>([]);
 const albumId = ref<number | null>(null);
 const albumMenu = ref(false);
+const dlMenu = ref(false);
 
 const selected = ref<Set<number>>(new Set());
 let anchor = -1;
@@ -169,19 +241,19 @@ const current = computed<Row[]>(() => {
     return { ...p, _dayHeader: header };
   });
 });
+const mapPhotos = computed(() => g.photos.filter((p) => p.lat !== null && p.lng !== null));
 const viewer = ref(-1);
 const viewerPhoto = computed(() => (viewer.value >= 0 ? g.photos[viewer.value] ?? null : null));
-const viewerDate = computed(() => {
-  const p = viewerPhoto.value;
-  return p ? fullDate(p.taken_at ?? p.created_at) : '';
-});
+const viewerDate = computed(() => { const p = viewerPhoto.value; return p ? fullDate(p.taken_at ?? p.created_at) : ''; });
 
 const up = reactive({ active: false, done: 0, total: 0, name: '', frac: 0 });
 const upPct = computed(() => (up.total ? Math.min(100, Math.round(((up.done + up.frac) / up.total) * 100)) : 0));
 const dragDepth = ref(0);
 
+const edit = reactive({ open: false, saving: false, id: 0, version: 0, date: '', time: '', place: '' as string, lat: null as number | null, lng: null as number | null, rotation: 0, flip_h: false });
+
 onMounted(() => { void g.load(); void g.loadAlbums(); window.addEventListener('keydown', onKey); window.addEventListener('focus', onFocus); });
-onUnmounted(() => { window.removeEventListener('keydown', onKey); window.removeEventListener('focus', onFocus); });
+onUnmounted(() => { window.removeEventListener('keydown', onKey); window.removeEventListener('focus', onFocus); destroyMap(); });
 function onFocus() { if (!document.hidden && !up.active && !showTrash.value) void g.load(albumId.value ?? undefined); }
 
 function dayLabel(iso: string | null): string {
@@ -192,6 +264,9 @@ function fullDate(iso: string | null): string {
   if (!iso) return '';
   try { return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch { return ''; }
 }
+function isEdited(p: Photo | null): boolean { return !!p && (p.rotation !== 0 || p.flip_h); }
+function transformStyle(p: Photo) { return { transform: `rotate(${p.rotation}deg) scaleX(${p.flip_h ? -1 : 1})` }; }
+const previewStyle = computed(() => ({ transform: `rotate(${edit.rotation}deg) scaleX(${edit.flip_h ? -1 : 1})` }));
 
 function pick() { fileInput.value?.click(); }
 function onPick(e: Event) { const l = (e.target as HTMLInputElement).files; if (l) void uploadList(l); (e.target as HTMLInputElement).value = ''; }
@@ -218,15 +293,12 @@ async function uploadList(list: FileList) {
   } catch { error(t('common.error')); } finally { up.active = false; }
 }
 function refresh() { return g.load(albumId.value ?? undefined); }
+function setView(m: 'grid' | 'map') { viewMode.value = m; if (m === 'map') void nextTick().then(syncMap); }
 
 // ---- Multi-select ----
 function selectAlbum(id: number | null) { albumId.value = id; clearSelection(); void refresh(); }
 function clearSelection() { selected.value = new Set(); anchor = -1; albumMenu.value = false; }
-function toggle(id: number) {
-  const s = new Set(selected.value);
-  if (s.has(id)) s.delete(id); else s.add(id);
-  selected.value = s;
-}
+function toggle(id: number) { const s = new Set(selected.value); if (s.has(id)) s.delete(id); else s.add(id); selected.value = s; }
 function toggleAt(i: number, p: Row) { toggle(p.id); anchor = i; }
 function selectRange(a: number, b: number) {
   const [lo, hi] = a < b ? [a, b] : [b, a];
@@ -240,7 +312,6 @@ function onTileClick(e: MouseEvent, i: number, p: Row) {
   if (selected.value.size > 0) { toggle(p.id); anchor = i; return; }
   openViewer(i);
 }
-
 async function bulkTrash() {
   const ids = [...selected.value];
   if (!ids.length || !await confirmAsk(t('gallery.bulk_delete_confirm', { n: String(ids.length) }), { danger: true })) return;
@@ -256,11 +327,7 @@ async function newAlbum() {
 async function newAlbumWithSelection() {
   const name = (await promptAsk(t('gallery.album_name')))?.trim();
   if (!name) return;
-  try {
-    const r = await g.createAlbum(name);
-    await g.addToAlbum(r.album.id, [...selected.value]);
-    await g.loadAlbums(); clearSelection(); success(t('common.saved'));
-  } catch { error(t('common.error')); }
+  try { const r = await g.createAlbum(name); await g.addToAlbum(r.album.id, [...selected.value]); await g.loadAlbums(); clearSelection(); success(t('common.saved')); } catch { error(t('common.error')); }
 }
 async function renameAlbum(a: Album) {
   const name = (await promptAsk(t('gallery.album_name'), { value: a.name }))?.trim();
@@ -280,30 +347,63 @@ async function removeSelectedFromAlbum() {
 }
 
 // ---- Lightbox ----
-function openViewer(i: number) { viewer.value = i; }
+function openViewer(i: number) { viewer.value = i; dlMenu.value = false; }
 function step(d: number) {
   if (viewer.value < 0) return;
   const n = g.photos.length;
   if (!n) { viewer.value = -1; return; }
   viewer.value = (viewer.value + d + n) % n;
+  dlMenu.value = false;
 }
 function onKey(e: KeyboardEvent) {
+  if (edit.open) return;
   if (viewer.value < 0) return;
   if (e.key === 'Escape') viewer.value = -1;
   else if (e.key === 'ArrowLeft') step(-1);
   else if (e.key === 'ArrowRight') step(1);
 }
 async function onFav() {
-  const p = viewerPhoto.value;
-  if (!p) return;
+  const p = viewerPhoto.value; if (!p) return;
   const next = !p.favorite;
   try { await g.favorite(p.id, next); p.favorite = next; } catch { error(t('common.error')); }
 }
 async function onDelete() {
-  const p = viewerPhoto.value;
-  if (!p) return;
+  const p = viewerPhoto.value; if (!p) return;
   if (!await confirmAsk(t('gallery.delete_confirm'), { danger: true })) return;
   try { await g.destroy(p.id); viewer.value = -1; await refresh(); await g.loadAlbums(); success(t('common.saved')); } catch { error(t('common.error')); }
+}
+
+// ---- Edit ----
+function openEdit() {
+  const p = viewerPhoto.value; if (!p) return;
+  const iso = p.taken_at ?? '';
+  Object.assign(edit, {
+    open: true, saving: false, id: p.id, version: p.version,
+    date: iso ? iso.slice(0, 10) : '', time: iso ? iso.slice(11, 16) : '',
+    place: p.place ?? '', lat: p.lat, lng: p.lng, rotation: p.rotation, flip_h: p.flip_h,
+  });
+  dlMenu.value = false;
+}
+function rotate(delta: number) { edit.rotation = (((edit.rotation + delta) % 360) + 360) % 360; }
+async function saveEdit() {
+  edit.saving = true;
+  const takenAt = edit.date ? `${edit.date} ${edit.time || '00:00'}:00` : null;
+  try {
+    const r = await g.update(edit.id, {
+      taken_at: takenAt, place: edit.place || null, lat: edit.lat, lng: edit.lng,
+      rotation: edit.rotation, flip_h: edit.flip_h, version: edit.version,
+    });
+    // patch the in-memory photo so grid/lightbox reflect it immediately
+    const idx = g.photos.findIndex((x) => x.id === edit.id);
+    if (idx >= 0) g.photos[idx] = r.photo;
+    edit.open = false;
+    success(t('common.saved'));
+    await refresh();
+    if (viewMode.value === 'map') void nextTick().then(syncMap);
+  } catch (e: unknown) {
+    error((e as { status?: number })?.status === 409 ? t('gallery.edit_conflict') : t('common.error'));
+    await refresh();
+  } finally { edit.saving = false; }
 }
 
 // ---- Trash ----
@@ -322,4 +422,40 @@ async function onEmpty() {
   if (!await confirmAsk(t('gallery.delete_forever_confirm'), { danger: true })) return;
   try { await g.emptyTrash(); trashPhotos.value = []; } catch { error(t('common.error')); }
 }
+
+// ---- Map ----
+const mapEl = ref<HTMLElement | null>(null);
+let map: L.Map | null = null;
+let markers: L.LayerGroup | null = null;
+function destroyMap() { if (map) { map.remove(); map = null; markers = null; } }
+function syncMap() {
+  const pts = mapPhotos.value;
+  if (viewMode.value !== 'map' || !pts.length || !mapEl.value) return;
+  if (!map) {
+    map = L.map(mapEl.value, { attributionControl: true, scrollWheelZoom: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+    markers = L.layerGroup().addTo(map);
+  }
+  markers?.clearLayers();
+  const bounds: L.LatLngExpression[] = [];
+  for (const p of pts) {
+    const ll: L.LatLngExpression = [p.lat as number, p.lng as number];
+    bounds.push(ll);
+    const icon = L.divIcon({
+      className: 'll-gallery-pin',
+      html: `<img src="${g.thumbUrl(p.id)}" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">`,
+      iconSize: [44, 44], iconAnchor: [22, 22],
+    });
+    const idx = g.photos.findIndex((x) => x.id === p.id);
+    L.marker(ll, { icon }).addTo(markers as L.LayerGroup).on('click', () => openViewer(idx));
+  }
+  if (bounds.length === 1) map.setView(bounds[0], 15);
+  else map.fitBounds(bounds as L.LatLngBoundsExpression, { padding: [40, 40] });
+  setTimeout(() => map?.invalidateSize(), 60);
+}
+watch(() => g.photos, () => { if (viewMode.value === 'map') void nextTick().then(syncMap); });
 </script>
+
+<style>
+.ll-gallery-pin { background: transparent; border: none; }
+</style>
