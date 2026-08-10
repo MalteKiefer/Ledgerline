@@ -97,6 +97,8 @@ return [
         'attachment_view' => 'Просмотр',
         'attachment_download' => 'Скачать',
         'save_to_files' => 'Сохранить в Файлы',
+        'view_thread' => 'Показать переписку',
+        'thread_view' => 'Просмотр переписки',
         'save_to_paperless' => 'Отправить в Paperless',
     ],
 
@@ -114,6 +116,8 @@ return [
 
     'send' => [
         'compose' => 'Написать',
+        'sent_folder' => 'Папка отправленных',
+        'sent_folder_hint' => 'Пусто — по умолчанию',
         'reply' => 'Ответить',
         'reply_all' => 'Ответить всем',
         'forward' => 'Переслать',
