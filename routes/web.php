@@ -320,6 +320,9 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/files/upload/chunk/abort', [FilesController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('files.rel.chunk.abort');
 
         // Public share links (owner side) — plaintext /file-share/{token}.
+        Route::get('/files/upload-links', [FilesController::class, 'uploadLinks'])->name('files.upload-links.index');
+        Route::post('/files/upload-links', [FilesController::class, 'storeUploadLink'])->middleware('throttle:60,1')->name('files.upload-links.store');
+        Route::delete('/files/upload-links/{link}', [FilesController::class, 'destroyUploadLink'])->whereNumber('link')->middleware('throttle:60,1')->name('files.upload-links.destroy');
         Route::get('/files/rel-shares', [FilesController::class, 'shares'])->name('files.rel.shares.index');
         Route::post('/files/rel-shares', [FilesController::class, 'storeShare'])->middleware('throttle:60,1')->name('files.rel.shares.store');
         Route::put('/files/rel-shares/{share}', [FilesController::class, 'updateShare'])->whereNumber('share')->middleware('throttle:60,1')->name('files.rel.shares.update');
@@ -529,6 +532,7 @@ Route::get('/finance', $spa)->name('finance.index');
 Route::get('/files', $spa)->name('files.index');
 Route::get('/contacts', $spa)->name('contacts.index');
 Route::get('/notes', $spa)->name('notes.index');
+Route::get('/u/{token}', $spa)->name('upload-link.page');
 Route::get('/calendar', $spa)->name('calendar.index');
 Route::get('/mail', $spa)->name('mail.index');
 Route::get('/profile', $spa)->name('profile');
