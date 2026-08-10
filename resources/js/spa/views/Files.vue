@@ -891,6 +891,7 @@ async function onUploadDir(e: Event) {
         await s.upload(f, targetId, prog);
         existing.set(f.name.toLowerCase(), {} as FileEntry);
       }
+      uploadState.value.frac = 0;
       uploadState.value.done++;
     }
     await s.load();
@@ -932,7 +933,7 @@ const uploadState = ref<{ active: boolean; done: number; total: number; name: st
 );
 const uploadPct = computed(() => {
   const u = uploadState.value;
-  return u.total ? Math.round(((u.done + u.frac) / u.total) * 100) : 0;
+  return u.total ? Math.min(100, Math.round(((u.done + u.frac) / u.total) * 100)) : 0;
 });
 // Upload-conflict resolution: when a file's name already exists in the target
 // folder, ask overwrite / skip / keep-both (with an "apply to all" option).
@@ -1002,6 +1003,7 @@ async function uploadList(list: FileList | File[]) {
         await s.upload(f, cwd.value, prog);
         existing.set(f.name.toLowerCase(), {} as FileEntry);
       }
+      uploadState.value.frac = 0;
       uploadState.value.done++;
     }
     await s.load();
