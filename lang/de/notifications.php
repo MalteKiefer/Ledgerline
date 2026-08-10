@@ -11,5 +11,7 @@ return [
     'task_due' => 'Aufgabe fällig: :task',
     'task_due_on' => 'Fällig am :date',
     'task_overdue_since' => 'Überfällig seit :date',
+    'event_soon' => 'Demnächst: :event',
+    'event_at' => 'Beginnt um :time',
     'backup_failed' => 'Backup „:name" fehlgeschlagen',
 ];

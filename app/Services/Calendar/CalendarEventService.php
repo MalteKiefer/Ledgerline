@@ -241,7 +241,7 @@ class CalendarEventService
      * @return array{uid: ?string, summary: ?string, description: ?string, location: ?string,
      *   geo_lat: ?float, geo_lon: ?float,
      *   dtstart: ?CarbonImmutable, dtend: ?CarbonImmutable, all_day: bool, rrule: ?string,
-     *   recurrence_until: ?CarbonImmutable, status: ?string, sequence: int}
+     *   recurrence_until: ?CarbonImmutable, status: ?string, alarm_minutes_before: ?int, sequence: int}
      */
     public function denormalize(string $ics): array
     {
@@ -251,7 +251,7 @@ class CalendarEventService
                 'uid' => null, 'summary' => null, 'description' => null, 'location' => null,
                 'geo_lat' => null, 'geo_lon' => null,
                 'dtstart' => null, 'dtend' => null, 'all_day' => false, 'rrule' => null,
-                'recurrence_until' => null, 'status' => null, 'sequence' => 0,
+                'recurrence_until' => null, 'status' => null, 'alarm_minutes_before' => null, 'sequence' => 0,
             ];
         }
 
@@ -271,6 +271,7 @@ class CalendarEventService
             'rrule' => $rrule,
             'recurrence_until' => $rrule !== null ? $this->recurrenceUntil($rrule) : null,
             'status' => $this->s($event->STATUS ?? null),
+            'alarm_minutes_before' => $this->parseAlarm($event),
             'sequence' => (int) $this->str($event->SEQUENCE ?? null),
         ];
     }

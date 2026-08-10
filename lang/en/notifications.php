@@ -11,5 +11,7 @@ return [
     'task_due' => 'Task due: :task',
     'task_due_on' => 'Due on :date',
     'task_overdue_since' => 'Overdue since :date',
+    'event_soon' => 'Upcoming: :event',
+    'event_at' => 'Starts at :time',
     'backup_failed' => 'Backup ":name" failed',
 ];
