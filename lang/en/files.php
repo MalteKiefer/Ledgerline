@@ -3,6 +3,19 @@
 declare(strict_types=1);
 
 return [
+    'ul_folder_existing' => 'Existing folder',
+    'ul_folder_new' => 'New folder',
+    'ul_folder_required' => 'Please choose or name a folder.',
+    'ul_expiry' => 'Expires after',
+    'ul_exp_1d' => '1 day',
+    'ul_exp_7d' => '7 days',
+    'ul_exp_30d' => '30 days',
+    'ul_exp_90d' => '90 days',
+    'ul_password' => 'Password (optional)',
+    'ul_password_hint' => 'If set, uploaders must enter it.',
+    'ul_password_first' => 'enter the password first',
+    'ul_password_wrong' => 'Wrong password.',
+    'folder_name_ph' => 'Folder name',
     'ul_section' => 'Upload links',
     'ul_create' => 'Create upload link',
     'ul_hint' => 'Let external people upload into the current folder without an account.',

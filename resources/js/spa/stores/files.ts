@@ -20,7 +20,7 @@ export interface FileShare {
 }
 export interface UploadLink {
   id: number; token: string; label: string | null; file_folder_id: number | null;
-  folder_name?: string | null; expires_at: string | null;
+  folder_name?: string | null; needs_password?: boolean; expires_at: string | null;
 }
 // ---- Cross-user folder sharing (owner side + member side) ----
 export interface FolderShareMember {
@@ -151,14 +151,15 @@ export const useFilesStore = defineStore('files', () => {
   interface SharePayload { password?: string; remove_password?: boolean; allow_download?: boolean; expires_at?: string | null }
   // Public inbound upload links (owner side + anonymous side).
   const loadUploadLinks = () => api.get<{ links: UploadLink[] }>('/api/v1/files/upload-links').then((r) => r.links);
-  const createUploadLink = (body: { file_folder_id?: number | null; label?: string; expires_at?: string | null }) =>
+  const createUploadLink = (body: { file_folder_id: number; label?: string; expires_at: string; password?: string }) =>
     api.post<{ link: UploadLink }>('/api/v1/files/upload-links', body).then((r) => r.link);
   const deleteUploadLink = (id: number) => api.delete(`/api/v1/files/upload-links/${id}`);
   const uploadLinkUrl = (token: string) => `${window.location.origin}/u/${token}`;
-  const uploadLinkMeta = (token: string) => api.get<{ label: string | null; owner: string }>(`/api/v1/upload-link/${encodeURIComponent(token)}`);
-  function uploadLinkSend(token: string, file: File, onProgress?: (fr: number) => void) {
+  const uploadLinkMeta = (token: string) => api.get<{ label: string | null; owner: string; needs_password: boolean }>(`/api/v1/upload-link/${encodeURIComponent(token)}`);
+  function uploadLinkSend(token: string, file: File, onProgress?: (fr: number) => void, password?: string) {
     const fd = new FormData();
     fd.append('file', file);
+    if (password) fd.append('password', password);
     return uploadWithProgress(`/api/v1/upload-link/${encodeURIComponent(token)}`, fd, onProgress);
   }
 

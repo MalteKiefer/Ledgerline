@@ -3,6 +3,19 @@
 declare(strict_types=1);
 
 return [
+    'ul_folder_existing' => 'Bestehender Ordner',
+    'ul_folder_new' => 'Neuer Ordner',
+    'ul_folder_required' => 'Bitte einen Ordner wählen oder benennen.',
+    'ul_expiry' => 'Läuft ab nach',
+    'ul_exp_1d' => '1 Tag',
+    'ul_exp_7d' => '7 Tage',
+    'ul_exp_30d' => '30 Tage',
+    'ul_exp_90d' => '90 Tage',
+    'ul_password' => 'Passwort (optional)',
+    'ul_password_hint' => 'Wenn gesetzt, müssen Hochladende es eingeben.',
+    'ul_password_first' => 'zuerst das Passwort eingeben',
+    'ul_password_wrong' => 'Falsches Passwort.',
+    'folder_name_ph' => 'Ordnername',
     'ul_section' => 'Upload-Links',
     'ul_create' => 'Upload-Link erstellen',
     'ul_hint' => 'Externe können ohne Konto in den aktuellen Ordner hochladen.',

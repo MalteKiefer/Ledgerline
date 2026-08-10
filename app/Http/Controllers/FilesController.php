@@ -1203,18 +1203,21 @@ class FilesController extends Controller
     public function storeUploadLink(Request $request): JsonResponse
     {
         $uid = (int) $this->requireUser($request)->id;
+        // A target folder + an expiry are required; a password is optional.
         $request->validate([
-            'file_folder_id' => ['nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'file_folder_id' => ['required', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
             'label' => ['nullable', 'string', 'max:200'],
-            'expires_at' => ['nullable', 'date'],
+            'expires_at' => ['required', 'date', 'after:now'],
+            'password' => ['nullable', 'string', 'max:200'],
         ]);
         $link = new FileUploadLink;
         $link->forceFill([
             'user_id' => $uid,
             'token' => Str::random(48),
-            'file_folder_id' => $request->filled('file_folder_id') ? $request->integer('file_folder_id') : null,
+            'file_folder_id' => $request->integer('file_folder_id'),
             'label' => $request->filled('label') ? $request->string('label')->value() : null,
-            'expires_at' => $request->filled('expires_at') ? $request->date('expires_at') : null,
+            'password_hash' => $request->filled('password') ? Hash::make($request->string('password')->value()) : null,
+            'expires_at' => $request->date('expires_at'),
         ])->save();
 
         return response()->json(['link' => $this->uploadLinkView($link)], 201);
@@ -1228,7 +1231,7 @@ class FilesController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** @return array{id:int,token:string,label:?string,file_folder_id:?int,expires_at:?string} */
+    /** @return array{id:int,token:string,label:?string,file_folder_id:?int,needs_password:bool,expires_at:?string} */
     private function uploadLinkView(FileUploadLink $l): array
     {
         return [
@@ -1236,6 +1239,7 @@ class FilesController extends Controller
             'token' => $l->token,
             'label' => $l->label,
             'file_folder_id' => $l->file_folder_id,
+            'needs_password' => $l->needsPassword(),
             'expires_at' => $l->expires_at?->toIso8601String(),
         ];
     }
@@ -1253,6 +1257,7 @@ class FilesController extends Controller
         return response()->json([
             'label' => $link->label,
             'owner' => (string) ($link->owner->name ?? ''),
+            'needs_password' => $link->needsPassword(),
         ]);
     }
 
@@ -1263,7 +1268,14 @@ class FilesController extends Controller
         if (! $link instanceof FileUploadLink || $link->isExpired()) {
             abort(404);
         }
-        $request->validate(['file' => ['required', 'file', 'max:'.$this->maxUploadKb()]]);
+        $request->validate([
+            'file' => ['required', 'file', 'max:'.$this->maxUploadKb()],
+            'password' => ['nullable', 'string', 'max:200'],
+        ]);
+        // Password-gated link: the uploader must supply the correct password.
+        if ($link->needsPassword() && ! Hash::check((string) $request->string('password')->value(), (string) $link->password_hash)) {
+            return response()->json(['error' => 'password'], 403);
+        }
         $upload = $request->file('file');
         if (! $upload instanceof UploadedFile) {
             abort(422);

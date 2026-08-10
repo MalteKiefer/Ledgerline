@@ -227,7 +227,7 @@ class FileShareTest extends TestCase
         $this->actingAs($owner);
         $folder = $this->seedFolder($owner, 'Inbox');
 
-        $token = $this->postJson(route('files.upload-links.store'), ['file_folder_id' => $folder->id, 'label' => 'Send me docs'])
+        $token = $this->postJson(route('files.upload-links.store'), ['file_folder_id' => $folder->id, 'label' => 'Send me docs', 'expires_at' => now()->addDays(7)->toIso8601String()])
             ->assertCreated()->json('link.token');
         $this->assertNotEmpty($token);
 
@@ -246,6 +246,23 @@ class FileShareTest extends TestCase
         $this->deleteJson(route('files.upload-links.destroy', $id))->assertOk();
         app('auth')->forgetGuards();
         $this->getJson(route('api.upload-link.meta', $token))->assertNotFound();
+    }
+
+    public function test_password_protected_upload_link_gates_uploads(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $folder = $this->seedFolder($owner, 'Inbox');
+        $token = $this->postJson(route('files.upload-links.store'), [
+            'file_folder_id' => $folder->id, 'expires_at' => now()->addDays(7)->toIso8601String(), 'password' => 'letmein',
+        ])->assertCreated()->assertJsonPath('link.needs_password', true)->json('link.token');
+
+        app('auth')->forgetGuards();
+        $this->getJson(route('api.upload-link.meta', $token))->assertOk()->assertJsonPath('needs_password', true);
+        $this->post(route('api.upload-link.store', $token), ['file' => UploadedFile::fake()->createWithContent('x.txt', 'x')])
+            ->assertStatus(403);
+        $this->post(route('api.upload-link.store', $token), ['file' => UploadedFile::fake()->createWithContent('y.txt', 'y'), 'password' => 'letmein'])
+            ->assertCreated();
     }
 
     public function test_crud_is_owner_scoped(): void

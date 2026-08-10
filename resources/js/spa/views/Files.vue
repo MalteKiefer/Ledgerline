@@ -525,6 +525,30 @@
     </div>
   </Modal>
 
+  <!-- Create a public upload link: folder (pick/create), mandatory expiry, optional password -->
+  <Modal v-model="ulDlg" :title="t('files.ul_create')" width="460px">
+    <div class="space-y-3">
+      <div>
+        <div class="mb-1 flex gap-2 text-sm">
+          <button class="rounded-lg px-2 py-1" :class="ulForm.folderMode==='existing' ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'" @click="ulForm.folderMode='existing'">{{ t('files.ul_folder_existing') }}</button>
+          <button class="rounded-lg px-2 py-1" :class="ulForm.folderMode==='new' ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'" @click="ulForm.folderMode='new'">{{ t('files.ul_folder_new') }}</button>
+        </div>
+        <Select v-if="ulForm.folderMode==='existing'" v-model.number="ulForm.folderId" :options="folderSelectOptions" />
+        <TextField v-else v-model="ulForm.newFolder" :placeholder="t('files.folder_name_ph')" />
+      </div>
+      <TextField v-model="ulForm.label" :label="t('files.ul_label_prompt')" />
+      <div>
+        <label class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('files.ul_expiry') }}</label>
+        <Select v-model.number="ulForm.days" :options="expiryOptions" />
+      </div>
+      <TextField v-model="ulForm.password" :label="t('files.ul_password')" type="password" autocomplete="new-password" :hint="t('files.ul_password_hint')" />
+    </div>
+    <template #footer>
+      <Btn variant="ghost" @click="ulDlg = false">{{ t('common.cancel') }}</Btn>
+      <Btn variant="solid" :loading="ulBusy" @click="submitUploadLink">{{ t('files.ul_create') }}</Btn>
+    </template>
+  </Modal>
+
   <!-- File preview: preview pane + always-visible info sidebar -->
   <Modal v-model="previewOpen" :title="preview?.name" width="64rem">
     <div v-if="preview" class="flex flex-col md:h-[calc(70vh-2.5rem)] md:flex-row">
@@ -634,7 +658,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
@@ -687,7 +711,36 @@ const roleOptions = computed(() => [{ title: t('files.sf_role_viewer'), value: '
 const labelsDlg = ref<{ show: boolean; busy: boolean; editing: FileLabel | null; name: string; color: string }>({ show: false, busy: false, editing: null, name: '', color: '#6b7280' });
 const storageDlg = ref<{ show: boolean; loading: boolean; data: FileStats | null }>({ show: false, loading: false, data: null });
 
-onMounted(() => s.load());
+// Keep the listing fresh without a hard reload: refresh when the tab regains
+// focus (owner comes back after an external upload) + a light periodic poll.
+async function refreshView() {
+  try {
+    await s.load();
+    if (view.value === 'shared') await loadShared();
+    if (view.value === 'trash') { const r = await s.loadTrash(); trashFiles.value = r.files; trashFolders.value = r.folders; }
+  } catch { /* transient */ }
+}
+function onFocus() { if (!document.hidden) void refreshView(); }
+let pollTimer: ReturnType<typeof setInterval> | undefined;
+onMounted(() => {
+  void s.load();
+  window.addEventListener('focus', onFocus);
+  document.addEventListener('visibilitychange', onFocus);
+  pollTimer = setInterval(() => { if (!document.hidden && !uploadState.value.active && !conflict.value.show) void refreshView(); }, 20_000);
+});
+onUnmounted(() => {
+  window.removeEventListener('focus', onFocus);
+  document.removeEventListener('visibilitychange', onFocus);
+  if (pollTimer) clearInterval(pollTimer);
+});
+
+const folderSelectOptions = computed(() => (s.folders as FileFolder[]).map((fo) => ({ title: folderPath(fo.id), value: fo.id })));
+const expiryOptions = computed(() => [
+  { title: t('files.ul_exp_1d'), value: 1 },
+  { title: t('files.ul_exp_7d'), value: 7 },
+  { title: t('files.ul_exp_30d'), value: 30 },
+  { title: t('files.ul_exp_90d'), value: 90 },
+]);
 
 const quotaPct = computed(() => (s.usage?.quota ? Math.min(100, (s.usage.used / s.usage.quota) * 100) : 0));
 function fmt(n: number) { return formatBytes(n); }
@@ -787,14 +840,32 @@ async function loadShared() {
     ]);
   } catch { error(t('common.error')); }
 }
-async function createUploadLink() {
-  const label = await promptAsk(t('files.ul_label_prompt'), { value: '' });
-  if (label === null) return; // cancelled
+// Create-link flow: pick or create a target folder, mandatory expiry, optional password.
+const ulDlg = ref(false);
+const ulForm = reactive<{ folderMode: 'existing' | 'new'; folderId: number | null; newFolder: string; label: string; days: number; password: string }>(
+  { folderMode: 'existing', folderId: null, newFolder: '', label: '', days: 7, password: '' },
+);
+const ulBusy = ref(false);
+function createUploadLink() {
+  Object.assign(ulForm, { folderMode: 'existing', folderId: cwd.value ?? (s.folders as FileFolder[])[0]?.id ?? null, newFolder: '', label: '', days: 7, password: '' });
+  ulDlg.value = true;
+}
+async function submitUploadLink() {
+  ulBusy.value = true;
   try {
-    await s.createUploadLink({ file_folder_id: cwd.value, label: label || undefined });
-    await loadShared();
+    let folderId = ulForm.folderId;
+    if (ulForm.folderMode === 'new') {
+      const name = ulForm.newFolder.trim();
+      if (!name) { error(t('files.ul_folder_required')); return; }
+      folderId = await s.createFolderId(name, cwd.value);
+    }
+    if (folderId == null) { error(t('files.ul_folder_required')); return; }
+    const expires = new Date(Date.now() + ulForm.days * 86_400_000).toISOString();
+    await s.createUploadLink({ file_folder_id: folderId, label: ulForm.label || undefined, expires_at: expires, password: ulForm.password || undefined });
+    ulDlg.value = false;
+    await Promise.all([s.load(), loadShared()]);
     success(t('common.saved'));
-  } catch { error(t('common.error')); }
+  } catch { error(t('common.error')); } finally { ulBusy.value = false; }
 }
 async function copyUploadLink(l: UploadLink) {
   try { await navigator.clipboard.writeText(s.uploadLinkUrl(l.token)); success(t('files.share_copied')); } catch { /* ignore */ }
