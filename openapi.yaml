@@ -450,6 +450,7 @@ components:
         uri: { type: string }
         color: { type: [string, "null"], description: "#RRGGBB or #RRGGBBAA (Apple CALENDAR-COLOR)." }
         kind: { type: string, enum: [normal, holidays, school_holidays, birthdays], description: "normal = editable; holidays/school_holidays/birthdays = generated + read-only." }
+        component: { type: string, enum: [VEVENT, VTODO], description: "Collection component type: VEVENT = event calendar, VTODO = task list (Apple Reminders / Tasks.org)." }
         country: { type: [string, "null"], description: "ISO 3166-1 alpha-2 (holiday kinds), remembered for regenerate. e.g. DE." }
         subdivision: { type: [string, "null"], description: "OpenHolidays subdivision code (holiday kinds), e.g. DE-BY; null = national." }
         owned: { type: boolean }
@@ -505,6 +506,54 @@ components:
         all_day: { type: boolean }
         rrule: { type: [string, "null"], maxLength: 255, description: "iCalendar RRULE; validated by parsing." }
         status: { type: [string, "null"], enum: [CONFIRMED, TENTATIVE, CANCELLED, null] }
+        etag: { type: [string, "null"], description: "Optional optimistic-concurrency token on update (409 on mismatch)." }
+
+    CalendarTodo:
+      type: object
+      description: >
+        A task (VTODO) in a task-list calendar (component=VTODO). The raw VTODO ICS
+        is authoritative; these are the denormalised fields the SPA renders. Times
+        are UTC. `next_due` is only present when the list is requested with
+        `expand=1` (the next upcoming occurrence of a recurring task).
+      properties:
+        id: { type: string, format: uuid }
+        calendar: { type: string, format: uuid, description: "Owning task-list calendar id." }
+        uid: { type: [string, "null"] }
+        summary: { type: [string, "null"] }
+        description: { type: [string, "null"] }
+        status: { type: string, enum: [NEEDS-ACTION, IN-PROCESS, COMPLETED, CANCELLED] }
+        priority: { type: [integer, "null"], minimum: 0, maximum: 9, description: "0/absent = none; 1-4 high, 5 medium, 6-9 low." }
+        percent_complete: { type: [integer, "null"], minimum: 0, maximum: 100 }
+        due: { type: [string, "null"], format: date-time }
+        dtstart: { type: [string, "null"], format: date-time }
+        completed_at: { type: [string, "null"], format: date-time }
+        all_day: { type: boolean }
+        rrule: { type: [string, "null"] }
+        categories: { type: array, items: { type: string } }
+        related_to: { type: [string, "null"], description: "Parent task UID (subtasks)." }
+        sequence: { type: integer }
+        sort_order: { type: integer, description: "Manual ordering within the list." }
+        color: { type: [string, "null"], description: "Echoes the owning calendar's colour." }
+        etag: { type: string }
+        next_due: { type: [string, "null"], format: date-time, description: "Only when expand=1: next upcoming occurrence." }
+
+    CalendarTodoInput:
+      type: object
+      properties:
+        calendar_id: { type: string, format: uuid, description: "Required on create; must be a VTODO (task-list) calendar." }
+        summary: { type: [string, "null"], maxLength: 255 }
+        description: { type: [string, "null"], maxLength: 5000 }
+        dtstart: { type: [string, "null"], format: date-time }
+        due: { type: [string, "null"], format: date-time }
+        completed: { type: [string, "null"], format: date-time }
+        all_day: { type: boolean }
+        status: { type: [string, "null"], enum: [NEEDS-ACTION, IN-PROCESS, COMPLETED, CANCELLED, null] }
+        priority: { type: [integer, "null"], minimum: 0, maximum: 9 }
+        percent_complete: { type: [integer, "null"], minimum: 0, maximum: 100 }
+        rrule: { type: [string, "null"], maxLength: 255, description: "iCalendar RRULE; validated by parsing." }
+        categories: { type: [array, "null"], items: { type: string, maxLength: 100 }, maxItems: 100 }
+        related_to: { type: [string, "null"], maxLength: 255 }
+        alarm_minutes_before: { type: [integer, "null"], minimum: 0, maximum: 40320, description: "Emits a relative VALARM (-PTnM) this many minutes before DUE." }
         etag: { type: [string, "null"], description: "Optional optimistic-concurrency token on update (409 on mismatch)." }
 
     CalendarSettings:
@@ -2088,8 +2137,8 @@ paths:
     post:
       tags: [Calendar]
       operationId: calendarsStore
-      summary: Create a calendar
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, color: { type: string } } } } } }
+      summary: Create a calendar (event calendar by default, or a VTODO task list)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, color: { type: string }, component: { type: string, enum: [VEVENT, VTODO], description: "VTODO = task list; omit/VEVENT = event calendar." } } } } } }
       responses:
         "201": { description: Created., content: { application/json: { schema: { type: object, properties: { id: { type: string } } } } } }
         "401": { $ref: '#/components/responses/Unauthorized' }
@@ -2162,6 +2211,137 @@ paths:
         "403": { $ref: '#/components/responses/Forbidden' }
         "404": { $ref: '#/components/responses/NotFound' }
         "422": { description: Not a special calendar. }
+        "429": { $ref: '#/components/responses/RateLimited' }
+
+  # Tasks (VTODO). Owner-scoped; live only in a task-list calendar (component=VTODO).
+  # Completing a recurring task rolls its DUE/DTSTART forward; optimistic concurrency
+  # is the DAV-native etag (409). Sync over CalDAV alongside these REST endpoints.
+  /calendar/todos:
+    get:
+      tags: [Calendar]
+      operationId: calendarTodos
+      summary: List tasks (optionally by calendar / status / due), owner-scoped
+      parameters:
+        - { name: calendar_id, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: status, in: query, required: false, schema: { type: string }, description: "One of NEEDS-ACTION/IN-PROCESS/COMPLETED/CANCELLED, or `open` (not completed/cancelled)." }
+        - { name: due_before, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: expand, in: query, required: false, schema: { type: boolean }, description: "Include next_due (next upcoming occurrence)." }
+      responses:
+        "200":
+          description: Tasks.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  todos: { type: array, items: { $ref: '#/components/schemas/CalendarTodo' } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Calendar]
+      operationId: calendarTodosStore
+      summary: Create a task
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CalendarTodoInput' } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { id: { type: string } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/todos/export:
+    get:
+      tags: [Calendar]
+      operationId: calendarTodosExport
+      summary: Export tasks (or one task list) as an .ics download
+      parameters: [{ name: calendar_id, in: query, required: false, schema: { type: string } }]
+      responses:
+        "200": { description: ICS file., content: { text/calendar: { schema: { type: string } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+  /calendar/todos/import:
+    post:
+      tags: [Calendar]
+      operationId: calendarTodosImport
+      summary: Import an .ics (one or many VTODOs) into a task list; dedupe by UID
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, calendar_id], properties: { file: { type: string, format: binary }, calendar_id: { type: string } } } } } }
+      responses:
+        "200": { description: Import counts., content: { application/json: { schema: { $ref: '#/components/schemas/CalendarImportResult' } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/todos/reorder:
+    post:
+      tags: [Calendar]
+      operationId: calendarTodosReorder
+      summary: Persist a manual task ordering (own tasks only)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [order], properties: { order: { type: array, maxItems: 5000, items: { type: string, format: uuid } } } } } } }
+      responses:
+        "200": { description: Saved. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/todos/{todo}:
+    get:
+      tags: [Calendar]
+      operationId: calendarTodosShow
+      summary: Full parsed task (editor shape) + etag
+      parameters: [{ name: todo, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Task editor data., content: { application/json: { schema: { $ref: '#/components/schemas/CalendarTodo' } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Calendar]
+      operationId: calendarTodosUpdate
+      summary: Update a task (409 on stale etag)
+      parameters: [{ name: todo, in: path, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CalendarTodoInput' } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, etag: { type: string } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { description: Stale etag., content: { application/json: { schema: { $ref: '#/components/schemas/EtagConflict' } } } }
+        "422": { $ref: '#/components/responses/ValidationError' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+    delete:
+      tags: [Calendar]
+      operationId: calendarTodosDestroy
+      summary: Delete a task (logs a CalDAV tombstone)
+      parameters: [{ name: todo, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Deleted. }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/todos/{todo}/complete:
+    post:
+      tags: [Calendar]
+      operationId: calendarTodosComplete
+      summary: Complete a task (recurring → roll DUE forward; else mark COMPLETED)
+      parameters: [{ name: todo, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: Completed (or rolled to next occurrence).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  rolled: { type: boolean, description: "true = a recurring task advanced to its next occurrence (stays NEEDS-ACTION)." }
+                  todo: { $ref: '#/components/schemas/CalendarTodo' }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /calendar/todos/{todo}/uncomplete:
+    post:
+      tags: [Calendar]
+      operationId: calendarTodosUncomplete
+      summary: Re-open a task (STATUS=NEEDS-ACTION, PERCENT-COMPLETE=0, drop COMPLETED)
+      parameters: [{ name: todo, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Re-opened., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, todo: { $ref: '#/components/schemas/CalendarTodo' } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "404": { $ref: '#/components/responses/NotFound' }
         "429": { $ref: '#/components/responses/RateLimited' }
 
   # --------------------------------------------------------------------------

@@ -7,8 +7,11 @@ namespace App\Dav;
 use App\Enums\DavChangeOperation;
 use App\Models\Calendar;
 use App\Models\CalendarEvent;
+use App\Models\CalendarTodo;
 use App\Services\Calendar\CalendarChangeLog;
 use App\Services\Calendar\CalendarEventPersister;
+use App\Services\Calendar\CalendarTodoPersister;
+use DateTimeInterface;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Sabre\CalDAV\Backend\AbstractBackend;
@@ -23,7 +26,7 @@ use Sabre\DAV\PropPatch;
  *
  * Every operation is owner-scoped to the request's authenticated user (set by
  * WebDavAuth via Auth::login), defence-in-depth on top of the DAVACL plugin: a
- * principal may only reach their own calendars (owner-only in Phase 1; sharing is
+ * principal may only reach their own calendars (owner-only for now; sharing is
  * a later phase). Byte-for-byte mirror of AddressBookBackend.
  */
 class CalendarBackend extends AbstractBackend implements SyncSupport
@@ -31,6 +34,7 @@ class CalendarBackend extends AbstractBackend implements SyncSupport
     public function __construct(
         private readonly CalendarChangeLog $changes,
         private readonly CalendarEventPersister $persister,
+        private readonly CalendarTodoPersister $todoPersister,
     ) {}
 
     /** The authenticated user id, or null when unauthenticated. */
@@ -41,12 +45,35 @@ class CalendarBackend extends AbstractBackend implements SyncSupport
         return $id === null ? null : (int) $id;
     }
 
-    /** The principal may see this calendar (owner-only in Phase 1). */
+    /** The principal may see this calendar (owner-only for now). */
     private function ownsCalendar(string $calendarId): bool
     {
         $userId = $this->currentUserId();
 
         return $userId !== null && Calendar::query()->ownedBy($userId)->whereKey($calendarId)->exists();
+    }
+
+    /** A VTODO (task-list) collection is served from calendar_todos, not calendar_events. */
+    private function isTodoCalendar(string $calendarId): bool
+    {
+        $calendar = Calendar::query()->withoutGlobalScopes()->find($calendarId);
+
+        return $calendar !== null && $calendar->component === Calendar::COMPONENT_TODO;
+    }
+
+    /**
+     * Resolve the component type a MKCALENDAR asked for: a set containing VTODO but
+     * not VEVENT is a task list; anything else (VEVENT-only, both, or unset) is an
+     * event calendar.
+     */
+    private function requestedComponent(mixed $property): string
+    {
+        $set = $property instanceof SupportedCalendarComponentSet ? $property->getValue() : [];
+        $set = array_map(fn (mixed $c): string => is_scalar($c) ? strtoupper((string) $c) : '', $set);
+
+        return in_array('VTODO', $set, true) && ! in_array('VEVENT', $set, true)
+            ? Calendar::COMPONENT_TODO
+            : Calendar::COMPONENT_EVENT;
     }
 
     /**
@@ -75,7 +102,11 @@ class CalendarBackend extends AbstractBackend implements SyncSupport
             '{urn:ietf:params:xml:ns:caldav}calendar-description' => (string) $c->description,
             '{http://apple.com/ns/ical/}calendar-color' => (string) $c->color,
             '{http://sabredav.org/ns}sync-token' => (string) $c->synctoken,
-            '{urn:ietf:params:xml:ns:caldav}supported-calendar-component-set' => new SupportedCalendarComponentSet(['VEVENT']),
+            // Advertise the collection's component so a task-list calendar surfaces
+            // as VTODO (Apple Reminders / Tasks.org) and an event calendar as VEVENT.
+            '{urn:ietf:params:xml:ns:caldav}supported-calendar-component-set' => new SupportedCalendarComponentSet(
+                [$c->component === Calendar::COMPONENT_TODO ? 'VTODO' : 'VEVENT'],
+            ),
         ];
     }
 
@@ -101,6 +132,9 @@ class CalendarBackend extends AbstractBackend implements SyncSupport
             'name' => is_scalar($dn) ? (string) $dn : $calendarUri,
             'description' => is_scalar($desc) ? (string) $desc : null,
             'color' => is_scalar($color) ? substr((string) $color, 0, 9) : null,
+            // Honour the MKCALENDAR requested component set: a client creating a
+            // "Reminders"/task list requests VTODO; anything else is an event calendar.
+            'component' => $this->requestedComponent($properties['{urn:ietf:params:xml:ns:caldav}supported-calendar-component-set'] ?? null),
             'timezone' => 'UTC',
             'synctoken' => 1,
         ]);
@@ -160,6 +194,10 @@ class CalendarBackend extends AbstractBackend implements SyncSupport
         if (! $this->ownsCalendar($calendarId)) {
             return [];
         }
+        if ($this->isTodoCalendar($calendarId)) {
+            return CalendarTodo::where('calendar_id', $calendarId)->get()
+                ->map(fn (CalendarTodo $t): array => $this->todoRow($t, includeData: false))->all();
+        }
 
         return CalendarEvent::where('calendar_id', $calendarId)->get()
             ->map(fn (CalendarEvent $e): array => $this->objectRow($e, includeData: false))->all();
@@ -174,6 +212,11 @@ class CalendarBackend extends AbstractBackend implements SyncSupport
     {
         if (! $this->ownsCalendar($calendarId)) {
             return null;
+        }
+        if ($this->isTodoCalendar($calendarId)) {
+            $todo = CalendarTodo::where('calendar_id', $calendarId)->where('uri', $objectUri)->first();
+
+            return $todo === null ? null : $this->todoRow($todo, includeData: true);
         }
         $event = CalendarEvent::where('calendar_id', $calendarId)->where('uri', $objectUri)->first();
 
@@ -190,6 +233,10 @@ class CalendarBackend extends AbstractBackend implements SyncSupport
         if (! $this->ownsCalendar($calendarId)) {
             return [];
         }
+        if ($this->isTodoCalendar($calendarId)) {
+            return CalendarTodo::where('calendar_id', $calendarId)->whereIn('uri', $uris)->get()
+                ->map(fn (CalendarTodo $t): array => $this->todoRow($t, includeData: true))->all();
+        }
 
         return CalendarEvent::where('calendar_id', $calendarId)->whereIn('uri', $uris)->get()
             ->map(fn (CalendarEvent $e): array => $this->objectRow($e, includeData: true))->all();
@@ -198,16 +245,35 @@ class CalendarBackend extends AbstractBackend implements SyncSupport
     /** @return array<string, mixed> */
     private function objectRow(CalendarEvent $e, bool $includeData): array
     {
+        return $this->row($e->id, $e->calendar_id, $e->uri, $e->updated_at, $e->etag, strlen($e->ics), $e->component, $includeData ? $e->ics : null);
+    }
+
+    /** @return array<string, mixed> */
+    private function todoRow(CalendarTodo $t, bool $includeData): array
+    {
+        return $this->row($t->id, $t->calendar_id, $t->uri, $t->updated_at, $t->etag, strlen($t->ics), 'VTODO', $includeData ? $t->ics : null);
+    }
+
+    /**
+     * Sabre calendar-object descriptor. `calendarid` is included so the parent
+     * calendarQuery validator can re-fetch the data lazily; `calendardata` is only
+     * set when the caller needs the bytes.
+     *
+     * @return array<string, mixed>
+     */
+    private function row(string $id, string $calendarId, string $uri, ?DateTimeInterface $lastModified, string $etag, int $size, string $component, ?string $ics): array
+    {
         $row = [
-            'id' => $e->id,
-            'uri' => $e->uri,
-            'lastmodified' => $e->updated_at?->getTimestamp(),
-            'etag' => '"'.$e->etag.'"',
-            'size' => strlen($e->ics),
-            'component' => strtolower($e->component),
+            'id' => $id,
+            'calendarid' => $calendarId,
+            'uri' => $uri,
+            'lastmodified' => $lastModified?->getTimestamp(),
+            'etag' => '"'.$etag.'"',
+            'size' => $size,
+            'component' => strtolower($component),
         ];
-        if ($includeData) {
-            $row['calendardata'] = $e->ics;
+        if ($ics !== null) {
+            $row['calendardata'] = $ics;
         }
 
         return $row;
@@ -227,7 +293,11 @@ class CalendarBackend extends AbstractBackend implements SyncSupport
         if ($calendar === null) {
             return null;
         }
-        $this->persister->persistNew($calendar, $objectUri, (string) $calendarData);
+        if ($calendar->component === Calendar::COMPONENT_TODO) {
+            $this->todoPersister->persistNew($calendar, $objectUri, (string) $calendarData);
+        } else {
+            $this->persister->persistNew($calendar, $objectUri, (string) $calendarData);
+        }
 
         return '"'.md5((string) $calendarData).'"';
     }
@@ -241,6 +311,15 @@ class CalendarBackend extends AbstractBackend implements SyncSupport
     {
         if (! $this->ownsCalendar($calendarId)) {
             return null;
+        }
+        if ($this->isTodoCalendar($calendarId)) {
+            $todo = CalendarTodo::where('calendar_id', $calendarId)->where('uri', $objectUri)->first();
+            if ($todo === null) {
+                return null;
+            }
+            $this->todoPersister->persistUpdate($todo, (string) $calendarData);
+
+            return '"'.md5((string) $calendarData).'"';
         }
         $event = CalendarEvent::where('calendar_id', $calendarId)->where('uri', $objectUri)->first();
         if ($event === null) {
@@ -260,11 +339,16 @@ class CalendarBackend extends AbstractBackend implements SyncSupport
         if (! $this->ownsCalendar($calendarId)) {
             return;
         }
-        $deleted = CalendarEvent::where('calendar_id', $calendarId)->where('uri', $objectUri)->delete();
+        $isTodo = $this->isTodoCalendar($calendarId);
+        $deleted = $isTodo
+            ? CalendarTodo::where('calendar_id', $calendarId)->where('uri', $objectUri)->delete()
+            : CalendarEvent::where('calendar_id', $calendarId)->where('uri', $objectUri)->delete();
         if ($deleted) {
             $calendar = Calendar::query()->withoutGlobalScopes()->find($calendarId);
             if ($calendar !== null) {
-                $this->changes->record($calendar, $objectUri, DavChangeOperation::Deleted);
+                $isTodo
+                    ? $this->changes->recordTodo($calendar, $objectUri, DavChangeOperation::Deleted)
+                    : $this->changes->record($calendar, $objectUri, DavChangeOperation::Deleted);
             }
         }
     }
@@ -305,12 +389,18 @@ class CalendarBackend extends AbstractBackend implements SyncSupport
         }
 
         $current = (int) $calendar->synctoken;
+        $isTodo = $calendar->component === Calendar::COMPONENT_TODO;
+        $changeTable = $isTodo ? 'calendar_todo_changes' : 'calendar_changes';
 
         if ($syncToken === null || $syncToken === '') {
-            // Initial sync: every current event is "added".
+            // Initial sync: every current object is "added".
+            $added = $isTodo
+                ? CalendarTodo::where('calendar_id', $calendarId)->pluck('uri')->all()
+                : CalendarEvent::where('calendar_id', $calendarId)->pluck('uri')->all();
+
             return [
                 'syncToken' => (string) $current,
-                'added' => CalendarEvent::where('calendar_id', $calendarId)->pluck('uri')->all(),
+                'added' => $added,
                 'modified' => [],
                 'deleted' => [],
             ];
@@ -321,12 +411,12 @@ class CalendarBackend extends AbstractBackend implements SyncSupport
         if (! ctype_digit((string) $syncToken) || (int) $syncToken > $current) {
             return null;
         }
-        $oldestKept = DB::table('calendar_changes')->where('calendar_id', $calendarId)->min('synctoken');
+        $oldestKept = DB::table($changeTable)->where('calendar_id', $calendarId)->min('synctoken');
         if (is_numeric($oldestKept) && (int) $syncToken < (int) $oldestKept && (int) $syncToken < $current) {
             return null;
         }
 
-        $rows = DB::table('calendar_changes')
+        $rows = DB::table($changeTable)
             ->where('calendar_id', $calendarId)
             ->where('synctoken', '>=', (int) $syncToken)
             ->orderBy('synctoken')

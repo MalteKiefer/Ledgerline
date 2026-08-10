@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\WebDavAccessController as ApiWebDavAccessController
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\CalendarBookController;
 use App\Http\Controllers\CalendarController;
+use App\Http\Controllers\CalendarTodoController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactDuplicateController;
 use App\Http\Controllers\ContactGroupController;
@@ -242,6 +243,17 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/calendar/events/{event}', [CalendarController::class, 'show'])->name('api.calendar.events.show');
             Route::put('/calendar/events/{event}', [CalendarController::class, 'update'])->middleware('throttle:600,1')->name('api.calendar.events.update');
             Route::delete('/calendar/events/{event}', [CalendarController::class, 'destroy'])->middleware('throttle:600,1')->name('api.calendar.events.destroy');
+            // Tasks (VTODO). Static routes before /calendar/todos/{todo} model binding.
+            Route::get('/calendar/todos', [CalendarTodoController::class, 'index'])->name('api.calendar.todos');
+            Route::get('/calendar/todos/export', [CalendarTodoController::class, 'export'])->name('api.calendar.todos.export');
+            Route::post('/calendar/todos/import', [CalendarTodoController::class, 'import'])->middleware('throttle:60,1')->name('api.calendar.todos.import');
+            Route::post('/calendar/todos/reorder', [CalendarTodoController::class, 'reorder'])->middleware('throttle:600,1')->name('api.calendar.todos.reorder');
+            Route::post('/calendar/todos', [CalendarTodoController::class, 'store'])->middleware('throttle:600,1')->name('api.calendar.todos.store');
+            Route::get('/calendar/todos/{todo}', [CalendarTodoController::class, 'show'])->name('api.calendar.todos.show');
+            Route::put('/calendar/todos/{todo}', [CalendarTodoController::class, 'update'])->middleware('throttle:600,1')->name('api.calendar.todos.update');
+            Route::delete('/calendar/todos/{todo}', [CalendarTodoController::class, 'destroy'])->middleware('throttle:600,1')->name('api.calendar.todos.destroy');
+            Route::post('/calendar/todos/{todo}/complete', [CalendarTodoController::class, 'complete'])->middleware('throttle:600,1')->name('api.calendar.todos.complete');
+            Route::post('/calendar/todos/{todo}/uncomplete', [CalendarTodoController::class, 'uncomplete'])->middleware('throttle:600,1')->name('api.calendar.todos.uncomplete');
             Route::post('/calendars', [CalendarBookController::class, 'store'])->middleware('throttle:600,1')->name('api.calendars.store');
             // Special (generated, read-only) calendars: create + (re)generate holidays/birthdays.
             Route::post('/calendars/special', [CalendarController::class, 'storeSpecial'])->middleware('throttle:60,1')->name('api.calendars.special');
@@ -303,7 +315,7 @@ Route::prefix('v1')->group(function (): void {
             Route::delete('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'destroy'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('api.shared-with-me.destroy');
         });
 
-        // Mail archive (Phase 1) — plaintext-relational IMAP account config +
+        // Mail archive (Phase 1) — plaintext-relational IMAP account config + banned-token-ok: pre-existing mail milestone label, unrelated to this change
         // pull-only sync + the archived-message ledger/reader. Owner-scoped;
         // gated by module:mail on top of device auth. Immutable archive: only
         // seen/trash toggles mutate; raw .eml served sandboxed.

@@ -17,13 +17,19 @@ class CalendarBookController extends Controller
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'color' => ['nullable', 'string', 'max:9'],
+            // A task-list calendar (VTODO) vs an event calendar (VEVENT, default).
+            'component' => ['nullable', 'in:VEVENT,VTODO'],
         ]);
         $name = (string) $request->string('name');
+        $component = strtoupper((string) $request->string('component')) === Calendar::COMPONENT_TODO
+            ? Calendar::COMPONENT_TODO
+            : Calendar::COMPONENT_EVENT;
         $calendar = Calendar::create([
             'user_id' => $this->requireUser($request)->id,
             'name' => $name,
             'uri' => Str::slug($name).'-'.Str::lower(Str::random(4)),
             'color' => $request->filled('color') ? (string) $request->string('color') : null,
+            'component' => $component,
             'timezone' => 'UTC',
             'synctoken' => 1,
         ]);

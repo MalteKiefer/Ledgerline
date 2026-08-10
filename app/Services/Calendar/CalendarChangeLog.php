@@ -23,6 +23,16 @@ class CalendarChangeLog
         $this->append($calendar, 'calendar_changes', 'calendar_id', $uri, $op);
     }
 
+    /**
+     * Same sync-collection semantics, but for a task list: the change lands in
+     * calendar_todo_changes. A calendar is either an event or a task collection, so
+     * its single synctoken tracks exactly one of the two change tables.
+     */
+    public function recordTodo(Calendar $calendar, string $uri, DavChangeOperation $op): void
+    {
+        $this->append($calendar, 'calendar_todo_changes', 'calendar_id', $uri, $op);
+    }
+
     private function append(Calendar $collection, string $table, string $foreignKey, string $uri, DavChangeOperation $op): void
     {
         DB::transaction(function () use ($collection, $table, $foreignKey, $uri, $op): void {
