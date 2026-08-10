@@ -4747,6 +4747,28 @@ paths:
         "200": { description: Moved., content: { application/json: { schema: { type: object, properties: { folder: { $ref: "#/components/schemas/FileFolder" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /files/folders/{id}/restore:
+    post:
+      tags: [Files]
+      operationId: filesRestoreFolder
+      summary: Restore a trashed folder and its whole subtree + files
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, properties: { folder: { $ref: "#/components/schemas/FileFolder" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /files/folders/{id}/force:
+    delete:
+      tags: [Files]
+      operationId: filesForceDeleteFolder
+      summary: Permanently delete a trashed folder subtree (folders + files + bytes)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "422": { description: "Move would create a cycle (error=cycle)." }
   /files/upload/chunk/init:
     post:

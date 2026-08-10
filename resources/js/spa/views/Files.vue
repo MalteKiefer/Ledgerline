@@ -662,8 +662,8 @@ async function doTrash(row: Row) {
   if (row._folder) await s.trashFolder(row.raw as FileFolder); else await s.trashFile(row.raw as FileEntry);
   await s.load();
 }
-async function doRestore(row: Row) { await s.restoreFile(row.id); await setView('trash'); await s.load(); }
-async function doForce(row: Row) { if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return; await s.forceFile(row.id); await setView('trash'); }
+async function doRestore(row: Row) { if (row._folder) await s.restoreFolder(row.id); else await s.restoreFile(row.id); await setView('trash'); await s.load(); }
+async function doForce(row: Row) { if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return; if (row._folder) await s.forceFolder(row.id); else await s.forceFile(row.id); await setView('trash'); }
 async function emptyTrash() { if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return; await s.emptyTrash(); await setView('trash'); await s.load(); }
 
 // ---- Label filter ----

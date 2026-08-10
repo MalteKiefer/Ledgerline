@@ -236,16 +236,19 @@ class FilesController extends Controller
 
     /**
      * The folder plus every descendant folder id (owner-scoped through the model).
+     * Pass $withTrashed to traverse a soft-deleted subtree (restore/force paths),
+     * where the default scope would hide the trashed children.
      *
      * @return list<int>
      */
-    private function descendantFolderIds(int $rootId): array
+    private function descendantFolderIds(int $rootId, bool $withTrashed = false): array
     {
         $ids = [$rootId];
         $frontier = [$rootId];
         $guard = 0;
         while ($frontier !== [] && $guard++ < 10000) {
-            $children = FileFolder::query()->whereIn('parent_id', $frontier)->pluck('id')->all();
+            $children = ($withTrashed ? FileFolder::withTrashed() : FileFolder::query())
+                ->whereIn('parent_id', $frontier)->pluck('id')->all();
             $frontier = [];
             foreach ($children as $child) {
                 if (! is_numeric($child)) {
@@ -673,6 +676,41 @@ class FilesController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /** Restore a trashed folder and its whole (co-trashed) subtree + files. */
+    public function restoreFolder(int $id): JsonResponse
+    {
+        $folder = FileFolder::onlyTrashed()->findOrFail($id);
+        DB::transaction(function () use ($folder): void {
+            $ids = $this->descendantFolderIds($folder->id, withTrashed: true);
+            FileFolder::withTrashed()->whereIn('id', $ids)->restore();
+            FileEntry::onlyTrashed()->whereIn('file_folder_id', $ids)->restore();
+        });
+
+        return response()->json(['folder' => $folder->fresh()]);
+    }
+
+    /** Permanently delete a trashed folder subtree (folders + files + blobs). */
+    public function forceDeleteFolder(int $id): JsonResponse
+    {
+        $folder = FileFolder::onlyTrashed()->findOrFail($id);
+        DB::transaction(function () use ($folder): void {
+            $ids = $this->descendantFolderIds($folder->id, withTrashed: true);
+            FileEntry::withTrashed()->whereIn('file_folder_id', $ids)->with('versions')
+                ->chunkById(100, function ($chunk): void {
+                    foreach ($chunk as $file) {
+                        foreach ($file->versions as $v) {
+                            $this->fs()->delete($v->storage_path);
+                        }
+                        $this->fs()->delete($file->storage_path);
+                        $file->forceDelete();
+                    }
+                });
+            FileFolder::withTrashed()->whereIn('id', $ids)->forceDelete();
+        });
+
+        return response()->json(['ok' => true]);
+    }
+
     public function emptyTrash(): JsonResponse
     {
         $n = 0;
@@ -686,6 +724,8 @@ class FilesController extends Controller
                 $n++;
             }
         });
+        // Purge trashed folders too — emptyTrash previously left them behind.
+        FileFolder::onlyTrashed()->forceDelete();
 
         return response()->json(['deleted' => $n]);
     }

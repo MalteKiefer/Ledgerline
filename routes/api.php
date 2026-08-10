@@ -299,6 +299,8 @@ Route::prefix('v1')->group(function (): void {
             Route::put('/files/folders/{folder}', [FilesController::class, 'renameFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.files.folders.update');
             Route::post('/files/folders/{folder}/move', [FilesController::class, 'moveFolder'])->whereNumber('folder')->middleware('throttle:1200,1')->name('api.files.folders.move');
             Route::delete('/files/folders/{folder}', [FilesController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.files.folders.destroy');
+            Route::post('/files/folders/{id}/restore', [FilesController::class, 'restoreFolder'])->whereNumber('id')->middleware('throttle:600,1')->name('api.files.folders.restore');
+            Route::delete('/files/folders/{id}/force', [FilesController::class, 'forceDeleteFolder'])->whereNumber('id')->middleware('throttle:600,1')->name('api.files.folders.force');
             Route::post('/files/upload/chunk/init', [FilesController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.files.chunk.init');
             Route::post('/files/upload/chunk/part', [FilesController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.files.chunk.part');
             Route::post('/files/upload/chunk/complete', [FilesController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.files.chunk.complete');
