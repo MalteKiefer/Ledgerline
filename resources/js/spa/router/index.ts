@@ -33,6 +33,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'files', name: 'files', component: () => import('@spa/views/Files.vue') },
       { path: 'shared-with-me', name: 'shared-with-me', component: () => import('@spa/views/SharedWithMe.vue') },
       { path: 'contacts', name: 'contacts', component: () => import('@spa/views/Contacts.vue') },
+      { path: 'notes', name: 'notes', component: () => import('@spa/views/Notes.vue') },
       { path: 'calendar', name: 'calendar', component: () => import('@spa/views/Calendar.vue') },
       { path: 'tasks', name: 'tasks', component: () => import('@spa/views/Tasks.vue') },
       { path: 'mail', name: 'mail', component: () => import('@spa/views/Mail.vue') },

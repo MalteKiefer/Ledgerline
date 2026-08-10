@@ -159,6 +159,16 @@ tags:
       `{contacts, books, groups}`; `GET /contacts/{id}` returns the full parsed
       vCard (fn, org, emails/phones/urls/addresses, note, group_ids). Owner-scope
       is enforced controller-side; avatar bytes stream from `/contacts/{id}/avatar`.
+  - name: Notes
+    description: >
+      Notes module (plaintext-relational, Markdown). A nested folder tree + notes
+      with a plaintext Markdown body, tags, pin/favorite, optimistic `version`
+      (→ 409) and a soft-delete recycle bin. The same guard-agnostic
+      `NotesController` backs the web routes; these `/api/v1` mirrors are gated by
+      `module:notes` on top of device auth. `GET /notes/data` returns
+      `{folders, notes, tags}` (notes without body); `GET /notes/{id}` returns the
+      full note incl. body. Search uses the Postgres GIN index (title+body).
+      Owner-scope is enforced controller-side.
   - name: Calendar
     description: >
       CalDAV-backed calendar module (calendars + events), plaintext-relational.
@@ -699,6 +709,58 @@ components:
         ok:
           type: boolean
           example: true
+
+    NoteFolder:
+      type: object
+      description: A folder in the notes tree (plaintext-relational, owner-scoped).
+      properties:
+        id: { type: integer }
+        parent_id: { type: [integer, "null"] }
+        name: { type: string }
+        color: { type: [string, "null"] }
+        position: { type: integer }
+        version: { type: integer, description: Optimistic-concurrency counter. }
+    NoteFolderInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 500 }
+        parent_id: { type: [integer, "null"], description: Owner's folder id; a cycle is rejected 422. }
+        color: { type: [string, "null"], maxLength: 32 }
+        position: { type: integer }
+    NoteRow:
+      type: object
+      description: Lightweight note row (list view — no body).
+      properties:
+        id: { type: integer }
+        note_folder_id: { type: [integer, "null"] }
+        title: { type: string }
+        tags: { type: array, items: { type: string } }
+        pinned: { type: boolean }
+        favorite: { type: boolean }
+        updated_at: { type: [string, "null"], format: date-time }
+    Note:
+      type: object
+      description: A full note (editor view) — the plaintext Markdown body is included.
+      properties:
+        id: { type: integer }
+        note_folder_id: { type: [integer, "null"] }
+        title: { type: string }
+        body: { type: string, description: Plaintext Markdown; rendered client-side (sanitised). }
+        tags: { type: array, items: { type: string } }
+        pinned: { type: boolean }
+        favorite: { type: boolean }
+        updated_at: { type: [string, "null"], format: date-time }
+        version: { type: integer }
+    NoteInput:
+      type: object
+      properties:
+        title: { type: [string, "null"], maxLength: 500 }
+        body: { type: [string, "null"], description: Plaintext Markdown. }
+        tags: { type: array, items: { type: string, maxLength: 100 }, maxItems: 100 }
+        pinned: { type: boolean }
+        favorite: { type: boolean }
+        note_folder_id: { type: [integer, "null"], description: Owner's folder id. }
 
     Invoice:
       type: object
@@ -2049,6 +2111,273 @@ paths:
                         lon: { type: number, description: "Longitude." }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "429": { $ref: '#/components/responses/RateLimited' }
+
+  # --------------------------------------------------------------------------
+  # Notes (plaintext-relational Markdown, module:notes)
+  # --------------------------------------------------------------------------
+
+  /notes/data:
+    get:
+      tags: [Notes]
+      operationId: notesData
+      summary: Folder tree + note list + tag aggregate
+      description: Notes are returned without their body (lightweight list). Owner-scoped.
+      responses:
+        "200":
+          description: Notes data.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folders: { type: array, items: { $ref: "#/components/schemas/NoteFolder" } }
+                  notes: { type: array, items: { $ref: "#/components/schemas/NoteRow" } }
+                  tags:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        count: { type: integer }
+        "401": { description: Unauthenticated. }
+        "403": { description: Module disabled. }
+  /notes/trash:
+    get:
+      tags: [Notes]
+      operationId: notesTrash
+      summary: Trashed notes + folders
+      responses:
+        "200":
+          description: Recycle bin.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notes: { type: array, items: { $ref: "#/components/schemas/NoteRow" } }
+                  folders: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: string } } } }
+        "401": { description: Unauthenticated. }
+  /notes/search:
+    get:
+      tags: [Notes]
+      operationId: notesSearch
+      summary: Full-text search over title + body
+      description: Postgres GIN full-text (title+body) with a sqlite LIKE fallback. Owner-scoped, capped at 100. Throttle 120/min.
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Matching notes (without body).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notes: { type: array, items: { $ref: "#/components/schemas/NoteRow" } }
+        "401": { description: Unauthenticated. }
+  /notes:
+    post:
+      tags: [Notes]
+      operationId: notesStore
+      summary: Create a note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NoteInput" }
+      responses:
+        "201":
+          description: Created note (with body).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  note: { $ref: "#/components/schemas/Note" }
+        "401": { description: Unauthenticated. }
+        "422": { description: Validation error. }
+  /notes/{note}:
+    get:
+      tags: [Notes]
+      operationId: notesShow
+      summary: Full note (with body) for the editor
+      parameters:
+        - { name: note, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Note with body.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  note: { $ref: "#/components/schemas/Note" }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
+    put:
+      tags: [Notes]
+      operationId: notesUpdate
+      summary: Update a note (optimistic)
+      description: Send `version` for optimistic concurrency; a stale version returns 409.
+      parameters:
+        - { name: note, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: "#/components/schemas/NoteInput" }
+                - type: object
+                  properties: { version: { type: integer } }
+      responses:
+        "200":
+          description: Updated note.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  note: { $ref: "#/components/schemas/Note" }
+        "409":
+          description: Version conflict.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, enum: [version_conflict] }
+                  version: { type: integer }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
+    delete:
+      tags: [Notes]
+      operationId: notesDestroy
+      summary: Move a note to trash (soft-delete)
+      parameters:
+        - { name: note, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Trashed., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
+  /notes/{note}/favorite:
+    patch:
+      tags: [Notes]
+      operationId: notesFavorite
+      summary: Toggle favorite
+      parameters:
+        - { name: note, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { favorite: { type: boolean } } }
+      responses:
+        "200": { description: OK., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { description: Unauthenticated. }
+  /notes/{note}/pin:
+    patch:
+      tags: [Notes]
+      operationId: notesPin
+      summary: Toggle pinned
+      parameters:
+        - { name: note, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { pinned: { type: boolean } } }
+      responses:
+        "200": { description: OK., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { description: Unauthenticated. }
+  /notes/{id}/restore:
+    post:
+      tags: [Notes]
+      operationId: notesRestore
+      summary: Restore a trashed note
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { description: Unauthenticated. }
+  /notes/{id}/force:
+    delete:
+      tags: [Notes]
+      operationId: notesForceDelete
+      summary: Permanently delete a trashed note
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { description: Unauthenticated. }
+  /notes/folders:
+    post:
+      tags: [Notes]
+      operationId: notesFolderStore
+      summary: Create a folder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NoteFolderInput" }
+      responses:
+        "201":
+          description: Created folder.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folder: { $ref: "#/components/schemas/NoteFolder" }
+        "401": { description: Unauthenticated. }
+        "422": { description: Validation error. }
+  /notes/folders/{folder}:
+    put:
+      tags: [Notes]
+      operationId: notesFolderUpdate
+      summary: Rename / recolor / move a folder (optimistic)
+      parameters:
+        - { name: folder, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: "#/components/schemas/NoteFolderInput" }
+                - type: object
+                  properties: { version: { type: integer } }
+      responses:
+        "200":
+          description: Updated folder.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folder: { $ref: "#/components/schemas/NoteFolder" }
+        "409": { description: Version conflict. }
+        "422": { description: Validation error / cycle. }
+        "401": { description: Unauthenticated. }
+    delete:
+      tags: [Notes]
+      operationId: notesFolderDestroy
+      summary: Delete a folder + its subtree (to trash)
+      parameters:
+        - { name: folder, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Trashed., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { description: Unauthenticated. }
+  /notes/folders/{id}/restore:
+    post:
+      tags: [Notes]
+      operationId: notesFolderRestore
+      summary: Restore a trashed folder subtree
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { description: Unauthenticated. }
 
   # --------------------------------------------------------------------------
   # Calendar (CalDAV-backed, module:calendar)

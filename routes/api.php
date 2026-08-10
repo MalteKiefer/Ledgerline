@@ -57,6 +57,7 @@ use App\Http\Controllers\MailSeenController;
 use App\Http\Controllers\MailSendController;
 use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\MailTrashController;
+use App\Http\Controllers\NotesController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
@@ -233,6 +234,25 @@ Route::prefix('v1')->group(function (): void {
             // the web Settings/ContactsController@profile; carries the username, never
             // a password (sync uses the app-specific webdav_password, hashed).
             Route::get('/account/carddav-profile', [ApiContactsProfileController::class, 'carddavProfile'])->middleware('throttle:20,1')->name('api.account.carddav-profile');
+        });
+
+        // Notes module — same guard-agnostic controller as web, under device auth.
+        Route::middleware('module:notes')->group(function (): void {
+            Route::get('/notes/data', [NotesController::class, 'data'])->name('api.notes.data');
+            Route::get('/notes/trash', [NotesController::class, 'trash'])->name('api.notes.trash');
+            Route::get('/notes/search', [NotesController::class, 'search'])->middleware('throttle:120,1')->name('api.notes.search');
+            Route::post('/notes', [NotesController::class, 'store'])->middleware('throttle:600,1')->name('api.notes.store');
+            Route::post('/notes/folders', [NotesController::class, 'storeFolder'])->middleware('throttle:600,1')->name('api.notes.folders.store');
+            Route::put('/notes/folders/{folder}', [NotesController::class, 'updateFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.notes.folders.update');
+            Route::delete('/notes/folders/{folder}', [NotesController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.notes.folders.destroy');
+            Route::post('/notes/folders/{id}/restore', [NotesController::class, 'restoreFolder'])->whereNumber('id')->middleware('throttle:600,1')->name('api.notes.folders.restore');
+            Route::get('/notes/{note}', [NotesController::class, 'show'])->whereNumber('note')->name('api.notes.show');
+            Route::put('/notes/{note}', [NotesController::class, 'update'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.update');
+            Route::patch('/notes/{note}/favorite', [NotesController::class, 'favorite'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.favorite');
+            Route::patch('/notes/{note}/pin', [NotesController::class, 'pin'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.pin');
+            Route::delete('/notes/{note}', [NotesController::class, 'destroy'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.destroy');
+            Route::post('/notes/{id}/restore', [NotesController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.notes.restore');
+            Route::delete('/notes/{id}/force', [NotesController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.notes.force');
         });
 
         // Calendar module — mirrors the web routes (plaintext-relational calendars

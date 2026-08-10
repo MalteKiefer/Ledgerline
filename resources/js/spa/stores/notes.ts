@@ -1,0 +1,51 @@
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
+import { api } from '@spa/api/client';
+
+export interface NoteFolder {
+  id: number; parent_id: number | null; name: string; color: string | null; position: number; version: number;
+}
+export interface NoteRow {
+  id: number; note_folder_id: number | null; title: string; tags: string[];
+  pinned: boolean; favorite: boolean; updated_at: string | null;
+}
+export interface NoteDetail extends NoteRow { body: string; version?: number }
+export interface TagCount { name: string; count: number }
+
+export const useNotesStore = defineStore('notes', () => {
+  const notes = ref<NoteRow[]>([]);
+  const folders = ref<NoteFolder[]>([]);
+  const tags = ref<TagCount[]>([]);
+
+  async function load() {
+    const r = await api.get<{ folders: NoteFolder[]; notes: NoteRow[]; tags: TagCount[] }>('/api/v1/notes/data');
+    folders.value = r.folders ?? [];
+    notes.value = r.notes ?? [];
+    tags.value = r.tags ?? [];
+  }
+
+  const show = (id: number) => api.get<{ note: NoteDetail }>(`/api/v1/notes/${id}`).then((r) => r.note);
+  const create = (body: Record<string, unknown>) => api.post<{ note: NoteDetail }>('/api/v1/notes', body).then((r) => r.note);
+  const update = (id: number, body: Record<string, unknown>) => api.put<{ note: NoteDetail }>(`/api/v1/notes/${id}`, body).then((r) => r.note);
+  const destroy = (id: number) => api.delete(`/api/v1/notes/${id}`);
+  const favorite = (id: number, fav: boolean) => api.patch(`/api/v1/notes/${id}/favorite`, { favorite: fav });
+  const pin = (id: number, pinned: boolean) => api.patch(`/api/v1/notes/${id}/pin`, { pinned });
+  const search = (q: string) => api.get<{ notes: NoteRow[] }>(`/api/v1/notes/search?q=${encodeURIComponent(q)}`).then((r) => r.notes);
+
+  const createFolder = (body: Record<string, unknown>) => api.post<{ folder: NoteFolder }>('/api/v1/notes/folders', body).then((r) => r.folder);
+  const updateFolder = (id: number, body: Record<string, unknown>) => api.put(`/api/v1/notes/folders/${id}`, body);
+  const deleteFolder = (id: number) => api.delete(`/api/v1/notes/folders/${id}`);
+
+  // Recycle bin
+  const trash = () => api.get<{ notes: NoteRow[]; folders: { id: number; name: string }[] }>('/api/v1/notes/trash');
+  const restore = (id: number) => api.post(`/api/v1/notes/${id}/restore`);
+  const forceDelete = (id: number) => api.delete(`/api/v1/notes/${id}/force`);
+  const restoreFolder = (id: number) => api.post(`/api/v1/notes/folders/${id}/restore`);
+
+  return {
+    notes, folders, tags,
+    load, show, create, update, destroy, favorite, pin, search,
+    createFolder, updateFolder, deleteFolder,
+    trash, restore, forceDelete, restoreFolder,
+  };
+});

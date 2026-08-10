@@ -1,0 +1,369 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Models\Note;
+use App\Models\NoteFolder;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Notes module (plaintext-relational). One guard-agnostic controller mounted on
+ * both web (session) and /api/v1 (device token) — owner-scope is enforced by the
+ * Note/NoteFolder global scope (OwnsUserData). Per-note updates are optimistic
+ * (version → 409). Search uses the Postgres GIN index with a sqlite LIKE fallback.
+ */
+class NotesController extends Controller
+{
+    private const SEARCH_LIMIT = 100;
+
+    /** Folder tree (flat) + lightweight note list (no body) + tag aggregate. */
+    public function data(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+
+        $folders = NoteFolder::query()->orderBy('position')->orderBy('name')->get()
+            ->map(fn (NoteFolder $f): array => [
+                'id' => $f->id,
+                'parent_id' => $f->parent_id,
+                'name' => $f->name,
+                'color' => $f->color,
+                'position' => $f->position,
+                'version' => $f->version,
+            ])->all();
+
+        $notes = Note::query()->orderByDesc('pinned')->orderByDesc('updated_at')->get()
+            ->map(fn (Note $n): array => $this->row($n))->all();
+
+        $tags = [];
+        foreach ($notes as $n) {
+            foreach ($n['tags'] as $t) {
+                $tags[$t] = ($tags[$t] ?? 0) + 1;
+            }
+        }
+        ksort($tags);
+
+        return response()->json([
+            'folders' => $folders,
+            'notes' => $notes,
+            'tags' => array_map(fn (string $k, int $v): array => ['name' => $k, 'count' => $v], array_keys($tags), array_values($tags)),
+        ]);
+    }
+
+    /** Trashed notes + folders (the recycle-bin view). */
+    public function trash(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+
+        $notes = Note::onlyTrashed()->orderByDesc('deleted_at')->get()->map(fn (Note $n): array => $this->row($n))->all();
+        $folders = NoteFolder::onlyTrashed()->orderByDesc('deleted_at')->get()
+            ->map(fn (NoteFolder $f): array => ['id' => $f->id, 'name' => $f->name])->all();
+
+        return response()->json(['notes' => $notes, 'folders' => $folders]);
+    }
+
+    /** Full note (with body) for the editor. */
+    public function show(Request $request, Note $note): JsonResponse
+    {
+        $this->requireUser($request);
+
+        return response()->json(['note' => [
+            ...$this->row($note),
+            'body' => $note->body ?? '',
+        ]]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+        $note = Note::create($this->validated($request, creating: true));
+
+        return response()->json(['note' => [...$this->row($note), 'body' => $note->body ?? '']], 201);
+    }
+
+    public function update(Request $request, Note $note): JsonResponse
+    {
+        $this->requireUser($request);
+        $expected = $request->has('version') ? $request->integer('version') : null;
+        $result = $this->optimistic(Note::class, $note->id, $this->validated($request, creating: false), $expected);
+
+        return $this->optimisticJson($result, Note::class, $note->id);
+    }
+
+    public function destroy(Request $request, Note $note): JsonResponse
+    {
+        $this->requireUser($request);
+        $note->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function favorite(Request $request, Note $note): JsonResponse
+    {
+        $this->requireUser($request);
+        $note->forceFill(['favorite' => $request->boolean('favorite')])->save();
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function pin(Request $request, Note $note): JsonResponse
+    {
+        $this->requireUser($request);
+        $note->forceFill(['pinned' => $request->boolean('pinned')])->save();
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function restore(Request $request, int $id): JsonResponse
+    {
+        $this->requireUser($request);
+        Note::onlyTrashed()->whereKey($id)->restore();
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function forceDelete(Request $request, int $id): JsonResponse
+    {
+        $this->requireUser($request);
+        Note::onlyTrashed()->whereKey($id)->forceDelete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    // ---- Folders ----
+
+    public function storeFolder(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+        $folder = NoteFolder::create($this->folderRules($request));
+
+        return response()->json(['folder' => $folder], 201);
+    }
+
+    public function updateFolder(Request $request, NoteFolder $folder): JsonResponse
+    {
+        $this->requireUser($request);
+        // Guard against making a folder its own descendant (cycle).
+        if ($request->filled('parent_id') && $this->wouldCycle($folder->id, $request->integer('parent_id'))) {
+            abort(422);
+        }
+        $expected = $request->has('version') ? $request->integer('version') : null;
+        $result = $this->optimistic(NoteFolder::class, $folder->id, $this->folderRules($request), $expected);
+
+        return $this->optimisticJson($result, NoteFolder::class, $folder->id, 'folder');
+    }
+
+    public function destroyFolder(Request $request, NoteFolder $folder): JsonResponse
+    {
+        $this->requireUser($request);
+        $ids = $this->descendantFolderIds($folder->id);
+        // Soft-delete the subtree's notes + folders; notes in deleted folders keep
+        // their note_folder_id (restore puts them back).
+        Note::query()->whereIn('note_folder_id', $ids)->delete();
+        NoteFolder::query()->whereIn('id', $ids)->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function restoreFolder(Request $request, int $id): JsonResponse
+    {
+        $this->requireUser($request);
+        $ids = $this->descendantFolderIds($id, withTrashed: true);
+        NoteFolder::onlyTrashed()->whereIn('id', $ids)->restore();
+        Note::onlyTrashed()->whereIn('note_folder_id', $ids)->restore();
+
+        return response()->json(['ok' => true]);
+    }
+
+    // ---- Search ----
+
+    public function search(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+        $q = trim($request->string('q')->value());
+        if ($q === '') {
+            return response()->json(['notes' => []]);
+        }
+
+        $like = '%'.$q.'%';
+        $query = Note::query();
+        if (DB::getDriverName() === 'pgsql') {
+            $query->whereRaw(
+                "to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(body,'')) @@ plainto_tsquery('simple', ?)",
+                [$q]
+            )->orWhere('title', 'like', $like);
+        } else {
+            $query->where(function (Builder $inner) use ($like): void {
+                $inner->where('title', 'like', $like)->orWhere('body', 'like', $like);
+            });
+        }
+
+        $notes = $query->orderByDesc('updated_at')->limit(self::SEARCH_LIMIT)->get()
+            ->map(fn (Note $n): array => $this->row($n))->all();
+
+        return response()->json(['notes' => $notes]);
+    }
+
+    // ---- Helpers ----
+
+    /** @return array{id:int,note_folder_id:?int,title:string,tags:list<string>,pinned:bool,favorite:bool,updated_at:?string} */
+    private function row(Note $n): array
+    {
+        $tags = is_array($n->tags) ? array_values(array_filter($n->tags, 'is_string')) : [];
+
+        return [
+            'id' => $n->id,
+            'note_folder_id' => $n->note_folder_id,
+            'title' => $n->title ?? '',
+            'tags' => $tags,
+            'pinned' => (bool) $n->pinned,
+            'favorite' => (bool) $n->favorite,
+            'updated_at' => $n->updated_at?->toIso8601String(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function validated(Request $request, bool $creating): array
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'title' => ['nullable', 'string', 'max:500'],
+            'body' => ['nullable', 'string', 'max:1000000'],
+            'tags' => ['nullable', 'array', 'max:100'],
+            'tags.*' => ['string', 'max:100'],
+            'pinned' => ['sometimes', 'boolean'],
+            'favorite' => ['sometimes', 'boolean'],
+            'note_folder_id' => ['nullable', 'integer', "exists:note_folders,id,user_id,{$uid}"],
+        ]);
+
+        $patch = [
+            'title' => $request->has('title') ? $request->string('title')->value() : null,
+            'body' => $request->has('body') ? $request->string('body')->value() : null,
+            'note_folder_id' => $request->filled('note_folder_id') ? $request->integer('note_folder_id') : null,
+        ];
+        if ($request->has('tags')) {
+            $patch['tags'] = array_values(array_filter($request->array('tags'), 'is_string'));
+        }
+        if ($request->has('pinned')) {
+            $patch['pinned'] = $request->boolean('pinned');
+        }
+        if ($request->has('favorite')) {
+            $patch['favorite'] = $request->boolean('favorite');
+        }
+
+        return $patch;
+    }
+
+    /** @return array<string, mixed> */
+    private function folderRules(Request $request): array
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'name' => ['required', 'string', 'max:500'],
+            'color' => ['nullable', 'string', 'max:32'],
+            'position' => ['sometimes', 'integer'],
+            'parent_id' => ['nullable', 'integer', "exists:note_folders,id,user_id,{$uid}"],
+        ]);
+
+        $patch = [
+            'name' => $request->string('name')->value(),
+            'color' => $request->filled('color') ? $request->string('color')->value() : null,
+            'parent_id' => $request->filled('parent_id') ? $request->integer('parent_id') : null,
+        ];
+        if ($request->has('position')) {
+            $patch['position'] = $request->integer('position');
+        }
+
+        return $patch;
+    }
+
+    /**
+     * Owner-scoped ids of a folder + all its descendants (BFS, cycle-safe).
+     *
+     * @return list<int>
+     */
+    private function descendantFolderIds(int $rootId, bool $withTrashed = false): array
+    {
+        $ids = [$rootId];
+        $frontier = [$rootId];
+        $seen = [$rootId => true];
+        while ($frontier !== []) {
+            $query = NoteFolder::query();
+            if ($withTrashed) {
+                $query->withTrashed();
+            }
+            $children = $query->whereIn('parent_id', $frontier)->pluck('id')->all();
+            $frontier = [];
+            foreach ($children as $raw) {
+                if (! is_numeric($raw)) {
+                    continue;
+                }
+                $cid = (int) $raw;
+                if (! isset($seen[$cid])) {
+                    $seen[$cid] = true;
+                    $ids[] = $cid;
+                    $frontier[] = $cid;
+                }
+            }
+        }
+
+        return $ids;
+    }
+
+    /** True if setting $folderId's parent to $newParentId would create a cycle. */
+    private function wouldCycle(int $folderId, int $newParentId): bool
+    {
+        return in_array($newParentId, $this->descendantFolderIds($folderId, withTrashed: true), true);
+    }
+
+    /**
+     * Optimistic per-row update in a locked transaction (mirrors FinanceController).
+     *
+     * @param  class-string<Model>  $modelClass
+     * @param  array<string, mixed>  $patch
+     */
+    private function optimistic(string $modelClass, int $id, array $patch, ?int $expected): Model|false|null
+    {
+        return DB::transaction(function () use ($modelClass, $id, $patch, $expected): Model|false|null {
+            $fresh = $modelClass::query()->lockForUpdate()->find($id);
+            if (! $fresh instanceof Model) {
+                return null;
+            }
+            $raw = $fresh->getAttribute('version');
+            $ver = is_int($raw) ? $raw : 0;
+            if ($expected !== null && $ver !== $expected) {
+                return false;
+            }
+            $fresh->fill($patch);
+            $fresh->setAttribute('version', $ver + 1);
+            $fresh->save();
+
+            return $fresh;
+        });
+    }
+
+    /** @param  class-string<Model>  $modelClass */
+    private function optimisticJson(Model|false|null $result, string $modelClass, int $id, string $key = 'note'): JsonResponse
+    {
+        if ($result === null) {
+            abort(404);
+        }
+        if ($result === false) {
+            $current = $modelClass::query()->find($id);
+            $v = $current instanceof Model ? $current->getAttribute('version') : null;
+
+            return response()->json(['error' => 'version_conflict', 'version' => is_int($v) ? $v : 0], 409);
+        }
+
+        if ($key === 'note' && $result instanceof Note) {
+            return response()->json(['note' => [...$this->row($result), 'body' => $result->body ?? '']]);
+        }
+
+        return response()->json([$key => $result]);
+    }
+}
