@@ -6225,6 +6225,26 @@ paths:
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
 
+  /account/caldav-profile:
+    get:
+      tags: [Calendar]
+      operationId: accountCaldavProfile
+      summary: Download a standalone Apple CalDAV .mobileconfig profile
+      description: >
+        Returns a downloadable Apple configuration profile provisioning a CalDAV account
+        against the unified /dav server. Standalone (CalDAV only) so it works without the
+        contacts module; the combined CardDAV+CalDAV profile is on /account/carddav-profile.
+        Carries the username (email) but never a password; SSL/port are derived from the
+        request. Gated by device auth + module:calendar.
+      responses:
+        "200":
+          description: Apple configuration profile.
+          content:
+            application/x-apple-aspen-config:
+              schema: { type: string }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "403": { $ref: '#/components/responses/Forbidden' }
+
   # --------------------------------------------------------------------------
   # Admin self-registration toggle (admin role + device token).
   # --------------------------------------------------------------------------
