@@ -350,7 +350,8 @@
       <div v-if="draft">
         <!-- header actions + status -->
         <div class="mb-3 flex items-center gap-1">
-          <Badge v-if="draft.status" :tone="statusTone(draft.status)">{{ t('invoices.status_' + draft.status) }}</Badge>
+          <Select v-if="draft.id && !draft.imported" v-model="draft.status" :options="statusOptions" class="w-40" />
+          <Badge v-else-if="draft.status" :tone="statusTone(draft.status)">{{ t('invoices.status_' + draft.status) }}</Badge>
           <div v-if="draft.id && draft.number" class="ml-auto flex items-center gap-0.5">
             <Btn variant="ghost" size="sm" icon="mail" :title="t('invoices.email_send')" @click="doEmail(draft as Invoice)" />
             <Btn variant="ghost" size="sm" icon="gavel" :title="t('invoices.dun_send')" @click="doDun(draft as Invoice)" />
@@ -410,7 +411,29 @@
       <div class="space-y-3">
         <TextField v-model="pForm.name" :label="t('common.name')" />
         <Select v-model="pForm.type" label="Type" :options="['bank', 'card', 'paypal', 'cash', 'other'].map((x) => ({ title: x, value: x }))" />
-        <TextField v-model="pForm.iban" label="IBAN" />
+        <TextField v-model="pForm.holder" :label="t('invoices.pm_holder')" />
+        <template v-if="pForm.type === 'bank'">
+          <TextField v-model="pForm.iban" label="IBAN" />
+          <div class="grid grid-cols-2 gap-3">
+            <TextField v-model="pForm.bic" label="BIC" />
+            <TextField v-model="pForm.account_no" :label="t('invoices.pm_account_no')" />
+          </div>
+          <TextField v-model="pForm.bank" :label="t('invoices.pm_bank')" />
+          <label class="flex items-center gap-2 text-sm">
+            <input v-model="pForm.business" type="checkbox" class="accent-primary-500">
+            {{ t('invoices.pm_business') }}
+          </label>
+        </template>
+        <template v-else-if="pForm.type === 'card'">
+          <TextField v-model="pForm.card_number" :label="t('invoices.pm_card_number')" />
+          <div class="grid grid-cols-2 gap-3">
+            <TextField v-model="pForm.card_network" :label="t('invoices.pm_card_network')" />
+            <TextField v-model="pForm.card_expiry" :label="t('invoices.pm_card_expiry')" />
+          </div>
+        </template>
+        <TextField v-else-if="pForm.type === 'paypal'" v-model="pForm.paypal_email" label="PayPal" type="email" />
+        <TextField v-model="pForm.url" :label="t('invoices.pm_url')" />
+        <TextField v-model="pForm.note" :label="t('invoices.note')" />
       </div>
       <template #footer>
         <Btn variant="ghost" @click="pDialog = false">{{ t('common.cancel') }}</Btn>
@@ -917,8 +940,13 @@ const custName_ = ref('');
 const saving = ref(false);
 
 const pDialog = ref(false);
-interface PPForm { id?: number; version?: number; name: string; type?: string; iban?: string | null }
-const pForm = reactive<PPForm>({ name: '', type: 'bank' });
+interface PPForm {
+  id?: number; version?: number; name: string; type?: string;
+  holder?: string | null; business?: boolean; url?: string | null; note?: string | null;
+  iban?: string | null; bic?: string | null; bank?: string | null; account_no?: string | null;
+  card_number?: string | null; card_network?: string | null; card_expiry?: string | null; paypal_email?: string | null;
+}
+const pForm = reactive<PPForm>({ name: '', type: 'bank', business: false });
 
 // Receipt form
 const rDialog = ref(false);
@@ -959,6 +987,18 @@ const fmt = computed(() => new Intl.NumberFormat(document.documentElement.lang |
 function money(n: number) { return fmt.value.format(n || 0); }
 function fmtDate(s?: string | null) { return s ? String(s).slice(0, 10) : '—'; }
 function statusTone(s: string): 'success' | 'info' | 'warning' | 'gray' { return s === 'paid' ? 'success' : s === 'sent' ? 'info' : s === 'final' ? 'warning' : 'gray'; }
+// A numbered invoice can never revert to draft (GoBD; the server also blocks it).
+const statusOptions = computed(() => {
+  const opts = draft.value?.number
+    ? []
+    : [{ title: t('invoices.status_draft'), value: 'draft' }];
+  return [
+    ...opts,
+    { title: t('invoices.status_final'), value: 'final' },
+    { title: t('invoices.status_sent'), value: 'sent' },
+    { title: t('invoices.status_paid'), value: 'paid' },
+  ];
+});
 function custName(i: Invoice) { const c = i.customer as { name?: string } | null; return c?.name ?? '—'; }
 function agingGross(k: string) { return Number(agingBuckets.value[k]?.gross ?? 0); }
 function monthLabel(m: number) { return new Intl.DateTimeFormat(document.documentElement.lang || 'de', { month: 'short' }).format(new Date(2000, m - 1, 1)); }
@@ -1051,9 +1091,22 @@ async function doDun(i: Invoice) {
   catch { error(t('invoices.dun_failed')); }
 }
 
-function resetForm(o: PPForm) { Object.assign(pForm, { id: undefined, version: undefined, name: '', type: 'bank', iban: '' }, o); }
+function resetForm(o: PPForm) {
+  Object.assign(pForm, {
+    id: undefined, version: undefined, name: '', type: 'bank', holder: '', business: false, url: '', note: '',
+    iban: '', bic: '', bank: '', account_no: '', card_number: '', card_network: '', card_expiry: '', paypal_email: '',
+  }, o);
+}
 function newPayment() { resetForm({ name: '', type: 'bank' }); pDialog.value = true; }
-function editPayment(p: PaymentMethod) { resetForm({ id: p.id, name: p.name, type: p.type, iban: p.iban, version: p.version }); pDialog.value = true; }
+function editPayment(p: PaymentMethod) {
+  resetForm({
+    id: p.id, version: p.version, name: p.name, type: p.type,
+    holder: p.holder ?? '', business: !!p.business, url: p.url ?? '', note: p.note ?? '',
+    iban: p.iban ?? '', bic: p.bic ?? '', bank: p.bank ?? '', account_no: p.account_no ?? '',
+    card_number: p.card_number ?? '', card_network: p.card_network ?? '', card_expiry: p.card_expiry ?? '', paypal_email: p.paypal_email ?? '',
+  });
+  pDialog.value = true;
+}
 async function savePP() {
   saving.value = true;
   try {

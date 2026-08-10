@@ -78,6 +78,14 @@ return [
     'version_sent' => 'Sent',
 
     'note' => 'Note',
+    'pm_holder' => 'Account holder',
+    'pm_account_no' => 'Account no.',
+    'pm_bank' => 'Bank',
+    'pm_business' => 'Business account (used for reconciliation)',
+    'pm_card_number' => 'Card number',
+    'pm_card_network' => 'Network',
+    'pm_card_expiry' => 'Expiry',
+    'pm_url' => 'Website',
     'footer' => 'Footer',
 
     'finalize' => 'Finalize & assign number',
