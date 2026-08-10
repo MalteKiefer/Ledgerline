@@ -153,7 +153,7 @@ return [
     ],
 
     'keys' => [
-        'title' => 'Verschlüsselungsschlüssel',
+        'title' => 'Schlüssel',
         'subtitle' => 'PGP-/S-MIME-Schlüssel zum Lesen verschlüsselter Mail (serverseitig).',
         'none' => 'Noch keine Schlüssel.',
         'import_pgp' => 'PGP-Schlüssel importieren',
