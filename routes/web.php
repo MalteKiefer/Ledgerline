@@ -17,6 +17,7 @@ use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
+use App\Http\Controllers\GeoController;
 use App\Http\Controllers\InviteLinkController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailAttachmentController;
@@ -331,6 +332,10 @@ Route::middleware('auth')->group(function (): void {
         Route::put('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'rename'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('shared-with-me.rename');
         Route::delete('/shared-with-me/{share}/files/{file}', [SharedWithMeController::class, 'destroy'])->whereNumber(['share', 'file'])->middleware('throttle:600,1')->name('shared-with-me.destroy');
     });
+
+    // Generic address autocomplete (forward geocode). Authenticated but NOT
+    // module-gated — the calendar event editor AND the contacts map preview use it.
+    Route::get('/geo/search', [GeoController::class, 'search'])->middleware('throttle:30,1')->name('geo.search');
 
     // Contacts + CardDAV (plaintext-relational). Static collection routes are
     // declared before /contacts/{contact} so they win over the model binding.

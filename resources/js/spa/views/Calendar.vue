@@ -199,7 +199,12 @@
         <TextField v-model="form.start" :label="t('calendar.ui.starts')" :type="form.allDay ? 'date' : 'datetime-local'" />
         <TextField v-model="form.end" :label="t('calendar.ui.ends')" :type="form.allDay ? 'date' : 'datetime-local'" />
       </div>
-      <TextField v-model="form.location" :label="t('calendar.ui.location')" icon="location_on" />
+      <LocationField
+        v-model="form.location"
+        v-model:lat="form.geoLat"
+        v-model:lon="form.geoLon"
+        :label="t('calendar.ui.location')"
+      />
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Select v-model="form.repeat" :label="t('calendar.ui.repeat')" :options="repeatOptions" />
         <Select v-model="form.status" :label="t('calendar.ui.status')" :options="statusOptions" />
@@ -276,6 +281,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { api, ApiError } from '@spa/api/client';
 import { useCalendarStore, type CalendarCol, type Occurrence } from '@spa/stores/calendar';
+import LocationField from '@spa/components/LocationField.vue';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 
@@ -449,8 +455,8 @@ const editingId = ref<string | null>(null);
 const currentEtag = ref<string>('');
 const saving = ref(false);
 const deleting = ref(false);
-const form = reactive<{ calendar_id: string; summary: string; description: string; location: string; allDay: boolean; start: string; end: string; repeat: string; status: string }>(
-  { calendar_id: '', summary: '', description: '', location: '', allDay: false, start: '', end: '', repeat: 'none', status: 'CONFIRMED' },
+const form = reactive<{ calendar_id: string; summary: string; description: string; location: string; geoLat: number | null; geoLon: number | null; allDay: boolean; start: string; end: string; repeat: string; status: string }>(
+  { calendar_id: '', summary: '', description: '', location: '', geoLat: null, geoLon: null, allDay: false, start: '', end: '', repeat: 'none', status: 'CONFIRMED' },
 );
 // Only normal calendars can hold user-created events; special ones are generated.
 const editableCalendars = computed(() => store.calendars.filter((c) => c.kind === 'normal'));
@@ -502,7 +508,7 @@ function openCreate(startVal: string): void {
   const dayPart = startVal.slice(0, 10);
   Object.assign(form, {
     calendar_id: editableCalendars.value[0]?.id ?? '',
-    summary: '', description: '', location: '',
+    summary: '', description: '', location: '', geoLat: null, geoLon: null,
     allDay,
     start: startVal,
     end: allDay ? dayPart : dayPart + 'T10:00',
@@ -520,6 +526,7 @@ async function openEdit(o: Occurrence): Promise<void> {
     Object.assign(form, {
       calendar_id: d.calendar,
       summary: d.summary ?? '', description: d.description ?? '', location: d.location ?? '',
+      geoLat: coord(d.geo_lat), geoLon: coord(d.geo_lon),
       allDay: d.all_day,
       start: toInput(d.dtstart, d.all_day),
       end: d.dtend ? toInput(d.dtend, d.all_day) : '',
@@ -528,12 +535,21 @@ async function openEdit(o: Occurrence): Promise<void> {
     eventModal.value = true;
   } catch { error(t('common.error')); }
 }
+// Decimals may arrive as strings (Laravel decimal cast) — normalise to a
+// finite number or null for the editor + the map.
+function coord(v: number | string | null): number | null {
+  if (v === null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 function buildBody(): Record<string, unknown> {
   return {
     calendar_id: form.calendar_id,
     summary: form.summary,
     description: form.description,
     location: form.location,
+    geo_lat: form.geoLat,
+    geo_lon: form.geoLon,
     all_day: form.allDay,
     dtstart: form.start,
     dtend: form.end || null,

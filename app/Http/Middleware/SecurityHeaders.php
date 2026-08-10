@@ -195,10 +195,12 @@ final class SecurityHeaders
                 : "script-src 'self' ".ThemeBootstrap::cspHash(),
             "style-src 'self' 'unsafe-inline'",
             // App content is same-origin only (blobs -> blob: URLs, avatars, QR
-            // as data:). No remote image host is allowed — contacts now uses an
-            // OSM *link*, not tiles — so this stays tighter than a blanket 'https:'
-            // and closes the "any https host" exfil channel the backstop contains.
-            "img-src 'self' data: blob:",
+            // as data:). The ONE remote image host is the OpenStreetMap raster
+            // tile server, so the bundled Leaflet mini-map can render tiles for a
+            // set event/contact location; tiles load only when a location is set.
+            // Kept to *.tile.openstreetmap.org (not a blanket 'https:') so the
+            // "any https host" exfil channel the backstop contains stays closed.
+            "img-src 'self' data: blob: https://*.tile.openstreetmap.org",
             "font-src 'self' data:",
             // blob: for client-decrypted video/audio; no remote media origin.
             "media-src 'self' blob:",

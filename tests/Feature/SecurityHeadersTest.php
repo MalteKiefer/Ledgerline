@@ -107,6 +107,16 @@ final class SecurityHeadersTest extends TestCase
         $this->assertStringNotContainsString("'unsafe-eval'", (string) $spaScript);
     }
 
+    public function test_img_src_allows_only_the_osm_tile_host(): void
+    {
+        $csp = (string) $this->get('/')->headers->get('Content-Security-Policy');
+        $imgSrc = collect(explode('; ', $csp))->first(fn ($d) => str_starts_with($d, 'img-src'));
+
+        // The bundled Leaflet mini-map loads OSM raster tiles for a set location,
+        // but NOT a blanket https: host (the exfil channel stays closed).
+        $this->assertSame("img-src 'self' data: blob: https://*.tile.openstreetmap.org", (string) $imgSrc);
+    }
+
     public function test_hsts_is_sent_only_when_secure_cookies_are_configured(): void
     {
         $this->assertNull($this->get('/')->headers->get('Strict-Transport-Security'));

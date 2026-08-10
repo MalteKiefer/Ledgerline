@@ -37,6 +37,7 @@ use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
+use App\Http\Controllers\GeoController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailAttachmentController;
 use App\Http\Controllers\MailBlobController;
@@ -188,6 +189,11 @@ Route::prefix('v1')->group(function (): void {
             Route::delete('/finance/receipts/{id}/force', [FinanceController::class, 'forceDeleteStandaloneReceipt'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.receipts.force');
             Route::get('/finance/receipts/{receipt}/raw', [FinanceController::class, 'receiptFile'])->whereNumber('receipt')->middleware('throttle:3000,1')->name('api.finance.receipts.raw');
         });
+
+        // Generic address autocomplete (forward geocode). Device-authenticated but
+        // NOT module-gated — both the calendar event editor and the contacts map
+        // preview use it. Server-proxied to Nominatim (SSRF-guarded), no-store.
+        Route::get('/geo/search', [GeoController::class, 'search'])->middleware('throttle:30,1')->name('api.geo.search');
 
         // Contacts module — mirrors the web routes. The web ContactController
         // methods already return JSON (store/update/destroy/show/data/suggest/

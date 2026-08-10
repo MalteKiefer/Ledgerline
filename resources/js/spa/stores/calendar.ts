@@ -39,6 +39,15 @@ export interface Occurrence {
   status: string | null;
   recurring: boolean;
   color: string | null;
+  geo_lat: number | string | null;
+  geo_lon: number | string | null;
+}
+
+// One address suggestion from the server geo proxy (GET /geo/search).
+export interface GeoResult {
+  display: string;
+  lat: number;
+  lon: number;
 }
 
 // Full editor payload for one master event (mirrors ContactDetail).
@@ -54,6 +63,8 @@ export interface EventDetail extends Record<string, unknown> {
   all_day: boolean;
   rrule: string | null;
   status: string | null;
+  geo_lat: number | string | null;
+  geo_lon: number | string | null;
   sequence: number;
   etag: string;
 }
@@ -121,6 +132,10 @@ export const useCalendarStore = defineStore('calendar', () => {
 
   const saveSettings = (s: CalSettings) => api.post('/api/v1/calendar/settings', s);
 
+  // Address autocomplete — server-side geo proxy (authenticated, throttled).
+  const geoSearch = (q: string) =>
+    api.get<{ results: GeoResult[] }>(`/api/v1/geo/search?q=${encodeURIComponent(q)}`).then((r) => r.results);
+
   function importIcs(file: File, calendarId: string) {
     const fd = new FormData();
     fd.append('file', file);
@@ -136,6 +151,6 @@ export const useCalendarStore = defineStore('calendar', () => {
     calendars, settings, events,
     loadData, loadRange, show, create, update, destroy,
     createCalendar, updateCalendar, deleteCalendar, createSpecial, regenerate, saveSettings, importIcs, exportUrl,
-    loadHolidayCountries, loadHolidaySubdivisions,
+    loadHolidayCountries, loadHolidaySubdivisions, geoSearch,
   };
 });
