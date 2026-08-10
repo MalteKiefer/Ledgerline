@@ -5211,6 +5211,20 @@ paths:
         "200": { description: Toggled., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{file}/copy:
+    post:
+      tags: [Files]
+      operationId: filesCopy
+      summary: Duplicate a file into a folder
+      description: "Copies the blob + row into the target folder (or the file's own folder if omitted); name gains a (copy) suffix. Quota-checked. Throttle 600/min."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { file_folder_id: { type: [integer, "null"] } } } } } }
+      responses:
+        "201": { description: Copied., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { description: Over quota. }
   /files/entries/{file}/versions:
     get:
       tags: [Files]

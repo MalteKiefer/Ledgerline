@@ -88,6 +88,24 @@ class FilesRelationalTest extends TestCase
         $this->putJson(route('files.rel.update', $id), ['name' => 'again.txt', 'version' => 0])->assertStatus(409);
     }
 
+    public function test_copy_duplicates_blob_and_row_into_target_folder(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $folder = (int) $this->postJson(route('files.rel.folders.store'), ['name' => 'Dest'])->json('folder.id');
+        $id = (int) $this->post(route('files.rel.upload'), ['file' => UploadedFile::fake()->createWithContent('report.pdf', 'PDFBYTES')])->json('file.id');
+        $srcPath = FileEntry::findOrFail($id)->storage_path;
+
+        $copyId = (int) $this->postJson(route('files.rel.copy', $id), ['file_folder_id' => $folder])
+            ->assertCreated()->json('file.id');
+
+        $copy = FileEntry::findOrFail($copyId);
+        $this->assertSame('report (copy).pdf', $copy->name);
+        $this->assertSame($folder, $copy->file_folder_id);
+        $this->assertNotSame($srcPath, $copy->storage_path); // distinct blob
+        Storage::disk(config('files.disk'))->assertExists($copy->storage_path);
+        $this->assertSame(2, FileEntry::query()->count()); // original + copy
+    }
+
     public function test_trash_restore_force_removes_bytes(): void
     {
         $this->actingAs(User::factory()->create());

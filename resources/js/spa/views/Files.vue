@@ -93,6 +93,9 @@
         <span class="text-xs font-medium">{{ selected.length }} {{ t('files.selected_word') }}</span>
         <div class="ml-auto flex items-center gap-1">
           <Btn variant="ghost" size="sm" icon="folder_zip" @click="zipSelected">{{ t('files.download_zip') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="drive_file_move" @click="openBulk('move')">{{ t('files.move') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="content_copy" @click="openBulk('copy')">{{ t('files.copy') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="bulkTrash">{{ t('files.trash') }}</Btn>
           <Btn variant="ghost" size="sm" @click="selected = []">{{ t('common.close') }}</Btn>
         </div>
       </div>
@@ -412,6 +415,20 @@
         </button>
       </div>
     </template>
+  </Modal>
+
+  <!-- Bulk move / copy the selection into a folder -->
+  <Modal v-model="bulkDlg.show" :title="bulkDlg.mode === 'copy' ? t('files.copy') : t('files.move')" width="440px">
+    <p class="mb-2 text-sm text-[var(--ll-muted)]">{{ selected.length }} {{ t('files.selected_word') }}</p>
+    <div class="max-h-80 overflow-y-auto">
+      <button
+        v-for="o in bulkTargets" :key="String(o.id)"
+        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-black/[0.04] dark:hover:bg-white/5"
+        @click="doBulk(o.id)"
+      >
+        <Icon name="folder" :size="18" class="text-[var(--ll-muted)]" />{{ o.label }}
+      </button>
+    </div>
   </Modal>
 
   <!-- File preview: preview pane + always-visible info sidebar -->
@@ -778,6 +795,36 @@ function toggleLabelFilter(id: number) {
 function toggleSelect(id: number) {
   const i = selected.value.indexOf(id);
   if (i >= 0) selected.value.splice(i, 1); else selected.value.push(id);
+}
+// Checkboxes only appear on files (not folders), so the selection is file ids.
+const selectedFiles = computed(() => (s.files as FileEntry[]).filter((f) => selected.value.includes(f.id)));
+
+async function bulkTrash() {
+  if (!selectedFiles.value.length) return;
+  if (!await confirmAsk(t('files.bulk_trash_confirm', { n: String(selectedFiles.value.length) }), { danger: true })) return;
+  try { for (const f of selectedFiles.value) await s.trashFile(f); selected.value = []; await s.load(); success(t('common.saved')); }
+  catch { error(t('common.error')); }
+}
+
+const bulkDlg = ref<{ show: boolean; mode: 'move' | 'copy' }>({ show: false, mode: 'move' });
+function openBulk(mode: 'move' | 'copy') { bulkDlg.value = { show: true, mode }; }
+const bulkTargets = computed(() => {
+  const opts: { id: number | null; label: string }[] = [{ id: null, label: t('files.all_files') }];
+  for (const fo of s.folders as FileFolder[]) opts.push({ id: fo.id, label: folderPath(fo.id) });
+  return opts;
+});
+async function doBulk(target: number | null) {
+  const files = selectedFiles.value;
+  if (!files.length) return;
+  try {
+    for (const f of files) {
+      if (bulkDlg.value.mode === 'copy') await s.copy(f, target); else await s.move(f, target);
+    }
+    bulkDlg.value.show = false;
+    selected.value = [];
+    await s.load();
+    success(t('common.saved'));
+  } catch { error(t('common.error')); }
 }
 
 // ---- ZIP ----
