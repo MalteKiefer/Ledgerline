@@ -597,6 +597,19 @@ async function runImport(): Promise<void> {
 // sort are purely client-side over the loaded set.
 watch(() => filters.dueBefore, () => { reload(); });
 
+// Keep the dtstart/due strings in the shape the active input type expects: a
+// `date` input wants `yyyy-MM-dd`, a `datetime-local` input wants `…Thh:mm`.
+// Without this, toggling "all day" leaves a date-only value in a datetime-local
+// field (browser warns "does not conform to the required format").
+watch(() => form.allDay, (allDay) => {
+  for (const k of ['dtstart', 'due'] as const) {
+    const v = form[k];
+    if (!v) continue;
+    if (allDay) form[k] = v.slice(0, 10);
+    else if (v.length === 10) form[k] = `${v}T09:00`;
+  }
+});
+
 onMounted(async () => {
   try { await store.loadTaskLists(); } catch { /* ignore */ }
   await reload();
