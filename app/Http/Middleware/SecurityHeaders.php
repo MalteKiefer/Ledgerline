@@ -151,6 +151,15 @@ final class SecurityHeaders
             return "'self'";
         }
 
+        // Normalize a bare CSP keyword to its quoted form. Laravel's dotenv strips
+        // the quotes from FRAME_ANCESTORS='self', yielding a bare `self` — which in
+        // a CSP source list is a HOSTNAME, not the keyword, silently breaking the
+        // framing policy (and skipping the XFO branch below). Quote it so neither
+        // `self` nor `'self'` in .env can misfire.
+        if (in_array($v, ['self', 'none'], true)) {
+            $v = "'".$v."'";
+        }
+
         // Fail safe: never allow universal framing on a TLS / internet-facing box.
         if ($v === '*' && (config('app.force_https') || config('session.secure'))) {
             return "'self'";

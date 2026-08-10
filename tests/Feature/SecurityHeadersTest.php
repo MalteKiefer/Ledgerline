@@ -51,6 +51,20 @@ final class SecurityHeadersTest extends TestCase
         $this->assertStringContainsString("frame-ancestors 'none'", (string) $response->headers->get('Content-Security-Policy'));
     }
 
+    public function test_bare_self_keyword_is_normalized_to_quoted_form(): void
+    {
+        // Laravel dotenv strips the quotes from FRAME_ANCESTORS='self' → a bare
+        // `self`, which as a CSP source is a hostname, not the keyword. It must be
+        // normalized to 'self' (quoted) so framing policy + XFO still fire.
+        config(['security.frame_ancestors' => 'self']);
+
+        $response = $this->get('/');
+        $csp = (string) $response->headers->get('Content-Security-Policy');
+        $this->assertStringContainsString("frame-ancestors 'self'", $csp);
+        $this->assertStringNotContainsString('frame-ancestors self;', $csp);
+        $response->assertHeader('X-Frame-Options', 'SAMEORIGIN');
+    }
+
     public function test_wildcard_frame_ancestors_is_refused_under_tls(): void
     {
         // A literal '*' (framing by ANY origin) is a clickjacking exposure on an
