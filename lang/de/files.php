@@ -3,6 +3,12 @@
 declare(strict_types=1);
 
 return [
+    'shared_by_me' => 'Von mir geteilt',
+    'shared_links' => 'Öffentliche Links',
+    'shared_with_users' => 'Mit Personen geteilt',
+    'share_revoke_confirm' => 'Diese Freigabe aufheben?',
+    'share_no_download' => 'Kein Download',
+    'share_expires' => 'Läuft ab',
     'copy' => 'Kopieren',
     'bulk_trash_confirm' => ':n Element(e) in den Papierkorb verschieben?',
     'drop_here' => 'Dateien zum Hochladen ablegen',

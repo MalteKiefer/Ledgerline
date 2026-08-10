@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { api, getToken } from '@spa/api/client';
+import { api, getToken, uploadWithProgress } from '@spa/api/client';
 
 export interface FileFolder { id: number; name: string; parent_id: number | null; version: number }
 export interface FileLabel { id: number; name: string; color: string }
@@ -16,6 +16,7 @@ export interface FileShare {
   id: number; token: string; kind: 'file' | 'folder';
   file_id: number | null; file_folder_id: number | null;
   needs_password: boolean; allow_download: boolean; expires_at: string | null; version: number;
+  name?: string;
 }
 // ---- Cross-user folder sharing (owner side + member side) ----
 export interface FolderShareMember {
@@ -74,16 +75,17 @@ export const useFilesStore = defineStore('files', () => {
   }
   const WHOLE_UPLOAD_LIMIT = 8 * 1024 * 1024; // above this, fall back to chunks
 
-  async function upload(file: File, folder: number | null) {
-    if (file.size > WHOLE_UPLOAD_LIMIT) { await uploadChunked(file, folder); return; }
+  async function upload(file: File, folder: number | null, onProgress?: (f: number) => void) {
+    if (file.size > WHOLE_UPLOAD_LIMIT) { await uploadChunked(file, folder, onProgress); return; }
     const form = new FormData();
     form.append('file', file);
     if (folder != null) form.append('file_folder_id', String(folder));
-    await api.upload('/api/v1/files/entries', form);
+    await uploadWithProgress('/api/v1/files/entries', form, onProgress);
   }
   // Large files stream in 8-MiB parts (init → part* → complete) so they aren't
-  // bounded by post_max_size / a single request's memory.
-  async function uploadChunked(file: File, folder: number | null) {
+  // bounded by post_max_size / a single request's memory. Progress is the
+  // fraction of parts completed (+ the running part's own bytes).
+  async function uploadChunked(file: File, folder: number | null, onProgress?: (f: number) => void) {
     const init = await api.post<{ id: string; partSize: number }>('/api/v1/files/upload/chunk/init', {
       name: file.name, size: file.size, file_folder_id: folder,
     });
@@ -95,9 +97,10 @@ export const useFilesStore = defineStore('files', () => {
         form.append('id', init.id);
         form.append('index', String(i));
         form.append('file', file.slice(i * partSize, (i + 1) * partSize), file.name);
-        await api.upload('/api/v1/files/upload/chunk/part', form);
+        await uploadWithProgress('/api/v1/files/upload/chunk/part', form, (pf) => onProgress?.((i + pf) / parts));
       }
       await api.post('/api/v1/files/upload/chunk/complete', { id: init.id });
+      onProgress?.(1);
     } catch (e) {
       await api.post('/api/v1/files/upload/chunk/abort', { id: init.id }).catch(() => { /* best-effort */ });
       throw e;
@@ -136,6 +139,7 @@ export const useFilesStore = defineStore('files', () => {
 
   // ---- Public share links (anonymous, token-gated) ----
   interface SharePayload { password?: string; remove_password?: boolean; allow_download?: boolean; expires_at?: string | null }
+  const loadShares = () => api.get<{ shares: FileShare[] }>('/api/v1/files/rel-shares').then((r) => r.shares);
   const createShare = (fileId: number, payload: SharePayload = {}) =>
     api.post<{ share: FileShare }>('/api/v1/files/rel-shares', { kind: 'file', file_id: fileId, ...payload });
   const createFolderShareLink = (folderId: number, payload: SharePayload = {}) =>
@@ -215,7 +219,7 @@ export const useFilesStore = defineStore('files', () => {
     trashFile, restoreFile, forceFile, renameFolder, moveFolder, trashFolder, restoreFolder, forceFolder, emptyTrash, search,
     updateEntry, createLabel, updateLabel, deleteLabel, setFileLabels,
     versions, restoreVersion, versionRawUrl,
-    createShare, createFolderShareLink, updateShare, deleteShare, shareUrl,
+    loadShares, createShare, createFolderShareLink, updateShare, deleteShare, shareUrl,
     loadFolderShares, shareToUser, updateShareMember, removeShareMember, deleteFolderShare,
     loadSharedWithMe, browseShared, sharedRawUrl, uploadToShared, renameShared, deleteShared,
     stats, zip,

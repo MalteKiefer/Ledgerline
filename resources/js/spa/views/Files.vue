@@ -4,11 +4,26 @@
     @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave.prevent="onDragLeave" @drop.prevent="onViewDrop"
   >
     <!-- Full-view drag & drop upload overlay -->
-    <div v-show="dragDepth > 0" class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-500/10">
+    <div v-show="dragDepth > 0 && !uploadState.active" class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-500/10">
       <div class="rounded-xl bg-[var(--ll-card)] px-6 py-4 text-center shadow-lg">
         <Icon name="upload" :size="32" class="text-primary-500" />
         <div class="mt-1 text-sm font-medium">{{ t('files.drop_here') }}</div>
         <div class="text-xs text-[var(--ll-muted)]">{{ folderPath(cwd) || t('files.root') }}</div>
+      </div>
+    </div>
+
+    <!-- Upload progress overlay -->
+    <div v-show="uploadState.active" class="absolute inset-0 z-40 flex items-center justify-center bg-black/20">
+      <div class="w-80 max-w-[90%] rounded-xl bg-[var(--ll-card)] px-6 py-5 shadow-xl">
+        <div class="flex items-center gap-2 text-sm font-medium">
+          <Icon name="upload" :size="20" class="text-primary-500" />
+          {{ t('files.uploading') }} <span class="ml-auto tabular-nums text-[var(--ll-muted)]">{{ uploadState.done }} / {{ uploadState.total }}</span>
+        </div>
+        <div class="mt-1 truncate text-xs text-[var(--ll-muted)]">{{ uploadState.name }}</div>
+        <div class="mt-3 h-2 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/10">
+          <div class="h-full rounded-full bg-primary-500 transition-all" :style="{ width: uploadPct + '%' }" />
+        </div>
+        <div class="mt-1 text-right text-xs tabular-nums text-[var(--ll-muted)]">{{ uploadPct }}%</div>
       </div>
     </div>
     <!-- Sidebar -->
@@ -52,7 +67,7 @@
             >{{ c.title }}</button>
           </template>
         </nav>
-        <h2 v-else class="text-sm font-semibold">{{ view === 'favorites' ? t('files.favorites') : t('files.trash') }}</h2>
+        <h2 v-else class="text-sm font-semibold">{{ view === 'favorites' ? t('files.favorites') : view === 'shared' ? t('files.shared_by_me') : t('files.trash') }}</h2>
 
         <div class="ml-auto flex items-center gap-1">
           <Btn v-if="view==='files'" variant="ghost" size="sm" icon="create_new_folder" @click="newFolder">{{ t('files.new_folder') }}</Btn>
@@ -65,7 +80,7 @@
       <div class="border-t border-[var(--ll-border)]" />
 
       <!-- Search -->
-      <div class="flex items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2.5">
+      <div v-if="view!=='shared'" class="flex items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2.5">
         <div class="w-full max-w-xs">
           <TextField v-model="query" :placeholder="searching ? t('files.searching') : t('files.search')" icon="search" />
         </div>
@@ -73,7 +88,7 @@
       </div>
 
       <!-- Label filter bar -->
-      <div v-if="view!=='trash' && s.labels.length" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2.5">
+      <div v-if="view!=='trash' && view!=='shared' && s.labels.length" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2.5">
         <span class="mr-1 text-xs text-[var(--ll-muted)]">{{ t('files.filtered_by') }}</span>
         <button
           v-for="l in (s.labels as FileLabel[])" :key="l.id" type="button"
@@ -100,7 +115,45 @@
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto p-2">
+      <!-- Shared by me: public links + cross-user folder shares, with revoke -->
+      <div v-if="view==='shared'" class="flex-1 space-y-6 overflow-y-auto p-4">
+        <div>
+          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('files.shared_links') }}</h3>
+          <div v-if="!myLinks.length" class="text-sm text-[var(--ll-muted)]">{{ t('files.shared_none') }}</div>
+          <div v-for="sh in myLinks" :key="'l'+sh.id" class="flex items-center gap-3 border-b border-[var(--ll-border)] py-2.5 last:border-0">
+            <Icon :name="sh.kind==='folder' ? 'folder' : 'description'" :size="20" class="text-[var(--ll-muted)]" />
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-medium">{{ sh.name || ('#'+sh.id) }}</div>
+              <div class="flex flex-wrap items-center gap-1.5 text-xs text-[var(--ll-muted)]">
+                <Badge v-if="sh.needs_password" tone="warning">{{ t('files.share_password') }}</Badge>
+                <Badge v-if="!sh.allow_download" tone="gray">{{ t('files.share_no_download') }}</Badge>
+                <span v-if="sh.expires_at">{{ t('files.share_expires') }}: {{ new Date(sh.expires_at).toLocaleDateString() }}</span>
+              </div>
+            </div>
+            <Btn variant="ghost" size="sm" icon="content_copy" :title="t('files.share_copy')" @click="copyLink(sh)" />
+            <Btn variant="ghost" size="sm" icon="link_off" class="text-red-600" :title="t('files.share_revoke')" @click="revokeLink(sh)">{{ t('files.share_revoke') }}</Btn>
+          </div>
+        </div>
+        <div>
+          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('files.shared_with_users') }}</h3>
+          <div v-if="!myFolderShares.length" class="text-sm text-[var(--ll-muted)]">{{ t('files.shared_none') }}</div>
+          <div v-for="sh in myFolderShares" :key="'f'+sh.id" class="border-b border-[var(--ll-border)] py-2.5 last:border-0">
+            <div class="flex items-center gap-3">
+              <Icon :name="sh.kind==='folder' ? 'folder_shared' : 'description'" :size="20" class="text-[var(--ll-muted)]" />
+              <div class="min-w-0 flex-1 truncate text-sm font-medium">{{ sh.folder_name || sh.file_name || ('#'+sh.id) }}</div>
+              <Btn variant="ghost" size="sm" icon="person_remove" class="text-red-600" :title="t('files.share_revoke')" @click="revokeFolderShare(sh)">{{ t('files.share_revoke') }}</Btn>
+            </div>
+            <div class="mt-1 flex flex-wrap gap-1.5 pl-8">
+              <span v-for="m in sh.members" :key="m.id" class="inline-flex items-center gap-1 rounded-full bg-black/[0.05] px-2 py-0.5 text-xs dark:bg-white/10">
+                {{ m.email || m.name || m.user_id }} · {{ m.role }}
+                <button class="text-[var(--ll-muted)] hover:text-red-600" @click="revokeMember(sh, m)">×</button>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="flex-1 overflow-y-auto p-2">
         <div v-if="!rows.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ view==='trash' ? t('files.trash_empty') : t('files.empty_explorer') }}</div>
 
         <!-- Grid -->
@@ -544,7 +597,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
-import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShareMember } from '@spa/stores/files';
+import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember } from '@spa/stores/files';
 import { ApiError } from '@spa/api/client';
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
 import { useToast } from '@spa/composables/useToast';
@@ -554,7 +607,7 @@ interface Row { _k: string; _folder: boolean; _icon: string; _tint: string; _img
 
 const s = useFilesStore();
 const { success, error } = useToast();
-const view = ref<'files' | 'favorites' | 'trash'>('files');
+const view = ref<'files' | 'favorites' | 'shared' | 'trash'>('files');
 const layout = ref<'grid' | 'list'>('list');
 const cwd = ref<number | null>(null);
 const query = ref('');
@@ -575,6 +628,7 @@ const tagInput = ref('');
 const navItems = [
   { v: 'files' as const, icon: 'folder', label: 'files.all_files' },
   { v: 'favorites' as const, icon: 'star', label: 'files.favorites' },
+  { v: 'shared' as const, icon: 'share', label: 'files.shared_by_me' },
   { v: 'trash' as const, icon: 'delete', label: 'files.trash' },
 ];
 const menuItemCls = 'flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-1.5 text-sm outline-none hover:bg-black/[0.05] dark:hover:bg-white/10';
@@ -674,9 +728,33 @@ watch(query, (v) => {
 // Clear transient selection when the listing context changes.
 watch([view, cwd], () => { selected.value = []; });
 
-async function setView(v: 'files' | 'favorites' | 'trash') {
+async function setView(v: 'files' | 'favorites' | 'shared' | 'trash') {
   view.value = v;
+  selected.value = [];
   if (v === 'trash') { const r = await s.loadTrash(); trashFiles.value = r.files; trashFolders.value = r.folders; }
+  if (v === 'shared') await loadShared();
+}
+
+// ---- Shared by me (public links + cross-user folder shares) ----
+const myLinks = ref<FileShare[]>([]);
+const myFolderShares = ref<FolderShare[]>([]);
+async function loadShared() {
+  try { [myLinks.value, myFolderShares.value] = await Promise.all([s.loadShares(), s.loadFolderShares().then((r) => r.shares)]); }
+  catch { error(t('common.error')); }
+}
+async function copyLink(sh: FileShare) {
+  try { await navigator.clipboard.writeText(s.shareUrl(sh.token)); success(t('files.share_copied')); } catch { /* ignore */ }
+}
+async function revokeLink(sh: FileShare) {
+  if (!await confirmAsk(t('files.share_revoke_confirm'), { danger: true })) return;
+  try { await s.deleteShare(sh.id); await loadShared(); success(t('common.saved')); } catch { error(t('common.error')); }
+}
+async function revokeFolderShare(sh: FolderShare) {
+  if (!await confirmAsk(t('files.share_revoke_confirm'), { danger: true })) return;
+  try { await s.deleteFolderShare(sh.id); await loadShared(); success(t('common.saved')); } catch { error(t('common.error')); }
+}
+async function revokeMember(sh: FolderShare, m: FolderShareMember) {
+  try { await s.removeShareMember(sh.id, m.user_id); await loadShared(); success(t('common.saved')); } catch { error(t('common.error')); }
 }
 function open(row: Row) {
   if (row._folder) { view.value = 'files'; cwd.value = row.id; return; }
@@ -713,15 +791,20 @@ async function onUploadDir(e: Event) {
       dirCache.set(rel, id);
       return id;
     };
-    for (const f of Array.from(list)) {
+    const all = Array.from(list);
+    uploadState.value = { active: true, done: 0, total: all.length, name: '', frac: 0 };
+    for (const f of all) {
       const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? '';
       const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
-      await s.upload(f, await ensureDir(dir));
+      uploadState.value.name = f.name;
+      uploadState.value.frac = 0;
+      await s.upload(f, await ensureDir(dir), (fr) => { uploadState.value.frac = fr; });
+      uploadState.value.done++;
     }
     await s.load();
     success(t('common.saved'));
   } catch { error(t('common.error')); }
-  finally { input.value = ''; }
+  finally { input.value = ''; uploadState.value.active = false; }
 }
 function openMove(row: Row) { moveDlg.value = { show: true, row }; }
 async function doMove(target: number | null) {
@@ -744,11 +827,28 @@ const moveTargets = computed(() => {
   }
   return opts;
 });
+const uploadState = ref<{ active: boolean; done: number; total: number; name: string; frac: number }>(
+  { active: false, done: 0, total: 0, name: '', frac: 0 },
+);
+const uploadPct = computed(() => {
+  const u = uploadState.value;
+  return u.total ? Math.round(((u.done + u.frac) / u.total) * 100) : 0;
+});
 async function uploadList(list: FileList | File[]) {
   const files = Array.from(list);
   if (!files.length) return;
-  try { for (const f of files) await s.upload(f, cwd.value); await s.load(); success(t('common.saved')); }
-  catch { error(t('common.error')); }
+  uploadState.value = { active: true, done: 0, total: files.length, name: '', frac: 0 };
+  try {
+    for (const f of files) {
+      uploadState.value.name = f.name;
+      uploadState.value.frac = 0;
+      await s.upload(f, cwd.value, (fr) => { uploadState.value.frac = fr; });
+      uploadState.value.done++;
+    }
+    await s.load();
+    success(t('common.saved'));
+  } catch { error(t('common.error')); }
+  finally { uploadState.value.active = false; }
 }
 async function onUpload(e: Event) {
   const list = (e.target as HTMLInputElement).files;

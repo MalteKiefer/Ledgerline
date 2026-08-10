@@ -109,5 +109,30 @@ export const api = {
   },
 };
 
+// Multipart upload with byte-level progress (fetch can't observe upload
+// progress, so this uses XHR). Same bearer auth + JSON contract as api.upload.
+export function uploadWithProgress<T>(path: string, form: FormData, onProgress?: (fraction: number) => void): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', apiUrl(path));
+    xhr.responseType = 'json';
+    const t = getToken();
+    if (t) xhr.setRequestHeader('Authorization', `Bearer ${t}`);
+    xhr.setRequestHeader('Accept', 'application/json');
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    }
+    xhr.onload = () => {
+      const body = xhr.response as unknown;
+      if (xhr.status >= 200 && xhr.status < 300) { resolve(body as T); return; }
+      if (xhr.status === 401) { setToken(null); onUnauthorized?.(); }
+      if (xhr.status === 409) { reject(new VersionConflict((body as { version?: number } | null)?.version ?? null)); return; }
+      reject(new ApiError(xhr.status, body));
+    };
+    xhr.onerror = () => reject(new ApiError(0, null));
+    xhr.send(form);
+  });
+}
+
 // Back-compat no-op (old code called ensureCsrf; bearer auth needs no CSRF).
 export async function ensureCsrf(): Promise<void> { /* no-op */ }

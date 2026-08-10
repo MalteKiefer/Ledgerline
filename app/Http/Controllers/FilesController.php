@@ -1183,6 +1183,23 @@ class FilesController extends Controller
     }
     // ---- Public share links (owner side) ----
 
+    /** List the current user's public share links (with the target's name). */
+    public function shares(Request $request): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $rows = FileShare::query()->where('user_id', $uid)->orderByDesc('id')->get();
+        $fileNames = FileEntry::query()->whereIn('id', $rows->pluck('file_id')->filter()->all())->pluck('name', 'id');
+        $folderNames = FileFolder::query()->whereIn('id', $rows->pluck('file_folder_id')->filter()->all())->pluck('name', 'id');
+
+        $shares = $rows->map(function (FileShare $s) use ($fileNames, $folderNames): array {
+            $name = $s->kind === 'file' ? ($fileNames[$s->file_id] ?? null) : ($folderNames[$s->file_folder_id] ?? null);
+
+            return [...$this->shareView($s), 'name' => is_string($name) ? $name : ''];
+        })->all();
+
+        return response()->json(['shares' => $shares]);
+    }
+
     public function storeShare(Request $request): JsonResponse
     {
         $uid = (int) $this->requireUser($request)->id;
