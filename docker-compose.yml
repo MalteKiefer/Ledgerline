@@ -117,6 +117,14 @@ services:
       AUTORUN_LARAVEL_ROUTE_CACHE: "true"
       AUTORUN_LARAVEL_VIEW_CACHE: "true"
       AUTORUN_LARAVEL_EVENT_CACHE: "true"
+      # Image + PHP scratch on the roomy storage volume, NOT the small RAM /tmp
+      # tmpfs (a large HEIC decode disk-caches hundreds of MB and would fill it →
+      # thumbnail 404). An explicit environment: block REPLACES the anchor's, so
+      # these must be restated here.
+      TMPDIR: /var/www/html/storage/app/imgtmp
+      TMP: /var/www/html/storage/app/imgtmp
+      MAGICK_TMPDIR: /var/www/html/storage/app/imgtmp
+      MAGICK_TEMPORARY_PATH: /var/www/html/storage/app/imgtmp
     ports:
       # Bind host is configurable: default 127.0.0.1 (prod sits behind Caddy on the
       # host loopback). A LAN-only preview box sets APP_BIND=0.0.0.0 in .env to
@@ -154,6 +162,10 @@ services:
       AWS_EC2_METADATA_DISABLED: "true"
       NGINX_CLIENT_MAX_BODY_SIZE: "560M"
       PHP_MEMORY_LIMIT: "${WORKER_PHP_MEMORY_LIMIT:-2048M}"
+      TMPDIR: /var/www/html/storage/app/imgtmp
+      TMP: /var/www/html/storage/app/imgtmp
+      MAGICK_TMPDIR: /var/www/html/storage/app/imgtmp
+      MAGICK_TEMPORARY_PATH: /var/www/html/storage/app/imgtmp
     deploy:
       # replicas is only applied when you don't pass --scale; keep 1 by default.
       replicas: ${WORKER_REPLICAS:-1}
