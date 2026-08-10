@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 return [
+    'drop_here' => 'Перетащите Markdown-файлы для импорта',
+    'md_h1' => 'Заголовок 1',
+    'md_h3' => 'Заголовок 3',
+    'md_wikilink' => 'Ссылка на заметку ([[…]])',
     'new_note' => 'Новая заметка',
     'new_folder' => 'Новая папка',
     'folders' => 'Папки',

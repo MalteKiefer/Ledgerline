@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 return [
+    'drop_here' => 'Drop Markdown files to import',
+    'md_h1' => 'Heading 1',
+    'md_h3' => 'Heading 3',
+    'md_wikilink' => 'Link to note ([[…]])',
     'new_note' => 'New note',
     'new_folder' => 'New folder',
     'folders' => 'Folders',

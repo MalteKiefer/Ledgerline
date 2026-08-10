@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 return [
+    'drop_here' => 'Markdown-Dateien zum Importieren ablegen',
+    'md_h1' => 'Überschrift 1',
+    'md_h3' => 'Überschrift 3',
+    'md_wikilink' => 'Notiz verlinken ([[…]])',
     'new_note' => 'Neue Notiz',
     'new_folder' => 'Neuer Ordner',
     'folders' => 'Ordner',
