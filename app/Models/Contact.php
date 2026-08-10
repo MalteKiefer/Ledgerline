@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 /** A contact card. The raw vCard 4.0 is authoritative; other columns are denormalised. */
 #[Fillable([
     'address_book_id', 'uri', 'etag', 'uid', 'vcard',
-    'fn', 'first_name', 'last_name', 'org', 'emails', 'phones', 'has_photo', 'favorite',
+    'fn', 'first_name', 'last_name', 'org', 'emails', 'phones', 'has_photo', 'favorite', 'bday',
 ])]
 class Contact extends Model
 {

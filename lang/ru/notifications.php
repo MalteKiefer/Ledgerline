@@ -13,5 +13,6 @@ return [
     'task_overdue_since' => 'Просрочено с :date',
     'event_soon' => 'Скоро: :event',
     'event_at' => 'Начало в :time',
+    'birthday' => 'День рождения сегодня: :name',
     'backup_failed' => 'Резервная копия «:name» завершилась ошибкой',
 ];
