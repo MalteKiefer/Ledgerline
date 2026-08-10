@@ -98,6 +98,44 @@
       </div>
     </Card>
 
+    <!-- Bank transactions -->
+    <Card v-show="tab === 'bank'" :title="t('invoices.tab_bank')" :body-class="'p-0'">
+      <template #actions>
+        <div class="flex items-center gap-2">
+          <Select v-model.number="bankAccount" :options="bankAccountItems" class="w-44" />
+          <Btn variant="ghost" size="sm" icon="upload" @click="bankCsvInput?.click()">{{ t('invoices.tx_import') }}</Btn>
+          <input ref="bankCsvInput" type="file" accept=".csv,text/csv" class="hidden" @change="onBankCsv">
+          <Btn variant="solid" size="sm" icon="add" @click="newTx">{{ t('common.add') }}</Btn>
+        </div>
+      </template>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+            <tr class="border-b border-[var(--ll-border)]">
+              <th class="px-4 py-2.5 font-medium">{{ t('common.date') }}</th>
+              <th class="px-4 py-2.5 font-medium">{{ t('invoices.tx_counterparty') }}</th>
+              <th class="px-4 py-2.5 font-medium">{{ t('invoices.tx_purpose') }}</th>
+              <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.gross') }}</th>
+              <th class="px-4 py-2.5" />
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="tx in bankTransactions" :key="tx.id" class="border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
+              <td class="px-4 py-2.5 whitespace-nowrap">{{ tx.date }}</td>
+              <td class="px-4 py-2.5"><div class="truncate">{{ tx.counterparty || '—' }}</div><div v-if="tx.counterparty_iban" class="truncate text-xs text-[var(--ll-muted)]">{{ tx.counterparty_iban }}</div></td>
+              <td class="px-4 py-2.5"><div class="max-w-xs truncate text-[var(--ll-muted)]">{{ tx.purpose || '—' }}</div></td>
+              <td class="px-4 py-2.5 text-right font-medium" :class="tx.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400'">{{ money(tx.amount) }}</td>
+              <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editTx(tx)" />
+                <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delTx(tx)" />
+              </td>
+            </tr>
+            <tr v-if="!bankTransactions.length"><td colspan="5" class="py-8 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
+
     <!-- Receipts -->
     <Card v-show="tab === 'receipts'" :title="t('invoices.receipts_title')" :body-class="'p-0'">
       <template #actions><Btn variant="solid" size="sm" icon="add" @click="newReceipt">{{ t('common.add') }}</Btn></template>
@@ -438,6 +476,29 @@
       <template #footer>
         <Btn variant="ghost" @click="pDialog = false">{{ t('common.cancel') }}</Btn>
         <Btn variant="solid" :loading="saving" @click="savePP">{{ t('common.save') }}</Btn>
+      </template>
+    </Modal>
+
+    <!-- Bank transaction editor -->
+    <Modal v-model="txDialog" :title="txForm.id ? t('common.edit') : t('common.add')" width="480px">
+      <div class="space-y-3">
+        <Select v-model.number="txForm.payment_method_id" :label="t('invoices.tab_payments')" :options="f.paymentMethods.map((p) => ({ title: p.name, value: p.id }))" />
+        <div class="grid grid-cols-2 gap-3">
+          <TextField v-model="txForm.date" :label="t('common.date')" type="date" />
+          <TextField v-model="txForm.amount" :label="t('invoices.gross')" type="number" />
+        </div>
+        <TextField v-model="txForm.counterparty" :label="t('invoices.tx_counterparty')" />
+        <div class="grid grid-cols-2 gap-3">
+          <TextField v-model="txForm.counterparty_iban" label="IBAN" />
+          <TextField v-model="txForm.bic" label="BIC" />
+        </div>
+        <TextField v-model="txForm.purpose" :label="t('invoices.tx_purpose')" />
+        <TextField v-model="txForm.booking_text" :label="t('invoices.tx_booking_text')" />
+        <Select v-model="txForm.vat_cat" :label="t('invoices.tx_vat')" :options="vatCatItems" />
+      </div>
+      <template #footer>
+        <Btn variant="ghost" @click="txDialog = false">{{ t('common.cancel') }}</Btn>
+        <Btn variant="solid" :loading="saving" @click="saveTx">{{ t('common.save') }}</Btn>
       </template>
     </Modal>
 
@@ -890,7 +951,7 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt } from '@spa/stores/finance';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, VersionConflict } from '@spa/api/client';
@@ -905,7 +966,7 @@ const f = useFinanceStore();
 const { success, error } = useToast();
 const route = useRoute();
 const router = useRouter();
-const VALID = ['dashboard', 'invoices', 'payments', 'receipts', 'projects', 'partners', 'stats'];
+const VALID = ['dashboard', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners', 'stats'];
 const tab = computed(() => {
   const s = String(route.params.section || 'dashboard');
   return VALID.includes(s) ? s : 'dashboard';
@@ -913,10 +974,10 @@ const tab = computed(() => {
 function go(v: unknown) { router.push(`/finance/${String(v)}`); }
 
 // In-page left submenu sections (mirrors the Profile/Settings hub layout).
-const sections = ['dashboard', 'invoices', 'payments', 'receipts', 'projects', 'partners', 'stats'] as const;
+const sections = ['dashboard', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners', 'stats'] as const;
 const secIcon: Record<string, string> = {
   dashboard: 'space_dashboard', invoices: 'receipt_long', payments: 'account_balance_wallet',
-  receipts: 'receipt', projects: 'account_tree', partners: 'groups', stats: 'insights',
+  bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups', stats: 'insights',
 };
 const q = ref('');
 
@@ -1113,6 +1174,126 @@ async function savePP() {
     await f.savePayment(pForm as unknown as Partial<PaymentMethod>);
     pDialog.value = false; await f.load(); success(t('common.saved'));
   } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); } finally { saving.value = false; }
+}
+
+// ---- Bank transactions ----
+const bankAccount = ref(0); // 0 = all accounts
+const bankCsvInput = ref<HTMLInputElement | null>(null);
+const bankAccountItems = computed(() => [
+  { title: t('invoices.tx_all_accounts'), value: 0 },
+  ...f.paymentMethods.map((p) => ({ title: p.name, value: p.id })),
+]);
+const bankTransactions = computed(() =>
+  bankAccount.value ? f.transactions.filter((x) => x.payment_method_id === bankAccount.value) : f.transactions,
+);
+const vatCatItems = computed(() => [
+  { title: '—', value: '' },
+  { title: '19%', value: '19' }, { title: '7%', value: '7' }, { title: '0%', value: '0' },
+  { title: t('invoices.vatcat_private'), value: 'private' },
+]);
+
+interface TxForm {
+  id?: number; version?: number; payment_method_id: number | null;
+  date: string; amount: string; counterparty: string; counterparty_iban: string;
+  bic: string; purpose: string; booking_text: string; vat_cat: string;
+}
+function blankTx(): TxForm {
+  return {
+    payment_method_id: bankAccount.value || (f.paymentMethods[0]?.id ?? null),
+    date: new Date().toISOString().slice(0, 10), amount: '', counterparty: '', counterparty_iban: '',
+    bic: '', purpose: '', booking_text: '', vat_cat: '',
+  };
+}
+const txForm = reactive<TxForm>(blankTx());
+const txDialog = ref(false);
+function newTx() { Object.assign(txForm, blankTx()); txDialog.value = true; }
+function editTx(tx: BankTransaction) {
+  Object.assign(txForm, {
+    id: tx.id, version: tx.version, payment_method_id: tx.payment_method_id,
+    date: tx.date ?? '', amount: String(tx.amount ?? ''), counterparty: tx.counterparty ?? '',
+    counterparty_iban: tx.counterparty_iban ?? '', bic: tx.bic ?? '', purpose: tx.purpose ?? '',
+    booking_text: tx.booking_text ?? '', vat_cat: tx.vat_cat ?? '',
+  });
+  txDialog.value = true;
+}
+async function saveTx() {
+  saving.value = true;
+  try {
+    const body = {
+      payment_method_id: txForm.payment_method_id, date: txForm.date, amount: Number(txForm.amount),
+      counterparty: txForm.counterparty, counterparty_iban: txForm.counterparty_iban, bic: txForm.bic,
+      purpose: txForm.purpose, booking_text: txForm.booking_text, vat_cat: txForm.vat_cat || null,
+      version: txForm.version,
+    };
+    if (txForm.id) await f.updateTransaction(txForm.id, body);
+    else await f.createTransaction(body);
+    txDialog.value = false; await f.load(); success(t('common.saved'));
+  } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); } finally { saving.value = false; }
+}
+async function delTx(tx: BankTransaction) {
+  if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return;
+  try { await f.deleteTransaction(tx.id); await f.load(); success(t('common.saved')); }
+  catch { error(t('common.error')); }
+}
+
+// CSV bank-statement import: header row + comma/semicolon delimiter; maps date/amount/counterparty/purpose.
+async function onBankCsv(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  const acct = bankAccount.value || f.paymentMethods[0]?.id;
+  if (!acct) { error(t('invoices.tx_import_no_account')); return; }
+  try {
+    const rows = parseBankCsv(await file.text());
+    if (!rows.length) { error(t('invoices.tx_import_empty')); return; }
+    const res = await f.bulkTransactions(acct, rows);
+    await f.load();
+    success(t('invoices.tx_import_done', { created: String(res.created), skipped: String(res.skipped) }));
+  } catch { error(t('common.error')); }
+}
+function csvAmount(raw: string): number {
+  let s = raw.replace(/[^\d.,-]/g, '');
+  if (s.includes(',') && s.includes('.')) {
+    s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if (s.includes(',')) s = s.replace(',', '.');
+  return Number(s);
+}
+function csvDate(s: string): string | null {
+  if (!s) return null;
+  const m = s.match(/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/);
+  if (m) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
+  const iso = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  return iso ? iso[0] : null;
+}
+// Returns rows the backend bulk endpoint accepts (date + amount required per row).
+function parseBankCsv(text: string): Record<string, unknown>[] {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return [];
+  const delim = (lines[0].match(/;/g)?.length ?? 0) >= (lines[0].match(/,/g)?.length ?? 0) ? ';' : ',';
+  const split = (l: string) => l.split(delim).map((c) => c.trim().replace(/^"|"$/g, ''));
+  const header = split(lines[0]).map((h) => h.toLowerCase());
+  const idx = (...names: string[]) => header.findIndex((h) => names.some((n) => h.includes(n)));
+  const di = idx('datum', 'date', 'buchung');
+  const ai = idx('betrag', 'amount', 'value');
+  const ci = idx('empfänger', 'auftraggeber', 'counterparty', 'name', 'beguenstigter', 'begünstigter', 'zahlungspflichtiger');
+  const pi = idx('verwendung', 'purpose', 'reference', 'zweck');
+  const out: Record<string, unknown>[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const c = split(lines[i]);
+    if (ai < 0 || !c[ai]) continue;
+    const amount = csvAmount(c[ai]);
+    if (!Number.isFinite(amount)) continue;
+    const date = di >= 0 ? csvDate(c[di]) : null;
+    if (!date) continue; // date is required by the endpoint
+    out.push({
+      date,
+      amount,
+      counterparty: ci >= 0 ? (c[ci] ?? '') : '',
+      purpose: pi >= 0 ? (c[pi] ?? '') : '',
+    });
+  }
+  return out;
 }
 
 // ---- Business partners (Geschäftspartner): list ↔ detail, rich editor ----
