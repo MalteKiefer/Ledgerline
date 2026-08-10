@@ -2709,6 +2709,42 @@ paths:
                   has_avatar: { type: boolean }
         "429": { description: Rate limit exceeded. }
 
+  /device/push-endpoint:
+    post:
+      tags: [Me/Device]
+      operationId: devicePushEndpointStore
+      summary: Register the per-device UnifiedPush endpoint
+      description: >
+        Stores an HTTPS push endpoint (a UnifiedPush/ntfy topic URL) on the calling
+        device token; SendPushJob POSTs notification payloads there. Stored encrypted.
+        Validated as https + a resolvable, non-link-local/metadata host (SSRF guard).
+        Throttle 30/min.
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint]
+              properties:
+                endpoint: { type: string, format: uri, maxLength: 2048, description: "https URL of the push endpoint." }
+      responses:
+        "200": { description: Registered., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "422": { description: "Invalid or disallowed endpoint (not https / blocked host)." }
+        "429": { description: Rate limit exceeded. }
+    delete:
+      tags: [Me/Device]
+      operationId: devicePushEndpointDestroy
+      summary: Clear the per-device push endpoint
+      description: Removes the push endpoint from the calling device token (push disabled). Throttle 30/min.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Cleared., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: '#/components/responses/Unauthorized' }
+        "429": { description: Rate limit exceeded. }
+
   /device/heartbeat:
     post:
       tags: [Me/Device]

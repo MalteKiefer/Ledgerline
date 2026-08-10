@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\BackupController as ApiBackupController;
 use App\Http\Controllers\Api\CalendarProfileController as ApiCalendarProfileController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
 use App\Http\Controllers\Api\ContactsProfileController as ApiContactsProfileController;
+use App\Http\Controllers\Api\DevicePushEndpointController;
 use App\Http\Controllers\Api\FilesLimitsController as ApiFilesLimitsController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
 use App\Http\Controllers\Api\InviteLinkController as ApiInviteLinkController;
@@ -118,6 +119,9 @@ Route::prefix('v1')->group(function (): void {
         // 404 when none stored. `me.user.has_avatar` tells the app whether to fetch it.
         Route::get('/avatar', AvatarController::class)->middleware('throttle:120,1')->name('api.avatar');
         Route::post('/avatar', [AvatarController::class, 'store'])->middleware('throttle:30,1')->name('api.avatar.store');
+        // Per-device UnifiedPush endpoint (tied to the calling device token).
+        Route::post('/device/push-endpoint', [DevicePushEndpointController::class, 'store'])->middleware('throttle:30,1')->name('api.device.push-endpoint.store');
+        Route::delete('/device/push-endpoint', [DevicePushEndpointController::class, 'destroy'])->middleware('throttle:30,1')->name('api.device.push-endpoint.destroy');
         Route::delete('/avatar', [AvatarController::class, 'destroy'])->middleware('throttle:30,1')->name('api.avatar.destroy');
         Route::post('/device/heartbeat', [AuthController::class, 'heartbeat'])->middleware('throttle:120,1')->name('api.device.heartbeat');
         Route::delete('/auth/session', [AuthController::class, 'destroy'])->name('api.auth.destroy');
