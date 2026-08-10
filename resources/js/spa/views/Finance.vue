@@ -126,6 +126,10 @@
               <td class="px-4 py-2.5"><div class="max-w-xs truncate text-[var(--ll-muted)]">{{ tx.purpose || '—' }}</div></td>
               <td class="px-4 py-2.5 text-right font-medium" :class="tx.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400'">{{ money(tx.amount) }}</td>
               <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                <button class="relative mr-1 inline-flex items-center rounded p-1.5 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('invoices.tx_receipts')" @click="openTxReceipts(tx)">
+                  <Icon name="attach_file" :size="18" />
+                  <span v-if="(tx.receipts?.length ?? 0)" class="ml-0.5 text-xs tabular-nums">{{ tx.receipts?.length }}</span>
+                </button>
                 <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editTx(tx)" />
                 <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delTx(tx)" />
               </td>
@@ -561,6 +565,26 @@
       <template #footer>
         <Btn variant="ghost" @click="txDialog = false">{{ t('common.cancel') }}</Btn>
         <Btn variant="solid" :loading="saving" @click="saveTx">{{ t('common.save') }}</Btn>
+      </template>
+    </Modal>
+
+    <!-- Bank transaction receipts (reconcile) -->
+    <Modal v-model="txRecDialog" :title="t('invoices.tx_receipts')" width="480px">
+      <div v-if="txRecTx" class="space-y-2">
+        <div v-for="r in (txRecTx.receipts ?? [])" :key="r.id" class="flex items-center gap-2 rounded-lg border border-[var(--ll-border)] px-3 py-2">
+          <Icon name="receipt" :size="18" class="shrink-0 text-[var(--ll-muted)]" />
+          <span class="flex-1 truncate text-sm">{{ r.name }}</span>
+          <Btn variant="ghost" size="sm" icon="open_in_new" :title="t('common.open')" @click="openTxReceipt(r)" />
+          <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delTxReceipt(r)" />
+        </div>
+        <div v-if="!(txRecTx.receipts?.length ?? 0)" class="py-4 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</div>
+        <div class="mt-3 border-t border-[var(--ll-border)] pt-3">
+          <input ref="txRecInput" type="file" accept=".pdf,image/*" class="hidden" @change="onTxReceiptFile">
+          <Btn variant="soft" icon="upload" :loading="txRecBusy" @click="txRecInput?.click()">{{ t('invoices.tx_receipt_attach') }}</Btn>
+        </div>
+      </div>
+      <template #footer>
+        <Btn variant="ghost" @click="txRecDialog = false">{{ t('common.close') }}</Btn>
       </template>
     </Modal>
 
@@ -1437,6 +1461,41 @@ function parseBankCsv(text: string): Record<string, unknown>[] {
     });
   }
   return out;
+}
+
+// ---- Bank-transaction receipts (reconcile: attach receipt documents to a booking) ----
+const txRecDialog = ref(false);
+const txRecTx = ref<BankTransaction | null>(null);
+const txRecInput = ref<HTMLInputElement | null>(null);
+const txRecBusy = ref(false);
+function openTxReceipts(tx: BankTransaction) { txRecTx.value = tx; txRecDialog.value = true; }
+function openTxReceipt(r: import('@spa/stores/finance').TxReceipt) {
+  if (txRecTx.value) window.open(f.txReceiptUrl(txRecTx.value.id, r.id), '_blank');
+}
+async function onTxReceiptFile(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file || !txRecTx.value) return;
+  txRecBusy.value = true;
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const r = await f.attachTxReceipt(txRecTx.value.id, fd);
+    txRecTx.value = r.transaction;
+    await f.load();
+    success(t('common.saved'));
+  } catch { error(t('common.error')); } finally { txRecBusy.value = false; }
+}
+async function delTxReceipt(r: import('@spa/stores/finance').TxReceipt) {
+  if (!txRecTx.value) return;
+  if (!await confirmAsk(t('common.confirm_delete'), { danger: true })) return;
+  try {
+    await f.deleteTxReceipt(txRecTx.value.id, r.id);
+    if (txRecTx.value) txRecTx.value.receipts = (txRecTx.value.receipts ?? []).filter((x) => x.id !== r.id);
+    await f.load();
+    success(t('common.saved'));
+  } catch { error(t('common.error')); }
 }
 
 // ---- Finance categories (managed list feeding the receipt/partner category datalist) ----

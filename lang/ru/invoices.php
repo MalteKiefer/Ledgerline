@@ -284,6 +284,8 @@ return [
     'tx_purpose' => 'Назначение',
     'tab_bank' => 'Банк',
     'tx_booking_text' => 'Текст проводки',
+    'tx_receipts' => 'Документы',
+    'tx_receipt_attach' => 'Прикрепить документ',
     'tx_all_accounts' => 'Все счета',
     'tx_import' => 'Импорт CSV',
     'tx_import_no_account' => 'Сначала добавьте банковский счёт.',

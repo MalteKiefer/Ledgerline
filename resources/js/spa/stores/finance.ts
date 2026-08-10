@@ -39,7 +39,11 @@ export interface BankTransaction {
   vat_cat: string | null; counterparty: string | null; counterparty_iban: string | null;
   bic: string | null; purpose: string | null; booking_text: string | null; eref: string | null;
   invoice_id: number | null; invoice_number: string | null; finance_project_id: number | null;
-  receipts: unknown[] | null; version: number;
+  receipts: TxReceipt[] | null; version: number;
+}
+export interface TxReceipt {
+  id: string; name: string; mime: string | null; kind: string | null;
+  category?: string | null; tags?: string[] | null; partnerId?: number | null;
 }
 export interface FinanceCategory { id: number; name: string; color: string | null; icon: string | null; version?: number }
 export interface DuplicateGroup { reason: string; key: string; ids: number[] }
@@ -73,6 +77,10 @@ export const useFinanceStore = defineStore('finance', () => {
   const forceTransaction = (id: number) => api.delete(`/api/v1/finance/transactions/${id}/force`);
   const bulkTransactions = (paymentMethodId: number, rows: Record<string, unknown>[]) =>
     api.post<{ created: number; skipped: number }>('/api/v1/finance/transactions/bulk', { payment_method_id: paymentMethodId, transactions: rows });
+  // Receipt documents attached to a bank transaction (reconcile).
+  const attachTxReceipt = (txId: number, form: FormData) => api.upload<{ transaction: BankTransaction }>(`/api/v1/finance/transactions/${txId}/receipts`, form);
+  const deleteTxReceipt = (txId: number, receiptId: string) => api.delete(`/api/v1/finance/transactions/${txId}/receipts/${receiptId}`);
+  const txReceiptUrl = (txId: number, receiptId: string) => api.streamUrl(`/api/v1/finance/transactions/${txId}/receipts/${receiptId}/raw`);
   const loadTrash = () => api.get<{ transactions: BankTransaction[] }>('/api/v1/finance/trash');
 
   // ---- Finance categories ----
@@ -130,6 +138,7 @@ export const useFinanceStore = defineStore('finance', () => {
     invoices, partners, paymentMethods, projects, standaloneReceipts, transactions, financeCategories,
     load, reports, vatAdvance, euer, accountVat, duplicates, categorySuggestions,
     createTransaction, updateTransaction, deleteTransaction, restoreTransaction, forceTransaction, bulkTransactions, loadTrash,
+    attachTxReceipt, deleteTxReceipt, txReceiptUrl,
     createCategory, updateCategory, deleteCategory,
     createInvoice, updateInvoice, deleteInvoice, finalizeInvoice, stornoInvoice, emailInvoice, dunInvoice, invoicePdfUrl,
     savePartner, deletePartner, savePayment, deletePayment,

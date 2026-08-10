@@ -284,6 +284,8 @@ return [
     'tx_purpose' => 'Verwendungszweck',
     'tab_bank' => 'Bank',
     'tx_booking_text' => 'Buchungstext',
+    'tx_receipts' => 'Belege',
+    'tx_receipt_attach' => 'Beleg anhängen',
     'tx_all_accounts' => 'Alle Konten',
     'tx_import' => 'CSV importieren',
     'tx_import_no_account' => 'Lege zuerst ein Bankkonto an.',
