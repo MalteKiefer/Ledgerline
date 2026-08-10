@@ -9,6 +9,7 @@ return [
         'files' => 'Файлы',
         'contacts' => 'Контакты',
         'notes' => 'Заметки',
+        'gallery' => 'Галерея',
         'calendar' => 'Календарь',
         'mail' => 'Почта',
         'more' => 'Ещё',

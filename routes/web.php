@@ -17,6 +17,7 @@ use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
+use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GeoController;
 use App\Http\Controllers\InviteLinkController;
 use App\Http\Controllers\LocaleController;
@@ -413,6 +414,24 @@ Route::middleware('auth')->group(function (): void {
         Route::delete('/notes/{id}/force', [NotesController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('notes.force');
     });
 
+    // Gallery (plaintext-relational, images). Static collection routes before /{photo}.
+    Route::middleware('module:gallery')->group(function (): void {
+        Route::get('/gallery/data', [GalleryController::class, 'data'])->name('gallery.data');
+        Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('gallery.trash');
+        Route::post('/gallery', [GalleryController::class, 'upload'])->middleware('throttle:1200,1')->name('gallery.upload');
+        Route::post('/gallery/chunk/init', [GalleryController::class, 'chunkInit'])->middleware('throttle:600,1')->name('gallery.chunk.init');
+        Route::post('/gallery/chunk/part', [GalleryController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('gallery.chunk.part');
+        Route::post('/gallery/chunk/complete', [GalleryController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('gallery.chunk.complete');
+        Route::post('/gallery/chunk/abort', [GalleryController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('gallery.chunk.abort');
+        Route::get('/gallery/{photo}/raw', [GalleryController::class, 'raw'])->whereNumber('photo')->middleware('throttle:3000,1')->name('gallery.raw');
+        Route::get('/gallery/{photo}/thumb', [GalleryController::class, 'thumb'])->whereNumber('photo')->middleware('throttle:6000,1')->name('gallery.thumb');
+        Route::patch('/gallery/{photo}/favorite', [GalleryController::class, 'favorite'])->whereNumber('photo')->middleware('throttle:600,1')->name('gallery.favorite');
+        Route::delete('/gallery/{photo}', [GalleryController::class, 'destroy'])->whereNumber('photo')->middleware('throttle:600,1')->name('gallery.destroy');
+        Route::post('/gallery/{id}/restore', [GalleryController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('gallery.restore');
+        Route::delete('/gallery/{id}/force', [GalleryController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('gallery.force');
+        Route::post('/gallery/trash/empty', [GalleryController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('gallery.empty');
+    });
+
     // Calendar + CalDAV (plaintext-relational). Static collection routes are
     // declared before /calendar/events/{event} so they win over model binding.
     Route::middleware('module:calendar')->group(function (): void {
@@ -532,6 +551,7 @@ Route::get('/finance', $spa)->name('finance.index');
 Route::get('/files', $spa)->name('files.index');
 Route::get('/contacts', $spa)->name('contacts.index');
 Route::get('/notes', $spa)->name('notes.index');
+Route::get('/gallery', $spa)->name('gallery.index');
 Route::get('/u/{token}', $spa)->name('upload-link.page');
 Route::get('/calendar', $spa)->name('calendar.index');
 Route::get('/mail', $spa)->name('mail.index');
