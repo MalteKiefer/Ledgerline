@@ -95,9 +95,16 @@
           <Btn variant="solid" size="sm" :loading="saving" @click="save">{{ t('common.save') }}</Btn>
           <button class="rounded-lg p-2 text-red-600 hover:bg-red-500/10" :title="t('common.delete')" @click="onDelete"><Icon name="delete" :size="18" /></button>
         </div>
+        <div v-if="!preview" class="flex flex-wrap items-center gap-0.5 border-b border-[var(--ll-border)] px-2 py-1">
+          <button v-for="b in toolbar" :key="b.key" class="rounded-md p-1.5 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('notes.md_' + b.key)" @click="b.run()">
+            <Icon :name="b.icon" :size="18" />
+          </button>
+          <input ref="imgInput" type="file" accept="image/*" class="hidden" @change="onInsertImage">
+        </div>
         <div class="flex min-h-0 flex-1">
           <textarea
             v-if="!preview"
+            ref="bodyArea"
             v-model="current.body"
             class="h-full flex-1 resize-none bg-transparent p-4 font-mono text-sm text-[var(--ll-fg)] focus:outline-none"
             :placeholder="t('notes.body_ph')"
@@ -140,7 +147,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue';
+import { ref, computed, reactive, onMounted, nextTick } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, TextField, Select, Icon } from '@spa/ui';
 import { useNotesStore, type NoteDetail, type NoteFolder, type NoteRow } from '@spa/stores/notes';
@@ -164,6 +171,8 @@ const trashNotes = ref<NoteRow[]>([]);
 const tagInput = ref('');
 const folderSel = ref(0);
 const attachInput = ref<HTMLInputElement | null>(null);
+const imgInput = ref<HTMLInputElement | null>(null);
+const bodyArea = ref<HTMLTextAreaElement | null>(null);
 
 // Resolve a wikilink title → note id from the loaded list (case-insensitive,
 // latest updated wins) so [[Title]] renders as an internal link.
@@ -258,6 +267,85 @@ async function toggleFav() {
   if (!current.value?.id) { if (current.value) current.value.favorite = !current.value.favorite; return; }
   current.value.favorite = !current.value.favorite;
   try { await n.favorite(current.value.id, current.value.favorite); await n.load(); } catch { error(t('common.error')); }
+}
+
+// --- Markdown editor toolbar ---------------------------------------------
+// Each button mutates the textarea selection then restores focus/caret.
+function edit(fn: (val: string, s: number, e: number) => { text: string; from: number; to: number }) {
+  const ta = bodyArea.value;
+  if (!ta || !current.value) return;
+  const val = ta.value;
+  const s = ta.selectionStart ?? val.length;
+  const e = ta.selectionEnd ?? val.length;
+  const r = fn(val, s, e);
+  current.value.body = r.text;
+  nextTick(() => { ta.focus(); ta.setSelectionRange(r.from, r.to); });
+}
+// Wrap the selection with before/after (bold, italic, code, strike).
+function wrap(before: string, after: string, ph: string) {
+  edit((val, s, e) => {
+    const sel = val.slice(s, e) || ph;
+    const text = val.slice(0, s) + before + sel + after + val.slice(e);
+    const from = s + before.length;
+    return { text, from, to: from + sel.length };
+  });
+}
+// Prefix each line of the selection (headings, lists, quote, checkbox).
+function linePrefix(prefix: string) {
+  edit((val, s, e) => {
+    const lineStart = val.lastIndexOf('\n', s - 1) + 1;
+    const block = val.slice(lineStart, e);
+    const replaced = block.split('\n').map((l) => prefix + l).join('\n');
+    const text = val.slice(0, lineStart) + replaced + val.slice(e);
+    return { text, from: lineStart, to: lineStart + replaced.length };
+  });
+}
+function insert(snippet: string, caretBack = 0) {
+  edit((val, s, e) => {
+    const text = val.slice(0, s) + snippet + val.slice(e);
+    const pos = s + snippet.length - caretBack;
+    return { text, from: pos, to: pos };
+  });
+}
+function insertLink() {
+  edit((val, s, e) => {
+    const sel = val.slice(s, e) || t('notes.md_link_text');
+    const snippet = `[${sel}](url)`;
+    const text = val.slice(0, s) + snippet + val.slice(e);
+    const from = s + snippet.length - 4; // caret inside (url)
+    return { text, from, to: from + 3 };
+  });
+}
+const toolbar = [
+  { key: 'bold', icon: 'format_bold', run: () => wrap('**', '**', t('notes.md_bold_text')) },
+  { key: 'italic', icon: 'format_italic', run: () => wrap('*', '*', t('notes.md_italic_text')) },
+  { key: 'strike', icon: 'strikethrough_s', run: () => wrap('~~', '~~', '') },
+  { key: 'heading', icon: 'title', run: () => linePrefix('## ') },
+  { key: 'quote', icon: 'format_quote', run: () => linePrefix('> ') },
+  { key: 'ulist', icon: 'format_list_bulleted', run: () => linePrefix('- ') },
+  { key: 'olist', icon: 'format_list_numbered', run: () => linePrefix('1. ') },
+  { key: 'checklist', icon: 'checklist', run: () => linePrefix('- [ ] ') },
+  { key: 'code', icon: 'code', run: () => wrap('`', '`', 'code') },
+  { key: 'codeblock', icon: 'data_object', run: () => insert('\n```\n\n```\n', 5) },
+  { key: 'link', icon: 'link', run: insertLink },
+  { key: 'image', icon: 'image', run: () => (current.value?.id ? imgInput.value?.click() : insert('![alt](url)', 4)) },
+  { key: 'table', icon: 'table_chart', run: () => insert('\n| A | B |\n| --- | --- |\n| 1 | 2 |\n') },
+  { key: 'rule', icon: 'horizontal_rule', run: () => insert('\n---\n') },
+] as const;
+
+// Upload a picked image as an attachment, then insert a Markdown image pointing
+// at its (sandboxed) raw URL. Needs a saved note; otherwise the button inserts a
+// plain template (see toolbar image run).
+async function onInsertImage(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file || !current.value?.id) return;
+  try {
+    const att = await n.attach(current.value.id, file);
+    (current.value.attachments ??= []).push(att);
+    insert(`![${att.name}](${n.attachmentUrl(current.value.id, att.id)})`);
+  } catch { error(t('common.error')); }
 }
 
 async function onAttach(e: Event) {
