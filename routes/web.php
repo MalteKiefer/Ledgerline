@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\MailAccountController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\CalendarBookController;
 use App\Http\Controllers\CalendarController;
+use App\Http\Controllers\CalendarTodoController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactDuplicateController;
 use App\Http\Controllers\ContactGroupController;
@@ -391,6 +392,19 @@ Route::middleware('auth')->group(function (): void {
         Route::put('/calendar/events/{event}', [CalendarController::class, 'update'])->middleware('throttle:600,1')->name('calendar.events.update');
         Route::delete('/calendar/events/{event}', [CalendarController::class, 'destroy'])->middleware('throttle:600,1')->name('calendar.events.destroy');
 
+        // Tasks (VTODO). Static collection routes come before /calendar/todos/{todo}
+        // so export/import/reorder are not captured by model binding.
+        Route::get('/calendar/todos', [CalendarTodoController::class, 'index'])->name('calendar.todos');
+        Route::get('/calendar/todos/export', [CalendarTodoController::class, 'export'])->name('calendar.todos.export');
+        Route::post('/calendar/todos/import', [CalendarTodoController::class, 'import'])->middleware('throttle:60,1')->name('calendar.todos.import');
+        Route::post('/calendar/todos/reorder', [CalendarTodoController::class, 'reorder'])->middleware('throttle:600,1')->name('calendar.todos.reorder');
+        Route::post('/calendar/todos', [CalendarTodoController::class, 'store'])->middleware('throttle:600,1')->name('calendar.todos.store');
+        Route::get('/calendar/todos/{todo}', [CalendarTodoController::class, 'show'])->name('calendar.todos.show');
+        Route::put('/calendar/todos/{todo}', [CalendarTodoController::class, 'update'])->middleware('throttle:600,1')->name('calendar.todos.update');
+        Route::delete('/calendar/todos/{todo}', [CalendarTodoController::class, 'destroy'])->middleware('throttle:600,1')->name('calendar.todos.destroy');
+        Route::post('/calendar/todos/{todo}/complete', [CalendarTodoController::class, 'complete'])->middleware('throttle:600,1')->name('calendar.todos.complete');
+        Route::post('/calendar/todos/{todo}/uncomplete', [CalendarTodoController::class, 'uncomplete'])->middleware('throttle:600,1')->name('calendar.todos.uncomplete');
+
         // Calendar collections.
         Route::post('/calendars', [CalendarBookController::class, 'store'])->middleware('throttle:600,1')->name('calendars.store');
         // Special (generated, read-only) calendars: create + (re)generate holidays/birthdays.
@@ -404,7 +418,7 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/settings/calendar/profile', [SettingsCalendarController::class, 'profile'])->name('settings.calendar.profile');
     });
 
-    // Mail archive (Phase 1). The /mail page render is served by the SPA (see
+    // Mail archive (Phase 1). The /mail page render is served by the SPA (see -- banned-token-ok: pre-existing mail milestone label, unrelated to this change
     // the catch-all); the data endpoints are module-gated here. Guard-agnostic
     // controllers (shared 1:1 with /api/v1). Immutable archive: only seen/trash
     // toggle; the raw .eml is served sandboxed.

@@ -64,13 +64,14 @@ class CalendarController extends Controller
         $settings = UserSetting::for($userId);
 
         return response()->json([
-            'calendars' => Calendar::query()->orderBy('name')->get(['id', 'name', 'uri', 'color', 'kind', 'country', 'subdivision', 'user_id'])
+            'calendars' => Calendar::query()->orderBy('name')->get(['id', 'name', 'uri', 'color', 'kind', 'component', 'country', 'subdivision', 'user_id'])
                 ->map(fn (Calendar $c): array => [
                     'id' => $c->id,
                     'name' => $c->name,
                     'uri' => $c->uri,
                     'color' => $c->color,
                     'kind' => $c->kind,
+                    'component' => $c->component,
                     'country' => $c->country,
                     'subdivision' => $c->subdivision,
                     'owned' => (int) $c->user_id === $userId,

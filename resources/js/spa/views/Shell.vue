@@ -161,6 +161,7 @@ const menu = computed<NavGroup[]>(() => {
   if (auth.can('files')) mods.push({ to: '/shared-with-me', label: 'files.shared_with_me', icon: 'folder_shared' });
   if (auth.can('contacts')) mods.push({ to: '/contacts', label: 'messages.nav.contacts', icon: 'contacts' });
   if (auth.can('calendar')) mods.push({ to: '/calendar', label: 'messages.nav.calendar', icon: 'calendar_month' });
+  if (auth.can('calendar')) mods.push({ to: '/tasks', label: 'calendar.todos.title', icon: 'checklist' });
   if (auth.can('mail')) mods.push({ to: '/mail', label: 'messages.nav.mail', icon: 'mail' });
   groups.push({ key: 'modules', title: 'settings.personal_heading', items: mods });
   if (auth.isAdmin()) groups.push({ key: 'admin', title: 'settings.admin_heading', items: [
@@ -170,7 +171,7 @@ const menu = computed<NavGroup[]>(() => {
   return groups;
 });
 
-const routeTitles: Record<string, string> = { home: 'pages.dashboard.title', files: 'messages.nav.files', 'shared-with-me': 'files.shared_with_me', contacts: 'messages.nav.contacts', calendar: 'messages.nav.calendar', mail: 'messages.nav.mail', profile: 'pages.profile.title' };
+const routeTitles: Record<string, string> = { home: 'pages.dashboard.title', files: 'messages.nav.files', 'shared-with-me': 'files.shared_with_me', contacts: 'messages.nav.contacts', calendar: 'messages.nav.calendar', tasks: 'calendar.todos.title', mail: 'messages.nav.mail', profile: 'pages.profile.title' };
 const crumbRoot = computed(() => {
   const name = String(route.name ?? '');
   if (name.startsWith('settings')) return t('settings.heading');

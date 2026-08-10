@@ -6,6 +6,7 @@ namespace App\Support\UserData;
 
 use App\Models\Calendar;
 use App\Models\CalendarEvent;
+use App\Models\CalendarTodo;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -57,9 +58,18 @@ final class CalendarData implements UserDataContributor
                 ->map(fn (CalendarEvent $event): array => $event->attributesToArray())
                 ->all();
 
+        $todos = CalendarTodo::query()
+            ->withoutGlobalScopes()
+            ->where('user_id', $user->getKey())
+            ->orderBy('id')
+            ->get()
+            ->map(fn (CalendarTodo $todo): array => $todo->attributesToArray())
+            ->all();
+
         return [
             'calendars' => $calendars,
             'events' => $events,
+            'todos' => $todos,
         ];
     }
 
@@ -71,12 +81,18 @@ final class CalendarData implements UserDataContributor
             ->pluck('id');
 
         if ($calendarIds->isNotEmpty()) {
-            // Sync change-log tombstones and events sit below calendars in FK
-            // terms; both cascade at the DB level, but we clear them explicitly
-            // so the erasure does not depend on cascade behaviour.
+            // Sync change-log tombstones, events and tasks sit below calendars in FK
+            // terms; all cascade at the DB level, but we clear them explicitly so the
+            // erasure does not depend on cascade behaviour.
             DB::table('calendar_changes')->whereIn('calendar_id', $calendarIds)->delete();
+            DB::table('calendar_todo_changes')->whereIn('calendar_id', $calendarIds)->delete();
 
             CalendarEvent::query()
+                ->whereIn('calendar_id', $calendarIds)
+                ->delete();
+
+            CalendarTodo::query()
+                ->withoutGlobalScopes()
                 ->whereIn('calendar_id', $calendarIds)
                 ->delete();
 
