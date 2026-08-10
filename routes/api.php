@@ -412,6 +412,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/devices', [DevicePairingController::class, 'devices'])->name('api.devices.index');
         Route::delete('/devices/{token}', [DevicePairingController::class, 'revokeDevice'])->middleware('throttle:20,1')->name('api.devices.revoke');
         Route::post('/devices/{token}/wipe', [DevicePairingController::class, 'wipeDevice'])->middleware('throttle:20,1')->name('api.devices.wipe');
+        Route::delete('/devices/{token}/push', [DevicePairingController::class, 'revokeDevicePush'])->middleware('throttle:20,1')->name('api.devices.push.revoke');
         // Owner-side device pairing (mobile-first user pairs a NEW device): generate a
         // code, poll its state, approve/reject the claim. Owner-scoped (authorizeOwner).
         Route::post('/device-pairings', [DevicePairingController::class, 'store'])->middleware('throttle:20,1')->name('api.device-pairings.store');

@@ -2937,8 +2937,41 @@ paths:
                         wipeRequested:
                           type: boolean
                           description: True when the owner has flagged this device for remote wipe.
+                        pushHost:
+                          type: [string, "null"]
+                          description: >
+                            Scheme+host of this device's registered push endpoint
+                            (e.g. https://ntfy.sh), or null if none. The topic path is
+                            never emitted (it is the push capability).
         "401":
           description: Unauthenticated.
+
+  /devices/{token}/push:
+    delete:
+      tags: [Devices]
+      operationId: devicesRevokePush
+      summary: Clear a device's push endpoint
+      description: >
+        Removes the stored push endpoint from the given device token so the server
+        stops POSTing notifications there. Owner-scoped. Throttle: 20 req/min.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Sanctum token ID of the device whose push endpoint to clear.
+      responses:
+        "200":
+          description: Push endpoint cleared.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "401":
+          description: Unauthenticated.
+        "429":
+          description: Rate limit exceeded.
 
   /devices/{token}:
     delete:

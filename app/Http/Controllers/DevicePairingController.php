@@ -140,6 +140,10 @@ class DevicePairingController extends Controller
                     'syncDetail' => $syncing ? $t->sync_detail : null,
                     'syncSeen' => $reportedAt?->diffForHumans(),
                     'wipeRequested' => $t->wipe_requested_at !== null,
+                    // Non-secret push hint: only the endpoint's scheme+host (the topic
+                    // path is the push capability — never emit it). Lets the owner see
+                    // which devices have a push endpoint and clear it.
+                    'pushHost' => $this->pushHost($t->push_endpoint),
                 ];
             })->all();
 
@@ -174,6 +178,37 @@ class DevicePairingController extends Controller
         AuditLog::record('device.wipe_requested', null, ['token_id' => $tokenId]);
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Clear the push endpoint on one of the owner's device tokens (push off for
+     * that device). Owner-scoped by token id; SendPushJob then stops POSTing there.
+     */
+    public function revokeDevicePush(Request $request, string $tokenId): JsonResponse
+    {
+        $this->requireUser($request)->tokens()->whereKey($tokenId)->update(['push_endpoint' => null]);
+
+        AuditLog::record('device.push_cleared', null, [
+            'token_id' => $tokenId,
+            'via' => $request->user()?->currentAccessToken() ? 'api' : 'web',
+        ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Scheme+host of a push endpoint (non-secret); null if unset/unparseable. Never the topic path. */
+    private function pushHost(mixed $endpoint): ?string
+    {
+        if (! is_string($endpoint) || $endpoint === '') {
+            return null;
+        }
+        $host = parse_url($endpoint, PHP_URL_HOST);
+        if (! is_string($host) || $host === '') {
+            return null;
+        }
+        $scheme = parse_url($endpoint, PHP_URL_SCHEME);
+
+        return (is_string($scheme) && $scheme !== '' ? $scheme.'://' : '').$host;
     }
 
     /** A pairing belongs to exactly one user; anyone else gets a 404 (not a 403 — no existence leak). */

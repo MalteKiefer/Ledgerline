@@ -113,6 +113,9 @@ return [
     'devices_last_sync' => 'последняя синхронизация',
     'devices_wipe' => 'Удалённое стирание',
     'devices_wipe_pending' => 'стирание ожидается',
+    'devices_push_via' => 'Push через :host',
+    'devices_push_remove' => 'удалить',
+    'devices_push_removed' => 'Push-адрес удалён.',
 
     'export_heading' => 'Экспорт моих данных',
     'export_hint' => 'Загрузите копию ваших данных в формате JSON.',
