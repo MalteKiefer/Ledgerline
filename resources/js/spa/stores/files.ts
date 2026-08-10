@@ -66,11 +66,42 @@ export const useFilesStore = defineStore('files', () => {
     await api.post('/api/v1/files/folders', { name, parent_id: parent });
     await load();
   }
+  // Create a folder and return its id (no reload) — used by directory upload to
+  // rebuild the picked tree before placing files.
+  async function createFolderId(name: string, parent: number | null): Promise<number> {
+    const r = await api.post<{ folder: { id: number } }>('/api/v1/files/folders', { name, parent_id: parent });
+    return r.folder.id;
+  }
+  const WHOLE_UPLOAD_LIMIT = 8 * 1024 * 1024; // above this, fall back to chunks
+
   async function upload(file: File, folder: number | null) {
+    if (file.size > WHOLE_UPLOAD_LIMIT) { await uploadChunked(file, folder); return; }
     const form = new FormData();
     form.append('file', file);
     if (folder != null) form.append('file_folder_id', String(folder));
     await api.upload('/api/v1/files/entries', form);
+  }
+  // Large files stream in 8-MiB parts (init → part* → complete) so they aren't
+  // bounded by post_max_size / a single request's memory.
+  async function uploadChunked(file: File, folder: number | null) {
+    const init = await api.post<{ id: string; partSize: number }>('/api/v1/files/upload/chunk/init', {
+      name: file.name, size: file.size, file_folder_id: folder,
+    });
+    const partSize = init.partSize > 0 ? init.partSize : WHOLE_UPLOAD_LIMIT;
+    const parts = Math.max(1, Math.ceil(file.size / partSize));
+    try {
+      for (let i = 0; i < parts; i++) {
+        const form = new FormData();
+        form.append('id', init.id);
+        form.append('index', String(i));
+        form.append('file', file.slice(i * partSize, (i + 1) * partSize), file.name);
+        await api.upload('/api/v1/files/upload/chunk/part', form);
+      }
+      await api.post('/api/v1/files/upload/chunk/complete', { id: init.id });
+    } catch (e) {
+      await api.post('/api/v1/files/upload/chunk/abort', { id: init.id }).catch(() => { /* best-effort */ });
+      throw e;
+    }
   }
   const rename = (f: FileEntry, name: string) => api.put(`/api/v1/files/entries/${f.id}`, { name, version: f.version });
   const move = (f: FileEntry, folder: number | null) => api.put(`/api/v1/files/entries/${f.id}`, { file_folder_id: folder, version: f.version });
@@ -79,6 +110,7 @@ export const useFilesStore = defineStore('files', () => {
   const restoreFile = (id: number) => api.post(`/api/v1/files/entries/${id}/restore`);
   const forceFile = (id: number) => api.delete(`/api/v1/files/entries/${id}/force`);
   const renameFolder = (fo: FileFolder, name: string) => api.put(`/api/v1/files/folders/${fo.id}`, { name, version: fo.version });
+  const moveFolder = (fo: FileFolder, parent: number | null) => api.post(`/api/v1/files/folders/${fo.id}/move`, { parent_id: parent });
   const trashFolder = (fo: FileFolder) => api.delete(`/api/v1/files/folders/${fo.id}`);
   const restoreFolder = (id: number) => api.post(`/api/v1/files/folders/${id}/restore`);
   const forceFolder = (id: number) => api.delete(`/api/v1/files/folders/${id}/force`);
@@ -178,8 +210,8 @@ export const useFilesStore = defineStore('files', () => {
 
   return {
     folders, files, labels, usage,
-    load, loadTrash, createFolder, upload, rename, move, toggleFav,
-    trashFile, restoreFile, forceFile, renameFolder, trashFolder, restoreFolder, forceFolder, emptyTrash, search,
+    load, loadTrash, createFolder, createFolderId, upload, rename, move, toggleFav,
+    trashFile, restoreFile, forceFile, renameFolder, moveFolder, trashFolder, restoreFolder, forceFolder, emptyTrash, search,
     updateEntry, createLabel, updateLabel, deleteLabel, setFileLabels,
     versions, restoreVersion, versionRawUrl,
     createShare, createFolderShareLink, updateShare, deleteShare, shareUrl,
