@@ -33,5 +33,6 @@ return [
     'confirm_delete' => 'Delete this item? This cannot be undone.',
     'loading' => 'Loading…',
     'name' => 'Name',
+    'email' => 'Email',
     'not_found' => 'Page not found',
 ];

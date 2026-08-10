@@ -30,6 +30,9 @@ return [
 
     'back' => 'Back',
     'customer' => 'Customer',
+    'cust_attn' => 'Attention',
+    'cust_address' => 'Address',
+    'vat_id' => 'VAT ID',
     'choose_customer' => 'Choose from contacts',
     'no_customer' => 'No customer selected',
     'clear_customer' => 'Clear',

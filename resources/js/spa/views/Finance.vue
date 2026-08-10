@@ -400,10 +400,39 @@
         <div v-if="draft.imported" class="mb-3 rounded-lg bg-blue-500/10 px-3 py-2 text-sm text-blue-600 dark:text-blue-400">{{ t('invoices.status_final') }}</div>
 
         <fieldset :disabled="isLocked" class="m-0 border-0 p-0">
+          <div class="mb-3">
+            <Select
+              :label="t('invoices.tab_partners')"
+              :model-value="draft.partner_id ?? ''"
+              :options="[{ title: '—', value: '' }, ...f.partners.map((p) => ({ title: p.name, value: p.id }))]"
+              @update:model-value="applyPartnerToInvoice($event ? Number($event) : null)"
+            />
+          </div>
           <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <TextField v-model="custName_" :label="t('invoices.customer')" class="col-span-2" />
             <TextField v-model="draft.issue_date" :label="t('invoices.issue_date')" type="date" />
             <TextField v-model="draft.due_date" :label="t('invoices.due_date')" type="date" />
+            <TextField v-model="custAttn_" :label="t('invoices.cust_attn')" class="col-span-2" />
+            <TextField v-model="custEmail_" :label="t('common.email')" type="email" class="col-span-2" />
+            <TextField v-model="custVatId_" :label="t('invoices.vat_id')" class="col-span-2" />
+          </div>
+          <label class="mt-3 block">
+            <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.cust_address') }}</span>
+            <textarea
+              :value="custAddress_" rows="2"
+              class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+              @input="custAddress_ = ($event.target as HTMLTextAreaElement).value"
+            />
+          </label>
+          <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Select
+              v-model="discountType_"
+              :label="t('invoices.discount')"
+              :options="[{ title: t('invoices.discount_none'), value: '' }, { title: '%', value: 'percent' }, { title: draft.currency || 'EUR', value: 'amount' }]"
+            />
+            <TextField v-if="discountType_" type="number" :label="t('invoices.discount_value')" :model-value="draft.discount_value ?? ''" @update:model-value="draft.discount_value = $event === '' ? null : Number($event)" />
+            <TextField type="number" :label="t('invoices.skonto_percent')" :model-value="draft.skonto_percent ?? ''" @update:model-value="draft.skonto_percent = $event === '' ? null : Number($event)" />
+            <TextField type="number" :label="t('invoices.skonto_days')" :model-value="draft.skonto_days ?? ''" @update:model-value="draft.skonto_days = $event === '' ? null : Number($event)" />
           </div>
 
           <div class="mb-1 mt-4 text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.line_desc') }}</div>
@@ -998,6 +1027,38 @@ const invDialog = ref(false);
 const draft = ref<Partial<Invoice> | null>(null);
 const lines = ref<InvoiceLine[]>([]);
 const custName_ = ref('');
+const custAttn_ = ref('');
+const custEmail_ = ref('');
+const custVatId_ = ref('');
+const custAddress_ = ref('');
+const discountType_ = computed<string>({
+  get: () => draft.value?.discount_type ?? '',
+  set: (v) => {
+    if (!draft.value) return;
+    draft.value.discount_type = (v || null) as 'percent' | 'amount' | null;
+    if (!v) draft.value.discount_value = null;
+  },
+});
+// Prefill customer + link from a business partner.
+function applyPartnerToInvoice(pid: number | null) {
+  if (!draft.value) return;
+  draft.value.partner_id = pid;
+  if (!pid) return;
+  const p = f.partners.find((x) => x.id === pid);
+  if (!p) return;
+  if (!custName_.value) custName_.value = p.name;
+  if (!custAddress_.value && p.address) custAddress_.value = p.address;
+  if (!custEmail_.value && (p.invoice_email || p.email)) custEmail_.value = p.invoice_email || p.email || '';
+  if (!custVatId_.value && p.vat_id) custVatId_.value = p.vat_id;
+}
+function loadCustomerFields(c: Record<string, unknown> | null | undefined) {
+  const o = (c ?? {}) as Record<string, unknown>;
+  custName_.value = typeof o.name === 'string' ? o.name : '';
+  custAttn_.value = typeof o.attn === 'string' ? o.attn : '';
+  custEmail_.value = typeof o.email === 'string' ? o.email : '';
+  custVatId_.value = typeof o.vatId === 'string' ? o.vatId : '';
+  custAddress_.value = typeof o.address === 'string' ? o.address : '';
+}
 const saving = ref(false);
 
 const pDialog = ref(false);
@@ -1105,13 +1166,13 @@ function conflict() { void f.load(); error(t('common.error')); }
 function newInvoice() {
   draft.value = { status: 'draft', currency: 'EUR', issue_date: new Date().toISOString().slice(0, 10), customer: {}, lines: [] };
   lines.value = [{ desc: '', qty: 1, unitPrice: 0, vatRate: 19 }];
-  custName_.value = '';
+  loadCustomerFields(null);
   invDialog.value = true;
 }
 function editInvoice(i: Invoice) {
   draft.value = { ...i };
   lines.value = Array.isArray(i.lines) ? i.lines.map((l) => ({ ...l })) : [];
-  custName_.value = custName(i) === '—' ? '' : custName(i);
+  loadCustomerFields(i.customer);
   invDialog.value = true;
 }
 async function saveInvoice() {
@@ -1120,10 +1181,19 @@ async function saveInvoice() {
   const body: Record<string, unknown> = {
     status: draft.value.status, currency: draft.value.currency || 'EUR',
     issue_date: draft.value.issue_date, due_date: draft.value.due_date,
-    customer: { ...(draft.value.customer ?? {}), name: custName_.value },
+    customer: {
+      ...(draft.value.customer ?? {}),
+      name: custName_.value, attn: custAttn_.value, email: custEmail_.value,
+      vatId: custVatId_.value, address: custAddress_.value,
+    },
     lines: lines.value, note: draft.value.note,
     net: totals.value.net, vat: totals.value.vat, gross: totals.value.gross,
     vat_rate: lines.value[0]?.vatRate ?? 19,
+    partner_id: draft.value.partner_id ?? null,
+    discount_type: draft.value.discount_type ?? null,
+    discount_value: draft.value.discount_value ?? null,
+    skonto_percent: draft.value.skonto_percent ?? null,
+    skonto_days: draft.value.skonto_days ?? null,
   };
   if (draft.value.id) body.version = draft.value.version;
   try {
