@@ -22,6 +22,7 @@ export const useContactsStore = defineStore('contacts', () => {
   const contacts = ref<ContactRow[]>([]);
   const books = ref<AddressBook[]>([]);
   const groups = ref<ContactGroup[]>([]);
+  const settings = ref<{ sort: 'first_name' | 'last_name'; display_format: 'first_last' | 'last_first' }>({ sort: 'first_name', display_format: 'first_last' });
 
   async function load(params: { book_id?: string; group_id?: number; favorites?: boolean; q?: string } = {}) {
     const qs = new URLSearchParams();
@@ -29,15 +30,19 @@ export const useContactsStore = defineStore('contacts', () => {
     if (params.group_id) qs.set('group_id', String(params.group_id));
     if (params.favorites) qs.set('favorites', '1');
     if (params.q) qs.set('q', params.q);
-    const r = await api.get<{ contacts: ContactRow[]; books: AddressBook[]; groups: ContactGroup[] }>(`/api/v1/contacts/data?${qs}`);
+    const r = await api.get<{ contacts: ContactRow[]; books: AddressBook[]; groups: ContactGroup[]; settings?: typeof settings.value }>(`/api/v1/contacts/data?${qs}`);
     contacts.value = r.contacts; books.value = r.books; groups.value = r.groups;
+    if (r.settings) settings.value = r.settings;
   }
+  const saveSettings = (sort: string, displayFormat: string) => api.post('/api/v1/contacts/settings', { sort, display_format: displayFormat });
   const show = (id: string) => api.get<ContactDetail>(`/api/v1/contacts/${id}`);
   const create = (body: Record<string, unknown>) => api.post<{ id: string }>('/api/v1/contacts', body);
   const update = (id: string, body: Record<string, unknown>) => api.put(`/api/v1/contacts/${id}`, body);
   const destroy = (id: string) => api.delete(`/api/v1/contacts/${id}`);
   const favorite = (id: string, fav: boolean) => api.patch(`/api/v1/contacts/${id}/favorite`, { favorite: fav });
   const createBook = (name: string) => api.post('/api/v1/address-books', { name });
+  const updateBook = (id: string, name: string) => api.put(`/api/v1/address-books/${id}`, { name });
+  const deleteBook = (id: string) => api.delete(`/api/v1/address-books/${id}`);
   const avatarUrl = (c: ContactRow) => c.has_photo ? api.streamUrl(`/api/v1/contacts/${c.id}/avatar`) : (c.avatar || null);
 
   // Groups
@@ -62,15 +67,16 @@ export const useContactsStore = defineStore('contacts', () => {
   const exportUrl = (bookId?: string) => `/api/v1/contacts/export${bookId ? `?book=${encodeURIComponent(bookId)}` : ''}`;
 
   // Avatar (server field is `photo`) + bulk delete
-  function uploadAvatar(id: string, file: File) {
+  function uploadAvatar(id: string, file: Blob) {
     const fd = new FormData();
-    fd.append('photo', file);
+    fd.append('photo', file, 'avatar.jpg');
     return api.upload<{ ok: boolean; avatar: string }>(`/api/v1/contacts/${id}/avatar`, fd);
   }
   const bulkDestroy = (ids: string[]) => api.delete<{ deleted: number }>('/api/v1/contacts/bulk-destroy', { ids });
 
   return {
-    contacts, books, groups, load, show, create, update, destroy, favorite, createBook, avatarUrl,
+    contacts, books, groups, settings, load, show, create, update, destroy, favorite,
+    createBook, updateBook, deleteBook, saveSettings, avatarUrl,
     createGroup, deleteGroup, loadDuplicates, mergeDuplicates, dismissDuplicate,
     importVcf, exportUrl, uploadAvatar, bulkDestroy,
   };

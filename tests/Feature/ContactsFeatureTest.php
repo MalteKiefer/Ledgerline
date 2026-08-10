@@ -109,6 +109,28 @@ class ContactsFeatureTest extends TestCase
         $this->assertTrue($jane->favorite);
     }
 
+    public function test_anniversaries_round_trip_and_address_book_rename_delete(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+
+        // Anniversaries round-trip (the SPA editor's new repeater).
+        $this->postJson(route('contacts.store'), [
+            'book_id' => $book->id, 'fn' => 'Ann',
+            'anniversaries' => [['date' => '2015-06-01', 'label' => 'Wedding']],
+        ])->assertStatus(201);
+        $show = $this->getJson(route('contacts.show', Contact::firstOrFail()))->assertOk()->json();
+        $this->assertSame('Wedding', $show['anniversaries'][0]['label']);
+
+        // Address book rename + delete via the API endpoints the SPA now calls.
+        $this->putJson(route('api.address-books.update', $book->id), ['name' => 'Renamed'])->assertOk();
+        $this->assertSame('Renamed', $book->fresh()->name);
+
+        $second = $this->book($user->id);
+        $this->deleteJson(route('api.address-books.destroy', $second->id))->assertOk();
+        $this->assertDatabaseMissing('address_books', ['id' => $second->id]);
+    }
+
     public function test_full_update_sets_all_editor_fields_and_groups(): void
     {
         $user = $this->signIn();

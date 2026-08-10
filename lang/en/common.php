@@ -17,6 +17,7 @@ return [
     'confirm_message' => 'This action cannot be undone.',
     'now' => 'now',
     'clear' => 'Clear',
+    'rename' => 'Rename',
     'details' => 'Details',
     'zoom' => 'Zoom',
     'add' => 'Add',
