@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Jobs\GenerateGalleryThumbnail;
 use App\Models\GalleryAlbum;
 use App\Models\GalleryPhoto;
 use App\Support\BlobStore;
@@ -106,6 +107,7 @@ class GalleryController extends Controller
             is_array($dims) ? (int) $dims[1] : null,
             $meta,
         ));
+        GenerateGalleryThumbnail::dispatch($photo->id);
 
         return response()->json(['photo' => $this->row($photo)], 201);
     }
@@ -232,6 +234,7 @@ class GalleryController extends Controller
             is_array($dims) ? (int) $dims[1] : null,
             $meta,
         ));
+        GenerateGalleryThumbnail::dispatch($photo->id);
 
         return response()->json(['photo' => $this->row($photo)], 201);
     }
@@ -259,37 +262,23 @@ class GalleryController extends Controller
         return BlobStore::immutableResponse($this->fs()->response($src, $this->safeName($photo->name), [], 'inline'), $etag);
     }
 
-    public function thumb(Request $request, GalleryPhoto $photo, ImageManagerFactory $images): StreamedResponse
+    /**
+     * Serve a photo's WebP thumbnail — CACHE ONLY. A HEIC decode is ~20s, so the
+     * web path never generates inline (a grid of N photos would stampede the FPM
+     * pool). On a cache miss the generation job is (re)queued and a 404 is
+     * returned; the SPA renders a spinner (photo.thumb=false) and reloads when it
+     * is ready. Thumbnails are produced on upload/edit by GenerateGalleryThumbnail.
+     */
+    public function thumb(Request $request, GalleryPhoto $photo): StreamedResponse
     {
         $this->requireUser($request);
         $mime = (string) $photo->mime;
         abort_unless(str_starts_with($mime, 'image/'), 404);
-        abort_if((int) $photo->size > self::THUMB_MAX_SRC_BYTES, 404);
 
-        $thumbPath = 'gallery/thumb/'.$photo->id.'-'.$photo->version.'.webp';
+        $thumbPath = $this->thumbPath($photo);
         if (! $this->fs()->exists($thumbPath)) {
-            $src = (string) $photo->storage_path;
-            abort_if($src === '' || ! $this->fs()->exists($src), 404);
-            try {
-                $tmp = DiskTempFile::create('llgthumb')->withExtension('img');
-                $in = $this->fs()->readStream($src);
-                $dst = fopen($tmp->path(), 'wb');
-                if (! is_resource($in) || $dst === false) {
-                    abort(404);
-                }
-                stream_copy_to_stream($in, $dst);
-                fclose($in);
-                fclose($dst);
-                $dims = @getimagesize($tmp->path());
-                if (is_array($dims) && (int) $dims[0] * (int) $dims[1] > self::THUMB_MAX_PIXELS) {
-                    abort(404);
-                }
-                $img = $this->applyEdits($images->make()->decodePath($tmp->path()), $photo);
-                $webp = (string) $img->cover(400, 400)->encode(new WebpEncoder(quality: 78));
-                $this->fs()->put($thumbPath, $webp);
-            } catch (\Throwable) {
-                abort(404);
-            }
+            GenerateGalleryThumbnail::dispatch($photo->id);
+            abort(404);
         }
 
         return $this->fs()->response($thumbPath, 'thumb.webp', [
@@ -298,6 +287,54 @@ class GalleryController extends Controller
             'Content-Security-Policy' => "default-src 'none'; sandbox",
             'Cache-Control' => 'private, max-age=86400',
         ], 'inline');
+    }
+
+    private function thumbPath(GalleryPhoto $photo): string
+    {
+        return 'gallery/thumb/'.$photo->id.'-'.$photo->version.'.webp';
+    }
+
+    /**
+     * Produce and cache the WebP thumbnail (idempotent). Called off the web path
+     * by GenerateGalleryThumbnail (worker: high memory, long timeout). Returns
+     * true on success; any failure returns false (never throws/aborts).
+     */
+    public function generateThumb(GalleryPhoto $photo, ImageManagerFactory $images): bool
+    {
+        $mime = (string) $photo->mime;
+        if (! str_starts_with($mime, 'image/') || (int) $photo->size > self::THUMB_MAX_SRC_BYTES) {
+            return false;
+        }
+        $thumbPath = $this->thumbPath($photo);
+        if ($this->fs()->exists($thumbPath)) {
+            return true;
+        }
+        $src = (string) $photo->storage_path;
+        if ($src === '' || ! $this->fs()->exists($src)) {
+            return false;
+        }
+        try {
+            $tmp = DiskTempFile::create('llgthumb')->withExtension('img');
+            $in = $this->fs()->readStream($src);
+            $dst = fopen($tmp->path(), 'wb');
+            if (! is_resource($in) || $dst === false) {
+                return false;
+            }
+            stream_copy_to_stream($in, $dst);
+            fclose($in);
+            fclose($dst);
+            $dims = @getimagesize($tmp->path());
+            if (is_array($dims) && (int) $dims[0] * (int) $dims[1] > self::THUMB_MAX_PIXELS) {
+                return false;
+            }
+            $img = $this->applyEdits($images->make()->decodePath($tmp->path()), $photo);
+            $webp = (string) $img->cover(400, 400)->encode(new WebpEncoder(quality: 78));
+            $this->fs()->put($thumbPath, $webp);
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return true;
     }
 
     // ---- Mutations ----
@@ -359,6 +396,8 @@ class GalleryController extends Controller
             }
             $patch['version'] = (int) $fresh->version + 1;
             $fresh->forceFill($patch)->save();
+            // Version bump changes the thumb cache path; regenerate off the web path.
+            GenerateGalleryThumbnail::dispatch($fresh->id);
 
             return response()->json(['photo' => $this->row($fresh)]);
         });
@@ -587,7 +626,7 @@ class GalleryController extends Controller
         ];
     }
 
-    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,rotation:int,flip_h:bool,taken_at:?string,camera:?string,place:?string,lat:?float,lng:?float,version:int,created_at:?string} */
+    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,thumb:bool,rotation:int,flip_h:bool,taken_at:?string,camera:?string,place:?string,lat:?float,lng:?float,version:int,created_at:?string} */
     private function row(GalleryPhoto $p): array
     {
         return [
@@ -598,6 +637,7 @@ class GalleryController extends Controller
             'height' => $p->height,
             'size' => $p->size,
             'favorite' => (bool) $p->favorite,
+            'thumb' => $this->fs()->exists($this->thumbPath($p)),
             'rotation' => (int) $p->rotation,
             'flip_h' => (bool) $p->flip_h,
             'taken_at' => $p->taken_at?->toIso8601String(),

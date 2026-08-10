@@ -38,4 +38,5 @@ return [
     'dl_original' => 'Original herunterladen',
     'dl_edited' => 'Bearbeitet herunterladen',
     'edit_conflict' => 'Dieses Foto wurde anderswo geändert — neu geladen. Bitte Änderung wiederholen.',
+    'thumb_pending' => 'Vorschaubild wird erstellt…',
 ];

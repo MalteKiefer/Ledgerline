@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.610.0
+  version: 1.611.0
   license:
     name: Proprietary
   description: >
@@ -1156,6 +1156,7 @@ components:
         height: { type: integer, nullable: true }
         size: { type: integer }
         favorite: { type: boolean }
+        thumb: { type: boolean, description: "Whether the WebP thumbnail is ready (generated off the web path by a worker). While false the client shows a spinner and reloads." }
         rotation: { type: integer, enum: [0, 90, 180, 270], description: "Clockwise display rotation; non-invasive (original bytes untouched)." }
         flip_h: { type: boolean, description: "Horizontal mirror; non-invasive." }
         taken_at: { type: string, format: date-time, nullable: true, description: "EXIF capture date (falls back to created_at for ordering); editable." }
@@ -5247,13 +5248,14 @@ paths:
     get:
       tags: [Gallery]
       operationId: galleryThumb
-      summary: Square 400px WebP thumbnail (cached, sandboxed)
+      summary: Square 400px WebP thumbnail (cache-only, sandboxed)
+      description: "Serves the cached WebP only — never decodes inline (a HEIC decode is ~20s; inline generation would stampede the pool). On a cache miss it re-queues generation and returns 404; the client shows a spinner (photo.thumb=false) and reloads when ready."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
       responses:
         "200": { description: "image/webp thumbnail (nosniff + sandbox CSP)." }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "404": { description: "Not an image, or thumbnail not generated yet (generation re-queued)." }
   /gallery/{photo}/favorite:
     patch:
       tags: [Gallery]

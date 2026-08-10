@@ -5,7 +5,7 @@ import { api, uploadWithProgress } from '@spa/api/client';
 export interface Photo {
   id: number; name: string; mime: string | null;
   width: number | null; height: number | null; size: number;
-  favorite: boolean; rotation: number; flip_h: boolean;
+  favorite: boolean; thumb: boolean; rotation: number; flip_h: boolean;
   taken_at: string | null; camera: string | null; place: string | null;
   lat: number | null; lng: number | null; version: number; created_at: string | null;
 }

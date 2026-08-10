@@ -38,4 +38,5 @@ return [
     'dl_original' => 'Download original',
     'dl_edited' => 'Download edited',
     'edit_conflict' => 'This photo changed elsewhere — reloaded. Please repeat your edit.',
+    'thumb_pending' => 'Thumbnail is being generated…',
 ];

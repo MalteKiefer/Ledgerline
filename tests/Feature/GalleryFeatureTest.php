@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Jobs\GenerateGalleryThumbnail;
 use App\Models\GalleryAlbum;
 use App\Models\GalleryPhoto;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -51,6 +53,29 @@ class GalleryFeatureTest extends TestCase
         $this->assertStringContainsString('sandbox', (string) $res->headers->get('Content-Security-Policy'));
         $v = GalleryPhoto::findOrFail($id)->version;
         Storage::disk(config('files.disk'))->assertExists('gallery/thumb/'.$id.'-'.$v.'.webp');
+    }
+
+    public function test_upload_queues_thumbnail_and_thumb_endpoint_is_cache_only(): void
+    {
+        Queue::fake();
+        $this->actingAs(User::factory()->create());
+
+        $id = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('q.jpg', 200, 200)])->json('photo.id');
+        // Upload queues the thumbnail off the web path (never generated inline).
+        Queue::assertPushed(GenerateGalleryThumbnail::class);
+
+        // No cache yet → the endpoint does NOT decode inline; it 404s and re-queues.
+        $this->get(route('gallery.thumb', ['photo' => $id]))->assertNotFound();
+
+        // Running the job generates the cached WebP; the endpoint then serves it.
+        (new GenerateGalleryThumbnail($id))->handle(
+            app(\App\Http\Controllers\GalleryController::class),
+            app(\App\Support\ImageManagerFactory::class),
+        );
+        $v = GalleryPhoto::findOrFail($id)->version;
+        Storage::disk(config('files.disk'))->assertExists('gallery/thumb/'.$id.'-'.$v.'.webp');
+        $this->get(route('gallery.thumb', ['photo' => $id]))->assertOk()
+            ->assertHeader('Content-Type', 'image/webp');
     }
 
     public function test_owner_scope_blocks_cross_user_access(): void
