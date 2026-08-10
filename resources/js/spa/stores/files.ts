@@ -105,6 +105,7 @@ export const useFilesStore = defineStore('files', () => {
   }
   const rename = (f: FileEntry, name: string) => api.put(`/api/v1/files/entries/${f.id}`, { name, version: f.version });
   const move = (f: FileEntry, folder: number | null) => api.put(`/api/v1/files/entries/${f.id}`, { file_folder_id: folder, version: f.version });
+  const copy = (f: FileEntry, folder: number | null) => api.post<{ file: FileEntry }>(`/api/v1/files/entries/${f.id}/copy`, { file_folder_id: folder });
   const toggleFav = (f: FileEntry) => api.post(`/api/v1/files/entries/${f.id}/toggle`, { field: 'favorite' });
   const trashFile = (f: FileEntry) => api.delete(`/api/v1/files/entries/${f.id}`);
   const restoreFile = (id: number) => api.post(`/api/v1/files/entries/${id}/restore`);
@@ -210,7 +211,7 @@ export const useFilesStore = defineStore('files', () => {
 
   return {
     folders, files, labels, usage,
-    load, loadTrash, createFolder, createFolderId, upload, rename, move, toggleFav,
+    load, loadTrash, createFolder, createFolderId, upload, rename, move, copy, toggleFav,
     trashFile, restoreFile, forceFile, renameFolder, moveFolder, trashFolder, restoreFolder, forceFolder, emptyTrash, search,
     updateEntry, createLabel, updateLabel, deleteLabel, setFileLabels,
     versions, restoreVersion, versionRawUrl,

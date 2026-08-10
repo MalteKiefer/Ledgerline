@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'copy' => 'Копировать',
+    'bulk_trash_confirm' => 'Переместить :n элемент(ов) в корзину?',
     'drop_here' => 'Перетащите файлы для загрузки',
     'root' => 'Домой',
     'download_failed' => 'Загрузка не удалась.',

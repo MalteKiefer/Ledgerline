@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'copy' => 'Copy',
+    'bulk_trash_confirm' => 'Move :n item(s) to trash?',
     'drop_here' => 'Drop files to upload',
     'root' => 'Home',
     'download_failed' => 'The download failed.',

@@ -383,6 +383,52 @@ class FilesController extends Controller
         return response()->json(['file' => $file], 201);
     }
 
+    /** Duplicate a file (new blob + row) into a target folder (or its own). */
+    public function copy(Request $request, FileEntry $file): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'file_folder_id' => ['nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+        ]);
+
+        $src = $file->storage_path;
+        // storage_path is always server-assigned under files/; guard defensively.
+        if (! is_string($src) || ! str_starts_with($src, 'files/') || ! $this->fs()->exists($src)) {
+            abort(404);
+        }
+        if ($over = $this->overQuota($uid, (int) $file->size)) {
+            return $over;
+        }
+
+        $path = 'files/'.Str::uuid()->toString();
+        $this->fs()->copy($src, $path);
+        $folderId = $request->has('file_folder_id')
+            ? ($request->filled('file_folder_id') ? $request->integer('file_folder_id') : null)
+            : $file->file_folder_id;
+
+        $copy = DB::transaction(fn (): FileEntry => $this->persistFile(
+            name: $this->copyName($file->name),
+            folderId: $folderId,
+            path: $path,
+            size: (int) $file->size,
+            mime: $file->mime,
+            sha: $file->sha256,
+        ));
+
+        return response()->json(['file' => $copy], 201);
+    }
+
+    /** "report.pdf" → "report (copy).pdf" (keeps the extension). */
+    private function copyName(string $name): string
+    {
+        $dot = strrpos($name, '.');
+        if ($dot === false || $dot === 0) {
+            return $name.' (copy)';
+        }
+
+        return substr($name, 0, $dot).' (copy)'.substr($name, $dot);
+    }
+
     /** Replace a file's bytes with a new revision (pushes current into history). */
     public function replaceContent(Request $request, FileEntry $file): JsonResponse
     {

@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'copy' => 'Kopieren',
+    'bulk_trash_confirm' => ':n Element(e) in den Papierkorb verschieben?',
     'drop_here' => 'Dateien zum Hochladen ablegen',
     'root' => 'Start',
     'download_failed' => 'Der Download ist fehlgeschlagen.',
