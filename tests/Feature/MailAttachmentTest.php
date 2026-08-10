@@ -158,15 +158,16 @@ class MailAttachmentTest extends TestCase
         $this->assertStringContainsString('data:image/png;base64,', $body);
         $this->assertStringNotContainsString('tracker.example', $body);
 
-        // remote=1 but user pref OFF → still no remote.
-        $res = $this->actingAs($owner)->get(route('mail.messages.body', [$msg->id, 'remote' => 1]))->assertOk();
-        $this->assertStringNotContainsString('tracker.example', (string) $res->getContent());
-
-        // remote=1 AND pref ON → remote kept + https: in CSP.
-        UserSetting::for($owner->id)->forceFill(['mail_load_remote' => true])->save();
+        // Explicit reader toggle remote=1 → remote kept + https: in CSP, even
+        // without the (not-yet-settable) mail_load_remote pref.
         $res = $this->actingAs($owner)->get(route('mail.messages.body', [$msg->id, 'remote' => 1]))->assertOk();
         $this->assertStringContainsString('https:', (string) $res->headers->get('Content-Security-Policy'));
         $this->assertStringContainsString('tracker.example', (string) $res->getContent());
+
+        // Pref ON acts as an "always load" default even without the query param.
+        UserSetting::for($owner->id)->forceFill(['mail_load_remote' => true])->save();
+        $res = $this->actingAs($owner)->get(route('mail.messages.body', $msg->id))->assertOk();
+        $this->assertStringContainsString('https:', (string) $res->headers->get('Content-Security-Policy'));
     }
 
     public function test_show_lists_attachments(): void

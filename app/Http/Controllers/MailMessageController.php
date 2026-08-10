@@ -174,8 +174,13 @@ class MailMessageController extends Controller
     {
         $this->authorizeOwner($request, $message);
 
+        // Explicit per-message "load remote images" (?remote=1) is consent enough
+        // — that is the reader's toggle. The mail_load_remote pref, when set, is an
+        // opt-in "always load" default. Either one grants remote content; neither
+        // set keeps images blocked (privacy-safe default). Requiring BOTH made the
+        // toggle a no-op, since the pref has no write path yet.
         $prefs = UserSetting::for((int) $message->user_id);
-        $allowRemote = $request->boolean('remote') && (bool) $prefs->mail_load_remote;
+        $allowRemote = $request->boolean('remote') || (bool) $prefs->mail_load_remote;
 
         $html = $this->renderBody($message, $allowRemote);
 
