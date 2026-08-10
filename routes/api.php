@@ -39,6 +39,7 @@ use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
+use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GeoController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailAttachmentController;
@@ -264,6 +265,24 @@ Route::prefix('v1')->group(function (): void {
             Route::delete('/notes/{note}', [NotesController::class, 'destroy'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.destroy');
             Route::post('/notes/{id}/restore', [NotesController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.notes.restore');
             Route::delete('/notes/{id}/force', [NotesController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.notes.force');
+        });
+
+        // Gallery module — same guard-agnostic controller as web, under device auth.
+        Route::middleware('module:gallery')->group(function (): void {
+            Route::get('/gallery/data', [GalleryController::class, 'data'])->name('api.gallery.data');
+            Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('api.gallery.trash');
+            Route::post('/gallery', [GalleryController::class, 'upload'])->middleware('throttle:1200,1')->name('api.gallery.upload');
+            Route::post('/gallery/chunk/init', [GalleryController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.gallery.chunk.init');
+            Route::post('/gallery/chunk/part', [GalleryController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('api.gallery.chunk.part');
+            Route::post('/gallery/chunk/complete', [GalleryController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.gallery.chunk.complete');
+            Route::post('/gallery/chunk/abort', [GalleryController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.gallery.chunk.abort');
+            Route::get('/gallery/{photo}/raw', [GalleryController::class, 'raw'])->whereNumber('photo')->middleware('throttle:3000,1')->name('api.gallery.raw');
+            Route::get('/gallery/{photo}/thumb', [GalleryController::class, 'thumb'])->whereNumber('photo')->middleware('throttle:6000,1')->name('api.gallery.thumb');
+            Route::patch('/gallery/{photo}/favorite', [GalleryController::class, 'favorite'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.favorite');
+            Route::delete('/gallery/{photo}', [GalleryController::class, 'destroy'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.destroy');
+            Route::post('/gallery/{id}/restore', [GalleryController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('api.gallery.restore');
+            Route::delete('/gallery/{id}/force', [GalleryController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('api.gallery.force');
+            Route::post('/gallery/trash/empty', [GalleryController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('api.gallery.empty');
         });
 
         // Calendar module — mirrors the web routes (plaintext-relational calendars

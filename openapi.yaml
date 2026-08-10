@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.565.1
+  version: 1.608.0
   license:
     name: Proprietary
   description: >
@@ -169,6 +169,16 @@ tags:
       `{folders, notes, tags}` (notes without body); `GET /notes/{id}` returns the
       full note incl. body. Search uses the Postgres GIN index (title+body).
       Owner-scope is enforced controller-side.
+  - name: Gallery
+    description: >
+      Gallery module (plaintext-relational, phase 1). Photos as owner-scoped rows;
+      bytes live plaintext on the files disk under `gallery/{uuid}`. The same
+      guard-agnostic `GalleryController` backs the web routes; these `/api/v1`
+      mirrors are gated by `module:gallery` on top of device auth. Whole + chunked
+      upload (image MIME allow-list), server-side WebP thumbnails, sandboxed
+      originals, favorite and a soft-delete recycle bin. Combined files+gallery
+      storage counts against `files.quota_mb` (413 on exceed). Owner-scope is
+      enforced controller-side.
   - name: Calendar
     description: >
       CalDAV-backed calendar module (calendars + events), plaintext-relational.
@@ -1135,6 +1145,18 @@ components:
         deleted_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time, nullable: true }
         updated_at: { type: string, format: date-time, nullable: true }
+    GalleryPhoto:
+      type: object
+      description: "A gallery photo (gallery_photos). Bytes live plaintext on the files disk under gallery/{uuid}; this row holds metadata. Serialized without bytes/storage_path."
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        mime: { type: string, nullable: true }
+        width: { type: integer, nullable: true }
+        height: { type: integer, nullable: true }
+        size: { type: integer }
+        favorite: { type: boolean }
+        created_at: { type: string, format: date-time, nullable: true }
     FolderShareOwnerView:
       type: object
       description: "Owner-visible cross-user share (folder_shares): the shared target (a folder subtree OR a single file — exactly one is set) plus its member roster. Returned by the owner-side index/store/updateMember."
@@ -5108,6 +5130,163 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /gallery/data:
+    get:
+      tags: [Gallery]
+      operationId: galleryData
+      summary: All photos for the current user (newest first)
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: "Photos (without bytes).", content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /gallery/trash:
+    get:
+      tags: [Gallery]
+      operationId: galleryTrash
+      summary: Soft-deleted photos
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: "Trashed photos.", content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /gallery:
+    post:
+      tags: [Gallery]
+      operationId: galleryUpload
+      summary: Upload a photo (whole; multipart)
+      description: "Image MIME allow-list (jpg/jpeg/png/webp/gif/heic/heif). Bytes stored plaintext under gallery/{uuid}; size/sha256/dimensions server-computed. 413 when over the combined files+gallery quota."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { photo: { $ref: "#/components/schemas/GalleryPhoto" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { description: "Over storage quota (error=quota)." }
+        "415": { description: "Not an image." }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /gallery/chunk/init:
+    post:
+      tags: [Gallery]
+      operationId: galleryChunkInit
+      summary: Begin a chunked upload
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name, size], properties: { name: { type: string }, size: { type: integer, minimum: 0 } } } } } }
+      responses:
+        "201": { description: "Session opened.", content: { application/json: { schema: { type: object, properties: { id: { type: string }, partSize: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { description: "Over storage quota (error=quota)." }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /gallery/chunk/part:
+    post:
+      tags: [Gallery]
+      operationId: galleryChunkPart
+      summary: Upload one chunk part (multipart)
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [id, index, file], properties: { id: { type: string }, index: { type: integer, minimum: 0 }, file: { type: string, format: binary } } } } } }
+      responses:
+        "200": { description: "Part stored.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, index: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { description: "Over storage quota (error=quota)." }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /gallery/chunk/complete:
+    post:
+      tags: [Gallery]
+      operationId: galleryChunkComplete
+      summary: Assemble chunk parts into a photo
+      description: "The assembled MIME is sniffed from bytes; non-image content is rejected (415)."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: string } } } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { photo: { $ref: "#/components/schemas/GalleryPhoto" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { description: "Over storage quota (error=quota)." }
+        "415": { description: "Not an image." }
+  /gallery/chunk/abort:
+    post:
+      tags: [Gallery]
+      operationId: galleryChunkAbort
+      summary: Discard a chunked upload session
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [id], properties: { id: { type: string } } } } } }
+      responses:
+        "200": { description: Aborted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /gallery/{photo}/raw:
+    get:
+      tags: [Gallery]
+      operationId: galleryRaw
+      summary: Original bytes (sandboxed, immutable)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "Original image bytes (Content-Disposition inline, sandbox CSP, ETag)." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/{photo}/thumb:
+    get:
+      tags: [Gallery]
+      operationId: galleryThumb
+      summary: Square 400px WebP thumbnail (cached, sandboxed)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "image/webp thumbnail (nosniff + sandbox CSP)." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/{photo}/favorite:
+    patch:
+      tags: [Gallery]
+      operationId: galleryFavorite
+      summary: Toggle favorite
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [favorite], properties: { favorite: { type: boolean } } } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/{photo}:
+    delete:
+      tags: [Gallery]
+      operationId: galleryDestroy
+      summary: Move a photo to the trash (soft delete)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Trashed., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/{id}/restore:
+    post:
+      tags: [Gallery]
+      operationId: galleryRestore
+      summary: Restore a trashed photo
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /gallery/{id}/force:
+    delete:
+      tags: [Gallery]
+      operationId: galleryForceDelete
+      summary: Permanently delete a trashed photo (purges blobs)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: id, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /gallery/trash/empty:
+    post:
+      tags: [Gallery]
+      operationId: galleryEmptyTrash
+      summary: Permanently delete all trashed photos
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Emptied., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /files/data:
     get:
       tags: [Files]

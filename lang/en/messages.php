@@ -9,6 +9,7 @@ return [
         'files' => 'Files',
         'contacts' => 'Contacts',
         'notes' => 'Notes',
+        'gallery' => 'Gallery',
         'calendar' => 'Calendar',
         'mail' => 'Mail',
         'more' => 'More',

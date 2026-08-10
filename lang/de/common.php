@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 return [
     'delete' => 'Löschen',
+    'restore' => 'Wiederherstellen',
+    'download' => 'Herunterladen',
     'cancel' => 'Abbrechen',
     'sections' => 'Bereiche',
     'back' => 'Zurück',

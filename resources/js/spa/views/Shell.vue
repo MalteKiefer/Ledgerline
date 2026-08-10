@@ -157,6 +157,7 @@ const menu = computed<NavGroup[]>(() => {
   if (auth.can('files')) mods.push({ to: '/shared-with-me', label: 'files.shared_with_me', icon: 'folder_shared' });
   if (auth.can('contacts')) mods.push({ to: '/contacts', label: 'messages.nav.contacts', icon: 'contacts' });
   if (auth.can('notes')) mods.push({ to: '/notes', label: 'messages.nav.notes', icon: 'sticky_note_2' });
+  if (auth.can('gallery')) mods.push({ to: '/gallery', label: 'messages.nav.gallery', icon: 'photo_library' });
   if (auth.can('calendar')) mods.push({ to: '/calendar', label: 'messages.nav.calendar', icon: 'calendar_month' });
   if (auth.can('calendar')) mods.push({ to: '/tasks', label: 'calendar.todos.title', icon: 'checklist' });
   if (auth.can('mail')) mods.push({ to: '/mail', label: 'messages.nav.mail', icon: 'mail' });
@@ -168,7 +169,7 @@ const menu = computed<NavGroup[]>(() => {
   return groups;
 });
 
-const routeTitles: Record<string, string> = { home: 'pages.dashboard.title', files: 'messages.nav.files', 'shared-with-me': 'files.shared_with_me', contacts: 'messages.nav.contacts', notes: 'messages.nav.notes', calendar: 'messages.nav.calendar', tasks: 'calendar.todos.title', mail: 'messages.nav.mail', profile: 'pages.profile.title' };
+const routeTitles: Record<string, string> = { home: 'pages.dashboard.title', files: 'messages.nav.files', 'shared-with-me': 'files.shared_with_me', contacts: 'messages.nav.contacts', notes: 'messages.nav.notes', gallery: 'messages.nav.gallery', calendar: 'messages.nav.calendar', tasks: 'calendar.todos.title', mail: 'messages.nav.mail', profile: 'pages.profile.title' };
 const crumbRoot = computed(() => {
   const name = String(route.name ?? '');
   if (name.startsWith('settings')) return t('settings.heading');
