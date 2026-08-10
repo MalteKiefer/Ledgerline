@@ -55,6 +55,15 @@
       </div>
     </div>
   </Card>
+
+  <Card :title="t('calendar.ui.caldav_heading')" class="mt-4">
+    <p class="mb-3 text-sm text-[var(--ll-muted)]">{{ t('calendar.ui.caldav_hint') }}</p>
+    <dl class="mb-4 space-y-1 text-sm">
+      <div class="flex gap-2"><dt class="w-28 shrink-0 text-[var(--ll-muted)]">{{ t('calendar.ui.caldav_url') }}</dt><dd class="break-all font-mono">{{ davUrl }}</dd></div>
+      <div class="flex gap-2"><dt class="w-28 shrink-0 text-[var(--ll-muted)]">{{ t('calendar.ui.caldav_username') }}</dt><dd class="break-all">{{ auth.user?.email }}</dd></div>
+    </dl>
+    <Btn tag="a" variant="soft" icon="download" :href="caldavUrl" download>{{ t('calendar.ui.caldav_download') }}</Btn>
+  </Card>
 </template>
 
 <script setup lang="ts">
@@ -62,10 +71,15 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Select, Btn } from '@spa/ui';
 import { useCalendarStore, type CalSettings, type CalendarCol, type HolidayCountry, type HolidaySubdivision } from '@spa/stores/calendar';
+import { useAuthStore } from '@spa/stores/auth';
+import { api } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 
 const store = useCalendarStore();
+const auth = useAuthStore();
+const davUrl = `${window.location.origin}/dav/`;
+const caldavUrl = api.streamUrl('/api/v1/account/caldav-profile');
 const { success, error } = useToast();
 
 // --- default view / week start (string-backed: the <select> emits a string) --

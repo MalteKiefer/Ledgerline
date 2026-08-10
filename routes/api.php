@@ -6,6 +6,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AddressBookController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController as ApiBackupController;
+use App\Http\Controllers\Api\CalendarProfileController as ApiCalendarProfileController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
 use App\Http\Controllers\Api\ContactsProfileController as ApiContactsProfileController;
 use App\Http\Controllers\Api\FilesLimitsController as ApiFilesLimitsController;
@@ -237,6 +238,9 @@ Route::prefix('v1')->group(function (): void {
         // consume them via device auth. The Blade/SPA entry (index) is not exposed.
         // Owner-scope is controller-side; 409 on etag mismatch.
         Route::middleware('module:calendar')->group(function (): void {
+            // Standalone CalDAV enrollment profile (.mobileconfig) — works without the
+            // contacts module (the combined CardDAV+CalDAV profile lives on contacts).
+            Route::get('/account/caldav-profile', [ApiCalendarProfileController::class, 'caldavProfile'])->middleware('throttle:20,1')->name('api.account.caldav-profile');
             Route::get('/calendar/data', [CalendarController::class, 'data'])->name('api.calendar.data');
             // OpenHolidays proxies (SSRF-guarded) so the SPA selects load under CSP connect-src 'self'.
             Route::get('/calendar/holiday-countries', [CalendarController::class, 'holidayCountries'])->middleware('throttle:60,1')->name('api.calendar.holiday-countries');
