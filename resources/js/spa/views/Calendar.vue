@@ -455,8 +455,8 @@ const editingId = ref<string | null>(null);
 const currentEtag = ref<string>('');
 const saving = ref(false);
 const deleting = ref(false);
-const form = reactive<{ calendar_id: string; summary: string; description: string; location: string; geoLat: number | null; geoLon: number | null; allDay: boolean; start: string; end: string; repeat: string; status: string }>(
-  { calendar_id: '', summary: '', description: '', location: '', geoLat: null, geoLon: null, allDay: false, start: '', end: '', repeat: 'none', status: 'CONFIRMED' },
+const form = reactive<{ calendar_id: string; summary: string; description: string; location: string; geoLat: number | null; geoLon: number | null; allDay: boolean; start: string; end: string; repeat: string; rruleRaw: string; status: string }>(
+  { calendar_id: '', summary: '', description: '', location: '', geoLat: null, geoLon: null, allDay: false, start: '', end: '', repeat: 'none', rruleRaw: '', status: 'CONFIRMED' },
 );
 // Only normal calendars can hold user-created events; special ones are generated.
 const editableCalendars = computed(() => store.calendars.filter((c) => c.kind === 'normal'));
@@ -490,6 +490,12 @@ function toInput(iso: string, allDay: boolean): string {
   const d = new Date(iso);
   return `${ymd(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+// datetime-local values are naive *local* time; the API stores/returns UTC 'Z'.
+// Convert on write so the round-trip doesn't shift by the browser's offset.
+function localToIso(v: string): string { return new Date(v).toISOString(); }
+// All-day DTEND is exclusive (RFC 5545) but the editor shows an inclusive last
+// day; shift by ±1 day between the two representations.
+function shiftDay(dateStr: string, days: number): string { const d = parseKey(dateStr); d.setDate(d.getDate() + days); return ymd(d); }
 function onAllDayToggle(): void {
   if (form.allDay) {
     form.start = form.start.slice(0, 10);
@@ -512,7 +518,7 @@ function openCreate(startVal: string): void {
     allDay,
     start: startVal,
     end: allDay ? dayPart : dayPart + 'T10:00',
-    repeat: 'none', status: 'CONFIRMED',
+    repeat: 'none', rruleRaw: '', status: 'CONFIRMED',
   });
   eventModal.value = true;
 }
@@ -529,8 +535,9 @@ async function openEdit(o: Occurrence): Promise<void> {
       geoLat: coord(d.geo_lat), geoLon: coord(d.geo_lon),
       allDay: d.all_day,
       start: toInput(d.dtstart, d.all_day),
-      end: d.dtend ? toInput(d.dtend, d.all_day) : '',
-      repeat: rruleToPreset(d.rrule), status: d.status ?? 'CONFIRMED',
+      // All-day DTEND is exclusive on the wire → show the inclusive last day.
+      end: d.dtend ? (d.all_day ? shiftDay(toInput(d.dtend, true), -1) : toInput(d.dtend, false)) : '',
+      repeat: rruleToPreset(d.rrule), rruleRaw: d.rrule ?? '', status: d.status ?? 'CONFIRMED',
     });
     eventModal.value = true;
   } catch { error(t('common.error')); }
@@ -543,6 +550,15 @@ function coord(v: number | string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 function buildBody(): Record<string, unknown> {
+  const dtstart = form.allDay ? form.start.slice(0, 10) : localToIso(form.start);
+  // All-day: editor end is inclusive → store exclusive (+1 day). Timed: local→UTC.
+  const dtend = form.end
+    ? (form.allDay ? shiftDay(form.end.slice(0, 10), 1) : localToIso(form.end))
+    : null;
+  // Preserve a full RRULE (INTERVAL/UNTIL/COUNT/BYDAY) when the user didn't
+  // change the recurrence dropdown; otherwise emit the chosen bare preset.
+  const raw = form.rruleRaw.trim();
+  const rrule = raw && rruleToPreset(raw) === form.repeat ? raw : presetToRrule(form.repeat);
   return {
     calendar_id: form.calendar_id,
     summary: form.summary,
@@ -551,9 +567,9 @@ function buildBody(): Record<string, unknown> {
     geo_lat: form.geoLat,
     geo_lon: form.geoLon,
     all_day: form.allDay,
-    dtstart: form.start,
-    dtend: form.end || null,
-    rrule: presetToRrule(form.repeat),
+    dtstart,
+    dtend,
+    rrule,
     status: form.status,
   };
 }

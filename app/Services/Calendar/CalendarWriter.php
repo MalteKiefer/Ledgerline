@@ -38,10 +38,10 @@ class CalendarWriter
      */
     public function update(CalendarEvent $event, array $data): CalendarEvent
     {
-        $existing = $this->events->parse($event->ics);
-        $uid = $existing['uid'] ?? null;
+        // Merge into the stored ICS so unmodelled properties (VALARM/ATTENDEE/
+        // CATEGORIES/EXDATE/…) and the event's UID survive the edit.
         $sequence = (int) $event->sequence + 1;
-        $ics = $this->events->build($data, is_string($uid) ? $uid : null, $sequence);
+        $ics = $this->events->rebuild($event->ics, $data, $sequence);
 
         return $this->persister->persistUpdate($event, $ics);
     }

@@ -146,6 +146,32 @@ class CalendarRelationalTest extends TestCase
         $this->assertSame(1, $event->sequence);
     }
 
+    public function test_update_preserves_unmodelled_ics_properties(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendar($user->id);
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'Orig', 'dtstart' => '2026-08-03T09:00:00Z',
+        ])->assertStatus(201);
+        $event = CalendarEvent::firstOrFail();
+
+        // Inject properties the editor does not model (as a CalDAV client would).
+        $extra = "CATEGORIES:Work\r\nURL:https://example.com/x\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT15M\r\nDESCRIPTION:Ping\r\nEND:VALARM\r\nEND:VEVENT";
+        $event->ics = str_replace('END:VEVENT', $extra, $event->ics);
+        $event->saveQuietly();
+
+        $this->putJson(route('calendar.events.update', $event), [
+            'summary' => 'New', 'dtstart' => '2026-08-03T09:00:00Z',
+        ])->assertOk();
+
+        $event->refresh();
+        $this->assertStringContainsString('SUMMARY:New', $event->ics);       // modelled field updated
+        $this->assertStringContainsString('CATEGORIES:Work', $event->ics);   // unmodelled preserved
+        $this->assertStringContainsString('https://example.com/x', $event->ics);
+        $this->assertStringContainsString('BEGIN:VALARM', $event->ics);      // VALARM survives edit
+        $this->assertStringNotContainsString('SUMMARY:Orig', $event->ics);
+    }
+
     public function test_update_rejects_a_stale_etag_with_409(): void
     {
         $user = $this->signIn();

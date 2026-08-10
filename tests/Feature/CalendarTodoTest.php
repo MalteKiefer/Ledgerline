@@ -138,6 +138,28 @@ class CalendarTodoTest extends TestCase
         $this->assertSame($uid, app(CalendarTodoService::class)->parse($todo->ics)['uid']);
     }
 
+    public function test_update_preserves_unmodelled_ics_properties_and_replaces_valarm(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->taskList($user->id);
+        $this->postJson(route('calendar.todos.store'), ['calendar_id' => $calendar->id, 'summary' => 'Orig', 'due' => '2026-08-03T09:00:00Z'])->assertStatus(201);
+        $todo = CalendarTodo::firstOrFail();
+
+        // Inject a property the editor does not model (as a CalDAV client would).
+        $todo->ics = str_replace('END:VTODO', "X-CUSTOM-FIELD:keepme\r\nEND:VTODO", $todo->ics);
+        $todo->saveQuietly();
+
+        $this->putJson(route('calendar.todos.update', $todo), [
+            'summary' => 'New', 'due' => '2026-08-03T09:00:00Z', 'alarm_minutes_before' => 30,
+        ])->assertOk();
+
+        $todo->refresh();
+        $this->assertStringContainsString('SUMMARY:New', $todo->ics);        // modelled field updated
+        $this->assertStringContainsString('X-CUSTOM-FIELD:keepme', $todo->ics); // unmodelled preserved
+        $this->assertStringContainsString('TRIGGER:-PT30M', $todo->ics);     // VALARM applied from editor
+        $this->assertStringNotContainsString('SUMMARY:Orig', $todo->ics);
+    }
+
     public function test_update_rejects_a_stale_etag_with_409(): void
     {
         $user = $this->signIn();

@@ -47,7 +47,6 @@ class CalendarTodoService
     public function build(array $data, ?string $uid = null, int $sequence = 0): string
     {
         $uidValue = $uid !== null && $uid !== '' ? $uid : (string) Str::uuid();
-        $allDay = (bool) ($data['all_day'] ?? false);
 
         $cal = new VCalendar;
         /** @var VTodo $todo */
@@ -56,50 +55,106 @@ class CalendarTodoService
         // those single-valued properties instead of duplicating them.
         $todo->remove('UID');
         $todo->add('UID', $uidValue);
+        $this->applyCoreFields($todo, $data, $sequence);
+
+        $serialized = $cal->serialize();
+
+        return is_string($serialized) ? $serialized : '';
+    }
+
+    /**
+     * Update an existing VTODO in place from editor data, preserving every
+     * property the editor does not model (ATTENDEE/ORGANIZER/URL/X-*) and the
+     * surrounding VCALENDAR. A fresh build() would drop all of those on every
+     * edit. Falls back to build() when the stored ICS is unreadable.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function rebuild(string $existingIcs, array $data, int $sequence = 0): string
+    {
+        $cal = $this->readCalendar($existingIcs);
+        $todo = $this->firstTodoOf($cal);
+        if ($cal === null || $todo === null) {
+            $uid = $this->parse($existingIcs)['uid'];
+
+            return $this->build($data, is_string($uid) ? $uid : null, $sequence);
+        }
+
+        $this->applyCoreFields($todo, $data, $sequence);
+
+        $serialized = $cal->serialize();
+
+        return is_string($serialized) ? $serialized : $this->build($data, $this->s($todo->UID ?? null), $sequence);
+    }
+
+    /**
+     * Set the editor-owned properties on a VTODO (remove-then-add so an update
+     * replaces rather than duplicates, and a cleared field is removed). Leaves
+     * UID and any unmodelled property untouched.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function applyCoreFields(VTodo $todo, array $data, int $sequence): void
+    {
+        $allDay = (bool) ($data['all_day'] ?? false);
+
         $todo->remove('DTSTAMP');
         $todo->add('DTSTAMP', gmdate('Ymd\THis\Z'));
+        $todo->remove('SEQUENCE');
         $todo->add('SEQUENCE', (string) max(0, $sequence));
 
+        foreach (['DTSTART', 'DUE', 'COMPLETED'] as $prop) {
+            $todo->remove($prop);
+        }
         $this->addDate($todo, 'DTSTART', $this->parseDateTime($data['dtstart'] ?? null), $allDay);
         $this->addDate($todo, 'DUE', $this->parseDateTime($data['due'] ?? null), $allDay);
         $this->addDate($todo, 'COMPLETED', $this->parseDateTime($data['completed'] ?? null), false);
 
         foreach (['summary' => 'SUMMARY', 'description' => 'DESCRIPTION'] as $key => $prop) {
+            $todo->remove($prop);
             if (filled($data[$key] ?? null)) {
                 $todo->add($prop, $this->str($data[$key] ?? null));
             }
         }
 
+        $todo->remove('STATUS');
         $status = strtoupper(trim($this->str($data['status'] ?? null)));
         if (in_array($status, self::STATUSES, true)) {
             $todo->add('STATUS', $status);
         }
 
+        $todo->remove('PRIORITY');
         $priority = $this->intOrNull($data['priority'] ?? null, 0, 9);
         if ($priority !== null) {
             $todo->add('PRIORITY', (string) $priority);
         }
 
+        $todo->remove('PERCENT-COMPLETE');
         $percent = $this->intOrNull($data['percent_complete'] ?? null, 0, 100);
         if ($percent !== null) {
             $todo->add('PERCENT-COMPLETE', (string) $percent);
         }
 
+        $todo->remove('CATEGORIES');
         $categories = $this->normaliseCategories($data['categories'] ?? null);
         if ($categories !== []) {
             $todo->add('CATEGORIES', $categories);
         }
 
+        $todo->remove('RELATED-TO');
         $relatedTo = trim($this->str($data['related_to'] ?? null));
         if ($relatedTo !== '') {
             $todo->add('RELATED-TO', $relatedTo);
         }
 
+        $todo->remove('RRULE');
         $rrule = trim($this->str($data['rrule'] ?? null));
         if ($rrule !== '') {
             $todo->add('RRULE', $rrule);
         }
 
+        // VALARM is editor-owned (alarm_minutes_before): replace it wholesale.
+        $todo->remove('VALARM');
         $alarm = $this->intOrNull($data['alarm_minutes_before'] ?? null, 0, 40320); // ≤ 4 weeks
         if ($alarm !== null) {
             /** @var VAlarm $valarm */
@@ -108,10 +163,6 @@ class CalendarTodoService
             $valarm->add('TRIGGER', '-PT'.$alarm.'M');
             $valarm->add('DESCRIPTION', $this->str($data['summary'] ?? null) !== '' ? $this->str($data['summary'] ?? null) : 'Reminder');
         }
-
-        $serialized = $cal->serialize();
-
-        return is_string($serialized) ? $serialized : '';
     }
 
     /**
