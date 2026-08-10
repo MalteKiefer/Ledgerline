@@ -107,6 +107,36 @@ class FilesRelationalTest extends TestCase
         Storage::disk(config('files.disk'))->assertMissing($path);
     }
 
+    public function test_folder_trash_restore_and_force_deletes_subtree(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $folder = (int) $this->postJson(route('files.rel.folders.store'), ['name' => 'Box'])->json('folder.id');
+        $fileId = (int) $this->post(route('files.rel.upload'), [
+            'file' => UploadedFile::fake()->createWithContent('in.txt', 'inside'),
+            'file_folder_id' => $folder,
+        ])->json('file.id');
+        $path = FileEntry::findOrFail($fileId)->storage_path;
+
+        // Trash the folder → folder + contained file are soft-deleted.
+        $this->deleteJson(route('files.rel.folders.destroy', $folder))->assertOk();
+        $this->assertSoftDeleted('file_folders', ['id' => $folder]);
+        $this->assertSoftDeleted('files', ['id' => $fileId]);
+
+        // Restore via the folder endpoint → both come back. (Regression: the SPA
+        // used to call the file endpoint with a folder id, 404ing or restoring a
+        // stray file that happened to share the numeric id.)
+        $this->postJson(route('files.rel.folders.restore', $folder))->assertOk();
+        $this->assertNull(FileFolder::find($folder)->deleted_at);
+        $this->assertNull(FileEntry::find($fileId)->deleted_at);
+
+        // Trash again, then force-delete the subtree → rows + bytes gone.
+        $this->deleteJson(route('files.rel.folders.destroy', $folder))->assertOk();
+        $this->deleteJson(route('files.rel.folders.force', $folder))->assertOk();
+        $this->assertDatabaseMissing('file_folders', ['id' => $folder]);
+        $this->assertDatabaseMissing('files', ['id' => $fileId]);
+        Storage::disk(config('files.disk'))->assertMissing($path);
+    }
+
     public function test_replace_content_versions_and_prune(): void
     {
         $user = User::factory()->create();
