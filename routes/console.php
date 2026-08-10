@@ -22,6 +22,9 @@ Schedule::command('finance:fetch-fx')->dailyAt('03:15')->withoutOverlapping();
 // Remind the owner about unpaid, overdue invoices (throttled per invoice).
 Schedule::command('invoices:remind')->dailyAt('08:00')->withoutOverlapping();
 
+// Notify about tasks due today / overdue (throttled per task per due-date).
+Schedule::command('tasks:remind')->dailyAt('07:00')->withoutOverlapping();
+
 // Drop expired/consumed QR device-pairing rows (short-lived, single-use).
 Schedule::command('device-pairings:prune')->hourly()->withoutOverlapping();
 
