@@ -33,5 +33,6 @@ return [
     'confirm_delete' => 'Diesen Eintrag löschen? Kann nicht rückgängig gemacht werden.',
     'loading' => 'Wird geladen…',
     'name' => 'Name',
+    'email' => 'E-Mail',
     'not_found' => 'Seite nicht gefunden',
 ];

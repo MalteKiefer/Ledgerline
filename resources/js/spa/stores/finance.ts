@@ -9,6 +9,8 @@ export interface Invoice {
   vat_rate: number | null; gross: number | null; net: number | null; vat: number | null; imported: boolean;
   partner_id: number | null; customer: Record<string, unknown> | null; lines: InvoiceLine[] | null;
   note: string | null; paid_at: string | null; version: number;
+  discount_type: 'percent' | 'amount' | null; discount_value: number | string | null;
+  skonto_percent: number | string | null; skonto_days: number | null;
 }
 export interface PartnerContact { id?: string; name?: string; email?: string; phone?: string; role?: string }
 export interface Partner {

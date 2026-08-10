@@ -30,6 +30,9 @@ return [
 
     'back' => 'Zurück',
     'customer' => 'Kunde',
+    'cust_attn' => 'z.\ Hd.',
+    'cust_address' => 'Adresse',
+    'vat_id' => 'USt-IdNr.',
     'choose_customer' => 'Aus Kontakten wählen',
     'no_customer' => 'Kein Kunde ausgewählt',
     'clear_customer' => 'Entfernen',

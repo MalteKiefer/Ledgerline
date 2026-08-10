@@ -313,6 +313,36 @@ class FinanceRelationalTest extends TestCase
         $this->assertSame('paid', Invoice::find($id)->status);
     }
 
+    public function test_invoice_stores_partner_discount_skonto_and_customer_details(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $partnerId = $this->postJson(route('finance.partners.store'), ['name' => 'Acme'])
+            ->assertCreated()->json('partner.id');
+
+        $id = $this->postJson(route('finance.invoices.store'), [
+            'status' => 'draft',
+            'currency' => 'EUR',
+            'issue_date' => '2026-01-10',
+            'partner_id' => $partnerId,
+            'discount_type' => 'percent',
+            'discount_value' => 5,
+            'skonto_percent' => 2,
+            'skonto_days' => 14,
+            'customer' => ['name' => 'Acme', 'attn' => 'Jane', 'vatId' => 'DE123', 'address' => "Street 1\nCity"],
+            'lines' => [['desc' => 'Work', 'qty' => 1, 'unitPrice' => 100, 'vatRate' => 19]],
+        ])->assertCreated()->json('invoice.id');
+
+        $inv = Invoice::find($id);
+        $this->assertSame($partnerId, $inv->partner_id);
+        $this->assertSame('percent', $inv->discount_type);
+        $this->assertEquals(2, (float) $inv->skonto_percent);
+        $this->assertSame(14, $inv->skonto_days);
+        $this->assertSame('Jane', $inv->customer['attn']);
+        $this->assertSame('DE123', $inv->customer['vatId']);
+    }
+
     public function test_partner_stores_hourly_rate_and_currency(): void
     {
         $user = User::factory()->create();
