@@ -1,5 +1,15 @@
 <template>
-  <div class="flex h-[calc(100vh-8.5rem)] gap-4">
+  <div
+    class="relative flex h-[calc(100vh-8.5rem)] gap-4"
+    @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave.prevent="onDragLeave" @drop.prevent="onViewDrop"
+  >
+    <!-- Full-view drag & drop: import dropped Markdown files as new notes -->
+    <div v-show="dragDepth > 0" class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-500/10">
+      <div class="rounded-xl bg-[var(--ll-card)] px-6 py-4 text-center shadow-lg">
+        <Icon name="upload" :size="32" class="text-primary-500" />
+        <div class="mt-1 text-sm font-medium">{{ t('notes.drop_here') }}</div>
+      </div>
+    </div>
     <!-- Left rail: folders + tags + trash -->
     <Card class="hidden w-60 shrink-0 overflow-y-auto md:block" body-class="p-3">
       <Btn variant="solid" icon="add" class="mb-3 w-full" @click="newNote">{{ t('notes.new_note') }}</Btn>
@@ -269,6 +279,50 @@ async function toggleFav() {
   try { await n.favorite(current.value.id, current.value.favorite); await n.load(); } catch { error(t('common.error')); }
 }
 
+// --- Full-view drag & drop: import Markdown files as new notes -----------
+const dragDepth = ref(0);
+function hasFiles(e: DragEvent) { return Array.from(e.dataTransfer?.types ?? []).includes('Files'); }
+function onDragEnter(e: DragEvent) { if (hasFiles(e)) dragDepth.value++; }
+function onDragLeave(e: DragEvent) { if (hasFiles(e)) dragDepth.value = Math.max(0, dragDepth.value - 1); }
+
+// Split an optional YAML frontmatter (title/tags) off the top of a Markdown file
+// so our own exports round-trip; otherwise the filename becomes the title.
+function parseFrontmatter(text: string, fallbackTitle: string): { title: string; tags: string[]; body: string } {
+  let title = fallbackTitle;
+  let tags: string[] = [];
+  let body = text;
+  const m = text.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (m) {
+    body = text.slice(m[0].length);
+    for (const line of m[1].split('\n')) {
+      const t2 = line.match(/^title:\s*"?(.*?)"?\s*$/);
+      if (t2) title = t2[1] || fallbackTitle;
+      const tg = line.match(/^tags:\s*\[(.*)\]\s*$/);
+      if (tg) tags = tg[1].split(',').map((x) => x.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+    }
+  }
+  return { title, tags, body };
+}
+
+async function onViewDrop(e: DragEvent) {
+  dragDepth.value = 0;
+  const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => /\.(md|markdown|txt)$/i.test(f.name) || f.type === 'text/markdown');
+  if (!files.length) return;
+  try {
+    let last = 0;
+    for (const f of files) {
+      const text = await f.text();
+      const base = f.name.replace(/\.(md|markdown|txt)$/i, '');
+      const { title, tags, body } = parseFrontmatter(text, base);
+      const note = await n.create({ title, body, tags, note_folder_id: activeFolder.value });
+      last = note.id;
+    }
+    await n.load();
+    if (last) await openNote(last);
+    success(t('common.saved'));
+  } catch { error(t('common.error')); }
+}
+
 // --- Markdown editor toolbar ---------------------------------------------
 // Each button mutates the textarea selection then restores focus/caret.
 function edit(fn: (val: string, s: number, e: number) => { text: string; from: number; to: number }) {
@@ -316,11 +370,22 @@ function insertLink() {
     return { text, from, to: from + 3 };
   });
 }
+function insertWikilink() {
+  edit((val, s, e) => {
+    const sel = val.slice(s, e) || t('notes.md_link_text');
+    const snippet = `[[${sel}]]`;
+    const text = val.slice(0, s) + snippet + val.slice(e);
+    const from = s + 2;
+    return { text, from, to: from + sel.length };
+  });
+}
 const toolbar = [
   { key: 'bold', icon: 'format_bold', run: () => wrap('**', '**', t('notes.md_bold_text')) },
   { key: 'italic', icon: 'format_italic', run: () => wrap('*', '*', t('notes.md_italic_text')) },
   { key: 'strike', icon: 'strikethrough_s', run: () => wrap('~~', '~~', '') },
-  { key: 'heading', icon: 'title', run: () => linePrefix('## ') },
+  { key: 'h1', icon: 'format_h1', run: () => linePrefix('# ') },
+  { key: 'heading', icon: 'format_h2', run: () => linePrefix('## ') },
+  { key: 'h3', icon: 'format_h3', run: () => linePrefix('### ') },
   { key: 'quote', icon: 'format_quote', run: () => linePrefix('> ') },
   { key: 'ulist', icon: 'format_list_bulleted', run: () => linePrefix('- ') },
   { key: 'olist', icon: 'format_list_numbered', run: () => linePrefix('1. ') },
@@ -328,6 +393,7 @@ const toolbar = [
   { key: 'code', icon: 'code', run: () => wrap('`', '`', 'code') },
   { key: 'codeblock', icon: 'data_object', run: () => insert('\n```\n\n```\n', 5) },
   { key: 'link', icon: 'link', run: insertLink },
+  { key: 'wikilink', icon: 'account_tree', run: insertWikilink },
   { key: 'image', icon: 'image', run: () => (current.value?.id ? imgInput.value?.click() : insert('![alt](url)', 4)) },
   { key: 'table', icon: 'table_chart', run: () => insert('\n| A | B |\n| --- | --- |\n| 1 | 2 |\n') },
   { key: 'rule', icon: 'horizontal_rule', run: () => insert('\n---\n') },
