@@ -13,5 +13,6 @@ return [
     'task_overdue_since' => 'Überfällig seit :date',
     'event_soon' => 'Demnächst: :event',
     'event_at' => 'Beginnt um :time',
+    'birthday' => 'Geburtstag heute: :name',
     'backup_failed' => 'Backup „:name" fehlgeschlagen',
 ];

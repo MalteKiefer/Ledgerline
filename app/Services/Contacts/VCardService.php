@@ -375,10 +375,10 @@ class VCardService
         try {
             $card = Reader::read($vcard, Reader::OPTION_FORGIVING);
         } catch (Throwable) {
-            return ['fn' => null, 'first_name' => null, 'last_name' => null, 'org' => null, 'emails' => [], 'phones' => [], 'has_photo' => false, 'favorite' => false];
+            return ['fn' => null, 'first_name' => null, 'last_name' => null, 'org' => null, 'emails' => [], 'phones' => [], 'has_photo' => false, 'favorite' => false, 'bday' => null];
         }
         if (! $card instanceof VCard) {
-            return ['fn' => null, 'first_name' => null, 'last_name' => null, 'org' => null, 'emails' => [], 'phones' => [], 'has_photo' => false, 'favorite' => false];
+            return ['fn' => null, 'first_name' => null, 'last_name' => null, 'org' => null, 'emails' => [], 'phones' => [], 'has_photo' => false, 'favorite' => false, 'bday' => null];
         }
 
         $n = $this->parts($card, 'N');
@@ -393,7 +393,40 @@ class VCardService
             'phones' => $this->values($this->iter($card->TEL ?? null)),
             'has_photo' => $this->photoUri($card) !== null,
             'favorite' => $this->favorite($card),
+            'bday' => $this->birthMonthDay($card),
         ];
+    }
+
+    /**
+     * The BDAY reduced to a year-agnostic "MM-DD" for a cheap birthday match, or
+     * null. Handles YYYYMMDD / YYYY-MM-DD / --MMDD / --MM-DD (with or without
+     * separators + a trailing time), validating the month/day ranges.
+     */
+    private function birthMonthDay(VCard $card): ?string
+    {
+        $raw = $this->s($card->BDAY ?? null);
+        if ($raw === null) {
+            return null;
+        }
+        $digits = preg_replace('/\D/', '', $raw) ?? '';
+        // A year-less form ("--05-01") carries just MMDD; a full date carries YYYYMMDD.
+        if (str_starts_with(ltrim($raw), '--') || strlen($digits) === 4) {
+            $mmdd = substr($digits, 0, 4);
+        } elseif (strlen($digits) >= 8) {
+            $mmdd = substr($digits, 4, 4);
+        } else {
+            return null;
+        }
+        if (strlen($mmdd) !== 4) {
+            return null;
+        }
+        $month = (int) substr($mmdd, 0, 2);
+        $day = (int) substr($mmdd, 2, 2);
+        if ($month < 1 || $month > 12 || $day < 1 || $day > 31) {
+            return null;
+        }
+
+        return sprintf('%02d-%02d', $month, $day);
     }
 
     /**
