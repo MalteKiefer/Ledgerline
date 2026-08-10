@@ -248,6 +248,10 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/notes/folders/{id}/restore', [NotesController::class, 'restoreFolder'])->whereNumber('id')->middleware('throttle:600,1')->name('api.notes.folders.restore');
             Route::get('/notes/{note}', [NotesController::class, 'show'])->whereNumber('note')->name('api.notes.show');
             Route::get('/notes/{note}/backlinks', [NotesController::class, 'backlinks'])->whereNumber('note')->name('api.notes.backlinks');
+            Route::get('/notes/{note}/export', [NotesController::class, 'export'])->whereNumber('note')->name('api.notes.export');
+            Route::post('/notes/{note}/attachments', [NotesController::class, 'attach'])->whereNumber('note')->middleware('throttle:120,1')->name('api.notes.attachments.store');
+            Route::get('/notes/{note}/attachments/{attachment}/raw', [NotesController::class, 'attachmentRaw'])->whereNumber('note')->whereNumber('attachment')->middleware('throttle:3000,1')->name('api.notes.attachments.raw');
+            Route::delete('/notes/{note}/attachments/{attachment}', [NotesController::class, 'destroyAttachment'])->whereNumber('note')->whereNumber('attachment')->middleware('throttle:600,1')->name('api.notes.attachments.destroy');
             Route::put('/notes/{note}', [NotesController::class, 'update'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.update');
             Route::patch('/notes/{note}/favorite', [NotesController::class, 'favorite'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.favorite');
             Route::patch('/notes/{note}/pin', [NotesController::class, 'pin'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.pin');

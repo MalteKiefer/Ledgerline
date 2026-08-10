@@ -8,6 +8,8 @@ use App\Models\Note;
 use App\Models\NoteFolder;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -120,6 +122,30 @@ class NotesFeatureTest extends TestCase
         // Editing A to drop the [[Target]] link removes the backlink from B.
         $this->putJson(route('notes.update', $a), ['title' => 'Source', 'body' => 'no links now', 'version' => 0])->assertOk();
         $this->getJson(route('notes.backlinks', $b))->assertOk()->assertJsonCount(0, 'backlinks');
+    }
+
+    public function test_attachment_upload_stream_delete_and_export(): void
+    {
+        Storage::fake('files');
+        $this->actingAs(User::factory()->create());
+        $id = $this->postJson(route('notes.store'), ['title' => 'Doc', 'body' => 'body', 'tags' => ['x']])->json('note.id');
+
+        $attId = $this->post(route('notes.attachments.store', $id), ['file' => UploadedFile::fake()->image('pic.png')])
+            ->assertCreated()->json('attachment.id');
+
+        // Listed on show, streamed with the sandbox CSP (defense-in-depth over
+        // the mimes: allowlist that blocks svg/html on upload).
+        $this->getJson(route('notes.show', $id))->assertOk()->assertJsonCount(1, 'note.attachments');
+        $this->get(route('notes.attachments.raw', [$id, $attId]))
+            ->assertOk()->assertHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+
+        // Markdown export carries frontmatter + body.
+        $export = $this->get(route('notes.export', $id))->assertOk();
+        $this->assertStringContainsString('title: "Doc"', $export->streamedContent());
+        $this->assertStringContainsString('body', $export->streamedContent());
+
+        $this->deleteJson(route('notes.attachments.destroy', [$id, $attId]))->assertOk();
+        $this->getJson(route('notes.show', $id))->assertOk()->assertJsonCount(0, 'note.attachments');
     }
 
     public function test_search_matches_body(): void

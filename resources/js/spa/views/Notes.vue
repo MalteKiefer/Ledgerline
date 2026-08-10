@@ -89,6 +89,9 @@
           <button class="rounded-lg p-2 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :class="current.pinned ? 'text-primary-500' : ''" :title="t('notes.pin')" @click="togglePin"><Icon :name="current.pinned ? 'push_pin' : 'push_pin'" :size="18" /></button>
           <button class="rounded-lg p-2 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :class="current.favorite ? 'text-amber-500' : ''" :title="t('notes.favorite')" @click="toggleFav"><Icon :name="current.favorite ? 'star' : 'star_border'" :size="18" /></button>
           <button class="rounded-lg p-2 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('notes.toggle_preview')" @click="preview = !preview"><Icon :name="preview ? 'edit' : 'visibility'" :size="18" /></button>
+          <button v-if="current.id" class="rounded-lg p-2 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('notes.attach')" @click="attachInput?.click()"><Icon name="attach_file" :size="18" /></button>
+          <input ref="attachInput" type="file" accept=".pdf,image/*" class="hidden" @change="onAttach">
+          <a v-if="current.id" :href="n.exportUrl(current.id)" class="rounded-lg p-2 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('notes.export')"><Icon name="download" :size="18" /></a>
           <Btn variant="solid" size="sm" :loading="saving" @click="save">{{ t('common.save') }}</Btn>
           <button class="rounded-lg p-2 text-red-600 hover:bg-red-500/10" :title="t('common.delete')" @click="onDelete"><Icon name="delete" :size="18" /></button>
         </div>
@@ -100,6 +103,14 @@
             :placeholder="t('notes.body_ph')"
           />
           <div v-else class="ll-prose h-full flex-1 overflow-y-auto p-4" @click="onPreviewClick" v-html="rendered" />
+        </div>
+        <div v-if="current.id && current.attachments && current.attachments.length" class="border-t border-[var(--ll-border)] p-3">
+          <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('notes.attachments') }}</div>
+          <div v-for="a in current.attachments" :key="a.id" class="flex items-center gap-2 py-1 text-sm">
+            <Icon name="attach_file" :size="16" class="text-[var(--ll-muted)]" />
+            <a :href="n.attachmentUrl(current.id, a.id)" target="_blank" rel="noopener" class="flex-1 truncate hover:underline">{{ a.name }}</a>
+            <button class="text-red-600 hover:underline" :title="t('common.delete')" @click="onDeleteAttachment(a.id)"><Icon name="delete" :size="16" /></button>
+          </div>
         </div>
         <div v-if="current.id && current.backlinks && current.backlinks.length" class="border-t border-[var(--ll-border)] p-3">
           <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('notes.backlinks') }}</div>
@@ -152,6 +163,7 @@ const showTrash = ref(false);
 const trashNotes = ref<NoteRow[]>([]);
 const tagInput = ref('');
 const folderSel = ref(0);
+const attachInput = ref<HTMLInputElement | null>(null);
 
 // Resolve a wikilink title → note id from the loaded list (case-insensitive,
 // latest updated wins) so [[Title]] renders as an internal link.
@@ -246,6 +258,25 @@ async function toggleFav() {
   if (!current.value?.id) { if (current.value) current.value.favorite = !current.value.favorite; return; }
   current.value.favorite = !current.value.favorite;
   try { await n.favorite(current.value.id, current.value.favorite); await n.load(); } catch { error(t('common.error')); }
+}
+
+async function onAttach(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file || !current.value?.id) return;
+  try {
+    const att = await n.attach(current.value.id, file);
+    (current.value.attachments ??= []).push(att);
+    success(t('common.saved'));
+  } catch { error(t('common.error')); }
+}
+async function onDeleteAttachment(attId: number) {
+  if (!current.value?.id) return;
+  try {
+    await n.deleteAttachment(current.value.id, attId);
+    if (current.value.attachments) current.value.attachments = current.value.attachments.filter((a) => a.id !== attId);
+  } catch { error(t('common.error')); }
 }
 
 function addTag() {

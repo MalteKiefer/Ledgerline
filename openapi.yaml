@@ -756,6 +756,18 @@ components:
           type: array
           description: Notes that link to this one (present on show/store/update).
           items: { $ref: "#/components/schemas/NoteBacklink" }
+        attachments:
+          type: array
+          description: File/image attachments (present on show).
+          items: { $ref: "#/components/schemas/NoteAttachment" }
+    NoteAttachment:
+      type: object
+      description: A file/image attached to a note (bytes served sandboxed via .../raw).
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        mime: { type: [string, "null"] }
+        size: { type: integer }
     NoteBacklink:
       type: object
       description: A note linking to the current one, with a short body snippet.
@@ -2287,6 +2299,77 @@ paths:
                 type: object
                 properties:
                   backlinks: { type: array, items: { $ref: "#/components/schemas/NoteBacklink" } }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
+  /notes/{note}/export:
+    get:
+      tags: [Notes]
+      operationId: notesExport
+      summary: Download a note as a Markdown file
+      description: Streams the note as `text/markdown` (YAML frontmatter with title/tags + body).
+      parameters:
+        - { name: note, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Markdown file.
+          content:
+            text/markdown:
+              schema: { type: string }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
+  /notes/{note}/attachments:
+    post:
+      tags: [Notes]
+      operationId: notesAttach
+      summary: Attach a file/image to a note
+      description: MIME allowlist pdf/jpg/jpeg/png/webp/gif (no svg/html). Throttle 120/min.
+      parameters:
+        - { name: note, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                name: { type: string }
+      responses:
+        "201":
+          description: Attachment metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  attachment: { $ref: "#/components/schemas/NoteAttachment" }
+        "401": { description: Unauthenticated. }
+        "422": { description: Validation error. }
+  /notes/{note}/attachments/{attachment}/raw:
+    get:
+      tags: [Notes]
+      operationId: notesAttachmentRaw
+      summary: Stream an attachment (sandboxed)
+      description: "Served with nosniff + a sandbox CSP (default-src none). Throttle 3000/min."
+      parameters:
+        - { name: note, in: path, required: true, schema: { type: integer } }
+        - { name: attachment, in: path, required: true, schema: { type: integer } }
+        - { name: download, in: query, required: false, schema: { type: boolean } }
+      responses:
+        "200": { description: Attachment bytes. }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
+  /notes/{note}/attachments/{attachment}:
+    delete:
+      tags: [Notes]
+      operationId: notesAttachmentDestroy
+      summary: Delete an attachment
+      parameters:
+        - { name: note, in: path, required: true, schema: { type: integer } }
+        - { name: attachment, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
         "401": { description: Unauthenticated. }
         "404": { description: Not found. }
   /notes/{note}/favorite:

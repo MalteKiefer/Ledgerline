@@ -5,13 +5,19 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\Note;
+use App\Models\NoteAttachment;
 use App\Models\NoteFolder;
 use App\Models\NoteLink;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Notes module (plaintext-relational). One guard-agnostic controller mounted on
@@ -77,6 +83,7 @@ class NotesController extends Controller
             ...$this->row($note),
             'body' => $note->body ?? '',
             'backlinks' => $this->backlinksFor($note),
+            'attachments' => $this->attachmentsFor($note),
         ]]);
     }
 
@@ -146,6 +153,13 @@ class NotesController extends Controller
     public function forceDelete(Request $request, int $id): JsonResponse
     {
         $this->requireUser($request);
+        // Unlink attachment blobs before the row cascade removes their records.
+        foreach (NoteAttachment::query()->where('note_id', $id)->get() as $att) {
+            $path = $this->safeBlobPath($att->blob_path);
+            if ($path !== null) {
+                $this->fs()->delete($path);
+            }
+        }
         Note::onlyTrashed()->whereKey($id)->forceDelete();
 
         return response()->json(['ok' => true]);
@@ -223,6 +237,86 @@ class NotesController extends Controller
             ->map(fn (Note $n): array => $this->row($n))->all();
 
         return response()->json(['notes' => $notes]);
+    }
+
+    // ---- Attachments ----
+
+    public function attach(Request $request, Note $note): JsonResponse
+    {
+        $this->requireUser($request);
+        $request->validate([
+            // No svg/html (stored-XSS vectors) — defense-in-depth over the serve-time sandbox CSP.
+            'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp,gif', 'max:'.$this->maxUploadKb()],
+            'name' => ['nullable', 'string', 'max:500'],
+        ]);
+        $upload = $request->file('file');
+        if (! $upload instanceof UploadedFile) {
+            abort(422);
+        }
+        $path = 'notes/'.Str::uuid()->toString();
+        $this->fs()->putFileAs('notes', $upload, basename($path));
+
+        $name = $request->filled('name') ? $request->string('name')->value() : $upload->getClientOriginalName();
+        $mime = $upload->getMimeType() ?: $upload->getClientMimeType();
+        $att = NoteAttachment::create([
+            'note_id' => $note->id,
+            'blob_path' => $path,
+            'name' => $this->safeName($name !== '' ? $name : 'file'),
+            'mime' => $mime !== '' ? $mime : null,
+            'size' => $upload->getSize() ?: 0,
+        ]);
+
+        return response()->json(['attachment' => $this->attachmentRow($att)], 201);
+    }
+
+    public function attachmentRaw(Request $request, Note $note, NoteAttachment $attachment): StreamedResponse
+    {
+        $this->requireUser($request);
+        // Owner-scope covers both models; also bind the attachment to the note.
+        abort_unless($attachment->note_id === $note->id, 404);
+        $path = $this->safeBlobPath($attachment->blob_path);
+        if ($path === null || ! $this->fs()->exists($path)) {
+            abort(404);
+        }
+
+        return $this->fs()->response($path, $this->safeName($attachment->name), [
+            'Content-Type' => $attachment->mime ?: 'application/octet-stream',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+            'Cache-Control' => 'private, max-age=3600',
+        ], $request->boolean('download') ? 'attachment' : 'inline');
+    }
+
+    public function destroyAttachment(Request $request, Note $note, NoteAttachment $attachment): JsonResponse
+    {
+        $this->requireUser($request);
+        abort_unless($attachment->note_id === $note->id, 404);
+        $path = $this->safeBlobPath($attachment->blob_path);
+        if ($path !== null) {
+            $this->fs()->delete($path);
+        }
+        $attachment->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Download a single note as a Markdown file (YAML frontmatter + body). */
+    public function export(Request $request, Note $note): StreamedResponse
+    {
+        $this->requireUser($request);
+        $title = $note->title ?? '';
+        $tags = is_array($note->tags) ? array_values(array_filter($note->tags, 'is_string')) : [];
+        $front = "---\ntitle: ".$this->yamlScalar($title)."\n";
+        if ($tags !== []) {
+            $front .= 'tags: ['.implode(', ', array_map(fn (string $t): string => $this->yamlScalar($t), $tags))."]\n";
+        }
+        $front .= "---\n\n";
+        $md = $front.($note->body ?? '');
+        $filename = $this->safeName(($title !== '' ? $title : 'note').'.md');
+
+        return response()->streamDownload(function () use ($md): void {
+            echo $md;
+        }, $filename, ['Content-Type' => 'text/markdown; charset=UTF-8']);
     }
 
     // ---- Wikilinks / backlinks ----
@@ -322,6 +416,58 @@ class NotesController extends Controller
         }
 
         return $out;
+    }
+
+    // ---- Storage / attachments helpers ----
+
+    private function fs(): Filesystem
+    {
+        $d = config('files.disk');
+
+        return Storage::disk(is_string($d) ? $d : 'files');
+    }
+
+    private function maxUploadKb(): int
+    {
+        $mb = config('files.max_upload_mb', 2048);
+
+        return (is_numeric($mb) ? (int) $mb : 2048) * 1024;
+    }
+
+    private function safeName(string $name): string
+    {
+        $clean = preg_replace('#[\x00-\x1F\x7F"\\\\/]+#', '_', $name);
+        $clean = is_string($clean) ? trim($clean) : '';
+
+        return $clean === '' ? 'file' : $clean;
+    }
+
+    /** Only serve/delete blobs under the notes/ prefix; reject traversal/absolute. */
+    private function safeBlobPath(mixed $path): ?string
+    {
+        if (! is_string($path) || $path === '' || str_contains($path, '..') || str_starts_with($path, '/')) {
+            return null;
+        }
+
+        return str_starts_with($path, 'notes/') ? $path : null;
+    }
+
+    private function yamlScalar(string $s): string
+    {
+        return '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $s).'"';
+    }
+
+    /** @return list<array{id:int,name:string,mime:?string,size:int}> */
+    private function attachmentsFor(Note $note): array
+    {
+        return array_values(NoteAttachment::query()->where('note_id', $note->id)->orderBy('id')->get()
+            ->map(fn (NoteAttachment $a): array => $this->attachmentRow($a))->all());
+    }
+
+    /** @return array{id:int,name:string,mime:?string,size:int} */
+    private function attachmentRow(NoteAttachment $a): array
+    {
+        return ['id' => $a->id, 'name' => $a->name, 'mime' => $a->mime, 'size' => $a->size];
     }
 
     // ---- Helpers ----

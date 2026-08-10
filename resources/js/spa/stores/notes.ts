@@ -10,7 +10,8 @@ export interface NoteRow {
   pinned: boolean; favorite: boolean; updated_at: string | null;
 }
 export interface Backlink { id: number; title: string; snippet: string }
-export interface NoteDetail extends NoteRow { body: string; version?: number; backlinks?: Backlink[] }
+export interface NoteAttachment { id: number; name: string; mime: string | null; size: number }
+export interface NoteDetail extends NoteRow { body: string; version?: number; backlinks?: Backlink[]; attachments?: NoteAttachment[] }
 export interface TagCount { name: string; count: number }
 
 export const useNotesStore = defineStore('notes', () => {
@@ -34,6 +35,16 @@ export const useNotesStore = defineStore('notes', () => {
   const search = (q: string) => api.get<{ notes: NoteRow[] }>(`/api/v1/notes/search?q=${encodeURIComponent(q)}`).then((r) => r.notes);
   const backlinks = (id: number) => api.get<{ backlinks: Backlink[] }>(`/api/v1/notes/${id}/backlinks`).then((r) => r.backlinks);
 
+  // Attachments + Markdown export
+  function attach(noteId: number, file: File) {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.upload<{ attachment: NoteAttachment }>(`/api/v1/notes/${noteId}/attachments`, fd).then((r) => r.attachment);
+  }
+  const deleteAttachment = (noteId: number, attId: number) => api.delete(`/api/v1/notes/${noteId}/attachments/${attId}`);
+  const attachmentUrl = (noteId: number, attId: number) => api.streamUrl(`/api/v1/notes/${noteId}/attachments/${attId}/raw`);
+  const exportUrl = (id: number) => api.streamUrl(`/api/v1/notes/${id}/export?download=1`);
+
   const createFolder = (body: Record<string, unknown>) => api.post<{ folder: NoteFolder }>('/api/v1/notes/folders', body).then((r) => r.folder);
   const updateFolder = (id: number, body: Record<string, unknown>) => api.put(`/api/v1/notes/folders/${id}`, body);
   const deleteFolder = (id: number) => api.delete(`/api/v1/notes/folders/${id}`);
@@ -47,6 +58,7 @@ export const useNotesStore = defineStore('notes', () => {
   return {
     notes, folders, tags,
     load, show, create, update, destroy, favorite, pin, search, backlinks,
+    attach, deleteAttachment, attachmentUrl, exportUrl,
     createFolder, updateFolder, deleteFolder,
     trash, restore, forceDelete, restoreFolder,
   };
