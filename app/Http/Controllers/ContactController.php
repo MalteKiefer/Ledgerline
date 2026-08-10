@@ -289,10 +289,11 @@ class ContactController extends Controller
     {
         $this->authorizeContact($contact);
         $data = $this->validated($request);
-        // The editor never posts the photo — carry the existing one over, or the
-        // rebuilt vCard silently drops it.
-        $data['photo'] = $vcards->parse($contact->vcard)['photo'] ?? null;
-        $writer->update($contact, $data, $this->dataGroupIds($data));
+        // ContactWriter::update preserves any section the payload omits (photo,
+        // addresses, …). Groups live outside the vCard body: only re-sync them
+        // when the request actually sent group_ids, else keep the current set.
+        $groupIds = $request->has('group_ids') ? $this->dataGroupIds($data) : $this->contactGroupIds($contact);
+        $writer->update($contact, $data, $groupIds);
 
         return response()->json(['ok' => true]);
     }
