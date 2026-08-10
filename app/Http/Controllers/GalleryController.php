@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\GalleryAlbum;
 use App\Models\GalleryPhoto;
 use App\Support\BlobStore;
 use App\Support\DiskTempFile;
@@ -44,7 +45,12 @@ class GalleryController extends Controller
     public function data(Request $request): JsonResponse
     {
         $this->requireUser($request);
-        $photos = GalleryPhoto::query()->orderByDesc('created_at')->orderByDesc('id')->get()
+        $query = GalleryPhoto::query();
+        $albumId = $request->integer('album_id');
+        if ($albumId > 0) {
+            $query->whereHas('albums', fn ($q) => $q->whereKey($albumId));
+        }
+        $photos = $query->orderByRaw('COALESCE(taken_at, created_at) DESC')->orderByDesc('id')->get()
             ->map(fn (GalleryPhoto $p): array => $this->row($p))->all();
 
         return response()->json(['photos' => $photos]);
@@ -78,6 +84,7 @@ class GalleryController extends Controller
         $real = $upload->getRealPath();
         $sha = is_string($real) ? (hash_file('sha256', $real) ?: null) : null;
         $dims = is_string($real) ? @getimagesize($real) : false;
+        $meta = is_string($real) ? $this->extractExif($real) : [];
         $path = 'gallery/'.Str::uuid()->toString();
         $this->fs()->putFileAs('gallery', $upload, basename($path));
 
@@ -92,6 +99,7 @@ class GalleryController extends Controller
             $sha,
             is_array($dims) ? (int) $dims[0] : null,
             is_array($dims) ? (int) $dims[1] : null,
+            $meta,
         ));
 
         return response()->json(['photo' => $this->row($photo)], 201);
@@ -200,6 +208,7 @@ class GalleryController extends Controller
             abort(415);
         }
         $dims = @getimagesize($tmp->path());
+        $meta = $this->extractExif($tmp->path());
 
         $path = 'gallery/'.Str::uuid()->toString();
         $stream = fopen($tmp->path(), 'rb');
@@ -216,6 +225,7 @@ class GalleryController extends Controller
             $uid, $name, $path, $size, $mime, $sha,
             is_array($dims) ? (int) $dims[0] : null,
             is_array($dims) ? (int) $dims[1] : null,
+            $meta,
         ));
 
         return response()->json(['photo' => $this->row($photo)], 201);
@@ -333,9 +343,129 @@ class GalleryController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+        $ids = $this->intIds($request->input('ids', []));
+        if ($ids !== []) {
+            GalleryPhoto::query()->whereIn('id', $ids)->delete();
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    // ---- Albums ----
+
+    public function albums(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+        $albums = GalleryAlbum::query()->withCount('photos')->orderBy('name')->get()
+            ->map(fn (GalleryAlbum $a): array => $this->albumRow($a))->all();
+
+        return response()->json(['albums' => $albums]);
+    }
+
+    public function albumStore(Request $request): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate(['name' => ['required', 'string', 'max:191']]);
+        $album = new GalleryAlbum;
+        $album->forceFill(['user_id' => $uid, 'name' => $request->string('name')->value()]);
+        $album->save();
+
+        return response()->json(['album' => $this->albumRow($album->loadCount('photos'))], 201);
+    }
+
+    public function albumUpdate(Request $request, GalleryAlbum $album): JsonResponse
+    {
+        $this->requireUser($request);
+        $request->validate([
+            'name' => ['sometimes', 'string', 'max:191'],
+            'cover_photo_id' => ['sometimes', 'nullable', 'integer'],
+        ]);
+        if ($request->has('name')) {
+            $album->name = $request->string('name')->value();
+        }
+        if ($request->has('cover_photo_id')) {
+            $cover = $request->integer('cover_photo_id');
+            // Only accept a cover that is actually in this owner's album.
+            $album->cover_photo_id = $cover > 0 && $album->photos()->whereKey($cover)->exists() ? $cover : null;
+        }
+        $album->save();
+
+        return response()->json(['album' => $this->albumRow($album->loadCount('photos'))]);
+    }
+
+    public function albumDestroy(Request $request, GalleryAlbum $album): JsonResponse
+    {
+        $this->requireUser($request);
+        $album->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function albumAttach(Request $request, GalleryAlbum $album): JsonResponse
+    {
+        $this->requireUser($request);
+        $ids = $this->ownedPhotoIds($request);
+        if ($ids !== []) {
+            $album->photos()->syncWithoutDetaching($ids);
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function albumDetach(Request $request, GalleryAlbum $album): JsonResponse
+    {
+        $this->requireUser($request);
+        $ids = $this->ownedPhotoIds($request);
+        if ($ids !== []) {
+            $album->photos()->detach($ids);
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
     // ---- Helpers ----
 
-    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,created_at:?string} */
+    /** @return list<int> owner-scoped photo ids from the request. */
+    private function ownedPhotoIds(Request $request): array
+    {
+        $ids = $this->intIds($request->input('ids', []));
+        if ($ids === []) {
+            return [];
+        }
+        $existing = $this->intIds(GalleryPhoto::query()->whereIn('id', $ids)->pluck('id')->all());
+
+        return array_values(array_intersect($ids, $existing));
+    }
+
+    /** @return list<int> */
+    private function intIds(mixed $raw): array
+    {
+        $out = [];
+        foreach ((array) $raw as $v) {
+            if (is_numeric($v) && (int) $v > 0) {
+                $out[] = (int) $v;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /** @return array{id:int,name:string,count:int,cover_photo_id:?int,version:int} */
+    private function albumRow(GalleryAlbum $a): array
+    {
+        return [
+            'id' => $a->id,
+            'name' => $a->name,
+            'count' => (int) ($a->photos_count ?? 0),
+            'cover_photo_id' => $a->cover_photo_id,
+            'version' => $a->version,
+        ];
+    }
+
+    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,taken_at:?string,camera:?string,lat:?float,lng:?float,created_at:?string} */
     private function row(GalleryPhoto $p): array
     {
         return [
@@ -346,11 +476,18 @@ class GalleryController extends Controller
             'height' => $p->height,
             'size' => $p->size,
             'favorite' => (bool) $p->favorite,
+            'taken_at' => $p->taken_at?->toIso8601String(),
+            'camera' => $p->camera,
+            'lat' => $p->lat,
+            'lng' => $p->lng,
             'created_at' => $p->created_at?->toIso8601String(),
         ];
     }
 
-    private function persist(int $uid, string $name, string $path, int $size, ?string $mime, ?string $sha, ?int $w, ?int $h): GalleryPhoto
+    /**
+     * @param  array{taken_at?:?string,camera?:?string,lat?:?float,lng?:?float,exif?:?array<string,mixed>}  $meta
+     */
+    private function persist(int $uid, string $name, string $path, int $size, ?string $mime, ?string $sha, ?int $w, ?int $h, array $meta = []): GalleryPhoto
     {
         $photo = new GalleryPhoto;
         $photo->forceFill([
@@ -362,10 +499,101 @@ class GalleryController extends Controller
             'sha256' => $sha,
             'width' => $w,
             'height' => $h,
+            'taken_at' => $meta['taken_at'] ?? null,
+            'camera' => $meta['camera'] ?? null,
+            'lat' => $meta['lat'] ?? null,
+            'lng' => $meta['lng'] ?? null,
+            'exif' => $meta['exif'] ?? null,
         ]);
         $photo->save();
 
         return $photo;
+    }
+
+    /**
+     * Fail-safe EXIF read (JPEG/TIFF). Returns capture date, camera model and
+     * GPS coordinates when present; any error yields an empty array so an upload
+     * never breaks over bad EXIF.
+     *
+     * @return array{taken_at?:?string,camera?:?string,lat?:?float,lng?:?float,exif?:?array<string,mixed>}
+     */
+    private function extractExif(string $path): array
+    {
+        if (! function_exists('exif_read_data')) {
+            return [];
+        }
+        try {
+            $raw = @exif_read_data($path, null, true);
+        } catch (\Throwable) {
+            return [];
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $ifd0 = is_array($raw['IFD0'] ?? null) ? $raw['IFD0'] : [];
+        $exifSec = is_array($raw['EXIF'] ?? null) ? $raw['EXIF'] : [];
+
+        $takenRaw = $exifSec['DateTimeOriginal'] ?? $ifd0['DateTime'] ?? null;
+        $takenAt = null;
+        if (is_string($takenRaw) && $takenRaw !== '') {
+            $ts = \DateTimeImmutable::createFromFormat('Y:m:d H:i:s', trim($takenRaw));
+            if ($ts instanceof \DateTimeImmutable) {
+                $takenAt = $ts->format('Y-m-d H:i:s');
+            }
+        }
+
+        $make = is_string($ifd0['Make'] ?? null) ? trim((string) $ifd0['Make']) : '';
+        $model = is_string($ifd0['Model'] ?? null) ? trim((string) $ifd0['Model']) : '';
+        $camera = trim($make.' '.$model);
+        $camera = $camera !== '' ? mb_substr($camera, 0, 190) : null;
+
+        $gps = is_array($raw['GPS'] ?? null) ? $raw['GPS'] : [];
+        $lat = $this->gpsCoord($gps['GPSLatitude'] ?? null, is_string($gps['GPSLatitudeRef'] ?? null) ? $gps['GPSLatitudeRef'] : null);
+        $lng = $this->gpsCoord($gps['GPSLongitude'] ?? null, is_string($gps['GPSLongitudeRef'] ?? null) ? $gps['GPSLongitudeRef'] : null);
+
+        return [
+            'taken_at' => $takenAt,
+            'camera' => $camera,
+            'lat' => $lat,
+            'lng' => $lng,
+            'exif' => ['taken_at' => $takenAt, 'camera' => $camera],
+        ];
+    }
+
+    /** Convert an EXIF GPS [deg,min,sec] rational triple + hemisphere ref to a signed float. */
+    private function gpsCoord(mixed $parts, ?string $ref): ?float
+    {
+        if (! is_array($parts) || count($parts) < 3) {
+            return null;
+        }
+        $deg = $this->rational($parts[0]);
+        $min = $this->rational($parts[1]);
+        $sec = $this->rational($parts[2]);
+        if ($deg === null || $min === null || $sec === null) {
+            return null;
+        }
+        $val = $deg + $min / 60 + $sec / 3600;
+        if ($ref === 'S' || $ref === 'W') {
+            $val = -$val;
+        }
+
+        return round($val, 7);
+    }
+
+    private function rational(mixed $v): ?float
+    {
+        if (is_numeric($v)) {
+            return (float) $v;
+        }
+        if (is_string($v) && str_contains($v, '/')) {
+            [$n, $d] = array_pad(explode('/', $v, 2), 2, '1');
+            $d = (float) $d;
+
+            return $d !== 0.0 ? (float) $n / $d : null;
+        }
+
+        return null;
     }
 
     private function purgeBlobs(GalleryPhoto $photo): void

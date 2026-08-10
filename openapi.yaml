@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.608.0
+  version: 1.609.0
   license:
     name: Proprietary
   description: >
@@ -1156,7 +1156,20 @@ components:
         height: { type: integer, nullable: true }
         size: { type: integer }
         favorite: { type: boolean }
+        taken_at: { type: string, format: date-time, nullable: true, description: "EXIF capture date (falls back to created_at for ordering)." }
+        camera: { type: string, nullable: true }
+        lat: { type: number, format: float, nullable: true }
+        lng: { type: number, format: float, nullable: true }
         created_at: { type: string, format: date-time, nullable: true }
+    GalleryAlbum:
+      type: object
+      description: "A gallery album (gallery_albums). Groups photos via the pivot; count is the photo count, cover_photo_id an optional cover."
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        count: { type: integer }
+        cover_photo_id: { type: integer, nullable: true }
+        version: { type: integer }
     FolderShareOwnerView:
       type: object
       description: "Owner-visible cross-user share (folder_shares): the shared target (a folder subtree OR a single file — exactly one is set) plus its member roster. Returned by the owner-side index/store/updateMember."
@@ -5134,8 +5147,10 @@ paths:
     get:
       tags: [Gallery]
       operationId: galleryData
-      summary: All photos for the current user (newest first)
+      summary: All photos for the current user (by capture date, newest first)
+      description: "Ordered by COALESCE(taken_at, created_at) DESC. Optional album_id filters to one album."
       security: [ { bearerAuth: [] } ]
+      parameters: [ { name: album_id, in: query, required: false, schema: { type: integer } } ]
       responses:
         "200": { description: "Photos (without bytes).", content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -5287,6 +5302,80 @@ paths:
       responses:
         "200": { description: Emptied., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /gallery/bulk-destroy:
+    post:
+      tags: [Gallery]
+      operationId: galleryBulkDestroy
+      summary: Move many photos to the trash (owner-scoped)
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ids], properties: { ids: { type: array, items: { type: integer } } } } } } }
+      responses:
+        "200": { description: Trashed., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /gallery/albums:
+    get:
+      tags: [Gallery]
+      operationId: galleryAlbums
+      summary: List albums (with photo counts)
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Albums., content: { application/json: { schema: { type: object, properties: { albums: { type: array, items: { $ref: "#/components/schemas/GalleryAlbum" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Gallery]
+      operationId: galleryAlbumStore
+      summary: Create an album
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { album: { $ref: "#/components/schemas/GalleryAlbum" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /gallery/albums/{album}:
+    put:
+      tags: [Gallery]
+      operationId: galleryAlbumUpdate
+      summary: Rename / set cover
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: album, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { name: { type: string }, cover_photo_id: { type: integer, nullable: true } } } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { album: { $ref: "#/components/schemas/GalleryAlbum" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Gallery]
+      operationId: galleryAlbumDestroy
+      summary: Delete an album (photos are kept)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: album, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/albums/{album}/photos:
+    post:
+      tags: [Gallery]
+      operationId: galleryAlbumAttach
+      summary: Add photos to an album
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: album, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ids], properties: { ids: { type: array, items: { type: integer } } } } } } }
+      responses:
+        "200": { description: Attached., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Gallery]
+      operationId: galleryAlbumDetach
+      summary: Remove photos from an album
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: album, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ids], properties: { ids: { type: array, items: { type: integer } } } } } } }
+      responses:
+        "200": { description: Detached., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /files/data:
     get:
       tags: [Files]

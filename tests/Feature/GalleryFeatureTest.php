@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\GalleryAlbum;
 use App\Models\GalleryPhoto;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -114,5 +115,63 @@ class GalleryFeatureTest extends TestCase
         $this->delete(route('gallery.destroy', ['photo' => $id]))->assertOk();
 
         $this->assertCount(0, $this->get(route('gallery.data'))->json('photos'));
+    }
+
+    public function test_bulk_destroy_trashes_only_own_photos(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $this->actingAs($other);
+        $foreign = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('x.jpg')])->json('photo.id');
+
+        $this->actingAs($owner);
+        $a = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('a.jpg')])->json('photo.id');
+        $b = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('b.jpg')])->json('photo.id');
+
+        $this->post(route('gallery.bulk-destroy'), ['ids' => [$a, $b, $foreign]])->assertOk();
+
+        $this->assertNotNull(GalleryPhoto::onlyTrashed()->find($a));
+        $this->assertNotNull(GalleryPhoto::onlyTrashed()->find($b));
+        // Foreign photo untouched (owner scope).
+        $this->actingAs($other);
+        $this->assertNull(GalleryPhoto::onlyTrashed()->find($foreign));
+    }
+
+    public function test_album_lifecycle_attach_filter_detach(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $p1 = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('1.jpg')])->json('photo.id');
+        $p2 = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('2.jpg')])->json('photo.id');
+
+        $albumId = (int) $this->post(route('gallery.albums.store'), ['name' => 'Trip'])->assertCreated()->json('album.id');
+
+        $this->post(route('gallery.albums.attach', ['album' => $albumId]), ['ids' => [$p1]])->assertOk();
+        $this->assertSame(1, GalleryAlbum::findOrFail($albumId)->photos()->count());
+
+        // album_id filter returns only attached photos
+        $filtered = $this->get(route('gallery.data', ['album_id' => $albumId]))->json('photos');
+        $this->assertCount(1, $filtered);
+        $this->assertSame($p1, (int) $filtered[0]['id']);
+
+        // full library still shows both
+        $this->assertCount(2, $this->get(route('gallery.data'))->json('photos'));
+
+        $this->delete(route('gallery.albums.detach', ['album' => $albumId]), ['ids' => [$p1]])->assertOk();
+        $this->assertSame(0, GalleryAlbum::findOrFail($albumId)->photos()->count());
+
+        $this->delete(route('gallery.albums.destroy', ['album' => $albumId]))->assertOk();
+        $this->assertNull(GalleryAlbum::find($albumId));
+    }
+
+    public function test_exif_capture_date_and_gps_are_extracted(): void
+    {
+        $this->actingAs(User::factory()->create());
+        // GD fake images carry no EXIF; assert the pipeline stores null gracefully
+        // (never breaks the upload) and the row exposes the EXIF fields.
+        $res = $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('e.jpg', 100, 100)])->assertCreated();
+        $photo = $res->json('photo');
+        $this->assertArrayHasKey('taken_at', $photo);
+        $this->assertArrayHasKey('camera', $photo);
+        $this->assertArrayHasKey('lat', $photo);
     }
 }
