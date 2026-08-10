@@ -26,6 +26,9 @@ class PreferencesController extends Controller
             'temp' => ['sometimes', 'string', 'in:c,f'],
             'glucose' => ['sometimes', 'string', 'in:mgdl,mmoll'],
             'time_format' => ['sometimes', 'string', 'in:24h,12h'],
+            // Mail display prefs: always-load remote images default + send signature.
+            'mail_load_remote' => ['sometimes', 'boolean'],
+            'mail_signature' => ['sometimes', 'nullable', 'string', 'max:5000'],
         ]);
 
         $map = [
@@ -41,6 +44,13 @@ class PreferencesController extends Controller
             if ($request->has($key)) {
                 $update[$column] = $request->string($key)->value();
             }
+        }
+        if ($request->has('mail_load_remote')) {
+            $update['mail_load_remote'] = $request->boolean('mail_load_remote');
+        }
+        if ($request->has('mail_signature')) {
+            $sig = $request->input('mail_signature');
+            $update['mail_signature'] = is_string($sig) && trim($sig) !== '' ? $sig : null;
         }
 
         $setting = UserSetting::for($this->requireUser($request)->id);

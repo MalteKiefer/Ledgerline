@@ -16,7 +16,10 @@ class PreferencesTest extends TestCase
     {
         $user = $this->signIn();
         $prefs = UserSetting::for($user->id)->displayPrefs();
-        $this->assertSame(['distance' => 'km', 'elevation' => 'm', 'weight' => 'kg', 'temp' => 'c', 'glucose' => 'mgdl', 'time_format' => '24h'], $prefs);
+        $this->assertSame([
+            'distance' => 'km', 'elevation' => 'm', 'weight' => 'kg', 'temp' => 'c', 'glucose' => 'mgdl',
+            'time_format' => '24h', 'mail_load_remote' => false, 'mail_signature' => null,
+        ], $prefs);
     }
 
     public function test_a_single_preference_can_be_updated(): void
@@ -30,6 +33,23 @@ class PreferencesTest extends TestCase
         $this->assertSame('12h', $prefs['time_format']);
         // Untouched fields keep their defaults.
         $this->assertSame('kg', $prefs['weight']);
+    }
+
+    public function test_mail_signature_and_remote_default_are_settable(): void
+    {
+        $user = $this->signIn();
+
+        $this->post(route('preferences.update'), [
+            'mail_load_remote' => true, 'mail_signature' => "Kind regards\nMalte",
+        ])->assertRedirect();
+
+        $prefs = UserSetting::for($user->id)->displayPrefs();
+        $this->assertTrue($prefs['mail_load_remote']);
+        $this->assertSame("Kind regards\nMalte", $prefs['mail_signature']);
+
+        // A blank signature clears it back to null.
+        $this->post(route('preferences.update'), ['mail_signature' => '   '])->assertRedirect();
+        $this->assertNull(UserSetting::for($user->id)->displayPrefs()['mail_signature']);
     }
 
     public function test_invalid_value_is_rejected(): void

@@ -15,6 +15,22 @@
         <Select v-model="p.prefs.time_format" :label="t('account.pref_time')" :options="opts(['24h', '12h'])" @update:modelValue="savePref('time_format')" />
       </div>
     </template>
+    <template v-if="p.prefs && auth.can('mail')">
+      <div class="my-4 border-t border-[var(--ll-border)]" />
+      <h3 class="mb-2 text-sm font-semibold">{{ t('account.mail_prefs_heading') }}</h3>
+      <label class="mb-3 flex items-center gap-3 text-sm">
+        <input v-model="p.prefs.mail_load_remote" type="checkbox" class="accent-primary-500" @change="savePref('mail_load_remote')" >
+        {{ t('account.mail_load_remote') }}
+      </label>
+      <label class="block text-sm">
+        <span class="mb-1 block text-[var(--ll-muted)]">{{ t('account.mail_signature') }}</span>
+        <textarea
+          v-model="p.prefs.mail_signature" rows="3"
+          class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm"
+          @change="savePref('mail_signature')"
+        />
+      </label>
+    </template>
   </Card>
 </template>
 

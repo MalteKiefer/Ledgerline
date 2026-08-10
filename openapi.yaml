@@ -634,6 +634,8 @@ components:
         temp: { type: string, enum: [c, f] }
         glucose: { type: string, enum: [mgdl, mmoll] }
         time_format: { type: string, enum: [24h, 12h] }
+        mail_load_remote: { type: boolean, description: "Always load remote images in the mail reader (default false)." }
+        mail_signature: { type: [string, "null"], description: "Signature appended to outgoing mail; blank clears it to null." }
 
     MeUser:
       type: object
@@ -3328,6 +3330,11 @@ paths:
                 time_format:
                   type: string
                   enum: [24h, 12h]
+                mail_load_remote:
+                  type: boolean
+                mail_signature:
+                  type: [string, "null"]
+                  maxLength: 5000
       responses:
         "200":
           description: Preferences updated; returns the full preference set.
