@@ -42,6 +42,8 @@ export interface BankTransaction {
   receipts: unknown[] | null; version: number;
 }
 export interface FinanceCategory { id: number; name: string; color: string | null; icon: string | null; version?: number }
+export interface DuplicateGroup { reason: string; key: string; ids: number[] }
+export interface CategorySuggestion { tx_id: number; merchant: string; suggested_category: string }
 
 export const useFinanceStore = defineStore('finance', () => {
   const invoices = ref<Invoice[]>([]);
@@ -88,6 +90,8 @@ export const useFinanceStore = defineStore('finance', () => {
     return api.get<Record<string, unknown>>(`/api/v1/finance/reports/vat-advance${qs ? `?${qs}` : ''}`);
   };
   const euer = (year?: number) => api.get<Record<string, unknown>>(`/api/v1/finance/reports/euer${year ? `?year=${year}` : ''}`);
+  const duplicates = () => api.get<{ invoices: DuplicateGroup[]; transactions: DuplicateGroup[] }>('/api/v1/finance/duplicates');
+  const categorySuggestions = () => api.get<{ suggestions: CategorySuggestion[] }>('/api/v1/finance/category-suggestions');
   const accountVat = (accountId?: number, year?: number) => {
     const p = new URLSearchParams();
     if (accountId) p.set('account_id', String(accountId));
@@ -124,7 +128,7 @@ export const useFinanceStore = defineStore('finance', () => {
 
   return {
     invoices, partners, paymentMethods, projects, standaloneReceipts, transactions, financeCategories,
-    load, reports, vatAdvance, euer, accountVat,
+    load, reports, vatAdvance, euer, accountVat, duplicates, categorySuggestions,
     createTransaction, updateTransaction, deleteTransaction, restoreTransaction, forceTransaction, bulkTransactions, loadTrash,
     createCategory, updateCategory, deleteCategory,
     createInvoice, updateInvoice, deleteInvoice, finalizeInvoice, stornoInvoice, emailInvoice, dunInvoice, invoicePdfUrl,
