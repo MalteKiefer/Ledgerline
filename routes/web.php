@@ -462,6 +462,7 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/mail/attachments/{attachment}/save', [MailAttachmentController::class, 'save'])->whereUuid('attachment')->middleware('throttle:60,1')->name('mail.attachments.save');
         Route::get('/mail/keys', [MailKeyController::class, 'index'])->name('mail.keys.index');
         Route::post('/mail/keys', [MailKeyController::class, 'store'])->middleware('throttle:60,1')->name('mail.keys.store');
+        Route::post('/mail/keys/generate', [MailKeyController::class, 'generate'])->middleware('throttle:30,1')->name('mail.keys.generate');
         Route::delete('/mail/keys/{key}', [MailKeyController::class, 'destroy'])->whereNumber('key')->middleware('throttle:60,1')->name('mail.keys.destroy');
         Route::get('/mail/raw/{blob}', [MailBlobController::class, 'raw'])->whereUuid('blob')->middleware('throttle:3000,1')->name('mail.raw');
     });

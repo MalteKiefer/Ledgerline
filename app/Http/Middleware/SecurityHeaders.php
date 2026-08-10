@@ -67,7 +67,7 @@ final class SecurityHeaders
             'Permissions-Policy',
             'geolocation=(), camera=(), microphone=(), payment=(), usb=(), '
             .'accelerometer=(), gyroscope=(), magnetometer=(), autoplay=(), '
-            .'display-capture=(), fullscreen=(self), browsing-topics=(), '
+            .'display-capture=(), fullscreen=(self), '
             .'serial=(), midi=(), hid=(), bluetooth=(), idle-detection=()'
         );
 
