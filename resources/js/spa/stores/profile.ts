@@ -157,8 +157,10 @@ export const useProfileStore = defineStore('profile', () => {
    * request URL in normal use.
    */
   async function recoveryCodes(currentPassword: string): Promise<string[]> {
-    const r = await api.get<{ recovery_codes: string[] }>(
-      `/api/v1/user/two-factor/recovery-codes?current_password=${encodeURIComponent(currentPassword)}`,
+    // POST with the password in the body — never in the query string (URL/log leak).
+    const r = await api.post<{ recovery_codes: string[] }>(
+      '/api/v1/user/two-factor/recovery-codes',
+      { current_password: currentPassword },
     );
     return r.recovery_codes;
   }

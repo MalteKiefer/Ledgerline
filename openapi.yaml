@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.562.0
+  version: 1.562.1
   license:
     name: Proprietary
   description: >
@@ -4924,11 +4924,11 @@ paths:
         "422": { description: Invalid/expired code. }
         "429": { description: Rate limit exceeded. }
   /user/two-factor/recovery-codes:
-    get:
+    post:
       tags: [TwoFactor]
       operationId: twoFactorRecoveryCodes
       summary: List recovery codes
-      description: "Only after 2FA is confirmed (else 404). Requires a fresh `current_password` step-up (in the JSON body, not a query string) so a stolen device token cannot exfiltrate a standing second factor. Throttle 30/min."
+      description: "POST (not GET): the `current_password` step-up travels in the JSON body, never a query string — a password in a URL leaks into access/request logs, history and proxies (and OkHttp forbids a GET body). Only after 2FA is confirmed (else 404). Throttle 30/min."
       requestBody:
         required: true
         content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string, format: password, description: "Required on every path (web + native); native device tokens no longer bypass it. 422 if missing/wrong." } } } } }
