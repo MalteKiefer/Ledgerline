@@ -16,6 +16,7 @@ return [
         'finance' => ['label' => 'messages.nav.finance', 'route' => 'finance.index'],
         'files' => ['label' => 'messages.nav.files', 'route' => 'files.index'],
         'contacts' => ['label' => 'messages.nav.contacts', 'route' => 'contacts.index'],
+        'notes' => ['label' => 'messages.nav.notes', 'route' => 'notes.index'],
         'calendar' => ['label' => 'messages.nav.calendar', 'route' => 'calendar.index'],
         'mail' => ['label' => 'messages.nav.mail', 'route' => 'mail.index'],
     ],

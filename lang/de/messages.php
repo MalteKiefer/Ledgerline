@@ -8,6 +8,7 @@ return [
         'finance' => 'Finanzen',
         'files' => 'Dateien',
         'contacts' => 'Kontakte',
+        'notes' => 'Notizen',
         'calendar' => 'Kalender',
         'mail' => 'E-Mail',
         'more' => 'Mehr',

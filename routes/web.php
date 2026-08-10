@@ -37,6 +37,7 @@ use App\Http\Controllers\MailSendController;
 use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\MailTrashController;
 use App\Http\Controllers\MetricsController;
+use App\Http\Controllers\NotesController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PasswordIconController;
@@ -382,6 +383,26 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/settings/contacts/profile', [SettingsContactsController::class, 'profile'])->name('settings.contacts.profile');
     });
 
+    // Notes (plaintext-relational, Markdown). Static collection routes are
+    // declared before /notes/{note} so they win over the model binding.
+    Route::middleware('module:notes')->group(function (): void {
+        Route::get('/notes/data', [NotesController::class, 'data'])->name('notes.data');
+        Route::get('/notes/trash', [NotesController::class, 'trash'])->name('notes.trash');
+        Route::get('/notes/search', [NotesController::class, 'search'])->middleware('throttle:120,1')->name('notes.search');
+        Route::post('/notes', [NotesController::class, 'store'])->middleware('throttle:600,1')->name('notes.store');
+        Route::post('/notes/folders', [NotesController::class, 'storeFolder'])->middleware('throttle:600,1')->name('notes.folders.store');
+        Route::put('/notes/folders/{folder}', [NotesController::class, 'updateFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('notes.folders.update');
+        Route::delete('/notes/folders/{folder}', [NotesController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('notes.folders.destroy');
+        Route::post('/notes/folders/{id}/restore', [NotesController::class, 'restoreFolder'])->whereNumber('id')->middleware('throttle:600,1')->name('notes.folders.restore');
+        Route::get('/notes/{note}', [NotesController::class, 'show'])->whereNumber('note')->name('notes.show');
+        Route::put('/notes/{note}', [NotesController::class, 'update'])->whereNumber('note')->middleware('throttle:600,1')->name('notes.update');
+        Route::patch('/notes/{note}/favorite', [NotesController::class, 'favorite'])->whereNumber('note')->middleware('throttle:600,1')->name('notes.favorite');
+        Route::patch('/notes/{note}/pin', [NotesController::class, 'pin'])->whereNumber('note')->middleware('throttle:600,1')->name('notes.pin');
+        Route::delete('/notes/{note}', [NotesController::class, 'destroy'])->whereNumber('note')->middleware('throttle:600,1')->name('notes.destroy');
+        Route::post('/notes/{id}/restore', [NotesController::class, 'restore'])->whereNumber('id')->middleware('throttle:600,1')->name('notes.restore');
+        Route::delete('/notes/{id}/force', [NotesController::class, 'forceDelete'])->whereNumber('id')->middleware('throttle:600,1')->name('notes.force');
+    });
+
     // Calendar + CalDAV (plaintext-relational). Static collection routes are
     // declared before /calendar/events/{event} so they win over model binding.
     Route::middleware('module:calendar')->group(function (): void {
@@ -500,6 +521,7 @@ $spa = static fn () => view('spa');
 Route::get('/finance', $spa)->name('finance.index');
 Route::get('/files', $spa)->name('files.index');
 Route::get('/contacts', $spa)->name('contacts.index');
+Route::get('/notes', $spa)->name('notes.index');
 Route::get('/calendar', $spa)->name('calendar.index');
 Route::get('/mail', $spa)->name('mail.index');
 Route::get('/profile', $spa)->name('profile');
