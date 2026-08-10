@@ -3,6 +3,12 @@
 declare(strict_types=1);
 
 return [
+    'conflict_title' => 'File already exists',
+    'conflict_body' => 'A file named ":name" already exists here. What should happen?',
+    'conflict_apply_all' => 'Apply to all remaining',
+    'conflict_overwrite' => 'Overwrite',
+    'conflict_skip' => 'Skip',
+    'conflict_copy' => 'Keep both',
     'share_expires_in' => 'expires in :d d :h h',
     'shared_by_me' => 'Shared by me',
     'shared_links' => 'Public links',

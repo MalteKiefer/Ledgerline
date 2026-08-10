@@ -106,6 +106,12 @@ export const useFilesStore = defineStore('files', () => {
       throw e;
     }
   }
+  // Replace an existing file's bytes (new revision) — used by upload-conflict "overwrite".
+  function replaceContent(f: FileEntry, file: File, onProgress?: (fr: number) => void) {
+    const form = new FormData();
+    form.append('file', file);
+    return uploadWithProgress(`/api/v1/files/entries/${f.id}/content`, form, onProgress);
+  }
   const rename = (f: FileEntry, name: string) => api.put(`/api/v1/files/entries/${f.id}`, { name, version: f.version });
   const move = (f: FileEntry, folder: number | null) => api.put(`/api/v1/files/entries/${f.id}`, { file_folder_id: folder, version: f.version });
   const copy = (f: FileEntry, folder: number | null) => api.post<{ file: FileEntry }>(`/api/v1/files/entries/${f.id}/copy`, { file_folder_id: folder });
@@ -215,7 +221,7 @@ export const useFilesStore = defineStore('files', () => {
 
   return {
     folders, files, labels, usage,
-    load, loadTrash, createFolder, createFolderId, upload, rename, move, copy, toggleFav,
+    load, loadTrash, createFolder, createFolderId, upload, replaceContent, rename, move, copy, toggleFav,
     trashFile, restoreFile, forceFile, renameFolder, moveFolder, trashFolder, restoreFolder, forceFolder, emptyTrash, search,
     updateEntry, createLabel, updateLabel, deleteLabel, setFileLabels,
     versions, restoreVersion, versionRawUrl,

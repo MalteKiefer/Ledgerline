@@ -12,6 +12,25 @@
       </div>
     </div>
 
+    <!-- Upload name-conflict prompt (teleported, above everything) -->
+    <Teleport to="body">
+      <div v-if="conflict.show" class="fixed inset-0 z-[2100] flex items-center justify-center bg-black/40">
+        <div class="w-96 max-w-[92%] rounded-xl bg-[var(--ll-card)] px-6 py-5 shadow-xl">
+          <div class="text-sm font-semibold">{{ t('files.conflict_title') }}</div>
+          <p class="mt-1 break-words text-sm text-[var(--ll-muted)]">{{ t('files.conflict_body', { name: conflict.name }) }}</p>
+          <label class="mt-3 flex items-center gap-2 text-sm">
+            <input v-model="conflictAll" type="checkbox" class="accent-primary-500">
+            {{ t('files.conflict_apply_all') }}
+          </label>
+          <div class="mt-4 flex flex-wrap justify-end gap-2">
+            <Btn variant="ghost" size="sm" @click="resolveConflict('skip')">{{ t('files.conflict_skip') }}</Btn>
+            <Btn variant="soft" size="sm" @click="resolveConflict('copy')">{{ t('files.conflict_copy') }}</Btn>
+            <Btn variant="solid" size="sm" class="!bg-red-600" @click="resolveConflict('overwrite')">{{ t('files.conflict_overwrite') }}</Btn>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Upload progress modal (teleported so it sits above all page content) -->
     <Teleport to="body">
       <div v-show="uploadState.active" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/30">
@@ -848,21 +867,82 @@ const uploadPct = computed(() => {
   const u = uploadState.value;
   return u.total ? Math.round(((u.done + u.frac) / u.total) * 100) : 0;
 });
+// Upload-conflict resolution: when a file's name already exists in the target
+// folder, ask overwrite / skip / keep-both (with an "apply to all" option).
+type ConflictAction = 'overwrite' | 'skip' | 'copy';
+const conflict = ref<{ show: boolean; name: string; resolve: ((a: ConflictAction | 'all-overwrite' | 'all-skip' | 'all-copy') => void) | null }>(
+  { show: false, name: '', resolve: null },
+);
+function askConflict(name: string): Promise<ConflictAction | 'all-overwrite' | 'all-skip' | 'all-copy'> {
+  return new Promise((resolve) => { conflict.value = { show: true, name, resolve }; });
+}
+function resolveConflict(action: ConflictAction) {
+  const r = conflict.value.resolve;
+  conflict.value.show = false;
+  conflict.value.resolve = null;
+  r?.(conflictAll.value ? (`all-${action}` as const) : action);
+}
+const conflictAll = ref(false);
+// "photo.png" → "photo (2).png", bumping until the name is free in the folder.
+function uniqueName(name: string, taken: Set<string>): string {
+  const dot = name.lastIndexOf('.');
+  const base = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : '';
+  let i = 2;
+  let candidate = `${base} (${i})${ext}`;
+  while (taken.has(candidate.toLowerCase())) { i++; candidate = `${base} (${i})${ext}`; }
+  return candidate;
+}
+
 async function uploadList(list: FileList | File[]) {
   const files = Array.from(list);
   if (!files.length) return;
+  // Names already in the target folder (lowercased) + the id to overwrite.
+  const existing = new Map<string, FileEntry>();
+  for (const fe of s.files as FileEntry[]) {
+    if (fe.file_folder_id === cwd.value) existing.set(fe.name.toLowerCase(), fe);
+  }
+  conflictAll.value = false;
+  let applyAll: ConflictAction | null = null;
+
   uploadState.value = { active: true, done: 0, total: files.length, name: '', frac: 0 };
   try {
     for (const f of files) {
       uploadState.value.name = f.name;
       uploadState.value.frac = 0;
-      await s.upload(f, cwd.value, (fr) => { uploadState.value.frac = fr; });
+      const key = f.name.toLowerCase();
+      let action: ConflictAction = 'copy'; // default when no conflict = plain upload
+      if (existing.has(key)) {
+        if (applyAll) {
+          action = applyAll;
+        } else {
+          const choice = await askConflict(f.name);
+          if (choice.startsWith('all-')) { applyAll = choice.slice(4) as ConflictAction; action = applyAll; }
+          else action = choice as ConflictAction;
+        }
+      }
+
+      const prog = (fr: number) => { uploadState.value.frac = fr; };
+      if (existing.has(key) && action === 'skip') {
+        uploadState.value.done++;
+        continue;
+      }
+      if (existing.has(key) && action === 'overwrite') {
+        await s.replaceContent(existing.get(key) as FileEntry, f, prog);
+      } else if (existing.has(key) && action === 'copy') {
+        const name = uniqueName(f.name, new Set([...existing.keys()]));
+        await s.upload(new File([f], name, { type: f.type }), cwd.value, prog);
+        existing.set(name.toLowerCase(), {} as FileEntry);
+      } else {
+        await s.upload(f, cwd.value, prog);
+        existing.set(key, {} as FileEntry);
+      }
       uploadState.value.done++;
     }
     await s.load();
     success(t('common.saved'));
   } catch { error(t('common.error')); }
-  finally { uploadState.value.active = false; }
+  finally { uploadState.value.active = false; conflict.value.show = false; }
 }
 async function onUpload(e: Event) {
   const list = (e.target as HTMLInputElement).files;
