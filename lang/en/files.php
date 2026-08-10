@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'drop_here' => 'Drop files to upload',
+    'root' => 'Home',
     'download_failed' => 'The download failed.',
     'upload_failed' => 'An upload failed.',
     'index_degraded' => ':n item(s) could not be loaded because a storage blob is missing. Files are read-only until this is resolved — nothing was deleted.',

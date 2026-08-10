@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'drop_here' => 'Dateien zum Hochladen ablegen',
+    'root' => 'Start',
     'download_failed' => 'Der Download ist fehlgeschlagen.',
     'upload_failed' => 'Ein Upload ist fehlgeschlagen.',
     'index_degraded' => ':n Objekt(e) konnten nicht geladen werden, weil ein Speicher-Blob fehlt. Dateien sind schreibgeschützt, bis das behoben ist — es wurde nichts gelöscht.',

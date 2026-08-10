@@ -108,6 +108,7 @@ return [
         'delete_confirm' => 'Delete this contact?',
         'import' => 'Import .vcf',
         'export' => 'Export .vcf',
+        'drop_here' => 'Drop vCard (.vcf) files to import',
         'duplicates' => 'Duplicates',
         'name_placeholder' => 'Name',
         'sort_by' => 'Sort by',

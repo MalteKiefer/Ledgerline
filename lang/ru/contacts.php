@@ -108,6 +108,7 @@ return [
         'delete_confirm' => 'Удалить этот контакт?',
         'import' => 'Импорт .vcf',
         'export' => 'Экспорт .vcf',
+        'drop_here' => 'Перетащите файлы vCard (.vcf) для импорта',
         'duplicates' => 'Дубликаты',
         'name_placeholder' => 'Имя',
         'sort_by' => 'Сортировать по',
