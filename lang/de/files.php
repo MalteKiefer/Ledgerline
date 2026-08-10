@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 return [
+    'ul_target' => 'Zielordner',
+    'ul_empty_folder' => 'Keine Unterordner hier.',
+    'ul_pick_folder' => 'Öffne einen Ordner — Uploads dürfen nicht in den Root.',
+    'ul_target_is' => 'Uploads landen in: :path',
     'ul_no_folders' => 'Noch keine Ordner — erstelle einen.',
     'ul_folder_existing' => 'Bestehender Ordner',
     'ul_folder_new' => 'Neuer Ordner',

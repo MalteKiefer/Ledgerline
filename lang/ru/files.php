@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 return [
+    'ul_target' => 'Целевая папка',
+    'ul_empty_folder' => 'Здесь нет подпапок.',
+    'ul_pick_folder' => 'Откройте папку — загрузка в корень запрещена.',
+    'ul_target_is' => 'Загрузки попадут в: :path',
     'ul_no_folders' => 'Папок ещё нет — создайте.',
     'ul_folder_existing' => 'Существующая папка',
     'ul_folder_new' => 'Новая папка',
