@@ -44,21 +44,32 @@
           </template>
         </div>
       </nav>
-      <!-- Pinned account footer: avatar + name → profile, with the app version. -->
+      <!-- Pinned account footer: avatar + name → profile, sign out, app version.
+           Sign out lives here because the top-right avatar menu was removed; the
+           sidebar footer is the account home (it already links to the profile). -->
       <div class="mt-auto border-t border-[var(--ll-border)] p-2">
-        <RouterLink
-          to="/profile"
-          class="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-black/[0.04] dark:hover:bg-white/5"
-          :class="isActive('/profile') ? 'bg-primary-500/10' : ''"
-        >
-          <span class="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-primary-500 text-sm font-medium text-white">
-            <img v-if="avatarUrl" :src="avatarUrl" class="h-full w-full object-cover" alt=""><template v-else>{{ initials }}</template>
-          </span>
-          <span class="min-w-0 flex-1 leading-tight">
-            <span class="block truncate text-sm font-medium" :class="isActive('/profile') ? 'text-primary-600 dark:text-primary-300' : ''">{{ auth.user?.name }}</span>
-            <span class="block truncate text-xs text-[var(--ll-muted)]">{{ auth.user?.email }}</span>
-          </span>
-        </RouterLink>
+        <div class="flex items-center gap-1">
+          <RouterLink
+            to="/profile"
+            class="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-black/[0.04] dark:hover:bg-white/5"
+            :class="isActive('/profile') ? 'bg-primary-500/10' : ''"
+          >
+            <span class="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-primary-500 text-sm font-medium text-white">
+              <img v-if="avatarUrl" :src="avatarUrl" class="h-full w-full object-cover" alt=""><template v-else>{{ initials }}</template>
+            </span>
+            <span class="min-w-0 flex-1 leading-tight">
+              <span class="block truncate text-sm font-medium" :class="isActive('/profile') ? 'text-primary-600 dark:text-primary-300' : ''">{{ auth.user?.name }}</span>
+              <span class="block truncate text-xs text-[var(--ll-muted)]">{{ auth.user?.email }}</span>
+            </span>
+          </RouterLink>
+          <button
+            class="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[var(--ll-muted)] hover:bg-red-500/10 hover:text-red-600"
+            :title="t('messages.menu.logout')"
+            @click="logout"
+          >
+            <Icon name="logout" :size="18" />
+          </button>
+        </div>
         <div class="px-2 pt-1.5 text-[0.66rem] text-[var(--ll-muted)]">v{{ version }}</div>
       </div>
     </aside>
@@ -98,21 +109,6 @@
               </button>
               <div v-if="!notes.length" class="px-3 py-4 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</div>
               <template v-if="notes.length"><div class="my-1 border-t border-[var(--ll-border)]" /><button class="w-full rounded-md px-3 py-1.5 text-left text-sm text-primary-600 dark:text-primary-300 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="markAllNotes">{{ t('notifications.mark_all_read') }}</button></template>
-            </DropdownMenuContent></DropdownMenuPortal>
-          </DropdownMenuRoot>
-
-          <DropdownMenuRoot>
-            <DropdownMenuTrigger class="ml-1 flex items-center gap-2 rounded-lg py-1 pl-1 pr-2 hover:bg-black/[0.05] dark:hover:bg-white/10">
-              <span class="grid h-8 w-8 place-items-center overflow-hidden rounded-full bg-primary-500 text-sm font-medium text-white">
-                <img v-if="avatarUrl" :src="avatarUrl" class="h-full w-full object-cover" ><template v-else>{{ initials }}</template>
-              </span>
-              <span class="hidden text-left leading-tight sm:block"><span class="block text-sm font-medium">{{ auth.user?.name }}</span><span class="block text-xs text-[var(--ll-muted)]">{{ auth.isAdmin() ? 'Admin' : 'User' }}</span></span>
-            </DropdownMenuTrigger>
-            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] w-52 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
-              <DropdownMenuItem class="flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" @select="router.push('/profile')"><Icon name="account_circle" :size="18" />{{ t('pages.profile.title') }}</DropdownMenuItem>
-              <DropdownMenuItem v-if="auth.isAdmin()" class="flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" @select="router.push('/settings')"><Icon name="settings" :size="18" />{{ t('settings.heading') }}</DropdownMenuItem>
-              <div class="my-1 border-t border-[var(--ll-border)]" />
-              <DropdownMenuItem class="flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm text-red-600 outline-none hover:bg-red-500/10" @select="logout"><Icon name="logout" :size="18" />{{ t('messages.menu.logout') }}</DropdownMenuItem>
             </DropdownMenuContent></DropdownMenuPortal>
           </DropdownMenuRoot>
         </div>
