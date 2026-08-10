@@ -97,6 +97,8 @@ return [
         'attachment_view' => 'View',
         'attachment_download' => 'Download',
         'save_to_files' => 'Save to Files',
+        'view_thread' => 'View conversation',
+        'thread_view' => 'Conversation view',
         'save_to_paperless' => 'Save to Paperless',
     ],
 
@@ -114,6 +116,8 @@ return [
 
     'send' => [
         'compose' => 'Compose',
+        'sent_folder' => 'Sent folder',
+        'sent_folder_hint' => 'Leave blank for the default',
         'reply' => 'Reply',
         'reply_all' => 'Reply all',
         'forward' => 'Forward',

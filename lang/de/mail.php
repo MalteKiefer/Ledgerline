@@ -97,6 +97,8 @@ return [
         'attachment_view' => 'Ansehen',
         'attachment_download' => 'Herunterladen',
         'save_to_files' => 'In Dateien speichern',
+        'view_thread' => 'Konversation anzeigen',
+        'thread_view' => 'Konversationsansicht',
         'save_to_paperless' => 'An Paperless senden',
     ],
 
@@ -114,6 +116,8 @@ return [
 
     'send' => [
         'compose' => 'Verfassen',
+        'sent_folder' => 'Gesendet-Ordner',
+        'sent_folder_hint' => 'Leer = Standard',
         'reply' => 'Antworten',
         'reply_all' => 'Allen antworten',
         'forward' => 'Weiterleiten',

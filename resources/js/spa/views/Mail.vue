@@ -150,6 +150,11 @@
       </div>
 
       <!-- Table -->
+      <div v-if="threadView" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-3 py-2 text-xs">
+        <Icon name="forum" :size="15" class="text-primary-600 dark:text-primary-300" />
+        <span class="flex-1">{{ t('mail.reader.thread_view') }}</span>
+        <Btn variant="ghost" size="xs" icon="close" @click="clearThread">{{ t('common.clear') }}</Btn>
+      </div>
       <div class="flex-1 overflow-y-auto">
         <div v-if="loading" class="py-16 text-center"><Icon name="progress_activity" :size="28" class="animate-spin text-[var(--ll-muted)]" /></div>
         <div v-else-if="!s.messages.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ t('mail.list.empty') }}</div>
@@ -240,6 +245,17 @@
         <Btn variant="ghost" size="sm" icon="download" tag="a" :href="s.rawUrl(reader.id, true)">{{ t('mail.reader.download_eml') }}</Btn>
         <Btn v-if="!reader.trashed" variant="ghost" size="sm" icon="delete" @click="readerTrash(reader)">{{ t('mail.actions.trash') }}</Btn>
         <Btn v-else variant="ghost" size="sm" icon="restore" @click="readerRestore(reader)">{{ t('mail.actions.restore') }}</Btn>
+        <Btn v-if="reader.thread_id" variant="ghost" size="sm" icon="forum" @click="viewThread">{{ t('mail.reader.view_thread') }}</Btn>
+        <DropdownMenuRoot v-if="s.labels.length">
+          <DropdownMenuTrigger class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10"><Icon name="label" :size="16" />{{ t('mail.extras.labels') }}</DropdownMenuTrigger>
+          <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="start" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+            <DropdownMenuItem v-for="l in s.labels" :key="l.id" :class="menuItem" @select="toggleReaderLabel(l.id)">
+              <span class="h-3 w-3 rounded-full" :style="{ background: l.color }" />
+              <span class="flex-1">{{ l.name }}</span>
+              <Icon v-if="readerHasLabel(l.id)" name="check" :size="16" class="text-primary-600 dark:text-primary-300" />
+            </DropdownMenuItem>
+          </DropdownMenuContent></DropdownMenuPortal>
+        </DropdownMenuRoot>
         <div class="ml-auto flex items-center gap-1.5">
           <Btn variant="ghost" size="sm" :icon="showHeaders ? 'expand_less' : 'expand_more'" @click="showHeaders = !showHeaders">{{ t('mail.reader.original_headers') }}</Btn>
           <Btn v-if="hasHtml" variant="ghost" size="sm" :icon="remoteOn ? 'visibility' : 'visibility_off'" @click="toggleRemote">{{ t('mail.reader.load_remote') }}</Btn>
@@ -274,7 +290,7 @@
             <DropdownMenuRoot>
               <DropdownMenuTrigger class="grid h-7 w-7 place-items-center rounded-md hover:bg-black/[0.05] dark:hover:bg-white/10"><Icon name="more_vert" :size="16" /></DropdownMenuTrigger>
               <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-44 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
-                <DropdownMenuItem :class="menuItem" @select="saveAtt(att.id, 'files')"><Icon name="folder" :size="18" />{{ t('mail.reader.save_to_files') }}</DropdownMenuItem>
+                <DropdownMenuItem :class="menuItem" @select="openAttSaveToFiles(att.id)"><Icon name="folder" :size="18" />{{ t('mail.reader.save_to_files') }}</DropdownMenuItem>
                 <DropdownMenuItem :class="menuItem" @select="saveAtt(att.id, 'paperless')"><Icon name="description" :size="18" />{{ t('mail.reader.save_to_paperless') }}</DropdownMenuItem>
               </DropdownMenuContent></DropdownMenuPortal>
             </DropdownMenuRoot>
@@ -428,6 +444,20 @@
   </Modal>
 
   <!-- Compose / reply / forward modal -->
+  <!-- Save attachment to a chosen Files folder -->
+  <Modal v-model="attSave.show" :title="t('mail.reader.save_to_files')" width="440px">
+    <div v-if="attSave.loading" class="py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('common.loading') }}</div>
+    <div v-else class="max-h-80 overflow-y-auto">
+      <button
+        v-for="o in attFolderOptions" :key="String(o.id)"
+        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-black/[0.04] dark:hover:bg-white/5"
+        @click="saveAttToFolder(o.id)"
+      >
+        <Icon name="folder" :size="18" class="text-[var(--ll-muted)]" />{{ o.label }}
+      </button>
+    </div>
+  </Modal>
+
   <Modal v-model="compose.show" :title="composeTitle" width="40rem">
     <div class="space-y-3">
       <!-- Account picker (compose only) -->
@@ -448,6 +478,9 @@
 
       <!-- Subject (compose only; reply/forward derive Re:/Fwd: server-side) -->
       <TextField v-if="compose.mode === 'compose'" v-model="compose.subject" :label="t('mail.send.subject')" />
+
+      <!-- Optional Sent-folder override (blank → the account's default "Sent"). -->
+      <TextField v-model="compose.sentFolder" :label="t('mail.send.sent_folder')" :placeholder="t('mail.send.sent_folder_hint')" autocomplete="off" />
 
       <!-- Body -->
       <label class="block">
@@ -488,7 +521,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody } from '@spa/stores/mail';
-import { ApiError } from '@spa/api/client';
+import { api, ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
@@ -625,11 +658,68 @@ async function saveAtt(attId: string, target: 'files' | 'paperless') {
   catch { error(t('mail.toast.save_attachment_failed')); }
 }
 
+// Save-to-Files with a destination folder picker (instead of always root).
+interface FilesFolder { id: number; name: string; parent_id: number | null }
+const attSave = reactive<{ show: boolean; attId: string | null; folders: FilesFolder[]; loading: boolean }>({ show: false, attId: null, folders: [], loading: false });
+async function openAttSaveToFiles(attId: string) {
+  attSave.attId = attId; attSave.show = true; attSave.loading = true;
+  try { attSave.folders = (await api.get<{ folders: FilesFolder[] }>('/api/v1/files/folders')).folders ?? []; }
+  catch { attSave.folders = []; } finally { attSave.loading = false; }
+}
+const attFolderOptions = computed(() => {
+  const byId = new Map(attSave.folders.map((f) => [f.id, f]));
+  const path = (f: FilesFolder): string => {
+    const parts: string[] = []; let cur: FilesFolder | undefined = f; const seen = new Set<number>();
+    while (cur && !seen.has(cur.id)) { seen.add(cur.id); parts.unshift(cur.name); cur = cur.parent_id != null ? byId.get(cur.parent_id) : undefined; }
+    return parts.join(' / ');
+  };
+  return [{ id: null as number | null, label: t('files.all_files') }, ...attSave.folders.map((f) => ({ id: f.id, label: path(f) }))];
+});
+async function saveAttToFolder(folderId: number | null) {
+  if (!attSave.attId) return;
+  try { await s.saveAttachment(attSave.attId, 'files', folderId); attSave.show = false; success(t('mail.toast.saved_to_files')); }
+  catch { error(t('mail.toast.save_attachment_failed')); }
+}
+
 // --- Bulk --------------------------------------------------------------------
 async function bulkSeen(seen: boolean) { if (!s.selected.length) return; try { await s.setSeen([...s.selected], seen); await reload(); refreshCounts(); } catch { error(t('common.error')); } }
 async function bulkTrash() { if (!s.selected.length || !await confirmAsk(t('mail.actions.confirm_trash'))) return; try { await s.trash([...s.selected]); await reload(); refreshCounts(); } catch { error(t('common.error')); } }
 async function bulkRestore() { if (!s.selected.length) return; try { await s.restore([...s.selected]); await reload(); } catch { error(t('common.error')); } }
-async function bulkLabel(id: number) { if (!s.selected.length) return; try { await s.setLabels([...s.selected], [id], []); await Promise.all([reload(), s.loadLabels()]); } catch { error(t('common.error')); } }
+// Toggle a label across the selection: remove it if every selected message
+// already carries it, otherwise add it (uses the setLabels remove[] arm).
+function selectionHasLabel(id: number): boolean {
+  const sel = s.messages.filter((m) => s.selected.includes(m.id));
+  return sel.length > 0 && sel.every((m) => (m.labels ?? []).some((l) => l.id === id));
+}
+async function bulkLabel(id: number) {
+  if (!s.selected.length) return;
+  const remove = selectionHasLabel(id);
+  try { await s.setLabels([...s.selected], remove ? [] : [id], remove ? [id] : []); await Promise.all([reload(), s.loadLabels()]); }
+  catch { error(t('common.error')); }
+}
+
+// --- Threading ---------------------------------------------------------------
+const threadView = computed(() => filters.threadId !== null);
+function viewThread() {
+  if (!reader.value?.thread_id) return;
+  filters.threadId = reader.value.thread_id;
+  readerOpen.value = false;
+  reload();
+}
+function clearThread() { filters.threadId = null; reload(); }
+
+// --- Per-message labels in the reader ----------------------------------------
+function readerHasLabel(id: number): boolean { return (reader.value?.labels ?? []).some((l) => l.id === id); }
+async function toggleReaderLabel(id: number) {
+  const m = reader.value;
+  if (!m) return;
+  const has = readerHasLabel(id);
+  try {
+    await s.setLabels([m.id], has ? [] : [id], has ? [id] : []);
+    reader.value = await s.show(m.id);
+    await Promise.all([reload(), s.loadLabels()]);
+  } catch { error(t('common.error')); }
+}
 
 // --- Accounts ----------------------------------------------------------------
 const folderInput = ref('');
@@ -726,13 +816,15 @@ async function removeRule(r: MailRule) { if (!r.id || !await confirmAsk(t('commo
 async function saveCurrentSearch() {
   const name = await promptAsk(t('mail.extras.save_search'));
   if (!name) return;
-  const f = { accountId: filters.accountId, folder: filters.folder, q: filters.q, seen: filters.seen, spam: filters.spam, label: filters.label, trashed: filters.trashed };
+  const f = { accountId: filters.accountId, folder: filters.folder, q: filters.q, seen: filters.seen, spam: filters.spam, label: filters.label, trashed: filters.trashed, dateFrom: filters.dateFrom, dateTo: filters.dateTo };
   try { await s.saveSearch(name, f); await s.loadSavedSearches(); success(t('common.saved')); } catch { error(t('common.error')); }
 }
 async function applySaved(ss: MailSavedSearch) {
   s.resetFilters();
   const f = ss.filters as Partial<typeof filters>;
-  Object.assign(filters, { accountId: f.accountId ?? null, folder: f.folder ?? null, q: f.q ?? '', seen: f.seen ?? null, spam: f.spam ?? null, label: f.label ?? null, trashed: f.trashed ?? false });
+  Object.assign(filters, { accountId: f.accountId ?? null, folder: f.folder ?? null, q: f.q ?? '', seen: f.seen ?? null, spam: f.spam ?? null, label: f.label ?? null, trashed: f.trashed ?? false, dateFrom: f.dateFrom ?? null, dateTo: f.dateTo ?? null });
+  // Keep the date inputs in sync with the restored range.
+  dateFrom.value = filters.dateFrom ?? ''; dateTo.value = filters.dateTo ?? '';
   await s.loadFolders(filters.accountId); reload();
 }
 async function removeSaved(ss: MailSavedSearch) { try { await s.deleteSavedSearch(ss.id); await s.loadSavedSearches(); } catch { error(t('common.error')); } }
@@ -754,8 +846,8 @@ async function openStats() { statsDlg.show = true; statsDlg.loading = true; try 
 const compose = reactive<{
   show: boolean; mode: 'compose' | 'reply' | 'forward'; sending: boolean;
   sourceId: string | null; replyAll: boolean; accountId: number | null; recipientHint: string;
-  to: string; cc: string; bcc: string; subject: string; body: string; files: File[];
-}>({ show: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', files: [] });
+  to: string; cc: string; bcc: string; subject: string; body: string; sentFolder: string; files: File[];
+}>({ show: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', sentFolder: '', files: [] });
 
 const composeTitle = computed(() =>
   compose.mode === 'reply' ? (compose.replyAll ? t('mail.send.reply_all') : t('mail.send.reply'))
@@ -763,7 +855,7 @@ const composeTitle = computed(() =>
 const composeAccountItems = computed(() => sendableAccounts.value.map((a) => ({ title: `${a.name} · ${a.from_email}`, value: a.id })));
 
 function parseEmails(str: string): string[] { return str.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean); }
-function resetComposeFields() { Object.assign(compose, { to: '', cc: '', bcc: '', subject: '', body: '', files: [], recipientHint: '', replyAll: false, sourceId: null }); }
+function resetComposeFields() { Object.assign(compose, { to: '', cc: '', bcc: '', subject: '', body: '', sentFolder: '', files: [], recipientHint: '', replyAll: false, sourceId: null }); }
 
 function openCompose() {
   if (!sendableAccounts.value.length) { error(t('mail.send.no_smtp')); return; }
@@ -818,15 +910,16 @@ async function doSend() {
       const bcc = parseEmails(compose.bcc);
       if (!to.length && !cc.length && !bcc.length) { error(t('mail.send.no_recipient')); return; }
       if (!compose.body.trim() && !compose.files.length) { error(t('mail.send.empty_body')); return; }
-      await s.compose({ account_id: Number(compose.accountId), to, cc, bcc, subject: compose.subject || null, text: compose.body || null, files: compose.files });
+      const sent = compose.sentFolder.trim() || null;
+      await s.compose({ account_id: Number(compose.accountId), to, cc, bcc, subject: compose.subject || null, text: compose.body || null, sent_folder: sent, files: compose.files });
     } else if (compose.mode === 'reply') {
       if (!compose.body.trim()) { error(t('mail.send.empty_body')); return; }
-      await s.reply(String(compose.sourceId), { text: compose.body, all: compose.replyAll });
+      await s.reply(String(compose.sourceId), { text: compose.body, all: compose.replyAll, sent_folder: compose.sentFolder.trim() || null });
     } else {
       const to = parseEmails(compose.to);
       if (!to.length) { error(t('mail.send.no_recipient')); return; }
       // Forward needs no body — the server attaches the original .eml + a header.
-      await s.forward(String(compose.sourceId), { to, cc: parseEmails(compose.cc), text: compose.body || null });
+      await s.forward(String(compose.sourceId), { to, cc: parseEmails(compose.cc), text: compose.body || null, sent_folder: compose.sentFolder.trim() || null });
     }
     compose.show = false;
     success(t('mail.send.sent'));
