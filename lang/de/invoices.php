@@ -78,6 +78,14 @@ return [
     'version_sent' => 'Versendet',
 
     'note' => 'Notiz',
+    'pm_holder' => 'Kontoinhaber',
+    'pm_account_no' => 'Kontonummer',
+    'pm_bank' => 'Bank',
+    'pm_business' => 'Geschäftskonto (für Abgleich)',
+    'pm_card_number' => 'Kartennummer',
+    'pm_card_network' => 'Netzwerk',
+    'pm_card_expiry' => 'Ablauf',
+    'pm_url' => 'Webseite',
     'footer' => 'Fußzeile',
 
     'finalize' => 'Finalisieren & Nummer vergeben',

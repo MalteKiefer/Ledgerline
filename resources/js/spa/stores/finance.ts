@@ -18,7 +18,12 @@ export interface Partner {
   phone: string | null; vat_id: string | null; hourly_rate: string | number | null; currency: string | null;
   contacts: PartnerContact[] | null; version: number;
 }
-export interface PaymentMethod { id: number; name: string; type: string; iban: string | null; version: number }
+export interface PaymentMethod {
+  id: number; name: string; type: string; version: number;
+  holder?: string | null; business?: boolean; url?: string | null; note?: string | null;
+  iban?: string | null; bic?: string | null; bank?: string | null; account_no?: string | null;
+  card_number?: string | null; card_network?: string | null; card_expiry?: string | null; paypal_email?: string | null;
+}
 export interface Project { id: number; name: string; parent_id: number | null; note: string | null; version: number }
 export interface Receipt {
   id: number; name: string; category: string | null; tags: string[] | null; vat: string | null;
