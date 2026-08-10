@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Note;
 use App\Models\NoteFolder;
+use App\Models\NoteLink;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
@@ -67,7 +68,7 @@ class NotesController extends Controller
         return response()->json(['notes' => $notes, 'folders' => $folders]);
     }
 
-    /** Full note (with body) for the editor. */
+    /** Full note (with body) + backlinks for the editor. */
     public function show(Request $request, Note $note): JsonResponse
     {
         $this->requireUser($request);
@@ -75,6 +76,7 @@ class NotesController extends Controller
         return response()->json(['note' => [
             ...$this->row($note),
             'body' => $note->body ?? '',
+            'backlinks' => $this->backlinksFor($note),
         ]]);
     }
 
@@ -82,8 +84,10 @@ class NotesController extends Controller
     {
         $this->requireUser($request);
         $note = Note::create($this->validated($request, creating: true));
+        $this->syncLinks($note);
+        $this->resolveDangling($note);
 
-        return response()->json(['note' => [...$this->row($note), 'body' => $note->body ?? '']], 201);
+        return response()->json(['note' => [...$this->row($note), 'body' => $note->body ?? '', 'backlinks' => $this->backlinksFor($note)]], 201);
     }
 
     public function update(Request $request, Note $note): JsonResponse
@@ -91,8 +95,20 @@ class NotesController extends Controller
         $this->requireUser($request);
         $expected = $request->has('version') ? $request->integer('version') : null;
         $result = $this->optimistic(Note::class, $note->id, $this->validated($request, creating: false), $expected);
+        if ($result instanceof Note) {
+            $this->syncLinks($result);
+            $this->resolveDangling($result); // title may have changed → re-point dangling links
+        }
 
         return $this->optimisticJson($result, Note::class, $note->id);
+    }
+
+    /** Backlinks: notes that link to this one (JSON list, on demand). */
+    public function backlinks(Request $request, Note $note): JsonResponse
+    {
+        $this->requireUser($request);
+
+        return response()->json(['backlinks' => $this->backlinksFor($note)]);
     }
 
     public function destroy(Request $request, Note $note): JsonResponse
@@ -207,6 +223,105 @@ class NotesController extends Controller
             ->map(fn (Note $n): array => $this->row($n))->all();
 
         return response()->json(['notes' => $notes]);
+    }
+
+    // ---- Wikilinks / backlinks ----
+
+    /**
+     * Extract distinct wikilink target titles from a body: [[Title]] or
+     * [[Title|Alias]]. Case-insensitive dedup (first spelling kept), capped.
+     *
+     * @return list<string>
+     */
+    private function parseWikilinks(?string $body): array
+    {
+        if ($body === null || $body === '') {
+            return [];
+        }
+        if (! preg_match_all('/\[\[([^\]|\n]+)(?:\|[^\]\n]*)?\]\]/u', $body, $m)) {
+            return [];
+        }
+        $seen = [];
+        $out = [];
+        foreach ($m[1] as $raw) {
+            $title = trim($raw);
+            if ($title === '') {
+                continue;
+            }
+            $key = mb_strtolower($title);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $title;
+            if (count($out) >= 500) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /** Rebuild the outbound wikilink edges for a note from its body. Owner-scoped. */
+    private function syncLinks(Note $note): void
+    {
+        $titles = $this->parseWikilinks($note->body);
+
+        // Resolve each title to a note id (case-insensitive, latest updated wins, never self).
+        NoteLink::query()->where('source_note_id', $note->id)->delete();
+        foreach ($titles as $title) {
+            $target = Note::query()
+                ->whereRaw('lower(title) = ?', [mb_strtolower($title)])
+                ->where('id', '!=', $note->id)
+                ->orderByDesc('updated_at')
+                ->first();
+            NoteLink::create([
+                'source_note_id' => $note->id,
+                'target_note_id' => $target?->id,
+                'target_title' => $title,
+            ]);
+        }
+    }
+
+    /** Re-point previously-unresolved links whose title now matches this note. */
+    private function resolveDangling(Note $note): void
+    {
+        $title = $note->title;
+        if ($title === null || trim($title) === '') {
+            return;
+        }
+        NoteLink::query()
+            ->whereNull('target_note_id')
+            ->whereRaw('lower(target_title) = ?', [mb_strtolower(trim($title))])
+            ->where('source_note_id', '!=', $note->id)
+            ->update(['target_note_id' => $note->id]);
+    }
+
+    /**
+     * Notes that link to $note (resolved edges), with a short snippet. The
+     * source() relation applies the Note global scope → trashed/other-user
+     * sources are excluded.
+     *
+     * @return list<array{id:int,title:string,snippet:string}>
+     */
+    private function backlinksFor(Note $note): array
+    {
+        $links = NoteLink::query()->where('target_note_id', $note->id)->with('source')->get();
+        $out = [];
+        foreach ($links as $link) {
+            $src = $link->source;
+            if (! $src instanceof Note) {
+                continue;
+            }
+            $body = (string) ($src->body ?? '');
+            $out[] = [
+                'id' => $src->id,
+                'title' => $src->title ?? '',
+                'snippet' => mb_substr(trim(preg_replace('/\s+/', ' ', $body) ?? ''), 0, 120),
+            ];
+        }
+
+        return $out;
     }
 
     // ---- Helpers ----

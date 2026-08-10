@@ -101,6 +101,27 @@ class NotesFeatureTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_wikilinks_produce_backlinks_and_resolve_late(): void
+    {
+        $this->actingAs(User::factory()->create());
+        // B exists; A links to it → A shows up in B's backlinks.
+        $b = $this->postJson(route('notes.store'), ['title' => 'Target', 'body' => 'the target'])->json('note.id');
+        $a = $this->postJson(route('notes.store'), ['title' => 'Source', 'body' => 'see [[Target]] and [[Ghost|alias]]'])
+            ->assertCreated()->json('note.id');
+
+        $this->getJson(route('notes.backlinks', $b))
+            ->assertOk()->assertJsonCount(1, 'backlinks')->assertJsonPath('backlinks.0.id', $a);
+
+        // The dangling [[Ghost]] link resolves once a note titled "Ghost" is created.
+        $g = $this->postJson(route('notes.store'), ['title' => 'Ghost', 'body' => 'boo'])->json('note.id');
+        $this->getJson(route('notes.backlinks', $g))
+            ->assertOk()->assertJsonCount(1, 'backlinks')->assertJsonPath('backlinks.0.id', $a);
+
+        // Editing A to drop the [[Target]] link removes the backlink from B.
+        $this->putJson(route('notes.update', $a), ['title' => 'Source', 'body' => 'no links now', 'version' => 0])->assertOk();
+        $this->getJson(route('notes.backlinks', $b))->assertOk()->assertJsonCount(0, 'backlinks');
+    }
+
     public function test_search_matches_body(): void
     {
         $this->actingAs(User::factory()->create());

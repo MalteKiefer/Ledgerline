@@ -752,6 +752,17 @@ components:
         favorite: { type: boolean }
         updated_at: { type: [string, "null"], format: date-time }
         version: { type: integer }
+        backlinks:
+          type: array
+          description: Notes that link to this one (present on show/store/update).
+          items: { $ref: "#/components/schemas/NoteBacklink" }
+    NoteBacklink:
+      type: object
+      description: A note linking to the current one, with a short body snippet.
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        snippet: { type: string }
     NoteInput:
       type: object
       properties:
@@ -2258,6 +2269,24 @@ paths:
         - { name: note, in: path, required: true, schema: { type: integer } }
       responses:
         "200": { description: Trashed., content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "401": { description: Unauthenticated. }
+        "404": { description: Not found. }
+  /notes/{note}/backlinks:
+    get:
+      tags: [Notes]
+      operationId: notesBacklinks
+      summary: Notes that link to this one (wikilink backlinks)
+      parameters:
+        - { name: note, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Backlinks.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backlinks: { type: array, items: { $ref: "#/components/schemas/NoteBacklink" } }
         "401": { description: Unauthenticated. }
         "404": { description: Not found. }
   /notes/{note}/favorite:

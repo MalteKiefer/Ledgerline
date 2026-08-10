@@ -247,6 +247,7 @@ Route::prefix('v1')->group(function (): void {
             Route::delete('/notes/folders/{folder}', [NotesController::class, 'destroyFolder'])->whereNumber('folder')->middleware('throttle:600,1')->name('api.notes.folders.destroy');
             Route::post('/notes/folders/{id}/restore', [NotesController::class, 'restoreFolder'])->whereNumber('id')->middleware('throttle:600,1')->name('api.notes.folders.restore');
             Route::get('/notes/{note}', [NotesController::class, 'show'])->whereNumber('note')->name('api.notes.show');
+            Route::get('/notes/{note}/backlinks', [NotesController::class, 'backlinks'])->whereNumber('note')->name('api.notes.backlinks');
             Route::put('/notes/{note}', [NotesController::class, 'update'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.update');
             Route::patch('/notes/{note}/favorite', [NotesController::class, 'favorite'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.favorite');
             Route::patch('/notes/{note}/pin', [NotesController::class, 'pin'])->whereNumber('note')->middleware('throttle:600,1')->name('api.notes.pin');
