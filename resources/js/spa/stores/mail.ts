@@ -96,6 +96,35 @@ export interface MailKey {
   identities: MailAddress[] | null; has_cert: boolean; expires_at: string | null; created_at: string | null;
 }
 
+/** A user id for key generation — first identity is the primary UID. */
+export interface MailKeyIdentity { name?: string | null; email: string; comment?: string | null }
+
+/** Import body: inline upload (armored/p12) OR a stored Files entry (source=files). */
+export interface MailKeyImportBody {
+  type: 'pgp' | 'smime';
+  label: string;
+  passphrase?: string | null;
+  source?: 'upload' | 'files';
+  armored_private_key?: string | null; // pgp + upload
+  p12_base64?: string | null; // smime + upload
+  file_id?: number | null; // source=files
+}
+
+export type MailKeyCurve = 'ed25519' | 'nistp256' | 'nistp384' | 'nistp521' | 'brainpoolP256r1' | 'brainpoolP384r1' | 'brainpoolP512r1';
+
+/** Server-side key-generation options (PGP fields ignored for smime). */
+export interface MailKeyGenerateBody {
+  type: 'pgp' | 'smime';
+  label: string;
+  identities: MailKeyIdentity[];
+  passphrase?: string | null;
+  expire_years?: number | null;
+  algorithm?: 'rsa' | 'ecc' | null; // pgp
+  key_length?: number | null; // pgp rsa OR smime
+  curve?: MailKeyCurve | null; // pgp ecc
+  signing_subkey?: boolean | null; // pgp
+}
+
 export interface MailFilters {
   accountId: number | null;
   folder: string | null;
@@ -294,8 +323,8 @@ export const useMailStore = defineStore('mail', () => {
 
   // --- Keys (PGP / S-MIME) --------------------------------------------------
   const loadKeys = () => api.get<{ keys: MailKey[] }>('/api/v1/mail/keys');
-  const importKey = (body: { type: 'pgp' | 'smime'; label: string; passphrase?: string | null; armored_private_key?: string | null; p12_base64?: string | null }) =>
-    api.post<{ key: MailKey }>('/api/v1/mail/keys', body);
+  const importKey = (body: MailKeyImportBody) => api.post<{ key: MailKey }>('/api/v1/mail/keys', body);
+  const generateKey = (body: MailKeyGenerateBody) => api.post<{ key: MailKey }>('/api/v1/mail/keys/generate', body);
   const deleteKey = (id: number) => api.delete(`/api/v1/mail/keys/${id}`);
 
   // --- Stats + export (binary) ----------------------------------------------
@@ -332,7 +361,7 @@ export const useMailStore = defineStore('mail', () => {
     loadLabels, createLabel, updateLabel, deleteLabel,
     loadRules, createRule, updateRule, deleteRule,
     loadSavedSearches, saveSearch, deleteSavedSearch,
-    loadLogs, loadKeys, importKey, deleteKey, loadStats, exportMessages, resetFilters,
+    loadLogs, loadKeys, importKey, generateKey, deleteKey, loadStats, exportMessages, resetFilters,
   };
 });
 
