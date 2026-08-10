@@ -235,6 +235,8 @@ function toInput(iso: string, allDay: boolean): string {
   const d = new Date(iso);
   return `${ymd(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+// datetime-local values are naive *local* time; the API stores/returns UTC 'Z'.
+function localToIso(v: string): string { return new Date(v).toISOString(); }
 function formatDue(task: CalendarTodo): string {
   if (!task.due) return '';
   const d = new Date(task.due);
@@ -383,11 +385,11 @@ const catInput = ref('');
 const form = reactive<{
   calendar_id: string; summary: string; description: string; allDay: boolean;
   dtstart: string; due: string; priority: string; status: TodoStatus; percent: number;
-  freq: string; interval: string; categories: string[]; related_to: string;
+  freq: string; interval: string; rruleRaw: string; categories: string[]; related_to: string;
 }>({
   calendar_id: '', summary: '', description: '', allDay: false,
   dtstart: '', due: '', priority: '0', status: 'NEEDS-ACTION', percent: 0,
-  freq: 'none', interval: '1', categories: [], related_to: '',
+  freq: 'none', interval: '1', rruleRaw: '', categories: [], related_to: '',
 });
 
 const priorityOptions = computed(() => (['none', 'high', 'medium', 'low'] as Tier[]).map((tier) => ({ title: t('calendar.todos.priority_' + tier), value: TIER_VALUE[tier] })));
@@ -461,7 +463,7 @@ function openNewTask(): void {
     calendar_id: filters.listId || store.taskLists[0]?.id || '',
     summary: '', description: '', allDay: false,
     dtstart: '', due: '', priority: '0', status: 'NEEDS-ACTION' as TodoStatus, percent: 0,
-    freq: 'none', interval: '1', categories: [], related_to: '',
+    freq: 'none', interval: '1', rruleRaw: '', categories: [], related_to: '',
   });
   taskModal.value = true;
 }
@@ -482,6 +484,7 @@ function openEdit(task: CalendarTodo): void {
     percent: task.percent_complete ?? 0,
     freq: rr.freq,
     interval: String(rr.interval),
+    rruleRaw: task.rrule ?? '',
     categories: [...(task.categories ?? [])],
     related_to: task.related_to ?? '',
   });
@@ -489,17 +492,27 @@ function openEdit(task: CalendarTodo): void {
 }
 function buildBody(): CalendarTodoInput {
   addCat(); // fold any un-committed tag text
+  const interval = Math.max(1, parseInt(form.interval || '1', 10));
+  // datetime-local is naive local → store UTC; all-day keeps the bare date.
+  const dtstart = form.dtstart ? (form.allDay ? form.dtstart.slice(0, 10) : localToIso(form.dtstart)) : null;
+  const due = form.due ? (form.allDay ? form.due.slice(0, 10) : localToIso(form.due)) : null;
+  // Preserve a full RRULE (UNTIL/COUNT/BYDAY) when freq+interval are unchanged.
+  const raw = form.rruleRaw.trim();
+  const parsed = parseRrule(raw || null);
+  const rrule = raw && parsed.freq === form.freq && parsed.interval === interval
+    ? raw
+    : buildRrule(form.freq, interval);
   return {
     calendar_id: form.calendar_id,
     summary: form.summary,
     description: form.description || null,
     all_day: form.allDay,
-    dtstart: form.dtstart || null,
-    due: form.due || null,
+    dtstart,
+    due,
     status: form.status,
     priority: Number(form.priority),
     percent_complete: form.percent,
-    rrule: buildRrule(form.freq, Math.max(1, parseInt(form.interval || '1', 10))),
+    rrule,
     categories: form.categories,
     related_to: form.related_to || null,
   };

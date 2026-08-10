@@ -103,9 +103,8 @@ class CalendarTodoController extends Controller
             return response()->json(['error' => 'etag_conflict', 'etag' => $todo->etag], 409);
         }
 
-        $existing = $service->parse($todo->ics);
-        $uid = $existing['uid'] ?? null;
-        $ics = $service->build($data, is_string($uid) ? $uid : null, (int) $todo->sequence + 1);
+        // Merge into the stored ICS so unmodelled properties and the UID survive.
+        $ics = $service->rebuild($todo->ics, $data, (int) $todo->sequence + 1);
         $updated = $persister->persistUpdate($todo, $ics);
 
         return response()->json(['ok' => true, 'etag' => $updated->etag]);

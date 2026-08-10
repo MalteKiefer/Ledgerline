@@ -43,7 +43,6 @@ class CalendarEventService
     public function build(array $data, ?string $uid = null, int $sequence = 0): string
     {
         $uidValue = $uid !== null && $uid !== '' ? $uid : (string) Str::uuid();
-        $allDay = (bool) ($data['all_day'] ?? false);
 
         $cal = new VCalendar;
         /** @var VEvent $event */
@@ -52,28 +51,73 @@ class CalendarEventService
         // replace those single-valued properties instead of duplicating them.
         $event->remove('UID');
         $event->add('UID', $uidValue);
+        $this->applyCoreFields($event, $data, $sequence);
+
+        $serialized = $cal->serialize();
+
+        return is_string($serialized) ? $serialized : '';
+    }
+
+    /**
+     * Update an existing VEVENT in place from editor data, preserving every
+     * property the editor does not model (VALARM/ATTENDEE/ORGANIZER/CATEGORIES/
+     * URL/EXDATE/RECURRENCE-ID/X-*) and the surrounding VCALENDAR (VTIMEZONE).
+     * A fresh build() would drop all of those on every edit; this keeps them.
+     * Falls back to build() when the stored ICS is unreadable.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function rebuild(string $existingIcs, array $data, int $sequence = 0): string
+    {
+        $cal = $this->readCalendar($existingIcs);
+        $event = $this->firstEventOf($cal);
+        if ($cal === null || $event === null) {
+            $uid = $this->parse($existingIcs)['uid'];
+
+            return $this->build($data, is_string($uid) ? $uid : null, $sequence);
+        }
+
+        $this->applyCoreFields($event, $data, $sequence);
+
+        $serialized = $cal->serialize();
+
+        return is_string($serialized) ? $serialized : $this->build($data, $this->s($event->UID ?? null), $sequence);
+    }
+
+    /**
+     * Set the editor-owned properties on a VEVENT (remove-then-add so an update
+     * replaces rather than duplicates, and a cleared field is removed). Leaves
+     * UID and any unmodelled property untouched.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function applyCoreFields(VEvent $event, array $data, int $sequence): void
+    {
+        $allDay = (bool) ($data['all_day'] ?? false);
+
         $event->remove('DTSTAMP');
         $event->add('DTSTAMP', gmdate('Ymd\THis\Z'));
+        $event->remove('SEQUENCE');
         $event->add('SEQUENCE', (string) max(0, $sequence));
 
+        $event->remove('DTSTART');
         $start = $this->parseDateTime($data['dtstart'] ?? null);
         if ($start !== null) {
-            if ($allDay) {
-                $event->add('DTSTART', $start->format('Ymd'), ['VALUE' => 'DATE']);
-            } else {
-                $event->add('DTSTART', $start->format('Ymd\THis\Z'));
-            }
+            $allDay
+                ? $event->add('DTSTART', $start->format('Ymd'), ['VALUE' => 'DATE'])
+                : $event->add('DTSTART', $start->format('Ymd\THis\Z'));
         }
+
+        $event->remove('DTEND');
         $end = $this->parseDateTime($data['dtend'] ?? null);
         if ($end !== null) {
-            if ($allDay) {
-                $event->add('DTEND', $end->format('Ymd'), ['VALUE' => 'DATE']);
-            } else {
-                $event->add('DTEND', $end->format('Ymd\THis\Z'));
-            }
+            $allDay
+                ? $event->add('DTEND', $end->format('Ymd'), ['VALUE' => 'DATE'])
+                : $event->add('DTEND', $end->format('Ymd\THis\Z'));
         }
 
         foreach (['summary' => 'SUMMARY', 'description' => 'DESCRIPTION', 'location' => 'LOCATION'] as $key => $prop) {
+            $event->remove($prop);
             if (filled($data[$key] ?? null)) {
                 $event->add($prop, $this->str($data[$key] ?? null));
             }
@@ -81,25 +125,24 @@ class CalendarEventService
 
         // GEO carries the picked coordinate (RFC 5545 "GEO:lat;lon"); LOCATION
         // stays the human address. Emit only when BOTH are present + in range.
+        $event->remove('GEO');
         $lat = $this->coord($data['geo_lat'] ?? null, 90.0);
         $lon = $this->coord($data['geo_lon'] ?? null, 180.0);
         if ($lat !== null && $lon !== null) {
             $event->add('GEO', $lat.';'.$lon);
         }
 
+        $event->remove('STATUS');
         $status = strtoupper(trim($this->str($data['status'] ?? null)));
         if (in_array($status, ['CONFIRMED', 'TENTATIVE', 'CANCELLED'], true)) {
             $event->add('STATUS', $status);
         }
 
+        $event->remove('RRULE');
         $rrule = trim($this->str($data['rrule'] ?? null));
         if ($rrule !== '') {
             $event->add('RRULE', $rrule);
         }
-
-        $serialized = $cal->serialize();
-
-        return is_string($serialized) ? $serialized : '';
     }
 
     /**
