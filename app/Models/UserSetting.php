@@ -136,6 +136,8 @@ class UserSetting extends Model
             'temp' => (string) ($this->unit_temp ?? 'c'),
             'glucose' => (string) ($this->unit_glucose ?? 'mgdl'),
             'time_format' => (string) ($this->time_format ?? '24h'),
+            'mail_load_remote' => (bool) ($this->mail_load_remote ?? false),
+            'mail_signature' => $this->mail_signature !== null ? (string) $this->mail_signature : null,
         ];
     }
 

@@ -9,6 +9,8 @@ export interface DisplayPreferences {
   unit_temp: 'c' | 'f';
   unit_glucose: 'mgdl' | 'mmoll';
   time_format: '24h' | '12h';
+  mail_load_remote: boolean;
+  mail_signature: string | null;
 }
 
 export interface DeviceToken {
