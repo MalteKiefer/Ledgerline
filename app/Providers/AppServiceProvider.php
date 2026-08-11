@@ -78,6 +78,7 @@ class AppServiceProvider extends ServiceProvider
         // `throttle` alias is a no-op (App\Http\Middleware\NoThrottle); no named
         // limiters are defined. See the Security register (2026-08-08).
         $this->applySettingOverrides();
+        $this->applyMlSettings();
         $this->applyMailSettings();
 
         // Record each scheduled maintenance task's last run + outcome so the
@@ -184,6 +185,54 @@ class AppServiceProvider extends ServiceProvider
      * SAME SMTP the Notifications settings page configures (ChannelNotifier uses a
      * raw transport; config/mail defaults to `log`). Build/no-DB safe.
      */
+    /** Cache key for the admin ML overrides (busted when the settings are saved). */
+    public const ML_CACHE_KEY = 'app.ml_overrides';
+
+    /**
+     * Overlay the admin-editable ML settings (app_settings.ml_*) onto config('ml.*').
+     * NULL columns keep the env/config default. Guarded for build/console where the
+     * table/db may not exist.
+     */
+    private function applyMlSettings(): void
+    {
+        try {
+            $vals = Cache::remember(self::ML_CACHE_KEY, 300, function (): array {
+                if (! Schema::hasTable('app_settings')) {
+                    return [];
+                }
+                $cols = ['ml_enabled', 'ml_face_enabled', 'ml_url', 'ml_clip_model', 'ml_face_model',
+                    'ml_search_distance', 'ml_dup_distance', 'ml_face_min_score', 'ml_face_match_distance'];
+                $row = DB::table('app_settings')->first($cols);
+
+                return $row ? array_filter((array) $row, fn ($v) => $v !== null) : [];
+            });
+        } catch (\Throwable) {
+            return;
+        }
+        $map = [
+            'ml_enabled' => ['ml.enabled', 'bool'],
+            'ml_face_enabled' => ['ml.face_enabled', 'bool'],
+            'ml_url' => ['ml.url', 'str'],
+            'ml_clip_model' => ['ml.clip_model', 'str'],
+            'ml_face_model' => ['ml.face_model', 'str'],
+            'ml_search_distance' => ['ml.search_max_distance', 'float'],
+            'ml_dup_distance' => ['ml.dup_max_distance', 'float'],
+            'ml_face_min_score' => ['ml.face_min_score', 'float'],
+            'ml_face_match_distance' => ['ml.face_match_distance', 'float'],
+        ];
+        foreach ($map as $col => [$key, $type]) {
+            if (! array_key_exists($col, $vals)) {
+                continue;
+            }
+            $v = $vals[$col];
+            config([$key => match ($type) {
+                'bool' => (bool) $v,
+                'float' => is_numeric($v) ? (float) $v : 0.0,
+                default => is_scalar($v) ? (string) $v : '',
+            }]);
+        }
+    }
+
     private function applyMailSettings(): void
     {
         try {

@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
 use App\Http\Controllers\Api\ContactsProfileController as ApiContactsProfileController;
 use App\Http\Controllers\Api\DevicePushEndpointController;
 use App\Http\Controllers\Api\FilesLimitsController as ApiFilesLimitsController;
+use App\Http\Controllers\Api\GalleryAdminController as ApiGalleryAdminController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
 use App\Http\Controllers\Api\InviteLinkController as ApiInviteLinkController;
 use App\Http\Controllers\Api\InvoiceOcrController;
@@ -565,6 +566,14 @@ Route::prefix('v1')->group(function (): void {
             // Workspace Files limits (max upload MB + orphan-blob grace hours).
             Route::get('/files-limits', [ApiFilesLimitsController::class, 'show'])->name('files-limits.show');
             Route::put('/files-limits', [ApiFilesLimitsController::class, 'update'])->middleware('throttle:60,1')->name('files-limits.update');
+
+            // Gallery & ML: feature flags, models, thresholds, worker queue + rescan.
+            Route::get('/gallery', [ApiGalleryAdminController::class, 'show'])->name('gallery.show');
+            Route::put('/gallery', [ApiGalleryAdminController::class, 'update'])->middleware('throttle:60,1')->name('gallery.update');
+            Route::post('/gallery/queue/clear', [ApiGalleryAdminController::class, 'clearQueue'])->middleware('throttle:20,1')->name('gallery.queue.clear');
+            Route::post('/gallery/queue/retry', [ApiGalleryAdminController::class, 'retryFailed'])->middleware('throttle:20,1')->name('gallery.queue.retry');
+            Route::post('/gallery/queue/flush', [ApiGalleryAdminController::class, 'flushFailed'])->middleware('throttle:20,1')->name('gallery.queue.flush');
+            Route::post('/gallery/reprocess', [ApiGalleryAdminController::class, 'reprocess'])->middleware('throttle:6,1')->name('gallery.reprocess');
 
             // System / maintenance overview (read-only) + resolve an error event.
             Route::get('/system', [ApiSystemController::class, 'show'])->middleware('throttle:60,1')->name('system.show');

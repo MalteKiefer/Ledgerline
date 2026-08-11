@@ -40,6 +40,7 @@ const sections = [
   { to: 'settings.blocks', icon: 'block', label: 'settings.blocks_section' },
   { to: 'settings.sessions', icon: 'devices', label: 'settings.sessions_section' },
   { to: 'settings.files-limits', icon: 'folder', label: 'settings.files_limits_heading' },
+  { to: 'settings.gallery', icon: 'photo_library', label: 'gallery.gs_section' },
   { to: 'settings.backup', icon: 'backup', label: 'settings.backup_section' },
   { to: 'settings.paperless', icon: 'description', label: 'settings.paperless_section' },
   { to: 'settings.system', icon: 'dns', label: 'settings.system_section' },
