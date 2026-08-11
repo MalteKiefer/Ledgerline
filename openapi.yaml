@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.634.0
+  version: 1.635.0
   license:
     name: Proprietary
   description: >
@@ -5610,6 +5610,38 @@ paths:
         "200": { description: "image/webp preview (nosniff + sandbox CSP)." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: "Not ready yet (generation re-queued)." }
+  /gallery/{photo}/exif:
+    get:
+      tags: [Gallery]
+      operationId: galleryExif
+      summary: Full section-grouped EXIF for the lightbox info sidebar
+      description: "All readable EXIF for one photo, grouped by section (IFD0/EXIF/GPS/COMPUTED/…); values sanitized to short printable strings. Populated at upload (and by the `exif`/`all` reprocess scope — HEIC via Imagick fallback). Owner-scoped (404 for others). Not included in the list endpoint (fetched lazily on open)."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200":
+          description: Photo overview + grouped EXIF.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  name: { type: string }
+                  mime: { type: [string, "null"] }
+                  size: { type: integer }
+                  width: { type: [integer, "null"] }
+                  height: { type: [integer, "null"] }
+                  taken_at: { type: [string, "null"], format: date-time }
+                  camera: { type: [string, "null"] }
+                  place: { type: [string, "null"] }
+                  lat: { type: [number, "null"] }
+                  lng: { type: [number, "null"] }
+                  exif:
+                    type: object
+                    additionalProperties: { type: object, additionalProperties: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /gallery/{photo}/favorite:
     patch:
       tags: [Gallery]
