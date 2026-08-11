@@ -25,16 +25,21 @@
           <button v-if="searchActive" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-[var(--ll-muted)] hover:text-[var(--ll-fg)]" @click="clearSearch"><Icon name="close" :size="15" /></button>
         </div>
         <div class="ml-auto flex items-center gap-1">
-          <template v-if="!showTrash && !showPeople">
-            <Btn :variant="viewMode === 'grid' ? 'solid' : 'ghost'" size="sm" icon="grid_view" @click="setView('grid')">{{ t('gallery.view_grid') }}</Btn>
-            <Btn :variant="viewMode === 'map' ? 'solid' : 'ghost'" size="sm" icon="map" @click="setView('map')">{{ t('gallery.view_map') }}</Btn>
+          <!-- Grid size slider (grid view only) -->
+          <label v-if="!showTrash && !showPeople && !showDupes && viewMode === 'grid'" class="mr-1 hidden items-center gap-1 md:flex" :title="t('gallery.grid_size')">
+            <Icon name="grid_view" :size="15" class="text-[var(--ll-muted)]" />
+            <input type="range" min="2" max="12" step="1" :value="gridCols" class="w-24 accent-primary-500" @input="setGridCols(($event.target as HTMLInputElement).valueAsNumber)">
+          </label>
+          <template v-if="!showTrash">
+            <Btn :variant="viewMode === 'grid' && !showPeople ? 'solid' : 'ghost'" size="sm" icon="grid_view" @click="setView('grid')">{{ t('gallery.view_grid') }}</Btn>
+            <Btn :variant="viewMode === 'map' && !showPeople ? 'solid' : 'ghost'" size="sm" icon="map" @click="setView('map')">{{ t('gallery.view_map') }}</Btn>
           </template>
           <Btn variant="solid" size="sm" icon="upload" @click="pick">{{ t('gallery.upload') }}</Btn>
           <input ref="fileInput" type="file" accept="image/*" multiple class="hidden" @change="onPick">
           <Btn v-if="showTrash && trashPhotos.length" variant="ghost" size="sm" icon="delete" class="text-red-600" @click="onEmpty">{{ t('gallery.empty_trash') }}</Btn>
           <Btn v-if="!showTrash" :variant="showPeople ? 'solid' : 'ghost'" size="sm" icon="group" @click="showPeople ? closePeople() : openPeople()">{{ t('gallery.people') }}</Btn>
-          <Btn v-if="!showTrash && !showPeople" :variant="showDupes ? 'solid' : 'ghost'" size="sm" icon="content_copy" @click="showDupes ? closeDupes() : openDupes()">{{ t('gallery.duplicates') }}</Btn>
-          <Btn v-if="!showPeople" variant="ghost" size="sm" :icon="showTrash ? 'photo_library' : 'delete'" @click="toggleTrash">{{ showTrash ? t('gallery.back') : t('gallery.trash') }}</Btn>
+          <Btn v-if="!showTrash" :variant="showDupes ? 'solid' : 'ghost'" size="sm" icon="content_copy" @click="showDupes ? closeDupes() : openDupes()">{{ t('gallery.duplicates') }}</Btn>
+          <Btn variant="ghost" size="sm" :icon="showTrash ? 'photo_library' : 'delete'" @click="toggleTrash">{{ showTrash ? t('gallery.back') : t('gallery.trash') }}</Btn>
         </div>
       </div>
 
@@ -110,7 +115,7 @@
             <span>{{ grp.photos.length }} {{ t('gallery.dupes_similar') }}</span>
             <Btn variant="ghost" size="sm" icon="delete" class="ml-auto text-red-600" @click="trashDupeGroup(gi)">{{ t('gallery.dupes_keep_one') }}</Btn>
           </div>
-          <div class="grid grid-cols-3 gap-1.5 sm:grid-cols-5 md:grid-cols-8">
+          <div class="grid grid-cols-5 gap-1 sm:grid-cols-8 md:grid-cols-12">
             <div v-for="(p, pi) in grp.photos" :key="p.id" class="group relative aspect-square overflow-hidden rounded-lg bg-black/[0.04] dark:bg-white/5">
               <img v-if="p.thumb" :src="g.thumbUrl(p.id)" loading="lazy" class="h-full w-full object-cover">
               <div v-else class="flex h-full w-full items-center justify-center"><Icon name="image" :size="20" class="opacity-40" /></div>
@@ -130,7 +135,7 @@
       <!-- Grid view -->
       <div v-if="(viewMode === 'grid' || showTrash) && !showDupes && !peopleGrid" class="p-3">
         <div v-if="!current.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ showTrash ? t('gallery.trash_empty') : (searchActive ? t('gallery.search_none') : t('gallery.empty')) }}</div>
-        <div v-else class="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+        <div v-else class="grid gap-1.5" :style="gridStyle">
           <template v-for="(p, i) in current" :key="p.id">
             <div v-if="!showTrash && p._dayHeader" class="col-span-full px-0.5 pt-2 text-xs font-semibold text-[var(--ll-muted)]">{{ p._dayHeader }}</div>
             <div
@@ -437,6 +442,10 @@ const { success, error } = useToast();
 const fileInput = ref<HTMLInputElement | null>(null);
 const showTrash = ref(false);
 const viewMode = ref<'grid' | 'map'>('grid');
+// Grid thumbnail size (columns) — fewer columns = larger thumbnails. Persisted.
+const gridCols = ref<number>(Math.min(12, Math.max(2, Number(localStorage.getItem('ll_gallery_cols')) || 6)));
+const gridStyle = computed(() => ({ gridTemplateColumns: `repeat(${gridCols.value}, minmax(0, 1fr))` }));
+function setGridCols(n: number) { gridCols.value = Math.min(12, Math.max(2, n || 6)); localStorage.setItem('ll_gallery_cols', String(gridCols.value)); }
 const trashPhotos = ref<Photo[]>([]);
 const albumId = ref<number | null>(null);
 const albumMenu = ref(false);
@@ -573,7 +582,7 @@ async function uploadList(list: FileList) {
   } catch { error(t('common.error')); } finally { up.active = false; }
 }
 function refresh() { return g.load(albumId.value ?? undefined); }
-function setView(m: 'grid' | 'map') { viewMode.value = m; if (m === 'map') void nextTick().then(syncMap); }
+function setView(m: 'grid' | 'map') { if (showPeople.value) closePeople(); viewMode.value = m; if (m === 'map') void nextTick().then(syncMap); }
 
 // ---- Semantic search (CLIP) ----
 async function doSearch() {
@@ -587,6 +596,7 @@ function clearSearch() { searchActive.value = false; searchResults.value = []; s
 
 // ---- Near-duplicates (CLIP) ----
 async function openDupes() {
+  if (showPeople.value) closePeople();
   showDupes.value = true; clearSearch(); clearSelection(); viewer.value = -1;
   try { dupeGroups.value = await g.duplicates(); } catch { error(t('common.error')); }
 }
@@ -846,6 +856,7 @@ async function saveEdit() {
 
 // ---- Trash ----
 async function toggleTrash() {
+  if (showPeople.value) closePeople();
   showTrash.value = !showTrash.value;
   viewer.value = -1; clearSelection(); closeDupes();
   if (showTrash.value) { try { trashPhotos.value = await g.trash(); } catch { error(t('common.error')); } }

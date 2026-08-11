@@ -157,7 +157,8 @@ class GalleryFeatureTest extends TestCase
         $mp4 = tempnam(sys_get_temp_dir(), 'llv').'.mp4';
         BinaryProcess::run([
             'ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=1:size=320x240:rate=10',
-            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-t', '1', $mp4,
+            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-t', '1',
+            '-metadata', 'creation_time=2026-06-13T19:10:51.000000Z', $mp4,
         ], 60);
         $bytes = (string) file_get_contents($mp4);
         @unlink($mp4);
@@ -172,6 +173,9 @@ class GalleryFeatureTest extends TestCase
         $photo = GalleryPhoto::findOrFail($id);
         $this->assertSame('ready', $photo->status);
         $this->assertNotNull($photo->poster_path);
+        // Capture date read from the container's creation_time tag.
+        $this->assertNotNull($photo->taken_at);
+        $this->assertSame('2026-06-13', $photo->taken_at?->format('Y-m-d'));
         Storage::disk(config('files.disk'))->assertExists((string) $photo->poster_path);
         Storage::disk(config('files.disk'))->assertExists('gallery/thumb/'.$id.'-'.$photo->version.'.webp');
 

@@ -2,7 +2,7 @@
   <div class="flex min-h-screen bg-[var(--ll-bg)] text-[var(--ll-fg)]">
     <!-- Sidebar -->
     <aside
-      class="fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-[var(--ll-border)] bg-[var(--ll-surface)] transition-transform lg:static lg:translate-x-0"
+      class="fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-[var(--ll-border)] bg-[var(--ll-surface)] transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:self-start"
       :class="drawer ? 'translate-x-0' : '-translate-x-full'"
     >
       <div class="flex items-center gap-2.5 px-4 h-16">

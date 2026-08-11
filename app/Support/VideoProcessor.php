@@ -23,9 +23,10 @@ final class VideoProcessor
     }
 
     /**
-     * ffprobe → duration/dimensions/codecs/container.
+     * ffprobe → duration/dimensions/codecs/container + capture metadata
+     * (creation_time, GPS, camera) read from the container/stream tags.
      *
-     * @return array{duration:?int, width:?int, height:?int, vcodec:string, acodec:string, format:string}|null
+     * @return array{duration:?int, width:?int, height:?int, vcodec:string, acodec:string, format:string, taken_at:?string, lat:?float, lng:?float, camera:?string}|null
      */
     public static function probe(string $path): ?array
     {
@@ -42,6 +43,10 @@ final class VideoProcessor
         $streams = is_array($json['streams'] ?? null) ? $json['streams'] : [];
         $format = is_array($json['format'] ?? null) ? $json['format'] : [];
 
+        // Gather tags from the container and every stream (creation_time / GPS /
+        // camera can live on either). Later merges win only for empty keys.
+        $tags = is_array($format['tags'] ?? null) ? $format['tags'] : [];
+
         $vcodec = $acodec = '';
         $width = $height = null;
         foreach ($streams as $s) {
@@ -57,6 +62,13 @@ final class VideoProcessor
             } elseif ($type === 'audio' && $acodec === '') {
                 $acodec = $codec;
             }
+            if (is_array($s['tags'] ?? null)) {
+                foreach ($s['tags'] as $k => $v) {
+                    if (! array_key_exists($k, $tags)) {
+                        $tags[$k] = $v;
+                    }
+                }
+            }
         }
         if ($vcodec === '') {
             return null; // no video stream → not a video we can present
@@ -64,7 +76,82 @@ final class VideoProcessor
         $dur = is_numeric($format['duration'] ?? null) ? (int) round((float) $format['duration']) : null;
         $fmt = is_string($format['format_name'] ?? null) ? $format['format_name'] : '';
 
-        return ['duration' => $dur, 'width' => $width, 'height' => $height, 'vcodec' => $vcodec, 'acodec' => $acodec, 'format' => $fmt];
+        [$lat, $lng] = self::parseLocation($tags);
+
+        return [
+            'duration' => $dur, 'width' => $width, 'height' => $height,
+            'vcodec' => $vcodec, 'acodec' => $acodec, 'format' => $fmt,
+            'taken_at' => self::parseCreationTime($tags),
+            'lat' => $lat, 'lng' => $lng,
+            'camera' => self::parseCamera($tags),
+        ];
+    }
+
+    /**
+     * creation_time tag (ISO 8601, usually UTC) → 'Y-m-d H:i:s' UTC, or null.
+     *
+     * @param  array<array-key, mixed>  $tags
+     */
+    private static function parseCreationTime(array $tags): ?string
+    {
+        foreach (['creation_time', 'com.apple.quicktime.creationdate', 'date'] as $key) {
+            $raw = $tags[$key] ?? null;
+            if (! is_string($raw) || trim($raw) === '') {
+                continue;
+            }
+            try {
+                $dt = new \DateTimeImmutable(trim($raw));
+            } catch (\Throwable) {
+                continue;
+            }
+            $y = (int) $dt->format('Y');
+            if ($y < 1970 || $y > 2100) {
+                continue; // reject the epoch/placeholder some cameras write
+            }
+
+            return $dt->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+        }
+
+        return null;
+    }
+
+    /**
+     * QuickTime ISO 6709 location tag (e.g. "+52.5200+013.4050+000.000/") → [lat, lng].
+     *
+     * @param  array<array-key, mixed>  $tags
+     * @return array{0:?float, 1:?float}
+     */
+    private static function parseLocation(array $tags): array
+    {
+        foreach (['com.apple.quicktime.location.ISO6709', 'location', 'location-eng'] as $key) {
+            $raw = $tags[$key] ?? null;
+            if (! is_string($raw) || $raw === '') {
+                continue;
+            }
+            if (preg_match('/([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)/', $raw, $m) === 1) {
+                $lat = (float) $m[1];
+                $lng = (float) $m[2];
+                if ($lat >= -90 && $lat <= 90 && $lng >= -180 && $lng <= 180 && ($lat !== 0.0 || $lng !== 0.0)) {
+                    return [$lat, $lng];
+                }
+            }
+        }
+
+        return [null, null];
+    }
+
+    /**
+     * make + model tags → "Apple iPhone 15", or null.
+     *
+     * @param  array<array-key, mixed>  $tags
+     */
+    private static function parseCamera(array $tags): ?string
+    {
+        $make = is_string($tags['com.apple.quicktime.make'] ?? null) ? trim($tags['com.apple.quicktime.make']) : '';
+        $model = is_string($tags['com.apple.quicktime.model'] ?? null) ? trim($tags['com.apple.quicktime.model']) : '';
+        $camera = trim($make.' '.$model);
+
+        return $camera !== '' ? mb_substr($camera, 0, 190) : null;
     }
 
     /** Extract a single poster frame (JPEG) to $out. Returns true on success. */

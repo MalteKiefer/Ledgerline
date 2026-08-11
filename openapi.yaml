@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.624.0
+  version: 1.625.0
   license:
     name: Proprietary
   description: >
@@ -5336,11 +5336,46 @@ paths:
       summary: Re-queue ML processing over all photos
       description: "Re-queue face detection + grouping and/or CLIP embeddings for every photo (processed on the worker one at a time). Use after enabling ML, changing models, or to improve recognition."
       security: [ { bearerAuth: [] } ]
-      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { scope: { type: string, enum: [faces, embeddings, all], default: all } } } } } }
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { scope: { type: string, enum: [faces, embeddings, exif, all], default: all } } } } } }
       responses:
         "200": { description: "Queued.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, queued: { type: integer }, scope: { type: string } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /gallery/ml-status:
+    get:
+      tags: [Gallery]
+      operationId: galleryMlStatus
+      summary: Gallery & ML status (feature flags, worker queue depth, counts)
+      description: "Non-secret aggregates for the gallery settings page: ML feature flags + models, pending worker-job count (driver-agnostic), and library counts (photos/videos/embedded/dated/located/faces/people)."
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: "Status."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ml:
+                    type: object
+                    properties:
+                      enabled: { type: boolean }
+                      face_enabled: { type: boolean }
+                      vector: { type: boolean }
+                      clip_model: { type: [string, "null"] }
+                      face_model: { type: [string, "null"] }
+                  queue: { type: object, properties: { pending: { type: integer } } }
+                  counts:
+                    type: object
+                    properties:
+                      photos: { type: integer }
+                      videos: { type: integer }
+                      embedded: { type: integer }
+                      with_date: { type: integer }
+                      located: { type: integer }
+                      faces: { type: integer }
+                      people: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /gallery/trash:
     get:
       tags: [Gallery]
