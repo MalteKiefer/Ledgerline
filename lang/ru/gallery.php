@@ -42,4 +42,6 @@ return [
     'dupes_skipped' => 'Пропущено дубликатов: :n.',
     'motion_unmatched' => ':n видеоклип(ов) без подходящего фото.',
     'play_motion' => 'Воспроизвести Live-движение',
+    'processing' => 'Обработка…',
+    'failed' => 'Ошибка',
 ];

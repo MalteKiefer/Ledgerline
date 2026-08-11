@@ -5,7 +5,9 @@ import { api, uploadWithProgress } from '@spa/api/client';
 export interface Photo {
   id: number; name: string; mime: string | null;
   width: number | null; height: number | null; size: number;
-  favorite: boolean; thumb: boolean; motion: boolean; rotation: number; flip_h: boolean;
+  favorite: boolean; thumb: boolean; motion: boolean;
+  media_type: 'image' | 'video'; status: 'ready' | 'processing' | 'failed'; duration: number | null;
+  rotation: number; flip_h: boolean;
   taken_at: string | null; camera: string | null; place: string | null;
   lat: number | null; lng: number | null; version: number; created_at: string | null;
 }
@@ -67,6 +69,7 @@ export const useGalleryStore = defineStore('gallery', () => {
     return uploadWithProgress<{ photo: Photo }>(`/api/v1/gallery/${photoId}/motion`, fd, onProgress);
   };
   const motionUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/motion`);
+  const playUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/play`);
 
   const favorite = (id: number, fav: boolean) => api.patch(`/api/v1/gallery/${id}/favorite`, { favorite: fav });
   const update = (id: number, patch: PhotoEdit) => api.put<{ photo: Photo }>(`/api/v1/gallery/${id}`, patch);
@@ -88,7 +91,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   const rawUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/raw`);
 
   return {
-    photos, albums, load, trash, loadAlbums, upload, attachMotion, motionUrl, favorite, update, downloadUrl, destroy, bulkDestroy,
+    photos, albums, load, trash, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, rawUrl,
   };

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.614.0
+  version: 1.615.0
   license:
     name: Proprietary
   description: >
@@ -1158,6 +1158,9 @@ components:
         favorite: { type: boolean }
         thumb: { type: boolean, description: "Whether the WebP thumbnail is ready (generated off the web path by a worker). While false the client shows a spinner and reloads." }
         motion: { type: boolean, description: "Whether a Live Photo motion clip is attached (served at /gallery/{photo}/motion)." }
+        media_type: { type: string, enum: [image, video], description: "Videos are processed on the worker (ffprobe + poster + web MP4)." }
+        status: { type: string, enum: [ready, processing, failed], description: "Video processing state; the client shows a gray 'processing' tile until ready." }
+        duration: { type: integer, nullable: true, description: "Video duration in seconds." }
         rotation: { type: integer, enum: [0, 90, 180, 270], description: "Clockwise display rotation; non-invasive (original bytes untouched)." }
         flip_h: { type: boolean, description: "Horizontal mirror; non-invasive." }
         taken_at: { type: string, format: date-time, nullable: true, description: "EXIF capture date (falls back to created_at for ordering); editable." }
@@ -5174,8 +5177,8 @@ paths:
     post:
       tags: [Gallery]
       operationId: galleryUpload
-      summary: Upload a photo (whole; multipart)
-      description: "Image MIME allow-list (jpg/jpeg/png/webp/gif/heic/heif). Bytes stored plaintext under gallery/{uuid}; size/sha256/dimensions server-computed. An Android/Samsung Motion Photo (JPEG with an appended MP4) has its clip extracted and attached (motion=true). De-duplicated by sha256: identical bytes return 200 with the existing photo and duplicate=true (no new row). 413 when over the combined files+gallery quota."
+      summary: Upload a photo or video (whole; multipart)
+      description: "Images (jpg/jpeg/png/webp/gif/heic/heif) OR videos (any format — detected by MIME/extension). Bytes stored plaintext under gallery/{uuid}; size/sha256 server-computed. A video is stored with media_type=video, status=processing, and processed on the worker (ffprobe + poster + a web-friendly MP4 rendition when needed) — the client shows a gray 'processing' tile until ready. An Android/Samsung Motion Photo (JPEG with an appended MP4) has its clip extracted (motion=true). De-duplicated by sha256: identical bytes return 200 with the existing photo and duplicate=true (no new row). 413 when over the combined files+gallery quota."
       security: [ { bearerAuth: [] } ]
       requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
       responses:
@@ -5186,6 +5189,19 @@ paths:
         "415": { description: "Not an image." }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /gallery/{photo}/play:
+    get:
+      tags: [Gallery]
+      operationId: galleryPlay
+      summary: Stream a video for playback (web MP4 rendition or original)
+      description: "Serves the web-friendly MP4 rendition when one was produced, else the original. Range requests are honored (seeking). sandbox CSP + nosniff."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "video bytes (Range supported)." }
+        "206": { description: "Partial content (Range)." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /gallery/{photo}/motion:
     get:
       tags: [Gallery]

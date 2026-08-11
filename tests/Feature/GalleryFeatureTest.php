@@ -9,7 +9,9 @@ use App\Jobs\GenerateGalleryThumbnail;
 use App\Models\GalleryAlbum;
 use App\Models\GalleryPhoto;
 use App\Models\User;
+use App\Support\BinaryProcess;
 use App\Support\ImageManagerFactory;
+use App\Support\VideoProcessor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
@@ -138,6 +140,46 @@ class GalleryFeatureTest extends TestCase
         $this->actingAs(User::factory()->create());
         $id = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('plain.jpg', 40, 40)])->json('photo.id');
         $this->assertFalse((bool) GalleryPhoto::findOrFail($id)->motion_path);
+    }
+
+    public function test_video_upload_is_processed_and_playable(): void
+    {
+        if (! VideoProcessor::available()) {
+            $this->markTestSkipped('ffmpeg/ffprobe not available');
+        }
+        $this->actingAs(User::factory()->create());
+
+        // A tiny real MP4 (H.264, no audio) → web-playable, no transcode needed.
+        $mp4 = tempnam(sys_get_temp_dir(), 'llv').'.mp4';
+        BinaryProcess::run([
+            'ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=1:size=320x240:rate=10',
+            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-t', '1', $mp4,
+        ], 60);
+        $bytes = (string) file_get_contents($mp4);
+        @unlink($mp4);
+
+        $res = $this->post(route('gallery.upload'), [
+            'file' => UploadedFile::fake()->createWithContent('clip.mp4', $bytes),
+        ])->assertCreated();
+        $id = (int) $res->json('photo.id');
+        $this->assertSame('video', $res->json('photo.media_type'));
+
+        // Queue is sync in tests → ProcessGalleryVideo already ran: poster + thumb + ready.
+        $photo = GalleryPhoto::findOrFail($id);
+        $this->assertSame('ready', $photo->status);
+        $this->assertNotNull($photo->poster_path);
+        Storage::disk(config('files.disk'))->assertExists((string) $photo->poster_path);
+        Storage::disk(config('files.disk'))->assertExists('gallery/thumb/'.$id.'-'.$photo->version.'.webp');
+
+        $this->get(route('gallery.thumb', ['photo' => $id]))->assertOk();
+        $this->get(route('gallery.play', ['photo' => $id]))->assertOk();
+    }
+
+    public function test_non_media_upload_is_rejected(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->createWithContent('x.txt', 'hello')])
+            ->assertStatus(415);
     }
 
     public function test_owner_scope_blocks_cross_user_access(): void

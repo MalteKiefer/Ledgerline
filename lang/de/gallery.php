@@ -42,4 +42,6 @@ return [
     'dupes_skipped' => ':n Duplikat(e) übersprungen.',
     'motion_unmatched' => ':n Motion-Clip(s) ohne passendes Foto.',
     'play_motion' => 'Live-Motion abspielen',
+    'processing' => 'Wird verarbeitet…',
+    'failed' => 'Fehlgeschlagen',
 ];
