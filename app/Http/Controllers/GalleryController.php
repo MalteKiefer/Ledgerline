@@ -112,6 +112,7 @@ class GalleryController extends Controller
             is_array($dims) ? (int) $dims[1] : null,
             $meta,
         ));
+        $this->attachEmbeddedMotion($photo, is_string($real) ? $real : null, $mime !== '' ? $mime : null);
         GenerateGalleryThumbnail::dispatch($photo->id);
 
         return response()->json(['photo' => $this->row($photo)], 201);
@@ -245,6 +246,9 @@ class GalleryController extends Controller
             is_array($dims) ? (int) $dims[1] : null,
             $meta,
         ));
+        // $tmp still holds the assembled bytes (unlinked on scope exit) — extract an
+        // embedded Android/Samsung Motion Photo clip before it goes away.
+        $this->attachEmbeddedMotion($photo, $tmp->path(), $mime);
         GenerateGalleryThumbnail::dispatch($photo->id);
 
         return response()->json(['photo' => $this->row($photo)], 201);
@@ -851,6 +855,65 @@ class GalleryController extends Controller
         }
 
         return $path;
+    }
+
+    /**
+     * Android / Samsung "Motion Photo" (Google Pixel MicroVideo, Galaxy) store the
+     * clip EMBEDDED inside a single JPEG — an MP4 appended after the image. Extract
+     * it and attach it as this photo's motion clip so it becomes a Live entry too.
+     * The appended MP4 is a real ISO-BMFF (H.264/HEVC) → plays in every browser.
+     * JPEG-only (HEIC also starts with an ftyp box, which would false-match).
+     */
+    private function attachEmbeddedMotion(GalleryPhoto $photo, ?string $stillLocalPath, ?string $mime): void
+    {
+        if ($stillLocalPath === null || $mime === null
+            || (! str_contains($mime, 'jpeg') && ! str_contains($mime, 'jpg'))) {
+            return;
+        }
+        $bytes = $this->extractEmbeddedMp4($stillLocalPath);
+        if ($bytes === null) {
+            return;
+        }
+        $path = 'gallery/'.Str::uuid()->toString().'-mv';
+        $this->fs()->put($path, $bytes);
+        $photo->forceFill(['motion_path' => $path])->save();
+    }
+
+    /** The appended MP4 bytes of a Motion Photo JPEG, or null. */
+    private function extractEmbeddedMp4(string $path): ?string
+    {
+        $size = @filesize($path);
+        if ($size === false || $size <= 0 || $size > self::THUMB_MAX_SRC_BYTES) {
+            return null;
+        }
+        $data = @file_get_contents($path);
+        if ($data === false || substr($data, 0, 2) !== "\xFF\xD8") { // JPEG SOI
+            return null;
+        }
+        $len = strlen($data);
+
+        // Google Motion Photo v1: XMP GCamera:MicroVideoOffset = bytes from EOF.
+        if (preg_match('/MicroVideoOffset["\':=\s]+(\d+)/', $data, $m) === 1) {
+            $off = (int) $m[1];
+            $start = $len - $off;
+            if ($off > 8 && $start >= 4 && substr($data, $start + 4, 4) === 'ftyp') {
+                return substr($data, $start);
+            }
+        }
+
+        // Fallback (Samsung / Motion Photo v2): the first ISO-BMFF `ftyp` box after
+        // the JPEG SOI marks the appended MP4. Validate the 4-byte box-size prefix.
+        $pos = strpos($data, 'ftyp', 4);
+        if ($pos !== false && $pos >= 4) {
+            $start = $pos - 4;
+            $box = unpack('N', substr($data, $start, 4));
+            $boxLen = is_array($box) && is_numeric($box[1] ?? null) ? (int) $box[1] : 0;
+            if ($boxLen >= 8 && $boxLen <= $len - $start && $len - $start > 8192) {
+                return substr($data, $start);
+            }
+        }
+
+        return null;
     }
 
     /** An existing non-trashed photo of the same user with identical bytes, if any. */

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.613.0
+  version: 1.614.0
   license:
     name: Proprietary
   description: >
@@ -5175,7 +5175,7 @@ paths:
       tags: [Gallery]
       operationId: galleryUpload
       summary: Upload a photo (whole; multipart)
-      description: "Image MIME allow-list (jpg/jpeg/png/webp/gif/heic/heif). Bytes stored plaintext under gallery/{uuid}; size/sha256/dimensions server-computed. De-duplicated by sha256: identical bytes return 200 with the existing photo and duplicate=true (no new row). 413 when over the combined files+gallery quota."
+      description: "Image MIME allow-list (jpg/jpeg/png/webp/gif/heic/heif). Bytes stored plaintext under gallery/{uuid}; size/sha256/dimensions server-computed. An Android/Samsung Motion Photo (JPEG with an appended MP4) has its clip extracted and attached (motion=true). De-duplicated by sha256: identical bytes return 200 with the existing photo and duplicate=true (no new row). 413 when over the combined files+gallery quota."
       security: [ { bearerAuth: [] } ]
       requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
       responses:

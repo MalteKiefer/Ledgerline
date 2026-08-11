@@ -113,6 +113,33 @@ class GalleryFeatureTest extends TestCase
             ->assertHeader('Content-Type', 'video/mp4');
     }
 
+    public function test_embedded_motion_photo_is_extracted_on_upload(): void
+    {
+        $this->actingAs(User::factory()->create());
+        // Android/Samsung Motion Photo = a JPEG with an MP4 appended after it.
+        $still = UploadedFile::fake()->image('MOTION.jpg', 60, 60);
+        $jpeg = (string) file_get_contents($still->getRealPath());
+        $mp4 = pack('N', 9012).'ftyp'.'isom'.str_repeat("\0", 9000); // ISO-BMFF box after the JPEG
+        $combined = $jpeg.$mp4;
+
+        $res = $this->post(route('gallery.upload'), [
+            'file' => UploadedFile::fake()->createWithContent('MOTION.jpg', $combined),
+        ])->assertCreated();
+        $id = (int) $res->json('photo.id');
+
+        $this->assertTrue((bool) $res->json('photo.motion'));
+        $photo = GalleryPhoto::findOrFail($id);
+        Storage::disk(config('files.disk'))->assertExists((string) $photo->motion_path);
+        $this->get(route('gallery.motion', ['photo' => $id]))->assertOk();
+    }
+
+    public function test_plain_jpeg_gets_no_motion(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $id = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('plain.jpg', 40, 40)])->json('photo.id');
+        $this->assertFalse((bool) GalleryPhoto::findOrFail($id)->motion_path);
+    }
+
     public function test_owner_scope_blocks_cross_user_access(): void
     {
         $owner = User::factory()->create();
