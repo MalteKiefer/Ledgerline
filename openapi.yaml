@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.625.0
+  version: 1.626.0
   license:
     name: Proprietary
   description: >
@@ -6828,6 +6828,97 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /admin/gallery:
+    get:
+      tags: [Settings]
+      operationId: adminGalleryShow
+      summary: Gallery & ML settings + status (admin)
+      description: "ML feature flags/models/thresholds (stored overrides + effective values), sidecar reachability, worker queue depth + failed count, library counts, and the operator commands for restarting/updating the ML container (the app never runs docker itself)."
+      responses:
+        "200":
+          description: "Settings + status."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settings: { type: object, description: "Stored overrides; null = inherit env/config." }
+                  effective: { type: object, description: "Values actually in effect." }
+                  status: { type: object, properties: { sidecar: { type: string, enum: [up, down, disabled, unconfigured] }, queue: { type: object, properties: { pending: { type: integer }, failed: { type: integer } } }, counts: { type: object } } }
+                  operator: { type: object, additionalProperties: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Settings]
+      operationId: adminGalleryUpdate
+      summary: Update Gallery & ML settings (admin)
+      description: "Override ML flags/models/thresholds. null clears an override (inherit the env/config default). Applies to config('ml.*') at the next boot (cache busted immediately). Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ml_enabled: { type: [boolean, "null"] }
+                ml_face_enabled: { type: [boolean, "null"] }
+                ml_url: { type: [string, "null"] }
+                ml_clip_model: { type: [string, "null"] }
+                ml_face_model: { type: [string, "null"] }
+                ml_search_distance: { type: [number, "null"] }
+                ml_dup_distance: { type: [number, "null"] }
+                ml_face_min_score: { type: [number, "null"] }
+                ml_face_match_distance: { type: [number, "null"] }
+      responses:
+        "200": { description: "Saved.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/gallery/queue/clear:
+    post:
+      tags: [Settings]
+      operationId: adminGalleryQueueClear
+      summary: Clear pending worker jobs (admin)
+      description: "Removes the pending backlog for the default queue (does not kill the job currently running). Throttle 20/min."
+      responses:
+        "200": { description: "Cleared.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, pending: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/gallery/queue/retry:
+    post:
+      tags: [Settings]
+      operationId: adminGalleryQueueRetry
+      summary: Retry failed jobs (admin)
+      responses:
+        "200": { description: "Requeued.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/gallery/queue/flush:
+    post:
+      tags: [Settings]
+      operationId: adminGalleryQueueFlush
+      summary: Delete failed jobs (admin)
+      responses:
+        "200": { description: "Flushed.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /admin/gallery/reprocess:
+    post:
+      tags: [Settings]
+      operationId: adminGalleryReprocess
+      summary: Re-queue ML processing site-wide (admin)
+      description: "Re-queue face detection / CLIP embeddings / EXIF re-read across the whole library. Throttle 6/min."
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { scope: { type: string, enum: [faces, embeddings, exif, all], default: all } } } } } }
+      responses:
+        "200": { description: "Queued.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, queued: { type: integer }, scope: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /admin/system:

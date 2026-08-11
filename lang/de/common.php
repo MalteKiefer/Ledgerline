@@ -31,6 +31,7 @@ return [
     'open' => 'Öffnen',
     'saved' => 'Gespeichert',
     'error' => 'Etwas ist schiefgelaufen',
+    'copy' => 'Kopieren',
     'copied' => 'Kopiert',
     'confirm_delete' => 'Diesen Eintrag löschen? Kann nicht rückgängig gemacht werden.',
     'loading' => 'Wird geladen…',

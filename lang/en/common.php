@@ -31,6 +31,7 @@ return [
     'open' => 'Open',
     'saved' => 'Saved',
     'error' => 'Something went wrong',
+    'copy' => 'Copy',
     'copied' => 'Copied',
     'confirm_delete' => 'Delete this item? This cannot be undone.',
     'loading' => 'Loading…',

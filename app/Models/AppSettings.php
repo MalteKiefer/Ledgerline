@@ -38,6 +38,15 @@ use Illuminate\Database\Eloquent\Model;
     'export_notify_webhook',
     'files_max_upload_mb',
     'files_blob_orphan_grace_hours',
+    'ml_enabled',
+    'ml_face_enabled',
+    'ml_url',
+    'ml_clip_model',
+    'ml_face_model',
+    'ml_search_distance',
+    'ml_dup_distance',
+    'ml_face_min_score',
+    'ml_face_match_distance',
 ])]
 // Defense-in-depth: keep the operative-secret columns (SMTP / ntfy / webhook creds)
 // out of any wholesale toArray()/toJson() as well as the encrypted-cast at-rest layer.
@@ -80,6 +89,12 @@ class AppSettings extends Model
             'export_notify_webhook' => 'boolean',
             'files_max_upload_mb' => 'integer',
             'files_blob_orphan_grace_hours' => 'integer',
+            'ml_enabled' => 'boolean',
+            'ml_face_enabled' => 'boolean',
+            'ml_search_distance' => 'float',
+            'ml_dup_distance' => 'float',
+            'ml_face_min_score' => 'float',
+            'ml_face_match_distance' => 'float',
         ];
     }
 

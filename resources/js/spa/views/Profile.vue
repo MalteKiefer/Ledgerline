@@ -41,8 +41,6 @@ const sections = computed(() => [
   ...(auth.can('calendar') ? [{ to: 'profile.calendar', icon: 'calendar_month', label: 'messages.nav.calendar' }] : []),
   // Mail encryption-key manager only surfaces when the mail module is enabled.
   ...(auth.can('mail') ? [{ to: 'profile.mail-keys', icon: 'key', label: 'mail.keys.title' }] : []),
-  // Gallery & AI settings only surface when the gallery module is enabled.
-  ...(auth.can('gallery') ? [{ to: 'profile.gallery', icon: 'photo_library', label: 'gallery.settings_heading' }] : []),
   { to: 'profile.data', icon: 'database', label: 'account.hub_data_heading' },
 ]);
 
