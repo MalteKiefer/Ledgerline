@@ -230,7 +230,7 @@
         <!-- Right date scrubber (years + months) — fixed to the viewport so it
              stays visible while scrolling; entries distribute over the full
              height (no inner scrollbar). -->
-        <div v-if="showScrubber" class="fixed right-1 top-[4.75rem] bottom-3 z-10 hidden w-12 flex-col items-end justify-between overflow-hidden py-1 text-right md:flex">
+        <div v-if="showScrubber" class="fixed right-1 top-1/2 z-10 hidden h-[75vh] w-12 -translate-y-1/2 flex-col items-end justify-between overflow-hidden text-right md:flex">
           <template v-for="m in scrubber" :key="m.key">
             <div v-if="m.firstYear" class="w-full text-[11px] font-bold leading-none text-[var(--ll-fg)]">{{ m.year }}</div>
             <button class="w-full rounded px-1 text-[10px] leading-none text-[var(--ll-muted)] hover:bg-primary-500/10 hover:text-primary-600 dark:hover:text-primary-300" @click="scrollToMonth(m.key)">{{ m.label }}</button>
