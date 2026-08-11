@@ -508,4 +508,9 @@ return [
     'tfa_policy' => 'Two-factor policy',
     'force_2fa' => 'Require 2FA for everyone',
     'force_2fa_hint' => 'Users without 2FA are sent to set it up before using the app.',
+    'grp_overview' => 'Overview',
+    'grp_access' => 'Users & access',
+    'grp_security' => 'Security',
+    'grp_modules' => 'Modules & content',
+    'grp_system' => 'System & maintenance',
 ];

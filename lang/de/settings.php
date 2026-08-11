@@ -508,4 +508,9 @@ return [
     'tfa_policy' => 'Zwei-Faktor-Richtlinie',
     'force_2fa' => '2FA für alle erzwingen',
     'force_2fa_hint' => 'Nutzer ohne 2FA werden zur Einrichtung geführt, bevor sie die App nutzen.',
+    'grp_overview' => 'Übersicht',
+    'grp_access' => 'Nutzer & Zugang',
+    'grp_security' => 'Sicherheit',
+    'grp_modules' => 'Module & Inhalte',
+    'grp_system' => 'System & Wartung',
 ];

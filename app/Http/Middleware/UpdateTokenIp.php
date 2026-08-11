@@ -37,8 +37,8 @@ class UpdateTokenIp
             // parse it explicitly.
             $graceMinutes = config('devices.wipe_grace_minutes', 15);
             $graceMinutes = is_numeric($graceMinutes) ? (int) $graceMinutes : 15;
-            if ($token->wipe_requested_at !== null
-                && Carbon::parse($token->wipe_requested_at)->lte(now()->subMinutes($graceMinutes))) {
+            if ($token->wipe_requested_at !== null && $token->wipe_requested_at !== false
+                && Carbon::parse((string) $token->wipe_requested_at)->lte(now()->subMinutes($graceMinutes))) {
                 DeviceAudit::record($token, 'device.wipe_finalized', [
                     'wipe_requested_at' => Carbon::parse((string) $token->wipe_requested_at)->toIso8601String(),
                     'grace_minutes' => $graceMinutes,

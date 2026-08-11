@@ -94,7 +94,10 @@ final class VideoProcessor
      */
     private static function parseCreationTime(array $tags): ?string
     {
-        foreach (['creation_time', 'com.apple.quicktime.creationdate', 'date'] as $key) {
+        // Prefer the QuickTime creation date (the true, local capture time with a
+        // timezone offset) over creation_time, which on Apple/edited videos is
+        // often the later UTC mux/copy date — not when it was filmed.
+        foreach (['com.apple.quicktime.creationdate', 'creation_time', 'date'] as $key) {
             $raw = $tags[$key] ?? null;
             if (! is_string($raw) || trim($raw) === '') {
                 continue;
