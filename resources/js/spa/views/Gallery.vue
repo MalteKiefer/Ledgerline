@@ -14,8 +14,8 @@
     <Card body-class="p-0">
       <!-- Toolbar -->
       <div class="flex items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2.5">
-        <h2 class="text-sm font-semibold">{{ showTrash ? t('gallery.trash') : t('messages.nav.gallery') }}</h2>
-        <div v-if="!showTrash" class="relative ml-3 hidden sm:block">
+        <h2 class="text-sm font-semibold">{{ showTrash ? t('gallery.trash') : (showPeople ? t('gallery.people') : t('messages.nav.gallery')) }}</h2>
+        <div v-if="!showTrash && !showPeople" class="relative ml-3 hidden sm:block">
           <Icon name="search" :size="16" class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--ll-muted)]" />
           <input
             v-model="searchQuery" type="search" :placeholder="t('gallery.search_ph')"
@@ -25,20 +25,54 @@
           <button v-if="searchActive" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-[var(--ll-muted)] hover:text-[var(--ll-fg)]" @click="clearSearch"><Icon name="close" :size="15" /></button>
         </div>
         <div class="ml-auto flex items-center gap-1">
-          <template v-if="!showTrash">
+          <template v-if="!showTrash && !showPeople">
             <Btn :variant="viewMode === 'grid' ? 'solid' : 'ghost'" size="sm" icon="grid_view" @click="setView('grid')">{{ t('gallery.view_grid') }}</Btn>
             <Btn :variant="viewMode === 'map' ? 'solid' : 'ghost'" size="sm" icon="map" @click="setView('map')">{{ t('gallery.view_map') }}</Btn>
           </template>
           <Btn variant="solid" size="sm" icon="upload" @click="pick">{{ t('gallery.upload') }}</Btn>
           <input ref="fileInput" type="file" accept="image/*" multiple class="hidden" @change="onPick">
           <Btn v-if="showTrash && trashPhotos.length" variant="ghost" size="sm" icon="delete" class="text-red-600" @click="onEmpty">{{ t('gallery.empty_trash') }}</Btn>
-          <Btn v-if="!showTrash" :variant="showDupes ? 'solid' : 'ghost'" size="sm" icon="content_copy" @click="showDupes ? closeDupes() : openDupes()">{{ t('gallery.duplicates') }}</Btn>
-          <Btn variant="ghost" size="sm" :icon="showTrash ? 'photo_library' : 'delete'" @click="toggleTrash">{{ showTrash ? t('gallery.back') : t('gallery.trash') }}</Btn>
+          <Btn v-if="!showTrash" :variant="showPeople ? 'solid' : 'ghost'" size="sm" icon="group" @click="showPeople ? closePeople() : openPeople()">{{ t('gallery.people') }}</Btn>
+          <Btn v-if="!showTrash && !showPeople" :variant="showDupes ? 'solid' : 'ghost'" size="sm" icon="content_copy" @click="showDupes ? closeDupes() : openDupes()">{{ t('gallery.duplicates') }}</Btn>
+          <Btn v-if="!showPeople" variant="ghost" size="sm" :icon="showTrash ? 'photo_library' : 'delete'" @click="toggleTrash">{{ showTrash ? t('gallery.back') : t('gallery.trash') }}</Btn>
+        </div>
+      </div>
+
+      <!-- People (face clusters) -->
+      <div v-if="peopleGrid" class="p-3">
+        <div v-if="!peopleList.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.people_none') }}</div>
+        <div v-else class="grid grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-9">
+          <button v-for="p in peopleList" :key="p.id" class="group flex flex-col items-center gap-1.5" @click="openPerson(p)">
+            <div class="aspect-square w-full overflow-hidden rounded-full bg-black/[0.06] ring-1 ring-[var(--ll-border)] dark:bg-white/10">
+              <img v-if="p.cover_face_id" :src="g.faceCropUrl(p.cover_face_id)" loading="lazy" class="h-full w-full object-cover transition group-hover:scale-105">
+              <div v-else class="flex h-full w-full items-center justify-center"><Icon name="person" :size="28" class="opacity-40" /></div>
+            </div>
+            <div class="w-full truncate text-center text-xs font-medium" :class="p.name ? '' : 'italic text-[var(--ll-muted)]'">{{ personLabel(p) }}</div>
+            <div class="text-[10px] tabular-nums text-[var(--ll-muted)]">{{ p.count }}</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Person header (browsing one person's photos) -->
+      <div v-if="showPeople && personView" class="flex items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2">
+        <Btn variant="ghost" size="sm" icon="arrow_back" @click="backToPeople">{{ t('gallery.people') }}</Btn>
+        <span class="text-sm font-semibold" :class="personView.name ? '' : 'italic text-[var(--ll-muted)]'">{{ personLabel(personView) }}</span>
+        <span class="text-xs text-[var(--ll-muted)]">· {{ personView.count }}</span>
+        <div class="ml-auto flex items-center gap-1">
+          <Btn variant="ghost" size="sm" icon="edit" @click="renamePerson">{{ t('gallery.person_rename') }}</Btn>
+          <div class="relative">
+            <Btn variant="ghost" size="sm" icon="merge" @click="mergeMenu = !mergeMenu">{{ t('gallery.person_merge') }}</Btn>
+            <div v-if="mergeMenu" class="absolute right-0 z-20 mt-1 max-h-64 w-52 overflow-y-auto rounded-lg border border-[var(--ll-border)] bg-[var(--ll-elevated)] py-1 shadow-lg">
+              <div v-if="peopleList.filter((x) => x.id !== personView!.id).length === 0" class="px-3 py-2 text-xs text-[var(--ll-muted)]">{{ t('gallery.person_merge_none') }}</div>
+              <button v-for="x in peopleList.filter((x) => x.id !== personView!.id)" :key="x.id" class="block w-full truncate px-3 py-1.5 text-left text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="doMerge(x)">{{ personLabel(x) }}</button>
+            </div>
+          </div>
+          <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="deletePerson">{{ t('common.delete') }}</Btn>
         </div>
       </div>
 
       <!-- Album chips -->
-      <div v-if="!showTrash && !showDupes && viewMode === 'grid'" class="flex flex-wrap items-center gap-1.5 border-b border-[var(--ll-border)] px-4 py-2">
+      <div v-if="!showTrash && !showDupes && !showPeople && viewMode === 'grid'" class="flex flex-wrap items-center gap-1.5 border-b border-[var(--ll-border)] px-4 py-2">
         <button class="rounded-full px-3 py-1 text-xs font-medium" :class="albumId === null ? 'bg-primary-500 text-white' : 'bg-black/[0.05] dark:bg-white/10'" @click="selectAlbum(null)">{{ t('gallery.all_photos') }}</button>
         <button
           v-for="a in g.albums" :key="a.id"
@@ -55,7 +89,7 @@
       </div>
 
       <!-- Selection bar -->
-      <div v-if="!showTrash && !showDupes && viewMode === 'grid' && selected.size" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2 text-sm">
+      <div v-if="!showTrash && !showDupes && !peopleGrid && viewMode === 'grid' && selected.size" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2 text-sm">
         <span class="font-medium">{{ selected.size }} {{ t('gallery.selected') }}</span>
         <div class="ml-auto flex items-center gap-1">
           <div class="relative">
@@ -93,13 +127,13 @@
       </div>
 
       <!-- Map view -->
-      <div v-show="!showTrash && !showDupes && viewMode === 'map'" class="p-3">
+      <div v-show="!showTrash && !showDupes && !showPeople && viewMode === 'map'" class="p-3">
         <div v-if="!mapPhotos.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.no_located') }}</div>
         <div v-show="mapPhotos.length" ref="mapEl" class="h-[calc(100vh-230px)] w-full overflow-hidden rounded-lg border border-[var(--ll-border)]" />
       </div>
 
       <!-- Grid view -->
-      <div v-if="(viewMode === 'grid' || showTrash) && !showDupes" class="p-3">
+      <div v-if="(viewMode === 'grid' || showTrash) && !showDupes && !peopleGrid" class="p-3">
         <div v-if="!current.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ showTrash ? t('gallery.trash_empty') : (searchActive ? t('gallery.search_none') : t('gallery.empty')) }}</div>
         <div v-else class="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
           <template v-for="(p, i) in current" :key="p.id">
@@ -198,6 +232,14 @@
         <div v-else-if="viewerPhoto" class="flex flex-col items-center gap-2 text-white/70">
           <Icon name="progress_activity" :size="32" class="animate-spin" />
           <span class="text-sm">{{ t('gallery.processing') }}</span>
+        </div>
+        <!-- Detected face chips -->
+        <div v-if="viewerFaces.length" class="absolute inset-x-0 bottom-16 flex flex-wrap items-center gap-1.5 px-6">
+          <span v-for="f in viewerFaces" :key="f.id" class="group inline-flex items-center gap-1 rounded-full bg-black/50 py-0.5 pl-0.5 pr-2 text-xs text-white backdrop-blur">
+            <img v-if="f.crop" :src="g.faceCropUrl(f.id)" class="h-6 w-6 rounded-full object-cover">
+            <button class="max-w-[10rem] truncate hover:underline" @click="assignFaceChip(f)">{{ f.person_name ?? t('gallery.face_unnamed') }}</button>
+            <button class="text-white/60 hover:text-red-400" :title="t('gallery.face_hide')" @click="hideFaceChip(f)"><Icon name="close" :size="13" /></button>
+          </span>
         </div>
         <div class="absolute inset-x-0 bottom-0 flex items-center gap-3 bg-gradient-to-t from-black/70 to-transparent px-6 py-4 text-sm text-white">
           <div class="min-w-0 flex-1">
@@ -325,7 +367,7 @@ import 'leaflet/dist/leaflet.css';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, Icon } from '@spa/ui';
 import LocationField from '@spa/components/LocationField.vue';
-import { useGalleryStore, type Photo, type Album, type PhotoEdit } from '@spa/stores/gallery';
+import { useGalleryStore, type Photo, type Album, type PhotoEdit, type Person, type Face } from '@spa/stores/gallery';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
@@ -352,6 +394,14 @@ const searchActive = ref(false);
 const searchResults = ref<Photo[]>([]);
 const showDupes = ref(false);
 const dupeGroups = ref<{ photos: Photo[] }[]>([]);
+
+// People / faces (opt-in face recognition)
+const showPeople = ref(false);
+const peopleList = ref<Person[]>([]);
+const personView = ref<Person | null>(null);
+const peopleGrid = computed(() => showPeople.value && !personView.value);
+const mergeMenu = ref(false);
+const viewerFaces = ref<Face[]>([]);
 
 const current = computed<Row[]>(() => {
   if (showTrash.value) return trashPhotos.value as Row[];
@@ -383,7 +433,7 @@ onMounted(() => {
   // Thumbnails are generated by a worker after upload; while any are still
   // pending, poll so the grid swaps the spinner for the image once ready.
   thumbPoll = setInterval(() => {
-    if (!showTrash.value && !searchActive.value && !showDupes.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb || p.status === 'processing')) void refresh();
+    if (!showTrash.value && !searchActive.value && !showDupes.value && !showPeople.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb || p.status === 'processing')) void refresh();
   }, 4000);
 });
 onUnmounted(() => {
@@ -391,7 +441,7 @@ onUnmounted(() => {
   if (thumbPoll) clearInterval(thumbPoll);
   destroyMap();
 });
-function onFocus() { if (!document.hidden && !up.active && !showTrash.value && !searchActive.value) void g.load(albumId.value ?? undefined); }
+function onFocus() { if (!document.hidden && !up.active && !showTrash.value && !searchActive.value && !showPeople.value) void g.load(albumId.value ?? undefined); }
 
 function dayLabel(iso: string | null): string {
   if (!iso) return '';
@@ -494,6 +544,53 @@ async function trashDupeGroup(gi: number) {
 async function trashDupeOne(gi: number, id: number) {
   try { await g.bulkDestroy([id]); dupeGroups.value = await g.duplicates(); await refresh(); } catch { error(t('common.error')); }
 }
+
+// ---- People / faces (opt-in face recognition) ----
+async function openPeople() {
+  showPeople.value = true; personView.value = null; clearSearch(); closeDupes(); clearSelection(); viewer.value = -1;
+  try { peopleList.value = await g.people(); } catch { error(t('common.error')); }
+}
+function closePeople() { showPeople.value = false; personView.value = null; peopleList.value = []; mergeMenu.value = false; }
+async function openPerson(p: Person) {
+  personView.value = p; mergeMenu.value = false;
+  try { await g.loadByPerson(p.id); } catch { error(t('common.error')); }
+}
+function backToPeople() { personView.value = null; mergeMenu.value = false; }
+async function renamePerson() {
+  const p = personView.value; if (!p) return;
+  const name = await promptAsk(t('gallery.person_name'), { value: p.name ?? '' });
+  if (name === null) return;
+  try { const upd = await g.renamePerson(p.id, name.trim() || null); personView.value = upd; success(t('common.saved')); } catch { error(t('common.error')); }
+}
+async function deletePerson() {
+  const p = personView.value; if (!p) return;
+  if (!(await confirmAsk(t('gallery.person_delete_confirm')))) return;
+  try { await g.deletePerson(p.id); success(t('common.saved')); closePersonToList(); } catch { error(t('common.error')); }
+}
+async function closePersonToList() { personView.value = null; peopleList.value = await g.people(); }
+async function doMerge(into: Person) {
+  const from = personView.value; if (!from || into.id === from.id) return;
+  try { await g.mergePeople(from.id, into.id); success(t('common.saved')); mergeMenu.value = false; personView.value = null; peopleList.value = await g.people(); }
+  catch { error(t('common.error')); }
+}
+function personLabel(p: Person): string { return p.name ?? t('gallery.person_unknown'); }
+
+// Lightbox face chips
+async function loadViewerFaces() {
+  const p = viewerPhoto.value;
+  viewerFaces.value = [];
+  if (!p || p.media_type !== 'image') return;
+  try { viewerFaces.value = await g.photoFaces(p.id); } catch { /* face ML off → no chips */ }
+}
+async function assignFaceChip(f: Face) {
+  const name = await promptAsk(t('gallery.face_assign_name'), { value: f.person_name ?? '' });
+  if (name === null || !name.trim()) return;
+  try { const upd = await g.assignFace(f.id, { name: name.trim() }); Object.assign(f, upd); success(t('common.saved')); } catch { error(t('common.error')); }
+}
+async function hideFaceChip(f: Face) {
+  try { await g.hideFace(f.id); viewerFaces.value = viewerFaces.value.filter((x) => x.id !== f.id); } catch { error(t('common.error')); }
+}
+watch(viewer, () => { void loadViewerFaces(); });
 
 // ---- Multi-select ----
 function selectAlbum(id: number | null) { albumId.value = id; clearSelection(); clearSearch(); void refresh(); }
