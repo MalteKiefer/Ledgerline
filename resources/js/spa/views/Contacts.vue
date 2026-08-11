@@ -42,6 +42,7 @@
             <Icon name="contacts" :size="20" :class="bookId === b.id ? '' : 'text-[var(--ll-muted)]'" />
             <span class="truncate">{{ b.name }}</span>
           </button>
+          <Btn variant="ghost" size="xs" icon="share" :title="t('contacts.ui.share_book')" class="opacity-0 group-hover:opacity-100" @click.stop="shareBook(b)" />
           <Btn variant="ghost" size="xs" icon="edit" :title="t('common.rename')" class="opacity-0 group-hover:opacity-100" @click.stop="renameBook(b)" />
           <Btn v-if="c.books.length > 1" variant="ghost" size="xs" icon="delete" :title="t('common.delete')" class="mr-1 opacity-0 group-hover:opacity-100" @click.stop="removeBook(b)" />
         </div>
@@ -63,6 +64,14 @@
         </div>
         <button class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-[var(--ll-muted)] hover:bg-black/[0.04] dark:hover:bg-white/5" @click="newGroup">
           <Icon name="add" :size="20" />{{ t('contacts.ui.new_group') }}
+        </button>
+
+        <div class="px-2 pb-1 pt-3 text-[0.66rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('contacts.ui.sharing') }}</div>
+        <button class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5" @click="openSharedWithMe">
+          <Icon name="folder_shared" :size="20" class="text-[var(--ll-muted)]" />{{ t('contacts.ui.shared_with_me') }}
+        </button>
+        <button class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5" @click="openBirthdayFeed">
+          <Icon name="cake" :size="20" class="text-[var(--ll-muted)]" />{{ t('contacts.ui.birthday_feed') }}
         </button>
       </nav>
     </Card>
@@ -375,6 +384,40 @@
       <Btn variant="ghost" @click="dupDialog = false">{{ t('common.close') }}</Btn>
     </template>
   </Modal>
+
+  <!-- Shared address books (recipient) -->
+  <Modal v-model="sharedM.open" :title="sharedM.view ? sharedM.view.name ?? t('contacts.ui.shared_with_me') : t('contacts.ui.shared_with_me')" width="560px">
+    <div v-if="!sharedM.view">
+      <p v-if="!sharedM.list.length" class="py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('contacts.ui.shared_none') }}</p>
+      <ul v-else class="divide-y divide-[var(--ll-border)]">
+        <li v-for="s in sharedM.list" :key="s.id"><button class="flex w-full items-center justify-between gap-3 py-2.5 text-left text-sm hover:opacity-80" @click="openSharedBook(s.id)"><span class="font-medium">{{ s.name }}</span><span class="text-xs text-[var(--ll-muted)]">{{ s.owner }} · {{ s.count }}</span></button></li>
+      </ul>
+    </div>
+    <div v-else>
+      <Btn variant="ghost" size="sm" icon="arrow_back" class="mb-2" @click="sharedM.view = null">{{ t('common.back') }}</Btn>
+      <ul class="divide-y divide-[var(--ll-border)]">
+        <li v-for="ct in sharedM.contacts" :key="ct.id" class="py-2">
+          <div class="text-sm font-medium">{{ ct.fn }}</div>
+          <div v-if="ct.org" class="text-xs text-[var(--ll-muted)]">{{ ct.org }}</div>
+          <div v-if="ct.emails.length" class="text-xs text-[var(--ll-muted)]">{{ ct.emails.join(', ') }}</div>
+          <div v-if="ct.phones.length" class="text-xs text-[var(--ll-muted)]">{{ ct.phones.join(', ') }}</div>
+        </li>
+      </ul>
+    </div>
+  </Modal>
+
+  <!-- Birthday feed (subscribeable .ics) -->
+  <Modal v-model="feedM.open" :title="t('contacts.ui.birthday_feed')" width="480px">
+    <p class="mb-3 text-sm text-[var(--ll-muted)]">{{ t('contacts.ui.birthday_feed_hint') }}</p>
+    <template v-if="feedM.url">
+      <div class="mb-3 flex gap-2">
+        <input :value="feedM.url" readonly class="min-w-0 flex-1 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-bg)] px-2 py-1.5 text-xs">
+        <Btn variant="soft" size="sm" icon="content_copy" @click="copyFeed">{{ t('common.copy') }}</Btn>
+      </div>
+      <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="disableFeed">{{ t('contacts.ui.disable') }}</Btn>
+    </template>
+    <Btn v-else variant="soft" icon="link" @click="enableFeed">{{ t('contacts.ui.enable_feed') }}</Btn>
+  </Modal>
 </template>
 
 <script setup lang="ts">
@@ -386,6 +429,7 @@ import { useToast } from '@spa/composables/useToast';
 import { useAuthStore } from '@spa/stores/auth';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
+import { ApiError } from '@spa/api/client';
 
 // Presentational-only: maps the existing Vuetify-style color name (still returned
 // by color()/dupColor() below) onto an avatar tint. No behavior/semantics changed.
@@ -584,6 +628,32 @@ async function save() {
 }
 
 async function newBook() { const name = await promptAsk(t('contacts.ui.new_book')); if (name) { await c.createBook(name); await c.load(); } }
+
+// --- Sharing + birthday feed ---
+async function shareBook(b: AddressBook) {
+  const email = await promptAsk(t('contacts.ui.share_book_prompt', { book: b.name }), { placeholder: t('common.email') });
+  if (!email) return;
+  try { await c.shareBook(email, b.id); success(t('common.saved')); }
+  catch (e) { error(e instanceof ApiError && e.status === 422 ? t('contacts.ui.recipient_invalid') : t('common.error')); }
+}
+
+const sharedM = reactive<{ open: boolean; list: { id: number; name: string | null; owner: string | null; count: number }[]; view: { id: number; name: string | null } | null; contacts: { id: string; fn: string; org: string | null; emails: string[]; phones: string[] }[] }>({ open: false, list: [], view: null, contacts: [] });
+async function openSharedWithMe() {
+  sharedM.open = true; sharedM.view = null; sharedM.contacts = [];
+  try { sharedM.list = await c.sharedWithMe(); } catch { error(t('common.error')); }
+}
+async function openSharedBook(id: number) {
+  try { const r = await c.browseShared(id); sharedM.view = { id, name: r.name }; sharedM.contacts = r.contacts; } catch { error(t('common.error')); }
+}
+
+const feedM = reactive<{ open: boolean; url: string | null }>({ open: false, url: null });
+async function openBirthdayFeed() {
+  feedM.open = true;
+  try { feedM.url = (await c.birthdayFeed()).url; } catch { error(t('common.error')); }
+}
+async function enableFeed() { try { feedM.url = (await c.enableBirthdayFeed()).url; } catch { error(t('common.error')); } }
+async function disableFeed() { try { await c.disableBirthdayFeed(); feedM.url = null; } catch { error(t('common.error')); } }
+async function copyFeed() { if (!feedM.url) return; try { await navigator.clipboard.writeText(feedM.url); success(t('common.copied')); } catch { error(t('common.error')); } }
 async function renameBook(b: AddressBook) {
   const name = await promptAsk(t('common.rename'), { value: b.name });
   if (!name || name === b.name) return;

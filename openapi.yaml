@@ -2194,6 +2194,96 @@ paths:
       responses:
         "200": { description: VCF file., content: { text/vcard: { schema: { type: string } } } }
         "401": { $ref: '#/components/responses/Unauthorized' }
+  /contacts/shares:
+    get:
+      tags: [Contacts]
+      operationId: contactsShares
+      summary: List the current user's address-book shares (owner side)
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Owner's shares., content: { application/json: { schema: { type: object, properties: { shares: { type: array, items: { type: object, properties: { id: { type: integer }, book_id: { type: string }, book: { type: [string, "null"] }, recipient: { type: [string, "null"] } } } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Contacts]
+      operationId: contactsShareStore
+      summary: Share an address book with a registered user (viewer, by email)
+      description: "Unified 422 for unknown recipient AND self-share (no enumeration)."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [email, book_id], properties: { email: { type: string, format: email }, book_id: { type: string } } } } } }
+      responses:
+        "201": { description: Shared. }
+        "200": { description: Already shared. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: Unknown recipient or self-share. }
+  /contacts/shares/{share}:
+    delete:
+      tags: [Contacts]
+      operationId: contactsShareDestroy
+      summary: Revoke an address-book share
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Revoked. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /contacts/shared-with-me:
+    get:
+      tags: [Contacts]
+      operationId: contactsSharedWithMe
+      summary: Address books shared TO the current user
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Shares with me., content: { application/json: { schema: { type: object, properties: { shares: { type: array, items: { type: object, properties: { id: { type: integer }, name: { type: [string, "null"] }, owner: { type: [string, "null"] }, count: { type: integer } } } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /contacts/shared-with-me/{share}:
+    get:
+      tags: [Contacts]
+      operationId: contactsSharedBrowse
+      summary: Read-only contacts of a shared address book
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Contacts., content: { application/json: { schema: { type: object, properties: { name: { type: [string, "null"] }, contacts: { type: array, items: { type: object } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /contacts/birthday-feed:
+    get:
+      tags: [Contacts]
+      operationId: contactsBirthdayFeed
+      summary: Birthday .ics feed status + subscribe URL
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Status., content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean }, url: { type: [string, "null"] } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Contacts]
+      operationId: contactsBirthdayFeedEnable
+      summary: Enable (or rotate) the birthday feed token
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Enabled., content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean }, url: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      tags: [Contacts]
+      operationId: contactsBirthdayFeedDisable
+      summary: Disable the birthday feed
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Disabled. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /contacts/birthdays/{token}.ics:
+    get:
+      tags: [Contacts]
+      operationId: contactsBirthdaysIcs
+      summary: Public subscribeable birthday calendar (token = capability)
+      description: "Unauthenticated iCalendar feed of the owner's contacts' birthdays (yearly all-day events). The path lives at the app root (not under /api/v1)."
+      security: []
+      servers: [ { url: / } ]
+      parameters: [ { name: token, in: path, required: true, schema: { type: string } } ]
+      responses:
+        "200": { description: text/calendar feed. }
+        "404": { description: Unknown/disabled token. }
   /contacts/suggest:
     get:
       tags: [Contacts]

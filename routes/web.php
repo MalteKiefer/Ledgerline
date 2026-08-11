@@ -12,6 +12,7 @@ use App\Http\Controllers\CalendarTodoController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactDuplicateController;
 use App\Http\Controllers\ContactGroupController;
+use App\Http\Controllers\ContactShareController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
@@ -91,6 +92,9 @@ Route::prefix('file-share/{token}')->name('public.file-share.')->group(function 
     Route::get('/manifest', [PublicFileShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
     Route::get('/file/{file}/raw', [PublicFileShareController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('file.raw');
 });
+
+// Public, unauthenticated subscribeable birthday .ics feed (token = capability).
+Route::get('/contacts/birthdays/{token}.ics', [ContactShareController::class, 'ics'])->middleware('throttle:120,1')->name('public.contacts.birthdays');
 
 // Public, unauthenticated gallery album share links (optional password gate).
 Route::prefix('gallery-share/{token}')->name('public.gallery-share.')->group(function (): void {
@@ -367,6 +371,15 @@ Route::middleware('auth')->group(function (): void {
         // The contacts index/create/duplicates/view/edit page renders are served
         // by the SPA (see the catch-all); the data endpoints remain here.
         Route::get('/contacts/data', [ContactController::class, 'data'])->name('contacts.data');
+        // Sharing (address books) + birthday feed management
+        Route::get('/contacts/shares', [ContactShareController::class, 'index'])->name('contacts.shares');
+        Route::post('/contacts/shares', [ContactShareController::class, 'store'])->middleware('throttle:60,1')->name('contacts.shares.store');
+        Route::delete('/contacts/shares/{share}', [ContactShareController::class, 'destroy'])->whereNumber('share')->middleware('throttle:60,1')->name('contacts.shares.destroy');
+        Route::get('/contacts/shared-with-me', [ContactShareController::class, 'sharedWithMe'])->name('contacts.shared.index');
+        Route::get('/contacts/shared-with-me/{share}', [ContactShareController::class, 'browse'])->whereNumber('share')->name('contacts.shared.browse');
+        Route::get('/contacts/birthday-feed', [ContactShareController::class, 'feed'])->name('contacts.feed');
+        Route::post('/contacts/birthday-feed', [ContactShareController::class, 'enableFeed'])->middleware('throttle:30,1')->name('contacts.feed.enable');
+        Route::delete('/contacts/birthday-feed', [ContactShareController::class, 'disableFeed'])->middleware('throttle:30,1')->name('contacts.feed.disable');
         Route::get('/contacts/suggest', [ContactController::class, 'suggest'])->name('contacts.suggest');
         Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
         Route::post('/contacts/import', [ContactController::class, 'import'])->middleware('throttle:60,1')->name('contacts.import');
