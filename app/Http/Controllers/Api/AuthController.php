@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AppSettings;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Auth\Pairing;
@@ -144,6 +145,9 @@ class AuthController extends Controller
             'has_avatar' => is_string($user->avatar) && $user->avatar !== '',
             // Whether TOTP 2FA is confirmed — lets the SPA show the correct 2FA state.
             'two_factor' => $user->two_factor_confirmed_at !== null,
+            // Workspace enforces 2FA and this user hasn't enrolled → the SPA
+            // redirects to the 2FA setup screen.
+            'two_factor_required' => $user->two_factor_confirmed_at === null && (bool) AppSettings::current()->force_2fa,
             // Non-secret display preferences (units + 12/24h clock). Mobile applies
             // these to its own rendering; set via POST /api/v1/preferences.
             'preferences' => UserSetting::for((int) $user->id)->displayPrefs(),

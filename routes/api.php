@@ -71,6 +71,7 @@ use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\SharedFolderController;
 use App\Http\Controllers\SharedWithMeController;
 use App\Http\Controllers\ThemeController;
+use App\Http\Middleware\EnsureTwoFactorEnrolled;
 use App\Http\Middleware\UpdateTokenIp;
 use Illuminate\Support\Facades\Route;
 
@@ -125,7 +126,7 @@ Route::prefix('v1')->group(function (): void {
 
     // Enforce the scoped 'device' ability minted at pairing (legacy '*' tokens
     // still pass) so a token's declared scope is actually checked.
-    Route::middleware(['auth:sanctum', 'abilities:device', UpdateTokenIp::class])->group(function (): void {
+    Route::middleware(['auth:sanctum', 'abilities:device', UpdateTokenIp::class, EnsureTwoFactorEnrolled::class])->group(function (): void {
         Route::get('/me', [AuthController::class, 'me'])->name('api.me');
         Route::post('/auth/logout', [SpaAuthController::class, 'logout'])->name('api.auth.logout');
         // Streams the signed-in user's stored avatar (same-origin, non-secret);

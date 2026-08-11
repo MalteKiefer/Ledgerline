@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.630.0
+  version: 1.631.0
   license:
     name: Proprietary
   description: >
@@ -387,6 +387,18 @@ components:
       properties:
         files_max_upload_mb: { type: integer }
         files_blob_orphan_grace_hours: { type: integer }
+
+    SecurityPolicy:
+      type: object
+      description: "Workspace security policy: device cap, password policy and force-2FA."
+      properties:
+        max_connected_devices: { type: integer }
+        pw_min_length: { type: [integer, "null"] }
+        pw_require_mixed_case: { type: boolean }
+        pw_require_numbers: { type: boolean }
+        pw_require_symbols: { type: boolean }
+        pw_check_breaches: { type: boolean }
+        force_2fa: { type: boolean }
 
     SystemOverview:
       type: object
@@ -6772,17 +6784,17 @@ paths:
     get:
       tags: [Settings]
       operationId: adminSecurityShow
-      summary: Device policy (admin)
-      description: "The workspace paired-device cap."
+      summary: Security policy (admin)
+      description: "Workspace paired-device cap, password policy (min length + required classes + breach check) and the force-2FA toggle."
       responses:
-        "200": { description: "Policy.", content: { application/json: { schema: { type: object, required: [max_connected_devices], properties: { max_connected_devices: { type: integer } } } } } }
+        "200": { description: "Policy.", content: { application/json: { schema: { $ref: "#/components/schemas/SecurityPolicy" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
     put:
       tags: [Settings]
       operationId: adminSecurityUpdate
-      summary: Update device policy (admin)
-      description: "Sets the paired-device cap (1–100). Audits the diff. Throttle 60/min."
+      summary: Update security policy (admin)
+      description: "Sets the device cap (1–100) plus the password policy + force-2FA. Audits the diff. Throttle 60/min."
       requestBody:
         required: true
         content:
@@ -6792,8 +6804,14 @@ paths:
               required: [max_connected_devices]
               properties:
                 max_connected_devices: { type: integer, minimum: 1, maximum: 100 }
+                pw_min_length: { type: [integer, "null"], minimum: 8, maximum: 128 }
+                pw_require_mixed_case: { type: boolean }
+                pw_require_numbers: { type: boolean }
+                pw_require_symbols: { type: boolean }
+                pw_check_breaches: { type: boolean }
+                force_2fa: { type: boolean }
       responses:
-        "200": { description: "Updated policy.", content: { application/json: { schema: { type: object, required: [max_connected_devices], properties: { max_connected_devices: { type: integer } } } } } }
+        "200": { description: "Updated policy.", content: { application/json: { schema: { $ref: "#/components/schemas/SecurityPolicy" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }

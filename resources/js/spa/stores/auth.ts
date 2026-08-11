@@ -11,6 +11,7 @@ export interface MeUser {
   modules: string[];
   has_avatar: boolean;
   two_factor?: boolean;
+  two_factor_required?: boolean;
   preferences?: Record<string, unknown>;
 }
 
