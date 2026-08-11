@@ -222,10 +222,10 @@
 
     <!-- Lightbox -->
     <Teleport to="body">
-      <div v-if="viewer >= 0" class="fixed inset-0 z-[2100] flex items-center justify-center bg-black/90" @click.self="viewer = -1">
-        <button class="absolute right-4 top-4 rounded-full p-2 text-white/80 hover:bg-white/10" @click="viewer = -1"><Icon name="close" :size="24" /></button>
+      <div v-if="viewer >= 0" class="fixed inset-0 z-[2100] flex items-center justify-center bg-black/90 transition-[padding]" :class="showInfo ? 'sm:pr-[24rem]' : ''" @click.self="viewer = -1">
+        <button class="absolute top-4 z-30 rounded-full p-2 text-white/80 hover:bg-white/10" :class="showInfo ? 'right-4 sm:right-[25rem]' : 'right-4'" @click="viewer = -1"><Icon name="close" :size="24" /></button>
         <button class="absolute left-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/80 hover:bg-white/10" @click="step(-1)"><Icon name="chevron_left" :size="32" /></button>
-        <button class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/80 hover:bg-white/10" @click="step(1)"><Icon name="chevron_right" :size="32" /></button>
+        <button class="absolute top-1/2 -translate-y-1/2 rounded-full p-2 text-white/80 hover:bg-white/10" :class="showInfo ? 'right-3 sm:right-[24.5rem]' : 'right-3'" @click="step(1)"><Icon name="chevron_right" :size="32" /></button>
         <video v-if="viewerPhoto && viewerPhoto.media_type === 'video'" :src="g.playUrl(viewerPhoto.id)" autoplay controls playsinline class="max-h-[92vh] max-w-[92vw] object-contain" />
         <video v-else-if="viewerPhoto && motionPlaying && viewerPhoto.motion" :src="g.motionUrl(viewerPhoto.id)" autoplay loop controls playsinline class="max-h-[92vh] max-w-[92vw] object-contain" />
         <img v-else-if="viewerPhoto && viewerPhoto.preview" :src="g.previewUrl(viewerPhoto.id)" class="max-h-[92vh] max-w-[92vw] object-contain">
@@ -254,6 +254,9 @@
           <button v-if="viewerPhoto?.motion" class="rounded-full p-2 hover:bg-white/10" :class="motionPlaying ? 'text-primary-300' : ''" :title="t('gallery.play_motion')" @click="motionPlaying = !motionPlaying">
             <Icon name="motion_photos_on" :size="22" />
           </button>
+          <button class="rounded-full p-2 hover:bg-white/10" :class="showInfo ? 'text-primary-300' : ''" :title="t('gallery.info')" @click="toggleInfo">
+            <Icon name="info" :size="22" />
+          </button>
           <button class="rounded-full p-2 hover:bg-white/10" :title="t('gallery.favorite')" @click="onFav">
             <Icon :name="viewerPhoto?.favorite ? 'star' : 'star_border'" :size="22" :class="viewerPhoto?.favorite ? 'text-amber-400' : ''" />
           </button>
@@ -267,6 +270,51 @@
             </div>
           </div>
           <button class="rounded-full p-2 text-red-400 hover:bg-white/10" :title="t('common.delete')" @click="onDelete"><Icon name="delete" :size="22" /></button>
+        </div>
+
+        <!-- Info sidebar: all readable EXIF + mini-map -->
+        <div v-if="showInfo" class="absolute inset-y-0 right-0 z-20 flex w-full max-w-sm flex-col bg-[var(--ll-elevated)] text-[var(--ll-fg)] shadow-2xl">
+          <div class="flex items-center justify-between border-b border-[var(--ll-border)] px-4 py-3">
+            <h3 class="text-sm font-semibold">{{ t('gallery.info') }}</h3>
+            <button class="rounded-full p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="showInfo = false"><Icon name="close" :size="18" /></button>
+          </div>
+          <div class="flex-1 space-y-4 overflow-y-auto p-4 text-sm">
+            <div v-if="exifLoading" class="py-10 text-center text-[var(--ll-muted)]"><Icon name="progress_activity" :size="22" class="animate-spin" /></div>
+            <template v-else-if="viewerExif">
+              <!-- GPS mini-map -->
+              <div v-if="viewerExif.lat != null && viewerExif.lng != null">
+                <div ref="exifMapEl" class="h-44 w-full overflow-hidden rounded-lg border border-[var(--ll-border)]" />
+                <div class="mt-1.5 flex items-center justify-between text-xs text-[var(--ll-muted)]">
+                  <span class="font-mono">{{ viewerExif.lat.toFixed(6) }}, {{ viewerExif.lng.toFixed(6) }}</span>
+                  <span class="flex gap-2">
+                    <a class="text-primary-600 hover:underline dark:text-primary-300" :href="`https://www.google.com/maps?q=${viewerExif.lat},${viewerExif.lng}`" target="_blank" rel="noopener">Google Maps</a>
+                    <a class="text-primary-600 hover:underline dark:text-primary-300" :href="`https://maps.apple.com/?ll=${viewerExif.lat},${viewerExif.lng}`" target="_blank" rel="noopener">Apple Maps</a>
+                  </span>
+                </div>
+              </div>
+              <!-- Overview -->
+              <div class="rounded-lg border border-[var(--ll-border)] p-3">
+                <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('gallery.info_overview') }}</div>
+                <dl class="space-y-1.5">
+                  <div v-for="r in overviewRows" :key="r.k" class="flex justify-between gap-3">
+                    <dt class="shrink-0 text-[var(--ll-muted)]">{{ r.k }}</dt>
+                    <dd class="break-words text-right font-medium">{{ r.v }}</dd>
+                  </div>
+                </dl>
+              </div>
+              <!-- Full EXIF sections -->
+              <div v-for="sec in exifSections" :key="sec.title" class="rounded-lg border border-[var(--ll-border)] p-3">
+                <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ sec.title }}</div>
+                <dl class="space-y-1.5">
+                  <div v-for="r in sec.rows" :key="r.k" class="flex justify-between gap-3">
+                    <dt class="shrink-0 text-[var(--ll-muted)]">{{ r.k }}</dt>
+                    <dd class="break-words text-right font-medium">{{ r.v }}</dd>
+                  </div>
+                </dl>
+              </div>
+              <div v-if="!exifSections.length && viewerExif.lat == null" class="py-6 text-center text-xs text-[var(--ll-muted)]">{{ t('gallery.info_none') }}</div>
+            </template>
+          </div>
         </div>
       </div>
     </Teleport>
@@ -430,7 +478,7 @@ import 'leaflet/dist/leaflet.css';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, Icon } from '@spa/ui';
 import LocationField from '@spa/components/LocationField.vue';
-import { useGalleryStore, type Photo, type Album, type PhotoEdit, type Person, type Face, type ContactSuggestion } from '@spa/stores/gallery';
+import { useGalleryStore, type Photo, type Album, type PhotoEdit, type Person, type Face, type ContactSuggestion, type ExifDetail } from '@spa/stores/gallery';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
@@ -506,6 +554,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onKey); window.removeEventListener('focus', onFocus);
   if (thumbPoll) clearInterval(thumbPoll);
   destroyMap();
+  destroyExifMap();
 });
 function onFocus() { if (!document.hidden && !up.active && !showTrash.value && !searchActive.value && !showPeople.value) void g.load(albumId.value ?? undefined); }
 
@@ -714,6 +763,76 @@ async function hideFaceChip(f: Face) {
   try { await g.hideFace(f.id); viewerFaces.value = viewerFaces.value.filter((x) => x.id !== f.id); } catch { error(t('common.error')); }
 }
 watch(viewer, () => { void loadViewerFaces(); });
+
+// ---- Lightbox info sidebar (full EXIF + mini-map) ----
+const showInfo = ref(false);
+const viewerExif = ref<ExifDetail | null>(null);
+const exifLoading = ref(false);
+const exifMapEl = ref<HTMLElement | null>(null);
+let exifMap: L.Map | null = null;
+
+// Friendly section titles; unknown sections fall back to their raw name.
+const EXIF_TITLES: Record<string, string> = {
+  IFD0: t('gallery.info_sec_image'), EXIF: t('gallery.info_sec_capture'), GPS: t('gallery.info_sec_gps'),
+  COMPUTED: t('gallery.info_sec_computed'), INTEROP: t('gallery.info_sec_interop'), THUMBNAIL: t('gallery.info_sec_thumb'),
+};
+
+function humanSize(b: number): string {
+  if (b < 1024) return `${b} B`;
+  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / 1048576).toFixed(2)} MB`;
+}
+
+const overviewRows = computed<{ k: string; v: string }[]>(() => {
+  const e = viewerExif.value;
+  if (!e) return [];
+  const rows: { k: string; v: string }[] = [{ k: t('gallery.info_filename'), v: e.name }];
+  if (e.mime) rows.push({ k: 'MIME', v: e.mime });
+  rows.push({ k: t('gallery.info_size'), v: humanSize(e.size) });
+  if (e.width && e.height) rows.push({ k: t('gallery.info_dimensions'), v: `${e.width} × ${e.height}` });
+  if (e.taken_at) rows.push({ k: t('gallery.info_taken'), v: fullDate(e.taken_at) });
+  if (e.camera) rows.push({ k: t('gallery.info_camera'), v: e.camera });
+  if (e.place) rows.push({ k: t('gallery.info_place'), v: e.place });
+  return rows;
+});
+
+const exifSections = computed<{ title: string; rows: { k: string; v: string }[] }[]>(() => {
+  const e = viewerExif.value;
+  if (!e?.exif) return [];
+  return Object.entries(e.exif)
+    .map(([sec, rows]) => ({ title: EXIF_TITLES[sec] ?? sec, rows: Object.entries(rows).map(([k, v]) => ({ k, v })) }))
+    .filter((s) => s.rows.length > 0);
+});
+
+function destroyExifMap() { if (exifMap) { exifMap.remove(); exifMap = null; } }
+
+function initExifMap() {
+  const e = viewerExif.value;
+  destroyExifMap();
+  if (!showInfo.value || !e || e.lat == null || e.lng == null || !exifMapEl.value) return;
+  exifMap = L.map(exifMapEl.value, { attributionControl: true, scrollWheelZoom: false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(exifMap);
+  L.marker([e.lat, e.lng]).addTo(exifMap);
+  exifMap.setView([e.lat, e.lng], 14);
+  setTimeout(() => exifMap?.invalidateSize(), 60);
+}
+
+async function loadViewerExif() {
+  const p = viewerPhoto.value;
+  if (!p) { viewerExif.value = null; destroyExifMap(); return; }
+  exifLoading.value = true;
+  try { viewerExif.value = await g.loadExif(p.id); } catch { viewerExif.value = null; }
+  finally { exifLoading.value = false; }
+  await nextTick();
+  initExifMap();
+}
+
+function toggleInfo() { showInfo.value = !showInfo.value; if (showInfo.value) void loadViewerExif(); else destroyExifMap(); }
+
+watch(viewer, () => {
+  if (showInfo.value) void loadViewerExif();
+  else { viewerExif.value = null; destroyExifMap(); }
+});
 
 // ---- Multi-select ----
 function selectAlbum(id: number | null) { albumId.value = id; clearSelection(); clearSearch(); void refresh(); }

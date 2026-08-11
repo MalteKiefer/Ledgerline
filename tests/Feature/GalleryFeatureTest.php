@@ -44,6 +44,28 @@ class GalleryFeatureTest extends TestCase
         Storage::disk(config('files.disk'))->assertExists($photo->storage_path);
     }
 
+    public function test_exif_endpoint_returns_sections_and_is_owner_scoped(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $photo = new GalleryPhoto;
+        $photo->forceFill([
+            'user_id' => $owner->id, 'storage_path' => 'gallery/x', 'name' => 'IMG.HEIC',
+            'mime' => 'image/heic', 'media_type' => 'image', 'status' => 'ready', 'size' => 4200,
+            'width' => 5712, 'height' => 4284, 'lat' => 48.137264, 'lng' => 11.574978, 'camera' => 'Apple iPhone Air',
+            'exif' => ['EXIF' => ['FNumber' => '1.6', 'ISOSpeedRatings' => '50'], 'GPS' => ['GPSAltitude' => '516']],
+        ])->save();
+
+        $this->actingAs($owner)->getJson(route('gallery.exif', ['photo' => $photo->id]))
+            ->assertOk()
+            ->assertJsonPath('exif.EXIF.FNumber', '1.6')
+            ->assertJsonPath('exif.GPS.GPSAltitude', '516')
+            ->assertJsonPath('lat', 48.137264)
+            ->assertJsonPath('camera', 'Apple iPhone Air');
+
+        $this->actingAs($other)->getJson(route('gallery.exif', ['photo' => $photo->id]))->assertNotFound();
+    }
+
     public function test_thumb_returns_sandboxed_webp(): void
     {
         $this->actingAs(User::factory()->create());

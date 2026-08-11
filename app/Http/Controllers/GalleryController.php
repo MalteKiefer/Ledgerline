@@ -1346,8 +1346,159 @@ class GalleryController extends Controller
             'camera' => $camera,
             'lat' => $lat,
             'lng' => $lng,
-            'exif' => ['taken_at' => $takenAt, 'camera' => $camera],
+            'exif' => $this->readExifSections($path),
         ];
+    }
+
+    /**
+     * Build the full, sanitized, section-grouped EXIF map for the detail view.
+     * Values are coerced to short printable strings (rationals → decimals);
+     * binary/noise keys are dropped. Falls back to Imagick's `exif:*` properties
+     * (covers HEIC, where exif_read_data often returns nothing). Size-capped so a
+     * hostile file can never bloat the row.
+     *
+     * @return array<string, array<string, string>>
+     */
+    private function readExifSections(string $path): array
+    {
+        $raw = null;
+        if (function_exists('exif_read_data')) {
+            try {
+                $raw = @exif_read_data($path, null, true);
+            } catch (\Throwable) {
+                $raw = null;
+            }
+        }
+
+        $dropSections = ['FILE', 'THUMBNAIL', 'MAKERNOTE', 'WINXP'];
+        $dropKeys = ['MakerNote', 'ComponentsConfiguration', 'UserComment', 'FileName', 'SectionsFound', 'UndefinedTag:0x'];
+        $out = [];
+        $total = 0;
+
+        if (is_array($raw)) {
+            foreach ($raw as $section => $values) {
+                if (! is_array($values) || in_array(strtoupper((string) $section), $dropSections, true)) {
+                    continue;
+                }
+                $rows = [];
+                foreach ($values as $key => $value) {
+                    $k = (string) $key;
+                    foreach ($dropKeys as $bad) {
+                        if (str_starts_with($k, $bad)) {
+                            continue 2;
+                        }
+                    }
+                    $v = $this->exifScalar($value);
+                    if ($v === null || $v === '') {
+                        continue;
+                    }
+                    $rows[$k] = $v;
+                    if (++$total > 200) {
+                        break 2;
+                    }
+                }
+                if ($rows !== []) {
+                    $out[(string) $section] = $rows;
+                }
+            }
+        }
+
+        // Imagick fallback (HEIC / when exif_read_data is empty).
+        if ($out === [] && class_exists(\Imagick::class)) {
+            try {
+                $im = new \Imagick($path);
+                $props = $im->getImageProperties('exif:*');
+                $im->clear();
+                $rows = [];
+                foreach ($props as $key => $value) {
+                    $k = str_replace('exif:', '', (string) $key);
+                    $v = $this->exifScalar($value);
+                    if ($v === null || $v === '' || in_array($k, $dropKeys, true)) {
+                        continue;
+                    }
+                    $rows[$k] = $v;
+                    if (count($rows) > 200) {
+                        break;
+                    }
+                }
+                if ($rows !== []) {
+                    $out['EXIF'] = $rows;
+                }
+            } catch (\Throwable) {
+                // no EXIF obtainable — leave empty
+            }
+        }
+
+        return $out;
+    }
+
+    /** Coerce any EXIF value to a short printable string; null when unusable. */
+    private function exifScalar(mixed $value): ?string
+    {
+        if (is_array($value)) {
+            $parts = [];
+            foreach ($value as $item) {
+                $s = $this->exifScalar($item);
+                if ($s !== null && $s !== '') {
+                    $parts[] = $s;
+                }
+                if (count($parts) >= 6) {
+                    break;
+                }
+            }
+
+            return $parts === [] ? null : mb_substr(implode(', ', $parts), 0, 160);
+        }
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+        if (is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+        if (! is_string($value)) {
+            return null;
+        }
+        $s = trim($value);
+        // Rational "a/b" → decimal (e.g. "596/100" → "5.96", "1/1155" kept as-is only for sub-1).
+        if (preg_match('#^(-?\d+)/(\d+)$#', $s, $m) === 1) {
+            $den = (int) $m[2];
+            $num = (int) $m[1];
+            if ($den === 0) {
+                return '0';
+            }
+            $q = $num / $den;
+            $s = $q >= 1 || $q <= -1 ? rtrim(rtrim(number_format($q, 4, '.', ''), '0'), '.') : $m[1].'/'.$m[2];
+        }
+        // Drop non-printable / binary blobs.
+        if ($s === '' || preg_match('/[\x00-\x08\x0E-\x1F]/', $s) === 1) {
+            return null;
+        }
+        if (! mb_check_encoding($s, 'UTF-8')) {
+            $s = (string) mb_convert_encoding($s, 'UTF-8', 'UTF-8');
+        }
+
+        return mb_substr($s, 0, 160);
+    }
+
+    /** Full section-grouped EXIF for the lightbox sidebar (owner-scoped). */
+    public function exif(GalleryPhoto $photo): JsonResponse
+    {
+        $exif = is_array($photo->exif) ? $photo->exif : [];
+
+        return response()->json([
+            'id' => $photo->id,
+            'name' => $photo->name,
+            'mime' => $photo->mime,
+            'size' => $photo->size,
+            'width' => $photo->width,
+            'height' => $photo->height,
+            'taken_at' => $photo->taken_at?->toIso8601String(),
+            'camera' => $photo->camera,
+            'place' => $photo->place,
+            'lat' => $photo->lat,
+            'lng' => $photo->lng,
+            'exif' => $exif,
+        ]);
     }
 
     /** Convert an EXIF GPS [deg,min,sec] rational triple + hemisphere ref to a signed float. */
