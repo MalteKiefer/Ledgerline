@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.633.0
+  version: 1.633.1
   license:
     name: Proprietary
   description: >
@@ -6479,7 +6479,7 @@ paths:
       tags: [TwoFactor]
       operationId: emailVerifyResend
       summary: Re-send the e-mail verification link
-      description: "No-op (ok:true) when already verified. Needs SMTP configured. Throttle 6/min."
+      description: "No-op (ok:true) when already verified. Needs SMTP configured. Throttle 30/min."
       responses:
         "200": { description: "Queued (or already verified).", content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -6983,7 +6983,7 @@ paths:
       tags: [Settings]
       operationId: adminGalleryReprocess
       summary: Re-queue ML processing site-wide (admin)
-      description: "Re-queue face detection / CLIP embeddings / EXIF re-read across the whole library. Throttle 6/min."
+      description: "Re-queue face detection / CLIP embeddings / EXIF re-read across the whole library. Throttle 30/min."
       requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { scope: { type: string, enum: [faces, embeddings, exif, all], default: all } } } } } }
       responses:
         "200": { description: "Queued.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, queued: { type: integer }, scope: { type: string } } } } } }
@@ -7929,7 +7929,7 @@ paths:
       tags: [Mail]
       operationId: mailAccountsTest
       summary: Test the account's IMAP login (no changes)
-      description: "Throttle 6/min. SSRF-guarded probe with the stored credentials; the detail is redacted."
+      description: "Throttle 30/min. SSRF-guarded probe with the stored credentials; the detail is redacted."
       parameters:
         - { name: account, in: path, required: true, schema: { type: integer } }
       responses:
