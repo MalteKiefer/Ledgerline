@@ -161,12 +161,12 @@
         <div v-if="!current.length" class="w-full py-20 text-center text-sm text-[var(--ll-muted)]">{{ showTrash ? t('gallery.trash_empty') : (searchActive ? t('gallery.search_none') : t('gallery.empty')) }}</div>
         <div v-else class="grid min-w-0 flex-1 gap-1.5" :style="gridStyle">
           <template v-for="(p, i) in current" :key="p.id">
-            <div v-if="!showTrash && p._dayHeader" :id="p._monthStart ? 'g-m-' + p._monthKey : undefined" class="col-span-full flex items-center gap-1.5 px-0.5 pt-2 text-xs font-semibold text-[var(--ll-muted)]">
-              <button class="grid h-4 w-4 place-items-center rounded border border-[var(--ll-border)] hover:border-primary-500" :class="dayFullySelected(p._dayHeader) ? 'bg-primary-500 text-white' : ''" :title="t('gallery.select_day')" @click="selectDay(p._dayHeader!)"><Icon v-if="dayFullySelected(p._dayHeader)" name="check" :size="12" /></button>
-              {{ p._dayHeader }}
+            <div v-if="!showTrash && rowMeta[i]?.header" :id="rowMeta[i]?.monthStart ? 'g-m-' + rowMeta[i]?.mk : undefined" class="col-span-full flex items-center gap-1.5 px-0.5 pt-2 text-xs font-semibold text-[var(--ll-muted)]">
+              <button class="grid h-4 w-4 place-items-center rounded border border-[var(--ll-border)] hover:border-primary-500" :class="fullDays.has(rowMeta[i]!.day) ? 'bg-primary-500 text-white' : ''" :title="t('gallery.select_day')" @click="selectDay(rowMeta[i]!.day)"><Icon v-if="fullDays.has(rowMeta[i]!.day)" name="check" :size="12" /></button>
+              {{ rowMeta[i]?.header }}
             </div>
             <div
-              class="group relative aspect-square overflow-hidden rounded-lg bg-black/[0.04] dark:bg-white/5"
+              class="group relative aspect-square overflow-hidden rounded-lg bg-black/[0.04] dark:bg-white/5 [content-visibility:auto] [contain-intrinsic-size:180px_180px]"
               :class="selected.has(p.id) ? 'ring-2 ring-primary-500 ring-offset-1 ring-offset-[var(--ll-surface)]' : ''"
               @mouseenter="p.motion && !showTrash ? hoverId = p.id : null"
               @mouseleave="hoverId === p.id ? hoverId = -1 : null"
@@ -603,7 +603,7 @@ import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 import { ApiError } from '@spa/api/client';
 
-type Row = Photo & { _dayHeader?: string; _monthKey?: string; _monthStart?: string };
+type Row = Photo;
 
 const g = useGalleryStore();
 const { success, error } = useToast();
@@ -644,19 +644,26 @@ const personView = ref<Person | null>(null);
 const peopleGrid = computed(() => showPeople.value && !personView.value);
 const viewerFaces = ref<Face[]>([]);
 
+// LIVE photo list — never copied, so thumbnail/status patches from the poll
+// reflect on the exact tile without rebuilding the whole grid.
 const current = computed<Row[]>(() => {
-  if (showTrash.value) return trashPhotos.value as Row[];
-  const src = searchActive.value ? searchResults.value : g.photos;
+  if (showTrash.value) return trashPhotos.value;
+  return searchActive.value ? searchResults.value : g.photos;
+});
+
+// Per-row day/month header metadata, parallel to `current` (same index).
+// Reads only the capture date → recomputes only when the set/order/dates
+// change, NOT when a thumbnail settles.
+interface RowMeta { day: string; header?: string; mk: string; monthStart?: string }
+const rowMeta = computed<RowMeta[]>(() => {
   let last = ''; let lastMonth = '';
-  return src.map((p): Row => {
+  return current.value.map((p) => {
     const iso = p.taken_at ?? p.created_at;
     const day = dayLabel(iso);
-    const header = day !== last ? day : undefined;
-    last = day;
+    const header = day !== last ? day : undefined; last = day;
     const mk = monthKey(iso);
-    const monthStart = mk !== lastMonth ? mk : undefined;
-    lastMonth = mk;
-    return { ...p, _dayHeader: header, _monthKey: mk, _monthStart: monthStart };
+    const monthStart = mk !== lastMonth ? mk : undefined; lastMonth = mk;
+    return { day, header, mk, monthStart };
   });
 });
 
@@ -669,11 +676,11 @@ function monthKey(iso: string | null): string {
 const scrubber = computed(() => {
   const out: { key: string; year: number; label: string; firstYear: boolean }[] = [];
   let lastYear = -1;
-  for (const r of current.value) {
-    if (!r._monthStart) continue;
-    const [y, m] = r._monthKey!.split('-').map((n) => Number(n));
+  for (const r of rowMeta.value) {
+    if (!r.monthStart) continue;
+    const [y, m] = r.mk.split('-').map((n) => Number(n));
     if (!y) continue;
-    out.push({ key: r._monthKey!, year: y, label: new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'short' }), firstYear: y !== lastYear });
+    out.push({ key: r.mk, year: y, label: new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'short' }), firstYear: y !== lastYear });
     lastYear = y;
   }
   return out;
@@ -682,16 +689,26 @@ function scrollToMonth(key: string) {
   document.getElementById('g-m-' + key)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// Select every photo of a given day (toggles).
-function dayIds(day: string): number[] {
-  return current.value.filter((r) => dayLabel(r.taken_at ?? r.created_at) === day).map((r) => r.id);
-}
-function dayFullySelected(day: string): boolean {
-  const ids = dayIds(day);
-  return ids.length > 0 && ids.every((id) => selected.value.has(id));
-}
+// Day → photo-ids map (O(n), stable across thumb patches).
+const dayGroups = computed(() => {
+  const m = new Map<string, number[]>();
+  for (const p of current.value) {
+    const d = dayLabel(p.taken_at ?? p.created_at);
+    const arr = m.get(d); if (arr) arr.push(p.id); else m.set(d, [p.id]);
+  }
+  return m;
+});
+// Set of days whose every photo is selected — recomputes on selection change
+// only, so the header checkmarks are O(1) per render instead of O(days×photos).
+const fullDays = computed(() => {
+  const s = new Set<string>();
+  for (const [d, ids] of dayGroups.value) {
+    if (ids.length && ids.every((id) => selected.value.has(id))) s.add(d);
+  }
+  return s;
+});
 function selectDay(day: string) {
-  const ids = dayIds(day);
+  const ids = dayGroups.value.get(day) ?? [];
   const s = new Set(selected.value);
   const allSel = ids.every((id) => s.has(id));
   for (const id of ids) { if (allSel) s.delete(id); else s.add(id); }
@@ -716,7 +733,7 @@ onMounted(() => {
   // Thumbnails are generated by a worker after upload; while any are still
   // pending, poll so the grid swaps the spinner for the image once ready.
   thumbPoll = setInterval(() => {
-    if (!showTrash.value && !searchActive.value && !showDupes.value && !showPeople.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb || p.status === 'processing')) void refresh();
+    if (!showTrash.value && !searchActive.value && !showDupes.value && !showPeople.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb || p.status === 'processing')) void g.mergeData(albumId.value ?? undefined);
   }, 4000);
 });
 onUnmounted(() => {
