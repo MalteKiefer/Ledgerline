@@ -30,6 +30,7 @@ return [
     'size' => 'Size',
     'open' => 'Open',
     'saved' => 'Saved',
+    'deleted' => 'Deleted',
     'error' => 'Something went wrong',
     'copy' => 'Copy',
     'copied' => 'Copied',

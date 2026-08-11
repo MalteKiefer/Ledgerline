@@ -19,6 +19,12 @@ return [
     'pocketid_unavailable' => 'Die Pocket-ID-Anmeldung ist nicht verfügbar.',
     'pocketid_failed' => 'Anmeldung fehlgeschlagen. Bitte erneut versuchen.',
 
+    // Passkeys
+    'or' => 'oder',
+    'passkey_sign_in' => 'Mit Passkey anmelden',
+    'passkey_failed' => 'Passkey-Anmeldung fehlgeschlagen. Bitte erneut versuchen.',
+    'verify_email' => 'Bitte bestätige zuerst deine E-Mail-Adresse.',
+
     // Register
     'register_title' => 'Konto erstellen',
     'name' => 'Name',

@@ -15,6 +15,12 @@
           <TextField v-if="needs2fa" v-model="code" :label="t('auth_ui.twofa_code')" icon="pin" inputmode="numeric" autofocus @enter="submit" />
           <Btn type="submit" variant="solid" size="lg" class="w-full" :loading="busy">{{ t('auth_ui.sign_in') }}</Btn>
         </form>
+        <template v-if="passkeySupported && !needs2fa">
+          <div class="my-4 flex items-center gap-3 text-xs text-[var(--ll-muted)]">
+            <span class="h-px flex-1 bg-[var(--ll-border)]" />{{ t('auth_ui.or') }}<span class="h-px flex-1 bg-[var(--ll-border)]" />
+          </div>
+          <Btn variant="soft" size="lg" icon="key" class="w-full" :loading="pkBusy" @click="passkey">{{ t('auth_ui.passkey_sign_in') }}</Btn>
+        </template>
         <div class="mt-5 flex flex-col gap-1.5 text-center text-sm">
           <RouterLink :to="{ name: 'forgot-password' }" class="text-primary-600 hover:underline dark:text-primary-300">{{ t('auth_ui.forgot') }}</RouterLink>
           <p class="text-[var(--ll-muted)]">
@@ -42,7 +48,28 @@ const password = ref('');
 const code = ref('');
 const needs2fa = ref(false);
 const busy = ref(false);
+const pkBusy = ref(false);
 const error = ref('');
+const passkeySupported = typeof window !== 'undefined' && typeof window.PublicKeyCredential !== 'undefined';
+
+async function passkey() {
+  pkBusy.value = true;
+  error.value = '';
+  try {
+    await auth.passkeyLogin();
+    router.push({ name: 'home' });
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 403 && (e.body as { status?: string })?.status === 'verify-email') {
+      error.value = t('auth_ui.verify_email');
+    } else if (e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'AbortError')) {
+      // user cancelled the browser prompt — silent
+    } else {
+      error.value = t('auth_ui.passkey_failed');
+    }
+  } finally {
+    pkBusy.value = false;
+  }
+}
 
 async function submit() {
   busy.value = true;

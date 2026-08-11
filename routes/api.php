@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\LimitsController as ApiLimitsController;
 use App\Http\Controllers\Api\MailAccountController;
 use App\Http\Controllers\Api\NotificationsController as ApiNotificationsController;
 use App\Http\Controllers\Api\PaperlessController as ApiPaperlessController;
+use App\Http\Controllers\Api\PasskeyController as ApiPasskeyController;
 use App\Http\Controllers\Api\PasswordController as ApiPasswordController;
 use App\Http\Controllers\Api\SecurityController as ApiSecurityController;
 use App\Http\Controllers\Api\SecurityLogController as ApiSecurityLogController;
@@ -92,6 +93,11 @@ Route::prefix('v1')->group(function (): void {
     // Backend-agnostic browser login: email+password (+2FA) → bearer token, so the
     // SPA never depends on a Laravel session cookie (portable to a future Go API).
     Route::post('/auth/login', [SpaAuthController::class, 'login'])->middleware('throttle:10,1')->name('api.auth.login');
+
+    // Passwordless sign-in with a passkey / hardware key (public). Mints a device
+    // token on a valid assertion, like /auth/login.
+    Route::post('/auth/passkey/options', [ApiPasskeyController::class, 'loginOptions'])->middleware('throttle:30,1')->name('api.auth.passkey.options');
+    Route::post('/auth/passkey/verify', [ApiPasskeyController::class, 'loginVerify'])->middleware('throttle:30,1')->name('api.auth.passkey.verify');
 
     // Public account lifecycle (no auth). Mirrors the web Fortify pipeline via the
     // same actions. forgot-password always answers generically (no enumeration);
@@ -552,6 +558,16 @@ Route::prefix('v1')->group(function (): void {
 
             Route::put('/password', [ApiPasswordController::class, 'update'])->middleware('throttle:10,1')->name('password');
             Route::post('/email/verify/resend', [ApiTwoFactorController::class, 'resendVerification'])->middleware('throttle:6,1')->name('email.verify.resend');
+
+            // Passkeys / hardware security keys (owner-scoped; register needs a
+            // current-password step-up).
+            Route::prefix('passkeys')->name('passkeys.')->group(function (): void {
+                Route::get('/', [ApiPasskeyController::class, 'index'])->name('index');
+                Route::post('/options', [ApiPasskeyController::class, 'registerOptions'])->middleware('throttle:30,1')->name('options');
+                Route::post('/', [ApiPasskeyController::class, 'register'])->middleware('throttle:20,1')->name('register');
+                Route::put('/{credential}', [ApiPasskeyController::class, 'rename'])->whereNumber('credential')->middleware('throttle:30,1')->name('rename');
+                Route::delete('/{credential}', [ApiPasskeyController::class, 'destroy'])->whereNumber('credential')->middleware('throttle:30,1')->name('destroy');
+            });
         });
 
         // Admin workspace settings (JSON mirrors of the web Settings/* pages).

@@ -19,6 +19,12 @@ return [
     'pocketid_unavailable' => 'Pocket ID sign-in is not available.',
     'pocketid_failed' => 'Authentication failed. Please try again.',
 
+    // Passkeys
+    'or' => 'or',
+    'passkey_sign_in' => 'Sign in with a passkey',
+    'passkey_failed' => 'Passkey sign-in failed. Please try again.',
+    'verify_email' => 'Please verify your email address first.',
+
     // Register
     'register_title' => 'Create account',
     'name' => 'Name',
