@@ -29,13 +29,15 @@ defineEmits<{ 'update:modelValue': [boolean] }>();
 
 // Shared modal stacking: each newly-opened modal sits above the previous one, so
 // a modal opened from within another modal (e.g. Versions from the file preview)
-// is never rendered behind its opener. Base 1000 keeps modals below the app-wide
-// confirm dialog (z-1700) and toast (z-2000); dropdown menus float at z-1600.
-let topZ = 1000;
-const zIndex = ref(1000);
+// is never rendered behind its opener. Base 2400 keeps modals — including the
+// app-wide confirm/prompt dialog — ABOVE every hand-rolled overlay (gallery
+// lightbox 2100, edit/bulk 2200, name/merge 2300). The toast (z-3000) stays on top.
+const BASE_Z = 2400;
+let topZ = BASE_Z;
+const zIndex = ref(BASE_Z);
 
 watch(() => props.modelValue, (open) => {
   if (open) { topZ += 10; zIndex.value = topZ; }
-  else if (zIndex.value === topZ) { topZ = Math.max(1000, topZ - 10); }
+  else if (zIndex.value === topZ) { topZ = Math.max(BASE_Z, topZ - 10); }
 }, { immediate: true });
 </script>
