@@ -8,8 +8,10 @@ use App\Jobs\DetectGalleryFaces;
 use App\Jobs\EmbedGalleryPhoto;
 use App\Jobs\GenerateGalleryThumbnail;
 use App\Jobs\ProcessGalleryVideo;
+use App\Jobs\RefreshGalleryExif;
 use App\Models\GalleryAlbum;
 use App\Models\GalleryFace;
+use App\Models\GalleryPerson;
 use App\Models\GalleryPhoto;
 use App\Support\BlobStore;
 use App\Support\DiskTempFile;
@@ -26,6 +28,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Intervention\Image\Direction;
@@ -492,14 +495,27 @@ class GalleryController extends Controller
                 }
             }
 
-            $photo->forceFill([
+            $meta = [
                 'duration' => $probe['duration'],
                 'width' => $probe['width'],
                 'height' => $probe['height'],
                 'poster_path' => $posterRel,
                 'playback_path' => $playRel,
                 'status' => $posterRel !== null ? 'ready' : 'failed',
-            ])->save();
+            ];
+            // Capture metadata from the container — only fill what is still empty
+            // so a manual edit (or a Live still's date) is never clobbered on reprocess.
+            if ($photo->taken_at === null && is_string($probe['taken_at'] ?? null)) {
+                $meta['taken_at'] = $probe['taken_at'];
+            }
+            if ($photo->lat === null && $photo->lng === null && is_float($probe['lat'] ?? null) && is_float($probe['lng'] ?? null)) {
+                $meta['lat'] = $probe['lat'];
+                $meta['lng'] = $probe['lng'];
+            }
+            if (($photo->camera === null || $photo->camera === '') && is_string($probe['camera'] ?? null)) {
+                $meta['camera'] = $probe['camera'];
+            }
+            $photo->forceFill($meta)->save();
 
             if ($posterRel !== null) {
                 $this->generateThumb($photo, $images);
@@ -559,13 +575,17 @@ class GalleryController extends Controller
     {
         $uid = (int) $this->requireUser($request)->id;
         $scope = $request->string('scope')->lower()->value();
-        $scope = in_array($scope, ['faces', 'embeddings', 'all'], true) ? $scope : 'all';
+        $scope = in_array($scope, ['faces', 'embeddings', 'exif', 'all'], true) ? $scope : 'all';
         $doFaces = $scope === 'faces' || $scope === 'all';
         $doEmb = $scope === 'embeddings' || $scope === 'all';
+        $doExif = $scope === 'exif' || $scope === 'all';
         $count = 0;
         GalleryPhoto::query()->where('user_id', $uid)->orderBy('id')
-            ->chunkById(200, function ($photos) use (&$count, $doFaces, $doEmb): void {
+            ->chunkById(200, function ($photos) use (&$count, $doFaces, $doEmb, $doExif): void {
                 foreach ($photos as $photo) {
+                    if ($doExif) {
+                        RefreshGalleryExif::dispatch($photo->id);
+                    }
                     if ($doEmb) {
                         EmbedGalleryPhoto::dispatch($photo->id);
                     }
@@ -577,6 +597,103 @@ class GalleryController extends Controller
             });
 
         return response()->json(['ok' => true, 'queued' => $count, 'scope' => $scope]);
+    }
+
+    /**
+     * Re-read capture metadata from a photo's original (worker, via
+     * RefreshGalleryExif): EXIF for images, ffprobe container tags for videos.
+     * An explicit rescan — overwrites taken_at/GPS/camera from the source.
+     */
+    public function refreshMetadata(GalleryPhoto $photo): void
+    {
+        $rel = (string) $photo->storage_path;
+        if ($rel === '' || ! $this->fs()->exists($rel)) {
+            return;
+        }
+        $abs = $this->localPath($rel);
+        $stage = null;
+        if ($abs === null) {
+            $stage = DiskTempFile::create('llgmeta');
+            $in = $this->fs()->readStream($rel);
+            $dst = fopen($stage->path(), 'wb');
+            if (is_resource($in) && $dst !== false) {
+                stream_copy_to_stream($in, $dst);
+                fclose($in);
+                fclose($dst);
+                $abs = $stage->path();
+            }
+        }
+        if ($abs === null) {
+            return;
+        }
+
+        $patch = [];
+        if ($photo->media_type === 'video') {
+            if (! VideoProcessor::available()) {
+                return;
+            }
+            $probe = VideoProcessor::probe($abs);
+            if ($probe === null) {
+                return;
+            }
+            $patch = [
+                'taken_at' => $probe['taken_at'],
+                'lat' => $probe['lat'],
+                'lng' => $probe['lng'],
+                'camera' => $probe['camera'],
+            ];
+        } else {
+            $meta = $this->extractExif($abs);
+            $patch = [
+                'taken_at' => $meta['taken_at'] ?? null,
+                'lat' => $meta['lat'] ?? null,
+                'lng' => $meta['lng'] ?? null,
+                'camera' => $meta['camera'] ?? null,
+                'exif' => $meta['exif'] ?? null,
+            ];
+        }
+        $photo->forceFill($patch)->save();
+    }
+
+    /**
+     * Gallery + ML status for the settings page: feature flags, worker queue
+     * depth, and library counts. Non-secret aggregates only.
+     */
+    public function mlStatus(Request $request): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $ml = app(MachineLearning::class);
+        $base = GalleryPhoto::query()->where('user_id', $uid);
+
+        return response()->json([
+            'ml' => [
+                'enabled' => $ml->enabled(),
+                'face_enabled' => $ml->faceEnabled(),
+                'vector' => Vector::available(),
+                'clip_model' => is_string(config('ml.clip_model')) ? config('ml.clip_model') : null,
+                'face_model' => is_string(config('ml.face_model')) ? config('ml.face_model') : null,
+            ],
+            'queue' => ['pending' => $this->queuePending()],
+            'counts' => [
+                'photos' => (clone $base)->count(),
+                'videos' => (clone $base)->where('media_type', 'video')->count(),
+                'embedded' => Vector::available() ? (clone $base)->whereNotNull('embedded_at')->count() : 0,
+                'with_date' => (clone $base)->whereNotNull('taken_at')->count(),
+                'located' => (clone $base)->whereNotNull('lat')->count(),
+                'faces' => GalleryFace::query()->where('user_id', $uid)->count(),
+                'people' => GalleryPerson::query()->where('user_id', $uid)->count(),
+            ],
+        ]);
+    }
+
+    /** Best-effort pending job count for the default queue (driver-agnostic). */
+    private function queuePending(): int
+    {
+        try {
+            return (int) Queue::size();
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     /**

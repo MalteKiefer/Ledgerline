@@ -28,6 +28,12 @@ export interface Person {
 
 export interface ContactSuggestion { id: string; name: string }
 
+export interface MlStatus {
+  ml: { enabled: boolean; face_enabled: boolean; vector: boolean; clip_model: string | null; face_model: string | null };
+  queue: { pending: number };
+  counts: { photos: number; videos: number; embedded: number; with_date: number; located: number; faces: number; people: number };
+}
+
 export interface Face {
   id: number; person_id: number | null; person_name: string | null;
   box: number[]; score: number; crop: boolean;
@@ -120,7 +126,8 @@ export const useGalleryStore = defineStore('gallery', () => {
   const setFaceCover = (personId: number, faceId: number) => updatePerson(personId, { cover_face_id: faceId });
   const hideFace = (faceId: number) => api.post(`/api/v1/gallery/faces/${faceId}/hide`);
   const faceCropUrl = (faceId: number) => api.streamUrl(`/api/v1/gallery/faces/${faceId}/crop`);
-  const reprocess = (scope: 'faces' | 'embeddings' | 'all') => api.post<{ queued: number }>('/api/v1/gallery/reprocess', { scope });
+  const reprocess = (scope: 'faces' | 'embeddings' | 'exif' | 'all') => api.post<{ queued: number }>('/api/v1/gallery/reprocess', { scope });
+  const mlStatus = () => api.get<MlStatus>('/api/v1/gallery/ml-status');
   // Address-book contact autocomplete for naming people.
   const nameSuggest = (q: string) =>
     api.get<{ contacts: ContactSuggestion[] }>(`/api/v1/contacts/suggest?q=${encodeURIComponent(q)}`)
@@ -132,6 +139,6 @@ export const useGalleryStore = defineStore('gallery', () => {
     photos, albums, load, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
-    people, browsePerson, updatePerson, deletePerson, mergePeople, photoFaces, assignFace, setFaceCover, hideFace, faceCropUrl, reprocess, nameSuggest, contactPhotos,
+    people, browsePerson, updatePerson, deletePerson, mergePeople, photoFaces, assignFace, setFaceCover, hideFace, faceCropUrl, reprocess, mlStatus, nameSuggest, contactPhotos,
   };
 });

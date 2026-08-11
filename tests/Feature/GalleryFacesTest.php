@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Jobs\DetectGalleryFaces;
+use App\Jobs\RefreshGalleryExif;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\GalleryFace;
@@ -194,6 +195,33 @@ class GalleryFacesTest extends TestCase
         $this->seedFace($user);
         $this->actingAs($user)->post(route('gallery.reprocess'), ['scope' => 'faces'])->assertOk()->assertJsonPath('scope', 'faces');
         Queue::assertPushed(DetectGalleryFaces::class);
+    }
+
+    public function test_reprocess_exif_queues_metadata_jobs(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create();
+        $this->seedFace($user);
+        $this->actingAs($user)->post(route('gallery.reprocess'), ['scope' => 'exif'])->assertOk()->assertJsonPath('scope', 'exif');
+        Queue::assertPushed(RefreshGalleryExif::class);
+        Queue::assertNotPushed(DetectGalleryFaces::class);
+    }
+
+    public function test_ml_status_reports_counts_and_queue(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        [$photo] = $this->seedFace($user);
+        $photo->forceFill(['media_type' => 'video', 'taken_at' => now(), 'lat' => 1.0, 'lng' => 2.0])->save();
+
+        $res = $this->get(route('gallery.ml-status'))->assertOk();
+        $res->assertJsonPath('counts.photos', 1);
+        $res->assertJsonPath('counts.videos', 1);
+        $res->assertJsonPath('counts.faces', 1);
+        $res->assertJsonPath('counts.people', 1);
+        $res->assertJsonPath('counts.located', 1);
+        $this->assertIsInt($res->json('queue.pending'));
+        $this->assertIsBool($res->json('ml.enabled'));
     }
 
     public function test_person_photos_sort_direction(): void
