@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Actions\Fortify\CreateNewUser;
+use App\Actions\Fortify\PasswordValidationRules;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Http\Controllers\Controller;
 use App\Models\User;
@@ -18,7 +19,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
-use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Contracts\TwoFactorAuthenticationProvider;
 use Laravel\Fortify\Fortify;
@@ -130,7 +130,7 @@ class SpaAuthController extends Controller
         $request->validate([
             'token' => ['required', 'string'],
             'email' => ['required', 'string', 'email'],
-            'password' => ['required', 'string', 'confirmed', PasswordRule::min(12)],
+            'password' => ['required', 'string', 'confirmed', PasswordValidationRules::passwordRule()],
         ]);
 
         $status = Password::broker()->reset(

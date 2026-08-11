@@ -27,11 +27,25 @@ class SecurityController extends Controller
     {
         $request->validate([
             'max_connected_devices' => ['required', 'integer', 'min:1', 'max:100'],
+            'pw_min_length' => ['sometimes', 'nullable', 'integer', 'min:8', 'max:128'],
+            'pw_require_mixed_case' => ['sometimes', 'boolean'],
+            'pw_require_numbers' => ['sometimes', 'boolean'],
+            'pw_require_symbols' => ['sometimes', 'boolean'],
+            'pw_check_breaches' => ['sometimes', 'boolean'],
+            'force_2fa' => ['sometimes', 'boolean'],
         ]);
 
         $settings = AppSettings::current();
-        $before = ['max_connected_devices' => $settings->max_connected_devices];
+        $before = $this->payload();
         $after = ['max_connected_devices' => $request->integer('max_connected_devices')];
+        foreach (['pw_require_mixed_case', 'pw_require_numbers', 'pw_require_symbols', 'pw_check_breaches', 'force_2fa'] as $b) {
+            if ($request->has($b)) {
+                $after[$b] = $request->boolean($b);
+            }
+        }
+        if ($request->has('pw_min_length')) {
+            $after['pw_min_length'] = $request->input('pw_min_length') === null ? null : $request->integer('pw_min_length');
+        }
         $settings->update($after);
 
         // Audit the exact security-policy diff (values, never secrets) so a change
@@ -49,7 +63,7 @@ class SecurityController extends Controller
         return response()->json($this->payload());
     }
 
-    /** @return array{max_connected_devices: int} */
+    /** @return array{max_connected_devices:int, pw_min_length:?int, pw_require_mixed_case:bool, pw_require_numbers:bool, pw_require_symbols:bool, pw_check_breaches:bool, force_2fa:bool} */
     private function payload(): array
     {
         $s = AppSettings::current();
@@ -57,6 +71,12 @@ class SecurityController extends Controller
 
         return [
             'max_connected_devices' => $s->max_connected_devices ?: (is_numeric($default) ? (int) $default : 3),
+            'pw_min_length' => $s->pw_min_length,
+            'pw_require_mixed_case' => (bool) $s->pw_require_mixed_case,
+            'pw_require_numbers' => (bool) $s->pw_require_numbers,
+            'pw_require_symbols' => (bool) $s->pw_require_symbols,
+            'pw_check_breaches' => (bool) $s->pw_check_breaches,
+            'force_2fa' => (bool) $s->force_2fa,
         ];
     }
 }

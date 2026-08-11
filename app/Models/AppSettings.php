@@ -58,6 +58,12 @@ use Illuminate\Database\Eloquent\Model;
     'backup_stale_hours',
     'mail_log_retention_days',
     'mail_blob_orphan_grace_hours',
+    'pw_min_length',
+    'pw_require_mixed_case',
+    'pw_require_numbers',
+    'pw_require_symbols',
+    'pw_check_breaches',
+    'force_2fa',
 ])]
 // Defense-in-depth: keep the operative-secret columns (SMTP / ntfy / webhook creds)
 // out of any wholesale toArray()/toJson() as well as the encrypted-cast at-rest layer.
@@ -117,6 +123,12 @@ class AppSettings extends Model
             'backup_stale_hours' => 'integer',
             'mail_log_retention_days' => 'integer',
             'mail_blob_orphan_grace_hours' => 'integer',
+            'pw_min_length' => 'integer',
+            'pw_require_mixed_case' => 'boolean',
+            'pw_require_numbers' => 'boolean',
+            'pw_require_symbols' => 'boolean',
+            'pw_check_breaches' => 'boolean',
+            'force_2fa' => 'boolean',
         ];
     }
 

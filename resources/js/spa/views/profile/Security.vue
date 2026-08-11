@@ -217,6 +217,8 @@ async function onConfirm() {
       try { twofa.recovery = await p.regenerateRecovery(enrollPw.value); } catch { /* codes stay hidden until regenerate */ }
     }
     enrollPw.value = '';
+    // Refresh /me so a force-2FA enrolment redirect clears immediately.
+    await auth.bootstrap();
   } catch (e) {
     if (e instanceof ApiError && e.fields?.code?.length) twofa.codeErr = e.fields.code;
     else error(t('common.error'));

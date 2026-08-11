@@ -82,5 +82,10 @@ router.beforeEach(async (to) => {
   if (to.meta.public) return true;
   if (!to.meta.guest && !auth.user) return { name: 'login', query: { redirect: to.fullPath } };
   if (to.meta.guest && auth.user) return { name: 'home' };
+  // Workspace enforces 2FA and this account hasn't enrolled → force the 2FA
+  // setup screen (allow only that + logout paths so the user can escape).
+  if (auth.user?.two_factor_required && to.name !== 'profile.security' && !to.meta.guest && !to.meta.public) {
+    return { name: 'profile.security' };
+  }
   return true;
 });
