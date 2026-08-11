@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support;
 
 use App\Models\FileShare;
+use App\Models\GalleryPublicShare;
 
 /**
  * Stateless "unlock" grant for a public file-share, used by tokenless API clients
@@ -23,7 +24,7 @@ final class ShareGrant
     /** Grant lifetime in seconds (short — the client re-unlocks after it lapses). */
     private const TTL = 3600;
 
-    public static function issue(FileShare $share): string
+    public static function issue(FileShare|GalleryPublicShare $share): string
     {
         $payload = (string) json_encode([
             's' => $share->id,
@@ -35,7 +36,7 @@ final class ShareGrant
     }
 
     /** Constant-time validation that a grant authorises unlocking THIS share. */
-    public static function valid(?string $grant, FileShare $share): bool
+    public static function valid(?string $grant, FileShare|GalleryPublicShare $share): bool
     {
         if (! is_string($grant) || ! str_contains($grant, '.')) {
             return false;
@@ -58,7 +59,7 @@ final class ShareGrant
     }
 
     /** HMAC bound to the share id + token (so the signature is share-specific). */
-    private static function sign(string $body, FileShare $share): string
+    private static function sign(string $body, FileShare|GalleryPublicShare $share): string
     {
         return hash_hmac('sha256', $body.'|'.$share->id.'|'.$share->token, self::key());
     }

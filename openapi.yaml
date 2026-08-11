@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.635.0
+  version: 1.636.0
   license:
     name: Proprietary
   description: >
@@ -69,6 +69,12 @@ tags:
       device bearer token; management endpoints require the authenticated user
       plus a current-password step-up to register. Public-key only at rest
       (none-attestation).
+  - name: GallerySharing
+    description: >
+      Public album share links (token, optional password/expiry, allow_download
+      gate) + internal cross-user shares (an album or the whole gallery, viewer-
+      only). Public /gallery-share/{token} routes are unauthenticated (the token
+      is the credential); a password gate is carried by a stateless grant.
   - name: Me/Device
     description: Authenticated user info, avatar, and device heartbeat
   - name: Finance
@@ -263,6 +269,42 @@ components:
           schema: { type: integer }
 
   schemas:
+    GalleryPublicShare:
+      type: object
+      properties:
+        id: { type: integer }
+        album_id: { type: integer }
+        album: { type: [string, "null"] }
+        token: { type: string }
+        has_password: { type: boolean }
+        allow_download: { type: boolean }
+        expires_at: { type: [string, "null"], format: date-time }
+    GalleryInternalShare:
+      type: object
+      properties:
+        id: { type: integer }
+        album_id: { type: [integer, "null"] }
+        album: { type: [string, "null"] }
+        recipient: { type: [string, "null"] }
+        scope: { type: string, enum: [album, library] }
+    GallerySharedWithMe:
+      type: object
+      properties:
+        id: { type: integer }
+        scope: { type: string, enum: [album, library] }
+        name: { type: [string, "null"] }
+        owner: { type: [string, "null"] }
+        count: { type: integer }
+        cover: { type: [integer, "null"] }
+    GallerySharedPhoto:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        media_type: { type: string, enum: [image, video] }
+        taken_at: { type: [string, "null"], format: date-time }
+        width: { type: [integer, "null"] }
+        height: { type: [integer, "null"] }
     WebauthnCredential:
       type: object
       description: A registered passkey / hardware key (public-key only, owner-scoped).
@@ -5642,6 +5684,274 @@ paths:
                     additionalProperties: { type: object, additionalProperties: { type: string } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/shares:
+    get:
+      tags: [GallerySharing]
+      operationId: galleryShares
+      summary: List the current user's gallery shares (public links + internal grants)
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: Owner's shares.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  public: { type: array, items: { $ref: '#/components/schemas/GalleryPublicShare' } }
+                  internal: { type: array, items: { $ref: '#/components/schemas/GalleryInternalShare' } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /gallery/shares/public:
+    post:
+      tags: [GallerySharing]
+      operationId: galleryShareCreatePublic
+      summary: Create a public album link (optional password/expiry, download gate)
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [album_id]
+              properties:
+                album_id: { type: integer }
+                allow_download: { type: boolean }
+                password: { type: [string, "null"], minLength: 4 }
+                expires_at: { type: [string, "null"], format: date-time }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { $ref: '#/components/schemas/GalleryPublicShare' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /gallery/shares/public/{share}:
+    put:
+      tags: [GallerySharing]
+      operationId: galleryShareUpdatePublic
+      summary: Update a public album link (download/password/expiry)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                allow_download: { type: boolean }
+                password: { type: [string, "null"], minLength: 4 }
+                clear_password: { type: boolean }
+                expires_at: { type: [string, "null"], format: date-time }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { $ref: '#/components/schemas/GalleryPublicShare' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [GallerySharing]
+      operationId: galleryShareDeletePublic
+      summary: Revoke a public album link
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Revoked. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/shares/internal:
+    post:
+      tags: [GallerySharing]
+      operationId: galleryShareInternal
+      summary: Share an album (or the whole gallery) with a registered user (viewer)
+      description: "Recipient resolved by exact email. album_id null = whole gallery. Unified 422 for unknown user AND self-share (no enumeration)."
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                album_id: { type: [integer, "null"] }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, id: { type: integer } } } } } }
+        "200": { description: Already shared (idempotent). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { description: Unknown recipient or self-share. }
+  /gallery/shares/internal/{share}:
+    delete:
+      tags: [GallerySharing]
+      operationId: galleryShareDeleteInternal
+      summary: Revoke an internal share
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Revoked. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/shared-with-me:
+    get:
+      tags: [GallerySharing]
+      operationId: gallerySharedWithMe
+      summary: Gallery shares granted TO the current user
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: Shares with me.
+          content:
+            application/json:
+              schema: { type: object, properties: { shares: { type: array, items: { $ref: '#/components/schemas/GallerySharedWithMe' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /gallery/shared-with-me/{share}:
+    get:
+      tags: [GallerySharing]
+      operationId: gallerySharedBrowse
+      summary: Photos of a share granted to me
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200":
+          description: Photo list.
+          content:
+            application/json:
+              schema: { type: object, properties: { name: { type: [string, "null"] }, photos: { type: array, items: { $ref: '#/components/schemas/GallerySharedPhoto' } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/shared-with-me/{share}/photo/{photo}/thumb:
+    get:
+      tags: [GallerySharing]
+      operationId: gallerySharedThumb
+      summary: Thumbnail of a shared photo (sandboxed)
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: share, in: path, required: true, schema: { type: integer } }
+        - { name: photo, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: image/webp. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/shared-with-me/{share}/photo/{photo}/preview:
+    get:
+      tags: [GallerySharing]
+      operationId: gallerySharedPreview
+      summary: Preview of a shared photo (sandboxed)
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: share, in: path, required: true, schema: { type: integer } }
+        - { name: photo, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: image/webp. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/shared-with-me/{share}/photo/{photo}/raw:
+    get:
+      tags: [GallerySharing]
+      operationId: gallerySharedRaw
+      summary: Original bytes of a shared photo (inline; ?download=1 for attachment)
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: share, in: path, required: true, schema: { type: integer } }
+        - { name: photo, in: path, required: true, schema: { type: integer } }
+        - { name: download, in: query, required: false, schema: { type: boolean } }
+      responses:
+        "200": { description: Original bytes (sandboxed). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery-share/{token}:
+    get:
+      tags: [GallerySharing]
+      operationId: publicGalleryMeta
+      summary: Public album share metadata (name/count withheld until unlocked)
+      security: []
+      parameters: [ { name: token, in: path, required: true, schema: { type: string } } ]
+      responses:
+        "200":
+          description: Meta.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  found: { type: boolean }
+                  name: { type: [string, "null"] }
+                  count: { type: [integer, "null"] }
+                  needsPassword: { type: boolean }
+                  unlocked: { type: boolean }
+                  allowDownload: { type: boolean }
+                  expiresAt: { type: [string, "null"], format: date-time }
+        "404": { description: Not found / expired. }
+  /gallery-share/{token}/unlock:
+    post:
+      tags: [GallerySharing]
+      operationId: publicGalleryUnlock
+      summary: Unlock a password-protected album share (returns a stateless grant)
+      security: []
+      parameters: [ { name: token, in: path, required: true, schema: { type: string } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [password], properties: { password: { type: string } } } } } }
+      responses:
+        "200": { description: Unlocked., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, grant: { type: string } } } } } }
+        "404": { description: Not found / expired. }
+        "422": { description: Wrong password. }
+  /gallery-share/{token}/manifest:
+    get:
+      tags: [GallerySharing]
+      operationId: publicGalleryManifest
+      summary: Album photo manifest (past the password gate)
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: X-Share-Grant, in: header, required: false, schema: { type: string } }
+        - { name: grant, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Manifest.
+          content:
+            application/json:
+              schema: { type: object, properties: { name: { type: string }, allowDownload: { type: boolean }, photos: { type: array, items: { $ref: '#/components/schemas/GallerySharedPhoto' } } } }
+        "403": { description: Locked (needs unlock grant). }
+        "404": { description: Not found / expired. }
+  /gallery-share/{token}/photo/{photo}/thumb:
+    get:
+      tags: [GallerySharing]
+      operationId: publicGalleryThumb
+      summary: Public album-share thumbnail (sandboxed)
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: photo, in: path, required: true, schema: { type: integer } }
+        - { name: grant, in: query, required: false, schema: { type: string } }
+      responses:
+        "200": { description: image/webp. }
+        "403": { description: Locked. }
+        "404": { description: Not found. }
+  /gallery-share/{token}/photo/{photo}/preview:
+    get:
+      tags: [GallerySharing]
+      operationId: publicGalleryPreview
+      summary: Public album-share preview (sandboxed)
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: photo, in: path, required: true, schema: { type: integer } }
+        - { name: grant, in: query, required: false, schema: { type: string } }
+      responses:
+        "200": { description: image/webp. }
+        "403": { description: Locked. }
+        "404": { description: Not found. }
+  /gallery-share/{token}/photo/{photo}/raw:
+    get:
+      tags: [GallerySharing]
+      operationId: publicGalleryRaw
+      summary: Public album-share original bytes (?download=1 gated by allow_download)
+      security: []
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: photo, in: path, required: true, schema: { type: integer } }
+        - { name: download, in: query, required: false, schema: { type: boolean } }
+        - { name: grant, in: query, required: false, schema: { type: string } }
+      responses:
+        "200": { description: Original bytes (sandboxed). }
+        "403": { description: Locked or download disabled. }
+        "404": { description: Not found. }
   /gallery/{photo}/favorite:
     patch:
       tags: [Gallery]

@@ -19,6 +19,7 @@ use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryPeopleController;
+use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GeoController;
 use App\Http\Controllers\InviteLinkController;
 use App\Http\Controllers\LocaleController;
@@ -45,6 +46,7 @@ use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\PublicFileShareController;
+use App\Http\Controllers\PublicGalleryShareController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CalendarController as SettingsCalendarController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
@@ -57,6 +59,7 @@ use App\Http\Controllers\Settings\SecurityController as SettingsSecurityControll
 use App\Http\Controllers\Settings\SystemController;
 use App\Http\Controllers\Settings\UsersController as SettingsUsersController;
 use App\Http\Controllers\SharedFolderController;
+use App\Http\Controllers\SharedGalleryController;
 use App\Http\Controllers\SharedWithMeController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\WebDavAccessController;
@@ -87,6 +90,16 @@ Route::prefix('file-share/{token}')->name('public.file-share.')->group(function 
     Route::post('/unlock', [PublicFileShareController::class, 'unlock'])->middleware('throttle:share-unlock')->name('unlock');
     Route::get('/manifest', [PublicFileShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
     Route::get('/file/{file}/raw', [PublicFileShareController::class, 'raw'])->whereNumber('file')->middleware('throttle:3000,1')->name('file.raw');
+});
+
+// Public, unauthenticated gallery album share links (optional password gate).
+Route::prefix('gallery-share/{token}')->name('public.gallery-share.')->group(function (): void {
+    Route::get('/', [PublicGalleryShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
+    Route::post('/unlock', [PublicGalleryShareController::class, 'unlock'])->middleware('throttle:share-unlock')->name('unlock');
+    Route::get('/manifest', [PublicGalleryShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
+    Route::get('/photo/{photo}/thumb', [PublicGalleryShareController::class, 'thumb'])->whereNumber('photo')->middleware('throttle:6000,1')->name('photo.thumb');
+    Route::get('/photo/{photo}/preview', [PublicGalleryShareController::class, 'preview'])->whereNumber('photo')->middleware('throttle:6000,1')->name('photo.preview');
+    Route::get('/photo/{photo}/raw', [PublicGalleryShareController::class, 'raw'])->whereNumber('photo')->middleware('throttle:3000,1')->name('photo.raw');
 });
 
 // WebDAV endpoint — Sabre handles auth (HTTP Basic) + the DAV protocol itself.
@@ -432,6 +445,19 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/gallery/contacts/{contact}/photos', [GalleryPeopleController::class, 'contactPhotos'])->name('gallery.contact.photos');
         Route::post('/gallery/reprocess', [GalleryController::class, 'reprocess'])->middleware('throttle:60,1')->name('gallery.reprocess');
         Route::get('/gallery/ml-status', [GalleryController::class, 'mlStatus'])->name('gallery.ml-status');
+        // Sharing — owner side (public album links + internal cross-user grants)
+        Route::get('/gallery/shares', [GalleryShareController::class, 'index'])->name('gallery.shares');
+        Route::post('/gallery/shares/public', [GalleryShareController::class, 'storePublic'])->middleware('throttle:60,1')->name('gallery.shares.public.store');
+        Route::put('/gallery/shares/public/{share}', [GalleryShareController::class, 'updatePublic'])->whereNumber('share')->middleware('throttle:60,1')->name('gallery.shares.public.update');
+        Route::delete('/gallery/shares/public/{share}', [GalleryShareController::class, 'destroyPublic'])->whereNumber('share')->middleware('throttle:60,1')->name('gallery.shares.public.destroy');
+        Route::post('/gallery/shares/internal', [GalleryShareController::class, 'storeInternal'])->middleware('throttle:60,1')->name('gallery.shares.internal.store');
+        Route::delete('/gallery/shares/internal/{share}', [GalleryShareController::class, 'destroyInternal'])->whereNumber('share')->middleware('throttle:60,1')->name('gallery.shares.internal.destroy');
+        // Sharing — recipient side ("shared with me")
+        Route::get('/gallery/shared-with-me', [SharedGalleryController::class, 'index'])->name('gallery.shared.index');
+        Route::get('/gallery/shared-with-me/{share}', [SharedGalleryController::class, 'browse'])->whereNumber('share')->name('gallery.shared.browse');
+        Route::get('/gallery/shared-with-me/{share}/photo/{photo}/thumb', [SharedGalleryController::class, 'thumb'])->whereNumber('share')->whereNumber('photo')->middleware('throttle:6000,1')->name('gallery.shared.thumb');
+        Route::get('/gallery/shared-with-me/{share}/photo/{photo}/preview', [SharedGalleryController::class, 'preview'])->whereNumber('share')->whereNumber('photo')->middleware('throttle:6000,1')->name('gallery.shared.preview');
+        Route::get('/gallery/shared-with-me/{share}/photo/{photo}/raw', [SharedGalleryController::class, 'raw'])->whereNumber('share')->whereNumber('photo')->middleware('throttle:3000,1')->name('gallery.shared.raw');
         Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('gallery.trash');
         Route::post('/gallery', [GalleryController::class, 'upload'])->middleware('throttle:1200,1')->name('gallery.upload');
         Route::post('/gallery/chunk/init', [GalleryController::class, 'chunkInit'])->middleware('throttle:600,1')->name('gallery.chunk.init');

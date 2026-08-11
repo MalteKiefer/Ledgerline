@@ -11,6 +11,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/invite/:invite/:token', name: 'invite', component: () => import('@spa/views/auth/Invite.vue'), meta: { public: true } },
   { path: '/share/:token', name: 'public-share', component: () => import('@spa/views/PublicShare.vue'), meta: { public: true } },
   { path: '/u/:token', name: 'upload-link', component: () => import('@spa/views/UploadLink.vue'), meta: { public: true } },
+  { path: '/g/:token', name: 'public-gallery', component: () => import('@spa/views/PublicGallery.vue'), meta: { public: true } },
   {
     path: '/',
     component: () => import('@spa/views/Shell.vue'),
