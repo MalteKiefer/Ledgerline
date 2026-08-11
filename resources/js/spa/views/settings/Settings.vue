@@ -44,6 +44,7 @@ const sections = [
   { to: 'settings.backup', icon: 'backup', label: 'settings.backup_section' },
   { to: 'settings.paperless', icon: 'description', label: 'settings.paperless_section' },
   { to: 'settings.system', icon: 'dns', label: 'settings.system_section' },
+  { to: 'settings.containers', icon: 'deployed_code', label: 'settings.containers_heading' },
 ];
 
 function isActive(name: string): boolean { return route.name === name; }

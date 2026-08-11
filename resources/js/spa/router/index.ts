@@ -52,6 +52,7 @@ const routes: RouteRecordRaw[] = [
           { path: 'security', name: 'settings.security', component: () => import('@spa/views/settings/Security.vue') },
           { path: 'files-limits', name: 'settings.files-limits', component: () => import('@spa/views/settings/FilesLimits.vue') },
           { path: 'gallery', name: 'settings.gallery', component: () => import('@spa/views/settings/Gallery.vue') },
+          { path: 'containers', name: 'settings.containers', component: () => import('@spa/views/settings/Containers.vue') },
           { path: 'backup', name: 'settings.backup', component: () => import('@spa/views/settings/Backup.vue') },
           { path: 'paperless', name: 'settings.paperless', component: () => import('@spa/views/settings/Paperless.vue') },
           { path: 'system', name: 'settings.system', component: () => import('@spa/views/settings/System.vue') },

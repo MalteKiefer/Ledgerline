@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\CalendarProfileController as ApiCalendarProfileCont
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
 use App\Http\Controllers\Api\ContactsProfileController as ApiContactsProfileController;
 use App\Http\Controllers\Api\DevicePushEndpointController;
+use App\Http\Controllers\Api\DockerController as ApiDockerController;
 use App\Http\Controllers\Api\FilesLimitsController as ApiFilesLimitsController;
 use App\Http\Controllers\Api\GalleryAdminController as ApiGalleryAdminController;
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
@@ -574,6 +575,10 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/gallery/queue/retry', [ApiGalleryAdminController::class, 'retryFailed'])->middleware('throttle:20,1')->name('gallery.queue.retry');
             Route::post('/gallery/queue/flush', [ApiGalleryAdminController::class, 'flushFailed'])->middleware('throttle:20,1')->name('gallery.queue.flush');
             Route::post('/gallery/reprocess', [ApiGalleryAdminController::class, 'reprocess'])->middleware('throttle:6,1')->name('gallery.reprocess');
+
+            // Container control (bounded agent). List services + run an allowlisted action.
+            Route::get('/docker/containers', [ApiDockerController::class, 'containers'])->name('docker.containers');
+            Route::post('/docker/action', [ApiDockerController::class, 'action'])->middleware('throttle:30,1')->name('docker.action');
 
             // System / maintenance overview (read-only) + resolve an error event.
             Route::get('/system', [ApiSystemController::class, 'show'])->middleware('throttle:60,1')->name('system.show');
