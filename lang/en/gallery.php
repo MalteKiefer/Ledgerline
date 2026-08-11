@@ -46,4 +46,9 @@ return [
     'failed' => 'Failed',
     'search_ph' => 'Search (e.g. tree)…',
     'search_none' => 'No matches for your search.',
+    'duplicates' => 'Duplicates',
+    'dupes_none' => 'No duplicates found.',
+    'dupes_similar' => 'similar',
+    'dupes_keep' => 'Keep',
+    'dupes_keep_one' => 'Delete duplicates (keep 1)',
 ];

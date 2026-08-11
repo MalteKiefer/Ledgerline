@@ -271,6 +271,7 @@ Route::prefix('v1')->group(function (): void {
         Route::middleware('module:gallery')->group(function (): void {
             Route::get('/gallery/data', [GalleryController::class, 'data'])->name('api.gallery.data');
             Route::get('/gallery/search', [GalleryController::class, 'search'])->middleware('throttle:120,1')->name('api.gallery.search');
+            Route::get('/gallery/duplicates', [GalleryController::class, 'duplicates'])->middleware('throttle:60,1')->name('api.gallery.duplicates');
             Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('api.gallery.trash');
             Route::post('/gallery', [GalleryController::class, 'upload'])->middleware('throttle:1200,1')->name('api.gallery.upload');
             Route::post('/gallery/chunk/init', [GalleryController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.gallery.chunk.init');

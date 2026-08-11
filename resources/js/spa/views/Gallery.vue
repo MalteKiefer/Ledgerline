@@ -32,12 +32,13 @@
           <Btn variant="solid" size="sm" icon="upload" @click="pick">{{ t('gallery.upload') }}</Btn>
           <input ref="fileInput" type="file" accept="image/*" multiple class="hidden" @change="onPick">
           <Btn v-if="showTrash && trashPhotos.length" variant="ghost" size="sm" icon="delete" class="text-red-600" @click="onEmpty">{{ t('gallery.empty_trash') }}</Btn>
+          <Btn v-if="!showTrash" :variant="showDupes ? 'solid' : 'ghost'" size="sm" icon="content_copy" @click="showDupes ? closeDupes() : openDupes()">{{ t('gallery.duplicates') }}</Btn>
           <Btn variant="ghost" size="sm" :icon="showTrash ? 'photo_library' : 'delete'" @click="toggleTrash">{{ showTrash ? t('gallery.back') : t('gallery.trash') }}</Btn>
         </div>
       </div>
 
       <!-- Album chips -->
-      <div v-if="!showTrash && viewMode === 'grid'" class="flex flex-wrap items-center gap-1.5 border-b border-[var(--ll-border)] px-4 py-2">
+      <div v-if="!showTrash && !showDupes && viewMode === 'grid'" class="flex flex-wrap items-center gap-1.5 border-b border-[var(--ll-border)] px-4 py-2">
         <button class="rounded-full px-3 py-1 text-xs font-medium" :class="albumId === null ? 'bg-primary-500 text-white' : 'bg-black/[0.05] dark:bg-white/10'" @click="selectAlbum(null)">{{ t('gallery.all_photos') }}</button>
         <button
           v-for="a in g.albums" :key="a.id"
@@ -54,7 +55,7 @@
       </div>
 
       <!-- Selection bar -->
-      <div v-if="!showTrash && viewMode === 'grid' && selected.size" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2 text-sm">
+      <div v-if="!showTrash && !showDupes && viewMode === 'grid' && selected.size" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2 text-sm">
         <span class="font-medium">{{ selected.size }} {{ t('gallery.selected') }}</span>
         <div class="ml-auto flex items-center gap-1">
           <div class="relative">
@@ -71,14 +72,33 @@
         </div>
       </div>
 
+      <!-- Duplicates view -->
+      <div v-if="showDupes && !showTrash" class="space-y-4 p-3">
+        <div v-if="!dupeGroups.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.dupes_none') }}</div>
+        <div v-for="(grp, gi) in dupeGroups" :key="gi" class="rounded-lg border border-[var(--ll-border)] p-2">
+          <div class="mb-2 flex items-center gap-2 px-1 text-xs text-[var(--ll-muted)]">
+            <span>{{ grp.photos.length }} {{ t('gallery.dupes_similar') }}</span>
+            <Btn variant="ghost" size="sm" icon="delete" class="ml-auto text-red-600" @click="trashDupeGroup(gi)">{{ t('gallery.dupes_keep_one') }}</Btn>
+          </div>
+          <div class="grid grid-cols-3 gap-1.5 sm:grid-cols-5 md:grid-cols-8">
+            <div v-for="(p, pi) in grp.photos" :key="p.id" class="group relative aspect-square overflow-hidden rounded-lg bg-black/[0.04] dark:bg-white/5">
+              <img v-if="p.thumb" :src="g.thumbUrl(p.id)" loading="lazy" class="h-full w-full object-cover">
+              <div v-else class="flex h-full w-full items-center justify-center"><Icon name="image" :size="20" class="opacity-40" /></div>
+              <span v-if="pi === 0" class="pointer-events-none absolute left-1 top-1 rounded bg-primary-500 px-1 py-0.5 text-[9px] font-semibold text-white">{{ t('gallery.dupes_keep') }}</span>
+              <button v-else class="absolute right-1 top-1 rounded-full bg-black/50 p-1 text-white opacity-0 transition group-hover:opacity-100 hover:bg-red-600" :title="t('common.delete')" @click="trashDupeOne(gi, p.id)"><Icon name="delete" :size="13" /></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Map view -->
-      <div v-show="!showTrash && viewMode === 'map'" class="p-3">
+      <div v-show="!showTrash && !showDupes && viewMode === 'map'" class="p-3">
         <div v-if="!mapPhotos.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.no_located') }}</div>
         <div v-show="mapPhotos.length" ref="mapEl" class="h-[calc(100vh-230px)] w-full overflow-hidden rounded-lg border border-[var(--ll-border)]" />
       </div>
 
       <!-- Grid view -->
-      <div v-if="viewMode === 'grid' || showTrash" class="p-3">
+      <div v-if="(viewMode === 'grid' || showTrash) && !showDupes" class="p-3">
         <div v-if="!current.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ showTrash ? t('gallery.trash_empty') : (searchActive ? t('gallery.search_none') : t('gallery.empty')) }}</div>
         <div v-else class="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
           <template v-for="(p, i) in current" :key="p.id">
@@ -284,6 +304,8 @@ const motionPlaying = ref(false);
 const searchQuery = ref('');
 const searchActive = ref(false);
 const searchResults = ref<Photo[]>([]);
+const showDupes = ref(false);
+const dupeGroups = ref<{ photos: Photo[] }[]>([]);
 
 const current = computed<Row[]>(() => {
   if (showTrash.value) return trashPhotos.value as Row[];
@@ -314,7 +336,7 @@ onMounted(() => {
   // Thumbnails are generated by a worker after upload; while any are still
   // pending, poll so the grid swaps the spinner for the image once ready.
   thumbPoll = setInterval(() => {
-    if (!showTrash.value && !searchActive.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb || p.status === 'processing')) void refresh();
+    if (!showTrash.value && !searchActive.value && !showDupes.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb || p.status === 'processing')) void refresh();
   }, 4000);
 });
 onUnmounted(() => {
@@ -403,6 +425,23 @@ async function doSearch() {
   catch { error(t('common.error')); }
 }
 function clearSearch() { searchActive.value = false; searchResults.value = []; searchQuery.value = ''; }
+
+// ---- Near-duplicates (CLIP) ----
+async function openDupes() {
+  showDupes.value = true; clearSearch(); clearSelection(); viewer.value = -1;
+  try { dupeGroups.value = await g.duplicates(); } catch { error(t('common.error')); }
+}
+function closeDupes() { showDupes.value = false; dupeGroups.value = []; }
+async function trashDupeGroup(gi: number) {
+  const grp = dupeGroups.value[gi];
+  if (!grp) return;
+  const ids = grp.photos.slice(1).map((p) => p.id); // keep the first
+  if (!ids.length) return;
+  try { await g.bulkDestroy(ids); dupeGroups.value = await g.duplicates(); await refresh(); success(t('common.saved')); } catch { error(t('common.error')); }
+}
+async function trashDupeOne(gi: number, id: number) {
+  try { await g.bulkDestroy([id]); dupeGroups.value = await g.duplicates(); await refresh(); } catch { error(t('common.error')); }
+}
 
 // ---- Multi-select ----
 function selectAlbum(id: number | null) { albumId.value = id; clearSelection(); clearSearch(); void refresh(); }
@@ -518,7 +557,7 @@ async function saveEdit() {
 // ---- Trash ----
 async function toggleTrash() {
   showTrash.value = !showTrash.value;
-  viewer.value = -1; clearSelection();
+  viewer.value = -1; clearSelection(); closeDupes();
   if (showTrash.value) { try { trashPhotos.value = await g.trash(); } catch { error(t('common.error')); } }
   else await refresh();
 }

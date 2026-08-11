@@ -19,4 +19,8 @@ return [
     // Cosine-distance ceiling for a semantic search hit (0 = identical, 2 =
     // opposite). Lower = stricter. Tuned for CLIP ViT-B-32.
     'search_max_distance' => (float) env('ML_SEARCH_MAX_DISTANCE', 0.78),
+
+    // Cosine-distance ceiling for near-duplicate grouping (much tighter than
+    // search — only visually (near-)identical photos: bursts, re-saves, crops).
+    'dup_max_distance' => (float) env('ML_DUP_MAX_DISTANCE', 0.08),
 ];
