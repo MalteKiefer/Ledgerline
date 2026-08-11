@@ -46,4 +46,9 @@ return [
     'failed' => 'Fehlgeschlagen',
     'search_ph' => 'Suche (z. B. Baum)…',
     'search_none' => 'Keine Treffer für deine Suche.',
+    'duplicates' => 'Duplikate',
+    'dupes_none' => 'Keine Duplikate gefunden.',
+    'dupes_similar' => 'ähnlich',
+    'dupes_keep' => 'Behalten',
+    'dupes_keep_one' => 'Duplikate löschen (behalte 1)',
 ];

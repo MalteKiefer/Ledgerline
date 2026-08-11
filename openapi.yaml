@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.617.0
+  version: 1.618.0
   license:
     name: Proprietary
   description: >
@@ -5174,6 +5174,17 @@ paths:
       parameters: [ { name: q, in: query, required: true, schema: { type: string } } ]
       responses:
         "200": { description: "Matching photos (nearest first; empty when ML is off).", content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /gallery/duplicates:
+    get:
+      tags: [Gallery]
+      operationId: galleryDuplicates
+      summary: Near-duplicate photo groups (CLIP embedding cosine)
+      description: "Groups of visually near-identical photos (bursts, re-saves, crops) by CLIP-embedding cosine distance — exact byte duplicates are already blocked at upload. Requires the ML sidecar + pgvector; otherwise returns empty."
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: "Duplicate groups (each with ≥2 photos; the first is the suggested keep).", content: { application/json: { schema: { type: object, properties: { groups: { type: array, items: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /gallery/trash:

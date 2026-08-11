@@ -534,6 +534,80 @@ class GalleryController extends Controller
     }
 
     /**
+     * Near-duplicate groups by CLIP-embedding cosine distance (exact byte
+     * duplicates are already blocked at upload by sha256). Greedy: for each
+     * un-grouped embedded photo, pull its close neighbors via the HNSW index and
+     * form a group of ≥2. pgvector-only; empty when ML/pgvector are off.
+     */
+    public function duplicates(Request $request): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        if (! Vector::available()) {
+            return response()->json(['groups' => []]);
+        }
+        $maxCfg = config('ml.dup_max_distance', 0.08);
+        $max = is_numeric($maxCfg) ? (float) $maxCfg : 0.08;
+        $rows = DB::select(
+            'SELECT id FROM gallery_photos
+             WHERE user_id = ? AND deleted_at IS NULL AND embedding IS NOT NULL
+             ORDER BY created_at DESC, id DESC LIMIT 5000',
+            [$uid],
+        );
+        $ids = array_values(array_filter(array_map(
+            static fn ($r): int => is_object($r) && isset($r->id) && is_numeric($r->id) ? (int) $r->id : 0,
+            $rows,
+        ), static fn (int $i): bool => $i > 0));
+
+        $seen = [];
+        $groups = [];
+        foreach ($ids as $id) {
+            if (isset($seen[$id]) || count($groups) >= 200) {
+                continue;
+            }
+            $nRows = DB::select(
+                '(SELECT b.id FROM gallery_photos a JOIN gallery_photos b
+                    ON b.user_id = a.user_id
+                  WHERE a.id = ? AND b.id <> a.id AND b.deleted_at IS NULL AND b.embedding IS NOT NULL
+                    AND (a.embedding <=> b.embedding) < ?
+                  ORDER BY (a.embedding <=> b.embedding) LIMIT 20)',
+                [$id, $max],
+            );
+            $group = [$id];
+            foreach ($nRows as $nr) {
+                $nid = is_object($nr) && isset($nr->id) && is_numeric($nr->id) ? (int) $nr->id : 0;
+                if ($nid > 0 && ! isset($seen[$nid])) {
+                    $group[] = $nid;
+                }
+            }
+            if (count($group) < 2) {
+                continue;
+            }
+            foreach ($group as $gid) {
+                $seen[$gid] = true;
+            }
+            $groups[] = $group;
+        }
+
+        $flat = array_merge(...$groups === [] ? [[]] : $groups);
+        $byId = GalleryPhoto::query()->whereIn('id', $flat)->get()->keyBy('id');
+        $out = [];
+        foreach ($groups as $group) {
+            $photos = [];
+            foreach ($group as $gid) {
+                $p = $byId->get($gid);
+                if ($p instanceof GalleryPhoto) {
+                    $photos[] = $this->row($p);
+                }
+            }
+            if (count($photos) >= 2) {
+                $out[] = ['photos' => $photos];
+            }
+        }
+
+        return response()->json(['groups' => $out]);
+    }
+
+    /**
      * Serve a photo's WebP thumbnail — CACHE ONLY. A HEIC decode is ~20s, so the
      * web path never generates inline (a grid of N photos would stampede the FPM
      * pool). On a cache miss the generation job is (re)queued and a 404 is

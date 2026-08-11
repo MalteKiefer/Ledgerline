@@ -418,6 +418,7 @@ Route::middleware('auth')->group(function (): void {
     Route::middleware('module:gallery')->group(function (): void {
         Route::get('/gallery/data', [GalleryController::class, 'data'])->name('gallery.data');
         Route::get('/gallery/search', [GalleryController::class, 'search'])->middleware('throttle:120,1')->name('gallery.search');
+        Route::get('/gallery/duplicates', [GalleryController::class, 'duplicates'])->middleware('throttle:60,1')->name('gallery.duplicates');
         Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('gallery.trash');
         Route::post('/gallery', [GalleryController::class, 'upload'])->middleware('throttle:1200,1')->name('gallery.upload');
         Route::post('/gallery/chunk/init', [GalleryController::class, 'chunkInit'])->middleware('throttle:600,1')->name('gallery.chunk.init');

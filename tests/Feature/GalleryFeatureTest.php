@@ -187,6 +187,14 @@ class GalleryFeatureTest extends TestCase
         $this->get(route('gallery.search', ['q' => '']))->assertOk()->assertExactJson(['photos' => []]);
     }
 
+    public function test_duplicates_is_empty_without_pgvector(): void
+    {
+        // sqlite/no-pgvector → Vector::available() false → empty groups (graceful).
+        $this->actingAs(User::factory()->create());
+        $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('d.jpg', 40, 40)]);
+        $this->get(route('gallery.duplicates'))->assertOk()->assertExactJson(['groups' => []]);
+    }
+
     public function test_non_media_upload_is_rejected(): void
     {
         $this->actingAs(User::factory()->create());
