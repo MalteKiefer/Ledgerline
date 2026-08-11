@@ -293,22 +293,26 @@
                 </div>
               </div>
               <!-- Overview -->
-              <div class="rounded-lg border border-[var(--ll-border)] p-3">
-                <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('gallery.info_overview') }}</div>
-                <dl class="space-y-1.5">
-                  <div v-for="r in overviewRows" :key="r.k" class="flex justify-between gap-3">
-                    <dt class="shrink-0 text-[var(--ll-muted)]">{{ r.k }}</dt>
-                    <dd class="break-words text-right font-medium">{{ r.v }}</dd>
+              <div class="overflow-hidden rounded-xl border border-[var(--ll-border)]">
+                <div class="flex items-center gap-1.5 border-b border-[var(--ll-border)] bg-[var(--ll-bg)] px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">
+                  <Icon name="info" :size="14" />{{ t('gallery.info_overview') }}
+                </div>
+                <dl class="divide-y divide-[var(--ll-border)]">
+                  <div v-for="r in overviewRows" :key="r.k" class="flex items-baseline justify-between gap-3 px-3 py-1.5">
+                    <dt class="shrink-0 text-xs text-[var(--ll-muted)]">{{ r.k }}</dt>
+                    <dd class="break-words text-right text-[0.8rem] font-medium">{{ r.v }}</dd>
                   </div>
                 </dl>
               </div>
               <!-- Full EXIF sections -->
-              <div v-for="sec in exifSections" :key="sec.title" class="rounded-lg border border-[var(--ll-border)] p-3">
-                <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ sec.title }}</div>
-                <dl class="space-y-1.5">
-                  <div v-for="r in sec.rows" :key="r.k" class="flex justify-between gap-3">
-                    <dt class="shrink-0 text-[var(--ll-muted)]">{{ r.k }}</dt>
-                    <dd class="break-words text-right font-medium">{{ r.v }}</dd>
+              <div v-for="sec in exifSections" :key="sec.title" class="overflow-hidden rounded-xl border border-[var(--ll-border)]">
+                <div class="flex items-center gap-1.5 border-b border-[var(--ll-border)] bg-[var(--ll-bg)] px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">
+                  <Icon :name="sec.sec === 'GPS' ? 'location_on' : (sec.sec === 'EXIF' ? 'photo_camera' : 'image')" :size="14" />{{ sec.title }}
+                </div>
+                <dl class="divide-y divide-[var(--ll-border)]">
+                  <div v-for="r in sec.rows" :key="r.k" class="flex items-baseline justify-between gap-3 px-3 py-1.5">
+                    <dt class="shrink-0 text-xs text-[var(--ll-muted)]">{{ r.k }}</dt>
+                    <dd class="break-words text-right font-mono text-[0.78rem] font-medium">{{ r.v }}</dd>
                   </div>
                 </dl>
               </div>
@@ -796,12 +800,60 @@ const overviewRows = computed<{ k: string; v: string }[]>(() => {
   return rows;
 });
 
-const exifSections = computed<{ title: string; rows: { k: string; v: string }[] }[]>(() => {
+// Noise / redundant keys hidden from the sidebar (pointers, version blobs, the
+// COMPUTED html string, and the GPS rationals already shown as the map + decimal).
+const EXIF_NOISE = new Set([
+  'html', 'ByteOrderMotorola', 'IsColor', 'ExifVersion', 'FlashPixVersion', 'FlashpixVersion',
+  'ComponentsConfiguration', 'YCbCrPositioning', 'Exif_IFD_Pointer', 'GPS_IFD_Pointer',
+  'Interoperability_IFD_Pointer', 'InteroperabilityIndex', 'InteroperabilityVersion',
+  'GPSLatitude', 'GPSLongitude', 'GPSLatitudeRef', 'GPSLongitudeRef', 'GPSVersion', 'GPSVersionID',
+  'MakerNote', 'UserComment', 'FileSource', 'SceneType', 'Thumbnail.JPEGInterchangeFormat', 'Thumbnail.JPEGInterchangeFormatLength',
+]);
+const SECTION_ORDER = ['IFD0', 'EXIF', 'GPS', 'COMPUTED', 'INTEROP', 'THUMBNAIL'];
+
+// Human-readable key label: split camelCase, keep acronyms tight (ISO/GPS/FNumber).
+function prettyKey(k: string): string {
+  return k
+    .replace(/_/g, ' ')
+    .replace(/([a-z\d])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .trim();
+}
+
+// Units / friendly values for well-known tags; falls back to the raw string.
+function formatExif(key: string, v: string): string {
+  const num = Number(v);
+  switch (key) {
+    case 'ExposureTime': return `${v} s`;
+    case 'ShutterSpeedValue': return `${v}`;
+    case 'FNumber': case 'ApertureFNumber': case 'ApertureValue': case 'MaxApertureValue': return `ƒ/${v}`;
+    case 'FocalLength': case 'FocalLengthIn35mmFilm': return `${v} mm`;
+    case 'ISOSpeedRatings': case 'PhotographicSensitivity': case 'ExposureIndex': return `ISO ${v}`;
+    case 'ExposureBiasValue': return `${v} EV`;
+    case 'GPSAltitude': return `${v} m`;
+    case 'ColorSpace': return v === '1' ? 'sRGB' : v === '65535' ? 'Uncalibrated' : v;
+    case 'Orientation': return ({ '1': 'Normal', '3': '180°', '6': '90° CW', '8': '90° CCW' } as Record<string, string>)[v] ?? v;
+    case 'ResolutionUnit': return v === '2' ? 'inch' : v === '3' ? 'cm' : v;
+    default: return Number.isFinite(num) && key.endsWith('Value') ? String(num) : v;
+  }
+}
+
+const exifSections = computed<{ sec: string; title: string; rows: { k: string; v: string }[] }[]>(() => {
   const e = viewerExif.value;
   if (!e?.exif) return [];
   return Object.entries(e.exif)
-    .map(([sec, rows]) => ({ title: EXIF_TITLES[sec] ?? sec, rows: Object.entries(rows).map(([k, v]) => ({ k, v })) }))
-    .filter((s) => s.rows.length > 0);
+    .map(([sec, rows]) => ({
+      sec,
+      title: EXIF_TITLES[sec] ?? sec,
+      rows: Object.entries(rows)
+        .filter(([k]) => !EXIF_NOISE.has(k))
+        .map(([k, v]) => ({ k: prettyKey(k), v: formatExif(k, v) })),
+    }))
+    .filter((s) => s.rows.length > 0)
+    .sort((a, b) => {
+      const ia = SECTION_ORDER.indexOf(a.sec); const ib = SECTION_ORDER.indexOf(b.sec);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
 });
 
 function destroyExifMap() { if (exifMap) { exifMap.remove(); exifMap = null; } }
@@ -812,7 +864,13 @@ function initExifMap() {
   if (!showInfo.value || !e || e.lat == null || e.lng == null || !exifMapEl.value) return;
   exifMap = L.map(exifMapEl.value, { attributionControl: true, scrollWheelZoom: false });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(exifMap);
-  L.marker([e.lat, e.lng]).addTo(exifMap);
+  // Custom SVG pin — Leaflet's default marker PNG asset 404s under the bundler.
+  const pin = L.divIcon({
+    className: '',
+    html: '<svg width="30" height="42" viewBox="0 0 24 34" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C5.4 0 0 5.4 0 12c0 8.5 12 22 12 22s12-13.5 12-22C24 5.4 18.6 0 12 0z" fill="#6750a4" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="12" r="4.5" fill="#fff"/></svg>',
+    iconSize: [30, 42], iconAnchor: [15, 42],
+  });
+  L.marker([e.lat, e.lng], { icon: pin }).addTo(exifMap);
   exifMap.setView([e.lat, e.lng], 14);
   setTimeout(() => exifMap?.invalidateSize(), 60);
 }
