@@ -1308,22 +1308,21 @@ class GalleryController extends Controller
      */
     private function extractExif(string $path): array
     {
-        if (! function_exists('exif_read_data')) {
-            return [];
-        }
-        try {
-            $raw = @exif_read_data($path, null, true);
-        } catch (\Throwable) {
-            return [];
-        }
-        if (! is_array($raw)) {
-            return [];
+        // Full grouped EXIF first (this handles both exif_read_data AND the
+        // Imagick `exif:*` fallback — the latter covers HEIC, where PHP's
+        // exif_read_data returns false). Derive the hot fields FROM it so HEIC
+        // never falls through with empty metadata.
+        $sections = $this->readExifSections($path);
+        $flat = [];
+        foreach ($sections as $rows) {
+            foreach ($rows as $k => $v) {
+                if (! isset($flat[$k])) {
+                    $flat[$k] = $v;
+                }
+            }
         }
 
-        $ifd0 = is_array($raw['IFD0'] ?? null) ? $raw['IFD0'] : [];
-        $exifSec = is_array($raw['EXIF'] ?? null) ? $raw['EXIF'] : [];
-
-        $takenRaw = $exifSec['DateTimeOriginal'] ?? $ifd0['DateTime'] ?? null;
+        $takenRaw = $flat['DateTimeOriginal'] ?? $flat['DateTimeDigitized'] ?? $flat['DateTime'] ?? null;
         $takenAt = null;
         if (is_string($takenRaw) && $takenRaw !== '') {
             $ts = \DateTimeImmutable::createFromFormat('Y:m:d H:i:s', trim($takenRaw));
@@ -1332,22 +1331,56 @@ class GalleryController extends Controller
             }
         }
 
-        $make = is_string($ifd0['Make'] ?? null) ? trim((string) $ifd0['Make']) : '';
-        $model = is_string($ifd0['Model'] ?? null) ? trim((string) $ifd0['Model']) : '';
+        $make = isset($flat['Make']) ? trim($flat['Make']) : '';
+        $model = isset($flat['Model']) ? trim($flat['Model']) : '';
         $camera = trim($make.' '.$model);
         $camera = $camera !== '' ? mb_substr($camera, 0, 190) : null;
 
-        $gps = is_array($raw['GPS'] ?? null) ? $raw['GPS'] : [];
-        $lat = $this->gpsCoord($gps['GPSLatitude'] ?? null, is_string($gps['GPSLatitudeRef'] ?? null) ? $gps['GPSLatitudeRef'] : null);
-        $lng = $this->gpsCoord($gps['GPSLongitude'] ?? null, is_string($gps['GPSLongitudeRef'] ?? null) ? $gps['GPSLongitudeRef'] : null);
+        $lat = $this->parseGpsString($flat['GPSLatitude'] ?? null, $flat['GPSLatitudeRef'] ?? null);
+        $lng = $this->parseGpsString($flat['GPSLongitude'] ?? null, $flat['GPSLongitudeRef'] ?? null);
 
         return [
             'taken_at' => $takenAt,
             'camera' => $camera,
             'lat' => $lat,
             'lng' => $lng,
-            'exif' => $this->readExifSections($path),
+            'exif' => $sections,
         ];
+    }
+
+    /**
+     * Parse a GPS coordinate from a "deg, min, sec" string (values may be
+     * rationals "48/1" or decimals "48") + a hemisphere ref (N/S/E/W). Covers
+     * both the exif_read_data-array form (sanitized to "48, 8, 5.96") and the
+     * Imagick `exif:GPSLatitude` form ("48/1, 8/1, 21321/1000").
+     */
+    private function parseGpsString(?string $val, ?string $ref): ?float
+    {
+        if (! is_string($val) || $val === '') {
+            return null;
+        }
+        $parts = array_map('trim', explode(',', $val));
+        if (count($parts) < 3) {
+            return null;
+        }
+        $nums = [];
+        foreach (array_slice($parts, 0, 3) as $p) {
+            if (preg_match('#^(-?\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)$#', $p, $m) === 1) {
+                $den = (float) $m[2];
+                $nums[] = $den !== 0.0 ? (float) $m[1] / $den : 0.0;
+            } elseif (is_numeric($p)) {
+                $nums[] = (float) $p;
+            } else {
+                return null;
+            }
+        }
+        $deg = $nums[0] + $nums[1] / 60 + $nums[2] / 3600;
+        $r = strtoupper((string) $ref);
+        if ($r === 'S' || $r === 'W') {
+            $deg = -$deg;
+        }
+
+        return round($deg, 7);
     }
 
     /**
@@ -1499,41 +1532,6 @@ class GalleryController extends Controller
             'lng' => $photo->lng,
             'exif' => $exif,
         ]);
-    }
-
-    /** Convert an EXIF GPS [deg,min,sec] rational triple + hemisphere ref to a signed float. */
-    private function gpsCoord(mixed $parts, ?string $ref): ?float
-    {
-        if (! is_array($parts) || count($parts) < 3) {
-            return null;
-        }
-        $deg = $this->rational($parts[0]);
-        $min = $this->rational($parts[1]);
-        $sec = $this->rational($parts[2]);
-        if ($deg === null || $min === null || $sec === null) {
-            return null;
-        }
-        $val = $deg + $min / 60 + $sec / 3600;
-        if ($ref === 'S' || $ref === 'W') {
-            $val = -$val;
-        }
-
-        return round($val, 7);
-    }
-
-    private function rational(mixed $v): ?float
-    {
-        if (is_numeric($v)) {
-            return (float) $v;
-        }
-        if (is_string($v) && str_contains($v, '/')) {
-            [$n, $d] = array_pad(explode('/', $v, 2), 2, '1');
-            $d = (float) $d;
-
-            return $d !== 0.0 ? (float) $n / $d : null;
-        }
-
-        return null;
     }
 
     private function purgeBlobs(GalleryPhoto $photo): void
