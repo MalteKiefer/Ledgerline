@@ -20,6 +20,20 @@ export interface ExifDetail {
   exif: Record<string, Record<string, string>>;
 }
 
+export interface PublicShareRow {
+  id: number; album_id: number; album?: string | null; token: string;
+  has_password: boolean; allow_download: boolean; expires_at: string | null;
+}
+export interface InternalShareRow {
+  id: number; album_id: number | null; album?: string | null; recipient?: string | null; scope: 'album' | 'library';
+}
+export interface SharedWithMeRow {
+  id: number; scope: 'album' | 'library'; name: string | null; owner: string | null; count: number; cover: number | null;
+}
+export interface SharedPhoto {
+  id: number; name: string; media_type: 'image' | 'video'; taken_at: string | null; width: number | null; height: number | null;
+}
+
 export interface PhotoEdit {
   taken_at?: string | null; place?: string | null;
   lat?: number | null; lng?: number | null;
@@ -144,10 +158,29 @@ export const useGalleryStore = defineStore('gallery', () => {
   const contactPhotos = (contactId: string) =>
     api.get<{ photos: Photo[] }>(`/api/v1/gallery/contacts/${contactId}/photos`).then((r) => r.photos ?? []).catch(() => [] as Photo[]);
 
+  // ---- Sharing (owner side) ----
+  const loadShares = () => api.get<{ public: PublicShareRow[]; internal: InternalShareRow[] }>('/api/v1/gallery/shares');
+  const createPublicShare = (body: { album_id: number; allow_download?: boolean; password?: string | null; expires_at?: string | null }) =>
+    api.post<PublicShareRow>('/api/v1/gallery/shares/public', body);
+  const updatePublicShare = (id: number, body: Record<string, unknown>) => api.put<PublicShareRow>(`/api/v1/gallery/shares/public/${id}`, body);
+  const deletePublicShare = (id: number) => api.delete(`/api/v1/gallery/shares/public/${id}`);
+  const shareInternal = (body: { email: string; album_id?: number | null }) => api.post<{ ok: boolean; id: number }>('/api/v1/gallery/shares/internal', body);
+  const deleteInternalShare = (id: number) => api.delete(`/api/v1/gallery/shares/internal/${id}`);
+  const publicShareUrl = (token: string) => `${window.location.origin}/g/${token}`;
+
+  // ---- Shared with me (recipient side) ----
+  const sharedWithMe = () => api.get<{ shares: SharedWithMeRow[] }>('/api/v1/gallery/shared-with-me').then((r) => r.shares ?? []);
+  const browseShared = (id: number) => api.get<{ name: string | null; photos: SharedPhoto[] }>(`/api/v1/gallery/shared-with-me/${id}`);
+  const sharedThumbUrl = (share: number, photo: number) => api.streamUrl(`/api/v1/gallery/shared-with-me/${share}/photo/${photo}/thumb`);
+  const sharedPreviewUrl = (share: number, photo: number) => api.streamUrl(`/api/v1/gallery/shared-with-me/${share}/photo/${photo}/preview`);
+  const sharedRawUrl = (share: number, photo: number) => api.streamUrl(`/api/v1/gallery/shared-with-me/${share}/photo/${photo}/raw`);
+
   return {
     photos, albums, load, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
     people, browsePerson, updatePerson, deletePerson, mergePeople, photoFaces, assignFace, setFaceCover, hideFace, faceCropUrl, reprocess, mlStatus, loadExif, nameSuggest, contactPhotos,
+    loadShares, createPublicShare, updatePublicShare, deletePublicShare, shareInternal, deleteInternalShare, publicShareUrl,
+    sharedWithMe, browseShared, sharedThumbUrl, sharedPreviewUrl, sharedRawUrl,
   };
 });

@@ -39,6 +39,8 @@
           <Btn v-if="showTrash && trashPhotos.length" variant="ghost" size="sm" icon="delete" class="text-red-600" @click="onEmpty">{{ t('gallery.empty_trash') }}</Btn>
           <Btn v-if="!showTrash" :variant="showPeople ? 'solid' : 'ghost'" size="sm" icon="group" @click="showPeople ? closePeople() : openPeople()">{{ t('gallery.people') }}</Btn>
           <Btn v-if="!showTrash" :variant="showDupes ? 'solid' : 'ghost'" size="sm" icon="content_copy" @click="showDupes ? closeDupes() : openDupes()">{{ t('gallery.duplicates') }}</Btn>
+          <Btn v-if="!showTrash" :variant="showShared ? 'solid' : 'ghost'" size="sm" icon="folder_shared" @click="showShared ? closeShared() : openShared()">{{ t('gallery.shared_with_me') }}</Btn>
+          <Btn v-if="!showTrash && !showShared" variant="ghost" size="sm" icon="share" @click="openLibraryShare">{{ t('gallery.share_gallery') }}</Btn>
           <Btn variant="ghost" size="sm" :icon="showTrash ? 'photo_library' : 'delete'" @click="toggleTrash">{{ showTrash ? t('gallery.back') : t('gallery.trash') }}</Btn>
         </div>
       </div>
@@ -82,6 +84,7 @@
         >
           <span>{{ a.name }}</span>
           <span class="tabular-nums opacity-70">{{ a.count }}</span>
+          <Icon v-if="albumId === a.id" name="share" :size="14" class="opacity-80 hover:opacity-100" @click.stop="openShare(a)" />
           <Icon v-if="albumId === a.id" name="edit" :size="14" class="opacity-80 hover:opacity-100" @click.stop="renameAlbum(a)" />
           <Icon v-if="albumId === a.id" name="delete" :size="14" class="opacity-80 hover:opacity-100" @click.stop="deleteAlbum(a)" />
         </button>
@@ -323,6 +326,88 @@
       </div>
     </Teleport>
 
+    <!-- Share modal (album public link + internal cross-user grants) -->
+    <Teleport to="body">
+      <div v-if="share.open" class="fixed inset-0 z-[2200] flex items-center justify-center bg-black/50 p-4" @click.self="share.open = false">
+        <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-[var(--ll-elevated)] shadow-xl">
+          <div class="flex items-center justify-between border-b border-[var(--ll-border)] px-5 py-3">
+            <h3 class="text-sm font-semibold">{{ t('gallery.share_title') }}: {{ share.albumId ? share.albumName : t('gallery.whole_gallery') }}</h3>
+            <button class="rounded-full p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="share.open = false"><Icon name="close" :size="18" /></button>
+          </div>
+          <div class="space-y-5 p-5">
+            <!-- Public link (albums only) -->
+            <div v-if="share.albumId">
+              <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('gallery.public_link') }}</div>
+              <template v-if="share.public">
+                <div class="mb-2 flex gap-2">
+                  <input :value="g.publicShareUrl(share.public.token)" readonly class="min-w-0 flex-1 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-bg)] px-2 py-1.5 text-xs">
+                  <Btn variant="soft" size="sm" icon="content_copy" @click="copyShareLink">{{ t('common.copy') }}</Btn>
+                </div>
+                <label class="flex items-center gap-2 py-1 text-sm"><input type="checkbox" :checked="share.public.allow_download" class="accent-primary-500" @change="setAllowDownload(($event.target as HTMLInputElement).checked)">{{ t('gallery.allow_download') }}</label>
+                <label class="flex items-center gap-2 py-1 text-sm"><input type="checkbox" :checked="share.public.has_password" class="accent-primary-500" @change="togglePassword(($event.target as HTMLInputElement).checked)">{{ t('gallery.password_protect') }}</label>
+                <Btn variant="ghost" size="sm" icon="delete" class="mt-1 text-red-600" @click="removePublic">{{ t('gallery.remove_link') }}</Btn>
+              </template>
+              <Btn v-else variant="soft" size="sm" icon="link" :loading="share.busy" @click="createPublic">{{ t('gallery.create_link') }}</Btn>
+            </div>
+            <!-- Internal cross-user share -->
+            <div>
+              <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('gallery.share_with_user') }}</div>
+              <form class="mb-2 flex gap-2" @submit.prevent="addInternal">
+                <input v-model="share.email" type="email" :placeholder="t('common.email')" class="min-w-0 flex-1 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-bg)] px-2 py-1.5 text-sm">
+                <Btn type="submit" variant="soft" size="sm" icon="person_add" :loading="share.busy">{{ t('gallery.share_action') }}</Btn>
+              </form>
+              <ul v-if="share.internal.length" class="divide-y divide-[var(--ll-border)] rounded-lg border border-[var(--ll-border)]">
+                <li v-for="s in share.internal" :key="s.id" class="flex items-center justify-between px-3 py-1.5 text-sm">
+                  <span class="truncate">{{ s.recipient }}</span>
+                  <button class="text-red-600 hover:opacity-80" @click="removeInternal(s.id)"><Icon name="close" :size="15" /></button>
+                </li>
+              </ul>
+              <p v-else class="text-xs text-[var(--ll-muted)]">{{ t('gallery.no_recipients') }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Shared with me -->
+    <Teleport to="body">
+      <div v-if="showShared" class="fixed inset-0 z-[2150] flex flex-col bg-[var(--ll-bg)]">
+        <div class="flex items-center gap-2 border-b border-[var(--ll-border)] px-4 py-3">
+          <Btn v-if="sharedView" variant="ghost" size="sm" icon="arrow_back" @click="sharedView = null">{{ t('common.back') }}</Btn>
+          <h2 class="text-sm font-semibold">{{ sharedView ? sharedView.name : t('gallery.shared_with_me') }}</h2>
+          <button class="ml-auto rounded-full p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="closeShared"><Icon name="close" :size="20" /></button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-3">
+          <div v-if="!sharedView">
+            <div v-if="!sharedList.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.shared_none') }}</div>
+            <div v-else class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+              <button v-for="s in sharedList" :key="s.id" class="group overflow-hidden rounded-lg border border-[var(--ll-border)] text-left" @click="openSharedShare(s)">
+                <div class="aspect-video w-full bg-black/[0.06] dark:bg-white/10">
+                  <img v-if="s.cover" :src="g.sharedThumbUrl(s.id, s.cover)" loading="lazy" class="h-full w-full object-cover">
+                </div>
+                <div class="p-2">
+                  <div class="truncate text-sm font-medium">{{ s.name }}</div>
+                  <div class="truncate text-xs text-[var(--ll-muted)]">{{ s.owner }} · {{ s.count }} · {{ s.scope === 'library' ? t('gallery.whole_gallery') : t('gallery.info_sec_image') }}</div>
+                </div>
+              </button>
+            </div>
+          </div>
+          <div v-else class="grid gap-2" :style="gridStyle">
+            <button v-for="(p, i) in sharedPhotos" :key="p.id" class="aspect-square overflow-hidden rounded-lg bg-black/[0.06] dark:bg-white/10" @click="sharedViewer = i">
+              <img :src="g.sharedThumbUrl(sharedView.id, p.id)" loading="lazy" class="h-full w-full object-cover">
+            </button>
+          </div>
+        </div>
+        <!-- Shared photo lightbox -->
+        <div v-if="sharedViewer >= 0 && sharedView" class="fixed inset-0 z-[2160] flex items-center justify-center bg-black/90" @click.self="sharedViewer = -1">
+          <button class="absolute right-4 top-4 rounded-full p-2 text-white/80 hover:bg-white/10" @click="sharedViewer = -1"><Icon name="close" :size="24" /></button>
+          <button class="absolute left-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/80 hover:bg-white/10" @click="sharedStep(-1)"><Icon name="chevron_left" :size="32" /></button>
+          <button class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/80 hover:bg-white/10" @click="sharedStep(1)"><Icon name="chevron_right" :size="32" /></button>
+          <img v-if="sharedPhotos[sharedViewer]" :src="g.sharedPreviewUrl(sharedView.id, sharedPhotos[sharedViewer].id)" class="max-h-[92vh] max-w-[92vw] object-contain">
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Edit modal -->
     <Teleport to="body">
       <div v-if="edit.open" class="fixed inset-0 z-[2200] flex items-center justify-center bg-black/50 p-4" @click.self="edit.open = false">
@@ -482,9 +567,10 @@ import 'leaflet/dist/leaflet.css';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, Icon } from '@spa/ui';
 import LocationField from '@spa/components/LocationField.vue';
-import { useGalleryStore, type Photo, type Album, type PhotoEdit, type Person, type Face, type ContactSuggestion, type ExifDetail } from '@spa/stores/gallery';
+import { useGalleryStore, type Photo, type Album, type PhotoEdit, type Person, type Face, type ContactSuggestion, type ExifDetail, type PublicShareRow, type InternalShareRow, type SharedWithMeRow, type SharedPhoto } from '@spa/stores/gallery';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
+import { ApiError } from '@spa/api/client';
 
 type Row = Photo & { _dayHeader?: string };
 
@@ -891,6 +977,82 @@ watch(viewer, () => {
   if (showInfo.value) void loadViewerExif();
   else { viewerExif.value = null; destroyExifMap(); }
 });
+
+// ---- Sharing (owner side) ----
+const share = reactive<{
+  open: boolean; albumId: number | null; albumName: string;
+  public: PublicShareRow | null; internal: InternalShareRow[]; email: string; busy: boolean;
+}>({ open: false, albumId: null, albumName: '', public: null, internal: [], email: '', busy: false });
+
+async function refreshShareState() {
+  try {
+    const r = await g.loadShares();
+    share.public = share.albumId ? (r.public.find((p) => p.album_id === share.albumId) ?? null) : null;
+    share.internal = r.internal.filter((s) => (share.albumId ? s.album_id === share.albumId : s.album_id === null));
+  } catch { error(t('common.error')); }
+}
+function openShare(a: Album) { share.open = true; share.albumId = a.id; share.albumName = a.name; share.email = ''; void refreshShareState(); }
+function openLibraryShare() { share.open = true; share.albumId = null; share.albumName = ''; share.email = ''; void refreshShareState(); }
+async function createPublic() {
+  if (!share.albumId) return;
+  share.busy = true;
+  try { share.public = await g.createPublicShare({ album_id: share.albumId }); } catch { error(t('common.error')); } finally { share.busy = false; }
+}
+async function removePublic() {
+  if (!share.public) return;
+  try { await g.deletePublicShare(share.public.id); share.public = null; } catch { error(t('common.error')); }
+}
+async function setAllowDownload(v: boolean) {
+  if (!share.public) return;
+  try { share.public = await g.updatePublicShare(share.public.id, { allow_download: v }); } catch { error(t('common.error')); }
+}
+async function togglePassword(on: boolean) {
+  if (!share.public) return;
+  try {
+    if (on) {
+      const pw = await promptAsk(t('gallery.set_password'), {});
+      if (!pw) { await refreshShareState(); return; }
+      share.public = await g.updatePublicShare(share.public.id, { password: pw });
+    } else {
+      share.public = await g.updatePublicShare(share.public.id, { clear_password: true });
+    }
+  } catch { error(t('common.error')); }
+}
+async function addInternal() {
+  if (!share.email.trim()) return;
+  share.busy = true;
+  try { await g.shareInternal({ email: share.email.trim(), album_id: share.albumId }); share.email = ''; await refreshShareState(); success(t('common.saved')); }
+  catch (e) { error(e instanceof ApiError && e.status === 422 ? t('gallery.recipient_invalid') : t('common.error')); }
+  finally { share.busy = false; }
+}
+async function removeInternal(id: number) {
+  try { await g.deleteInternalShare(id); await refreshShareState(); } catch { error(t('common.error')); }
+}
+async function copyShareLink() {
+  if (!share.public) return;
+  try { await navigator.clipboard.writeText(g.publicShareUrl(share.public.token)); success(t('common.copied')); } catch { error(t('common.error')); }
+}
+
+// ---- Shared with me (recipient side) ----
+const showShared = ref(false);
+const sharedList = ref<SharedWithMeRow[]>([]);
+const sharedView = ref<SharedWithMeRow | null>(null);
+const sharedPhotos = ref<SharedPhoto[]>([]);
+const sharedViewer = ref(-1);
+async function openShared() {
+  showShared.value = true; sharedView.value = null; sharedViewer.value = -1;
+  if (showPeople.value) closePeople(); if (showDupes.value) closeDupes();
+  try { sharedList.value = await g.sharedWithMe(); } catch { error(t('common.error')); }
+}
+function closeShared() { showShared.value = false; sharedView.value = null; sharedViewer.value = -1; }
+async function openSharedShare(s: SharedWithMeRow) {
+  sharedView.value = s; sharedViewer.value = -1;
+  try { sharedPhotos.value = (await g.browseShared(s.id)).photos; } catch { error(t('common.error')); }
+}
+function sharedStep(d: number) {
+  const n = sharedPhotos.value.length; if (!n) { sharedViewer.value = -1; return; }
+  sharedViewer.value = (sharedViewer.value + d + n) % n;
+}
 
 // ---- Multi-select ----
 function selectAlbum(id: number | null) { albumId.value = id; clearSelection(); clearSearch(); void refresh(); }
