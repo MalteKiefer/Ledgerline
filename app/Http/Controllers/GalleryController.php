@@ -551,6 +551,35 @@ class GalleryController extends Controller
     }
 
     /**
+     * Re-queue ML processing over the owner's photos: face detection + grouping
+     * and/or CLIP embeddings. Runs on the worker one photo at a time. Use after
+     * enabling ML, changing models, or to improve recognition.
+     */
+    public function reprocess(Request $request): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $scope = $request->string('scope')->lower()->value();
+        $scope = in_array($scope, ['faces', 'embeddings', 'all'], true) ? $scope : 'all';
+        $doFaces = $scope === 'faces' || $scope === 'all';
+        $doEmb = $scope === 'embeddings' || $scope === 'all';
+        $count = 0;
+        GalleryPhoto::query()->where('user_id', $uid)->orderBy('id')
+            ->chunkById(200, function ($photos) use (&$count, $doFaces, $doEmb): void {
+                foreach ($photos as $photo) {
+                    if ($doEmb) {
+                        EmbedGalleryPhoto::dispatch($photo->id);
+                    }
+                    if ($doFaces) {
+                        DetectGalleryFaces::dispatch($photo->id);
+                    }
+                    $count++;
+                }
+            });
+
+        return response()->json(['ok' => true, 'queued' => $count, 'scope' => $scope]);
+    }
+
+    /**
      * Semantic search: embed the query into CLIP space and return the nearest
      * photos by cosine distance (pgvector). Empty when ML/pgvector are off or the
      * query does not embed — the client then falls back to a name filter.

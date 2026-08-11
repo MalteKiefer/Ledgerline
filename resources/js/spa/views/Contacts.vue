@@ -180,6 +180,18 @@
                 <div class="text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.note') }}</div>
                 <div class="mt-1 text-sm">{{ str(detail.note) }}</div>
               </div>
+              <!-- Gallery photos of this contact (face recognition) -->
+              <div v-if="contactPhotos.length" class="mt-4">
+                <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('gallery.contact_photos') }}</div>
+                <div class="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+                  <a
+                    v-for="p in contactPhotos" :key="p.id" :href="'#/gallery'"
+                    class="aspect-square overflow-hidden rounded-lg bg-black/[0.04] dark:bg-white/5"
+                  >
+                    <img v-if="p.thumb" :src="gal.thumbUrl(p.id)" loading="lazy" class="h-full w-full object-cover">
+                  </a>
+                </div>
+              </div>
             </div>
           </template>
         </div>
@@ -371,6 +383,8 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useContactsStore, type ContactRow, type ContactDetail, type ContactGroup, type DuplicateGroup, type DuplicateContact, type AddressBook } from '@spa/stores/contacts';
 import { useToast } from '@spa/composables/useToast';
+import { useAuthStore } from '@spa/stores/auth';
+import { useGalleryStore, type Photo } from '@spa/stores/gallery';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
 // Presentational-only: maps the existing Vuetify-style color name (still returned
@@ -385,7 +399,10 @@ const TONE_BG: Record<string, string> = {
 };
 
 const c = useContactsStore();
+const gal = useGalleryStore();
+const auth = useAuthStore();
 const { success, error } = useToast();
+const contactPhotos = ref<Photo[]>([]);
 const bookId = ref<string | null>(null);
 const groupId = ref<number | null>(null);
 const favOnly = ref(false);
@@ -482,7 +499,10 @@ function reload() {
 
 function pick(b: string | null, fav: boolean) { bookId.value = b; favOnly.value = fav; groupId.value = null; reload(); }
 function pickGroup(id: number) { groupId.value = id; bookId.value = null; favOnly.value = false; reload(); }
-async function openDetail(row: ContactRow) { selected.value = row; detail.value = await c.show(row.id); }
+async function openDetail(row: ContactRow) {
+  selected.value = row; detail.value = await c.show(row.id);
+  contactPhotos.value = auth.can('gallery') ? await gal.contactPhotos(row.id) : [];
+}
 
 async function toggleFav() {
   if (!selected.value) return;
