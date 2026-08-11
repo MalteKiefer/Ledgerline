@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Jobs\DetectGalleryFaces;
 use App\Jobs\EmbedGalleryPhoto;
 use App\Jobs\GenerateGalleryThumbnail;
 use App\Jobs\ProcessGalleryVideo;
 use App\Models\GalleryAlbum;
+use App\Models\GalleryFace;
 use App\Models\GalleryPhoto;
 use App\Support\BlobStore;
 use App\Support\DiskTempFile;
@@ -70,6 +72,10 @@ class GalleryController extends Controller
         $albumId = $request->integer('album_id');
         if ($albumId > 0) {
             $query->whereHas('albums', fn ($q) => $q->whereKey($albumId));
+        }
+        $personId = $request->integer('person_id');
+        if ($personId > 0) {
+            $query->whereHas('faces', fn ($q) => $q->where('gallery_person_id', $personId)->where('hidden', false));
         }
         $photos = $query->orderByRaw('COALESCE(taken_at, created_at) DESC')->orderByDesc('id')->get()
             ->map(fn (GalleryPhoto $p): array => $this->row($p))->all();
@@ -139,6 +145,7 @@ class GalleryController extends Controller
         $this->attachEmbeddedMotion($photo, is_string($real) ? $real : null, $mime);
         GenerateGalleryThumbnail::dispatch($photo->id);
         EmbedGalleryPhoto::dispatch($photo->id);
+        DetectGalleryFaces::dispatch($photo->id);
 
         return response()->json(['photo' => $this->row($photo)], 201);
     }
@@ -287,6 +294,7 @@ class GalleryController extends Controller
         Cache::forget($this->sessionKey($uid, $id));
         GenerateGalleryThumbnail::dispatch($photo->id);
         EmbedGalleryPhoto::dispatch($photo->id);
+        DetectGalleryFaces::dispatch($photo->id);
 
         return response()->json(['photo' => $this->row($photo)], 201);
     }
@@ -478,6 +486,7 @@ class GalleryController extends Controller
             if ($posterRel !== null) {
                 $this->generateThumb($photo, $images);
                 EmbedGalleryPhoto::dispatch($photo->id); // embed the poster frame
+                DetectGalleryFaces::dispatch($photo->id);
             }
         } catch (\Throwable) {
             $photo->forceFill(['status' => 'failed'])->save();
@@ -1070,7 +1079,7 @@ class GalleryController extends Controller
     }
 
     /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,thumb:bool,preview:bool,motion:bool,media_type:string,status:string,duration:?int,rotation:int,flip_h:bool,taken_at:?string,camera:?string,place:?string,lat:?float,lng:?float,version:int,created_at:?string} */
-    private function row(GalleryPhoto $p): array
+    public function row(GalleryPhoto $p): array
     {
         return [
             'id' => $p->id,
@@ -1222,6 +1231,13 @@ class GalleryController extends Controller
         }
         $this->fs()->delete($this->thumbPath($photo));
         $this->fs()->delete($this->previewPath($photo));
+        // Face crops (the gallery_faces rows cascade on the FK; remove their files).
+        foreach (GalleryFace::query()->where('gallery_photo_id', $photo->id)->pluck('crop_path') as $crop) {
+            $c = $this->safeBlobPath($crop);
+            if ($c !== null && str_starts_with($c, 'gallery/faces/')) {
+                $this->fs()->delete($c);
+            }
+        }
     }
 
     /** Absolute filesystem path when the files disk is local, else null (remote). */

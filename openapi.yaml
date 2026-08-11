@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.619.0
+  version: 1.620.0
   license:
     name: Proprietary
   description: >
@@ -1180,6 +1180,24 @@ components:
         count: { type: integer }
         cover_photo_id: { type: integer, nullable: true }
         version: { type: integer }
+    GalleryPerson:
+      type: object
+      description: "A face-recognition person: an auto-grouped cluster of detected faces (biometric, opt-in). name is null until the owner names it; cover_face_id points at the crop shown as the person's avatar; count is the visible-face count."
+      properties:
+        id: { type: integer }
+        name: { type: string, nullable: true }
+        count: { type: integer }
+        cover_face_id: { type: integer, nullable: true }
+    GalleryFace:
+      type: object
+      description: "A detected face in a photo (gallery_faces). box is [x1,y1,x2,y2] normalised 0..1; the crop is served at /gallery/faces/{id}/crop. The 512-dim embedding is server-only (never serialized)."
+      properties:
+        id: { type: integer }
+        person_id: { type: integer, nullable: true }
+        person_name: { type: string, nullable: true }
+        box: { type: array, items: { type: number, format: float }, minItems: 4, maxItems: 4 }
+        score: { type: number, format: float }
+        crop: { type: boolean, description: "Whether a crop thumbnail exists." }
     FolderShareOwnerView:
       type: object
       description: "Owner-visible cross-user share (folder_shares): the shared target (a folder subtree OR a single file — exactly one is set) plus its member roster. Returned by the owner-side index/store/updateMember."
@@ -5160,7 +5178,7 @@ paths:
       summary: All photos for the current user (by capture date, newest first)
       description: "Ordered by COALESCE(taken_at, created_at) DESC. Optional album_id filters to one album."
       security: [ { bearerAuth: [] } ]
-      parameters: [ { name: album_id, in: query, required: false, schema: { type: integer } } ]
+      parameters: [ { name: album_id, in: query, required: false, schema: { type: integer } }, { name: person_id, in: query, required: false, schema: { type: integer }, description: "Filter to photos containing a visible face of this person." } ]
       responses:
         "200": { description: "Photos (without bytes).", content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -5187,6 +5205,113 @@ paths:
       responses:
         "200": { description: "Duplicate groups (each with ≥2 photos; the first is the suggested keep).", content: { application/json: { schema: { type: object, properties: { groups: { type: array, items: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /gallery/people:
+    get:
+      tags: [Gallery]
+      operationId: galleryPeople
+      summary: Face-recognition people (auto-grouped face clusters)
+      description: "People whose faces were detected + greedily grouped by face-embedding cosine similarity on the worker. Named clusters first, then by visible-face count. Requires face ML (ML_FACE_ENABLED) + the ML sidecar + pgvector; otherwise empty. Biometric data — owner-scoped, opt-in."
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: "People with ≥1 visible face.", content: { application/json: { schema: { type: object, properties: { people: { type: array, items: { $ref: "#/components/schemas/GalleryPerson" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /gallery/people/merge:
+    post:
+      tags: [Gallery]
+      operationId: galleryPeopleMerge
+      summary: Merge two people
+      description: "Reassign every face of from_id to into_id and delete from_id. If into_id is unnamed and from_id was named, the name is inherited."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [from_id, into_id], properties: { from_id: { type: integer }, into_id: { type: integer } } } } } }
+      responses:
+        "200": { description: "Merged.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /gallery/people/{person}:
+    get:
+      tags: [Gallery]
+      operationId: galleryPersonPhotos
+      summary: Photos of a person
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: person, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "The person's photos.", content: { application/json: { schema: { type: object, properties: { person: { $ref: "#/components/schemas/GalleryPerson" }, photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Gallery]
+      operationId: galleryPersonUpdate
+      summary: Rename a person (or clear the name with null)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: person, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: [string, "null"], maxLength: 120 } } } } } }
+      responses:
+        "200": { description: "Updated.", content: { application/json: { schema: { $ref: "#/components/schemas/GalleryPerson" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Gallery]
+      operationId: galleryPersonDestroy
+      summary: Delete a person (its faces are unassigned, not deleted)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: person, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "Deleted.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/{photo}/faces:
+    get:
+      tags: [Gallery]
+      operationId: galleryPhotoFaces
+      summary: Detected faces in a photo (with their person)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "Faces (normalised boxes) for the photo.", content: { application/json: { schema: { type: object, properties: { faces: { type: array, items: { $ref: "#/components/schemas/GalleryFace" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/faces/{face}/crop:
+    get:
+      tags: [Gallery]
+      operationId: galleryFaceCrop
+      summary: Face crop thumbnail (sandboxed JPEG)
+      description: "The square face crop, served immutably with default-src 'none'; sandbox + nosniff. Owner-scoped."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: face, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "JPEG crop.", content: { image/jpeg: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/faces/{face}/assign:
+    post:
+      tags: [Gallery]
+      operationId: galleryFaceAssign
+      summary: Move a face to a person (by id or new name)
+      description: "Assign the face to an existing person (person_id) or a new named person (name). Exactly one is required."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: face, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { person_id: { type: integer }, name: { type: string, maxLength: 120 } } } } } }
+      responses:
+        "200": { description: "Assigned.", content: { application/json: { schema: { $ref: "#/components/schemas/GalleryFace" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /gallery/faces/{face}/hide:
+    post:
+      tags: [Gallery]
+      operationId: galleryFaceHide
+      summary: Hide a face (false positive / not a person)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: face, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "Hidden.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /gallery/trash:
     get:
