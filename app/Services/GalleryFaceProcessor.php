@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Http\Controllers\GalleryController;
 use App\Models\GalleryFace;
 use App\Models\GalleryPerson;
 use App\Models\GalleryPhoto;
@@ -28,6 +29,7 @@ class GalleryFaceProcessor
     public function __construct(
         private readonly MachineLearning $ml,
         private readonly FaceCropper $cropper,
+        private readonly GalleryController $gallery,
     ) {}
 
     public function process(GalleryPhoto $photo): void
@@ -35,8 +37,9 @@ class GalleryFaceProcessor
         if (! $this->ml->faceEnabled() || ! Vector::available()) {
             return;
         }
-        // Detect on the image original, or a video's poster frame.
-        $rel = $photo->media_type === 'video' ? (string) $photo->poster_path : (string) $photo->storage_path;
+        // Detect on the ML-decodable rendition (WebP preview — the sidecar's PIL
+        // cannot read HEIC originals), or a video's poster frame.
+        $rel = $this->gallery->mlSourcePath($photo);
         if ($rel === '' || ! $this->fs()->exists($rel)) {
             return;
         }

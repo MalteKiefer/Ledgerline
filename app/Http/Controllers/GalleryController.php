@@ -355,6 +355,24 @@ class GalleryController extends Controller
         return 'gallery/preview/'.$photo->id.'-'.$photo->version.'.webp';
     }
 
+    /**
+     * Best ML-decodable source for a photo: the WebP preview (the ML sidecar's
+     * PIL cannot decode HEIC originals), else the video poster, else the
+     * original. Shared by CLIP embedding + face detection.
+     */
+    public function mlSourcePath(GalleryPhoto $photo): string
+    {
+        if ($photo->media_type === 'video') {
+            return (string) $photo->poster_path;
+        }
+        $preview = $this->previewPath($photo);
+        if ($this->fs()->exists($preview)) {
+            return $preview;
+        }
+
+        return (string) $photo->storage_path;
+    }
+
     /** Stream a Live Photo's motion clip (sandboxed). Best-effort playback — the
      *  clip is stored as received (no transcode; ffmpeg is deliberately not in
      *  the image), so a QuickTime .MOV plays in Safari but may not in every browser. */
@@ -502,7 +520,7 @@ class GalleryController extends Controller
         if (! $ml->enabled() || ! Vector::available()) {
             return;
         }
-        $rel = $photo->media_type === 'video' ? (string) $photo->poster_path : (string) $photo->storage_path;
+        $rel = $this->mlSourcePath($photo);
         if ($rel === '' || ! $this->fs()->exists($rel)) {
             return;
         }
