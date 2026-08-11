@@ -22,6 +22,15 @@ export interface Album {
   id: number; name: string; count: number; cover_photo_id: number | null; version: number;
 }
 
+export interface Person {
+  id: number; name: string | null; count: number; cover_face_id: number | null;
+}
+
+export interface Face {
+  id: number; person_id: number | null; person_name: string | null;
+  box: number[]; score: number; crop: boolean;
+}
+
 const WHOLE_LIMIT = 8 * 1024 * 1024;
 
 export const useGalleryStore = defineStore('gallery', () => {
@@ -93,9 +102,25 @@ export const useGalleryStore = defineStore('gallery', () => {
   const previewUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/preview`);
   const rawUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/raw`);
 
+  // People / faces (opt-in face recognition)
+  const people = () => api.get<{ people: Person[] }>('/api/v1/gallery/people').then((r) => r.people ?? []);
+  const personPhotos = (id: number) =>
+    api.get<{ person: Person; photos: Photo[] }>(`/api/v1/gallery/people/${id}`);
+  const loadByPerson = (personId: number) =>
+    api.get<{ photos: Photo[] }>(`/api/v1/gallery/data?person_id=${personId}`).then((r) => { photos.value = r.photos ?? []; });
+  const renamePerson = (id: number, name: string | null) => api.put<Person>(`/api/v1/gallery/people/${id}`, { name });
+  const deletePerson = (id: number) => api.delete(`/api/v1/gallery/people/${id}`);
+  const mergePeople = (fromId: number, intoId: number) => api.post('/api/v1/gallery/people/merge', { from_id: fromId, into_id: intoId });
+  const photoFaces = (photoId: number) => api.get<{ faces: Face[] }>(`/api/v1/gallery/${photoId}/faces`).then((r) => r.faces ?? []);
+  const assignFace = (faceId: number, target: { person_id?: number; name?: string }) =>
+    api.post<Face>(`/api/v1/gallery/faces/${faceId}/assign`, target);
+  const hideFace = (faceId: number) => api.post(`/api/v1/gallery/faces/${faceId}/hide`);
+  const faceCropUrl = (faceId: number) => api.streamUrl(`/api/v1/gallery/faces/${faceId}/crop`);
+
   return {
     photos, albums, load, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
+    people, personPhotos, loadByPerson, renamePerson, deletePerson, mergePeople, photoFaces, assignFace, hideFace, faceCropUrl,
   };
 });
