@@ -71,6 +71,27 @@ export const useGalleryStore = defineStore('gallery', () => {
     const q = albumId ? `?album_id=${albumId}` : '';
     return api.get<{ photos: Photo[] }>(`/api/v1/gallery/data${q}`).then((r) => { photos.value = r.photos ?? []; });
   };
+
+  // Lightweight refresh used by the thumbnail/processing poll: fetch the same
+  // list but PATCH the volatile fields (thumb/status/preview/…) in place when
+  // the photo set is unchanged, so the array identity stays stable — the grid
+  // only re-renders the tiles whose fields actually changed, never rebuilds all
+  // ~1200 rows. Only structural changes (add/remove) replace the array.
+  const mergeData = async (albumId?: number) => {
+    const q = albumId ? `?album_id=${albumId}` : '';
+    const r = await api.get<{ photos: Photo[] }>(`/api/v1/gallery/data${q}`);
+    const fresh = r.photos ?? [];
+    const byId = new Map(photos.value.map((p) => [p.id, p]));
+    let sameSet = fresh.length === photos.value.length;
+    for (const nf of fresh) {
+      const ex = byId.get(nf.id);
+      if (!ex) { sameSet = false; break; }
+      ex.thumb = nf.thumb; ex.preview = nf.preview; ex.status = nf.status;
+      ex.motion = nf.motion; ex.duration = nf.duration; ex.media_type = nf.media_type;
+      ex.width = nf.width; ex.height = nf.height;
+    }
+    if (!sameSet) photos.value = fresh; // add/remove → structural rebuild
+  };
   const trash = () => api.get<{ photos: Photo[] }>('/api/v1/gallery/trash').then((r) => r.photos);
   const search = (q: string) => api.get<{ photos: Photo[] }>(`/api/v1/gallery/search?q=${encodeURIComponent(q)}`).then((r) => r.photos ?? []);
   const duplicates = () => api.get<{ groups: { photos: Photo[] }[] }>('/api/v1/gallery/duplicates').then((r) => r.groups ?? []);
@@ -176,7 +197,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   const sharedRawUrl = (share: number, photo: number) => api.streamUrl(`/api/v1/gallery/shared-with-me/${share}/photo/${photo}/raw`);
 
   return {
-    photos, albums, load, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy,
+    photos, albums, load, mergeData, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
     people, browsePerson, updatePerson, deletePerson, mergePeople, photoFaces, assignFace, setFaceCover, hideFace, faceCropUrl, reprocess, mlStatus, loadExif, nameSuggest, contactPhotos,
