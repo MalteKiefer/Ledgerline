@@ -77,6 +77,7 @@ return [
     'reprocess_embeddings' => "Проанализировать изображения",
     'reprocess_all' => "Оба",
     'reprocess_queued' => "В очереди :n фото.",
+    'merge_search' => "Искать людей по имени…",
     'face_hide' => "Не лицо",
     'bulk_optional' => 'необязательно',
 ];

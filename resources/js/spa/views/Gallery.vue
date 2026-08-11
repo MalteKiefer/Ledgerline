@@ -61,13 +61,7 @@
         <div class="ml-auto flex items-center gap-1">
           <Btn variant="ghost" size="sm" :icon="personSort === 'desc' ? 'arrow_downward' : 'arrow_upward'" @click="togglePersonSort">{{ personSort === 'desc' ? t('gallery.sort_newest') : t('gallery.sort_oldest') }}</Btn>
           <Btn variant="ghost" size="sm" icon="edit" @click="openNamePerson">{{ t('gallery.person_rename') }}</Btn>
-          <div class="relative">
-            <Btn variant="ghost" size="sm" icon="merge" @click="mergeMenu = !mergeMenu">{{ t('gallery.person_merge') }}</Btn>
-            <div v-if="mergeMenu" class="absolute right-0 z-20 mt-1 max-h-64 w-52 overflow-y-auto rounded-lg border border-[var(--ll-border)] bg-[var(--ll-elevated)] py-1 shadow-lg">
-              <div v-if="peopleList.filter((x) => x.id !== personView!.id).length === 0" class="px-3 py-2 text-xs text-[var(--ll-muted)]">{{ t('gallery.person_merge_none') }}</div>
-              <button v-for="x in peopleList.filter((x) => x.id !== personView!.id)" :key="x.id" class="block w-full truncate px-3 py-1.5 text-left text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="doMerge(x)">{{ personLabel(x) }}</button>
-            </div>
-          </div>
+          <Btn variant="ghost" size="sm" icon="merge" @click="openMerge">{{ t('gallery.person_merge') }}</Btn>
           <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="deletePerson">{{ t('common.delete') }}</Btn>
         </div>
       </div>
@@ -389,6 +383,38 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- Merge into a named person (search) -->
+    <Teleport to="body">
+      <div v-if="mergeM.open" class="fixed inset-0 z-[2300] flex items-center justify-center bg-black/50 p-4" @click.self="mergeM.open = false">
+        <div class="flex max-h-[80vh] w-full max-w-sm flex-col rounded-xl bg-[var(--ll-elevated)] shadow-xl">
+          <div class="flex items-center justify-between border-b border-[var(--ll-border)] px-5 py-3">
+            <h3 class="text-sm font-semibold">{{ t('gallery.person_merge') }}</h3>
+            <button class="rounded-full p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="mergeM.open = false"><Icon name="close" :size="18" /></button>
+          </div>
+          <div class="p-3">
+            <input
+              v-model="mergeM.query" type="text" autofocus :placeholder="t('gallery.merge_search')"
+              class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+            >
+          </div>
+          <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+            <div v-if="!mergeCandidates.length" class="px-3 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.person_merge_none') }}</div>
+            <button
+              v-for="x in mergeCandidates" :key="x.id"
+              class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-black/[0.05] dark:hover:bg-white/10"
+              @click="doMerge(x)"
+            >
+              <span class="h-8 w-8 overflow-hidden rounded-full bg-black/[0.06] ring-1 ring-[var(--ll-border)] dark:bg-white/10">
+                <img v-if="x.cover_face_id" :src="g.faceCropUrl(x.cover_face_id)" class="h-full w-full object-cover">
+              </span>
+              <span class="min-w-0 flex-1 truncate">{{ x.name }}</span>
+              <span class="text-[10px] tabular-nums text-[var(--ll-muted)]">{{ x.count }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -432,7 +458,6 @@ const showPeople = ref(false);
 const peopleList = ref<Person[]>([]);
 const personView = ref<Person | null>(null);
 const peopleGrid = computed(() => showPeople.value && !personView.value);
-const mergeMenu = ref(false);
 const viewerFaces = ref<Face[]>([]);
 
 const current = computed<Row[]>(() => {
@@ -583,9 +608,9 @@ async function openPeople() {
   showPeople.value = true; personView.value = null; clearSearch(); closeDupes(); clearSelection(); viewer.value = -1;
   try { peopleList.value = await g.people(); } catch { error(t('common.error')); }
 }
-function closePeople() { showPeople.value = false; personView.value = null; peopleList.value = []; mergeMenu.value = false; }
+function closePeople() { showPeople.value = false; personView.value = null; peopleList.value = []; }
 async function openPerson(p: Person) {
-  personView.value = p; mergeMenu.value = false; personSort.value = 'desc';
+  personView.value = p; personSort.value = 'desc';
   try { await g.browsePerson(p.id, personSort.value); } catch { error(t('common.error')); }
 }
 async function togglePersonSort() {
@@ -593,18 +618,27 @@ async function togglePersonSort() {
   personSort.value = personSort.value === 'desc' ? 'asc' : 'desc';
   try { await g.browsePerson(p.id, personSort.value); } catch { error(t('common.error')); }
 }
-function backToPeople() { personView.value = null; mergeMenu.value = false; }
+function backToPeople() { personView.value = null; }
 async function deletePerson() {
   const p = personView.value; if (!p) return;
   if (!(await confirmAsk(t('gallery.person_delete_confirm')))) return;
   try { await g.deletePerson(p.id); success(t('common.saved')); personView.value = null; peopleList.value = await g.people(); } catch { error(t('common.error')); }
 }
+function personLabel(p: Person): string { return p.name ?? t('gallery.person_unknown'); }
+
+// Merge modal — pick a NAMED person to merge the current one into (with search).
+const mergeM = reactive({ open: false, query: '' });
+function openMerge() { mergeM.open = true; mergeM.query = ''; }
+const mergeCandidates = computed(() => {
+  const cur = personView.value?.id;
+  const q = mergeM.query.trim().toLowerCase();
+  return peopleList.value.filter((p) => p.id !== cur && p.name && (q === '' || p.name.toLowerCase().includes(q)));
+});
 async function doMerge(into: Person) {
   const from = personView.value; if (!from || into.id === from.id) return;
-  try { await g.mergePeople(from.id, into.id); success(t('common.saved')); mergeMenu.value = false; personView.value = null; peopleList.value = await g.people(); }
+  try { await g.mergePeople(from.id, into.id); success(t('common.saved')); mergeM.open = false; personView.value = null; peopleList.value = await g.people(); }
   catch { error(t('common.error')); }
 }
-function personLabel(p: Person): string { return p.name ?? t('gallery.person_unknown'); }
 
 // Naming modal (free text + address-book autocomplete), used for a person or a face.
 const nameM = reactive({
@@ -629,13 +663,13 @@ async function pickSuggestion(s: ContactSuggestion) {
   nameM.saving = true;
   try {
     if (nameM.target === 'person') {
-      const upd = await g.updatePerson(nameM.personId, { contact_id: s.id });
-      personView.value = upd;
+      personView.value = await g.updatePerson(nameM.personId, { contact_id: s.id });
     } else if (nameM.face) {
       await g.assignFace(nameM.face.id, { contact_id: s.id });
       nameM.face.person_name = s.name;
     }
     nameM.open = false; success(t('common.saved'));
+    await refreshPeople();
   } catch { error(t('common.error')); } finally { nameM.saving = false; }
 }
 async function saveName() {
@@ -643,15 +677,17 @@ async function saveName() {
   nameM.saving = true;
   try {
     if (nameM.target === 'person') {
-      const upd = await g.updatePerson(nameM.personId, { name, contact_id: null });
-      personView.value = upd;
+      personView.value = await g.updatePerson(nameM.personId, { name, contact_id: null });
     } else if (nameM.face) {
       await g.assignFace(nameM.face.id, { name });
       nameM.face.person_name = name;
     }
     nameM.open = false; success(t('common.saved'));
+    await refreshPeople();
   } catch { error(t('common.error')); } finally { nameM.saving = false; }
 }
+// Keep the people grid (and merge candidates) in sync after a name/link change.
+async function refreshPeople() { try { peopleList.value = await g.people(); } catch { /* keep stale */ } }
 
 // Lightbox face chips
 async function loadViewerFaces() {
@@ -662,7 +698,7 @@ async function loadViewerFaces() {
 }
 async function setCoverFromChip(f: Face) {
   if (f.person_id === null) return;
-  try { await g.setFaceCover(f.person_id, f.id); success(t('common.saved')); } catch { error(t('common.error')); }
+  try { await g.setFaceCover(f.person_id, f.id); success(t('common.saved')); await refreshPeople(); } catch { error(t('common.error')); }
 }
 async function hideFaceChip(f: Face) {
   try { await g.hideFace(f.id); viewerFaces.value = viewerFaces.value.filter((x) => x.id !== f.id); } catch { error(t('common.error')); }
