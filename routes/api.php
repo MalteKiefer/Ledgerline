@@ -280,6 +280,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/gallery/chunk/abort', [GalleryController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.gallery.chunk.abort');
             Route::get('/gallery/{photo}/raw', [GalleryController::class, 'raw'])->whereNumber('photo')->middleware('throttle:3000,1')->name('api.gallery.raw');
             Route::get('/gallery/{photo}/thumb', [GalleryController::class, 'thumb'])->whereNumber('photo')->middleware('throttle:6000,1')->name('api.gallery.thumb');
+            Route::get('/gallery/{photo}/preview', [GalleryController::class, 'preview'])->whereNumber('photo')->middleware('throttle:6000,1')->name('api.gallery.preview');
             Route::patch('/gallery/{photo}/favorite', [GalleryController::class, 'favorite'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.favorite');
             Route::put('/gallery/{photo}', [GalleryController::class, 'update'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.update');
             Route::get('/gallery/{photo}/download', [GalleryController::class, 'download'])->whereNumber('photo')->middleware('throttle:1200,1')->name('api.gallery.download');

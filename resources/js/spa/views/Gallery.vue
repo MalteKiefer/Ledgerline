@@ -67,6 +67,7 @@
             </div>
           </div>
           <Btn v-if="albumId !== null" variant="ghost" size="sm" icon="playlist_remove" @click="removeSelectedFromAlbum">{{ t('gallery.remove_from_album') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="edit" @click="openBulkEdit">{{ t('gallery.edit') }}</Btn>
           <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="bulkTrash">{{ t('common.delete') }}</Btn>
           <Btn variant="ghost" size="sm" icon="close" @click="clearSelection">{{ t('gallery.clear_selection') }}</Btn>
         </div>
@@ -193,7 +194,11 @@
         <button class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/80 hover:bg-white/10" @click="step(1)"><Icon name="chevron_right" :size="32" /></button>
         <video v-if="viewerPhoto && viewerPhoto.media_type === 'video'" :src="g.playUrl(viewerPhoto.id)" autoplay controls playsinline class="max-h-[92vh] max-w-[92vw] object-contain" />
         <video v-else-if="viewerPhoto && motionPlaying && viewerPhoto.motion" :src="g.motionUrl(viewerPhoto.id)" autoplay loop controls playsinline class="max-h-[92vh] max-w-[92vw] object-contain" />
-        <img v-else-if="viewerPhoto" :src="g.rawUrl(viewerPhoto.id)" class="max-h-[92vh] max-w-[92vw] object-contain transition-transform" :style="transformStyle(viewerPhoto)">
+        <img v-else-if="viewerPhoto && viewerPhoto.preview" :src="g.previewUrl(viewerPhoto.id)" class="max-h-[92vh] max-w-[92vw] object-contain">
+        <div v-else-if="viewerPhoto" class="flex flex-col items-center gap-2 text-white/70">
+          <Icon name="progress_activity" :size="32" class="animate-spin" />
+          <span class="text-sm">{{ t('gallery.processing') }}</span>
+        </div>
         <div class="absolute inset-x-0 bottom-0 flex items-center gap-3 bg-gradient-to-t from-black/70 to-transparent px-6 py-4 text-sm text-white">
           <div class="min-w-0 flex-1">
             <div class="truncate">{{ viewerPhoto?.name }}</div>
@@ -235,7 +240,8 @@
             <!-- Live preview + rotate/mirror -->
             <div>
               <div class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-black/[0.06] dark:bg-white/5">
-                <img v-if="edit.id" :src="g.rawUrl(edit.id)" class="max-h-full max-w-full object-contain transition-transform" :style="previewStyle">
+                <img v-if="edit.id && edit.preview" :src="g.previewUrl(edit.id)" class="max-h-full max-w-full object-contain transition-transform" :style="previewStyle">
+                <Icon v-else name="image" :size="40" class="opacity-40" />
               </div>
               <div class="mt-2 flex justify-center gap-1">
                 <Btn variant="ghost" size="sm" icon="rotate_left" @click="rotate(-90)">{{ t('gallery.rotate_left') }}</Btn>
@@ -269,6 +275,46 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- Bulk edit modal -->
+    <Teleport to="body">
+      <div v-if="bulk.open" class="fixed inset-0 z-[2200] flex items-center justify-center bg-black/50 p-4" @click.self="bulk.open = false">
+        <div class="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-[var(--ll-elevated)] shadow-xl">
+          <div class="flex items-center justify-between border-b border-[var(--ll-border)] px-5 py-3">
+            <h3 class="text-sm font-semibold">{{ t('gallery.bulk_edit') }} · {{ bulk.count }}</h3>
+            <button class="rounded-full p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="bulk.open = false"><Icon name="close" :size="18" /></button>
+          </div>
+          <div class="space-y-4 p-5">
+            <p class="text-xs text-[var(--ll-muted)]">{{ t('gallery.bulk_edit_hint') }}</p>
+            <div>
+              <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('gallery.rotate_mirror') }}</span>
+              <div class="flex gap-1">
+                <Btn variant="ghost" size="sm" icon="rotate_left" @click="bulk.rotate = (bulk.rotate + 270) % 360">{{ t('gallery.rotate_left') }}</Btn>
+                <Btn variant="ghost" size="sm" icon="rotate_right" @click="bulk.rotate = (bulk.rotate + 90) % 360">{{ t('gallery.rotate_right') }}</Btn>
+                <Btn :variant="bulk.mirror ? 'solid' : 'ghost'" size="sm" icon="flip" @click="bulk.mirror = !bulk.mirror">{{ t('gallery.mirror') }}</Btn>
+                <span v-if="bulk.rotate" class="self-center text-xs text-[var(--ll-muted)]">+{{ bulk.rotate }}°</span>
+              </div>
+            </div>
+            <label class="block">
+              <span class="mb-1 block text-xs font-medium text-[var(--ll-muted)]">{{ t('gallery.date') }} ({{ t('gallery.bulk_optional') }})</span>
+              <div class="flex gap-2">
+                <input v-model="bulk.date" type="date" class="flex-1 rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm">
+                <input v-model="bulk.time" type="time" class="w-32 rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm">
+              </div>
+            </label>
+            <LocationField
+              :model-value="bulk.place" :lat="bulk.lat" :lon="bulk.lng"
+              :label="t('gallery.location') + ' (' + t('gallery.bulk_optional') + ')'"
+              @update:model-value="bulk.place = $event" @update:lat="bulk.lat = $event" @update:lon="bulk.lng = $event"
+            />
+          </div>
+          <div class="flex justify-end gap-2 border-t border-[var(--ll-border)] px-5 py-3">
+            <Btn variant="ghost" size="sm" @click="bulk.open = false">{{ t('common.cancel') }}</Btn>
+            <Btn variant="solid" size="sm" :loading="bulk.saving" @click="saveBulkEdit">{{ t('common.save') }}</Btn>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -279,7 +325,7 @@ import 'leaflet/dist/leaflet.css';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, Icon } from '@spa/ui';
 import LocationField from '@spa/components/LocationField.vue';
-import { useGalleryStore, type Photo, type Album } from '@spa/stores/gallery';
+import { useGalleryStore, type Photo, type Album, type PhotoEdit } from '@spa/stores/gallery';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
@@ -327,7 +373,8 @@ const up = reactive({ active: false, done: 0, total: 0, name: '', frac: 0 });
 const upPct = computed(() => (up.total ? Math.min(100, Math.round(((up.done + up.frac) / up.total) * 100)) : 0));
 const dragDepth = ref(0);
 
-const edit = reactive({ open: false, saving: false, id: 0, version: 0, date: '', time: '', place: '' as string, lat: null as number | null, lng: null as number | null, rotation: 0, flip_h: false });
+const edit = reactive({ open: false, saving: false, id: 0, version: 0, date: '', time: '', place: '' as string, lat: null as number | null, lng: null as number | null, rotation: 0, flip_h: false, baseRotation: 0, baseFlip: false, preview: false });
+const bulk = reactive({ open: false, saving: false, count: 0, rotate: 0, mirror: false, date: '', time: '', place: '' as string, lat: null as number | null, lng: null as number | null });
 
 let thumbPoll: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
@@ -361,7 +408,12 @@ function fmtDuration(sec: number): string {
 }
 function isEdited(p: Photo | null): boolean { return !!p && (p.rotation !== 0 || p.flip_h); }
 function transformStyle(p: Photo) { return { transform: `rotate(${p.rotation}deg) scaleX(${p.flip_h ? -1 : 1})` }; }
-const previewStyle = computed(() => ({ transform: `rotate(${edit.rotation}deg) scaleX(${edit.flip_h ? -1 : 1})` }));
+// The preview image is already baked at the photo's CURRENT orientation, so the
+// live edit preview applies only the pending DELTA from that baseline.
+const previewStyle = computed(() => {
+  const dr = ((edit.rotation - edit.baseRotation) % 360 + 360) % 360;
+  return { transform: `rotate(${dr}deg) scaleX(${edit.flip_h !== edit.baseFlip ? -1 : 1})` };
+});
 
 function pick() { fileInput.value?.click(); }
 function onPick(e: Event) { const l = (e.target as HTMLInputElement).files; if (l) void uploadList(l); (e.target as HTMLInputElement).value = ''; }
@@ -529,10 +581,38 @@ function openEdit() {
     open: true, saving: false, id: p.id, version: p.version,
     date: iso ? iso.slice(0, 10) : '', time: iso ? iso.slice(11, 16) : '',
     place: p.place ?? '', lat: p.lat, lng: p.lng, rotation: p.rotation, flip_h: p.flip_h,
+    baseRotation: p.rotation, baseFlip: p.flip_h, preview: p.preview,
   });
   dlMenu.value = false;
 }
 function rotate(delta: number) { edit.rotation = (((edit.rotation + delta) % 360) + 360) % 360; }
+
+// ---- Bulk edit (selected photos) ----
+function openBulkEdit() {
+  Object.assign(bulk, { open: true, saving: false, count: selected.value.size, rotate: 0, mirror: false, date: '', time: '', place: '', lat: null, lng: null });
+}
+async function saveBulkEdit() {
+  const ids = [...selected.value];
+  if (!ids.length) { bulk.open = false; return; }
+  bulk.saving = true;
+  const takenAt = bulk.date ? `${bulk.date} ${bulk.time || '00:00'}:00` : null;
+  const setPlace = bulk.place.trim() !== '' || bulk.lat !== null;
+  try {
+    for (const id of ids) {
+      const p = g.photos.find((x) => x.id === id);
+      if (!p) continue;
+      const patch: PhotoEdit = {};
+      if (bulk.rotate) patch.rotation = (p.rotation + bulk.rotate) % 360;
+      if (bulk.mirror) patch.flip_h = !p.flip_h;
+      if (takenAt) patch.taken_at = takenAt;
+      if (setPlace) { patch.place = bulk.place || null; patch.lat = bulk.lat; patch.lng = bulk.lng; }
+      if (Object.keys(patch).length) await g.update(id, patch);
+    }
+    bulk.open = false; clearSelection();
+    await refresh();
+    success(t('common.saved'));
+  } catch { error(t('common.error')); } finally { bulk.saving = false; }
+}
 async function saveEdit() {
   edit.saving = true;
   const takenAt = edit.date ? `${edit.date} ${edit.time || '00:00'}:00` : null;

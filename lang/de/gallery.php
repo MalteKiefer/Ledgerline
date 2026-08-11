@@ -51,4 +51,8 @@ return [
     'dupes_similar' => 'ähnlich',
     'dupes_keep' => 'Behalten',
     'dupes_keep_one' => 'Duplikate löschen (behalte 1)',
+    'bulk_edit' => 'Mehrfach bearbeiten',
+    'bulk_edit_hint' => 'Gilt für alle ausgewählten Fotos. Drehen/Spiegeln relativ; gesetztes Datum bzw. Ort wird auf alle angewendet.',
+    'rotate_mirror' => 'Drehen / spiegeln',
+    'bulk_optional' => 'optional',
 ];
