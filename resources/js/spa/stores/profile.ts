@@ -41,6 +41,12 @@ export interface PairingSession {
   expires_at: string | null;
 }
 
+export interface CliPairingSession {
+  id: number;
+  code: string;
+  expires_at: string | null;
+}
+
 export interface PairingStatus {
   status: string;
   device_name: string | null;
@@ -200,6 +206,10 @@ export const useProfileStore = defineStore('profile', () => {
   async function startPairing(): Promise<PairingSession> {
     return api.post<PairingSession>('/api/v1/device-pairings');
   }
+  /** Begin a CLI pairing; returns its id + a copyable one-time code (60s window). */
+  async function startCliPairing(): Promise<CliPairingSession> {
+    return api.post<CliPairingSession>('/api/v1/device-pairings/cli');
+  }
 
   /** Poll a pairing's state (pending_scan → pending_approval → approved/…). */
   async function pairingStatus(id: number): Promise<PairingStatus> {
@@ -277,7 +287,7 @@ export const useProfileStore = defineStore('profile', () => {
     loadDevices, revokeDevice, wipeDevice, removeDevicePush,
     changePassword, uploadAvatar, removeAvatar, deleteAccount,
     twoFactorState, enable2fa, confirm2fa, recoveryCodes, regenerateRecovery, disable2fa,
-    startPairing, pairingStatus, approvePairing, rejectPairing,
+    startPairing, startCliPairing, pairingStatus, approvePairing, rejectPairing,
     loadSessions, revokeSession, getWebdav, setWebdav, clearWebdav,
     listPasskeys, registerPasskey, renamePasskey, deletePasskey,
   };
