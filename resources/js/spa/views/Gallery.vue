@@ -15,6 +15,9 @@
       <!-- Toolbar -->
       <div class="flex items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2.5">
         <h2 class="text-sm font-semibold">{{ showTrash ? t('gallery.trash') : (showPeople ? t('gallery.people') : t('messages.nav.gallery')) }}</h2>
+        <span v-if="!showTrash && !showPeople && !showDupes && !showShared" class="whitespace-nowrap text-xs text-[var(--ll-muted)]">
+          {{ mediaCounts.ph }} {{ t('gallery.count_photos') }}<template v-if="mediaCounts.vid"> · {{ mediaCounts.vid }} {{ t('gallery.count_videos') }}</template>
+        </span>
         <div v-if="!showTrash && !showPeople" class="relative ml-3 hidden sm:block">
           <Icon name="search" :size="16" class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--ll-muted)]" />
           <input
@@ -24,7 +27,8 @@
           >
           <button v-if="searchActive" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-[var(--ll-muted)] hover:text-[var(--ll-fg)]" @click="clearSearch"><Icon name="close" :size="15" /></button>
         </div>
-        <div class="ml-auto flex items-center gap-1">
+        <!-- Desktop actions -->
+        <div class="ml-auto hidden items-center gap-1 sm:flex">
           <!-- Grid size slider (grid view only) -->
           <label v-if="!showTrash && !showPeople && !showDupes && viewMode === 'grid'" class="mr-1 hidden items-center gap-1 md:flex" :title="t('gallery.grid_size')">
             <Icon name="grid_view" :size="15" class="text-[var(--ll-muted)]" />
@@ -35,7 +39,6 @@
             <Btn :variant="viewMode === 'map' && !showPeople ? 'solid' : 'ghost'" size="sm" icon="map" @click="setView('map')">{{ t('gallery.view_map') }}</Btn>
           </template>
           <Btn variant="solid" size="sm" icon="upload" @click="pick">{{ t('gallery.upload') }}</Btn>
-          <input ref="fileInput" type="file" accept="image/*" multiple class="hidden" @change="onPick">
           <Btn v-if="showTrash && trashPhotos.length" variant="ghost" size="sm" icon="delete" class="text-red-600" @click="onEmpty">{{ t('gallery.empty_trash') }}</Btn>
           <Btn v-if="!showTrash" :variant="showPeople ? 'solid' : 'ghost'" size="sm" icon="group" @click="showPeople ? closePeople() : openPeople()">{{ t('gallery.people') }}</Btn>
           <Btn v-if="!showTrash" :variant="showDupes ? 'solid' : 'ghost'" size="sm" icon="content_copy" @click="showDupes ? closeDupes() : openDupes()">{{ t('gallery.duplicates') }}</Btn>
@@ -43,6 +46,24 @@
           <Btn v-if="!showTrash && !showShared" variant="ghost" size="sm" icon="share" @click="openLibraryShare">{{ t('gallery.share_gallery') }}</Btn>
           <Btn variant="ghost" size="sm" :icon="showTrash ? 'photo_library' : 'delete'" @click="toggleTrash">{{ showTrash ? t('gallery.back') : t('gallery.trash') }}</Btn>
         </div>
+        <!-- Mobile: everything in a three-dot menu -->
+        <div class="relative ml-auto sm:hidden">
+          <Btn variant="solid" size="sm" icon="upload" class="!px-2" @click="pick" />
+          <button class="ml-1 rounded-lg p-2 hover:bg-black/[0.05] dark:hover:bg-white/10" :aria-label="t('common.actions')" @click="mobileMenu = !mobileMenu"><Icon name="more_vert" :size="20" /></button>
+          <div v-if="mobileMenu" class="absolute right-0 z-30 mt-1 w-56 rounded-xl border border-[var(--ll-border)] bg-[var(--ll-elevated)] py-1 shadow-xl" @click="mobileMenu = false">
+            <div v-if="!showTrash && !showPeople" class="border-b border-[var(--ll-border)] p-2" @click.stop>
+              <input v-model="searchQuery" type="search" :placeholder="t('gallery.search_ph')" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-2 py-1.5 text-sm focus:border-primary-500 focus:outline-none" @keyup.enter="doSearch(); mobileMenu = false">
+            </div>
+            <button v-if="!showTrash && !showPeople" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="setView(viewMode === 'grid' ? 'map' : 'grid')"><Icon :name="viewMode === 'grid' ? 'map' : 'grid_view'" :size="18" />{{ viewMode === 'grid' ? t('gallery.view_map') : t('gallery.view_grid') }}</button>
+            <button v-if="!showTrash" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="showPeople ? closePeople() : openPeople()"><Icon name="group" :size="18" />{{ t('gallery.people') }}</button>
+            <button v-if="!showTrash" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="showDupes ? closeDupes() : openDupes()"><Icon name="content_copy" :size="18" />{{ t('gallery.duplicates') }}</button>
+            <button v-if="!showTrash" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="showShared ? closeShared() : openShared()"><Icon name="folder_shared" :size="18" />{{ t('gallery.shared_with_me') }}</button>
+            <button v-if="!showTrash && !showShared" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="openLibraryShare"><Icon name="share" :size="18" />{{ t('gallery.share_gallery') }}</button>
+            <button v-if="showTrash && trashPhotos.length" class="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="onEmpty"><Icon name="delete" :size="18" />{{ t('gallery.empty_trash') }}</button>
+            <button class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="toggleTrash"><Icon :name="showTrash ? 'photo_library' : 'delete'" :size="18" />{{ showTrash ? t('gallery.back') : t('gallery.trash') }}</button>
+          </div>
+        </div>
+        <input ref="fileInput" type="file" accept="image/*" multiple class="hidden" @change="onPick">
       </div>
 
       <!-- People (face clusters) -->
@@ -587,6 +608,12 @@ function setGridCols(n: number) { gridCols.value = Math.min(12, Math.max(2, n ||
 const trashPhotos = ref<Photo[]>([]);
 const albumId = ref<number | null>(null);
 const albumMenu = ref(false);
+const mobileMenu = ref(false);
+const mediaCounts = computed(() => {
+  let ph = 0; let vid = 0;
+  for (const p of g.photos) { if (p.media_type === 'video') vid++; else ph++; }
+  return { ph, vid };
+});
 const dlMenu = ref(false);
 
 const selected = ref<Set<number>>(new Set());
