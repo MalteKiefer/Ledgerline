@@ -80,22 +80,24 @@
               @mouseenter="p.motion && !showTrash ? hoverId = p.id : null"
               @mouseleave="hoverId === p.id ? hoverId = -1 : null"
             >
+              <!-- Media: processing/failed placeholder → thumbnail → pending spinner -->
+              <div v-if="!showTrash && p.status === 'processing'" class="flex h-full w-full flex-col items-center justify-center gap-1 px-1 text-center text-[10px] text-[var(--ll-muted)]">
+                <Icon name="movie" :size="22" class="opacity-50" />
+                <Icon name="progress_activity" :size="14" class="animate-spin opacity-60" />
+                <span>{{ t('gallery.processing') }}</span>
+              </div>
+              <div v-else-if="!showTrash && p.status === 'failed'" class="flex h-full w-full flex-col items-center justify-center gap-1 px-1 text-center text-[10px] text-red-500">
+                <Icon name="error_outline" :size="22" class="opacity-70" />
+                <span>{{ t('gallery.failed') }}</span>
+              </div>
               <img
-                v-if="p.thumb"
+                v-else-if="p.thumb"
                 :src="g.thumbUrl(p.id)" loading="lazy"
                 class="h-full w-full cursor-pointer object-cover"
                 :class="selected.has(p.id) ? 'opacity-80' : ''"
                 @click="showTrash ? undefined : onTileClick($event, i, p)"
                 @error="onThumbError"
               >
-              <video
-                v-if="p.motion && hoverId === p.id"
-                :src="g.motionUrl(p.id)" muted loop autoplay playsinline
-                class="pointer-events-none absolute inset-0 h-full w-full object-cover"
-              />
-              <span v-if="p.motion && !showTrash" class="pointer-events-none absolute bottom-1 right-1 flex items-center gap-0.5 rounded bg-black/50 px-1 py-0.5 text-[9px] font-semibold uppercase text-white">
-                <Icon name="motion_photos_on" :size="11" /> Live
-              </span>
               <button
                 v-else
                 class="flex h-full w-full items-center justify-center text-[var(--ll-muted)]"
@@ -104,6 +106,19 @@
               >
                 <Icon name="progress_activity" :size="22" class="animate-spin opacity-60" />
               </button>
+              <!-- Independent overlays -->
+              <video
+                v-if="p.motion && hoverId === p.id"
+                :src="g.motionUrl(p.id)" muted loop autoplay playsinline
+                class="pointer-events-none absolute inset-0 h-full w-full object-cover"
+              />
+              <span v-if="p.media_type === 'video' && p.status === 'ready' && p.thumb && !showTrash" class="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <Icon name="play_circle" :size="34" class="text-white/90 drop-shadow" />
+              </span>
+              <span v-if="p.media_type === 'video' && p.duration && !showTrash" class="pointer-events-none absolute bottom-1 right-1 rounded bg-black/50 px-1 py-0.5 text-[9px] font-semibold text-white">{{ fmtDuration(p.duration) }}</span>
+              <span v-if="p.motion && !showTrash" class="pointer-events-none absolute bottom-1 right-1 flex items-center gap-0.5 rounded bg-black/50 px-1 py-0.5 text-[9px] font-semibold uppercase text-white">
+                <Icon name="motion_photos_on" :size="11" /> Live
+              </span>
               <button
                 v-if="!showTrash"
                 class="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white/80 shadow transition"
@@ -147,7 +162,8 @@
         <button class="absolute right-4 top-4 rounded-full p-2 text-white/80 hover:bg-white/10" @click="viewer = -1"><Icon name="close" :size="24" /></button>
         <button class="absolute left-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/80 hover:bg-white/10" @click="step(-1)"><Icon name="chevron_left" :size="32" /></button>
         <button class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/80 hover:bg-white/10" @click="step(1)"><Icon name="chevron_right" :size="32" /></button>
-        <video v-if="viewerPhoto && motionPlaying && viewerPhoto.motion" :src="g.motionUrl(viewerPhoto.id)" autoplay loop controls playsinline class="max-h-[92vh] max-w-[92vw] object-contain" />
+        <video v-if="viewerPhoto && viewerPhoto.media_type === 'video'" :src="g.playUrl(viewerPhoto.id)" autoplay controls playsinline class="max-h-[92vh] max-w-[92vw] object-contain" />
+        <video v-else-if="viewerPhoto && motionPlaying && viewerPhoto.motion" :src="g.motionUrl(viewerPhoto.id)" autoplay loop controls playsinline class="max-h-[92vh] max-w-[92vw] object-contain" />
         <img v-else-if="viewerPhoto" :src="g.rawUrl(viewerPhoto.id)" class="max-h-[92vh] max-w-[92vw] object-contain transition-transform" :style="transformStyle(viewerPhoto)">
         <div class="absolute inset-x-0 bottom-0 flex items-center gap-3 bg-gradient-to-t from-black/70 to-transparent px-6 py-4 text-sm text-white">
           <div class="min-w-0 flex-1">
@@ -284,7 +300,7 @@ onMounted(() => {
   // Thumbnails are generated by a worker after upload; while any are still
   // pending, poll so the grid swaps the spinner for the image once ready.
   thumbPoll = setInterval(() => {
-    if (!showTrash.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb)) void refresh();
+    if (!showTrash.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb || p.status === 'processing')) void refresh();
   }, 4000);
 });
 onUnmounted(() => {
@@ -301,6 +317,11 @@ function dayLabel(iso: string | null): string {
 function fullDate(iso: string | null): string {
   if (!iso) return '';
   try { return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch { return ''; }
+}
+function fmtDuration(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 function isEdited(p: Photo | null): boolean { return !!p && (p.rotation !== 0 || p.flip_h); }
 function transformStyle(p: Photo) { return { transform: `rotate(${p.rotation}deg) scaleX(${p.flip_h ? -1 : 1})` }; }
@@ -328,7 +349,7 @@ async function uploadList(list: FileList) {
   // Seed with the existing library so a clip uploaded in a later batch still merges.
   const idByBase = new Map<string, number>();
   for (const p of g.photos) idByBase.set(baseName(p.name), p.id);
-  let dupes = 0; let unmatched = 0;
+  let dupes = 0;
   try {
     for (const f of images) {
       up.name = f.name; up.frac = 0;
@@ -340,15 +361,20 @@ async function uploadList(list: FileList) {
     for (const f of motions) {
       up.name = f.name; up.frac = 0;
       const id = idByBase.get(baseName(f.name));
-      if (id !== undefined) await g.attachMotion(id, f, (fr) => { up.frac = fr; });
-      else unmatched++;
+      if (id !== undefined) {
+        // Video paired to a just-uploaded/existing still → Apple Live Photo clip.
+        await g.attachMotion(id, f, (fr) => { up.frac = fr; });
+      } else {
+        // Standalone video → upload as its own entry (processed on the worker).
+        const r = await g.upload(f, (fr) => { up.frac = fr; });
+        if (r.duplicate) dupes++;
+      }
       up.frac = 0; up.done++;
     }
     await refresh();
     await g.loadAlbums();
     success(t('common.saved'));
     if (dupes > 0) success(t('gallery.dupes_skipped', { n: String(dupes) }));
-    if (unmatched > 0) error(t('gallery.motion_unmatched', { n: String(unmatched) }));
   } catch { error(t('common.error')); } finally { up.active = false; }
 }
 function refresh() { return g.load(albumId.value ?? undefined); }

@@ -42,4 +42,6 @@ return [
     'dupes_skipped' => ':n duplicate(s) skipped.',
     'motion_unmatched' => ':n motion clip(s) had no matching photo.',
     'play_motion' => 'Play Live motion',
+    'processing' => 'Processing…',
+    'failed' => 'Failed',
 ];

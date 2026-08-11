@@ -18,9 +18,14 @@ use Illuminate\Support\Carbon;
  * @property int $user_id
  * @property string $storage_path
  * @property string|null $motion_path
+ * @property string|null $poster_path
+ * @property string|null $playback_path
  * @property string|null $content_id
  * @property string $name
  * @property string|null $mime
+ * @property string $media_type
+ * @property string $status
+ * @property int|null $duration
  * @property int $size
  * @property int|null $width
  * @property int|null $height
@@ -50,6 +55,7 @@ class GalleryPhoto extends Model
         'size' => 'integer',
         'width' => 'integer',
         'height' => 'integer',
+        'duration' => 'integer',
         'rotation' => 'integer',
         'flip_h' => 'boolean',
         'taken_at' => 'datetime',

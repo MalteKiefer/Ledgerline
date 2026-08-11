@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Jobs\GenerateGalleryThumbnail;
+use App\Jobs\ProcessGalleryVideo;
 use App\Models\GalleryAlbum;
 use App\Models\GalleryPhoto;
 use App\Support\BlobStore;
 use App\Support\DiskTempFile;
 use App\Support\FilesUsage;
 use App\Support\ImageManagerFactory;
+use App\Support\VideoProcessor;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -25,6 +28,7 @@ use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\Encoders\PngEncoder;
 use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\Interfaces\ImageInterface;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -44,9 +48,13 @@ class GalleryController extends Controller
 
     private const THUMB_MAX_PIXELS = 100 * 1000 * 1000;
 
-    private const MIME_ALLOW = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'];
-
     private const MOTION_ALLOW = ['mov', 'mp4', 'm4v', 'qt'];
+
+    /** Broad video extension set — "any format" uploads; ffprobe validates later. */
+    private const VIDEO_EXT = [
+        'mp4', 'm4v', 'mov', 'qt', 'webm', 'mkv', 'avi', 'wmv', 'flv', 'mpg', 'mpeg',
+        '3gp', '3g2', 'm2ts', 'mts', 'ts', 'ogv', 'vob', 'mxf', 'asf', 'rm', 'rmvb', 'divx',
+    ];
 
     // ---- Listings ----
 
@@ -79,11 +87,17 @@ class GalleryController extends Controller
     {
         $uid = (int) $this->requireUser($request)->id;
         $request->validate([
-            'file' => ['required', 'file', 'mimes:'.implode(',', self::MIME_ALLOW), 'max:'.$this->maxUploadKb()],
+            'file' => ['required', 'file', 'max:'.$this->maxUploadKb()],
         ]);
         $upload = $request->file('file');
         if (! $upload instanceof UploadedFile) {
             abort(422);
+        }
+        $mime = $upload->getMimeType() ?: $upload->getClientMimeType();
+        $isImage = str_starts_with($mime, 'image/');
+        $isVideo = ! $isImage && $this->looksLikeVideo($mime, $upload->getClientOriginalName());
+        if (! $isImage && ! $isVideo) {
+            abort(415);
         }
         if ($over = $this->overQuota($uid, (int) $upload->getSize())) {
             return $over;
@@ -94,25 +108,30 @@ class GalleryController extends Controller
         if (($dupe = $this->findDuplicate($uid, $sha)) !== null) {
             return response()->json(['photo' => $this->row($dupe), 'duplicate' => true], 200);
         }
-        $dims = is_string($real) ? @getimagesize($real) : false;
-        $meta = is_string($real) ? $this->extractExif($real) : [];
         $path = 'gallery/'.Str::uuid()->toString();
         $this->fs()->putFileAs('gallery', $upload, basename($path));
-
         $name = $upload->getClientOriginalName();
-        $mime = $upload->getMimeType() ?: $upload->getClientMimeType();
+        $name = $name !== '' ? $name : ($isVideo ? 'video' : 'photo');
+        $size = (int) $this->fs()->size($path);
+
+        if ($isVideo) {
+            $photo = DB::transaction(fn (): GalleryPhoto => $this->persist(
+                $uid, $name, $path, $size, $mime, $sha, null, null, [], 'video', 'processing'
+            ));
+            ProcessGalleryVideo::dispatch($photo->id);
+
+            return response()->json(['photo' => $this->row($photo)], 201);
+        }
+
+        $dims = is_string($real) ? @getimagesize($real) : false;
+        $meta = is_string($real) ? $this->extractExif($real) : [];
         $photo = DB::transaction(fn (): GalleryPhoto => $this->persist(
-            $uid,
-            $name !== '' ? $name : 'photo',
-            $path,
-            (int) $this->fs()->size($path),
-            $mime !== '' ? $mime : null,
-            $sha,
+            $uid, $name, $path, $size, $mime, $sha,
             is_array($dims) ? (int) $dims[0] : null,
             is_array($dims) ? (int) $dims[1] : null,
             $meta,
         ));
-        $this->attachEmbeddedMotion($photo, is_string($real) ? $real : null, $mime !== '' ? $mime : null);
+        $this->attachEmbeddedMotion($photo, is_string($real) ? $real : null, $mime);
         GenerateGalleryThumbnail::dispatch($photo->id);
 
         return response()->json(['photo' => $this->row($photo)], 201);
@@ -215,7 +234,9 @@ class GalleryController extends Controller
         }
 
         $mime = $this->sniffMime($tmp->path());
-        if ($mime === null || ! str_starts_with($mime, 'image/')) {
+        $isImage = $mime !== null && str_starts_with($mime, 'image/');
+        $isVideo = ! $isImage && $this->looksLikeVideo($mime, $session['name']);
+        if (! $isImage && ! $isVideo) {
             $this->fs()->deleteDirectory($tmpDir);
             Cache::forget($this->sessionKey($uid, $id));
             abort(415);
@@ -226,8 +247,8 @@ class GalleryController extends Controller
 
             return response()->json(['photo' => $this->row($dupe), 'duplicate' => true], 200);
         }
-        $dims = @getimagesize($tmp->path());
-        $meta = $this->extractExif($tmp->path());
+        $dims = $isVideo ? false : @getimagesize($tmp->path());
+        $meta = $isVideo ? [] : $this->extractExif($tmp->path());
 
         $path = 'gallery/'.Str::uuid()->toString();
         $stream = fopen($tmp->path(), 'rb');
@@ -236,19 +257,28 @@ class GalleryController extends Controller
         }
         $this->fs()->writeStream($path, $stream);
         fclose($stream);
-        $this->fs()->deleteDirectory($tmpDir);
-        Cache::forget($this->sessionKey($uid, $id));
 
-        $name = $session['name'] !== '' ? $session['name'] : 'photo';
+        $name = $session['name'] !== '' ? $session['name'] : ($isVideo ? 'video' : 'photo');
         $photo = DB::transaction(fn (): GalleryPhoto => $this->persist(
             $uid, $name, $path, $size, $mime, $sha,
             is_array($dims) ? (int) $dims[0] : null,
             is_array($dims) ? (int) $dims[1] : null,
             $meta,
+            $isVideo ? 'video' : 'image',
+            $isVideo ? 'processing' : 'ready',
         ));
+        if ($isVideo) {
+            $this->fs()->deleteDirectory($tmpDir);
+            Cache::forget($this->sessionKey($uid, $id));
+            ProcessGalleryVideo::dispatch($photo->id);
+
+            return response()->json(['photo' => $this->row($photo)], 201);
+        }
         // $tmp still holds the assembled bytes (unlinked on scope exit) — extract an
         // embedded Android/Samsung Motion Photo clip before it goes away.
         $this->attachEmbeddedMotion($photo, $tmp->path(), $mime);
+        $this->fs()->deleteDirectory($tmpDir);
+        Cache::forget($this->sessionKey($uid, $id));
         GenerateGalleryThumbnail::dispatch($photo->id);
 
         return response()->json(['photo' => $this->row($photo)], 201);
@@ -295,6 +325,125 @@ class GalleryController extends Controller
     }
 
     /**
+     * Stream a video for playback: the web-friendly rendition when one was
+     * produced, else the original (already playable). Range requests are honored
+     * for seeking when the disk is local (BinaryFileResponse).
+     */
+    public function play(Request $request, GalleryPhoto $photo): SymfonyResponse
+    {
+        $this->requireUser($request);
+        abort_unless($photo->media_type === 'video', 404);
+        $rel = $this->safeBlobPath($photo->playback_path) ?? $this->safeBlobPath($photo->storage_path);
+        abort_if($rel === null || ! $this->fs()->exists($rel), 404);
+
+        $type = $photo->playback_path !== null && $photo->playback_path !== ''
+            ? 'video/mp4'
+            : ((string) $photo->mime !== '' ? (string) $photo->mime : 'video/mp4');
+        $headers = [
+            'Content-Type' => $type,
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+            'Cache-Control' => 'private, max-age=86400',
+        ];
+
+        $abs = $this->localPath($rel);
+        if ($abs !== null) {
+            return response()->file($abs, $headers); // BinaryFileResponse → Range/seek support
+        }
+
+        return $this->fs()->response($rel, 'video.mp4', $headers, 'inline');
+    }
+
+    /**
+     * Process an uploaded video (worker, via ProcessGalleryVideo): ffprobe for
+     * metadata, extract a poster frame + thumbnail, and produce a web-friendly
+     * MP4 rendition when the source is not directly playable. Idempotent-ish;
+     * any failure marks the photo failed (original kept).
+     */
+    public function processVideo(GalleryPhoto $photo, ImageManagerFactory $images): void
+    {
+        if ($photo->media_type !== 'video') {
+            return;
+        }
+        $srcRel = (string) $photo->storage_path;
+        $abs = $this->localPath($srcRel);
+        $stage = null;
+        try {
+            if ($abs === null) {
+                // Remote disk → stage the original to a local temp for ffmpeg.
+                $stage = DiskTempFile::create('llgvin');
+                $in = $this->fs()->readStream($srcRel);
+                $dst = fopen($stage->path(), 'wb');
+                if (is_resource($in) && $dst !== false) {
+                    stream_copy_to_stream($in, $dst);
+                    fclose($in);
+                    fclose($dst);
+                    $abs = $stage->path();
+                }
+            }
+            if ($abs === null || ! VideoProcessor::available()) {
+                $photo->forceFill(['status' => 'failed'])->save();
+
+                return;
+            }
+            $probe = VideoProcessor::probe($abs);
+            if ($probe === null) {
+                $photo->forceFill(['status' => 'failed'])->save();
+
+                return;
+            }
+
+            // Poster frame → thumbnail source.
+            $posterRel = null;
+            $posterTmp = DiskTempFile::create('llgvp')->withExtension('jpg');
+            if (VideoProcessor::poster($abs, $posterTmp->path(), $probe['duration'])) {
+                $posterRel = 'gallery/'.Str::uuid()->toString().'-poster.jpg';
+                $ph = fopen($posterTmp->path(), 'rb');
+                if ($ph !== false) {
+                    $this->fs()->writeStream($posterRel, $ph);
+                    fclose($ph);
+                }
+            }
+
+            // Web-friendly playback rendition when needed.
+            $playRel = null;
+            $plan = VideoProcessor::playbackPlan($probe);
+            if ($plan !== 'none') {
+                $mvTmp = DiskTempFile::create('llgvt')->withExtension('mp4');
+                $ok = $plan === 'remux'
+                    ? VideoProcessor::remux($abs, $mvTmp->path())
+                    : VideoProcessor::transcode($abs, $mvTmp->path());
+                if (! $ok && $plan === 'remux') {
+                    $ok = VideoProcessor::transcode($abs, $mvTmp->path()); // remux failed → re-encode
+                }
+                if ($ok) {
+                    $playRel = 'gallery/'.Str::uuid()->toString().'-play.mp4';
+                    $vh = fopen($mvTmp->path(), 'rb');
+                    if ($vh !== false) {
+                        $this->fs()->writeStream($playRel, $vh);
+                        fclose($vh);
+                    }
+                }
+            }
+
+            $photo->forceFill([
+                'duration' => $probe['duration'],
+                'width' => $probe['width'],
+                'height' => $probe['height'],
+                'poster_path' => $posterRel,
+                'playback_path' => $playRel,
+                'status' => $posterRel !== null ? 'ready' : 'failed',
+            ])->save();
+
+            if ($posterRel !== null) {
+                $this->generateThumb($photo, $images);
+            }
+        } catch (\Throwable) {
+            $photo->forceFill(['status' => 'failed'])->save();
+        }
+    }
+
+    /**
      * Serve a photo's WebP thumbnail — CACHE ONLY. A HEIC decode is ~20s, so the
      * web path never generates inline (a grid of N photos would stampede the FPM
      * pool). On a cache miss the generation job is (re)queued and a 404 is
@@ -304,12 +453,17 @@ class GalleryController extends Controller
     public function thumb(Request $request, GalleryPhoto $photo): StreamedResponse
     {
         $this->requireUser($request);
-        $mime = (string) $photo->mime;
-        abort_unless(str_starts_with($mime, 'image/'), 404);
+        $isImage = str_starts_with((string) $photo->mime, 'image/');
+        abort_unless($isImage || $photo->media_type === 'video', 404);
 
         $thumbPath = $this->thumbPath($photo);
         if (! $this->fs()->exists($thumbPath)) {
-            GenerateGalleryThumbnail::dispatch($photo->id);
+            // Only (re)queue when a decode source exists: an image, or a video
+            // whose poster frame has been extracted. A still-processing video has
+            // no poster yet → the video job will generate the thumb.
+            if ($isImage || ($photo->poster_path !== null && $photo->poster_path !== '')) {
+                GenerateGalleryThumbnail::dispatch($photo->id);
+            }
             abort(404);
         }
 
@@ -333,15 +487,21 @@ class GalleryController extends Controller
      */
     public function generateThumb(GalleryPhoto $photo, ImageManagerFactory $images): bool
     {
-        $mime = (string) $photo->mime;
-        if (! str_starts_with($mime, 'image/') || (int) $photo->size > self::THUMB_MAX_SRC_BYTES) {
-            return false;
+        // For a video the decode source is its extracted poster frame (a JPEG),
+        // not the video bytes; for an image it's the original (byte/mime-guarded).
+        if ($photo->media_type === 'video') {
+            $src = (string) $photo->poster_path;
+        } else {
+            $mime = (string) $photo->mime;
+            if (! str_starts_with($mime, 'image/') || (int) $photo->size > self::THUMB_MAX_SRC_BYTES) {
+                return false;
+            }
+            $src = (string) $photo->storage_path;
         }
         $thumbPath = $this->thumbPath($photo);
         if ($this->fs()->exists($thumbPath)) {
             return true;
         }
-        $src = (string) $photo->storage_path;
         if ($src === '' || ! $this->fs()->exists($src)) {
             return false;
         }
@@ -700,7 +860,7 @@ class GalleryController extends Controller
         ];
     }
 
-    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,thumb:bool,motion:bool,rotation:int,flip_h:bool,taken_at:?string,camera:?string,place:?string,lat:?float,lng:?float,version:int,created_at:?string} */
+    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,thumb:bool,motion:bool,media_type:string,status:string,duration:?int,rotation:int,flip_h:bool,taken_at:?string,camera:?string,place:?string,lat:?float,lng:?float,version:int,created_at:?string} */
     private function row(GalleryPhoto $p): array
     {
         return [
@@ -713,6 +873,9 @@ class GalleryController extends Controller
             'favorite' => (bool) $p->favorite,
             'thumb' => $this->fs()->exists($this->thumbPath($p)),
             'motion' => $p->motion_path !== null && $p->motion_path !== '',
+            'media_type' => $p->media_type,
+            'status' => $p->status,
+            'duration' => $p->duration,
             'rotation' => (int) $p->rotation,
             'flip_h' => (bool) $p->flip_h,
             'taken_at' => $p->taken_at?->toIso8601String(),
@@ -728,7 +891,7 @@ class GalleryController extends Controller
     /**
      * @param  array{taken_at?:?string,camera?:?string,lat?:?float,lng?:?float,exif?:?array<string,mixed>}  $meta
      */
-    private function persist(int $uid, string $name, string $path, int $size, ?string $mime, ?string $sha, ?int $w, ?int $h, array $meta = []): GalleryPhoto
+    private function persist(int $uid, string $name, string $path, int $size, ?string $mime, ?string $sha, ?int $w, ?int $h, array $meta = [], string $mediaType = 'image', string $status = 'ready'): GalleryPhoto
     {
         $photo = new GalleryPhoto;
         $photo->forceFill([
@@ -736,6 +899,8 @@ class GalleryController extends Controller
             'storage_path' => $path,
             'name' => $name,
             'mime' => $mime,
+            'media_type' => $mediaType,
+            'status' => $status,
             'size' => $size,
             'sha256' => $sha,
             'width' => $w,
@@ -839,13 +1004,21 @@ class GalleryController extends Controller
 
     private function purgeBlobs(GalleryPhoto $photo): void
     {
-        foreach ([$photo->storage_path, $photo->motion_path] as $blob) {
+        foreach ([$photo->storage_path, $photo->motion_path, $photo->poster_path, $photo->playback_path] as $blob) {
             $p = $this->safeBlobPath($blob);
             if ($p !== null) {
                 $this->fs()->delete($p);
             }
         }
         $this->fs()->delete('gallery/thumb/'.$photo->id.'-'.$photo->version.'.webp');
+    }
+
+    /** Absolute filesystem path when the files disk is local, else null (remote). */
+    private function localPath(string $rel): ?string
+    {
+        $disk = $this->fs();
+
+        return $disk instanceof FilesystemAdapter ? $disk->path($rel) : null;
     }
 
     private function safeBlobPath(mixed $path): ?string
@@ -914,6 +1087,17 @@ class GalleryController extends Controller
         }
 
         return null;
+    }
+
+    /** Video by sniffed MIME or by a known video extension ("any format" upload). */
+    private function looksLikeVideo(?string $mime, string $name): bool
+    {
+        if ($mime !== null && str_starts_with($mime, 'video/')) {
+            return true;
+        }
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+
+        return $ext !== '' && in_array($ext, self::VIDEO_EXT, true);
     }
 
     /** An existing non-trashed photo of the same user with identical bytes, if any. */
