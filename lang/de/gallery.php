@@ -77,6 +77,7 @@ return [
     'reprocess_embeddings' => "Bilder neu analysieren",
     'reprocess_all' => "Beides",
     'reprocess_queued' => ":n Foto(s) eingereiht.",
+    'merge_search' => "Benannte Personen suchen…",
     'face_hide' => "Kein Gesicht",
     'bulk_optional' => 'optional',
 ];

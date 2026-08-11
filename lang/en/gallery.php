@@ -77,6 +77,7 @@ return [
     'reprocess_embeddings' => "Re-analyze images",
     'reprocess_all' => "Both",
     'reprocess_queued' => ":n photo(s) queued.",
+    'merge_search' => "Search named people…",
     'face_hide' => "Not a face",
     'bulk_optional' => 'optional',
 ];
