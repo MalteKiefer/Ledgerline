@@ -59,7 +59,8 @@
         <span class="text-sm font-semibold" :class="personView.name ? '' : 'italic text-[var(--ll-muted)]'">{{ personLabel(personView) }}</span>
         <span class="text-xs text-[var(--ll-muted)]">· {{ personView.count }}</span>
         <div class="ml-auto flex items-center gap-1">
-          <Btn variant="ghost" size="sm" icon="edit" @click="renamePerson">{{ t('gallery.person_rename') }}</Btn>
+          <Btn variant="ghost" size="sm" :icon="personSort === 'desc' ? 'arrow_downward' : 'arrow_upward'" @click="togglePersonSort">{{ personSort === 'desc' ? t('gallery.sort_newest') : t('gallery.sort_oldest') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="edit" @click="openNamePerson">{{ t('gallery.person_rename') }}</Btn>
           <div class="relative">
             <Btn variant="ghost" size="sm" icon="merge" @click="mergeMenu = !mergeMenu">{{ t('gallery.person_merge') }}</Btn>
             <div v-if="mergeMenu" class="absolute right-0 z-20 mt-1 max-h-64 w-52 overflow-y-auto rounded-lg border border-[var(--ll-border)] bg-[var(--ll-elevated)] py-1 shadow-lg">
@@ -237,7 +238,8 @@
         <div v-if="viewerFaces.length" class="absolute inset-x-0 bottom-16 flex flex-wrap items-center gap-1.5 px-6">
           <span v-for="f in viewerFaces" :key="f.id" class="group inline-flex items-center gap-1 rounded-full bg-black/50 py-0.5 pl-0.5 pr-2 text-xs text-white backdrop-blur">
             <img v-if="f.crop" :src="g.faceCropUrl(f.id)" class="h-6 w-6 rounded-full object-cover">
-            <button class="max-w-[10rem] truncate hover:underline" @click="assignFaceChip(f)">{{ f.person_name ?? t('gallery.face_unnamed') }}</button>
+            <button class="max-w-[10rem] truncate hover:underline" @click="openNameFace(f)">{{ f.person_name ?? t('gallery.face_unnamed') }}</button>
+            <button v-if="f.person_id" class="text-white/60 hover:text-amber-300" :title="t('gallery.set_cover')" @click="setCoverFromChip(f)"><Icon name="account_circle" :size="14" /></button>
             <button class="text-white/60 hover:text-red-400" :title="t('gallery.face_hide')" @click="hideFaceChip(f)"><Icon name="close" :size="13" /></button>
           </span>
         </div>
@@ -357,6 +359,36 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- Name a person / face (free text + address-book autocomplete) -->
+    <Teleport to="body">
+      <div v-if="nameM.open" class="fixed inset-0 z-[2300] flex items-center justify-center bg-black/50 p-4" @click.self="nameM.open = false">
+        <div class="w-full max-w-sm rounded-xl bg-[var(--ll-elevated)] shadow-xl">
+          <div class="flex items-center justify-between border-b border-[var(--ll-border)] px-5 py-3">
+            <h3 class="text-sm font-semibold">{{ t('gallery.name_person') }}</h3>
+            <button class="rounded-full p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="nameM.open = false"><Icon name="close" :size="18" /></button>
+          </div>
+          <div class="p-5">
+            <input
+              v-model="nameM.query" type="text" autofocus :placeholder="t('gallery.name_placeholder')"
+              class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+              @input="onNameInput" @keyup.enter="saveName"
+            >
+            <div v-if="nameM.suggestions.length" class="mt-2 max-h-52 overflow-y-auto rounded-lg border border-[var(--ll-border)]">
+              <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('gallery.from_contacts') }}</div>
+              <button v-for="s in nameM.suggestions" :key="s.id" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="pickSuggestion(s)">
+                <Icon name="person" :size="16" class="text-[var(--ll-muted)]" />
+                <span class="truncate">{{ s.name }}</span>
+              </button>
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 border-t border-[var(--ll-border)] px-5 py-3">
+            <Btn variant="ghost" size="sm" @click="nameM.open = false">{{ t('common.cancel') }}</Btn>
+            <Btn variant="solid" size="sm" :loading="nameM.saving" :disabled="!nameM.query.trim()" @click="saveName">{{ t('common.save') }}</Btn>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -367,7 +399,7 @@ import 'leaflet/dist/leaflet.css';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, Icon } from '@spa/ui';
 import LocationField from '@spa/components/LocationField.vue';
-import { useGalleryStore, type Photo, type Album, type PhotoEdit, type Person, type Face } from '@spa/stores/gallery';
+import { useGalleryStore, type Photo, type Album, type PhotoEdit, type Person, type Face, type ContactSuggestion } from '@spa/stores/gallery';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
@@ -546,34 +578,80 @@ async function trashDupeOne(gi: number, id: number) {
 }
 
 // ---- People / faces (opt-in face recognition) ----
+const personSort = ref<'asc' | 'desc'>('desc');
 async function openPeople() {
   showPeople.value = true; personView.value = null; clearSearch(); closeDupes(); clearSelection(); viewer.value = -1;
   try { peopleList.value = await g.people(); } catch { error(t('common.error')); }
 }
 function closePeople() { showPeople.value = false; personView.value = null; peopleList.value = []; mergeMenu.value = false; }
 async function openPerson(p: Person) {
-  personView.value = p; mergeMenu.value = false;
-  try { await g.loadByPerson(p.id); } catch { error(t('common.error')); }
+  personView.value = p; mergeMenu.value = false; personSort.value = 'desc';
+  try { await g.browsePerson(p.id, personSort.value); } catch { error(t('common.error')); }
+}
+async function togglePersonSort() {
+  const p = personView.value; if (!p) return;
+  personSort.value = personSort.value === 'desc' ? 'asc' : 'desc';
+  try { await g.browsePerson(p.id, personSort.value); } catch { error(t('common.error')); }
 }
 function backToPeople() { personView.value = null; mergeMenu.value = false; }
-async function renamePerson() {
-  const p = personView.value; if (!p) return;
-  const name = await promptAsk(t('gallery.person_name'), { value: p.name ?? '' });
-  if (name === null) return;
-  try { const upd = await g.renamePerson(p.id, name.trim() || null); personView.value = upd; success(t('common.saved')); } catch { error(t('common.error')); }
-}
 async function deletePerson() {
   const p = personView.value; if (!p) return;
   if (!(await confirmAsk(t('gallery.person_delete_confirm')))) return;
-  try { await g.deletePerson(p.id); success(t('common.saved')); closePersonToList(); } catch { error(t('common.error')); }
+  try { await g.deletePerson(p.id); success(t('common.saved')); personView.value = null; peopleList.value = await g.people(); } catch { error(t('common.error')); }
 }
-async function closePersonToList() { personView.value = null; peopleList.value = await g.people(); }
 async function doMerge(into: Person) {
   const from = personView.value; if (!from || into.id === from.id) return;
   try { await g.mergePeople(from.id, into.id); success(t('common.saved')); mergeMenu.value = false; personView.value = null; peopleList.value = await g.people(); }
   catch { error(t('common.error')); }
 }
 function personLabel(p: Person): string { return p.name ?? t('gallery.person_unknown'); }
+
+// Naming modal (free text + address-book autocomplete), used for a person or a face.
+const nameM = reactive({
+  open: false, saving: false, target: 'person' as 'person' | 'face',
+  personId: 0, face: null as Face | null, query: '', suggestions: [] as ContactSuggestion[],
+});
+let nameDebounce: ReturnType<typeof setTimeout> | null = null;
+function openNamePerson() {
+  const p = personView.value; if (!p) return;
+  Object.assign(nameM, { open: true, target: 'person', personId: p.id, face: null, query: p.name ?? '', suggestions: [] });
+}
+function openNameFace(f: Face) {
+  Object.assign(nameM, { open: true, target: 'face', personId: 0, face: f, query: f.person_name ?? '', suggestions: [] });
+}
+function onNameInput() {
+  if (nameDebounce) clearTimeout(nameDebounce);
+  const q = nameM.query.trim();
+  if (q.length < 2) { nameM.suggestions = []; return; }
+  nameDebounce = setTimeout(async () => { nameM.suggestions = await g.nameSuggest(q); }, 200);
+}
+async function pickSuggestion(s: ContactSuggestion) {
+  nameM.saving = true;
+  try {
+    if (nameM.target === 'person') {
+      const upd = await g.updatePerson(nameM.personId, { contact_id: s.id });
+      personView.value = upd;
+    } else if (nameM.face) {
+      await g.assignFace(nameM.face.id, { contact_id: s.id });
+      nameM.face.person_name = s.name;
+    }
+    nameM.open = false; success(t('common.saved'));
+  } catch { error(t('common.error')); } finally { nameM.saving = false; }
+}
+async function saveName() {
+  const name = nameM.query.trim(); if (!name) return;
+  nameM.saving = true;
+  try {
+    if (nameM.target === 'person') {
+      const upd = await g.updatePerson(nameM.personId, { name, contact_id: null });
+      personView.value = upd;
+    } else if (nameM.face) {
+      await g.assignFace(nameM.face.id, { name });
+      nameM.face.person_name = name;
+    }
+    nameM.open = false; success(t('common.saved'));
+  } catch { error(t('common.error')); } finally { nameM.saving = false; }
+}
 
 // Lightbox face chips
 async function loadViewerFaces() {
@@ -582,10 +660,9 @@ async function loadViewerFaces() {
   if (!p || p.media_type !== 'image') return;
   try { viewerFaces.value = await g.photoFaces(p.id); } catch { /* face ML off → no chips */ }
 }
-async function assignFaceChip(f: Face) {
-  const name = await promptAsk(t('gallery.face_assign_name'), { value: f.person_name ?? '' });
-  if (name === null || !name.trim()) return;
-  try { const upd = await g.assignFace(f.id, { name: name.trim() }); Object.assign(f, upd); success(t('common.saved')); } catch { error(t('common.error')); }
+async function setCoverFromChip(f: Face) {
+  if (f.person_id === null) return;
+  try { await g.setFaceCover(f.person_id, f.id); success(t('common.saved')); } catch { error(t('common.error')); }
 }
 async function hideFaceChip(f: Face) {
   try { await g.hideFace(f.id); viewerFaces.value = viewerFaces.value.filter((x) => x.id !== f.id); } catch { error(t('common.error')); }

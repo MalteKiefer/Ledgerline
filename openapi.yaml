@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.622.0
+  version: 1.623.0
   license:
     name: Proprietary
   description: >
@@ -1182,10 +1182,11 @@ components:
         version: { type: integer }
     GalleryPerson:
       type: object
-      description: "A face-recognition person: an auto-grouped cluster of detected faces (biometric, opt-in). name is null until the owner names it; cover_face_id points at the crop shown as the person's avatar; count is the visible-face count."
+      description: "A face-recognition person: an auto-grouped cluster of detected faces (biometric, opt-in). name is null until the owner names it; contact_id optionally links the person to an address-book contact (naming from the address book); cover_face_id points at the crop shown as the person's avatar; count is the visible-face count."
       properties:
         id: { type: integer }
         name: { type: string, nullable: true }
+        contact_id: { type: string, nullable: true, description: "Linked address-book contact UUID, or null." }
         count: { type: integer }
         cover_face_id: { type: integer, nullable: true }
     GalleryFace:
@@ -5236,7 +5237,9 @@ paths:
       operationId: galleryPersonPhotos
       summary: Photos of a person
       security: [ { bearerAuth: [] } ]
-      parameters: [ { name: person, in: path, required: true, schema: { type: integer } } ]
+      parameters:
+        - { name: person, in: path, required: true, schema: { type: integer } }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [asc, desc], default: desc }, description: "Sort the person's photos by capture date." }
       responses:
         "200": { description: "The person's photos.", content: { application/json: { schema: { type: object, properties: { person: { $ref: "#/components/schemas/GalleryPerson" }, photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -5244,10 +5247,11 @@ paths:
     put:
       tags: [Gallery]
       operationId: galleryPersonUpdate
-      summary: Rename a person (or clear the name with null)
+      summary: Update a person (name, contact link, cover face)
+      description: "Rename (name, null clears it), link to an address-book contact (contact_id — sets the name from the contact when no explicit name is given; null unlinks), and set the cover face (cover_face_id must belong to the person)."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: person, in: path, required: true, schema: { type: integer } } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: [string, "null"], maxLength: 120 } } } } } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: [string, "null"], maxLength: 191 }, contact_id: { type: [string, "null"] }, cover_face_id: { type: [integer, "null"] } } } } } }
       responses:
         "200": { description: "Updated.", content: { application/json: { schema: { $ref: "#/components/schemas/GalleryPerson" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -5290,11 +5294,11 @@ paths:
     post:
       tags: [Gallery]
       operationId: galleryFaceAssign
-      summary: Move a face to a person (by id or new name)
-      description: "Assign the face to an existing person (person_id) or a new named person (name). Exactly one is required."
+      summary: Move a face to a person (by id, contact, or new name)
+      description: "Assign the face to an existing person (person_id), a person linked to an address-book contact (contact_id — reuses the linked person or creates one), or a new named person (name)."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: face, in: path, required: true, schema: { type: integer } } ]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { person_id: { type: integer }, name: { type: string, maxLength: 120 } } } } } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { person_id: { type: integer }, contact_id: { type: string }, name: { type: string, maxLength: 191 } } } } } }
       responses:
         "200": { description: "Assigned.", content: { application/json: { schema: { $ref: "#/components/schemas/GalleryFace" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -5312,6 +5316,30 @@ paths:
         "200": { description: "Hidden.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /gallery/contacts/{contact}/photos:
+    get:
+      tags: [Gallery]
+      operationId: galleryContactPhotos
+      summary: Photos of the person(s) linked to a contact
+      description: "Gallery photos containing a face grouped under a person linked to this address-book contact (see personUpdate contact_id). Empty when no person is linked. Owner-scoped."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: contact, in: path, required: true, schema: { type: string }, description: "Contact UUID." } ]
+      responses:
+        "200": { description: "The contact's photos.", content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/reprocess:
+    post:
+      tags: [Gallery]
+      operationId: galleryReprocess
+      summary: Re-queue ML processing over all photos
+      description: "Re-queue face detection + grouping and/or CLIP embeddings for every photo (processed on the worker one at a time). Use after enabling ML, changing models, or to improve recognition."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { scope: { type: string, enum: [faces, embeddings, all], default: all } } } } } }
+      responses:
+        "200": { description: "Queued.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, queued: { type: integer }, scope: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /gallery/trash:
     get:

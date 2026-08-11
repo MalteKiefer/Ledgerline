@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Contact;
 use App\Models\GalleryFace;
 use App\Models\GalleryPerson;
 use App\Models\GalleryPhoto;
@@ -37,38 +38,58 @@ class GalleryPeopleController extends Controller
             ->orderBy('name')
             ->orderByDesc('faces_count')
             ->get()
-            ->map(fn (GalleryPerson $p): array => [
-                'id' => $p->id,
-                'name' => $p->name,
-                'count' => (int) ($p->faces_count ?? 0),
-                'cover_face_id' => $p->cover_face_id,
-            ])->all();
+            ->map(fn (GalleryPerson $p): array => $this->personRow($p))->all();
 
         return response()->json(['people' => $people]);
     }
 
-    /** A person's photos (distinct, newest first). */
+    /** A person's photos, sortable by capture date (default newest first). */
     public function person(Request $request, GalleryPerson $person): JsonResponse
     {
         $this->requireUser($request);
+        $dir = $request->string('sort')->lower()->value() === 'asc' ? 'asc' : 'desc';
         $photos = GalleryPhoto::query()
             ->whereHas('faces', fn ($q) => $q->where('gallery_person_id', $person->id)->where('hidden', false))
-            ->orderByRaw('COALESCE(taken_at, created_at) DESC')->orderByDesc('id')
+            ->orderByRaw('COALESCE(taken_at, created_at) '.$dir)->orderBy('id', $dir)
             ->get()->map(fn (GalleryPhoto $p): array => $this->gallery->row($p))->all();
 
-        return response()->json(['person' => ['id' => $person->id, 'name' => $person->name], 'photos' => $photos]);
+        return response()->json(['person' => $this->personRow($person->loadCount(['faces' => fn (Builder $q) => $q->where('hidden', false)])), 'photos' => $photos]);
     }
 
+    /**
+     * Update a person: name (free text), contact link (contact_id — sets the name
+     * from the contact when no explicit name is given), and cover face.
+     */
     public function personUpdate(Request $request, GalleryPerson $person): JsonResponse
     {
-        $this->requireUser($request);
-        $request->validate(['name' => ['sometimes', 'nullable', 'string', 'max:191']]);
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'name' => ['sometimes', 'nullable', 'string', 'max:191'],
+            'contact_id' => ['sometimes', 'nullable', 'string'],
+            'cover_face_id' => ['sometimes', 'nullable', 'integer'],
+        ]);
+        $patch = [];
+        if ($request->has('contact_id')) {
+            $contact = $request->filled('contact_id') ? $this->resolveContact($uid, $request->string('contact_id')->value()) : null;
+            $patch['contact_id'] = $contact?->id;
+            if ($contact instanceof Contact && ! $request->filled('name')) {
+                $patch['name'] = $this->contactName($contact);
+            }
+        }
         if ($request->has('name')) {
-            $name = $request->filled('name') ? $request->string('name')->value() : null;
-            $person->forceFill(['name' => $name])->save();
+            $patch['name'] = $request->filled('name') ? $request->string('name')->value() : ($patch['name'] ?? null);
+        }
+        if ($request->has('cover_face_id')) {
+            $cover = $request->filled('cover_face_id')
+                ? GalleryFace::query()->whereKey($request->integer('cover_face_id'))->where('gallery_person_id', $person->id)->first()
+                : null;
+            $patch['cover_face_id'] = $cover?->id;
+        }
+        if ($patch !== []) {
+            $person->forceFill($patch)->save();
         }
 
-        return response()->json(['ok' => true]);
+        return response()->json(['ok' => true, 'person' => $this->personRow($person->refresh())]);
     }
 
     /** Delete a person: its faces become unassigned (kept, re-groupable later). */
@@ -116,18 +137,33 @@ class GalleryPeopleController extends Controller
         return response()->json(['faces' => $faces]);
     }
 
-    /** Move a face to another person (existing id, or a new named person). */
+    /** Move a face to another person (existing id, a contact, or a new named person). */
     public function faceAssign(Request $request, GalleryFace $face): JsonResponse
     {
         $uid = (int) $this->requireUser($request)->id;
         $request->validate([
             'person_id' => ['sometimes', 'nullable', 'integer'],
+            'contact_id' => ['sometimes', 'nullable', 'string'],
             'name' => ['sometimes', 'nullable', 'string', 'max:191'],
         ]);
         $personId = null;
         if ($request->filled('person_id')) {
             $target = GalleryPerson::query()->whereKey($request->integer('person_id'))->first();
             $personId = $target instanceof GalleryPerson ? (int) $target->id : null;
+        } elseif ($request->filled('contact_id')) {
+            $contact = $this->resolveContact($uid, $request->string('contact_id')->value());
+            if ($contact instanceof Contact) {
+                // Reuse the person already linked to this contact, else create one.
+                $existing = GalleryPerson::query()->where('contact_id', $contact->id)->first();
+                if ($existing instanceof GalleryPerson) {
+                    $personId = (int) $existing->id;
+                } else {
+                    $person = new GalleryPerson;
+                    $person->forceFill(['user_id' => $uid, 'name' => $this->contactName($contact), 'contact_id' => $contact->id, 'cover_face_id' => $face->id]);
+                    $person->save();
+                    $personId = (int) $person->id;
+                }
+            }
         } elseif ($request->filled('name')) {
             $person = new GalleryPerson;
             $person->forceFill(['user_id' => $uid, 'name' => $request->string('name')->value(), 'cover_face_id' => $face->id]);
@@ -137,6 +173,24 @@ class GalleryPeopleController extends Controller
         $face->forceFill(['gallery_person_id' => $personId])->save();
 
         return response()->json(['ok' => true]);
+    }
+
+    /** Photos of the person(s) linked to a contact (shown on the contact page). */
+    public function contactPhotos(Request $request, Contact $contact): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        // Owner-scope the contact (Contact is not globally owner-scoped).
+        abort_unless($this->resolveContact($uid, (string) $contact->id) instanceof Contact, 404);
+        $personIds = GalleryPerson::query()->where('contact_id', $contact->id)->pluck('id')->all();
+        if ($personIds === []) {
+            return response()->json(['photos' => []]);
+        }
+        $photos = GalleryPhoto::query()
+            ->whereHas('faces', fn ($q) => $q->whereIn('gallery_person_id', $personIds)->where('hidden', false))
+            ->orderByRaw('COALESCE(taken_at, created_at) DESC')->orderByDesc('id')
+            ->get()->map(fn (GalleryPhoto $p): array => $this->gallery->row($p))->all();
+
+        return response()->json(['photos' => $photos]);
     }
 
     public function faceHide(Request $request, GalleryFace $face): JsonResponse
@@ -166,6 +220,36 @@ class GalleryPeopleController extends Controller
             $this->fs()->response($src, 'face.jpg', ['Content-Type' => 'image/jpeg'], 'inline'),
             (string) $face->id,
         );
+    }
+
+    /** @return array{id:int,name:?string,contact_id:?string,count:int,cover_face_id:?int} */
+    private function personRow(GalleryPerson $p): array
+    {
+        return [
+            'id' => $p->id,
+            'name' => $p->name,
+            'contact_id' => $p->contact_id,
+            'count' => (int) ($p->faces_count ?? 0),
+            'cover_face_id' => $p->cover_face_id,
+        ];
+    }
+
+    private function resolveContact(int $uid, string $id): ?Contact
+    {
+        return Contact::query()
+            ->whereKey($id)
+            ->whereHas('addressBook', fn (Builder $q) => $q->where('user_id', $uid))
+            ->first();
+    }
+
+    private function contactName(Contact $c): string
+    {
+        $fn = trim((string) $c->fn);
+        if ($fn !== '') {
+            return mb_substr($fn, 0, 191);
+        }
+
+        return mb_substr(trim(((string) $c->first_name).' '.((string) $c->last_name)), 0, 191) ?: 'Kontakt';
     }
 
     /** @return array{id:int,person_id:?int,person_name:?string,box:array<int,float>,score:float,crop:bool} */

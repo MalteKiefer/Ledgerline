@@ -282,6 +282,8 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/gallery/faces/{face}/crop', [GalleryPeopleController::class, 'faceCrop'])->whereNumber('face')->middleware('throttle:6000,1')->name('api.gallery.faces.crop');
             Route::post('/gallery/faces/{face}/assign', [GalleryPeopleController::class, 'faceAssign'])->whereNumber('face')->middleware('throttle:300,1')->name('api.gallery.faces.assign');
             Route::post('/gallery/faces/{face}/hide', [GalleryPeopleController::class, 'faceHide'])->whereNumber('face')->middleware('throttle:300,1')->name('api.gallery.faces.hide');
+            Route::get('/gallery/contacts/{contact}/photos', [GalleryPeopleController::class, 'contactPhotos'])->name('api.gallery.contact.photos');
+            Route::post('/gallery/reprocess', [GalleryController::class, 'reprocess'])->middleware('throttle:6,1')->name('api.gallery.reprocess');
             Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('api.gallery.trash');
             Route::post('/gallery', [GalleryController::class, 'upload'])->middleware('throttle:1200,1')->name('api.gallery.upload');
             Route::post('/gallery/chunk/init', [GalleryController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.gallery.chunk.init');

@@ -23,8 +23,10 @@ export interface Album {
 }
 
 export interface Person {
-  id: number; name: string | null; count: number; cover_face_id: number | null;
+  id: number; name: string | null; contact_id: string | null; count: number; cover_face_id: number | null;
 }
+
+export interface ContactSuggestion { id: string; name: string }
 
 export interface Face {
   id: number; person_id: number | null; person_name: string | null;
@@ -104,23 +106,32 @@ export const useGalleryStore = defineStore('gallery', () => {
 
   // People / faces (opt-in face recognition)
   const people = () => api.get<{ people: Person[] }>('/api/v1/gallery/people').then((r) => r.people ?? []);
-  const personPhotos = (id: number) =>
-    api.get<{ person: Person; photos: Photo[] }>(`/api/v1/gallery/people/${id}`);
-  const loadByPerson = (personId: number) =>
-    api.get<{ photos: Photo[] }>(`/api/v1/gallery/data?person_id=${personId}`).then((r) => { photos.value = r.photos ?? []; });
-  const renamePerson = (id: number, name: string | null) => api.put<Person>(`/api/v1/gallery/people/${id}`, { name });
+  // Load a person's photos (sortable by capture date) into the main grid.
+  const browsePerson = (id: number, sort: 'asc' | 'desc' = 'desc') =>
+    api.get<{ person: Person; photos: Photo[] }>(`/api/v1/gallery/people/${id}?sort=${sort}`)
+      .then((r) => { photos.value = r.photos ?? []; return r.person; });
+  const updatePerson = (id: number, patch: { name?: string | null; contact_id?: string | null; cover_face_id?: number | null }) =>
+    api.put<{ ok: boolean; person: Person }>(`/api/v1/gallery/people/${id}`, patch).then((r) => r.person);
   const deletePerson = (id: number) => api.delete(`/api/v1/gallery/people/${id}`);
   const mergePeople = (fromId: number, intoId: number) => api.post('/api/v1/gallery/people/merge', { from_id: fromId, into_id: intoId });
   const photoFaces = (photoId: number) => api.get<{ faces: Face[] }>(`/api/v1/gallery/${photoId}/faces`).then((r) => r.faces ?? []);
-  const assignFace = (faceId: number, target: { person_id?: number; name?: string }) =>
+  const assignFace = (faceId: number, target: { person_id?: number; contact_id?: string; name?: string }) =>
     api.post<Face>(`/api/v1/gallery/faces/${faceId}/assign`, target);
+  const setFaceCover = (personId: number, faceId: number) => updatePerson(personId, { cover_face_id: faceId });
   const hideFace = (faceId: number) => api.post(`/api/v1/gallery/faces/${faceId}/hide`);
   const faceCropUrl = (faceId: number) => api.streamUrl(`/api/v1/gallery/faces/${faceId}/crop`);
+  const reprocess = (scope: 'faces' | 'embeddings' | 'all') => api.post<{ queued: number }>('/api/v1/gallery/reprocess', { scope });
+  // Address-book contact autocomplete for naming people.
+  const nameSuggest = (q: string) =>
+    api.get<{ contacts: ContactSuggestion[] }>(`/api/v1/contacts/suggest?q=${encodeURIComponent(q)}`)
+      .then((r) => r.contacts ?? []).catch(() => [] as ContactSuggestion[]);
+  const contactPhotos = (contactId: string) =>
+    api.get<{ photos: Photo[] }>(`/api/v1/gallery/contacts/${contactId}/photos`).then((r) => r.photos ?? []).catch(() => [] as Photo[]);
 
   return {
     photos, albums, load, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
-    people, personPhotos, loadByPerson, renamePerson, deletePerson, mergePeople, photoFaces, assignFace, hideFace, faceCropUrl,
+    people, browsePerson, updatePerson, deletePerson, mergePeople, photoFaces, assignFace, setFaceCover, hideFace, faceCropUrl, reprocess, nameSuggest, contactPhotos,
   };
 });

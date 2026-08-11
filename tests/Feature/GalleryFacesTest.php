@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Jobs\DetectGalleryFaces;
+use App\Models\AddressBook;
+use App\Models\Contact;
 use App\Models\GalleryFace;
 use App\Models\GalleryPerson;
 use App\Models\GalleryPhoto;
 use App\Models\User;
 use App\Services\GalleryFaceProcessor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class GalleryFacesTest extends TestCase
@@ -126,6 +131,78 @@ class GalleryFacesTest extends TestCase
 
         $this->post(route('gallery.faces.hide', ['face' => $face->id]))->assertOk();
         $this->assertTrue((bool) $face->refresh()->hidden);
+    }
+
+    private function contactFor(User $user, string $fn): Contact
+    {
+        $book = AddressBook::query()->forceCreate(['user_id' => $user->id, 'name' => 'Default', 'uri' => Str::uuid()->toString()]);
+
+        return Contact::query()->forceCreate([
+            'address_book_id' => $book->id, 'uri' => Str::uuid()->toString().'.vcf',
+            'etag' => Str::random(8), 'uid' => Str::uuid()->toString(), 'vcard' => "BEGIN:VCARD\nFN:{$fn}\nEND:VCARD",
+            'fn' => $fn,
+        ]);
+    }
+
+    public function test_set_cover_face(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        [$photo, $person] = $this->seedFace($user);
+        $other = GalleryFace::query()->forceCreate([
+            'user_id' => $user->id, 'gallery_photo_id' => $photo->id, 'gallery_person_id' => $person->id,
+            'box' => [0.5, 0.5, 0.8, 0.8], 'score' => 0.9,
+        ]);
+
+        $this->put(route('gallery.people.update', ['person' => $person->id]), ['cover_face_id' => $other->id])->assertOk();
+        $this->assertSame($other->id, $person->refresh()->cover_face_id);
+
+        // A face of a different person is rejected as cover.
+        [, , $foreign] = $this->seedFace($user);
+        $this->put(route('gallery.people.update', ['person' => $person->id]), ['cover_face_id' => $foreign->id])->assertOk();
+        $this->assertNull($person->refresh()->cover_face_id);
+    }
+
+    public function test_link_person_to_contact_sets_name_and_lists_contact_photos(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        [, $person] = $this->seedFace($user);
+        $contact = $this->contactFor($user, 'Ada Lovelace');
+
+        $this->put(route('gallery.people.update', ['person' => $person->id]), ['contact_id' => $contact->id])->assertOk();
+        $person->refresh();
+        $this->assertSame($contact->id, $person->contact_id);
+        $this->assertSame('Ada Lovelace', $person->name);
+
+        $res = $this->get(route('gallery.contact.photos', ['contact' => $contact->id]))->assertOk();
+        $this->assertCount(1, $res->json('photos'));
+    }
+
+    public function test_contact_photos_are_owner_scoped(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $contact = $this->contactFor($owner, 'Grace');
+        $this->actingAs($other)->get(route('gallery.contact.photos', ['contact' => $contact->id]))->assertNotFound();
+    }
+
+    public function test_reprocess_queues_jobs(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create();
+        $this->seedFace($user);
+        $this->actingAs($user)->post(route('gallery.reprocess'), ['scope' => 'faces'])->assertOk()->assertJsonPath('scope', 'faces');
+        Queue::assertPushed(DetectGalleryFaces::class);
+    }
+
+    public function test_person_photos_sort_direction(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        [, $person] = $this->seedFace($user);
+        $this->get(route('gallery.people.show', ['person' => $person->id, 'sort' => 'asc']))->assertOk();
+        $this->get(route('gallery.people.show', ['person' => $person->id, 'sort' => 'desc']))->assertOk();
     }
 
     public function test_face_crop_is_owner_scoped(): void
