@@ -1,9 +1,27 @@
-import { marked } from 'marked';
+import { Marked } from 'marked';
+import { markedHighlight } from 'marked-highlight';
 import DOMPurify from 'dompurify';
+// Full highlight.js "common" build: ~190 languages registered out of the box
+// (with their aliases: js/ts/html/yml/sh/py…). Loaded only on the notes route
+// (this module is in the lazy Notes chunk).
+import hljs from 'highlight.js';
 
 // Render a note's Markdown body to sanitised HTML. The body is user-authored
 // plaintext stored server-side and rendered only on the client; DOMPurify strips
 // scripts / event handlers / dangerous URIs so a note can never inject script.
+// Code fences are syntax-highlighted (highlight.js): the fence's language when
+// registered, else auto-detection.
+const marked = new Marked(
+  markedHighlight({
+    langPrefix: 'hljs language-',
+    highlight(code: string, lang: string): string {
+      const language = lang && hljs.getLanguage(lang) ? lang : '';
+      return language
+        ? hljs.highlight(code, { language }).value
+        : hljs.highlightAuto(code).value;
+    },
+  }),
+);
 marked.setOptions({ breaks: true, gfm: true });
 
 function escapeHtml(s: string): string {
