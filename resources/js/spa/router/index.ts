@@ -45,7 +45,8 @@ const routes: RouteRecordRaw[] = [
         path: 'settings',
         component: () => import('@spa/views/settings/Settings.vue'),
         children: [
-          { path: '', name: 'settings.users', component: () => import('@spa/views/settings/Users.vue') },
+          { path: '', name: 'settings.dashboard', component: () => import('@spa/views/settings/Dashboard.vue') },
+          { path: 'users', name: 'settings.users', component: () => import('@spa/views/settings/Users.vue') },
           { path: 'groups', name: 'settings.groups', component: () => import('@spa/views/settings/Groups.vue') },
           { path: 'company', name: 'settings.company', component: () => import('@spa/views/settings/Company.vue') },
           { path: 'notifications-config', name: 'settings.notifications-config', component: () => import('@spa/views/settings/NotificationsConfig.vue') },

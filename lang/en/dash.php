@@ -1,0 +1,34 @@
+<?php
+
+declare(strict_types=1);
+
+return [
+    'section' => 'Dashboard',
+    'server' => 'Server',
+    'version_app' => 'App version',
+    'db' => 'Database',
+    'cache' => 'Cache',
+    'queue_driver' => 'Queue driver',
+    'resources' => 'Resources',
+    'disk' => 'Disk',
+    'storage_by_module' => 'Storage by module',
+    'st_files' => 'Files',
+    'st_gallery' => 'Gallery',
+    'st_database' => 'Database',
+    'growth' => 'Growth (:d days)',
+    'containers' => 'Containers',
+    'manage' => 'Manage',
+    'agent_off' => 'Control agent off — see Containers.',
+    'scheduler' => 'Scheduler',
+    'never' => 'never',
+    'errors' => 'Errors',
+    'backup' => 'Backup',
+    'users' => 'Users',
+    'admins' => ':n admin(s)',
+    'sessions' => 'Sessions',
+    'devices' => ':n device(s)',
+    'queue' => 'Queue',
+    'failed' => ':n failed',
+    'blocked' => 'Blocked IPs',
+    'blocked_users' => ':n user(s)',
+];
