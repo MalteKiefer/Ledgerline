@@ -175,6 +175,18 @@ class GalleryFeatureTest extends TestCase
         $this->get(route('gallery.play', ['photo' => $id]))->assertOk();
     }
 
+    public function test_semantic_search_is_empty_when_ml_disabled(): void
+    {
+        config()->set('ml.enabled', false);
+        $this->actingAs(User::factory()->create());
+        $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('tree.jpg', 40, 40)]);
+
+        // ML off (or no pgvector) → graceful empty result; the client falls back.
+        $this->get(route('gallery.search', ['q' => 'tree']))->assertOk()->assertExactJson(['photos' => []]);
+        // Blank query short-circuits too.
+        $this->get(route('gallery.search', ['q' => '']))->assertOk()->assertExactJson(['photos' => []]);
+    }
+
     public function test_non_media_upload_is_rejected(): void
     {
         $this->actingAs(User::factory()->create());
