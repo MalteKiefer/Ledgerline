@@ -35,7 +35,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="svc in data.services" :key="svc.service" class="border-b border-[var(--ll-border)]/60">
+            <tr v-for="svc in sortedServices" :key="svc.service" class="border-b border-[var(--ll-border)]/60">
               <td class="py-2 pr-3 font-medium">{{ svc.service }}</td>
               <td class="py-2 pr-3">
                 <span class="inline-flex items-center gap-1.5">
@@ -43,8 +43,22 @@
                   {{ svc.state || '—' }}
                 </span>
               </td>
-              <td class="py-2 pr-3 tabular-nums">{{ svc.cpu || '—' }}</td>
-              <td class="py-2 pr-3 tabular-nums" :title="svc.mem_perc">{{ svc.mem || '—' }}</td>
+              <td class="py-2 pr-3">
+                <div class="flex items-center gap-2">
+                  <div class="h-1.5 w-16 overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/10">
+                    <div class="h-full" :class="pct(svc.cpu) > 80 ? 'bg-red-500' : pct(svc.cpu) > 50 ? 'bg-amber-500' : 'bg-primary-500'" :style="{ width: barW(svc.cpu) }" />
+                  </div>
+                  <span class="tabular-nums text-xs text-[var(--ll-muted)]">{{ svc.cpu || '—' }}</span>
+                </div>
+              </td>
+              <td class="py-2 pr-3">
+                <div class="flex items-center gap-2" :title="svc.mem">
+                  <div class="h-1.5 w-16 overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/10">
+                    <div class="h-full" :class="pct(svc.mem_perc) > 85 ? 'bg-red-500' : pct(svc.mem_perc) > 60 ? 'bg-amber-500' : 'bg-primary-500'" :style="{ width: barW(svc.mem_perc) }" />
+                  </div>
+                  <span class="tabular-nums text-xs text-[var(--ll-muted)]">{{ (svc.mem || '').split(' / ')[0] || '—' }}</span>
+                </div>
+              </td>
               <td class="max-w-[16rem] truncate py-2 pr-3 font-mono text-xs text-[var(--ll-muted)]" :title="svc.image">{{ svc.image }}</td>
               <td class="py-2">
                 <div class="flex justify-end gap-1">
@@ -110,6 +124,11 @@ const logLines = computed(() => {
   return logs.text.split('\n').filter((l) => l !== '' && (q === '' || l.toLowerCase().includes(q)));
 });
 let poll: ReturnType<typeof setInterval> | null = null;
+
+// Fixed alphabetical order so rows never jump between polls.
+const sortedServices = computed(() => [...(data.value?.services ?? [])].sort((a, b) => a.service.localeCompare(b.service)));
+function pct(v?: string): number { const n = parseFloat((v ?? '').replace('%', '')); return Number.isNaN(n) ? 0 : n; }
+function barW(v?: string): string { return `${Math.min(100, Math.max(0, pct(v)))}%`; }
 
 function dot(state: string) {
   if (state === 'running') return 'bg-emerald-500';

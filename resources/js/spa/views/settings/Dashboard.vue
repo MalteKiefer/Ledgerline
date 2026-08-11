@@ -48,7 +48,7 @@
         <div v-else-if="!containers.configured || containers.reachable === false" class="text-sm text-[var(--ll-muted)]">{{ t('dash.agent_off') }}</div>
         <table v-else class="w-full text-sm">
           <tbody>
-            <tr v-for="c in containers.services" :key="c.service" class="border-b border-[var(--ll-border)]/50 last:border-0">
+            <tr v-for="c in sortedContainers" :key="c.service" class="border-b border-[var(--ll-border)]/50 last:border-0">
               <td class="py-1.5"><span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full" :class="stateDot(c.state)" />{{ c.service }}</span></td>
               <td class="py-1.5 text-right tabular-nums text-[var(--ll-muted)]">{{ c.cpu || '' }}</td>
               <td class="py-1.5 pl-3 text-right tabular-nums text-[var(--ll-muted)]">{{ (c.mem || '').split(' / ')[0] }}</td>
@@ -102,6 +102,7 @@ async function load() {
 onMounted(() => { void load(); poll = setInterval(load, 8000); });
 onUnmounted(() => { if (poll) clearInterval(poll); });
 
+const sortedContainers = computed(() => [...(containers.value?.services ?? [])].sort((a, b) => a.service.localeCompare(b.service)));
 const diskUsed = computed(() => (d.value ? d.value.resources.disk.total - d.value.resources.disk.free : 0));
 const diskPct = computed(() => (d.value && d.value.resources.disk.total > 0 ? Math.round((diskUsed.value / d.value.resources.disk.total) * 100) : 0));
 
