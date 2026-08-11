@@ -8,7 +8,7 @@
     >
       <div
         v-if="toastState.show"
-        class="fixed bottom-4 right-4 z-[2000] flex items-center gap-2 rounded-xl px-4 py-3 text-sm text-white shadow-lg"
+        class="fixed bottom-4 right-4 z-[3000] flex items-center gap-2 rounded-xl px-4 py-3 text-sm text-white shadow-lg"
         :class="toastClass"
       >
         <Icon :name="toastIcon" :size="18" />
