@@ -227,14 +227,29 @@
             </div>
           </template>
         </div>
-        <!-- Right date scrubber (years + months) — fixed to the viewport so it
-             stays visible while scrolling; entries distribute over the full
-             height (no inner scrollbar). -->
-        <div v-if="showScrubber" class="fixed right-1 top-1/2 z-10 hidden h-[75vh] w-12 -translate-y-1/2 flex-col items-end justify-between overflow-hidden text-right md:flex">
-          <template v-for="m in scrubber" :key="m.key">
-            <div v-if="m.firstYear" class="w-full text-[11px] font-bold leading-none text-[var(--ll-fg)]">{{ m.year }}</div>
-            <button class="w-full rounded px-1 text-[10px] leading-none text-[var(--ll-muted)] hover:bg-primary-500/10 hover:text-primary-600 dark:hover:text-primary-300" @click="scrollToMonth(m.key)">{{ m.label }}</button>
-          </template>
+        <!-- Google-Photos-style draggable date scrubber: an invisible fixed
+             rail on the right; drag/click maps to the timeline scroll
+             position, a bubble shows the date, faint year ticks appear while
+             active. -->
+        <div
+          v-if="showScrubber" ref="railRef"
+          class="fixed right-0 top-[4.75rem] bottom-3 z-20 hidden w-8 cursor-ns-resize touch-none md:block"
+          @pointerenter="scrubHover = true" @pointerleave="scrubHover = false"
+          @pointerdown="scrubStart" @pointermove="scrubMove" @pointerup="scrubEnd" @pointercancel="scrubEnd"
+        >
+          <!-- faint year ticks (only while active) -->
+          <div
+            v-for="y in yearTicks" :key="y.year"
+            class="pointer-events-none absolute right-2.5 -translate-y-1/2 whitespace-nowrap text-[10px] font-semibold text-[var(--ll-muted)] transition-opacity duration-150"
+            :class="scrubActive ? 'opacity-90' : 'opacity-0'" :style="{ top: y.pct + '%' }"
+          >{{ y.year }}</div>
+          <!-- slim always-on thumb indicator -->
+          <div class="pointer-events-none absolute right-1 h-9 w-1 -translate-y-1/2 rounded-full bg-[var(--ll-border)] transition-colors" :class="scrubActive ? 'bg-primary-500' : ''" :style="{ top: thumbTop + 'px' }" />
+          <!-- date bubble (only while active) -->
+          <div
+            class="pointer-events-none absolute right-4 flex -translate-y-1/2 items-center whitespace-nowrap rounded-full bg-primary-500 px-2.5 py-1 text-[11px] font-medium text-white shadow-lg transition-opacity duration-150"
+            :class="scrubActive ? 'opacity-100' : 'opacity-0'" :style="{ top: thumbTop + 'px' }"
+          >{{ scrubLabel }}</div>
         </div>
       </div>
     </Card>
@@ -687,10 +702,79 @@ const scrubber = computed(() => {
   }
   return out;
 });
-function scrollToMonth(key: string) {
-  document.getElementById('g-m-' + key)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
 const showScrubber = computed(() => viewMode.value === 'grid' && !showTrash.value && !searchActive.value && scrubber.value.length > 3);
+
+// ---- Google-Photos-style scrubber ----------------------------------------
+const railRef = ref<HTMLElement | null>(null);
+const scrubHover = ref(false);
+const scrubDrag = ref(false);
+const scrubActive = computed(() => scrubHover.value || scrubDrag.value);
+const thumbTop = ref(0);           // px from the rail's top edge
+const scrubLabel = ref('');
+const yearTicks = ref<{ year: number; pct: number }[]>([]);
+
+function scrollMetrics() {
+  const el = (document.scrollingElement || document.documentElement) as HTMLElement;
+  return { top: el.scrollTop, max: Math.max(1, el.scrollHeight - el.clientHeight) };
+}
+// Which month is currently at the top of the viewport → bubble label.
+function currentMonthLabel(): string {
+  const y = window.scrollY + 120;
+  let hit: { label: string; year: number } | null = null;
+  for (const m of scrubber.value) {
+    const a = document.getElementById('g-m-' + m.key);
+    if (!a) continue;
+    if (a.offsetTop <= y) hit = m; else break;
+  }
+  const m = hit ?? scrubber.value[0];
+  return m ? `${m.label} ${m.year}` : '';
+}
+// Faint year ticks positioned by each year's first-month anchor.
+function measureYears() {
+  const { max } = scrollMetrics();
+  const out: { year: number; pct: number }[] = [];
+  const seen = new Set<number>();
+  for (const m of scrubber.value) {
+    if (seen.has(m.year)) continue; seen.add(m.year);
+    const a = document.getElementById('g-m-' + m.key);
+    if (!a) continue;
+    out.push({ year: m.year, pct: Math.min(100, Math.max(0, (a.offsetTop / max) * 100)) });
+  }
+  yearTicks.value = out;
+}
+let syncQueued = false;
+function syncScrubber() {
+  if (syncQueued) return;
+  syncQueued = true;
+  requestAnimationFrame(() => {
+    syncQueued = false;
+    const rail = railRef.value; if (!rail) return;
+    const { top, max } = scrollMetrics();
+    const f = Math.min(1, Math.max(0, top / max));
+    thumbTop.value = f * rail.getBoundingClientRect().height;
+    if (scrubActive.value) scrubLabel.value = currentMonthLabel();
+  });
+}
+function scrubToClientY(clientY: number) {
+  const rail = railRef.value; if (!rail) return;
+  const b = rail.getBoundingClientRect();
+  const f = Math.min(1, Math.max(0, (clientY - b.top) / b.height));
+  const { max } = scrollMetrics();
+  (document.scrollingElement || document.documentElement).scrollTo({ top: f * max });
+  thumbTop.value = f * b.height;
+  scrubLabel.value = currentMonthLabel();
+}
+function scrubStart(e: PointerEvent) {
+  scrubDrag.value = true;
+  try { railRef.value?.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+  measureYears();
+  scrubToClientY(e.clientY);
+}
+function scrubMove(e: PointerEvent) { if (scrubDrag.value) scrubToClientY(e.clientY); }
+function scrubEnd(e: PointerEvent) {
+  scrubDrag.value = false;
+  try { railRef.value?.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+}
 
 // Day → photo-ids map (O(n), stable across thumb patches).
 const dayGroups = computed(() => {
@@ -733,6 +817,9 @@ let thumbPoll: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
   void g.load(); void g.loadAlbums();
   window.addEventListener('keydown', onKey); window.addEventListener('focus', onFocus);
+  window.addEventListener('scroll', syncScrubber, { passive: true });
+  window.addEventListener('resize', onScrubResize);
+  void nextTick(() => { measureYears(); syncScrubber(); });
   // Thumbnails are generated by a worker after upload; while any are still
   // pending, poll so the grid swaps the spinner for the image once ready.
   thumbPoll = setInterval(() => {
@@ -741,10 +828,18 @@ onMounted(() => {
 });
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey); window.removeEventListener('focus', onFocus);
+  window.removeEventListener('scroll', syncScrubber);
+  window.removeEventListener('resize', onScrubResize);
   if (thumbPoll) clearInterval(thumbPoll);
   destroyMap();
   destroyExifMap();
 });
+function onScrubResize() { measureYears(); syncScrubber(); }
+// Re-measure tick positions when the timeline changes (photos load / album switch).
+watch(() => [g.photos.length, scrubber.value.length, viewMode.value], () => {
+  void nextTick(() => { measureYears(); syncScrubber(); });
+});
+watch(scrubActive, (a) => { if (a) { measureYears(); scrubLabel.value = currentMonthLabel(); } });
 function onFocus() { if (!document.hidden && !up.active && !showTrash.value && !searchActive.value && !showPeople.value) void g.load(albumId.value ?? undefined); }
 
 function dayLabel(iso: string | null): string {
