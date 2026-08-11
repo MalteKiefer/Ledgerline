@@ -159,9 +159,9 @@
       <!-- Grid view -->
       <div v-if="(viewMode === 'grid' || showTrash) && !showDupes && !peopleGrid" class="relative flex p-3">
         <div v-if="!current.length" class="w-full py-20 text-center text-sm text-[var(--ll-muted)]">{{ showTrash ? t('gallery.trash_empty') : (searchActive ? t('gallery.search_none') : t('gallery.empty')) }}</div>
-        <div v-else class="grid min-w-0 flex-1 gap-1.5" :style="gridStyle">
+        <div v-else class="grid min-w-0 flex-1 gap-1.5" :class="showScrubber ? 'md:pr-14' : ''" :style="gridStyle">
           <template v-for="(p, i) in current" :key="p.id">
-            <div v-if="!showTrash && rowMeta[i]?.header" :id="rowMeta[i]?.monthStart ? 'g-m-' + rowMeta[i]?.mk : undefined" class="col-span-full flex items-center gap-1.5 px-0.5 pt-2 text-xs font-semibold text-[var(--ll-muted)]">
+            <div v-if="!showTrash && rowMeta[i]?.header" :id="rowMeta[i]?.monthStart ? 'g-m-' + rowMeta[i]?.mk : undefined" class="col-span-full flex scroll-mt-20 items-center gap-1.5 px-0.5 pt-2 text-xs font-semibold text-[var(--ll-muted)]">
               <button class="grid h-4 w-4 place-items-center rounded border border-[var(--ll-border)] hover:border-primary-500" :class="fullDays.has(rowMeta[i]!.day) ? 'bg-primary-500 text-white' : ''" :title="t('gallery.select_day')" @click="selectDay(rowMeta[i]!.day)"><Icon v-if="fullDays.has(rowMeta[i]!.day)" name="check" :size="12" /></button>
               {{ rowMeta[i]?.header }}
             </div>
@@ -227,11 +227,13 @@
             </div>
           </template>
         </div>
-        <!-- Right date scrubber (years + months) for quick jumping -->
-        <div v-if="!showTrash && !searchActive && scrubber.length > 3" class="sticky top-2 ml-1 hidden max-h-[calc(100vh-9rem)] w-14 shrink-0 flex-col items-end gap-0.5 self-start overflow-y-auto py-1 text-right md:flex">
+        <!-- Right date scrubber (years + months) — fixed to the viewport so it
+             stays visible while scrolling; entries distribute over the full
+             height (no inner scrollbar). -->
+        <div v-if="showScrubber" class="fixed right-1 top-[4.75rem] bottom-3 z-10 hidden w-12 flex-col items-end justify-between overflow-hidden py-1 text-right md:flex">
           <template v-for="m in scrubber" :key="m.key">
-            <div v-if="m.firstYear" class="w-full pt-1 text-[11px] font-bold text-[var(--ll-fg)]">{{ m.year }}</div>
-            <button class="w-full rounded px-1 text-[10px] text-[var(--ll-muted)] hover:bg-primary-500/10 hover:text-primary-600 dark:hover:text-primary-300" @click="scrollToMonth(m.key)">{{ m.label }}</button>
+            <div v-if="m.firstYear" class="w-full text-[11px] font-bold leading-none text-[var(--ll-fg)]">{{ m.year }}</div>
+            <button class="w-full rounded px-1 text-[10px] leading-none text-[var(--ll-muted)] hover:bg-primary-500/10 hover:text-primary-600 dark:hover:text-primary-300" @click="scrollToMonth(m.key)">{{ m.label }}</button>
           </template>
         </div>
       </div>
@@ -688,6 +690,7 @@ const scrubber = computed(() => {
 function scrollToMonth(key: string) {
   document.getElementById('g-m-' + key)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+const showScrubber = computed(() => viewMode.value === 'grid' && !showTrash.value && !searchActive.value && scrubber.value.length > 3);
 
 // Day → photo-ids map (O(n), stable across thumb patches).
 const dayGroups = computed(() => {
