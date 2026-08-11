@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -71,5 +72,11 @@ class GalleryPhoto extends Model
     public function albums(): BelongsToMany
     {
         return $this->belongsToMany(GalleryAlbum::class, 'gallery_album_photo');
+    }
+
+    /** @return HasMany<GalleryFace, $this> */
+    public function faces(): HasMany
+    {
+        return $this->hasMany(GalleryFace::class);
     }
 }

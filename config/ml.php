@@ -23,4 +23,13 @@ return [
     // Cosine-distance ceiling for near-duplicate grouping (much tighter than
     // search — only visually (near-)identical photos: bursts, re-saves, crops).
     'dup_max_distance' => (float) env('ML_DUP_MAX_DISTANCE', 0.08),
+
+    // Face recognition (immich InsightFace). Off by default — biometric data;
+    // opt-in like the rest of ML.
+    'face_enabled' => (bool) env('ML_FACE_ENABLED', false),
+    'face_model' => env('ML_FACE_MODEL', 'buffalo_l'),
+    // Minimum detection confidence to keep a face.
+    'face_min_score' => (float) env('ML_FACE_MIN_SCORE', 0.7),
+    // Cosine-distance ceiling to attach a new face to an existing person.
+    'face_match_distance' => (float) env('ML_FACE_MATCH_DISTANCE', 0.35),
 ];

@@ -71,6 +71,72 @@ class MachineLearning
         }
     }
 
+    public function faceEnabled(): bool
+    {
+        return (bool) config('ml.face_enabled');
+    }
+
+    /**
+     * Detect faces in an image. Each face: detection score, bounding box
+     * normalised to 0..1, and a 512-dim face embedding.
+     *
+     * @return list<array{score: float, box: array{0: float, 1: float, 2: float, 3: float}, embedding: list<float>}>
+     */
+    public function detectFaces(string $path): array
+    {
+        if (! $this->faceEnabled() || ! is_file($path)) {
+            return [];
+        }
+        $modelCfg = config('ml.face_model');
+        $model = is_string($modelCfg) && $modelCfg !== '' ? $modelCfg : 'buffalo_l';
+        $minCfg = config('ml.face_min_score');
+        $minScore = is_numeric($minCfg) ? (float) $minCfg : 0.7;
+        try {
+            $entries = json_encode([
+                'facial-recognition' => [
+                    'recognition' => ['modelName' => $model],
+                    'detection' => ['modelName' => $model, 'options' => ['minScore' => $minScore]],
+                ],
+            ], JSON_THROW_ON_ERROR);
+            $res = Http::timeout(180)
+                ->attach('image', (string) file_get_contents($path), basename($path))
+                ->post($this->base().'/predict', ['entries' => $entries]);
+            if (! $res->successful()) {
+                return [];
+            }
+            $wRaw = $res->json('imageWidth', 1);
+            $hRaw = $res->json('imageHeight', 1);
+            $w = max(1, is_numeric($wRaw) ? (int) $wRaw : 1);
+            $h = max(1, is_numeric($hRaw) ? (int) $hRaw : 1);
+
+            $faces = [];
+            foreach ((array) $res->json('facial-recognition', []) as $face) {
+                if (! is_array($face)) {
+                    continue;
+                }
+                $box = $face['boundingBox'] ?? null;
+                $embedding = $this->decodeVector($face['embedding'] ?? null);
+                if (! is_array($box) || $embedding === null || count($embedding) !== 512) {
+                    continue;
+                }
+                $faces[] = [
+                    'score' => is_numeric($face['score'] ?? null) ? (float) $face['score'] : 0.0,
+                    'box' => [
+                        max(0.0, min(1.0, (is_numeric($box['x1'] ?? null) ? (float) $box['x1'] : 0.0) / $w)),
+                        max(0.0, min(1.0, (is_numeric($box['y1'] ?? null) ? (float) $box['y1'] : 0.0) / $h)),
+                        max(0.0, min(1.0, (is_numeric($box['x2'] ?? null) ? (float) $box['x2'] : 0.0) / $w)),
+                        max(0.0, min(1.0, (is_numeric($box['y2'] ?? null) ? (float) $box['y2'] : 0.0) / $h)),
+                    ],
+                    'embedding' => $embedding,
+                ];
+            }
+
+            return $faces;
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
     /**
      * Format a float vector as a pgvector literal: [a,b,c].
      *
