@@ -173,4 +173,5 @@ return [
     'set_password' => 'Passwort festlegen',
     'shared_none' => 'Es wurde nichts mit dir geteilt.',
     'shared_album' => 'Geteiltes Album',
+    'select_day' => 'Diesen Tag auswählen',
 ];

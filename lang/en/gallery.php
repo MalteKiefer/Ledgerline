@@ -173,4 +173,5 @@ return [
     'set_password' => 'Set a password',
     'shared_none' => 'Nothing has been shared with you.',
     'shared_album' => 'Shared album',
+    'select_day' => 'Select this day',
 ];

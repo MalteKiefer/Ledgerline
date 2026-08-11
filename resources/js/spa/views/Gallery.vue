@@ -157,11 +157,14 @@
       </div>
 
       <!-- Grid view -->
-      <div v-if="(viewMode === 'grid' || showTrash) && !showDupes && !peopleGrid" class="p-3">
-        <div v-if="!current.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ showTrash ? t('gallery.trash_empty') : (searchActive ? t('gallery.search_none') : t('gallery.empty')) }}</div>
-        <div v-else class="grid gap-1.5" :style="gridStyle">
+      <div v-if="(viewMode === 'grid' || showTrash) && !showDupes && !peopleGrid" class="relative flex p-3">
+        <div v-if="!current.length" class="w-full py-20 text-center text-sm text-[var(--ll-muted)]">{{ showTrash ? t('gallery.trash_empty') : (searchActive ? t('gallery.search_none') : t('gallery.empty')) }}</div>
+        <div v-else class="grid min-w-0 flex-1 gap-1.5" :style="gridStyle">
           <template v-for="(p, i) in current" :key="p.id">
-            <div v-if="!showTrash && p._dayHeader" class="col-span-full px-0.5 pt-2 text-xs font-semibold text-[var(--ll-muted)]">{{ p._dayHeader }}</div>
+            <div v-if="!showTrash && p._dayHeader" :id="p._monthStart ? 'g-m-' + p._monthKey : undefined" class="col-span-full flex items-center gap-1.5 px-0.5 pt-2 text-xs font-semibold text-[var(--ll-muted)]">
+              <button class="grid h-4 w-4 place-items-center rounded border border-[var(--ll-border)] hover:border-primary-500" :class="dayFullySelected(p._dayHeader) ? 'bg-primary-500 text-white' : ''" :title="t('gallery.select_day')" @click="selectDay(p._dayHeader!)"><Icon v-if="dayFullySelected(p._dayHeader)" name="check" :size="12" /></button>
+              {{ p._dayHeader }}
+            </div>
             <div
               class="group relative aspect-square overflow-hidden rounded-lg bg-black/[0.04] dark:bg-white/5"
               :class="selected.has(p.id) ? 'ring-2 ring-primary-500 ring-offset-1 ring-offset-[var(--ll-surface)]' : ''"
@@ -222,6 +225,13 @@
                 <button class="rounded p-1 text-white hover:bg-white/20" :title="t('gallery.delete_forever')" @click="onForce(p.id)"><Icon name="delete_forever" :size="16" /></button>
               </div>
             </div>
+          </template>
+        </div>
+        <!-- Right date scrubber (years + months) for quick jumping -->
+        <div v-if="!showTrash && !searchActive && scrubber.length > 3" class="sticky top-2 ml-1 hidden max-h-[calc(100vh-9rem)] w-14 shrink-0 flex-col items-end gap-0.5 self-start overflow-y-auto py-1 text-right md:flex">
+          <template v-for="m in scrubber" :key="m.key">
+            <div v-if="m.firstYear" class="w-full pt-1 text-[11px] font-bold text-[var(--ll-fg)]">{{ m.year }}</div>
+            <button class="w-full rounded px-1 text-[10px] text-[var(--ll-muted)] hover:bg-primary-500/10 hover:text-primary-600 dark:hover:text-primary-300" @click="scrollToMonth(m.key)">{{ m.label }}</button>
           </template>
         </div>
       </div>
@@ -593,7 +603,7 @@ import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 import { ApiError } from '@spa/api/client';
 
-type Row = Photo & { _dayHeader?: string };
+type Row = Photo & { _dayHeader?: string; _monthKey?: string; _monthStart?: string };
 
 const g = useGalleryStore();
 const { success, error } = useToast();
@@ -637,14 +647,56 @@ const viewerFaces = ref<Face[]>([]);
 const current = computed<Row[]>(() => {
   if (showTrash.value) return trashPhotos.value as Row[];
   const src = searchActive.value ? searchResults.value : g.photos;
-  let last = '';
+  let last = ''; let lastMonth = '';
   return src.map((p): Row => {
-    const day = dayLabel(p.taken_at ?? p.created_at);
+    const iso = p.taken_at ?? p.created_at;
+    const day = dayLabel(iso);
     const header = day !== last ? day : undefined;
     last = day;
-    return { ...p, _dayHeader: header };
+    const mk = monthKey(iso);
+    const monthStart = mk !== lastMonth ? mk : undefined;
+    lastMonth = mk;
+    return { ...p, _dayHeader: header, _monthKey: mk, _monthStart: monthStart };
   });
 });
+
+function monthKey(iso: string | null): string {
+  if (!iso) return '0000-00';
+  try { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; } catch { return '0000-00'; }
+}
+
+// Right-rail date scrubber: unique months in display order (year shown once).
+const scrubber = computed(() => {
+  const out: { key: string; year: number; label: string; firstYear: boolean }[] = [];
+  let lastYear = -1;
+  for (const r of current.value) {
+    if (!r._monthStart) continue;
+    const [y, m] = r._monthKey!.split('-').map((n) => Number(n));
+    if (!y) continue;
+    out.push({ key: r._monthKey!, year: y, label: new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'short' }), firstYear: y !== lastYear });
+    lastYear = y;
+  }
+  return out;
+});
+function scrollToMonth(key: string) {
+  document.getElementById('g-m-' + key)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Select every photo of a given day (toggles).
+function dayIds(day: string): number[] {
+  return current.value.filter((r) => dayLabel(r.taken_at ?? r.created_at) === day).map((r) => r.id);
+}
+function dayFullySelected(day: string): boolean {
+  const ids = dayIds(day);
+  return ids.length > 0 && ids.every((id) => selected.value.has(id));
+}
+function selectDay(day: string) {
+  const ids = dayIds(day);
+  const s = new Set(selected.value);
+  const allSel = ids.every((id) => s.has(id));
+  for (const id of ids) { if (allSel) s.delete(id); else s.add(id); }
+  selected.value = s;
+}
 const mapPhotos = computed(() => g.photos.filter((p) => p.lat !== null && p.lng !== null));
 const viewer = ref(-1);
 const viewerPhoto = computed(() => (viewer.value >= 0 ? current.value[viewer.value] ?? null : null));

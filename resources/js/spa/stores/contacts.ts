@@ -74,10 +74,21 @@ export const useContactsStore = defineStore('contacts', () => {
   }
   const bulkDestroy = (ids: string[]) => api.delete<{ deleted: number }>('/api/v1/contacts/bulk-destroy', { ids });
 
+  // Sharing (address books) + birthday feed
+  const loadShares = () => api.get<{ shares: { id: number; book_id: string; book: string | null; recipient: string | null }[] }>('/api/v1/contacts/shares').then((r) => r.shares);
+  const shareBook = (email: string, bookId: string) => api.post<{ ok: boolean; id: number }>('/api/v1/contacts/shares', { email, book_id: bookId });
+  const removeShare = (id: number) => api.delete(`/api/v1/contacts/shares/${id}`);
+  const sharedWithMe = () => api.get<{ shares: { id: number; name: string | null; owner: string | null; count: number }[] }>('/api/v1/contacts/shared-with-me').then((r) => r.shares);
+  const browseShared = (id: number) => api.get<{ name: string | null; contacts: { id: string; fn: string; org: string | null; emails: string[]; phones: string[] }[] }>(`/api/v1/contacts/shared-with-me/${id}`);
+  const birthdayFeed = () => api.get<{ enabled: boolean; url: string | null }>('/api/v1/contacts/birthday-feed');
+  const enableBirthdayFeed = () => api.post<{ enabled: boolean; url: string }>('/api/v1/contacts/birthday-feed');
+  const disableBirthdayFeed = () => api.delete('/api/v1/contacts/birthday-feed');
+
   return {
     contacts, books, groups, settings, load, show, create, update, destroy, favorite,
     createBook, updateBook, deleteBook, saveSettings, avatarUrl,
     createGroup, deleteGroup, loadDuplicates, mergeDuplicates, dismissDuplicate,
     importVcf, exportUrl, uploadAvatar, bulkDestroy,
+    loadShares, shareBook, removeShare, sharedWithMe, browseShared, birthdayFeed, enableBirthdayFeed, disableBirthdayFeed,
   };
 });

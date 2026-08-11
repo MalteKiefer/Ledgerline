@@ -39,6 +39,7 @@ use App\Http\Controllers\CalendarTodoController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactDuplicateController;
 use App\Http\Controllers\ContactGroupController;
+use App\Http\Controllers\ContactShareController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
@@ -241,6 +242,14 @@ Route::prefix('v1')->group(function (): void {
         // view) are intentionally not exposed. Owner-scope is controller-side.
         Route::middleware('module:contacts')->group(function (): void {
             Route::get('/contacts/data', [ContactController::class, 'data'])->name('api.contacts.data');
+            Route::get('/contacts/shares', [ContactShareController::class, 'index'])->name('api.contacts.shares');
+            Route::post('/contacts/shares', [ContactShareController::class, 'store'])->middleware('throttle:60,1')->name('api.contacts.shares.store');
+            Route::delete('/contacts/shares/{share}', [ContactShareController::class, 'destroy'])->whereNumber('share')->middleware('throttle:60,1')->name('api.contacts.shares.destroy');
+            Route::get('/contacts/shared-with-me', [ContactShareController::class, 'sharedWithMe'])->name('api.contacts.shared.index');
+            Route::get('/contacts/shared-with-me/{share}', [ContactShareController::class, 'browse'])->whereNumber('share')->name('api.contacts.shared.browse');
+            Route::get('/contacts/birthday-feed', [ContactShareController::class, 'feed'])->name('api.contacts.feed');
+            Route::post('/contacts/birthday-feed', [ContactShareController::class, 'enableFeed'])->middleware('throttle:30,1')->name('api.contacts.feed.enable');
+            Route::delete('/contacts/birthday-feed', [ContactShareController::class, 'disableFeed'])->middleware('throttle:30,1')->name('api.contacts.feed.disable');
             Route::get('/contacts/suggest', [ContactController::class, 'suggest'])->name('api.contacts.suggest');
             Route::get('/contacts/export', [ContactController::class, 'export'])->name('api.contacts.export');
             Route::post('/contacts/import', [ContactController::class, 'import'])->middleware('throttle:60,1')->name('api.contacts.import');

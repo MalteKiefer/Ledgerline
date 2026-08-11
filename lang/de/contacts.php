@@ -19,6 +19,18 @@ return [
     'apple_profile_hint' => 'Richtet CardDAV- (Kontakte) und CalDAV-Konten (Kalender) auf iPhone, iPad oder Mac ein. Das App-Passwort wird bei der Installation einmal abgefragt.',
 
     'ui' => [
+        'sharing' => 'Teilen',
+        'share_book' => 'Teilen',
+        'share_book_prompt' => '„:book“ teilen mit (E-Mail):',
+        'shared_with_me' => 'Mit mir geteilt',
+        'shared_none' => 'Es wurde nichts mit dir geteilt.',
+        'birthday_feed' => 'Geburtstags-Feed',
+        'birthday_feed_hint' => 'Abonniere diese geheime .ics-URL in einer Kalender-App, um die Geburtstage deiner Kontakte zu sehen.',
+        'enable_feed' => 'Feed aktivieren',
+        'disable' => 'Deaktivieren',
+        'recipient_invalid' => 'Kein solcher Nutzer (oder das bist du).',
+        'birthdays' => 'Geburtstage',
+
         'heading' => 'Kontakte',
         'search' => 'Kontakte suchen',
         'all_books' => 'Alle Adressbücher',

@@ -19,6 +19,18 @@ return [
     'apple_profile_hint' => 'Installs CardDAV (contacts) and CalDAV (calendar) accounts on iPhone, iPad or Mac. You will be asked for the app password once during install.',
 
     'ui' => [
+        'sharing' => 'Sharing',
+        'share_book' => 'Share',
+        'share_book_prompt' => 'Share “:book” with (email):',
+        'shared_with_me' => 'Shared with me',
+        'shared_none' => 'Nothing has been shared with you.',
+        'birthday_feed' => 'Birthday feed',
+        'birthday_feed_hint' => 'Subscribe to this secret .ics URL in any calendar app to see your contacts’ birthdays.',
+        'enable_feed' => 'Enable feed',
+        'disable' => 'Disable',
+        'recipient_invalid' => 'No such user (or that is you).',
+        'birthdays' => 'Birthdays',
+
         'heading' => 'Contacts',
         'search' => 'Search contacts',
         'all_books' => 'All address books',

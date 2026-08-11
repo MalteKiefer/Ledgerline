@@ -18,6 +18,8 @@ use Laravel\Sanctum\HasApiTokens;
 /**
  * An authenticated user. Identity is first-party (email + password, optional TOTP
  * two-factor via Fortify). Privilege is a first-party `role` (admin|user).
+ *
+ * @property string|null $birthday_feed_token
  */
 // `role` and `groups` are deliberately NOT fillable — `role` is the privilege
 // boundary (drives the admin gate), so it is only ever set server-side, never
