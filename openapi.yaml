@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.615.0
+  version: 1.617.0
   license:
     name: Proprietary
   description: >
@@ -5164,6 +5164,18 @@ paths:
         "200": { description: "Photos (without bytes).", content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /gallery/search:
+    get:
+      tags: [Gallery]
+      operationId: gallerySearch
+      summary: Semantic photo search (CLIP)
+      description: "Embeds the query into CLIP space and returns the nearest photos by cosine distance (pgvector). Requires the ML sidecar + pgvector; otherwise returns an empty list and the client falls back to a name filter."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: q, in: query, required: true, schema: { type: string } } ]
+      responses:
+        "200": { description: "Matching photos (nearest first; empty when ML is off).", content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /gallery/trash:
     get:
       tags: [Gallery]

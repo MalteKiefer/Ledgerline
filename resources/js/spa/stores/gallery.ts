@@ -33,6 +33,7 @@ export const useGalleryStore = defineStore('gallery', () => {
     return api.get<{ photos: Photo[] }>(`/api/v1/gallery/data${q}`).then((r) => { photos.value = r.photos ?? []; });
   };
   const trash = () => api.get<{ photos: Photo[] }>('/api/v1/gallery/trash').then((r) => r.photos);
+  const search = (q: string) => api.get<{ photos: Photo[] }>(`/api/v1/gallery/search?q=${encodeURIComponent(q)}`).then((r) => r.photos ?? []);
   const loadAlbums = () => api.get<{ albums: Album[] }>('/api/v1/gallery/albums').then((r) => { albums.value = r.albums ?? []; });
 
   type UploadResult = { photo: Photo; duplicate?: boolean };
@@ -91,7 +92,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   const rawUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/raw`);
 
   return {
-    photos, albums, load, trash, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy,
+    photos, albums, load, trash, search, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, rawUrl,
   };

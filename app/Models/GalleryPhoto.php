@@ -56,6 +56,7 @@ class GalleryPhoto extends Model
         'width' => 'integer',
         'height' => 'integer',
         'duration' => 'integer',
+        'embedded_at' => 'datetime',
         'rotation' => 'integer',
         'flip_h' => 'boolean',
         'taken_at' => 'datetime',

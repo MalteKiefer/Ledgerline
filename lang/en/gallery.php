@@ -44,4 +44,6 @@ return [
     'play_motion' => 'Play Live motion',
     'processing' => 'Processing…',
     'failed' => 'Failed',
+    'search_ph' => 'Search (e.g. tree)…',
+    'search_none' => 'No matches for your search.',
 ];

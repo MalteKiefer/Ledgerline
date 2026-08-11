@@ -44,4 +44,6 @@ return [
     'play_motion' => 'Live-Motion abspielen',
     'processing' => 'Wird verarbeitet…',
     'failed' => 'Fehlgeschlagen',
+    'search_ph' => 'Suche (z. B. Baum)…',
+    'search_none' => 'Keine Treffer für deine Suche.',
 ];

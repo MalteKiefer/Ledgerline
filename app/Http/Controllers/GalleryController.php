@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Jobs\EmbedGalleryPhoto;
 use App\Jobs\GenerateGalleryThumbnail;
 use App\Jobs\ProcessGalleryVideo;
 use App\Models\GalleryAlbum;
@@ -12,6 +13,8 @@ use App\Support\BlobStore;
 use App\Support\DiskTempFile;
 use App\Support\FilesUsage;
 use App\Support\ImageManagerFactory;
+use App\Support\MachineLearning;
+use App\Support\Vector;
 use App\Support\VideoProcessor;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Filesystem\FilesystemAdapter;
@@ -133,6 +136,7 @@ class GalleryController extends Controller
         ));
         $this->attachEmbeddedMotion($photo, is_string($real) ? $real : null, $mime);
         GenerateGalleryThumbnail::dispatch($photo->id);
+        EmbedGalleryPhoto::dispatch($photo->id);
 
         return response()->json(['photo' => $this->row($photo)], 201);
     }
@@ -280,6 +284,7 @@ class GalleryController extends Controller
         $this->fs()->deleteDirectory($tmpDir);
         Cache::forget($this->sessionKey($uid, $id));
         GenerateGalleryThumbnail::dispatch($photo->id);
+        EmbedGalleryPhoto::dispatch($photo->id);
 
         return response()->json(['photo' => $this->row($photo)], 201);
     }
@@ -437,10 +442,95 @@ class GalleryController extends Controller
 
             if ($posterRel !== null) {
                 $this->generateThumb($photo, $images);
+                EmbedGalleryPhoto::dispatch($photo->id); // embed the poster frame
             }
         } catch (\Throwable) {
             $photo->forceFill(['status' => 'failed'])->save();
         }
+    }
+
+    /**
+     * Compute + store a photo's CLIP embedding (worker, via EmbedGalleryPhoto).
+     * For a video the poster frame is embedded. No-op when ML/pgvector are off.
+     */
+    public function embedPhoto(GalleryPhoto $photo, MachineLearning $ml): void
+    {
+        if (! $ml->enabled() || ! Vector::available()) {
+            return;
+        }
+        $rel = $photo->media_type === 'video' ? (string) $photo->poster_path : (string) $photo->storage_path;
+        if ($rel === '' || ! $this->fs()->exists($rel)) {
+            return;
+        }
+        $abs = $this->localPath($rel);
+        $stage = null;
+        if ($abs === null) {
+            $stage = DiskTempFile::create('llgem');
+            $in = $this->fs()->readStream($rel);
+            $dst = fopen($stage->path(), 'wb');
+            if (is_resource($in) && $dst !== false) {
+                stream_copy_to_stream($in, $dst);
+                fclose($in);
+                fclose($dst);
+                $abs = $stage->path();
+            }
+        }
+        if ($abs === null) {
+            return;
+        }
+        $vec = $ml->embed($abs);
+        if ($vec === null || count($vec) !== 512) {
+            return;
+        }
+        DB::update(
+            'UPDATE gallery_photos SET embedding = ?::vector, embedded_at = now() WHERE id = ?',
+            [MachineLearning::toVectorLiteral($vec), $photo->id],
+        );
+    }
+
+    /**
+     * Semantic search: embed the query into CLIP space and return the nearest
+     * photos by cosine distance (pgvector). Empty when ML/pgvector are off or the
+     * query does not embed — the client then falls back to a name filter.
+     */
+    public function search(Request $request, MachineLearning $ml): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $q = trim($request->string('q')->value());
+        if ($q === '' || ! $ml->enabled() || ! Vector::available()) {
+            return response()->json(['photos' => []]);
+        }
+        $vec = $ml->embedText($q);
+        if ($vec === null || count($vec) !== 512) {
+            return response()->json(['photos' => []]);
+        }
+        $lit = MachineLearning::toVectorLiteral($vec);
+        $maxCfg = config('ml.search_max_distance', 0.78);
+        $max = is_numeric($maxCfg) ? (float) $maxCfg : 0.78;
+        $rows = DB::select(
+            'SELECT id FROM gallery_photos
+             WHERE user_id = ? AND deleted_at IS NULL AND embedding IS NOT NULL
+               AND (embedding <=> ?::vector) < ?
+             ORDER BY embedding <=> ?::vector LIMIT 80',
+            [$uid, $lit, $max, $lit],
+        );
+        $ids = array_values(array_filter(array_map(
+            static fn ($r): int => is_object($r) && isset($r->id) && is_numeric($r->id) ? (int) $r->id : 0,
+            $rows,
+        ), static fn (int $i): bool => $i > 0));
+        if ($ids === []) {
+            return response()->json(['photos' => []]);
+        }
+        $byId = GalleryPhoto::query()->whereIn('id', $ids)->get()->keyBy('id');
+        $photos = [];
+        foreach ($ids as $id) {
+            $p = $byId->get($id);
+            if ($p instanceof GalleryPhoto) {
+                $photos[] = $this->row($p);
+            }
+        }
+
+        return response()->json(['photos' => $photos]);
     }
 
     /**
