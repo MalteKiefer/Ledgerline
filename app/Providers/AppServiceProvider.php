@@ -144,6 +144,19 @@ class AppServiceProvider extends ServiceProvider
     public const SETTING_OVERRIDES = [
         'files_max_upload_mb' => 'files.max_upload_mb',
         'files_blob_orphan_grace_hours' => 'files.blob_orphan_grace_hours',
+        'files_quota_mb' => 'files.quota_mb',
+        // Session / auth lifetimes.
+        'sanctum_expiration_minutes' => 'sanctum.expiration',
+        'session_lifetime_minutes' => 'session.lifetime',
+        'device_wipe_grace_minutes' => 'devices.wipe_grace_minutes',
+        'device_idle_days' => 'devices.idle_days',
+        // Retention windows.
+        'audit_retention_days' => 'ops.audit_retention_days',
+        'access_log_retention_days' => 'ops.access_log_retention_days',
+        'request_log_retention_days' => 'ops.request_log_retention_days',
+        'backup_stale_hours' => 'ops.backup_stale_hours',
+        'mail_log_retention_days' => 'mail_archive.log_retention_days',
+        'mail_blob_orphan_grace_hours' => 'mail_archive.blob_orphan_grace_hours',
     ];
 
     public const OVERRIDES_CACHE_KEY = 'app-settings:overrides';

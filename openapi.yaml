@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.629.1
+  version: 1.630.0
   license:
     name: Proprietary
   description: >
@@ -6799,6 +6799,34 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /admin/limits:
+    get:
+      tags: [Settings]
+      operationId: adminLimitsShow
+      summary: Session/auth lifetimes, retention windows, Files quota (admin)
+      description: "Admin-editable workspace limits; each overlays a config('...') key at boot. NULL inherits the env/config default. Returns stored overrides + effective values."
+      responses:
+        "200": { description: "Limits.", content: { application/json: { schema: { type: object, properties: { settings: { type: object }, effective: { type: object } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Settings]
+      operationId: adminLimitsUpdate
+      summary: Update workspace limits (admin)
+      description: "Set any of: sanctum_expiration_minutes, session_lifetime_minutes, device_wipe_grace_minutes, device_idle_days, audit/access_log/request_log retention days, backup_stale_hours, mail_log_retention_days, mail_blob_orphan_grace_hours, files_quota_mb. null clears an override. Throttle 60/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: { type: [integer, "null"] }
+      responses:
+        "200": { description: "Saved.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /admin/files-limits:
     get:
       tags: [Settings]
