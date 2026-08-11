@@ -72,6 +72,7 @@ return [
     'from_contacts' => 'From contacts',
     'contact_photos' => 'Photos',
     'gs_section' => 'Gallery & AI',
+    'gs_manage_containers' => 'Manage containers',
     'gs_sidecar' => 'ML sidecar',
     'gs_sidecar_up' => 'Reachable',
     'gs_sidecar_down' => 'Not reachable',

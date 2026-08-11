@@ -464,4 +464,10 @@ return [
     'containers_logs' => 'Logs',
     'containers_confirm' => 'Run this on :s?',
     'containers_update_confirm' => 'Pull the latest image and recreate :s?',
+    'containers_cpu' => 'CPU',
+    'containers_mem' => 'Memory',
+    'containers_logs_filter' => 'Filter lines…',
+    'containers_logs_wrap' => 'Wrap',
+    'containers_logs_none' => 'No log lines.',
+    'containers_refresh' => 'Refresh',
 ];

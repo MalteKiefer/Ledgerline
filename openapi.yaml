@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.627.1
+  version: 1.628.0
   license:
     name: Proprietary
   description: >
@@ -6937,7 +6937,7 @@ paths:
                 properties:
                   configured: { type: boolean }
                   reachable: { type: boolean }
-                  services: { type: array, items: { type: object, properties: { service: { type: string }, state: { type: string }, status: { type: string }, image: { type: string } } } }
+                  services: { type: array, items: { type: object, properties: { service: { type: string }, state: { type: string }, status: { type: string }, image: { type: string }, cpu: { type: string, description: "Live CPU%, e.g. 0.50%." }, mem: { type: string, description: "Live memory usage, e.g. 120MiB / 8GiB." }, mem_perc: { type: string } } } }
                   operator: { type: object, additionalProperties: { type: string } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }

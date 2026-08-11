@@ -28,6 +28,8 @@
             <tr class="border-b border-[var(--ll-border)] text-left text-xs text-[var(--ll-muted)]">
               <th class="py-2 pr-3">{{ t('settings.containers_service') }}</th>
               <th class="py-2 pr-3">{{ t('settings.containers_state') }}</th>
+              <th class="py-2 pr-3">{{ t('settings.containers_cpu') }}</th>
+              <th class="py-2 pr-3">{{ t('settings.containers_mem') }}</th>
               <th class="py-2 pr-3">{{ t('settings.containers_image') }}</th>
               <th class="py-2 text-right">{{ t('common.actions') }}</th>
             </tr>
@@ -41,6 +43,8 @@
                   {{ svc.state || '—' }}
                 </span>
               </td>
+              <td class="py-2 pr-3 tabular-nums">{{ svc.cpu || '—' }}</td>
+              <td class="py-2 pr-3 tabular-nums" :title="svc.mem_perc">{{ svc.mem || '—' }}</td>
               <td class="max-w-[16rem] truncate py-2 pr-3 font-mono text-xs text-[var(--ll-muted)]" :title="svc.image">{{ svc.image }}</td>
               <td class="py-2">
                 <div class="flex justify-end gap-1">
@@ -66,12 +70,19 @@
     <!-- Logs modal -->
     <Teleport to="body">
       <div v-if="logs.open" class="fixed inset-0 z-[2200] flex items-center justify-center bg-black/50 p-4" @click.self="logs.open = false">
-        <div class="flex max-h-[80vh] w-full max-w-3xl flex-col rounded-xl bg-[var(--ll-elevated)] shadow-xl">
-          <div class="flex items-center justify-between border-b border-[var(--ll-border)] px-5 py-3">
+        <div class="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-xl bg-[var(--ll-elevated)] shadow-xl">
+          <div class="flex items-center gap-2 border-b border-[var(--ll-border)] px-5 py-3">
             <h3 class="text-sm font-semibold">{{ logs.service }} · {{ t('settings.containers_logs') }}</h3>
+            <div class="relative ml-2 flex-1">
+              <Icon name="search" :size="15" class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--ll-muted)]" />
+              <input v-model="logs.filter" type="search" :placeholder="t('settings.containers_logs_filter')" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent py-1.5 pl-8 pr-3 text-sm focus:border-primary-500 focus:outline-none">
+            </div>
+            <span class="shrink-0 text-xs tabular-nums text-[var(--ll-muted)]">{{ logLines.length }}</span>
+            <button class="rounded p-1 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('settings.containers_refresh')" @click="showLogs(logs.service)"><Icon name="refresh" :size="16" /></button>
+            <label class="flex shrink-0 items-center gap-1 text-xs text-[var(--ll-muted)]"><input v-model="logs.wrap" type="checkbox" class="accent-primary-500"> {{ t('settings.containers_logs_wrap') }}</label>
             <button class="rounded-full p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="logs.open = false"><Icon name="close" :size="18" /></button>
           </div>
-          <pre class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-4 font-mono text-xs">{{ logs.text || '…' }}</pre>
+          <pre class="min-h-0 flex-1 overflow-auto p-4 font-mono text-xs" :class="logs.wrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'">{{ logLines.length ? logLines.join('\n') : (logs.loading ? '…' : t('settings.containers_logs_none')) }}</pre>
         </div>
       </div>
     </Teleport>
@@ -79,21 +90,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { api } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { Icon, Btn, Card } from '@spa/ui';
 
-interface Svc { service: string; state: string; status: string; image: string }
+interface Svc { service: string; state: string; status: string; image: string; cpu?: string; mem?: string; mem_perc?: string }
 interface Containers { configured: boolean; reachable?: boolean; services?: Svc[]; operator?: Record<string, string> }
 
 const { success, error } = useToast();
 const data = ref<Containers | null>(null);
 const busy = ref('');
 const menu = ref('');
-const logs = reactive({ open: false, service: '', text: '' });
+const logs = reactive({ open: false, service: '', text: '', filter: '', wrap: false, loading: false });
+const logLines = computed(() => {
+  const q = logs.filter.trim().toLowerCase();
+  return logs.text.split('\n').filter((l) => l !== '' && (q === '' || l.toLowerCase().includes(q)));
+});
 let poll: ReturnType<typeof setInterval> | null = null;
 
 function dot(state: string) {
@@ -129,11 +144,11 @@ async function update(service: string) {
 }
 
 async function showLogs(service: string) {
-  logs.open = true; logs.service = service; logs.text = '';
+  logs.open = true; logs.service = service; logs.loading = true;
   try {
     const r = await api.post<{ output: string }>('/api/v1/admin/docker/action', { service, action: 'logs' });
     logs.text = r.output ?? '';
-  } catch { logs.text = t('common.error'); }
+  } catch { logs.text = t('common.error'); } finally { logs.loading = false; }
 }
 
 async function copy(text: string) {

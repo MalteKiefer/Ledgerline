@@ -10,14 +10,7 @@
         <span class="inline-flex h-2.5 w-2.5 rounded-full" :class="sidecarDot" />
         <span>{{ t('gallery.gs_sidecar_' + (status?.sidecar ?? 'down')) }}</span>
         <span v-if="st?.effective.url" class="ml-2 font-mono text-xs text-[var(--ll-muted)]">{{ st.effective.url }}</span>
-      </div>
-      <div class="mt-4 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-bg)] p-3">
-        <p class="mb-2 text-xs text-[var(--ll-muted)]">{{ t('gallery.gs_operator_hint') }}</p>
-        <div v-for="(cmd, key) in operator" :key="key" class="mb-1.5 flex items-center gap-2">
-          <span class="w-16 shrink-0 text-xs font-medium text-[var(--ll-muted)]">{{ t('gallery.gs_op_' + key) }}</span>
-          <code class="min-w-0 flex-1 truncate rounded bg-black/[0.06] px-2 py-1 font-mono text-xs dark:bg-white/10">{{ cmd }}</code>
-          <button class="rounded p-1 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('common.copy')" @click="copy(cmd)"><Icon name="content_copy" :size="15" /></button>
-        </div>
+        <RouterLink :to="{ name: 'settings.containers' }" class="ml-auto text-xs text-primary-600 hover:underline">{{ t('gallery.gs_manage_containers') }}</RouterLink>
       </div>
     </Card>
 
@@ -127,7 +120,6 @@ interface AdminGallery {
 const { success, error } = useToast();
 const st = ref<AdminGallery | null>(null);
 const status = computed(() => st.value?.status);
-const operator = computed(() => st.value?.operator ?? {});
 const pending = computed(() => status.value?.queue.pending ?? 0);
 const failed = computed(() => status.value?.queue.failed ?? 0);
 const loading = ref(true);
@@ -200,9 +192,5 @@ async function rescan(scope: 'faces' | 'embeddings' | 'exif' | 'all') {
   busy.value = scope;
   try { const r = await api.post<{ queued: number }>('/api/v1/admin/gallery/reprocess', { scope }); success(t('gallery.reprocess_queued', { n: String(r.queued) })); await load(false); }
   catch { error(t('common.error')); } finally { busy.value = ''; }
-}
-
-async function copy(text: string) {
-  try { await navigator.clipboard.writeText(text); success(t('common.copied')); } catch { /* clipboard blocked */ }
 }
 </script>

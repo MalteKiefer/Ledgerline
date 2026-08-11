@@ -72,6 +72,7 @@ return [
     'from_contacts' => 'Из контактов',
     'contact_photos' => 'Фото',
     'gs_section' => 'Галерея и ИИ',
+    'gs_manage_containers' => 'Управление контейнерами',
     'gs_sidecar' => 'ML-сайдкар',
     'gs_sidecar_up' => 'Доступен',
     'gs_sidecar_down' => 'Недоступен',

@@ -81,7 +81,30 @@ def ps_state():
                 "state": r.get("State", ""),
                 "status": r.get("Status", ""),
                 "image": r.get("Image", ""),
+                "name": r.get("Name", ""),
             }
+    return by
+
+
+def stats():
+    """Live per-container resource usage (one-shot). Keyed by container name."""
+    rc, out = dc(["stats", "--no-stream", "--no-trunc", "--format", "{{json .}}"], 20)
+    by = {}
+    if rc == 0:
+        for line in out.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                o = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(o, dict) and o.get("Name"):
+                by[o["Name"]] = {
+                    "cpu": o.get("CPUPerc", ""),
+                    "mem": o.get("MemUsage", ""),
+                    "mem_perc": o.get("MemPerc", ""),
+                }
     return by
 
 
@@ -112,10 +135,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/list":
             svcs = services()
             state = ps_state()
-            return self._send(200, {"services": [
-                {"service": s, **state.get(s, {"state": "absent", "status": "", "image": ""})}
-                for s in svcs
-            ]})
+            usage = stats()
+            out = []
+            for s in svcs:
+                row = {"service": s, **state.get(s, {"state": "absent", "status": "", "image": "", "name": ""})}
+                u = usage.get(row.get("name", ""), {})
+                row["cpu"] = u.get("cpu", "")
+                row["mem"] = u.get("mem", "")
+                row["mem_perc"] = u.get("mem_perc", "")
+                out.append(row)
+            return self._send(200, {"services": out})
         return self._send(404, {"error": "not_found"})
 
     def do_POST(self):
