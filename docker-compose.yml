@@ -454,6 +454,10 @@ services:
       AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:-}
       AGENT_PROJECT_DIR: /project
       COMPOSE_PROFILES: ml,agent,geocode,maps,backup
+      # The project dir is mounted at /project, so compose would otherwise infer
+      # the project name "project" and not see/act on the real "ledgerline-*"
+      # containers. Pin it to the host project name.
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-ledgerline}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker/agent:/agent:ro
