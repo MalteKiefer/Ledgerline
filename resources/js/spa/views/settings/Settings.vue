@@ -26,10 +26,20 @@
 import { useRoute, RouterLink, RouterView } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Card } from '@spa/ui';
+import { useAuthStore } from '@spa/stores/auth';
+import { onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 
 const route = useRoute();
+const router = useRouter();
+const auth = useAuthStore();
+
+// Professional admin area — client gate (the API is the real gate: every
+// settings fetch is can:manage-global-settings and 403s for non-admins).
+onMounted(() => { if (!auth.isAdmin()) router.replace({ name: 'home' }); });
 
 const sections = [
+  { to: 'settings.dashboard', icon: 'space_dashboard', label: 'dash.section' },
   { to: 'settings.users', icon: 'group', label: 'settings.users_section' },
   { to: 'settings.groups', icon: 'badge', label: 'settings.groups_section' },
   { to: 'settings.company', icon: 'business', label: 'settings.company_section' },

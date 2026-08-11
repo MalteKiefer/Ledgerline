@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.628.0
+  version: 1.629.0
   license:
     name: Proprietary
   description: >
@@ -6830,6 +6830,30 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /admin/dashboard:
+    get:
+      tags: [Settings]
+      operationId: adminDashboard
+      summary: Admin overview dashboard (admin)
+      description: "Read-only aggregate for the admin dashboard: app/PHP/Laravel versions, DB+cache health, disk + per-module storage + growth trend, worker queue depth/failed, scheduled-task liveness, error + backup status, and fleet counts (users/sessions/devices/blocked). Container CPU/mem come from /admin/docker/containers."
+      responses:
+        "200":
+          description: "Dashboard snapshot."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions: { type: object, properties: { app: { type: string }, php: { type: string }, laravel: { type: string } } }
+                  health: { type: object, properties: { database: { type: string }, cache: { type: string }, queue_driver: { type: string } } }
+                  resources: { type: object }
+                  queue: { type: object, properties: { pending: { type: integer }, failed: { type: integer } } }
+                  scheduler: { type: object }
+                  errors: { type: object }
+                  backup: { type: object }
+                  counts: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /admin/gallery:
     get:
       tags: [Settings]

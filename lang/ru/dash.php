@@ -1,0 +1,34 @@
+<?php
+
+declare(strict_types=1);
+
+return [
+    'section' => 'Панель',
+    'server' => 'Сервер',
+    'version_app' => 'Версия приложения',
+    'db' => 'База данных',
+    'cache' => 'Кэш',
+    'queue_driver' => 'Драйвер очереди',
+    'resources' => 'Ресурсы',
+    'disk' => 'Диск',
+    'storage_by_module' => 'Хранилище по модулям',
+    'st_files' => 'Файлы',
+    'st_gallery' => 'Галерея',
+    'st_database' => 'База данных',
+    'growth' => 'Рост (:d дн.)',
+    'containers' => 'Контейнеры',
+    'manage' => 'Управление',
+    'agent_off' => 'Агент выключен — см. Контейнеры.',
+    'scheduler' => 'Планировщик',
+    'never' => 'никогда',
+    'errors' => 'Ошибки',
+    'backup' => 'Резервные копии',
+    'users' => 'Пользователи',
+    'admins' => 'админов: :n',
+    'sessions' => 'Сессии',
+    'devices' => 'устройств: :n',
+    'queue' => 'Очередь',
+    'failed' => 'ошибок: :n',
+    'blocked' => 'Заблок. IP',
+    'blocked_users' => 'пользователей: :n',
+];

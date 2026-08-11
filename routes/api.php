@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\BackupController as ApiBackupController;
 use App\Http\Controllers\Api\CalendarProfileController as ApiCalendarProfileController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
 use App\Http\Controllers\Api\ContactsProfileController as ApiContactsProfileController;
+use App\Http\Controllers\Api\DashboardController as ApiDashboardController;
 use App\Http\Controllers\Api\DevicePushEndpointController;
 use App\Http\Controllers\Api\DockerController as ApiDockerController;
 use App\Http\Controllers\Api\FilesLimitsController as ApiFilesLimitsController;
@@ -555,6 +556,9 @@ Route::prefix('v1')->group(function (): void {
         // Gated by the admin role on top of the device token. Secret values
         // (SMTP/ntfy/webhook creds, Paperless token) are never serialised.
         Route::middleware('can:manage-global-settings')->prefix('admin')->name('api.admin.')->group(function (): void {
+            // Admin overview dashboard (server status, resources, health, counts).
+            Route::get('/dashboard', [ApiDashboardController::class, 'show'])->name('dashboard.show');
+
             // Notifications (SMTP / NTFY / webhook) + test send.
             Route::get('/notifications', [ApiNotificationsController::class, 'show'])->name('notifications.show');
             Route::put('/notifications', [ApiNotificationsController::class, 'update'])->middleware('throttle:60,1')->name('notifications.update');
