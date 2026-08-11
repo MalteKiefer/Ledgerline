@@ -441,6 +441,30 @@ services:
       retries: 5
       start_period: 300s
 
+  # Bounded Docker control agent (profile-gated, opt-in). Holds the docker
+  # socket so the main app never has to; exposes ONLY a fixed allowlist of
+  # actions on this project's own compose services, gated by a shared token,
+  # reachable only on the internal network. See docker/agent/agent.py + the
+  # security register. The app talks to it at http://agent:9000.
+  agent:
+    image: docker:28-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d
+    profiles: ["agent"]
+    command: ["sh", "-c", "apk add --no-cache python3 >/dev/null 2>&1 && exec python3 /agent/agent.py"]
+    environment:
+      AGENT_TOKEN: ${DOCKER_AGENT_TOKEN:-}
+      AGENT_PROJECT_DIR: /project
+      COMPOSE_PROFILES: ml,agent,geocode,maps,backup
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker/agent:/agent:ro
+      - .:/project:ro
+    working_dir: /project
+    networks:
+      - internal
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
 networks:
   internal:
 

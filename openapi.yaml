@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.626.0
+  version: 1.627.0
   license:
     name: Proprietary
   description: >
@@ -6920,6 +6920,50 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimited" }
+
+  /admin/docker/containers:
+    get:
+      tags: [Settings]
+      operationId: adminDockerContainers
+      summary: List compose services + state (admin)
+      description: "Proxies the bounded docker-control agent sidecar. When the agent is not configured (no token) or unreachable, returns configured/reachable flags + operator commands instead. The app never touches the docker socket."
+      responses:
+        "200":
+          description: "Services (or a not-configured / not-reachable payload)."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured: { type: boolean }
+                  reachable: { type: boolean }
+                  services: { type: array, items: { type: object, properties: { service: { type: string }, state: { type: string }, status: { type: string }, image: { type: string } } } }
+                  operator: { type: object, additionalProperties: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/docker/action:
+    post:
+      tags: [Settings]
+      operationId: adminDockerAction
+      summary: Run an allowlisted action on a compose service (admin)
+      description: "Bounded control via the agent sidecar: restart/stop/start/recreate/pull/logs on a validated project service. Not arbitrary docker. 503 when the agent is unconfigured/unreachable. Throttle 30/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service, action]
+              properties:
+                service: { type: string, maxLength: 64 }
+                action: { type: string, enum: [restart, stop, start, recreate, pull, logs] }
+      responses:
+        "200": { description: "Result (ok + output).", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, action: { type: string }, service: { type: string }, output: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { description: "Agent unconfigured or unreachable." }
 
   /admin/system:
     get:
