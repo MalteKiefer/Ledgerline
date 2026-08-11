@@ -30,6 +30,7 @@ return [
     'size' => 'Größe',
     'open' => 'Öffnen',
     'saved' => 'Gespeichert',
+    'deleted' => 'Gelöscht',
     'error' => 'Etwas ist schiefgelaufen',
     'copy' => 'Kopieren',
     'copied' => 'Kopiert',

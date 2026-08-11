@@ -19,6 +19,12 @@ return [
     'pocketid_unavailable' => 'Вход через Pocket ID недоступен.',
     'pocketid_failed' => 'Ошибка аутентификации. Попробуйте ещё раз.',
 
+    // Passkeys
+    'or' => 'или',
+    'passkey_sign_in' => 'Войти с помощью passkey',
+    'passkey_failed' => 'Не удалось войти по passkey. Попробуйте ещё раз.',
+    'verify_email' => 'Сначала подтвердите адрес электронной почты.',
+
     // Register
     'register_title' => 'Создать аккаунт',
     'name' => 'Имя',

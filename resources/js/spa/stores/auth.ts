@@ -98,6 +98,17 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = res.user;
   }
 
+  /** Sign in with a passkey / hardware key. Mints a bearer token on success. */
+  async function passkeyLogin(): Promise<void> {
+    const { getAssertion, passkeysSupported } = await import('@spa/lib/webauthn');
+    if (!passkeysSupported()) throw new Error('unsupported');
+    const start = await api.post<{ handle: string; options: Record<string, unknown> }>('/api/v1/auth/passkey/options');
+    const credential = await getAssertion(start.options as never);
+    const res = await api.post<{ token: string; user: MeUser }>('/api/v1/auth/passkey/verify', { handle: start.handle, credential });
+    setToken(res.token);
+    user.value = res.user;
+  }
+
   async function logout(): Promise<void> {
     try { await api.post('/api/v1/auth/logout'); } catch { /* token may already be gone */ }
     setToken(null);
@@ -110,5 +121,5 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAdmin = () => user.value?.groups?.includes('admin') ?? false;
 
-  return { user, ready, bootstrap, login, forgotPassword, resetPassword, register, inviteShow, inviteConsume, logout, can, isAdmin };
+  return { user, ready, bootstrap, login, passkeyLogin, forgotPassword, resetPassword, register, inviteShow, inviteConsume, logout, can, isAdmin };
 });

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.633.2
+  version: 1.634.0
   license:
     name: Proprietary
   description: >
@@ -62,6 +62,13 @@ security:
 tags:
   - name: Auth
     description: Device pairing exchange and session management
+  - name: Passkeys
+    description: >
+      WebAuthn passkeys / hardware security keys (YubiKey, Nitrokey, platform
+      authenticators) via web-auth/webauthn-lib. Public login pair mints a
+      device bearer token; management endpoints require the authenticated user
+      plus a current-password step-up to register. Public-key only at rest
+      (none-attestation).
   - name: Me/Device
     description: Authenticated user info, avatar, and device heartbeat
   - name: Finance
@@ -256,6 +263,14 @@ components:
           schema: { type: integer }
 
   schemas:
+    WebauthnCredential:
+      type: object
+      description: A registered passkey / hardware key (public-key only, owner-scoped).
+      properties:
+        id: { type: integer }
+        name: { type: [string, "null"] }
+        last_used_at: { type: [string, "null"], format: date-time }
+        created_at: { type: [string, "null"], format: date-time }
     ValidationError:
       type: object
       description: >
@@ -1942,6 +1957,64 @@ paths:
       responses:
         "200": { description: OK. }
         "401": { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/passkey/options:
+    post:
+      tags: [Passkeys]
+      operationId: passkeyLoginOptions
+      summary: Passwordless sign-in — WebAuthn assertion options
+      security: []
+      description: >
+        Public. Returns a one-time challenge (`options`, standard WebAuthn
+        PublicKeyCredentialRequestOptionsJSON) plus an opaque `handle` that binds
+        the challenge for /auth/passkey/verify. Feed `options` to
+        navigator.credentials.get(). Throttled 30/min.
+      responses:
+        "200":
+          description: Request options + handle.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  handle: { type: string }
+                  options: { type: object, additionalProperties: true }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /auth/passkey/verify:
+    post:
+      tags: [Passkeys]
+      operationId: passkeyLoginVerify
+      summary: Passwordless sign-in — verify assertion, mint a bearer token
+      security: []
+      description: >
+        Public. Verifies the authenticator assertion against the cached
+        challenge and mints a device-scoped Sanctum bearer token. 422
+        {message:"passkey_failed"} on any invalid/expired assertion; 403
+        {status:"verify-email"} for an unverified account; 403
+        {message:"blocked"} for a blocked account. Throttled 30/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handle, credential]
+              properties:
+                handle: { type: string }
+                credential: { type: object, additionalProperties: true, description: "Serialized PublicKeyCredential (assertion) as returned by the webauthn browser helper." }
+      responses:
+        "200":
+          description: Token + user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: '#/components/schemas/MeUser' }
+        "403": { description: "Email not verified or account blocked." }
+        "422": { description: "Assertion invalid/expired." }
+        "429": { $ref: '#/components/responses/RateLimited' }
 
   # --------------------------------------------------------------------------
   # Contacts module (module:contacts + device auth). Mirrors the web routes.
@@ -6454,6 +6527,84 @@ paths:
         "200": { description: "Disabled.", content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean, enum: [false] } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "422": { $ref: "#/components/responses/ValidationError" }
+  /user/passkeys:
+    get:
+      tags: [Passkeys]
+      operationId: passkeysIndex
+      summary: List the current user's passkeys
+      responses:
+        "200":
+          description: Owner-scoped passkeys + whether WebAuthn is configured.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  passkeys: { type: array, items: { $ref: '#/components/schemas/WebauthnCredential' } }
+                  enabled: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Passkeys]
+      operationId: passkeysRegister
+      summary: Register a new passkey (verify attestation)
+      description: >
+        Verifies the attestation from navigator.credentials.create() against the
+        cached challenge and stores the credential (public-key only). Requires a
+        fresh `current_password` step-up. Throttle 20/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [credential, current_password]
+              properties:
+                credential: { type: object, additionalProperties: true, description: "Serialized PublicKeyCredential (attestation)." }
+                name: { type: [string, "null"], maxLength: 120 }
+                current_password: { type: string, format: password }
+      responses:
+        "201":
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebauthnCredential' }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /user/passkeys/options:
+    post:
+      tags: [Passkeys]
+      operationId: passkeysRegisterOptions
+      summary: WebAuthn attestation (creation) options for the current user
+      description: "Standard PublicKeyCredentialCreationOptionsJSON; feed to navigator.credentials.create(). Challenge cached per user. Throttle 30/min."
+      responses:
+        "200": { description: "Creation options JSON.", content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: '#/components/responses/RateLimited' }
+  /user/passkeys/{credential}:
+    put:
+      tags: [Passkeys]
+      operationId: passkeysRename
+      summary: Rename a passkey
+      parameters:
+        - { name: credential, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, maxLength: 120 } } } } }
+      responses:
+        "200": { description: OK. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Passkeys]
+      operationId: passkeysDestroy
+      summary: Remove a passkey
+      parameters:
+        - { name: credential, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Removed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /user/password:
     put:
       tags: [TwoFactor]

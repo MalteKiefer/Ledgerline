@@ -54,6 +54,13 @@ export interface Session {
   current: boolean;
 }
 
+export interface Passkey {
+  id: number;
+  name: string | null;
+  last_used_at: string | null;
+  created_at: string | null;
+}
+
 export interface WebDavAccess {
   enabled: boolean;
   username: string;
@@ -240,6 +247,30 @@ export const useProfileStore = defineStore('profile', () => {
     await api.delete('/api/v1/account/webdav');
   }
 
+  // --- Passkeys / hardware keys ---------------------------------------------
+
+  async function listPasskeys(): Promise<{ passkeys: Passkey[]; enabled: boolean }> {
+    return api.get('/api/v1/user/passkeys');
+  }
+
+  /** Register a new passkey (password step-up); runs the browser ceremony. */
+  async function registerPasskey(currentPassword: string, name: string): Promise<void> {
+    const { createCredential, passkeysSupported } = await import('@spa/lib/webauthn');
+    if (!passkeysSupported()) throw new Error('unsupported');
+    const options = await api.post<Record<string, unknown>>('/api/v1/user/passkeys/options');
+    const credential = await createCredential(options as never);
+    await api.post('/api/v1/user/passkeys', { credential, name, current_password: currentPassword });
+  }
+
+  async function renamePasskey(id: number, name: string): Promise<void> {
+    await api.put(`/api/v1/user/passkeys/${id}`, { name });
+  }
+
+
+  async function deletePasskey(id: number): Promise<void> {
+    await api.delete(`/api/v1/user/passkeys/${id}`);
+  }
+
   return {
     prefs, devices, sessions,
     loadPrefs, savePrefs, setTheme, setLocale,
@@ -248,5 +279,6 @@ export const useProfileStore = defineStore('profile', () => {
     twoFactorState, enable2fa, confirm2fa, recoveryCodes, regenerateRecovery, disable2fa,
     startPairing, pairingStatus, approvePairing, rejectPairing,
     loadSessions, revokeSession, getWebdav, setWebdav, clearWebdav,
+    listPasskeys, registerPasskey, renamePasskey, deletePasskey,
   };
 });

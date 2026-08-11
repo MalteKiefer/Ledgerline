@@ -73,6 +73,39 @@
       </template>
     </Card>
 
+    <!-- Passkeys / hardware security keys -->
+    <Card class="mt-4">
+      <template #header>
+        <Icon name="key" :size="18" />
+        <span class="text-sm font-semibold">{{ t('account.passkeys_title') }}</span>
+      </template>
+      <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('account.passkeys_desc') }}</p>
+
+      <div v-if="!pkSupported" class="mb-3 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+        {{ t('account.passkeys_unsupported') }}
+      </div>
+
+      <ul v-if="passkeys.length" class="mb-4 divide-y divide-[var(--ll-border)] rounded-lg border border-[var(--ll-border)]">
+        <li v-for="pk in passkeys" :key="pk.id" class="flex items-center gap-3 px-3 py-2">
+          <Icon name="key" :size="16" class="text-[var(--ll-muted)]" />
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-sm font-medium">{{ pk.name || 'Passkey' }}</div>
+            <div class="text-xs text-[var(--ll-muted)]">
+              {{ pk.last_used_at ? t('account.passkeys_last_used', { when: fmt(pk.last_used_at) }) : t('account.passkeys_never_used') }}
+            </div>
+          </div>
+          <Btn variant="ghost" size="sm" icon="edit" :aria-label="t('common.rename')" @click="onRenamePasskey(pk)" />
+          <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 hover:bg-red-500/10" :aria-label="t('common.delete')" @click="onDeletePasskey(pk)" />
+        </li>
+      </ul>
+      <p v-else-if="pkSupported" class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('account.passkeys_none') }}</p>
+
+      <form v-if="pkSupported" class="flex flex-wrap items-end gap-2" @submit.prevent="onAddPasskey">
+        <TextField v-model="pkName" class="max-w-[220px]" :label="t('account.passkeys_name')" :placeholder="t('account.passkeys_name_ph')" />
+        <Btn type="submit" variant="soft" icon="add" :loading="pkBusy">{{ t('account.passkeys_add') }}</Btn>
+      </form>
+    </Card>
+
     <!-- Password step-up (enable / disable / regenerate recovery codes) -->
     <Modal :model-value="pwPrompt.show" :title="t('account.password_current')" width="420px" @update:model-value="(v) => { if (!v) cancelPassword(); }">
       <form @submit.prevent="submitPassword">
@@ -99,7 +132,9 @@ import { Card, Btn, Icon, Badge, TextField, Modal } from '@spa/ui';
 import { useAuthStore } from '@spa/stores/auth';
 import { useProfileStore } from '@spa/stores/profile';
 import { useToast } from '@spa/composables/useToast';
+import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 import { ApiError } from '@spa/api/client';
+import type { Passkey } from '@spa/stores/profile';
 
 const auth = useAuthStore();
 const p = useProfileStore();
@@ -170,7 +205,52 @@ function stepUpMessage(e: unknown): string {
   return t('common.error');
 }
 
+// --- Passkeys --------------------------------------------------------------
+const pkSupported = typeof window !== 'undefined' && typeof window.PublicKeyCredential !== 'undefined';
+const passkeys = ref<Passkey[]>([]);
+const pkName = ref('');
+const pkBusy = ref(false);
+
+function fmt(iso: string): string {
+  return new Date(iso).toLocaleDateString();
+}
+
+async function loadPasskeys() {
+  try { passkeys.value = (await p.listPasskeys()).passkeys; } catch { /* leave empty */ }
+}
+
+async function onAddPasskey() {
+  const password = await askPassword();
+  if (password === null) return;
+  pkBusy.value = true;
+  try {
+    await p.registerPasskey(password, pkName.value.trim());
+    pkName.value = '';
+    await loadPasskeys();
+    success(t('account.passkeys_added'));
+  } catch (e) {
+    if (e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'AbortError')) { /* cancelled */ }
+    else error(stepUpMessage(e));
+  } finally {
+    pkBusy.value = false;
+  }
+}
+
+async function onRenamePasskey(pk: Passkey) {
+  const name = await promptAsk(t('account.passkeys_name'), { value: pk.name ?? '', placeholder: t('account.passkeys_name_ph') });
+  if (name === null) return;
+  try { await p.renamePasskey(pk.id, name); await loadPasskeys(); success(t('common.saved')); }
+  catch { error(t('common.error')); }
+}
+
+async function onDeletePasskey(pk: Passkey) {
+  if (!(await confirmAsk(t('account.passkeys_delete_confirm'), { danger: true }))) return;
+  try { await p.deletePasskey(pk.id); await loadPasskeys(); success(t('common.deleted')); }
+  catch { error(t('common.error')); }
+}
+
 onMounted(() => {
+  loadPasskeys();
   // Authoritative confirmed-state comes from /me (auth.user.two_factor). We must
   // NOT probe the enrollment QR endpoint on mount: it is enrollment-only and 404s
   // unless a secret is mid-enrollment, which would surface a spurious console 404
