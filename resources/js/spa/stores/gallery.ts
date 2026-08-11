@@ -5,7 +5,7 @@ import { api, uploadWithProgress } from '@spa/api/client';
 export interface Photo {
   id: number; name: string; mime: string | null;
   width: number | null; height: number | null; size: number;
-  favorite: boolean; thumb: boolean; motion: boolean;
+  favorite: boolean; thumb: boolean; preview: boolean; motion: boolean;
   media_type: 'image' | 'video'; status: 'ready' | 'processing' | 'failed'; duration: number | null;
   rotation: number; flip_h: boolean;
   taken_at: string | null; camera: string | null; place: string | null;
@@ -90,11 +90,12 @@ export const useGalleryStore = defineStore('gallery', () => {
   const removeFromAlbum = (albumId: number, ids: number[]) => api.delete(`/api/v1/gallery/albums/${albumId}/photos`, { ids });
 
   const thumbUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/thumb`);
+  const previewUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/preview`);
   const rawUrl = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/raw`);
 
   return {
     photos, albums, load, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
-    addToAlbum, removeFromAlbum, thumbUrl, rawUrl,
+    addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
   };
 });

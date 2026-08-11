@@ -51,4 +51,8 @@ return [
     'dupes_similar' => 'similar',
     'dupes_keep' => 'Keep',
     'dupes_keep_one' => 'Delete duplicates (keep 1)',
+    'bulk_edit' => 'Bulk edit',
+    'bulk_edit_hint' => 'Applies to all selected photos. Rotation/mirror are relative; a set date or location is applied to all.',
+    'rotate_mirror' => 'Rotate / mirror',
+    'bulk_optional' => 'optional',
 ];

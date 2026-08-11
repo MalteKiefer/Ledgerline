@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.618.0
+  version: 1.619.0
   license:
     name: Proprietary
   description: >
@@ -1157,6 +1157,7 @@ components:
         size: { type: integer }
         favorite: { type: boolean }
         thumb: { type: boolean, description: "Whether the WebP thumbnail is ready (generated off the web path by a worker). While false the client shows a spinner and reloads." }
+        preview: { type: boolean, description: "Whether the browser-viewable full-size WebP preview is ready (the original may be HEIC, which browsers cannot render); the lightbox uses /gallery/{photo}/preview." }
         motion: { type: boolean, description: "Whether a Live Photo motion clip is attached (served at /gallery/{photo}/motion)." }
         media_type: { type: string, enum: [image, video], description: "Videos are processed on the worker (ffprobe + poster + web MP4)." }
         status: { type: string, enum: [ready, processing, failed], description: "Video processing state; the client shows a gray 'processing' tile until ready." }
@@ -5324,6 +5325,18 @@ paths:
         "200": { description: "image/webp thumbnail (nosniff + sandbox CSP)." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: "Not an image, or thumbnail not generated yet (generation re-queued)." }
+  /gallery/{photo}/preview:
+    get:
+      tags: [Gallery]
+      operationId: galleryPreview
+      summary: Browser-viewable full-size WebP preview (cache-only, sandboxed)
+      description: "The lightbox image. The original may be HEIC/HEIF, which browsers cannot render in an <img>; this is a decoded, orientation-baked WebP (max 2048px), produced alongside the thumbnail. Cache-only; a miss re-queues generation and 404s (photo.preview=false)."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "image/webp preview (nosniff + sandbox CSP)." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Not ready yet (generation re-queued)." }
   /gallery/{photo}/favorite:
     patch:
       tags: [Gallery]

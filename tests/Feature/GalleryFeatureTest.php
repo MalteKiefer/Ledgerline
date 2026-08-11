@@ -57,6 +57,10 @@ class GalleryFeatureTest extends TestCase
         $this->assertStringContainsString('sandbox', (string) $res->headers->get('Content-Security-Policy'));
         $v = GalleryPhoto::findOrFail($id)->version;
         Storage::disk(config('files.disk'))->assertExists('gallery/thumb/'.$id.'-'.$v.'.webp');
+        // A browser-viewable full-size preview is produced alongside the thumbnail.
+        Storage::disk(config('files.disk'))->assertExists('gallery/preview/'.$id.'-'.$v.'.webp');
+        $prev = $this->get(route('gallery.preview', ['photo' => $id]))->assertOk();
+        $this->assertSame('image/webp', $prev->headers->get('Content-Type'));
     }
 
     public function test_upload_queues_thumbnail_and_thumb_endpoint_is_cache_only(): void

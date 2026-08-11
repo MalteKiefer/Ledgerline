@@ -51,6 +51,8 @@ class GalleryController extends Controller
 
     private const THUMB_MAX_PIXELS = 100 * 1000 * 1000;
 
+    private const PREVIEW_MAX = 2048;
+
     private const MOTION_ALLOW = ['mov', 'mp4', 'm4v', 'qt'];
 
     /** Broad video extension set — "any format" uploads; ffprobe validates later. */
@@ -310,6 +312,39 @@ class GalleryController extends Controller
         $etag = $photo->sha256 !== null && $photo->sha256 !== '' ? $photo->sha256 : (string) $photo->id;
 
         return BlobStore::immutableResponse($this->fs()->response($src, $this->safeName($photo->name), [], 'inline'), $etag);
+    }
+
+    /**
+     * Browser-viewable full-size preview (large WebP) for the lightbox. The
+     * original may be HEIC/HEIF, which browsers cannot render in an <img>; the
+     * preview is a decoded, orientation-baked WebP. Cache-only (produced by the
+     * thumbnail job); a miss re-queues generation and 404s.
+     */
+    public function preview(Request $request, GalleryPhoto $photo): StreamedResponse
+    {
+        $this->requireUser($request);
+        $isImage = str_starts_with((string) $photo->mime, 'image/');
+        abort_unless($isImage || $photo->media_type === 'video', 404);
+
+        $path = $this->previewPath($photo);
+        if (! $this->fs()->exists($path)) {
+            if ($isImage || ($photo->poster_path !== null && $photo->poster_path !== '')) {
+                GenerateGalleryThumbnail::dispatch($photo->id);
+            }
+            abort(404);
+        }
+
+        return $this->fs()->response($path, 'preview.webp', [
+            'Content-Type' => 'image/webp',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+            'Cache-Control' => 'private, max-age=86400',
+        ], 'inline');
+    }
+
+    private function previewPath(GalleryPhoto $photo): string
+    {
+        return 'gallery/preview/'.$photo->id.'-'.$photo->version.'.webp';
     }
 
     /** Stream a Live Photo's motion clip (sandboxed). Best-effort playback — the
@@ -663,7 +698,10 @@ class GalleryController extends Controller
             $src = (string) $photo->storage_path;
         }
         $thumbPath = $this->thumbPath($photo);
-        if ($this->fs()->exists($thumbPath)) {
+        $previewPath = $this->previewPath($photo);
+        $haveThumb = $this->fs()->exists($thumbPath);
+        $havePreview = $this->fs()->exists($previewPath);
+        if ($haveThumb && $havePreview) {
             return true;
         }
         if ($src === '' || ! $this->fs()->exists($src)) {
@@ -683,9 +721,16 @@ class GalleryController extends Controller
             if (is_array($dims) && (int) $dims[0] * (int) $dims[1] > self::THUMB_MAX_PIXELS) {
                 return false;
             }
+            // One decode → a browser-viewable large preview (HEIC/HEIF cannot be
+            // shown in an <img> directly) AND the 400px grid thumbnail.
             $img = $this->applyEdits($images->make()->decodePath($tmp->path()), $photo);
-            $webp = (string) $img->cover(400, 400)->encode(new WebpEncoder(quality: 78));
-            $this->fs()->put($thumbPath, $webp);
+            if (! $havePreview) {
+                $img->scaleDown(self::PREVIEW_MAX, self::PREVIEW_MAX);
+                $this->fs()->put($previewPath, (string) $img->encode(new WebpEncoder(quality: 82)));
+            }
+            if (! $haveThumb) {
+                $this->fs()->put($thumbPath, (string) $img->cover(400, 400)->encode(new WebpEncoder(quality: 78)));
+            }
         } catch (\Throwable) {
             return false;
         }
@@ -1024,7 +1069,7 @@ class GalleryController extends Controller
         ];
     }
 
-    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,thumb:bool,motion:bool,media_type:string,status:string,duration:?int,rotation:int,flip_h:bool,taken_at:?string,camera:?string,place:?string,lat:?float,lng:?float,version:int,created_at:?string} */
+    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,thumb:bool,preview:bool,motion:bool,media_type:string,status:string,duration:?int,rotation:int,flip_h:bool,taken_at:?string,camera:?string,place:?string,lat:?float,lng:?float,version:int,created_at:?string} */
     private function row(GalleryPhoto $p): array
     {
         return [
@@ -1036,6 +1081,7 @@ class GalleryController extends Controller
             'size' => $p->size,
             'favorite' => (bool) $p->favorite,
             'thumb' => $this->fs()->exists($this->thumbPath($p)),
+            'preview' => $this->fs()->exists($this->previewPath($p)),
             'motion' => $p->motion_path !== null && $p->motion_path !== '',
             'media_type' => $p->media_type,
             'status' => $p->status,
@@ -1174,7 +1220,8 @@ class GalleryController extends Controller
                 $this->fs()->delete($p);
             }
         }
-        $this->fs()->delete('gallery/thumb/'.$photo->id.'-'.$photo->version.'.webp');
+        $this->fs()->delete($this->thumbPath($photo));
+        $this->fs()->delete($this->previewPath($photo));
     }
 
     /** Absolute filesystem path when the files disk is local, else null (remote). */
