@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.632.0
+  version: 1.633.0
   license:
     name: Proprietary
   description: >
@@ -1605,8 +1605,8 @@ components:
       properties:
         id: { type: integer }
         name: { type: string }
-        source: { type: string, enum: [database, invoices, files], description: "Legacy single-source column (= sources[0])." }
-        sources: { type: array, items: { type: string, enum: [database, invoices, files] }, description: "All sources this job backs up." }
+        source: { type: string, enum: [database, invoices, files, gallery, mail, notes, avatars], description: "Legacy single-source column (= sources[0])." }
+        sources: { type: array, items: { type: string, enum: [database, invoices, files, gallery, mail, notes, avatars] }, description: "All sources this job backs up." }
         mode: { type: string, enum: [full, incremental] }
         destination_id: { type: integer }
         cron: { type: string }
@@ -1627,8 +1627,8 @@ components:
       description: "A job backs up one or more sources at once into a timestamped batch, in full or incremental mode, rotated with grandfather-father-son retention. Encryption is recommended (a DB dump is cleartext PII) but optional; 422 only if encrypt=true without an available passphrase. Blank passphrase keeps the stored value on update."
       properties:
         name: { type: string, maxLength: 120 }
-        sources: { type: array, minItems: 1, items: { type: string, enum: [database, invoices, files] }, description: "What to back up. database = full DB dump; invoices = invoice PDFs + receipts; files = the Files module blobs." }
-        source: { type: [string, "null"], enum: [database, invoices, files], description: "Legacy single-source column, kept in sync with sources[0]. Optional." }
+        sources: { type: array, minItems: 1, items: { type: string, enum: [database, invoices, files, gallery, mail, notes, avatars] }, description: "What to back up. database = full DB dump; invoices = invoice PDFs + receipts; files = the Files module blobs." }
+        source: { type: [string, "null"], enum: [database, invoices, files, gallery, mail, notes, avatars], description: "Legacy single-source column, kept in sync with sources[0]. Optional." }
         mode: { type: string, enum: [full, incremental], description: "incremental only re-uploads blob sources (files/invoices) changed since the last run; the DB dump is always full." }
         backup_destination_id: { type: integer, description: "Must reference an existing backup destination." }
         cron: { type: string, maxLength: 64, description: "A valid cron expression." }
@@ -1659,7 +1659,7 @@ components:
           items:
             type: object
             properties:
-              source: { type: string, enum: [database, invoices, files] }
+              source: { type: string, enum: [database, invoices, files, gallery, mail, notes, avatars] }
               encrypted: { type: boolean, description: "The archive is a .enc — verify/decrypt need the passphrase." }
               restorable: { type: boolean, description: "Blob sources (files/invoices) can be restored in-place; the database cannot (use artisan backup:restore-db)." }
         cancellable: { type: boolean }
@@ -7196,7 +7196,7 @@ paths:
   /backup/runs/{run}/download:
     parameters:
       - { name: run, in: path, required: true, schema: { type: integer } }
-      - { name: source, in: query, required: true, schema: { type: string, enum: [database, invoices, files] }, description: "Which source's archive in the run's batch to download." }
+      - { name: source, in: query, required: true, schema: { type: string, enum: [database, invoices, files, gallery, mail, notes, avatars] }, description: "Which source's archive in the run's batch to download." }
     get:
       tags: [Backup]
       operationId: backupRunsDownload
@@ -7214,7 +7214,7 @@ paths:
       operationId: backupRunsVerify
       summary: Verify one source's archive integrity (admin)
       description: "Read-only integrity check of one source's archive in the batch. Throttle 10/min."
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [source], properties: { source: { type: string, enum: [database, invoices, files] }, passphrase: { type: [string, "null"], maxLength: 255, description: "Required for encrypted (.enc) archives." } } } } } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [source], properties: { source: { type: string, enum: [database, invoices, files, gallery, mail, notes, avatars] }, passphrase: { type: [string, "null"], maxLength: 255, description: "Required for encrypted (.enc) archives." } } } } } }
       responses:
         "200": { description: "Result.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, message: { type: string }, verifiedHuman: { type: [string, "null"] } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -7229,7 +7229,7 @@ paths:
       operationId: backupRunsRestore
       summary: Restore a blob source onto live data (admin)
       description: "Extracts a blob source (files/invoices) from the run's batch back onto the live disk (additive overwrite). DESTRUCTIVE. The database is NOT restorable via API — download the dump and run `php artisan backup:restore-db`. Throttle 10/min."
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [source], properties: { source: { type: string, enum: [invoices, files] } } } } } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [source], properties: { source: { type: string, enum: [invoices, files, gallery, mail, notes, avatars] } } } } } }
       responses:
         "200": { description: "Restored.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, files: { type: integer, description: "Number of files written." } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -7256,7 +7256,7 @@ paths:
       operationId: backupRunsDecrypt
       summary: Stream a decrypted archive (admin/CLI)
       description: "Fetches an encrypted (.enc) archive for the given source, decrypts it with the passphrase, and streams the plaintext archive. Nothing is written to live data. Throttle 10/min."
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [passphrase, source], properties: { source: { type: string, enum: [database, invoices, files] }, passphrase: { type: string, maxLength: 255 } } } } } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [passphrase, source], properties: { source: { type: string, enum: [database, invoices, files, gallery, mail, notes, avatars] }, passphrase: { type: string, maxLength: 255 } } } } } }
       responses:
         "200": { description: "Decrypted bytes.", content: { application/octet-stream: { schema: { type: string, format: binary } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }

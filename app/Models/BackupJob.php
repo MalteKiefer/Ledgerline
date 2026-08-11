@@ -27,12 +27,12 @@ use Illuminate\Support\Carbon;
 #[Hidden(['passphrase'])] // archive encryption passphrase — never serialize
 class BackupJob extends Model
 {
-    public const SOURCES = ['database', 'invoices', 'files'];
+    public const SOURCES = ['database', 'invoices', 'files', 'gallery', 'mail', 'notes', 'avatars'];
 
     public const MODES = ['full', 'incremental'];
 
     /** Blob (disk-prefix) sources support incremental mode; the DB dump is always full. */
-    public const INCREMENTAL_SOURCES = ['invoices', 'files'];
+    public const INCREMENTAL_SOURCES = ['invoices', 'files', 'gallery', 'mail'];
 
     /** Notification channels a job may fire on completion (any combination). */
     public const NOTIFY_CHANNELS = ['desktop', 'mail', 'ntfy', 'webhook'];

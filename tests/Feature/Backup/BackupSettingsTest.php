@@ -120,9 +120,9 @@ class BackupSettingsTest extends TestCase
         $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
-        // sources[] is the validated enum — a removed module like `gallery` is rejected.
+        // sources[] is the validated enum — an unknown source is rejected.
         $this->post(route('settings.backup.jobs.store'), [
-            'name' => 'Bad source', 'sources' => ['gallery'],
+            'name' => 'Bad source', 'sources' => ['bogus'],
             'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'keep_daily' => 3,
         ])->assertSessionHasErrors('sources.0');
     }

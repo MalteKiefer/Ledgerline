@@ -212,6 +212,10 @@ final class BackupManager
             'database' => app(DatabaseSource::class),
             'invoices' => app(InvoiceBlobSource::class),
             'files' => app(FilesSource::class),
+            'gallery' => app(Sources\GallerySource::class),
+            'mail' => app(Sources\MailSource::class),
+            'notes' => app(Sources\NotesSource::class),
+            'avatars' => app(Sources\AvatarSource::class),
             default => throw new RuntimeException("Unknown backup source: {$source}"),
         };
     }
