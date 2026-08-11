@@ -94,6 +94,8 @@ return [
     'devices_heading' => 'Mobile app',
     'devices_hint' => 'Connect the Ledgerline app by scanning a QR code. Approve each device here before it can sign in.',
     'devices_connect' => 'Connect a device',
+    'devices_cli' => 'CLI code',
+    'devices_cli_hint' => 'Enter this code in the CLI client, then approve here.',
     'devices_scan_hint' => 'Scan this code with the Ledgerline app.',
     'devices_approve_q' => 'Connect the device',
     'devices_allow' => 'Allow',

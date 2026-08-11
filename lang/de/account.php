@@ -94,6 +94,8 @@ return [
     'devices_heading' => 'Mobile App',
     'devices_hint' => 'Verbinde die Ledgerline-App per QR-Code. Jedes Gerät muss hier bestätigt werden, bevor es sich anmelden kann.',
     'devices_connect' => 'Gerät verbinden',
+    'devices_cli' => 'CLI-Code',
+    'devices_cli_hint' => 'Diesen Code im CLI-Client eingeben, dann hier bestätigen.',
     'devices_scan_hint' => 'Scanne diesen Code mit der Ledgerline-App.',
     'devices_approve_q' => 'Gerät verbinden:',
     'devices_allow' => 'Erlauben',

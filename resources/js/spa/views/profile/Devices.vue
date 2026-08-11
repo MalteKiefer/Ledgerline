@@ -4,13 +4,25 @@
     <Card :title="t('account.devices_heading')" class="mb-4">
       <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('account.devices_hint') }}</p>
 
-      <Btn v-if="!pairing.active" variant="soft" icon="smartphone" :loading="pairing.busy" @click="onStartPairing">
-        {{ t('account.devices_connect') }}
-      </Btn>
+      <div v-if="!pairing.active" class="flex flex-wrap gap-2">
+        <Btn variant="soft" icon="smartphone" :loading="pairing.busy && pairing.mode === 'qr'" @click="onStartPairing">
+          {{ t('account.devices_connect') }}
+        </Btn>
+        <Btn variant="ghost" icon="terminal" :loading="pairing.busy && pairing.mode === 'cli'" @click="onStartCliPairing">
+          {{ t('account.devices_cli') }}
+        </Btn>
+      </div>
 
       <template v-else>
         <div v-if="pairing.status === 'pending_scan' || pairing.status === 'pending_approval'" class="flex flex-col items-start gap-4 sm:flex-row">
           <img v-if="pairing.qr" :src="pairing.qr" class="h-40 w-40 shrink-0 rounded-lg border border-[var(--ll-border)] bg-white object-cover p-1" >
+          <div v-else-if="pairing.code" class="shrink-0">
+            <p class="mb-1 text-xs text-[var(--ll-muted)]">{{ t('account.devices_cli_hint') }}</p>
+            <div class="flex items-center gap-2 rounded-lg border border-[var(--ll-border)] bg-black/[0.03] px-3 py-2 dark:bg-white/5">
+              <code class="select-all font-mono text-lg font-semibold tracking-[0.2em]">{{ pairing.code }}</code>
+              <Btn variant="ghost" size="sm" icon="content_copy" @click="copyCode">{{ t('common.copy') }}</Btn>
+            </div>
+          </div>
           <div>
             <p v-if="pairing.status === 'pending_scan'" class="text-sm text-[var(--ll-muted)]">{{ t('account.devices_scan_hint') }}</p>
             <div v-else>
@@ -114,8 +126,8 @@ const p = useProfileStore();
 const { success, error } = useToast();
 
 // --- Device pairing --------------------------------------------------------
-const pairing = reactive<{ active: boolean; id: number; qr: string; status: string; deviceName: string | null; busy: boolean }>(
-  { active: false, id: 0, qr: '', status: '', deviceName: null, busy: false },
+const pairing = reactive<{ active: boolean; id: number; qr: string; code: string; mode: 'qr' | 'cli'; status: string; deviceName: string | null; busy: boolean }>(
+  { active: false, id: 0, qr: '', code: '', mode: 'qr', status: '', deviceName: null, busy: false },
 );
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -196,11 +208,11 @@ async function onClearWebdav() {
 
 // --- Device pairing handlers ----------------------------------------------
 async function onStartPairing() {
-  pairing.busy = true;
+  pairing.busy = true; pairing.mode = 'qr';
   try {
     const s = await p.startPairing();
     pairing.id = s.id;
-    pairing.qr = s.qr;
+    pairing.qr = s.qr; pairing.code = '';
     pairing.status = 'pending_scan';
     pairing.deviceName = null;
     pairing.active = true;
@@ -210,6 +222,28 @@ async function onStartPairing() {
   } finally {
     pairing.busy = false;
   }
+}
+
+// CLI pairing: same claim/approve/collect flow, but the one-time code is shown
+// as copyable text (nothing to scan) with a shorter 60s window.
+async function onStartCliPairing() {
+  pairing.busy = true; pairing.mode = 'cli';
+  try {
+    const s = await p.startCliPairing();
+    pairing.id = s.id;
+    pairing.code = s.code; pairing.qr = '';
+    pairing.status = 'pending_scan';
+    pairing.deviceName = null;
+    pairing.active = true;
+    pollPairing();
+  } catch (e) {
+    error(e instanceof ApiError && e.status === 429 ? t('account.pair_rate_limited') : t('account.pair_start_failed'));
+  } finally {
+    pairing.busy = false;
+  }
+}
+async function copyCode() {
+  try { await navigator.clipboard.writeText(pairing.code); success(t('common.copied')); } catch { /* ignore */ }
 }
 
 function pollPairing() {
@@ -259,6 +293,7 @@ function resetPairing() {
   clearTimeout(pollTimer);
   pairing.active = false;
   pairing.qr = '';
+  pairing.code = '';
   pairing.status = '';
   pairing.id = 0;
   pairing.deviceName = null;
