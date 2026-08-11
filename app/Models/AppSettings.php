@@ -47,6 +47,17 @@ use Illuminate\Database\Eloquent\Model;
     'ml_dup_distance',
     'ml_face_min_score',
     'ml_face_match_distance',
+    'files_quota_mb',
+    'sanctum_expiration_minutes',
+    'session_lifetime_minutes',
+    'device_wipe_grace_minutes',
+    'device_idle_days',
+    'audit_retention_days',
+    'access_log_retention_days',
+    'request_log_retention_days',
+    'backup_stale_hours',
+    'mail_log_retention_days',
+    'mail_blob_orphan_grace_hours',
 ])]
 // Defense-in-depth: keep the operative-secret columns (SMTP / ntfy / webhook creds)
 // out of any wholesale toArray()/toJson() as well as the encrypted-cast at-rest layer.
@@ -95,6 +106,17 @@ class AppSettings extends Model
             'ml_dup_distance' => 'float',
             'ml_face_min_score' => 'float',
             'ml_face_match_distance' => 'float',
+            'files_quota_mb' => 'integer',
+            'sanctum_expiration_minutes' => 'integer',
+            'session_lifetime_minutes' => 'integer',
+            'device_wipe_grace_minutes' => 'integer',
+            'device_idle_days' => 'integer',
+            'audit_retention_days' => 'integer',
+            'access_log_retention_days' => 'integer',
+            'request_log_retention_days' => 'integer',
+            'backup_stale_hours' => 'integer',
+            'mail_log_retention_days' => 'integer',
+            'mail_blob_orphan_grace_hours' => 'integer',
         ];
     }
 

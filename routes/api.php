@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\GalleryAdminController as ApiGalleryAdminController
 use App\Http\Controllers\Api\GroupController as ApiGroupController;
 use App\Http\Controllers\Api\InviteLinkController as ApiInviteLinkController;
 use App\Http\Controllers\Api\InvoiceOcrController;
+use App\Http\Controllers\Api\LimitsController as ApiLimitsController;
 use App\Http\Controllers\Api\MailAccountController;
 use App\Http\Controllers\Api\NotificationsController as ApiNotificationsController;
 use App\Http\Controllers\Api\PaperlessController as ApiPaperlessController;
@@ -571,6 +572,10 @@ Route::prefix('v1')->group(function (): void {
             // Workspace Files limits (max upload MB + orphan-blob grace hours).
             Route::get('/files-limits', [ApiFilesLimitsController::class, 'show'])->name('files-limits.show');
             Route::put('/files-limits', [ApiFilesLimitsController::class, 'update'])->middleware('throttle:60,1')->name('files-limits.update');
+
+            // Session/auth lifetimes, retention windows, Files quota.
+            Route::get('/limits', [ApiLimitsController::class, 'show'])->name('limits.show');
+            Route::put('/limits', [ApiLimitsController::class, 'update'])->middleware('throttle:60,1')->name('limits.update');
 
             // Gallery & ML: feature flags, models, thresholds, worker queue + rescan.
             Route::get('/gallery', [ApiGalleryAdminController::class, 'show'])->name('gallery.show');
