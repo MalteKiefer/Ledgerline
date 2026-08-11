@@ -89,10 +89,10 @@
       </template>
       <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('gallery.gs_rescan_hint') }}</p>
       <div class="flex flex-wrap gap-2">
-        <Btn variant="soft" icon="face" :loading="busy === 'faces'" @click="rescan('faces')">{{ t('gallery.gs_rescan_faces') }}</Btn>
-        <Btn variant="soft" icon="image_search" :loading="busy === 'embeddings'" @click="rescan('embeddings')">{{ t('gallery.gs_rescan_embeddings') }}</Btn>
-        <Btn variant="soft" icon="schedule" :loading="busy === 'exif'" @click="rescan('exif')">{{ t('gallery.gs_rescan_exif') }}</Btn>
-        <Btn variant="solid" icon="auto_awesome" :loading="busy === 'all'" @click="rescan('all')">{{ t('gallery.gs_rescan_all') }}</Btn>
+        <Btn variant="soft" icon="face" :loading="busy === 'faces'" :disabled="!!busy" @click="rescan('faces')">{{ t('gallery.gs_rescan_faces') }}</Btn>
+        <Btn variant="soft" icon="image_search" :loading="busy === 'embeddings'" :disabled="!!busy" @click="rescan('embeddings')">{{ t('gallery.gs_rescan_embeddings') }}</Btn>
+        <Btn variant="soft" icon="schedule" :loading="busy === 'exif'" :disabled="!!busy" @click="rescan('exif')">{{ t('gallery.gs_rescan_exif') }}</Btn>
+        <Btn variant="solid" icon="auto_awesome" :loading="busy === 'all'" :disabled="!!busy" @click="rescan('all')">{{ t('gallery.gs_rescan_all') }}</Btn>
       </div>
     </Card>
 
