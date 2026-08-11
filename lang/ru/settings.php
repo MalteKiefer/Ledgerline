@@ -464,4 +464,10 @@ return [
     'containers_logs' => 'Логи',
     'containers_confirm' => 'Выполнить для :s?',
     'containers_update_confirm' => 'Скачать новый образ и пересоздать :s?',
+    'containers_cpu' => 'CPU',
+    'containers_mem' => 'Память',
+    'containers_logs_filter' => 'Фильтр строк…',
+    'containers_logs_wrap' => 'Перенос',
+    'containers_logs_none' => 'Нет строк лога.',
+    'containers_refresh' => 'Обновить',
 ];

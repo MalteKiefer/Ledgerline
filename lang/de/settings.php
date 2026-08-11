@@ -464,4 +464,10 @@ return [
     'containers_logs' => 'Logs',
     'containers_confirm' => 'Auf :s ausführen?',
     'containers_update_confirm' => 'Neuestes Image holen und :s neu erstellen?',
+    'containers_cpu' => 'CPU',
+    'containers_mem' => 'Speicher',
+    'containers_logs_filter' => 'Zeilen filtern…',
+    'containers_logs_wrap' => 'Umbruch',
+    'containers_logs_none' => 'Keine Log-Zeilen.',
+    'containers_refresh' => 'Aktualisieren',
 ];
