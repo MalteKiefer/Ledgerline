@@ -1528,8 +1528,14 @@ class GalleryController extends Controller
         $takenAt = null;
         if (is_string($takenRaw) && $takenRaw !== '') {
             $ts = \DateTimeImmutable::createFromFormat('Y:m:d H:i:s', trim($takenRaw));
+            // A blank EXIF date like "0000:00:00 00:00:00" does NOT return false —
+            // it parses to year 0 (rendered "-0001-11-30"), which a timestamp
+            // column rejects (SQLSTATE 22007). Only accept a plausible year.
             if ($ts instanceof \DateTimeImmutable) {
-                $takenAt = $ts->format('Y-m-d H:i:s');
+                $year = (int) $ts->format('Y');
+                if ($year >= 1970 && $year <= 2100) {
+                    $takenAt = $ts->format('Y-m-d H:i:s');
+                }
             }
         }
 
