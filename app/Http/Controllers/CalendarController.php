@@ -286,7 +286,10 @@ class CalendarController extends Controller
     public function rsvp(Request $request, CalendarEvent $event, ImipService $imip): JsonResponse
     {
         $user = $this->requireUser($request);
-        $this->authorizeEvent($event); // read access to the calendar holding it
+        // RSVP mutates the event ICS (PARTSTAT), so it requires WRITE access to
+        // the calendar holding it — the legitimate flow is a user responding on
+        // their OWN invited copy; a viewer-shared calendar cannot be mutated.
+        $this->authorizeEvent($event, write: true);
         $request->validate(['status' => ['required', 'in:ACCEPTED,DECLINED,TENTATIVE']]);
         $status = $request->string('status')->value();
 

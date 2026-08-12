@@ -9,6 +9,7 @@ use App\Models\Calendar;
 use App\Models\CalendarEvent;
 use App\Models\User;
 use App\Services\Calendar\CalendarEventService;
+use App\Services\Calendar\ImipService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
@@ -456,6 +457,29 @@ class CalendarRelationalTest extends TestCase
         $req = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:{$newUid}\r\nDTSTART:20260901T090000Z\r\nDTEND:20260901T100000Z\r\nSUMMARY:Invited\r\nORGANIZER:mailto:boss@example.test\r\nATTENDEE:mailto:{$owner->email}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         $this->postJson(route('calendar.imip'), ['ics' => $req])->assertOk()->assertJsonPath('action', 'created');
         $this->assertSame(1, CalendarEvent::where('uid', $newUid)->count());
+    }
+
+    public function test_imip_inbound_rejects_a_spoofed_sender(): void
+    {
+        $owner = $this->signIn();
+        $calendar = $this->calendar($owner->id);
+        $id = (string) $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'Sync',
+            'dtstart' => '2026-08-10T09:00:00Z', 'dtend' => '2026-08-10T10:00:00Z',
+            'attendees' => [['email' => 'guest@example.test', 'name' => 'Guest']],
+        ])->assertCreated()->json('id');
+        $uid = CalendarEvent::findOrFail($id)->uid;
+        $imip = app(ImipService::class);
+        $svc = app(CalendarEventService::class);
+        $reply = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:{$uid}\r\nORGANIZER:mailto:{$owner->email}\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:guest@example.test\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        // Spoofed sender (not the attendee) → rejected, PARTSTAT unchanged.
+        $this->assertSame('sender_mismatch', $imip->ingest((int) $owner->id, $reply, 'attacker@evil.test')['action']);
+        $this->assertSame('NEEDS-ACTION', $svc->parse(CalendarEvent::findOrFail($id)->ics)['attendees'][0]['partstat']);
+
+        // Genuine sender (the attendee) → accepted.
+        $this->assertSame('updated', $imip->ingest((int) $owner->id, $reply, 'guest@example.test')['action']);
+        $this->assertSame('ACCEPTED', $svc->parse(CalendarEvent::findOrFail($id)->ics)['attendees'][0]['partstat']);
     }
 
     public function test_free_busy_and_slot_finder(): void
