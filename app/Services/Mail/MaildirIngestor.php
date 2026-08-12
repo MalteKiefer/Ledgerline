@@ -10,6 +10,7 @@ use App\Models\MailBlob;
 use App\Models\MailLabel;
 use App\Models\MailMessage;
 use App\Models\MailRule;
+use App\Services\Calendar\ImipService;
 use App\Services\Files\FileTextIndex;
 use App\Support\BlobStore;
 use App\Support\Mail\MailHtmlSanitizer;
@@ -324,6 +325,20 @@ class MaildirIngestor
                 }
             }
         });
+
+        // iMIP: if the message carried a text/calendar part (a meeting
+        // REQUEST/REPLY/CANCEL), apply it to the recipient's calendars.
+        // Best-effort — never affects the archive commit.
+        foreach ($attachments as $attachment) {
+            $ct = strtolower((string) $attachment->contentType);
+            if (str_contains($ct, 'text/calendar')) {
+                try {
+                    app(ImipService::class)->ingest((int) $account->user_id, $attachment->bytes);
+                } catch (Throwable) {
+                    // ignore — archival already succeeded
+                }
+            }
+        }
 
         // Ledger row committed → the Maildir plaintext is redundant. Shred it.
         @unlink($path);

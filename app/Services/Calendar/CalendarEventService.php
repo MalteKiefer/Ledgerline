@@ -228,6 +228,33 @@ class CalendarEventService
             $event->add('RRULE', $rrule);
         }
 
+        // ORGANIZER + ATTENDEE (iMIP). Editor-owned: replace wholesale when the
+        // request carries them, leave the ICS untouched otherwise (rebuild path).
+        if (array_key_exists('organizer', $data) || array_key_exists('attendees', $data)) {
+            $event->remove('ORGANIZER');
+            $organizer = trim($this->str($data['organizer'] ?? null));
+            if ($organizer !== '') {
+                $event->add('ORGANIZER', 'mailto:'.$organizer);
+            }
+            $event->remove('ATTENDEE');
+            $attendees = is_array($data['attendees'] ?? null) ? $data['attendees'] : [];
+            foreach ($attendees as $a) {
+                if (! is_array($a)) {
+                    continue;
+                }
+                $email = trim($this->str($a['email'] ?? null));
+                if ($email === '' || ! str_contains($email, '@')) {
+                    continue;
+                }
+                $params = ['ROLE' => 'REQ-PARTICIPANT', 'RSVP' => 'TRUE', 'PARTSTAT' => $this->partstat($a['partstat'] ?? null)];
+                $name = trim($this->str($a['name'] ?? null));
+                if ($name !== '') {
+                    $params['CN'] = $name;
+                }
+                $event->add('ATTENDEE', 'mailto:'.$email, $params);
+            }
+        }
+
         // VALARM is editor-owned (alarm_minutes_before → DISPLAY reminder N minutes
         // before start): replace it wholesale, drop it when cleared.
         $event->remove('VALARM');
@@ -315,7 +342,52 @@ class CalendarEventService
             'status' => $this->s($event->STATUS ?? null),
             'alarm_minutes_before' => $this->parseAlarm($event),
             'sequence' => (int) $this->str($event->SEQUENCE ?? null),
+            'organizer' => $this->mailtoValue($event->ORGANIZER ?? null),
+            'attendees' => $this->parseAttendees($event),
         ];
+    }
+
+    /** @return list<array{email:string,name:?string,partstat:string}> */
+    public function parseAttendees(VEvent $event): array
+    {
+        $out = [];
+        foreach ($this->iter($event->select('ATTENDEE')) as $att) {
+            $email = $this->mailtoValue($att);
+            if ($email === null || $email === '') {
+                continue;
+            }
+            $cn = null;
+            $partstat = 'NEEDS-ACTION';
+            if ($att instanceof Property) {
+                $cn = $this->s($att->offsetGet('CN'));
+                $ps = $this->str($att->offsetGet('PARTSTAT'));
+                if ($ps !== '') {
+                    $partstat = strtoupper($ps);
+                }
+            }
+            $out[] = ['email' => $email, 'name' => $cn, 'partstat' => $partstat];
+        }
+
+        return $out;
+    }
+
+    /** Strip a leading mailto: from an ORGANIZER/ATTENDEE property value. */
+    private function mailtoValue(mixed $prop): ?string
+    {
+        $v = trim($this->str($prop));
+        if ($v === '') {
+            return null;
+        }
+        $stripped = preg_replace('/^mailto:/i', '', $v);
+
+        return is_string($stripped) ? $stripped : $v;
+    }
+
+    private function partstat(mixed $v): string
+    {
+        $s = strtoupper(trim(is_string($v) ? $v : ''));
+
+        return in_array($s, ['NEEDS-ACTION', 'ACCEPTED', 'DECLINED', 'TENTATIVE'], true) ? $s : 'NEEDS-ACTION';
     }
 
     /**

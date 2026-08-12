@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Mail\ImipMail;
 use App\Models\Calendar;
 use App\Models\CalendarEvent;
 use App\Models\User;
 use App\Services\Calendar\CalendarEventService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -420,6 +422,40 @@ class CalendarRelationalTest extends TestCase
         $uid = app(CalendarEventService::class)->parse($event->ics)['uid'] ?? null;
 
         return is_string($uid) ? $uid : null;
+    }
+
+    public function test_imip_invite_rsvp_and_inbound(): void
+    {
+        Mail::fake();
+        $owner = $this->signIn();
+        $calendar = $this->calendar($owner->id);
+
+        // Create an event with an attendee → a REQUEST is e-mailed.
+        $id = (string) $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'Sync',
+            'dtstart' => '2026-08-10T09:00:00Z', 'dtend' => '2026-08-10T10:00:00Z',
+            'attendees' => [['email' => 'guest@example.test', 'name' => 'Guest']],
+        ])->assertCreated()->json('id');
+        Mail::assertSent(ImipMail::class);
+
+        // The ICS carries ORGANIZER + ATTENDEE (NEEDS-ACTION).
+        $detail = $this->getJson(route('calendar.events.show', ['event' => $id]))->assertOk()->json();
+        $this->assertSame($owner->email, $detail['organizer']);
+        $this->assertSame('guest@example.test', $detail['attendees'][0]['email']);
+        $this->assertSame('NEEDS-ACTION', $detail['attendees'][0]['partstat']);
+
+        // Inbound REPLY from the guest → the organizer's attendee flips to ACCEPTED.
+        $uid = CalendarEvent::findOrFail($id)->uid;
+        $reply = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:{$uid}\r\nSEQUENCE:0\r\nORGANIZER:mailto:{$owner->email}\r\nATTENDEE;PARTSTAT=ACCEPTED:mailto:guest@example.test\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        $this->postJson(route('calendar.imip'), ['ics' => $reply])->assertOk()->assertJsonPath('action', 'updated');
+        $after = $this->getJson(route('calendar.events.show', ['event' => $id]))->json();
+        $this->assertSame('ACCEPTED', $after['attendees'][0]['partstat']);
+
+        // Inbound REQUEST (new invitation) → an event is created.
+        $newUid = 'imip-new-'.uniqid();
+        $req = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:{$newUid}\r\nDTSTART:20260901T090000Z\r\nDTEND:20260901T100000Z\r\nSUMMARY:Invited\r\nORGANIZER:mailto:boss@example.test\r\nATTENDEE:mailto:{$owner->email}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        $this->postJson(route('calendar.imip'), ['ics' => $req])->assertOk()->assertJsonPath('action', 'created');
+        $this->assertSame(1, CalendarEvent::where('uid', $newUid)->count());
     }
 
     public function test_free_busy_and_slot_finder(): void

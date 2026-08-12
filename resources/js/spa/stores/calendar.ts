@@ -72,6 +72,8 @@ export interface EventDetail extends Record<string, unknown> {
   geo_lon: number | string | null;
   sequence: number;
   etag: string;
+  organizer?: string | null;
+  attendees?: { email: string; name: string | null; partstat: string }[];
 }
 
 export interface CalSettings {
@@ -152,6 +154,10 @@ export const useCalendarStore = defineStore('calendar', () => {
   const findSlots = (body: { from: string; to: string; duration_min: number; day_start?: number; day_end?: number; attendees?: string[] }) =>
     api.post<{ slots: { start: string; end: string }[]; unknown_attendees: string[] }>('/api/v1/calendar/slots', body);
 
+  // iMIP: RSVP to an event I'm invited to; ingest a received .ics.
+  const rsvp = (id: string, status: 'ACCEPTED' | 'DECLINED' | 'TENTATIVE') => api.post<{ ok: boolean }>(`/api/v1/calendar/events/${id}/rsvp`, { status });
+  const imipIngest = (ics: string) => api.post<{ method: string | null; action: string }>('/api/v1/calendar/imip', { ics });
+
   // Address autocomplete — server-side geo proxy (authenticated, throttled).
   const geoSearch = (q: string) =>
     api.get<{ results: GeoResult[] }>(`/api/v1/geo/search?q=${encodeURIComponent(q)}`).then((r) => r.results);
@@ -172,6 +178,6 @@ export const useCalendarStore = defineStore('calendar', () => {
     loadData, loadRange, show, create, update, destroy, excludeOccurrence, overrideOccurrence,
     createCalendar, updateCalendar, deleteCalendar, createSpecial, regenerate, saveSettings, importIcs, exportUrl,
     loadHolidayCountries, loadHolidaySubdivisions, geoSearch,
-    loadShares, shareCalendar, revokeCalendarShare, freeBusy, findSlots,
+    loadShares, shareCalendar, revokeCalendarShare, freeBusy, findSlots, rsvp, imipIngest,
   };
 });
