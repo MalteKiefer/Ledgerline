@@ -398,9 +398,17 @@
 
   <!-- Avatar source picker (gallery / files) -->
   <Modal v-model="avatarSrc.open" :title="avatarSrc.source === 'gallery' ? t('contacts.ui.avatar_from_gallery') : t('contacts.ui.avatar_from_files')" width="720px">
+    <div class="mb-3 flex items-center gap-2">
+      <input
+        v-model="avatarSrc.query" type="search" :placeholder="avatarSrc.source === 'gallery' ? t('gallery.search_ph') : t('common.search')"
+        class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+        @keyup.enter="avatarSearch"
+      >
+      <Btn variant="soft" size="sm" icon="search" @click="avatarSearch">{{ t('common.search') }}</Btn>
+    </div>
     <div v-if="avatarSrc.loading" class="flex items-center justify-center py-16 text-sm text-[var(--ll-muted)]"><Icon name="progress_activity" :size="18" class="mr-1 animate-spin" />{{ t('common.loading') }}</div>
     <div v-else-if="!avatarSrc.items.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ t('contacts.ui.avatar_no_images') }}</div>
-    <div v-else class="grid grid-cols-3 gap-2 sm:grid-cols-5">
+    <div v-else class="grid max-h-[60vh] grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-5">
       <button
         v-for="it in avatarSrc.items" :key="it.key" :disabled="avatarBusy"
         class="aspect-square overflow-hidden rounded-lg bg-black/[0.04] ring-2 ring-transparent transition hover:ring-primary-500 disabled:opacity-50 dark:bg-white/5"
@@ -585,8 +593,11 @@ const avatarInput = ref<HTMLInputElement | null>(null);
 const avatarBusy = ref(false);
 const avatarMenu = ref(false);
 const files = useFilesStore();
-type AvatarPick = { key: string; thumb: string; full: string };
-const avatarSrc = reactive<{ open: boolean; source: 'gallery' | 'files'; loading: boolean; items: AvatarPick[] }>({ open: false, source: 'gallery', loading: false, items: [] });
+type AvatarPick = { key: string; thumb: string; full: string; name?: string };
+const avatarSrc = reactive<{ open: boolean; source: 'gallery' | 'files'; loading: boolean; query: string; items: AvatarPick[] }>({ open: false, source: 'gallery', loading: false, query: '', items: [] });
+function galleryPicks(photos: Photo[]): AvatarPick[] {
+  return photos.filter((p) => p.thumb).map((p) => ({ key: 'g' + p.id, thumb: gal.thumbUrl(p.id), full: gal.previewUrl(p.id) }));
+}
 
 const bookItems = computed(() => c.books.map((b) => ({ title: b.name, value: b.id })));
 
@@ -935,21 +946,45 @@ function pickAvatar() { avatarInput.value?.click(); }
 
 // Pick the contact avatar from an existing image — the linked gallery photos
 // (face recognition) or the Files module — instead of only a device upload.
+const filesImagePicks = ref<AvatarPick[]>([]);
 async function openAvatarSource(source: 'gallery' | 'files') {
   avatarSrc.source = source;
   avatarSrc.items = [];
+  avatarSrc.query = '';
   avatarSrc.loading = true;
   avatarSrc.open = true;
   try {
     if (source === 'gallery') {
-      avatarSrc.items = contactPhotos.value.filter((p) => p.thumb).map((p) => ({ key: 'g' + p.id, thumb: gal.thumbUrl(p.id), full: gal.previewUrl(p.id) }));
+      // Show the contact's linked photos first, then recent gallery photos so
+      // there is always something to pick even when nothing is linked yet.
+      const linked = galleryPicks(contactPhotos.value);
+      const seen = new Set(linked.map((x) => x.key));
+      let recent: AvatarPick[] = [];
+      try {
+        const r = await api.get<{ photos: Photo[] }>('/api/v1/gallery/data');
+        recent = galleryPicks((r.photos ?? []).slice(0, 120)).filter((x) => !seen.has(x.key));
+      } catch { /* keep linked only */ }
+      avatarSrc.items = [...linked, ...recent];
     } else {
       await files.load();
-      avatarSrc.items = files.files
+      filesImagePicks.value = files.files
         .filter((f) => (f.mime ?? '').startsWith('image/'))
-        .map((f) => ({ key: 'f' + f.id, thumb: api.streamUrl(`/api/v1/files/entries/${f.id}/thumb`), full: api.streamUrl(`/api/v1/files/entries/${f.id}/thumb`) }));
+        .map((f) => ({ key: 'f' + f.id, name: f.name, thumb: api.streamUrl(`/api/v1/files/entries/${f.id}/thumb`), full: api.streamUrl(`/api/v1/files/entries/${f.id}/thumb`) }));
+      avatarSrc.items = filesImagePicks.value;
     }
   } catch { error(t('common.error')); } finally { avatarSrc.loading = false; }
+}
+// Search within the picker: gallery = semantic photo search, files = name filter.
+async function avatarSearch() {
+  const q = avatarSrc.query.trim();
+  if (avatarSrc.source === 'gallery') {
+    if (!q) { void openAvatarSource('gallery'); return; }
+    avatarSrc.loading = true;
+    try { avatarSrc.items = galleryPicks(await gal.search(q)); } catch { avatarSrc.items = []; } finally { avatarSrc.loading = false; }
+  } else {
+    const ql = q.toLowerCase();
+    avatarSrc.items = ql ? filesImagePicks.value.filter((p) => (p.name ?? '').toLowerCase().includes(ql)) : filesImagePicks.value;
+  }
 }
 async function useAvatarImage(url: string) {
   if (!selected.value) return;
