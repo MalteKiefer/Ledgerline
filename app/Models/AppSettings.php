@@ -70,6 +70,7 @@ use Illuminate\Database\Eloquent\Model;
 #[Hidden([
     'smtp_host', 'smtp_username', 'smtp_password', 'smtp_from_address', 'smtp_from_name',
     'ntfy_url', 'ntfy_topic', 'ntfy_token', 'webhook_url', 'webhook_secret',
+    'gocardless_secret_id', 'gocardless_secret_key',
 ])]
 class AppSettings extends Model
 {
@@ -99,6 +100,9 @@ class AppSettings extends Model
             'webhook_enabled' => 'boolean',
             'webhook_url' => 'encrypted',
             'webhook_secret' => 'encrypted',
+            // GoCardless Bank Account Data (PSD2/XS2A) workspace API credentials.
+            'gocardless_secret_id' => 'encrypted',
+            'gocardless_secret_key' => 'encrypted',
             'export_files_max_zip_mb' => 'integer',
             'export_notify_desktop' => 'boolean',
             'export_notify_ntfy' => 'boolean',

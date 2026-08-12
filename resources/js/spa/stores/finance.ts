@@ -46,6 +46,8 @@ export interface TxReceipt {
   category?: string | null; tags?: string[] | null; partnerId?: number | null;
 }
 export interface FinanceCategory { id: number; name: string; color: string | null; icon: string | null; version?: number }
+export interface Institution { id: string; name: string; bic: string | null; logo: string | null }
+export interface BankConnection { id: number; institution_id: string; institution_name: string | null; payment_method_id: number | null; status: string; consent_expires_at: string | null; last_synced_at: string | null }
 export interface DuplicateGroup { reason: string; key: string; ids: number[] }
 export interface CategorySuggestion { tx_id: number; merchant: string; suggested_category: string }
 
@@ -134,6 +136,16 @@ export const useFinanceStore = defineStore('finance', () => {
   const saveProject = (p: Partial<Project>) => (p.id ? api.put<{ project: Project }>(`/api/v1/finance/projects/${p.id}`, p) : api.post<{ project: Project }>('/api/v1/finance/projects', p));
   const deleteProject = (id: number) => api.delete(`/api/v1/finance/projects/${id}`);
 
+  // Direct bank retrieval (GoCardless / PSD2).
+  const bankConnections = () => api.get<{ configured: boolean; connections: BankConnection[] }>('/api/v1/finance/bank-connections');
+  const bankInstitutions = (country: string) => api.get<{ institutions: Institution[] }>(`/api/v1/finance/bank-connections/institutions?country=${encodeURIComponent(country)}`).then((r) => r.institutions);
+  const bankConnect = (body: { institution_id: string; institution_name?: string; payment_method_id?: number | null; redirect: string }) => api.post<{ id: number; link: string }>('/api/v1/finance/bank-connections', body);
+  const bankFinalize = (id: number) => api.post<BankConnection>(`/api/v1/finance/bank-connections/${id}/finalize`);
+  const bankSync = (id: number) => api.post<{ ok: boolean; imported: number }>(`/api/v1/finance/bank-connections/${id}/sync`);
+  const bankDisconnect = (id: number) => api.delete(`/api/v1/finance/bank-connections/${id}`);
+  // Admin: workspace GoCardless credentials (never returned; blank-preserve).
+  const gocardlessSave = (secret_id: string, secret_key: string) => api.put<{ ok: boolean; configured: boolean }>('/api/v1/admin/finance/gocardless', { secret_id, secret_key });
+
   return {
     invoices, partners, paymentMethods, projects, standaloneReceipts, transactions, financeCategories,
     load, reports, vatAdvance, euer, accountVat, duplicates, categorySuggestions,
@@ -144,5 +156,6 @@ export const useFinanceStore = defineStore('finance', () => {
     savePartner, deletePartner, savePayment, deletePayment,
     createReceipt, updateReceipt, deleteReceipt, receiptFileUrl,
     saveProject, deleteProject,
+    bankConnections, bankInstitutions, bankConnect, bankFinalize, bankSync, bankDisconnect, gocardlessSave,
   };
 });
