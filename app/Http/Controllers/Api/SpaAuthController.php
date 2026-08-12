@@ -93,8 +93,12 @@ class SpaAuthController extends Controller
                 'os_version' => $request->string('os_version')->value() ?: null,
             ])->plainTextToken;
         } else {
+            // A browser SPA counts against the SAME device cap as CLI/QR/native
+            // (Mullvad-style: web + CLI + app share one limit). It sends a stable,
+            // browser-local install_id so re-logging-in from the same browser
+            // REPLACES its slot instead of stacking a new device each time.
             $name = $request->filled('device_name') ? $request->string('device_name')->value() : 'web';
-            $token = $user->createToken($name, ['device'])->plainTextToken;
+            $token = app(Pairing::class)->issueDeviceToken($user, $name, $request->ip())->plainTextToken;
         }
 
         return response()->json([

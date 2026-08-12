@@ -8,6 +8,7 @@ use App\Models\DevicePairing;
 use App\Models\User;
 use App\Services\Auth\Pairing;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
@@ -112,6 +113,31 @@ class DevicePairingTest extends TestCase
 
         // The pairing is spent — a second collect fails.
         $this->postJson('/api/v1/auth/pair/collect', ['code' => $code])->assertStatus(410);
+    }
+
+    public function test_web_login_counts_against_the_shared_device_cap_with_install_id_dedup(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('super-secret-123'), 'max_connected_devices' => 2]);
+
+        $login = fn (string $install) => $this->postJson('/api/v1/auth/login', [
+            'email' => $user->email, 'password' => 'super-secret-123', 'install_id' => $install, 'device_name' => 'Web browser',
+        ])->assertOk();
+
+        // Two distinct browsers → two device slots.
+        $login('browser-A');
+        $login('browser-B');
+        $this->assertSame(2, $user->tokens()->count());
+
+        // Re-login from browser-A REPLACES its slot (install_id dedup), still 2.
+        $login('browser-A');
+        $this->assertSame(2, $user->tokens()->count());
+
+        // A third distinct browser exceeds the cap → the least-recently-used is evicted.
+        $login('browser-C');
+        $this->assertSame(2, $user->tokens()->count());
+        $names = $user->tokens()->pluck('install_id')->all();
+        $this->assertContains('browser-C', $names);
+        $this->assertNotContains('browser-B', $names, 'the LRU device must be evicted (dead in DB → 401 on next request)');
     }
 
     public function test_collect_is_pending_until_approved(): void
