@@ -622,6 +622,13 @@
               class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
               @input="onNameInput" @keyup.enter="saveName"
             >
+            <!-- Current contact link (retroactive linking / unlinking). -->
+            <div v-if="nameLinked" class="mt-2 flex items-center gap-2 rounded-lg bg-primary-500/10 px-3 py-1.5 text-xs text-primary-700 dark:text-primary-300">
+              <Icon name="link" :size="14" />
+              <span class="flex-1">{{ t('gallery.contact_linked') }}</span>
+              <button class="font-medium hover:underline" @click="unlinkContact">{{ t('gallery.contact_unlink') }}</button>
+            </div>
+            <p class="mt-2 text-[11px] text-[var(--ll-muted)]">{{ t('gallery.contact_link_hint') }}</p>
             <div v-if="nameM.suggestions.length" class="mt-2 max-h-52 overflow-y-auto rounded-lg border border-[var(--ll-border)]">
               <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('gallery.from_contacts') }}</div>
               <button v-for="s in nameM.suggestions" :key="s.id" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="pickSuggestion(s)">
@@ -1104,24 +1111,37 @@ const nameM = reactive({
   personId: 0, face: null as Face | null, query: '', suggestions: [] as ContactSuggestion[],
 });
 let nameDebounce: ReturnType<typeof setTimeout> | null = null;
+// Is the modal targeting a person that is already linked to a contact?
+const nameLinked = computed(() => nameM.target === 'person' && !!personView.value?.contact_id);
+async function loadNameSuggestions(q: string) {
+  if (q.trim().length < 2) { nameM.suggestions = []; return; }
+  try { nameM.suggestions = await g.nameSuggest(q.trim()); } catch { nameM.suggestions = []; }
+}
 function openNamePerson() {
   const p = personView.value; if (!p) return;
   Object.assign(nameM, { open: true, target: 'person', personId: p.id, face: null, query: p.name ?? '', suggestions: [] });
+  // Seed contact suggestions on open so an already-named person can be linked
+  // to a contact right away (no need to retype the name first).
+  void loadNameSuggestions(p.name ?? '');
 }
 function openNameFace(f: Face) {
   Object.assign(nameM, { open: true, target: 'face', personId: 0, face: f, query: f.person_name ?? '', suggestions: [] });
+  void loadNameSuggestions(f.person_name ?? '');
 }
 function onNameInput() {
   if (nameDebounce) clearTimeout(nameDebounce);
   const q = nameM.query.trim();
   if (q.length < 2) { nameM.suggestions = []; return; }
-  nameDebounce = setTimeout(async () => { nameM.suggestions = await g.nameSuggest(q); }, 200);
+  nameDebounce = setTimeout(() => { void loadNameSuggestions(q); }, 200);
 }
 async function pickSuggestion(s: ContactSuggestion) {
   nameM.saving = true;
   try {
     if (nameM.target === 'person') {
-      personView.value = await g.updatePerson(nameM.personId, { contact_id: s.id });
+      // Preserve an existing custom name when linking retroactively; only adopt
+      // the contact's name when the person was still unnamed.
+      const keepName = personView.value?.name?.trim();
+      personView.value = await g.updatePerson(nameM.personId, keepName ? { contact_id: s.id, name: keepName } : { contact_id: s.id });
     } else if (nameM.face) {
       await g.assignFace(nameM.face.id, { contact_id: s.id });
       nameM.face.person_name = s.name;
@@ -1135,11 +1155,21 @@ async function saveName() {
   nameM.saving = true;
   try {
     if (nameM.target === 'person') {
-      personView.value = await g.updatePerson(nameM.personId, { name, contact_id: null });
+      // Rename only — leave any existing contact link untouched (omit contact_id).
+      personView.value = await g.updatePerson(nameM.personId, { name });
     } else if (nameM.face) {
       await g.assignFace(nameM.face.id, { name });
       nameM.face.person_name = name;
     }
+    nameM.open = false; success(t('common.saved'));
+    await refreshPeople();
+  } catch { error(t('common.error')); } finally { nameM.saving = false; }
+}
+async function unlinkContact() {
+  if (nameM.target !== 'person') return;
+  nameM.saving = true;
+  try {
+    personView.value = await g.updatePerson(nameM.personId, { contact_id: null });
     nameM.open = false; success(t('common.saved'));
     await refreshPeople();
   } catch { error(t('common.error')); } finally { nameM.saving = false; }
