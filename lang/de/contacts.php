@@ -132,6 +132,7 @@ return [
         'relationships' => 'Beziehungen',
         'rel_name' => 'Name',
         'age_years' => ':n Jahre',
+        'crop_title' => 'Foto zuschneiden',
         'map_open_osm' => 'In OpenStreetMap öffnen',
         'map_chooser_title' => 'Adresse in neuem Fenster öffnen mit',
         'related' => 'Verknüpfte Kontakte',

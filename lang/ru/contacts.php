@@ -132,6 +132,7 @@ return [
         'relationships' => 'Отношения',
         'rel_name' => 'Имя',
         'age_years' => ':n лет',
+        'crop_title' => 'Обрезать фото',
         'map_open_osm' => 'Открыть в OpenStreetMap',
         'map_chooser_title' => 'Открыть адрес в новом окне с помощью',
         'related' => 'Связанные контакты',

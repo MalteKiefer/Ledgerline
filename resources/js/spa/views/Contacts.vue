@@ -260,7 +260,7 @@
           <template v-else>{{ initials(selected) }}</template>
         </span>
         <div class="relative">
-          <Btn variant="soft" size="sm" :loading="avatarBusy" icon="photo_camera" @click="avatarMenu = !avatarMenu">{{ t('contacts.ui.avatar_change') }}</Btn>
+          <Btn variant="soft" size="sm" :loading="crop.busy" icon="photo_camera" @click="avatarMenu = !avatarMenu">{{ t('contacts.ui.avatar_change') }}</Btn>
           <div v-if="avatarMenu" class="fixed inset-0 z-40" @click="avatarMenu = false" />
           <div v-if="avatarMenu" class="absolute left-0 z-50 mt-1 w-48 rounded-xl border border-[var(--ll-border)] bg-[var(--ll-elevated)] py-1 shadow-xl">
             <button class="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="avatarMenu = false; pickAvatar()"><Icon name="upload" :size="18" class="text-[var(--ll-muted)]" />{{ t('contacts.ui.avatar_upload') }}</button>
@@ -400,7 +400,7 @@
     <div v-else-if="!avatarSrc.items.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ t('contacts.ui.avatar_no_images') }}</div>
     <div v-else class="grid max-h-[60vh] grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-5">
       <button
-        v-for="it in avatarSrc.items" :key="it.key" :disabled="avatarBusy"
+        v-for="it in avatarSrc.items" :key="it.key" :disabled="crop.busy"
         class="aspect-square overflow-hidden rounded-lg bg-black/[0.04] ring-2 ring-transparent transition hover:ring-primary-500 disabled:opacity-50 dark:bg-white/5"
         @click="useAvatarImage(it.full)"
       >
@@ -408,6 +408,9 @@
       </button>
     </div>
   </Modal>
+
+  <!-- Avatar crop (pan/zoom framing) — used for every source -->
+  <AvatarCropModal v-model:open="crop.open" :blob="crop.blob" :busy="crop.busy" @cropped="onCropped" />
 
   <!-- Import -->
   <Modal v-model="importDialog" :title="t('contacts.ui.import')" width="480px">
@@ -510,6 +513,7 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import AddressMiniMap from '@spa/components/AddressMiniMap.vue';
+import AvatarCropModal from '@spa/components/AvatarCropModal.vue';
 import { phoneCountry } from '@spa/lib/phone-country';
 import FlagIcon from '@spa/components/FlagIcon.vue';
 import { useContactsStore, type ContactRow, type ContactDetail, type ContactGroup, type DuplicateGroup, type DuplicateContact, type AddressBook } from '@spa/stores/contacts';
@@ -580,7 +584,6 @@ const dupBusy = ref<string | null>(null);
 
 // Avatar upload
 const avatarInput = ref<HTMLInputElement | null>(null);
-const avatarBusy = ref(false);
 const avatarMenu = ref(false);
 const files = useFilesStore();
 type AvatarPick = { key: string; thumb: string; full: string; name?: string };
@@ -976,49 +979,36 @@ async function avatarSearch() {
     avatarSrc.items = ql ? filesImagePicks.value.filter((p) => (p.name ?? '').toLowerCase().includes(ql)) : filesImagePicks.value;
   }
 }
+// All avatar sources (device upload, gallery, files) open the crop modal so the
+// user frames the square themselves, rather than an automatic centre-crop.
+const crop = reactive<{ open: boolean; blob: Blob | null; busy: boolean }>({ open: false, blob: null, busy: false });
+function openCrop(blob: Blob) {
+  crop.blob = blob;
+  crop.open = true;
+  avatarSrc.open = false; // close the source picker if it was open
+}
 async function useAvatarImage(url: string) {
-  if (!selected.value) return;
-  avatarBusy.value = true;
   try {
-    const blob = await (await fetch(url)).blob();
-    await c.uploadAvatar(selected.value.id, await cropSquare(blob));
+    openCrop(await (await fetch(url)).blob());
+  } catch { error(t('common.error')); }
+}
+async function onCropped(out: Blob) {
+  if (!selected.value) return;
+  crop.busy = true;
+  try {
+    await c.uploadAvatar(selected.value.id, out);
     avatarVersion.value = Date.now();
     selected.value.has_photo = true;
-    avatarSrc.open = false;
+    crop.open = false;
     await reload();
     detail.value = await c.show(selected.value.id);
     success(t('contacts.ui.saved'));
-  } catch { error(t('common.error')); } finally { avatarBusy.value = false; }
+  } catch { error(t('common.error')); } finally { crop.busy = false; }
 }
-// Center-crop the picked image to a square and downscale to 512px before upload
-// (the backend only aspect-scales, so this is what makes avatars square).
-async function cropSquare(file: Blob): Promise<Blob> {
-  try {
-    const bmp = await createImageBitmap(file);
-    const side = Math.min(bmp.width, bmp.height);
-    const size = Math.min(512, side);
-    const canvas = document.createElement('canvas');
-    canvas.width = size; canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return file;
-    ctx.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
-    return await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b ?? file), 'image/jpeg', 0.88));
-  } catch {
-    return file; // fall back to the raw file if the browser can't decode it
-  }
-}
-async function onAvatarPicked(ev: Event) {
+function onAvatarPicked(ev: Event) {
   const input = ev.target as HTMLInputElement;
   const file = input.files?.[0];
-  if (!file || !selected.value) return;
-  avatarBusy.value = true;
-  try {
-    await c.uploadAvatar(selected.value.id, await cropSquare(file));
-    avatarVersion.value = Date.now();
-    selected.value.has_photo = true;
-    await reload();
-    detail.value = await c.show(selected.value.id);
-    success(t('contacts.ui.saved'));
-  } catch { error(t('common.error')); } finally { avatarBusy.value = false; input.value = ''; }
+  if (file) openCrop(file);
+  input.value = '';
 }
 </script>
