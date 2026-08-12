@@ -393,4 +393,27 @@ class GalleryFeatureTest extends TestCase
         $this->assertArrayHasKey('camera', $photo);
         $this->assertArrayHasKey('lat', $photo);
     }
+
+    public function test_archived_photos_hide_from_timeline_and_show_in_archive(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $a = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('a.jpg', 120, 90)])->json('photo.id');
+        $b = (int) $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('b.jpg', 200, 150)])->json('photo.id');
+
+        $this->patch(route('gallery.archive', ['photo' => $a]), ['archived' => true])->assertOk();
+
+        // main timeline excludes the archived one
+        $ids = collect($this->get(route('gallery.data'))->json('photos'))->pluck('id')->all();
+        $this->assertSame([$b], $ids);
+
+        // archive view shows only it, flagged archived
+        $arch = $this->get(route('gallery.data', ['archived' => 1]))->json('photos');
+        $this->assertCount(1, $arch);
+        $this->assertSame($a, $arch[0]['id']);
+        $this->assertTrue($arch[0]['archived']);
+
+        // bulk unarchive returns it to the timeline
+        $this->post(route('gallery.bulk-archive'), ['ids' => [$a], 'archived' => false])->assertOk();
+        $this->assertCount(2, $this->get(route('gallery.data'))->json('photos'));
+    }
 }

@@ -14,7 +14,7 @@
     <Card body-class="p-0">
       <!-- Toolbar -->
       <div class="flex items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2.5">
-        <h2 class="text-sm font-semibold">{{ showTrash ? t('gallery.trash') : (showPeople ? t('gallery.people') : t('messages.nav.gallery')) }}</h2>
+        <h2 class="text-sm font-semibold">{{ showTrash ? t('gallery.trash') : (showArchive ? t('gallery.archive') : (showPeople ? t('gallery.people') : t('messages.nav.gallery'))) }}</h2>
         <span v-if="!showTrash && !showPeople && !showDupes && !showShared" class="whitespace-nowrap text-xs text-[var(--ll-muted)]">
           {{ mediaCounts.ph }} {{ t('gallery.count_photos') }}<template v-if="mediaCounts.vid"> · {{ mediaCounts.vid }} {{ t('gallery.count_videos') }}</template>
         </span>
@@ -44,7 +44,8 @@
           <Btn v-if="!showTrash" :variant="showDupes ? 'solid' : 'ghost'" size="sm" icon="content_copy" @click="showDupes ? closeDupes() : openDupes()">{{ t('gallery.duplicates') }}</Btn>
           <Btn v-if="!showTrash" :variant="showShared ? 'solid' : 'ghost'" size="sm" icon="folder_shared" @click="showShared ? closeShared() : openShared()">{{ t('gallery.shared_with_me') }}</Btn>
           <Btn v-if="!showTrash && !showShared" variant="ghost" size="sm" icon="share" @click="openLibraryShare">{{ t('gallery.share_gallery') }}</Btn>
-          <Btn variant="ghost" size="sm" :icon="showTrash ? 'photo_library' : 'delete'" @click="toggleTrash">{{ showTrash ? t('gallery.back') : t('gallery.trash') }}</Btn>
+          <Btn v-if="!showTrash" :variant="showArchive ? 'solid' : 'ghost'" size="sm" icon="inventory_2" @click="toggleArchive">{{ showArchive ? t('gallery.back') : t('gallery.archive') }}</Btn>
+          <Btn v-if="!showArchive" variant="ghost" size="sm" :icon="showTrash ? 'photo_library' : 'delete'" @click="toggleTrash">{{ showTrash ? t('gallery.back') : t('gallery.trash') }}</Btn>
         </div>
         <!-- Mobile: everything in a three-dot menu -->
         <div class="relative ml-auto sm:hidden">
@@ -60,7 +61,8 @@
             <button v-if="!showTrash" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="showShared ? closeShared() : openShared()"><Icon name="folder_shared" :size="18" />{{ t('gallery.shared_with_me') }}</button>
             <button v-if="!showTrash && !showShared" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="openLibraryShare"><Icon name="share" :size="18" />{{ t('gallery.share_gallery') }}</button>
             <button v-if="showTrash && trashPhotos.length" class="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="onEmpty"><Icon name="delete" :size="18" />{{ t('gallery.empty_trash') }}</button>
-            <button class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="toggleTrash"><Icon :name="showTrash ? 'photo_library' : 'delete'" :size="18" />{{ showTrash ? t('gallery.back') : t('gallery.trash') }}</button>
+            <button v-if="!showTrash" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="toggleArchive"><Icon name="inventory_2" :size="18" />{{ showArchive ? t('gallery.back') : t('gallery.archive') }}</button>
+            <button v-if="!showArchive" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="toggleTrash"><Icon :name="showTrash ? 'photo_library' : 'delete'" :size="18" />{{ showTrash ? t('gallery.back') : t('gallery.trash') }}</button>
           </div>
         </div>
         <input ref="fileInput" type="file" accept="image/*" multiple class="hidden" @change="onPick">
@@ -125,7 +127,8 @@
             </div>
           </div>
           <Btn v-if="albumId !== null" variant="ghost" size="sm" icon="playlist_remove" @click="removeSelectedFromAlbum">{{ t('gallery.remove_from_album') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="edit" @click="openBulkEdit">{{ t('gallery.edit') }}</Btn>
+          <Btn v-if="!showArchive" variant="ghost" size="sm" icon="edit" @click="openBulkEdit">{{ t('gallery.edit') }}</Btn>
+          <Btn variant="ghost" size="sm" :icon="showArchive ? 'unarchive' : 'inventory_2'" @click="archiveSelection(!showArchive)">{{ showArchive ? t('gallery.unarchive') : t('gallery.archive_action') }}</Btn>
           <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="bulkTrash">{{ t('common.delete') }}</Btn>
           <Btn variant="ghost" size="sm" icon="close" @click="clearSelection">{{ t('gallery.clear_selection') }}</Btn>
         </div>
@@ -320,6 +323,7 @@
               <a v-if="isEdited(viewerPhoto)" :href="g.downloadUrl(viewerPhoto?.id ?? 0, 'edited')" download class="block px-3 py-1.5 text-sm hover:bg-white/10" @click="dlMenu = false">{{ t('gallery.dl_edited') }}</a>
             </div>
           </div>
+          <button v-if="viewerPhoto" class="rounded-full p-2 hover:bg-white/10" :title="viewerPhoto.archived ? t('gallery.unarchive') : t('gallery.archive_action')" @click="archiveOne(viewerPhoto, !viewerPhoto.archived)"><Icon :name="viewerPhoto.archived ? 'unarchive' : 'inventory_2'" :size="22" /></button>
           <button class="rounded-full p-2 text-red-400 hover:bg-white/10" :title="t('common.delete')" @click="onDelete"><Icon name="delete" :size="22" /></button>
         </div>
 
@@ -627,6 +631,7 @@ const { success, error } = useToast();
 
 const fileInput = ref<HTMLInputElement | null>(null);
 const showTrash = ref(false);
+const showArchive = ref(false);
 const viewMode = ref<'grid' | 'map'>('grid');
 // Grid thumbnail size (columns) — fewer columns = larger thumbnails. Persisted.
 const gridCols = ref<number>(Math.min(12, Math.max(2, Number(localStorage.getItem('ll_gallery_cols')) || 6)));
@@ -823,7 +828,7 @@ onMounted(() => {
   // Thumbnails are generated by a worker after upload; while any are still
   // pending, poll so the grid swaps the spinner for the image once ready.
   thumbPoll = setInterval(() => {
-    if (!showTrash.value && !searchActive.value && !showDupes.value && !showPeople.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb || p.status === 'processing')) void g.mergeData(albumId.value ?? undefined);
+    if (!showTrash.value && !showArchive.value && !searchActive.value && !showDupes.value && !showPeople.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb || p.status === 'processing')) void g.mergeData(albumId.value ?? undefined);
   }, 4000);
 });
 onUnmounted(() => {
@@ -840,7 +845,7 @@ watch(() => [g.photos.length, scrubber.value.length, viewMode.value], () => {
   void nextTick(() => { measureYears(); syncScrubber(); });
 });
 watch(scrubActive, (a) => { if (a) { measureYears(); scrubLabel.value = currentMonthLabel(); } });
-function onFocus() { if (!document.hidden && !up.active && !showTrash.value && !searchActive.value && !showPeople.value) void g.load(albumId.value ?? undefined); }
+function onFocus() { if (!document.hidden && !up.active && !showTrash.value && !showArchive.value && !searchActive.value && !showPeople.value) void g.load(albumId.value ?? undefined); }
 
 function dayLabel(iso: string | null): string {
   if (!iso) return '';
@@ -1392,8 +1397,32 @@ async function toggleTrash() {
   if (showPeople.value) closePeople();
   showTrash.value = !showTrash.value;
   viewer.value = -1; clearSelection(); closeDupes();
-  if (showTrash.value) { try { trashPhotos.value = await g.trash(); } catch { error(t('common.error')); } }
+  if (showTrash.value) { showArchive.value = false; try { trashPhotos.value = await g.trash(); } catch { error(t('common.error')); } }
   else await refresh();
+}
+async function toggleArchive() {
+  if (showPeople.value) closePeople();
+  showArchive.value = !showArchive.value;
+  viewer.value = -1; clearSelection(); closeDupes(); if (showShared.value) closeShared();
+  if (showArchive.value) { showTrash.value = false; searchActive.value = false; try { await g.loadArchived(); } catch { error(t('common.error')); } }
+  else await refresh();
+}
+// Archive/unarchive selection (or single from lightbox).
+async function archiveSelection(archived: boolean) {
+  const ids = [...selected.value]; if (!ids.length) return;
+  try {
+    await g.bulkArchive(ids, archived);
+    clearSelection();
+    if (showArchive.value) await g.loadArchived(); else await refresh();
+    success(t('common.saved'));
+  } catch { error(t('common.error')); }
+}
+async function archiveOne(p: Row, archived: boolean) {
+  try {
+    await g.archive(p.id, archived);
+    viewer.value = -1;
+    if (showArchive.value) await g.loadArchived(); else await refresh();
+  } catch { error(t('common.error')); }
 }
 async function onRestore(id: number) { try { await g.restore(id); trashPhotos.value = await g.trash(); await refresh(); } catch { error(t('common.error')); } }
 async function onForce(id: number) {

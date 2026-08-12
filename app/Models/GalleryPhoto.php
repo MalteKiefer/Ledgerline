@@ -44,6 +44,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
+ * @property Carbon|null $archived_at
  */
 class GalleryPhoto extends Model
 {
@@ -61,6 +62,7 @@ class GalleryPhoto extends Model
         'rotation' => 'integer',
         'flip_h' => 'boolean',
         'taken_at' => 'datetime',
+        'archived_at' => 'datetime',
         'lat' => 'float',
         'lng' => 'float',
         'exif' => 'array',
