@@ -45,27 +45,43 @@
 
     <!-- Connected devices -->
     <Card :title="t('account.devices_list_heading')" body-class="p-0" class="mb-4">
-      <div v-for="d in p.devices" :key="d.id" class="flex items-center gap-3 border-t border-[var(--ll-border)] px-5 py-3 first:border-t-0">
-        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg" :class="d.current ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300' : 'bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10'">
-          <Icon name="smartphone" :size="18" />
-        </span>
-        <div class="min-w-0 flex-1">
-          <div class="truncate text-sm font-medium">{{ d.name }}</div>
-          <div class="truncate text-xs text-[var(--ll-muted)]">{{ deviceSub(d) }}</div>
-          <div v-if="d.pushHost" class="mt-0.5 flex items-center gap-1 text-xs text-[var(--ll-muted)]">
-            <Icon name="notifications" :size="14" />
-            <span class="truncate">{{ t('account.devices_push_via', { host: d.pushHost }) }}</span>
-            <button class="text-red-600 hover:underline" @click="onRemovePush(d.id)">{{ t('account.devices_push_remove') }}</button>
+      <div v-for="d in p.devices" :key="d.id" class="border-t border-[var(--ll-border)] px-5 py-3 first:border-t-0">
+        <div class="flex items-center gap-3">
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg" :class="d.current ? 'bg-primary-500/15 text-primary-600 dark:text-primary-300' : 'bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10'">
+            <Icon name="smartphone" :size="18" />
+          </span>
+          <div class="min-w-0 flex-1">
+            <div class="truncate text-sm font-medium">{{ d.name }}</div>
+            <div class="truncate text-xs text-[var(--ll-muted)]">{{ deviceSub(d) }}</div>
+            <div v-if="d.pushHost" class="mt-0.5 flex items-center gap-1 text-xs text-[var(--ll-muted)]">
+              <Icon name="notifications" :size="14" />
+              <span class="truncate">{{ t('account.devices_push_via', { host: d.pushHost }) }}</span>
+              <button class="text-red-600 hover:underline" @click="onRemovePush(d.id)">{{ t('account.devices_push_remove') }}</button>
+            </div>
           </div>
+          <Badge v-if="d.current" tone="primary">{{ t('account.sessions_current') }}</Badge>
+          <Badge v-if="d.wipeRequested" tone="warning">{{ t('account.devices_wipe_pending') }}</Badge>
+          <button class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('account.devices_details')" @click="detail === d.id ? detail = null : detail = d.id">
+            <Icon :name="detail === d.id ? 'expand_less' : 'info'" :size="18" />
+          </button>
+          <button class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('account.devices_wipe_pending')" @click="p.wipeDevice(d.id)">
+            <Icon name="close" :size="18" />
+          </button>
+          <button class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-red-600 hover:bg-red-500/10" :title="t('common.delete')" @click="p.revokeDevice(d.id)">
+            <Icon name="delete" :size="18" />
+          </button>
         </div>
-        <Badge v-if="d.current" tone="primary">{{ t('account.sessions_current') }}</Badge>
-        <Badge v-if="d.wipeRequested" tone="warning">{{ t('account.devices_wipe_pending') }}</Badge>
-        <button class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('account.devices_wipe_pending')" @click="p.wipeDevice(d.id)">
-          <Icon name="close" :size="18" />
-        </button>
-        <button class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-red-600 hover:bg-red-500/10" :title="t('common.delete')" @click="p.revokeDevice(d.id)">
-          <Icon name="delete" :size="18" />
-        </button>
+        <!-- Expandable detail: structured, non-secret fields (same as the API) -->
+        <dl v-if="detail === d.id" class="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 pl-12 text-xs">
+          <template v-if="d.ip"><dt class="text-[var(--ll-muted)]">{{ t('account.devices_ip') }}</dt><dd class="tabular-nums">{{ d.ip }}</dd></template>
+          <template v-if="d.last_used_at"><dt class="text-[var(--ll-muted)]">{{ t('account.devices_last_seen') }}</dt><dd>{{ fmt(d.last_used_at) }}</dd></template>
+          <template v-if="d.created_at"><dt class="text-[var(--ll-muted)]">{{ t('account.devices_connected') }}</dt><dd>{{ fmt(d.created_at) }}</dd></template>
+          <template v-if="d.expires_at"><dt class="text-[var(--ll-muted)]">{{ t('account.devices_expires') }}</dt><dd>{{ fmt(d.expires_at) }}</dd></template>
+          <template v-if="d.os_version"><dt class="text-[var(--ll-muted)]">{{ t('account.devices_os') }}</dt><dd>{{ d.os_version }}</dd></template>
+          <template v-if="d.app_version"><dt class="text-[var(--ll-muted)]">{{ t('account.devices_app') }}</dt><dd>{{ d.app_version }}</dd></template>
+          <template v-if="d.installId"><dt class="text-[var(--ll-muted)]">{{ t('account.devices_install') }}</dt><dd class="font-mono">…{{ d.installId }}</dd></template>
+          <template v-if="d.abilities && d.abilities.length"><dt class="text-[var(--ll-muted)]">{{ t('account.devices_abilities') }}</dt><dd>{{ d.abilities.join(', ') }}</dd></template>
+        </dl>
       </div>
       <div v-if="!p.devices.length" class="border-t border-[var(--ll-border)] px-5 py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</div>
     </Card>
@@ -124,6 +140,14 @@ import { ApiError } from '@spa/api/client';
 
 const p = useProfileStore();
 const { success, error } = useToast();
+
+// Which device row has its detail panel expanded.
+const detail = ref<number | null>(null);
+function fmt(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
 
 // --- Device pairing --------------------------------------------------------
 const pairing = reactive<{ active: boolean; id: number; qr: string; code: string; mode: 'qr' | 'cli'; status: string; deviceName: string | null; busy: boolean }>(

@@ -19,6 +19,13 @@ export interface DeviceToken {
   meta: string;
   version: string | null;
   installId: string | null;
+  ip?: string | null;
+  last_used_at?: string | null;
+  created_at?: string | null;
+  expires_at?: string | null;
+  os_version?: string | null;
+  app_version?: string | null;
+  abilities?: string[];
   syncing?: boolean;
   syncDetail?: string | null;
   syncSeen?: string | null;

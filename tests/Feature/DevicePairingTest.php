@@ -140,6 +140,26 @@ class DevicePairingTest extends TestCase
         $this->assertNotContains('browser-B', $names, 'the LRU device must be evicted (dead in DB → 401 on next request)');
     }
 
+    public function test_devices_endpoint_exposes_structured_detail_fields(): void
+    {
+        $user = User::factory()->create();
+        $token = app(Pairing::class)->issueDeviceToken($user, 'Pixel 8', '203.0.113.9', [
+            'install_id' => 'abcdef123456', 'app_version' => '1.5.0', 'os_version' => 'Android 15',
+        ]);
+
+        $res = $this->getJson('/api/v1/devices', ['Authorization' => 'Bearer '.$token->plainTextToken]);
+        $res->assertOk()->assertJsonStructure(['devices' => [[
+            'id', 'current', 'name', 'ip', 'last_used_at', 'created_at', 'expires_at',
+            'os_version', 'app_version', 'abilities', 'installId',
+        ]]]);
+        $d = collect($res->json('devices'))->firstWhere('name', 'Pixel 8');
+        $this->assertNotNull($d['ip']); // request-time IP (refreshed each call)
+        $this->assertSame('Android 15', $d['os_version']);
+        $this->assertSame('1.5.0', $d['app_version']);
+        $this->assertSame(['device'], $d['abilities']);
+        $this->assertSame('123456', $d['installId']); // last 6 only
+    }
+
     public function test_collect_is_pending_until_approved(): void
     {
         $user = User::factory()->create();
