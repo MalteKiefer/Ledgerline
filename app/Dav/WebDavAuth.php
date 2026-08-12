@@ -40,6 +40,12 @@ class WebDavAuth extends AbstractBasic
         if (! $ok || $hash === null || ! $user instanceof User) {
             return false;
         }
+        // A blocked account must not reach any owner-scoped data over /dav. The
+        // request-scoped BlockGuard never sees a WebDAV user (HTTP Basic, no
+        // bearer/session), so enforce the block here at the auth boundary.
+        if ($user->isBlocked()) {
+            return false;
+        }
         Auth::login($user); // request-scoped; drives the OwnsUserData scope
 
         return true;

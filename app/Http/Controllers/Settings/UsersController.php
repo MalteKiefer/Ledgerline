@@ -113,6 +113,11 @@ class UsersController extends Controller
     /** Clear a user's two-factor authentication (admin recovery when they lose their device). */
     public function resetTwoFactor(Request $request, User $user): RedirectResponse
     {
+        // Admin recovery for OTHER users only — self-reset must go through the
+        // step-up-protected self-service flow (mirrors the API twin).
+        if ($user->id === $this->requireUser($request)->id) {
+            return back()->withErrors(['reset' => __('settings.users_no_self_2fa_reset')]);
+        }
         $user->forceFill([
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,

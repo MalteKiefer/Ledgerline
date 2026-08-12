@@ -9,6 +9,7 @@ use App\Models\MailAttachment;
 use App\Services\Paperless\PaperlessClient;
 use App\Support\BlobStore;
 use App\Support\FilesUsage;
+use App\Support\Redactor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -125,7 +126,7 @@ class MailAttachmentController extends Controller
         try {
             $task = $client->postDocument($bytes, $this->safeName($attachment->filename), []);
         } catch (\Throwable $e) {
-            Log::warning('mail.attachment.paperless_failed', ['error' => $e->getMessage()]);
+            Log::warning('mail.attachment.paperless_failed', ['error' => Redactor::redact($e->getMessage())]);
 
             return response()->json(['ok' => false, 'detail' => 'request_failed'], 422);
         }

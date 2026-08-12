@@ -61,6 +61,7 @@ return [
     'users_deleted' => 'User deleted.',
     'users_reset_sent' => 'A password reset link was sent.',
     'users_last_admin' => 'You cannot remove the last admin.',
+    'users_no_self_2fa_reset' => 'You cannot reset your own two-factor here — use the security page in your profile.',
     'users_no_self_delete' => 'You cannot delete your own account here.',
     'users_mail_off' => 'Email is not configured. Set new users\' passwords with: php artisan user:set-password <email>',
     'users_create' => 'Create user',

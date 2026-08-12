@@ -169,6 +169,13 @@ class UsersController extends Controller
      */
     public function resetTwoFactor(Request $request, User $user): JsonResponse
     {
+        // This is an admin-RECOVERY path for OTHER users. An admin must not strip
+        // their OWN second factor here — that would bypass the current_password
+        // step-up enforced on the self-service DELETE /api/v1/user/two-factor, so a
+        // stolen (non-native) admin bearer could disable 2FA without the password.
+        if ($user->id === $this->requireUser($request)->id) {
+            return response()->json(['errors' => ['reset' => [__('settings.users_no_self_2fa_reset')]]], 422);
+        }
         $user->forceFill([
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,

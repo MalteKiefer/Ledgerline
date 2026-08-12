@@ -13,6 +13,7 @@ use App\Models\GalleryFace;
 use App\Models\GalleryPerson;
 use App\Models\GalleryPhoto;
 use App\Providers\AppServiceProvider;
+use App\Rules\SafeUrl;
 use App\Support\Vector;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -70,7 +71,7 @@ class GalleryAdminController extends Controller
         $request->validate([
             'ml_enabled' => ['sometimes', 'nullable', 'boolean'],
             'ml_face_enabled' => ['sometimes', 'nullable', 'boolean'],
-            'ml_url' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'ml_url' => ['sometimes', 'nullable', 'string', 'max:255', new SafeUrl],
             'ml_clip_model' => ['sometimes', 'nullable', 'string', 'max:120'],
             'ml_face_model' => ['sometimes', 'nullable', 'string', 'max:120'],
             'ml_search_distance' => ['sometimes', 'nullable', 'numeric', 'between:0,2'],

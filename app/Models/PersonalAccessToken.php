@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Laravel\Sanctum\PersonalAccessToken as SanctumPersonalAccessToken;
 
 /**
@@ -14,6 +15,7 @@ use Laravel\Sanctum\PersonalAccessToken as SanctumPersonalAccessToken;
  *
  * @property ?string $push_endpoint
  */
+#[Hidden(['push_endpoint'])]
 class PersonalAccessToken extends SanctumPersonalAccessToken
 {
     /**

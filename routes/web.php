@@ -146,7 +146,7 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/profile/avatar', [AvatarController::class, 'destroy'])->middleware('throttle:30,1')->name('profile.avatar.destroy');
     // Self-service account: GDPR export, session revocation, account erasure.
     Route::get('/account/export', [AccountController::class, 'export'])->middleware('throttle:6,1')->name('account.export');
-    Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->name('account.sessions.revoke');
+    Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->middleware('throttle:20,1')->name('account.sessions.revoke');
     Route::delete('/account', [AccountController::class, 'destroy'])->name('account.destroy');
 
     // QR device pairing: the signed-in owner authorises a new mobile device by
@@ -177,7 +177,9 @@ Route::middleware('auth')->group(function (): void {
 
     // Non-personal, workspace-wide settings — restricted to users with the admin
     // role (see User::managesGlobalSettings / the manage-global-settings gate).
-    Route::middleware('can:manage-global-settings')->group(function (): void {
+    // Rate-limit the privileged web settings mutations (matches the /api/v1
+    // admin twins) — internet-facing, so every admin write is capped.
+    Route::middleware(['can:manage-global-settings', 'throttle:60,1'])->group(function (): void {
         // Admin settings page renders are served by the SPA (see the catch-all);
         // the security-log CSV/JSON export lives on /api/v1/security-log/export.
         Route::post('/settings/system/errors/{error}/resolve', [SystemController::class, 'resolveError'])->name('settings.system.errors.resolve');

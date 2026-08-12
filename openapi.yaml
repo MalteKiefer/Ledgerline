@@ -45,6 +45,15 @@ info:
     the self-registration toggle — are managed in the web UI only. (Backup, users,
     groups, security-log and the company profile ARE mirrored on the API.)
 
+    **Forced 2FA (workspace policy):** when an admin enables `force_2fa`, EVERY
+    authenticated `/api/v1` request from an account without a confirmed second
+    factor returns **403** `{status:"two_factor_required"}` (see the
+    `TwoFactorRequired` response), except the enrollment/escape endpoints
+    (`/me`, `/auth/logout`, `/preferences`, `/locale`, `/theme`,
+    `/user/two-factor*`). Clients should route the user to 2FA enrollment on
+    that status. This is a workspace-wide gate applied by middleware, not a
+    per-operation flag.
+
     **Response security headers (v1.562.0):** responses carry a tightened header
     set for the internet-facing deployment — `Content-Security-Policy` with
     `frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN` (framing default
@@ -243,6 +252,22 @@ components:
         Forbidden — the Sanctum token lacks the required `device` ability, the
         Finance module is disabled for this account (module:finance gate), or (on
         admin routes) the caller is not an admin (manage-global-settings).
+    TwoFactorRequired:
+      description: >
+        Two-factor enrollment required. When the workspace has `force_2fa`
+        enabled (admin security policy), EVERY authenticated `/api/v1` request
+        from an account without a confirmed second factor returns this, EXCEPT
+        the enrollment/escape endpoints (`/me`, `/auth/logout`, `/preferences`,
+        `/locale`, `/theme`, `/user/two-factor*`). Enroll a second factor to
+        clear it. Body `status` is `two_factor_required` (distinct from the
+        generic Forbidden). Enforced by the EnsureTwoFactorEnrolled middleware.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status: { type: string, enum: [two_factor_required] }
+              message: { type: string }
     NotFound:
       description: Not found, or not owned by the caller (owner-scoped; existence is not leaked).
     ValidationError:

@@ -65,6 +65,18 @@ class WebDavTest extends TestCase
         $this->assertFalse($bad);
     }
 
+    public function test_a_blocked_user_cannot_authenticate_over_webdav(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user)->put(route('profile.webdav.update'), ['webdav_password' => 'a-strong-dav-pass']);
+        Auth::logout();
+        $user->forceFill(['blocked_at' => now()])->save();
+
+        $backend = new WebDavAuth;
+        $ok = (new \ReflectionMethod($backend, 'validateUserPass'))->invoke($backend, $user->email, 'a-strong-dav-pass');
+        $this->assertFalse($ok, 'a blocked account must be refused even with a valid WebDAV password');
+    }
+
     public function test_get_response_is_sandboxed_and_risky_types_forced_to_download(): void
     {
         // A stored HTML file (client-influenced Content-Type) must NOT be served

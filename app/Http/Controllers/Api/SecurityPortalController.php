@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -84,7 +85,14 @@ class SecurityPortalController extends Controller
             ->when($request->filled('method'), fn ($q) => $q->where('method', strtoupper($request->string('method')->value())))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->integer('status')))
             ->when($request->filled('path'), fn ($q) => $q->where('path', 'like', '%'.$request->string('path')->value().'%'))
-            ->when($request->filled('since'), fn ($q) => $q->where('created_at', '>=', $request->string('since')->value()))
+            ->when($request->filled('since'), function ($q) use ($request) {
+                // Parse defensively — a bad `since` must not 500 the query.
+                try {
+                    $q->where('created_at', '>=', Carbon::parse($request->string('since')->value()));
+                } catch (\Throwable) {
+                    // ignore an unparseable filter (return all rows)
+                }
+            })
             ->orderByDesc('id');
     }
 
@@ -161,8 +169,13 @@ class SecurityPortalController extends Controller
         // Never let an admin block themselves out of the portal.
         abort_if($user->id === $this->requireUser($request)->id, 422, 'You cannot block yourself.');
         $at = now();
-        $user->forceFill(['blocked_at' => $at])->save();
-        // Revoke all device tokens + persisted web sessions so the block is immediate.
+        // Also revoke the WebDAV/CardDAV/CalDAV credential — /dav authenticates via
+        // HTTP Basic outside the guard stack, so blocked_at alone would not stop it
+        // (WebDavAuth now checks isBlocked() too; this is defence-in-depth).
+        $user->forceFill(['blocked_at' => $at, 'webdav_password' => null])->save();
+        // Revoke all device tokens. Web sessions are enforced driver-agnostically
+        // by the appended BlockGuard on every web request (the DB sessions delete
+        // below only helps the database session driver, not Redis).
         $user->tokens()->delete();
         DB::table('sessions')->where('user_id', $user->id)->delete();
         AuditLog::record('security.user_blocked', $user, []);
