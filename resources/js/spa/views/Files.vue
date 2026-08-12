@@ -66,6 +66,24 @@
           {{ t(nav.label) }}
         </button>
       </nav>
+      <!-- External storage mounts -->
+      <div class="border-t border-[var(--ll-border)] px-2 py-2">
+        <div class="flex items-center justify-between px-1.5 pb-1">
+          <span class="text-[10px] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('files.mounts') }}</span>
+          <button class="rounded p-0.5 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('files.mount_add')" @click="openMountForm()"><Icon name="add" :size="16" /></button>
+        </div>
+        <button
+          v-for="m in mnt.mounts" :key="m.id"
+          class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm hover:bg-black/[0.04] dark:hover:bg-white/5"
+          :class="view==='mount' && activeMount?.id===m.id ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
+          @click="openMount(m)"
+        >
+          <Icon :name="m.type==='s3' ? 'cloud' : 'dns'" :size="18" class="text-[var(--ll-muted)]" />
+          <span class="min-w-0 flex-1 truncate text-left">{{ m.name }}</span>
+          <Icon v-if="m.read_only" name="lock" :size="13" class="text-[var(--ll-muted)]" />
+        </button>
+        <p v-if="!mnt.mounts.length" class="px-2 py-1 text-xs text-[var(--ll-muted)]">{{ t('files.mount_none') }}</p>
+      </div>
       <div v-if="s.usage" class="border-t border-[var(--ll-border)] p-3">
         <div v-if="s.usage.quota" class="mb-1.5 h-1.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/10">
           <div class="h-full rounded-full bg-primary-500" :style="{ width: quotaPct + '%' }" />
@@ -88,21 +106,35 @@
             >{{ c.title }}</button>
           </template>
         </nav>
+        <nav v-else-if="view==='mount'" class="flex flex-wrap items-center gap-1 text-sm">
+          <Icon :name="activeMount?.type==='s3' ? 'cloud' : 'dns'" :size="16" class="text-[var(--ll-muted)]" />
+          <button class="rounded px-1 py-0.5 text-primary-600 hover:bg-black/[0.04] dark:text-primary-300 dark:hover:bg-white/5" @click="mountGo('')">{{ activeMount?.name }}</button>
+          <template v-for="(c, i) in mountCrumbs" :key="i">
+            <Icon name="chevron_right" :size="16" class="text-[var(--ll-muted)]" />
+            <button class="rounded px-1 py-0.5 hover:bg-black/[0.04] dark:hover:bg-white/5" :class="i===mountCrumbs.length-1 ? 'font-medium' : 'text-primary-600 dark:text-primary-300'" @click="mountGo(c.path)">{{ c.name }}</button>
+          </template>
+        </nav>
         <h2 v-else class="text-sm font-semibold">{{ view === 'favorites' ? t('files.favorites') : view === 'shared' ? t('files.shared_by_me') : t('files.trash') }}</h2>
 
         <div class="ml-auto flex items-center gap-1">
           <Btn v-if="view==='files'" variant="ghost" size="sm" icon="create_new_folder" @click="newFolder">{{ t('files.new_folder') }}</Btn>
           <Btn v-if="view==='files' && cwd!==null" variant="ghost" size="sm" icon="folder_zip" @click="zipFolder">{{ t('files.download_zip') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="storage" @click="openStorage">{{ t('files.storage') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="history" @click="openActivity">{{ t('files.activity') }}</Btn>
+          <template v-if="view==='mount'">
+            <Btn v-if="!mountRO" variant="soft" size="sm" icon="upload" :loading="mountBusy" @click="pickMountUpload">{{ t('files.upload') }}</Btn>
+            <Btn v-if="!mountRO" variant="ghost" size="sm" icon="create_new_folder" @click="mountMkdir">{{ t('files.new_folder') }}</Btn>
+            <Btn variant="ghost" size="sm" icon="settings" @click="openMountForm(activeMount)">{{ t('common.edit') }}</Btn>
+            <input ref="mountUploadInput" type="file" multiple class="hidden" @change="onMountUpload">
+          </template>
+          <Btn v-if="view!=='mount'" variant="ghost" size="sm" icon="storage" @click="openStorage">{{ t('files.storage') }}</Btn>
+          <Btn v-if="view!=='mount'" variant="ghost" size="sm" icon="history" @click="openActivity">{{ t('files.activity') }}</Btn>
           <Btn v-if="view==='trash' && trashFiles.length" variant="ghost" size="sm" icon="delete" class="text-red-600" @click="emptyTrash">{{ t('files.empty_trash') }}</Btn>
-          <Btn variant="ghost" size="sm" :icon="layout==='grid' ? 'view_list' : 'grid_view'" @click="layout = layout==='grid' ? 'list' : 'grid'" />
+          <Btn v-if="view!=='mount'" variant="ghost" size="sm" :icon="layout==='grid' ? 'view_list' : 'grid_view'" @click="layout = layout==='grid' ? 'list' : 'grid'" />
         </div>
       </div>
       <div class="border-t border-[var(--ll-border)]" />
 
       <!-- Search -->
-      <div v-if="view!=='shared'" class="flex items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2.5">
+      <div v-if="view!=='shared' && view!=='mount'" class="flex items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2.5">
         <div class="w-full max-w-xs">
           <TextField v-model="query" :placeholder="searching ? t('files.searching') : t('files.search')" icon="search" />
         </div>
@@ -110,7 +142,7 @@
       </div>
 
       <!-- Label filter bar -->
-      <div v-if="view!=='trash' && view!=='shared' && s.labels.length" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2.5">
+      <div v-if="view!=='trash' && view!=='shared' && view!=='mount' && s.labels.length" class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2.5">
         <span class="mr-1 text-xs text-[var(--ll-muted)]">{{ t('files.filtered_by') }}</span>
         <button
           v-for="l in (s.labels as FileLabel[])" :key="l.id" type="button"
@@ -126,7 +158,7 @@
       </div>
 
       <!-- Selection bar -->
-      <div v-if="selected.length" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2.5">
+      <div v-if="selected.length && view!=='mount'" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2.5">
         <span class="text-xs font-medium">{{ selected.length }} {{ t('files.selected_word') }}</span>
         <div class="ml-auto flex items-center gap-1">
           <Btn variant="ghost" size="sm" icon="folder_zip" @click="zipSelected">{{ t('files.download_zip') }}</Btn>
@@ -193,6 +225,31 @@
             <Btn variant="ghost" size="sm" icon="link_off" class="text-red-600" :title="t('files.share_revoke')" @click="revokeUploadLink(l)">{{ t('files.share_revoke') }}</Btn>
           </div>
         </div>
+      </div>
+
+      <!-- External mount browser -->
+      <div v-else-if="view==='mount'" class="flex-1 overflow-y-auto p-2">
+        <div v-if="mountLoading" class="py-16 text-center"><Icon name="progress_activity" :size="28" class="animate-spin text-[var(--ll-muted)]" /></div>
+        <div v-else-if="!mountListing.dirs.length && !mountListing.files.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ t('files.mount_empty') }}</div>
+        <table v-else class="w-full text-sm">
+          <tbody>
+            <tr v-for="d in mountListing.dirs" :key="'d:'+d.path" class="border-b border-[var(--ll-border)]/60 hover:bg-black/[0.03] dark:hover:bg-white/5">
+              <td class="cursor-pointer py-2 pl-2" @click="mountGo(d.path)"><Icon name="folder" :size="18" class="mr-2 inline text-primary-500" />{{ d.name }}</td>
+              <td class="w-24 text-right text-xs text-[var(--ll-muted)]" />
+              <td class="w-10 pr-2 text-right">
+                <button v-if="!mountRO" class="rounded p-1 text-[var(--ll-muted)] hover:text-red-600" :title="t('common.delete')" @click="mountDelete(d, true)"><Icon name="delete" :size="16" /></button>
+              </td>
+            </tr>
+            <tr v-for="f in mountListing.files" :key="'f:'+f.path" class="border-b border-[var(--ll-border)]/60 hover:bg-black/[0.03] dark:hover:bg-white/5">
+              <td class="py-2 pl-2"><Icon name="description" :size="18" class="mr-2 inline text-[var(--ll-muted)]" />{{ f.name }}</td>
+              <td class="w-24 text-right text-xs text-[var(--ll-muted)]">{{ f.size != null ? fmt(f.size) : '' }}</td>
+              <td class="w-16 whitespace-nowrap pr-2 text-right">
+                <a :href="mnt.downloadUrl(activeMount!.id, f.path)" class="rounded p-1 text-[var(--ll-muted)] hover:text-primary-600" :title="t('common.download')"><Icon name="download" :size="16" /></a>
+                <button v-if="!mountRO" class="rounded p-1 text-[var(--ll-muted)] hover:text-red-600" :title="t('common.delete')" @click="mountDelete(f, false)"><Icon name="delete" :size="16" /></button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <div v-else class="flex-1 overflow-y-auto p-2">
@@ -485,6 +542,39 @@
     </template>
   </Modal>
 
+  <!-- Mount add/edit dialog -->
+  <Modal v-model="mountForm.show" :title="mountForm.id ? t('files.mount_edit') : t('files.mount_add')" width="520px">
+    <div class="space-y-3">
+      <div class="flex gap-2">
+        <button v-for="tp in (['s3','sftp'] as const)" :key="tp" class="flex-1 rounded-lg border px-3 py-2 text-sm" :class="mountForm.type===tp ? 'border-primary-500 bg-primary-500/10 text-primary-600' : 'border-[var(--ll-border)]'" :disabled="!!mountForm.id" @click="mountForm.type=tp">{{ tp==='s3' ? 'S3' : 'SFTP' }}</button>
+      </div>
+      <TextField v-model="mountForm.name" :label="t('files.mount_name')" />
+      <template v-if="mountForm.type==='s3'">
+        <TextField v-model="mountForm.bucket" label="Bucket" />
+        <TextField v-model="mountForm.region" label="Region" />
+        <TextField v-model="mountForm.endpoint" :label="t('files.mount_endpoint')" placeholder="https://…" />
+        <TextField v-model="mountForm.key" label="Access Key" />
+        <TextField v-model="mountForm.secret" type="password" label="Secret Key" :placeholder="mountForm.id ? '••••••' : ''" />
+        <TextField v-model="mountForm.path_prefix" :label="t('files.mount_prefix')" />
+        <label class="flex items-center gap-2 text-sm"><input v-model="mountForm.use_path_style" type="checkbox" class="accent-primary-500">{{ t('files.mount_path_style') }}</label>
+      </template>
+      <template v-else>
+        <div class="flex gap-2"><TextField v-model="mountForm.host" class="flex-1" :label="t('files.mount_host')" /><TextField v-model="mountForm.port" label="Port" class="w-24" /></div>
+        <TextField v-model="mountForm.username" :label="t('files.mount_user')" />
+        <TextField v-model="mountForm.password" type="password" :label="t('files.mount_password')" :placeholder="mountForm.id ? '••••••' : ''" />
+        <TextField v-model="mountForm.root" :label="t('files.mount_root')" />
+      </template>
+      <label class="flex items-center gap-2 text-sm"><input v-model="mountForm.read_only" type="checkbox" class="accent-primary-500">{{ t('files.mount_readonly') }}</label>
+      <p v-if="mountForm.err" class="text-sm text-red-600">{{ mountForm.err }}</p>
+    </div>
+    <template #footer>
+      <Btn v-if="mountForm.id" variant="ghost" class="!text-red-600" @click="deleteMount">{{ t('common.delete') }}</Btn>
+      <div class="flex-1" />
+      <Btn variant="ghost" :loading="mountForm.testing" @click="testMount">{{ t('files.mount_test') }}</Btn>
+      <Btn variant="solid" :loading="mountForm.busy" @click="saveMount">{{ t('common.save') }}</Btn>
+    </template>
+  </Modal>
+
   <!-- Storage stats dialog -->
   <Modal v-model="storageDlg.show" :title="t('files.storage')" width="520px">
     <div v-if="storageDlg.loading" class="py-6 text-center"><Icon name="progress_activity" :size="28" class="animate-spin text-[var(--ll-muted)]" /></div>
@@ -716,6 +806,7 @@ import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenu
 import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
 import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity } from '@spa/stores/files';
 import { ApiError } from '@spa/api/client';
+import { useMountsStore, type Mount, type MountEntry } from '@spa/stores/mounts';
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
@@ -724,7 +815,7 @@ interface Row { _k: string; _folder: boolean; _icon: string; _tint: string; _img
 
 const s = useFilesStore();
 const { success, error } = useToast();
-const view = ref<'files' | 'favorites' | 'shared' | 'trash'>('files');
+const view = ref<'files' | 'favorites' | 'shared' | 'trash' | 'mount'>('files');
 const layout = ref<'grid' | 'list'>('list');
 const cwd = ref<number | null>(null);
 const query = ref('');
@@ -794,10 +885,93 @@ function onFocus() { if (!document.hidden) void refreshView(); }
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 onMounted(() => {
   void s.load();
+  void mnt.load();
   window.addEventListener('focus', onFocus);
   document.addEventListener('visibilitychange', onFocus);
   pollTimer = setInterval(() => { if (!document.hidden && !uploadState.value.active && !conflict.value.show) void refreshView(); }, 20_000);
 });
+
+// ---- External mounts ----
+const mnt = useMountsStore();
+const activeMount = ref<Mount | null>(null);
+const mountPath = ref('');
+const mountListing = ref<{ dirs: MountEntry[]; files: MountEntry[] }>({ dirs: [], files: [] });
+const mountLoading = ref(false);
+const mountRO = ref(false);
+const mountBusy = ref(false);
+const mountUploadInput = ref<HTMLInputElement | null>(null);
+const mountCrumbs = computed(() => {
+  const out: { name: string; path: string }[] = [];
+  let acc = '';
+  for (const seg of mountPath.value.split('/').filter(Boolean)) { acc = acc ? `${acc}/${seg}` : seg; out.push({ name: seg, path: acc }); }
+  return out;
+});
+async function openMount(m: Mount) { activeMount.value = m; view.value = 'mount'; await mountGo(''); }
+async function mountGo(path: string) {
+  if (!activeMount.value) return;
+  mountPath.value = path; mountLoading.value = true;
+  try { const r = await mnt.list(activeMount.value.id, path); mountListing.value = { dirs: r.dirs, files: r.files }; mountRO.value = r.read_only; }
+  catch { error(t('common.error')); mountListing.value = { dirs: [], files: [] }; }
+  finally { mountLoading.value = false; }
+}
+function pickMountUpload() { mountUploadInput.value?.click(); }
+async function onMountUpload(e: Event) {
+  const input = e.target as HTMLInputElement; const files = Array.from(input.files ?? []); input.value = '';
+  if (!activeMount.value || !files.length) return;
+  mountBusy.value = true;
+  try { for (const f of files) await mnt.upload(activeMount.value.id, f, mountPath.value); await mountGo(mountPath.value); }
+  catch { error(t('common.error')); } finally { mountBusy.value = false; }
+}
+async function mountMkdir() {
+  if (!activeMount.value) return;
+  const name = await promptAsk(t('files.new_folder')); if (!name) return;
+  try { await mnt.mkdir(activeMount.value.id, mountPath.value, name); await mountGo(mountPath.value); } catch { error(t('common.error')); }
+}
+async function mountDelete(entry: MountEntry, dir: boolean) {
+  if (!activeMount.value) return;
+  if (!await confirmAsk(t('files.mount_delete_confirm', { name: entry.name }), { danger: true })) return;
+  try { await mnt.deletePath(activeMount.value.id, entry.path, dir); await mountGo(mountPath.value); } catch { error(t('common.error')); }
+}
+
+interface MountForm {
+  show: boolean; id: number | null; type: 's3' | 'sftp'; name: string;
+  region: string; bucket: string; endpoint: string; key: string; secret: string; path_prefix: string; use_path_style: boolean;
+  host: string; port: number; username: string; password: string; root: string;
+  read_only: boolean; busy: boolean; testing: boolean; err: string;
+}
+const emptyMountForm = (): MountForm => ({ show: false, id: null, type: 's3', name: '', region: 'us-east-1', bucket: '', endpoint: '', key: '', secret: '', path_prefix: '', use_path_style: true, host: '', port: 22, username: '', password: '', root: '', read_only: false, busy: false, testing: false, err: '' });
+const mountForm = ref<MountForm>(emptyMountForm());
+function openMountForm(m?: Mount | null) {
+  mountForm.value = { ...emptyMountForm(), show: true, id: m?.id ?? null, type: m?.type ?? 's3', name: m?.name ?? '', read_only: m?.read_only ?? false };
+}
+function mountPayload(): Record<string, unknown> {
+  const f = mountForm.value;
+  return { name: f.name, type: f.type, read_only: f.read_only,
+    region: f.region, bucket: f.bucket, endpoint: f.endpoint, key: f.key, secret: f.secret, path_prefix: f.path_prefix, use_path_style: f.use_path_style,
+    host: f.host, port: f.port, username: f.username, password: f.password, root: f.root };
+}
+async function saveMount() {
+  const f = mountForm.value; f.busy = true; f.err = '';
+  try {
+    if (f.id) await mnt.update(f.id as number, mountPayload()); else await mnt.create(mountPayload());
+    await mnt.load(); f.show = false; success(t('common.saved'));
+  } catch (e) { f.err = e instanceof ApiError ? ((e.body as { message?: string } | null)?.message ?? t('files.mount_unreachable')) : t('common.error'); }
+  finally { f.busy = false; }
+}
+async function testMount() {
+  const f = mountForm.value; f.testing = true; f.err = '';
+  try { const r = await mnt.test(mountPayload()); if (r.ok) success(t('files.mount_ok')); else f.err = r.message ?? t('files.mount_unreachable'); }
+  catch (e) { f.err = e instanceof ApiError ? ((e.body as { message?: string } | null)?.message ?? t('files.mount_unreachable')) : t('common.error'); }
+  finally { f.testing = false; }
+}
+async function deleteMount() {
+  const f = mountForm.value; if (!f.id) return;
+  if (!await confirmAsk(t('files.mount_delete_confirm', { name: f.name as string }), { danger: true })) return;
+  try {
+    await mnt.remove(f.id as number); await mnt.load(); f.show = false;
+    if (activeMount.value?.id === f.id) { view.value = 'files'; activeMount.value = null; }
+  } catch { error(t('common.error')); }
+}
 onUnmounted(() => {
   window.removeEventListener('focus', onFocus);
   document.removeEventListener('visibilitychange', onFocus);
