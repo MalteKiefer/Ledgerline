@@ -318,10 +318,10 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/gallery/search', [GalleryController::class, 'search'])->middleware('throttle:120,1')->name('api.gallery.search');
             Route::get('/gallery/duplicates', [GalleryController::class, 'duplicates'])->middleware('throttle:60,1')->name('api.gallery.duplicates');
             Route::get('/gallery/people', [GalleryPeopleController::class, 'people'])->name('api.gallery.people');
-            Route::post('/gallery/people/merge', [GalleryPeopleController::class, 'merge'])->middleware('throttle:120,1')->name('api.gallery.people.merge');
+            Route::post('/gallery/people/merge', [GalleryPeopleController::class, 'merge'])->middleware('throttle:300,1')->name('api.gallery.people.merge');
             Route::get('/gallery/people/{person}', [GalleryPeopleController::class, 'person'])->whereNumber('person')->name('api.gallery.people.show');
-            Route::put('/gallery/people/{person}', [GalleryPeopleController::class, 'personUpdate'])->whereNumber('person')->middleware('throttle:120,1')->name('api.gallery.people.update');
-            Route::delete('/gallery/people/{person}', [GalleryPeopleController::class, 'personDestroy'])->whereNumber('person')->middleware('throttle:120,1')->name('api.gallery.people.destroy');
+            Route::put('/gallery/people/{person}', [GalleryPeopleController::class, 'personUpdate'])->whereNumber('person')->middleware('throttle:600,1')->name('api.gallery.people.update');
+            Route::delete('/gallery/people/{person}', [GalleryPeopleController::class, 'personDestroy'])->whereNumber('person')->middleware('throttle:300,1')->name('api.gallery.people.destroy');
             Route::get('/gallery/{photo}/faces', [GalleryPeopleController::class, 'photoFaces'])->whereNumber('photo')->name('api.gallery.photo.faces');
             Route::get('/gallery/faces/{face}/crop', [GalleryPeopleController::class, 'faceCrop'])->whereNumber('face')->middleware('throttle:6000,1')->name('api.gallery.faces.crop');
             Route::post('/gallery/faces/{face}/assign', [GalleryPeopleController::class, 'faceAssign'])->whereNumber('face')->middleware('throttle:300,1')->name('api.gallery.faces.assign');

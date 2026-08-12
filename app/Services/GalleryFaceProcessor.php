@@ -142,6 +142,55 @@ class GalleryFaceProcessor
             ->delete();
     }
 
+    /**
+     * Re-generate a single face's crop from its source photo using the stored
+     * box — non-destructive (keeps the person link/name). Returns true if a crop
+     * was written. Used by `gallery:recrop` to restore lost crop files.
+     */
+    public function recropFace(GalleryFace $face): bool
+    {
+        $photo = $face->photo;
+        if (! $photo instanceof GalleryPhoto) {
+            return false;
+        }
+        $rel = $this->gallery->mlSourcePath($photo);
+        if ($rel === '' || ! $this->fs()->exists($rel)) {
+            return false;
+        }
+        $abs = $this->localPath($rel);
+        $stage = null;
+        if ($abs === null) {
+            $stage = DiskTempFile::create('llgrecrop');
+            $in = $this->fs()->readStream($rel);
+            $dst = fopen($stage->path(), 'wb');
+            if (is_resource($in) && $dst !== false) {
+                stream_copy_to_stream($in, $dst);
+                fclose($in);
+                fclose($dst);
+                $abs = $stage->path();
+            }
+        }
+        if ($abs === null) {
+            return false;
+        }
+        $box = is_array($face->box) ? array_values($face->box) : [];
+        if (count($box) < 4) {
+            return false;
+        }
+        /** @var array{0:float,1:float,2:float,3:float} $box */
+        $bytes = $this->cropper->crop($abs, $box);
+        unset($stage); // RAII temp file cleaned up here
+        if ($bytes === null) {
+            return false;
+        }
+        $this->deleteCrop($face->crop_path);
+        $cropRel = 'gallery/faces/'.Str::uuid()->toString().'.jpg';
+        $this->fs()->put($cropRel, $bytes);
+        $face->forceFill(['crop_path' => $cropRel])->save();
+
+        return true;
+    }
+
     private function deleteCrop(?string $path): void
     {
         if (is_string($path) && $path !== '' && str_starts_with($path, 'gallery/faces/') && ! str_contains($path, '..')) {

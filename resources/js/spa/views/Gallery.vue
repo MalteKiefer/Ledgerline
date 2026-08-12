@@ -82,7 +82,7 @@
         <div v-else class="grid grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-9">
           <button v-for="p in peopleList" :key="p.id" class="group flex flex-col items-center gap-1.5" @click="openPerson(p)">
             <div class="aspect-square w-full overflow-hidden rounded-full bg-black/[0.06] ring-1 ring-[var(--ll-border)] dark:bg-white/10">
-              <img v-if="p.cover_face_id" :src="g.faceCropUrl(p.cover_face_id)" loading="lazy" class="h-full w-full object-cover transition group-hover:scale-105">
+              <img v-if="p.cover_face_id && !brokenFaces[p.cover_face_id]" :src="g.faceCropUrl(p.cover_face_id)" loading="lazy" class="h-full w-full object-cover transition group-hover:scale-105" @error="brokenFaces[p.cover_face_id!] = true">
               <div v-else class="flex h-full w-full items-center justify-center"><Icon name="person" :size="28" class="opacity-40" /></div>
             </div>
             <div class="w-full truncate text-center text-xs font-medium" :class="p.name ? '' : 'italic text-[var(--ll-muted)]'">{{ personLabel(p) }}</div>
@@ -334,7 +334,7 @@
         <!-- Detected face chips -->
         <div v-if="viewerFaces.length" class="absolute inset-x-0 bottom-16 flex flex-wrap items-center gap-1.5 px-6">
           <span v-for="f in viewerFaces" :key="f.id" class="group inline-flex items-center gap-1 rounded-full bg-black/50 py-0.5 pl-0.5 pr-2 text-xs text-white backdrop-blur">
-            <img v-if="f.crop" :src="g.faceCropUrl(f.id)" class="h-6 w-6 rounded-full object-cover">
+            <img v-if="f.crop && !brokenFaces[f.id]" :src="g.faceCropUrl(f.id)" class="h-6 w-6 rounded-full object-cover" @error="brokenFaces[f.id] = true">
             <button class="max-w-[10rem] truncate hover:underline" @click="openNameFace(f)">{{ f.person_name ?? t('gallery.face_unnamed') }}</button>
             <button v-if="f.person_id" class="text-white/60 hover:text-amber-300" :title="t('gallery.set_cover')" @click="setCoverFromChip(f)"><Icon name="account_circle" :size="14" /></button>
             <button class="text-white/60 hover:text-red-400" :title="t('gallery.face_hide')" @click="hideFaceChip(f)"><Icon name="close" :size="13" /></button>
@@ -674,7 +674,7 @@
               @click="doMerge(x)"
             >
               <span class="h-8 w-8 overflow-hidden rounded-full bg-black/[0.06] ring-1 ring-[var(--ll-border)] dark:bg-white/10">
-                <img v-if="x.cover_face_id" :src="g.faceCropUrl(x.cover_face_id)" class="h-full w-full object-cover">
+                <img v-if="x.cover_face_id && !brokenFaces[x.cover_face_id]" :src="g.faceCropUrl(x.cover_face_id)" class="h-full w-full object-cover" @error="brokenFaces[x.cover_face_id!] = true">
               </span>
               <span class="min-w-0 flex-1 truncate">{{ x.name }}</span>
               <span class="text-[10px] tabular-nums text-[var(--ll-muted)]">{{ x.count }}</span>
@@ -787,6 +787,8 @@ const dupeGroups = ref<{ photos: Photo[] }[]>([]);
 const showPeople = ref(false);
 const peopleList = ref<Person[]>([]);
 const personView = ref<Person | null>(null);
+// Face crops whose image 404'd (missing crop file) → fall back to a placeholder.
+const brokenFaces = reactive<Record<number, boolean>>({});
 const peopleGrid = computed(() => showPeople.value && !personView.value);
 const viewerFaces = ref<Face[]>([]);
 
