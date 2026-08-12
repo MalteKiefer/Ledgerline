@@ -1206,6 +1206,43 @@ components:
         actor: { type: string, nullable: true }
         meta: { type: object, nullable: true, additionalProperties: true }
         created_at: { type: string, format: date-time }
+    StorageMount:
+      type: object
+      description: "An external storage mount (S3/SFTP). Credentials are never serialized."
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        type: { type: string, enum: [s3, sftp] }
+        read_only: { type: boolean }
+    StorageMountInput:
+      type: object
+      description: "Mount config. secret/password blank on update keeps the stored value."
+      required: [name, type]
+      properties:
+        name: { type: string }
+        type: { type: string, enum: [s3, sftp] }
+        read_only: { type: boolean }
+        region: { type: string }
+        bucket: { type: string }
+        key: { type: string }
+        secret: { type: string }
+        endpoint: { type: string }
+        use_path_style: { type: boolean }
+        path_prefix: { type: string }
+        host: { type: string }
+        port: { type: integer }
+        username: { type: string }
+        password: { type: string }
+        private_key: { type: string }
+        host_fingerprint: { type: string }
+        root: { type: string }
+    MountEntry:
+      type: object
+      properties:
+        name: { type: string }
+        path: { type: string }
+        size: { type: [integer, "null"] }
+        last_modified: { type: [integer, "null"] }
     FileEntry:
       type: object
       description: "A file (files table). Bytes live plaintext on the files disk at storage_path; this row holds metadata. search_text is never serialized."
@@ -6288,6 +6325,123 @@ paths:
       responses:
         "200": { description: "Activity rows for the file.", content: { application/json: { schema: { type: object, properties: { activity: { type: array, items: { $ref: "#/components/schemas/FileActivity" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /mounts:
+    get:
+      tags: [Mounts]
+      operationId: mountsIndex
+      summary: External storage mounts (S3/SFTP) for the current user
+      description: "Owner-scoped. Credentials are never returned."
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: Mounts., content: { application/json: { schema: { type: object, properties: { mounts: { type: array, items: { $ref: "#/components/schemas/StorageMount" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Mounts]
+      operationId: mountsStore
+      summary: Add an external mount (verifies reachability before saving)
+      description: "type=s3 (region/bucket/key/secret/endpoint/use_path_style/path_prefix) or sftp (host/port/username/password/private_key/host_fingerprint/root). read_only toggles write access. 422 if unreachable."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/StorageMountInput" } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { mount: { $ref: "#/components/schemas/StorageMount" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { description: "Validation error or the mount is unreachable." }
+  /mounts/test:
+    post:
+      tags: [Mounts]
+      operationId: mountsTest
+      summary: Test a mount config without saving
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/StorageMountInput" } } } }
+      responses:
+        "200": { description: Reachable., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { description: "Unreachable.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, message: { type: string } } } } } }
+  /mounts/{mount}:
+    put:
+      tags: [Mounts]
+      operationId: mountsUpdate
+      summary: Update a mount (blank secret/password keeps the stored value)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: mount, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/StorageMountInput" } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { mount: { $ref: "#/components/schemas/StorageMount" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Unreachable." }
+    delete:
+      tags: [Mounts]
+      operationId: mountsDestroy
+      summary: Remove a mount
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: mount, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /mounts/{mount}/list:
+    get:
+      tags: [Mounts]
+      operationId: mountsList
+      summary: List a directory on the mount (live)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: mount, in: path, required: true, schema: { type: integer } }, { name: path, in: query, required: false, schema: { type: string }, description: "Relative to the mount root; traversal (..) is rejected." } ]
+      responses:
+        "200": { description: "Directory listing.", content: { application/json: { schema: { type: object, properties: { path: { type: string }, read_only: { type: boolean }, dirs: { type: array, items: { $ref: "#/components/schemas/MountEntry" } }, files: { type: array, items: { $ref: "#/components/schemas/MountEntry" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Invalid path." }
+  /mounts/{mount}/file:
+    get:
+      tags: [Mounts]
+      operationId: mountsDownload
+      summary: Download a file from the mount (streamed, sandboxed)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: mount, in: path, required: true, schema: { type: integer } }, { name: path, in: query, required: true, schema: { type: string } } ]
+      responses:
+        "200": { description: "File bytes.", content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /mounts/{mount}/upload:
+    post:
+      tags: [Mounts]
+      operationId: mountsUpload
+      summary: Upload a file to the mount (403 if read-only)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: mount, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary }, path: { type: string } } } } } }
+      responses:
+        "201": { description: Uploaded., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, path: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /mounts/{mount}/mkdir:
+    post:
+      tags: [Mounts]
+      operationId: mountsMkdir
+      summary: Create a directory on the mount (403 if read-only)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: mount, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { path: { type: string }, name: { type: string } } } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, path: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /mounts/{mount}/delete:
+    post:
+      tags: [Mounts]
+      operationId: mountsDelete
+      summary: Delete a file or directory on the mount (403 if read-only)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: mount, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [path], properties: { path: { type: string }, dir: { type: boolean } } } } } }
+      responses:
+        "200": { description: Deleted., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
   /files/entries:
     post:
