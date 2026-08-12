@@ -196,13 +196,19 @@
               </div>
               <!-- Gallery photos of this contact (face recognition) -->
               <div v-if="contactPhotos.length" class="mt-4">
-                <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('gallery.contact_photos') }}</div>
+                <div class="mb-1.5 flex items-center gap-1.5">
+                  <Icon name="photo_library" :size="16" class="text-[var(--ll-muted)]" />
+                  <span class="text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('gallery.contact_photos') }}</span>
+                  <Badge tone="primary" class="text-[10px]">{{ contactPhotos.length }}</Badge>
+                  <a href="#/gallery" class="ml-auto text-xs text-primary-600 hover:underline dark:text-primary-300">{{ t('gallery.people') }}</a>
+                </div>
                 <div class="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
                   <a
-                    v-for="p in contactPhotos" :key="p.id" :href="'#/gallery'"
-                    class="aspect-square overflow-hidden rounded-lg bg-black/[0.04] dark:bg-white/5"
+                    v-for="p in contactPhotos" :key="p.id" href="#/gallery"
+                    class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-black/[0.04] dark:bg-white/5"
                   >
                     <img v-if="p.thumb" :src="gal.thumbUrl(p.id)" loading="lazy" class="h-full w-full object-cover">
+                    <Icon v-else name="image" :size="18" class="text-[var(--ll-muted)] opacity-50" />
                   </a>
                 </div>
               </div>
@@ -214,7 +220,7 @@
   </div>
 
   <!-- Editor -->
-  <Modal v-model="editor" :title="editing ? t('contacts.ui.edit_contact') : t('contacts.ui.new_contact')" width="640px">
+  <Modal v-model="editor" :title="editing ? t('contacts.ui.edit_contact') : t('contacts.ui.new_contact')" width="860px">
     <div class="space-y-4">
       <!-- Avatar (only once the contact exists) -->
       <div v-if="editing && selected" class="flex items-center gap-3">
@@ -222,7 +228,15 @@
           <img v-if="c.avatarUrl(selected)" :src="bust(c.avatarUrl(selected))!" class="h-full w-full object-cover">
           <template v-else>{{ initials(selected) }}</template>
         </span>
-        <Btn variant="soft" size="sm" :loading="avatarBusy" @click="pickAvatar">{{ t('contacts.ui.avatar_change') }}</Btn>
+        <div class="relative">
+          <Btn variant="soft" size="sm" :loading="avatarBusy" icon="photo_camera" @click="avatarMenu = !avatarMenu">{{ t('contacts.ui.avatar_change') }}</Btn>
+          <div v-if="avatarMenu" class="fixed inset-0 z-40" @click="avatarMenu = false" />
+          <div v-if="avatarMenu" class="absolute left-0 z-50 mt-1 w-48 rounded-xl border border-[var(--ll-border)] bg-[var(--ll-elevated)] py-1 shadow-xl">
+            <button class="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="avatarMenu = false; pickAvatar()"><Icon name="upload" :size="18" class="text-[var(--ll-muted)]" />{{ t('contacts.ui.avatar_upload') }}</button>
+            <button v-if="auth.can('gallery')" class="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="avatarMenu = false; openAvatarSource('gallery')"><Icon name="photo_library" :size="18" class="text-[var(--ll-muted)]" />{{ t('contacts.ui.avatar_from_gallery') }}</button>
+            <button v-if="auth.can('files')" class="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="avatarMenu = false; openAvatarSource('files')"><Icon name="folder" :size="18" class="text-[var(--ll-muted)]" />{{ t('contacts.ui.avatar_from_files') }}</button>
+          </div>
+        </div>
         <input ref="avatarInput" type="file" accept="image/*" class="hidden" @change="onAvatarPicked">
       </div>
       <Select v-model="form.book_id" :label="t('contacts.ui.books')" :options="bookItems" />
@@ -331,6 +345,21 @@
     </template>
   </Modal>
 
+  <!-- Avatar source picker (gallery / files) -->
+  <Modal v-model="avatarSrc.open" :title="avatarSrc.source === 'gallery' ? t('contacts.ui.avatar_from_gallery') : t('contacts.ui.avatar_from_files')" width="720px">
+    <div v-if="avatarSrc.loading" class="flex items-center justify-center py-16 text-sm text-[var(--ll-muted)]"><Icon name="progress_activity" :size="18" class="mr-1 animate-spin" />{{ t('common.loading') }}</div>
+    <div v-else-if="!avatarSrc.items.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ t('contacts.ui.avatar_no_images') }}</div>
+    <div v-else class="grid grid-cols-3 gap-2 sm:grid-cols-5">
+      <button
+        v-for="it in avatarSrc.items" :key="it.key" :disabled="avatarBusy"
+        class="aspect-square overflow-hidden rounded-lg bg-black/[0.04] ring-2 ring-transparent transition hover:ring-primary-500 disabled:opacity-50 dark:bg-white/5"
+        @click="useAvatarImage(it.full)"
+      >
+        <img :src="it.thumb" loading="lazy" class="h-full w-full object-cover">
+      </button>
+    </div>
+  </Modal>
+
   <!-- Import -->
   <Modal v-model="importDialog" :title="t('contacts.ui.import')" width="480px">
     <div class="space-y-4">
@@ -436,8 +465,9 @@ import { useContactsStore, type ContactRow, type ContactDetail, type ContactGrou
 import { useToast } from '@spa/composables/useToast';
 import { useAuthStore } from '@spa/stores/auth';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
+import { useFilesStore } from '@spa/stores/files';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
-import { ApiError } from '@spa/api/client';
+import { ApiError, api } from '@spa/api/client';
 
 // Presentational-only: maps the existing Vuetify-style color name (still returned
 // by color()/dupColor() below) onto an avatar tint. No behavior/semantics changed.
@@ -498,6 +528,10 @@ const dupBusy = ref<string | null>(null);
 // Avatar upload
 const avatarInput = ref<HTMLInputElement | null>(null);
 const avatarBusy = ref(false);
+const avatarMenu = ref(false);
+const files = useFilesStore();
+type AvatarPick = { key: string; thumb: string; full: string };
+const avatarSrc = reactive<{ open: boolean; source: 'gallery' | 'files'; loading: boolean; items: AvatarPick[] }>({ open: false, source: 'gallery', loading: false, items: [] });
 
 const bookItems = computed(() => c.books.map((b) => ({ title: b.name, value: b.id })));
 
@@ -784,9 +818,42 @@ async function dismissGroup(g: DuplicateGroup) {
 
 // --- Avatar upload ---
 function pickAvatar() { avatarInput.value?.click(); }
+
+// Pick the contact avatar from an existing image — the linked gallery photos
+// (face recognition) or the Files module — instead of only a device upload.
+async function openAvatarSource(source: 'gallery' | 'files') {
+  avatarSrc.source = source;
+  avatarSrc.items = [];
+  avatarSrc.loading = true;
+  avatarSrc.open = true;
+  try {
+    if (source === 'gallery') {
+      avatarSrc.items = contactPhotos.value.filter((p) => p.thumb).map((p) => ({ key: 'g' + p.id, thumb: gal.thumbUrl(p.id), full: gal.previewUrl(p.id) }));
+    } else {
+      await files.load();
+      avatarSrc.items = files.files
+        .filter((f) => (f.mime ?? '').startsWith('image/'))
+        .map((f) => ({ key: 'f' + f.id, thumb: api.streamUrl(`/api/v1/files/entries/${f.id}/thumb`), full: api.streamUrl(`/api/v1/files/entries/${f.id}/thumb`) }));
+    }
+  } catch { error(t('common.error')); } finally { avatarSrc.loading = false; }
+}
+async function useAvatarImage(url: string) {
+  if (!selected.value) return;
+  avatarBusy.value = true;
+  try {
+    const blob = await (await fetch(url)).blob();
+    await c.uploadAvatar(selected.value.id, await cropSquare(blob));
+    avatarVersion.value = Date.now();
+    selected.value.has_photo = true;
+    avatarSrc.open = false;
+    await reload();
+    detail.value = await c.show(selected.value.id);
+    success(t('contacts.ui.saved'));
+  } catch { error(t('common.error')); } finally { avatarBusy.value = false; }
+}
 // Center-crop the picked image to a square and downscale to 512px before upload
 // (the backend only aspect-scales, so this is what makes avatars square).
-async function cropSquare(file: File): Promise<Blob> {
+async function cropSquare(file: Blob): Promise<Blob> {
   try {
     const bmp = await createImageBitmap(file);
     const side = Math.min(bmp.width, bmp.height);
