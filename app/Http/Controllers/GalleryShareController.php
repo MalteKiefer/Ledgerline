@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\GalleryAlbum;
 use App\Models\GalleryInternalShare;
 use App\Models\GalleryPublicShare;
+use App\Models\GalleryUploadLink;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -47,7 +48,18 @@ class GalleryShareController extends Controller
                 'role' => $s->role,
             ])->values();
 
-        return response()->json(['public' => $public, 'internal' => $internal]);
+        $uploadLinks = GalleryUploadLink::query()->where('user_id', $uid)->latest('id')->get()
+            ->map(fn (GalleryUploadLink $l): array => [
+                'id' => $l->id,
+                'album_id' => $l->gallery_album_id,
+                'album' => $l->album?->name,
+                'token' => $l->token,
+                'label' => $l->label,
+                'has_password' => $l->needsPassword(),
+                'expires_at' => $l->expires_at?->toIso8601String(),
+            ])->values();
+
+        return response()->json(['public' => $public, 'internal' => $internal, 'upload_links' => $uploadLinks]);
     }
 
     // ---- Public album links ----
@@ -162,6 +174,40 @@ class GalleryShareController extends Controller
     {
         $user = $this->requireUser($request);
         GalleryInternalShare::query()->where('owner_id', $user->id)->findOrFail($share)->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    // ---- Public album upload links (anonymous guest contributions) ----
+
+    public function storeUploadLink(Request $request): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $request->validate([
+            'album_id' => ['required', 'integer'],
+            'label' => ['nullable', 'string', 'max:120'],
+            'password' => ['nullable', 'string', 'max:200'],
+            'expires_at' => ['nullable', 'date'],
+        ]);
+        $album = GalleryAlbum::query()->where('user_id', $user->id)->findOrFail($request->integer('album_id'));
+
+        $link = new GalleryUploadLink;
+        $link->forceFill([
+            'user_id' => $user->id,
+            'gallery_album_id' => $album->id,
+            'token' => Str::random(48),
+            'label' => $request->filled('label') ? $request->string('label')->value() : null,
+            'password_hash' => $request->filled('password') ? Hash::make($request->string('password')->value()) : null,
+            'expires_at' => $request->filled('expires_at') ? $request->date('expires_at') : null,
+        ])->save();
+
+        return response()->json(['id' => $link->id, 'token' => $link->token], 201);
+    }
+
+    public function destroyUploadLink(Request $request, int $link): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        GalleryUploadLink::query()->where('user_id', $user->id)->findOrFail($link)->delete();
 
         return response()->json(['ok' => true]);
     }

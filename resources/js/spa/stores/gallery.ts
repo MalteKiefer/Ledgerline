@@ -35,6 +35,9 @@ export interface SharedPhoto {
   id: number; name: string; media_type: 'image' | 'video'; taken_at: string | null; width: number | null; height: number | null;
 }
 
+export interface Comment { id: number; body: string; author: string | null; mine: boolean; created_at: string }
+export interface UploadLinkRow { id: number; album_id: number; album: string | null; token: string; label: string | null; has_password: boolean; expires_at: string | null }
+
 export interface MemoriesResult {
   on_this_day: { year: number; years_ago: number; photos: Photo[] }[];
   trips: { from: string; to: string; place: string | null; cover: number | null; count: number; photos: Photo[] }[];
@@ -190,8 +193,25 @@ export const useGalleryStore = defineStore('gallery', () => {
   const contactPhotos = (contactId: string) =>
     api.get<{ photos: Photo[] }>(`/api/v1/gallery/contacts/${contactId}/photos`).then((r) => r.photos ?? []).catch(() => [] as Photo[]);
 
+  // ---- Comments + reactions ----
+  const comments = (photo: number) => api.get<{ comments: Comment[]; reactions: Record<string, number>; my_reaction: string | null }>(`/api/v1/gallery/${photo}/comments`);
+  const addComment = (photo: number, body: string) => api.post<{ id: number }>(`/api/v1/gallery/${photo}/comments`, { body });
+  const deleteComment = (id: number) => api.delete(`/api/v1/gallery/comments/${id}`);
+  const react = (photo: number, emoji: string | null) => api.post<{ my_reaction: string | null }>(`/api/v1/gallery/${photo}/react`, { emoji });
+
+  // ---- Public album upload links (owner side) ----
+  const createUploadLink = (body: { album_id: number; label?: string | null; password?: string | null; expires_at?: string | null }) => api.post<{ id: number; token: string }>('/api/v1/gallery/upload-links', body);
+  const deleteUploadLink = (id: number) => api.delete(`/api/v1/gallery/upload-links/${id}`);
+  const uploadLinkUrl = (token: string) => `${window.location.origin}/gu/${token}`;
+  // Public (unauth) guest-upload endpoints.
+  const publicUploadMeta = (token: string) => api.get<{ label: string | null; album: string | null; needs_password: boolean }>(`/api/v1/gallery-upload/${encodeURIComponent(token)}`);
+  const publicUploadSend = (token: string, file: File, onProgress?: (fr: number) => void, password?: string) => {
+    const fd = new FormData(); fd.append('file', file); if (password) fd.append('password', password);
+    return uploadWithProgress<{ ok: boolean }>(`/api/v1/gallery-upload/${encodeURIComponent(token)}`, fd, onProgress);
+  };
+
   // ---- Sharing (owner side) ----
-  const loadShares = () => api.get<{ public: PublicShareRow[]; internal: InternalShareRow[] }>('/api/v1/gallery/shares');
+  const loadShares = () => api.get<{ public: PublicShareRow[]; internal: InternalShareRow[]; upload_links: UploadLinkRow[] }>('/api/v1/gallery/shares');
   const createPublicShare = (body: { album_id: number; allow_download?: boolean; password?: string | null; expires_at?: string | null }) =>
     api.post<PublicShareRow>('/api/v1/gallery/shares/public', body);
   const updatePublicShare = (id: number, body: Record<string, unknown>) => api.put<PublicShareRow>(`/api/v1/gallery/shares/public/${id}`, body);
@@ -216,6 +236,7 @@ export const useGalleryStore = defineStore('gallery', () => {
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
     people, browsePerson, updatePerson, deletePerson, mergePeople, photoFaces, assignFace, setFaceCover, hideFace, faceCropUrl, reprocess, mlStatus, loadExif, nameSuggest, contactPhotos,
+    comments, addComment, deleteComment, react, createUploadLink, deleteUploadLink, uploadLinkUrl, publicUploadMeta, publicUploadSend,
     loadShares, createPublicShare, updatePublicShare, deletePublicShare, shareInternal, deleteInternalShare, publicShareUrl,
     sharedWithMe, browseShared, contributeShared, sharedThumbUrl, sharedPreviewUrl, sharedRawUrl,
   };

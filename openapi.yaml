@@ -5948,6 +5948,96 @@ paths:
         "200": { description: Revoked. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/{photo}/comments:
+    get:
+      tags: [Gallery]
+      operationId: galleryComments
+      summary: Comments + reaction summary for a photo (owner or share recipient)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Comments., content: { application/json: { schema: { type: object, properties: { comments: { type: array, items: { type: object, properties: { id: { type: integer }, body: { type: string }, author: { type: [string,"null"] }, mine: { type: boolean }, created_at: { type: string } } } }, reactions: { type: object, additionalProperties: { type: integer } }, my_reaction: { type: [string,"null"] } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Gallery]
+      operationId: galleryCommentStore
+      summary: Add a comment to a photo
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [body], properties: { body: { type: string } } } } } }
+      responses:
+        "201": { description: Added., content: { application/json: { schema: { type: object, properties: { id: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/comments/{comment}:
+    delete:
+      tags: [Gallery]
+      operationId: galleryCommentDestroy
+      summary: Delete a comment (author, or photo owner)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: comment, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/{photo}/react:
+    post:
+      tags: [Gallery]
+      operationId: galleryReact
+      summary: Set/toggle/clear the caller's single emoji reaction
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { emoji: { type: [string,"null"], description: "Empty/same emoji clears the reaction." } } } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, my_reaction: { type: [string,"null"] } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/upload-links:
+    post:
+      tags: [GallerySharing]
+      operationId: galleryUploadLinkStore
+      summary: Create a public guest-upload link for an album
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [album_id], properties: { album_id: { type: integer }, label: { type: [string,"null"] }, password: { type: [string,"null"] }, expires_at: { type: [string,"null"] } } } } } }
+      responses:
+        "201": { description: Created., content: { application/json: { schema: { type: object, properties: { id: { type: integer }, token: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/upload-links/{link}:
+    delete:
+      tags: [GallerySharing]
+      operationId: galleryUploadLinkDestroy
+      summary: Revoke a guest-upload link
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: link, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: Revoked. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery-upload/{token}:
+    get:
+      tags: [GallerySharing]
+      operationId: publicGalleryUploadMeta
+      summary: "Public: guest-upload link metadata (unauthenticated)"
+      parameters: [ { name: token, in: path, required: true, schema: { type: string } } ]
+      responses:
+        "200": { description: Meta., content: { application/json: { schema: { type: object, properties: { label: { type: [string,"null"] }, album: { type: [string,"null"] }, needs_password: { type: boolean } } } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [GallerySharing]
+      operationId: publicGalleryUploadStore
+      summary: "Public: contribute a photo to an album via a guest link (write-only)"
+      description: "The token is the credential; optional password gates it. The photo lands under the album OWNER and counts against the owner quota. 403 wrong password, 413 over quota, 415 unsupported."
+      parameters: [ { name: token, in: path, required: true, schema: { type: string } } ]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary }, password: { type: string } } } } } }
+      responses:
+        "201": { description: Contributed. }
+        "403": { description: Wrong password. }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { description: Over the owner quota. }
+        "415": { description: Unsupported media type. }
   /gallery/shared-with-me:
     get:
       tags: [GallerySharing]
