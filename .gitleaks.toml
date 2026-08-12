@@ -32,4 +32,11 @@ paths = [
     # test that consumes them. Standard known-answer vectors, not live secrets.
     '''^resources/js/__tests__/fixtures/store-v3/.*$''',
     '''^resources/js/__tests__/store-v3-conformance\.test\.js$''',
+    # Vendored, minified third-party crypto libraries (openpgp.min.mjs, forge.min.js).
+    # Their internals are high-entropy (cipher/algorithm names, base64 tables) and
+    # openpgp embeds the literal "-----BEGIN PGP PRIVATE KEY BLOCK-----" as a header
+    # template — flagged as generic-api-key / private-key but NOT live secrets. These
+    # files are no longer in HEAD but remain in history (full-depth scan), so the path
+    # stays allowlisted. Vendored library output, never a project secret.
+    '''^resources/js/vendor/.*$''',
 ]
