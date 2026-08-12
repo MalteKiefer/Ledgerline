@@ -394,6 +394,44 @@ class GalleryFeatureTest extends TestCase
         $this->assertArrayHasKey('lat', $photo);
     }
 
+    public function test_memories_on_this_day_and_trips(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $today = now();
+
+        $seed = function (string $takenAt, ?string $place = null) {
+            $p = new \App\Models\GalleryPhoto;
+            $p->forceFill([
+                'storage_path' => 'gallery/'.\Illuminate\Support\Str::uuid(),
+                'name' => 'p.jpg', 'mime' => 'image/jpeg', 'media_type' => 'image', 'status' => 'ready',
+                'size' => 10, 'taken_at' => $takenAt, 'place' => $place,
+            ])->save();
+
+            return $p->id;
+        };
+
+        // On this day: same month/day, two years ago.
+        $onThis = $seed($today->copy()->subYears(2)->format('Y-m-d').' 12:00:00');
+        // A trip: 12 photos spanning 4 days last month, same place.
+        $tripStart = $today->copy()->subMonth()->startOfMonth();
+        for ($i = 0; $i < 12; $i++) {
+            $seed($tripStart->copy()->addDays(intdiv($i, 3))->format('Y-m-d H:i:s'), 'Rome');
+        }
+
+        $res = $this->getJson(route('gallery.memories'))->assertOk()->json();
+
+        $this->assertNotEmpty($res['on_this_day']);
+        $this->assertSame(2, $res['on_this_day'][0]['years_ago']);
+        $this->assertSame($onThis, $res['on_this_day'][0]['photos'][0]['id']);
+
+        $this->assertNotEmpty($res['trips']);
+        $this->assertSame('Rome', $res['trips'][0]['place']);
+        $this->assertSame(12, $res['trips'][0]['count']);
+
+        // Themes are empty without ML/pgvector.
+        $this->assertSame([], $res['themes']);
+    }
+
     public function test_archived_photos_hide_from_timeline_and_show_in_archive(): void
     {
         $this->actingAs(User::factory()->create());

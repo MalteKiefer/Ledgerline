@@ -5451,6 +5451,25 @@ paths:
         "200": { description: "Photos (without bytes).", content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /gallery/memories:
+    get:
+      tags: [Gallery]
+      operationId: galleryMemories
+      summary: Memories / auto-curation (on-this-day, trips, CLIP themes)
+      description: "on_this_day = photos taken on today's month/day in past years; trips = auto-detected multi-day photo clusters; themes = CLIP theme cards (empty unless ML + pgvector). Archived/trashed excluded."
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: Memories.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  on_this_day: { type: array, items: { type: object, properties: { year: { type: integer }, years_ago: { type: integer }, photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } }
+                  trips: { type: array, items: { type: object, properties: { from: { type: string }, to: { type: string }, place: { type: [string, "null"] }, cover: { type: [integer, "null"] }, count: { type: integer }, photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } }
+                  themes: { type: array, items: { type: object, properties: { key: { type: string }, cover: { type: [integer, "null"] }, count: { type: integer }, photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /gallery/search:
     get:
       tags: [Gallery]

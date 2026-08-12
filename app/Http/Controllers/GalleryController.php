@@ -16,6 +16,7 @@ use App\Models\GalleryPhoto;
 use App\Support\BlobStore;
 use App\Support\DiskTempFile;
 use App\Support\FilesUsage;
+use App\Support\GalleryMemories;
 use App\Support\ImageManagerFactory;
 use App\Support\MachineLearning;
 use App\Support\Vector;
@@ -89,6 +90,109 @@ class GalleryController extends Controller
             ->map(fn (GalleryPhoto $p): array => $this->row($p))->all();
 
         return response()->json(['photos' => $photos]);
+    }
+
+    /** Seed terms for CLIP-based auto theme cards (client localizes the label). */
+    private const THEME_SEEDS = ['beach', 'mountains', 'food', 'sunset', 'city', 'nature', 'animals', 'snow'];
+
+    /**
+     * Memories / auto-curation: "on this day" (past years), auto-detected trips,
+     * and CLIP theme cards (only when ML + pgvector are available). Archived and
+     * trashed photos are excluded (the GalleryPhoto scope + whereNull handle it).
+     */
+    public function memories(Request $request, GalleryMemories $memories, MachineLearning $ml): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $today = now();
+
+        // On this day (cap photos per year for the payload).
+        $onThisDay = [];
+        foreach ($memories->onThisDay((int) $today->year, (int) $today->month, (int) $today->day) as $sec) {
+            $onThisDay[] = [
+                'year' => $sec['year'],
+                'years_ago' => $sec['years_ago'],
+                'photos' => $this->rowsForIds(array_slice($sec['ids'], 0, 40)),
+            ];
+        }
+
+        // Trips.
+        $trips = [];
+        foreach ($memories->trips() as $trip) {
+            $photos = $this->rowsForIds(array_slice($trip['ids'], 0, 40));
+            $trips[] = [
+                'from' => $trip['from'],
+                'to' => $trip['to'],
+                'place' => $trip['place'],
+                'cover' => $photos[0]['id'] ?? null,
+                'count' => count($trip['ids']),
+                'photos' => $photos,
+            ];
+        }
+
+        // Themes (ML/pgvector-gated; degrades to empty).
+        $themes = [];
+        if ($ml->enabled() && Vector::available()) {
+            foreach (self::THEME_SEEDS as $seed) {
+                $ids = $this->themePhotoIds($uid, $seed, $ml, 30);
+                if (count($ids) >= 4) {
+                    $photos = $this->rowsForIds($ids);
+                    $themes[] = ['key' => $seed, 'cover' => $photos[0]['id'] ?? null, 'count' => count($ids), 'photos' => $photos];
+                }
+            }
+        }
+
+        return response()->json(['on_this_day' => $onThisDay, 'trips' => $trips, 'themes' => $themes]);
+    }
+
+    /**
+     * Resolve ids → row payloads preserving order, dropping missing/archived.
+     *
+     * @param  list<int>  $ids
+     * @return list<array<string,mixed>>
+     */
+    private function rowsForIds(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $byId = GalleryPhoto::query()->whereIn('id', $ids)->whereNull('archived_at')->get()->keyBy('id');
+        $out = [];
+        foreach ($ids as $id) {
+            $p = $byId->get($id);
+            if ($p instanceof GalleryPhoto) {
+                $out[] = $this->row($p);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * CLIP nearest-neighbour ids for a theme seed term (owner-scoped).
+     *
+     * @return list<int>
+     */
+    private function themePhotoIds(int $uid, string $term, MachineLearning $ml, int $limit): array
+    {
+        $vec = $ml->embedText($term);
+        if ($vec === null || count($vec) !== 512) {
+            return [];
+        }
+        $lit = MachineLearning::toVectorLiteral($vec);
+        $maxCfg = config('ml.search_max_distance', 0.78);
+        $max = is_numeric($maxCfg) ? (float) $maxCfg : 0.78;
+        $rows = DB::select(
+            'SELECT id FROM gallery_photos
+             WHERE user_id = ? AND deleted_at IS NULL AND archived_at IS NULL AND embedding IS NOT NULL
+               AND (embedding <=> ?::vector) < ?
+             ORDER BY embedding <=> ?::vector LIMIT ?',
+            [$uid, $lit, $max, $lit, $limit],
+        );
+
+        return array_values(array_filter(array_map(
+            static fn ($r): int => is_object($r) && isset($r->id) && is_numeric($r->id) ? (int) $r->id : 0,
+            $rows,
+        ), static fn (int $i): bool => $i > 0));
     }
 
     public function trash(Request $request): JsonResponse
