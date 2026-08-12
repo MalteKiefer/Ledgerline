@@ -7,7 +7,7 @@ export interface Photo {
   width: number | null; height: number | null; size: number;
   favorite: boolean; thumb: boolean; preview: boolean; motion: boolean;
   media_type: 'image' | 'video'; status: 'ready' | 'processing' | 'failed'; duration: number | null;
-  rotation: number; flip_h: boolean;
+  rotation: number; flip_h: boolean; archived: boolean;
   taken_at: string | null; camera: string | null; place: string | null;
   lat: number | null; lng: number | null; version: number; created_at: string | null;
 }
@@ -92,6 +92,7 @@ export const useGalleryStore = defineStore('gallery', () => {
     }
     if (!sameSet) photos.value = fresh; // add/remove → structural rebuild
   };
+  const loadArchived = () => api.get<{ photos: Photo[] }>('/api/v1/gallery/data?archived=1').then((r) => { photos.value = r.photos ?? []; });
   const trash = () => api.get<{ photos: Photo[] }>('/api/v1/gallery/trash').then((r) => r.photos);
   const search = (q: string) => api.get<{ photos: Photo[] }>(`/api/v1/gallery/search?q=${encodeURIComponent(q)}`).then((r) => r.photos ?? []);
   const duplicates = () => api.get<{ groups: { photos: Photo[] }[] }>('/api/v1/gallery/duplicates').then((r) => r.groups ?? []);
@@ -138,6 +139,8 @@ export const useGalleryStore = defineStore('gallery', () => {
   const downloadUrl = (id: number, variant: 'original' | 'edited') => api.streamUrl(`/api/v1/gallery/${id}/download?variant=${variant}`);
   const destroy = (id: number) => api.delete(`/api/v1/gallery/${id}`);
   const bulkDestroy = (ids: number[]) => api.post('/api/v1/gallery/bulk-destroy', { ids });
+  const archive = (id: number, archived: boolean) => api.patch(`/api/v1/gallery/${id}/archive`, { archived });
+  const bulkArchive = (ids: number[], archived: boolean) => api.post('/api/v1/gallery/bulk-archive', { ids, archived });
   const restore = (id: number) => api.post(`/api/v1/gallery/${id}/restore`);
   const forceDelete = (id: number) => api.delete(`/api/v1/gallery/${id}/force`);
   const emptyTrash = () => api.post('/api/v1/gallery/trash/empty');
@@ -197,7 +200,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   const sharedRawUrl = (share: number, photo: number) => api.streamUrl(`/api/v1/gallery/shared-with-me/${share}/photo/${photo}/raw`);
 
   return {
-    photos, albums, load, mergeData, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy,
+    photos, albums, load, loadArchived, mergeData, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy, archive, bulkArchive,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
     people, browsePerson, updatePerson, deletePerson, mergePeople, photoFaces, assignFace, setFaceCover, hideFace, faceCropUrl, reprocess, mlStatus, loadExif, nameSuggest, contactPhotos,

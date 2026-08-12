@@ -1233,6 +1233,7 @@ components:
         duration: { type: integer, nullable: true, description: "Video duration in seconds." }
         rotation: { type: integer, enum: [0, 90, 180, 270], description: "Clockwise display rotation; non-invasive (original bytes untouched)." }
         flip_h: { type: boolean, description: "Horizontal mirror; non-invasive." }
+        archived: { type: boolean, description: "Hidden from the main timeline (still shown in albums + Archive view)." }
         taken_at: { type: string, format: date-time, nullable: true, description: "EXIF capture date (falls back to created_at for ordering); editable." }
         camera: { type: string, nullable: true }
         place: { type: string, nullable: true, description: "Human location label (from OSM autocomplete)." }
@@ -5396,7 +5397,7 @@ paths:
       summary: All photos for the current user (by capture date, newest first)
       description: "Ordered by COALESCE(taken_at, created_at) DESC. Optional album_id filters to one album."
       security: [ { bearerAuth: [] } ]
-      parameters: [ { name: album_id, in: query, required: false, schema: { type: integer } }, { name: person_id, in: query, required: false, schema: { type: integer }, description: "Filter to photos containing a visible face of this person." } ]
+      parameters: [ { name: album_id, in: query, required: false, schema: { type: integer } }, { name: person_id, in: query, required: false, schema: { type: integer }, description: "Filter to photos containing a visible face of this person." }, { name: archived, in: query, required: false, schema: { type: boolean }, description: "1 = only archived photos (Archive view); default hides archived from the timeline. Ignored when album_id/person_id is set." } ]
       responses:
         "200": { description: "Photos (without bytes).", content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -6054,6 +6055,29 @@ paths:
         "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/{photo}/archive:
+    patch:
+      tags: [Gallery]
+      operationId: galleryArchive
+      summary: Archive/unarchive a photo
+      description: "Archived photos are hidden from the main timeline; they still appear inside albums and in the Archive view (`/gallery/data?archived=1`)."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: photo, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [archived], properties: { archived: { type: boolean } } } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/bulk-archive:
+    post:
+      tags: [Gallery]
+      operationId: galleryBulkArchive
+      summary: Bulk archive/unarchive photos
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ids, archived], properties: { ids: { type: array, items: { type: integer } }, archived: { type: boolean } } } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, count: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /gallery/{photo}:
     put:
       tags: [Gallery]

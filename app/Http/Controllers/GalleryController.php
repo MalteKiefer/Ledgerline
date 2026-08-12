@@ -80,6 +80,11 @@ class GalleryController extends Controller
         if ($personId > 0) {
             $query->whereHas('faces', fn ($q) => $q->where('gallery_person_id', $personId)->where('hidden', false));
         }
+        // Archived photos are hidden from the main timeline; ?archived=1 shows
+        // only them (the "Archive" view). Album/person views show everything.
+        if ($albumId <= 0 && $personId <= 0) {
+            $query->{$request->boolean('archived') ? 'whereNotNull' : 'whereNull'}('archived_at');
+        }
         $photos = $query->orderByRaw('COALESCE(taken_at, created_at) DESC')->orderByDesc('id')->get()
             ->map(fn (GalleryPhoto $p): array => $this->row($p))->all();
 
@@ -921,6 +926,27 @@ class GalleryController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /** Archive/unarchive a single photo (hidden from the main timeline). */
+    public function archive(Request $request, GalleryPhoto $photo): JsonResponse
+    {
+        $this->requireUser($request);
+        $photo->forceFill(['archived_at' => $request->boolean('archived') ? now() : null])->save();
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Bulk archive/unarchive owner-scoped photos. */
+    public function bulkArchive(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+        $ids = $this->intIds($request->input('ids', []));
+        if ($ids !== []) {
+            GalleryPhoto::query()->whereIn('id', $ids)->update(['archived_at' => $request->boolean('archived') ? now() : null]);
+        }
+
+        return response()->json(['ok' => true, 'count' => count($ids)]);
+    }
+
     /**
      * Attach a Live Photo's motion clip (.MOV/.MP4) to an existing still, so the
      * pair lands as ONE gallery entry instead of two. The client resolves the
@@ -1242,7 +1268,7 @@ class GalleryController extends Controller
         ];
     }
 
-    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,thumb:bool,preview:bool,motion:bool,media_type:string,status:string,duration:?int,rotation:int,flip_h:bool,taken_at:?string,camera:?string,place:?string,lat:?float,lng:?float,version:int,created_at:?string} */
+    /** @return array{id:int,name:string,mime:?string,width:?int,height:?int,size:int,favorite:bool,thumb:bool,preview:bool,motion:bool,media_type:string,status:string,duration:?int,rotation:int,flip_h:bool,archived:bool,taken_at:?string,camera:?string,place:?string,lat:?float,lng:?float,version:int,created_at:?string} */
     public function row(GalleryPhoto $p): array
     {
         return [
@@ -1261,6 +1287,7 @@ class GalleryController extends Controller
             'duration' => $p->duration,
             'rotation' => (int) $p->rotation,
             'flip_h' => (bool) $p->flip_h,
+            'archived' => $p->archived_at !== null,
             'taken_at' => $p->taken_at?->toIso8601String(),
             'camera' => $p->camera,
             'place' => $p->place,
