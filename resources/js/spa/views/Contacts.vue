@@ -159,7 +159,10 @@
                 <a v-for="(p, i) in arr(detail.phones)" :key="'p'+i" :href="'tel:' + p.value" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
                   <Icon name="call" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
                   <span class="min-w-0 flex-1">
-                    <span class="block truncate text-sm">{{ p.value }}</span>
+                    <span class="flex items-center gap-1.5 text-sm">
+                      <span v-if="phoneCountry(p.value)" class="text-base leading-none" :title="phoneCountry(p.value)!.iso">{{ phoneCountry(p.value)!.flag }}</span>
+                      <span class="truncate">{{ p.value }}</span>
+                    </span>
                     <span v-if="typeLabel(p.type)" class="block text-xs text-[var(--ll-muted)]">{{ typeLabel(p.type) }}</span>
                   </span>
                 </a>
@@ -188,6 +191,32 @@
                          cached per session so browsing never re-hits the endpoint). -->
                     <AddressMiniMap :text="a.text" />
                   </template>
+                </div>
+              </template>
+              <!-- More details (birthday, nickname, anniversaries, custom fields, related) -->
+              <template v-if="str(detail.nickname) || str(detail.bday) || anyArr(detail.anniversaries).length || anyArr(detail.custom_fields).length || anyArr(detail.related).length">
+                <div class="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.details') }}</div>
+                <div class="space-y-1">
+                  <div v-if="str(detail.bday)" class="flex items-center gap-3 rounded-lg px-2 py-2">
+                    <Icon name="cake" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+                    <span class="min-w-0 flex-1"><span class="block text-sm">{{ fmtBday(str(detail.bday)) }}</span><span class="block text-xs text-[var(--ll-muted)]">{{ t('contacts.ui.bday') }}</span></span>
+                  </div>
+                  <div v-if="str(detail.nickname)" class="flex items-center gap-3 rounded-lg px-2 py-2">
+                    <Icon name="badge" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+                    <span class="min-w-0 flex-1"><span class="block text-sm">{{ str(detail.nickname) }}</span><span class="block text-xs text-[var(--ll-muted)]">{{ t('contacts.ui.nickname') }}</span></span>
+                  </div>
+                  <div v-for="(a, i) in anyArr(detail.anniversaries)" :key="'an'+i" class="flex items-center gap-3 rounded-lg px-2 py-2">
+                    <Icon name="event" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+                    <span class="min-w-0 flex-1"><span class="block text-sm">{{ fmtBday(String(a.date ?? '')) }}</span><span class="block text-xs text-[var(--ll-muted)]">{{ a.label || t('contacts.ui.anniversary') }}</span></span>
+                  </div>
+                  <div v-for="(f, i) in anyArr(detail.custom_fields)" :key="'cf'+i" class="flex items-center gap-3 rounded-lg px-2 py-2">
+                    <Icon name="label" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+                    <span class="min-w-0 flex-1"><span class="block text-sm">{{ f.value }}</span><span class="block text-xs text-[var(--ll-muted)]">{{ f.label || t('contacts.ui.field_label') }}</span></span>
+                  </div>
+                  <div v-for="(r, i) in anyArr(detail.related)" :key="'rel'+i" class="flex items-center gap-3 rounded-lg px-2 py-2">
+                    <Icon name="group" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+                    <span class="min-w-0 flex-1"><span class="block text-sm">{{ r.name || r.value }}</span><span class="block text-xs text-[var(--ll-muted)]">{{ r.type || t('contacts.ui.related') }}</span></span>
+                  </div>
                 </div>
               </template>
               <div v-if="str(detail.note)" class="mt-4">
@@ -461,6 +490,7 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import AddressMiniMap from '@spa/components/AddressMiniMap.vue';
+import { phoneCountry } from '@spa/lib/phone-country';
 import { useContactsStore, type ContactRow, type ContactDetail, type ContactGroup, type DuplicateGroup, type DuplicateContact, type AddressBook } from '@spa/stores/contacts';
 import { useToast } from '@spa/composables/useToast';
 import { useAuthStore } from '@spa/stores/auth';
@@ -539,6 +569,26 @@ onMounted(() => c.load());
 
 function str(v: unknown): string { return typeof v === 'string' ? v : ''; }
 function arr(v: unknown): Field[] { return Array.isArray(v) ? (v as Field[]) : []; }
+type DetailItem = { date?: string; label?: string; value?: string; name?: string; type?: string };
+function anyArr(v: unknown): DetailItem[] { return Array.isArray(v) ? (v as DetailItem[]) : []; }
+// Format a vCard BDAY/anniversary date for display. Accepts YYYY-MM-DD,
+// YYYYMMDD and the year-less --MMDD form; falls back to the raw string.
+function fmtBday(raw: string): string {
+  const s = raw.trim();
+  if (!s) return '';
+  const loc = document.documentElement.lang || 'en';
+  let m = /^(\d{4})-?(\d{2})-?(\d{2})/.exec(s);
+  if (m) {
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(loc, { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+  m = /^--(\d{2})-?(\d{2})/.exec(s); // year-less birthday
+  if (m) {
+    const d = new Date(2000, Number(m[1]) - 1, Number(m[2]));
+    return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(loc, { month: 'long', day: 'numeric' });
+  }
+  return s;
+}
 function initials(r: ContactRow): string { return ((r.first_name?.[0] ?? '') + (r.last_name?.[0] ?? '') || r.fn?.[0] || '?').toUpperCase(); }
 // Displayed name honours the list display-format preference (last_first → "Last, First").
 function displayName(r: { fn?: string | null; first_name?: string | null; last_name?: string | null }): string {
