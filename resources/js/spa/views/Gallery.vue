@@ -360,6 +360,7 @@
               <a v-if="isEdited(viewerPhoto)" :href="g.downloadUrl(viewerPhoto?.id ?? 0, 'edited')" download class="block px-3 py-1.5 text-sm hover:bg-white/10" @click="dlMenu = false">{{ t('gallery.dl_edited') }}</a>
             </div>
           </div>
+          <button v-if="viewerPhoto" class="rounded-full p-2 hover:bg-white/10" :title="t('gallery.comments')" @click="openComments(viewerPhoto.id)"><Icon name="chat_bubble" :size="22" /></button>
           <button v-if="viewerPhoto" class="rounded-full p-2 hover:bg-white/10" :title="viewerPhoto.archived ? t('gallery.unarchive') : t('gallery.archive_action')" @click="archiveOne(viewerPhoto, !viewerPhoto.archived)"><Icon :name="viewerPhoto.archived ? 'unarchive' : 'inventory_2'" :size="22" /></button>
           <button class="rounded-full p-2 text-red-400 hover:bg-white/10" :title="t('common.delete')" @click="onDelete"><Icon name="delete" :size="22" /></button>
         </div>
@@ -457,6 +458,21 @@
                 </li>
               </ul>
               <p v-else class="text-xs text-[var(--ll-muted)]">{{ t('gallery.no_recipients') }}</p>
+            </div>
+            <!-- Public guest upload links (album only) -->
+            <div v-if="share.albumId">
+              <div class="mb-2 flex items-center justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('gallery.upload_links') }}</span>
+                <Btn variant="soft" size="sm" icon="add_link" :loading="share.busy" @click="addUploadLink">{{ t('gallery.create_link') }}</Btn>
+              </div>
+              <ul v-if="share.uploadLinks.length" class="divide-y divide-[var(--ll-border)] rounded-lg border border-[var(--ll-border)]">
+                <li v-for="l in share.uploadLinks" :key="l.id" class="flex items-center gap-2 px-3 py-1.5 text-sm">
+                  <span class="min-w-0 flex-1 truncate">{{ l.label || g.uploadLinkUrl(l.token) }}</span>
+                  <button class="text-[var(--ll-muted)] hover:text-primary-600" :title="t('common.copy')" @click="copyUploadLink(l.token)"><Icon name="content_copy" :size="15" /></button>
+                  <button class="text-red-600 hover:opacity-80" @click="removeUploadLink(l.id)"><Icon name="close" :size="15" /></button>
+                </li>
+              </ul>
+              <p v-else class="text-xs text-[var(--ll-muted)]">{{ t('gallery.upload_links_hint') }}</p>
             </div>
           </div>
         </div>
@@ -650,6 +666,38 @@
               <span class="text-[10px] tabular-nums text-[var(--ll-muted)]">{{ x.count }}</span>
             </button>
           </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Comments + reactions -->
+    <Teleport to="body">
+      <div v-if="cmt.open" class="fixed inset-0 z-[2200] flex items-end justify-center bg-black/40 sm:items-center" @click.self="cmt.open = false">
+        <div class="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-2xl bg-[var(--ll-elevated)] shadow-xl sm:rounded-2xl">
+          <div class="flex items-center justify-between border-b border-[var(--ll-border)] px-4 py-3">
+            <h3 class="text-sm font-semibold">{{ t('gallery.comments') }}</h3>
+            <button class="rounded-full p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="cmt.open = false"><Icon name="close" :size="18" /></button>
+          </div>
+          <div class="flex flex-wrap gap-1 border-b border-[var(--ll-border)] px-4 py-2">
+            <button v-for="e in REACTIONS" :key="e" class="rounded-full px-2 py-1 text-base transition" :class="cmt.mine === e ? 'bg-primary-500/15 ring-1 ring-primary-500' : 'hover:bg-black/[0.05] dark:hover:bg-white/10'" @click="toggleReaction(e)">
+              {{ e }}<span v-if="cmt.reactions[e]" class="ml-0.5 text-xs text-[var(--ll-muted)]">{{ cmt.reactions[e] }}</span>
+            </button>
+          </div>
+          <div class="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+            <p v-if="!cmt.list.length" class="py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.comments_empty') }}</p>
+            <div v-for="c in cmt.list" :key="c.id" class="group text-sm">
+              <div class="flex items-baseline gap-2">
+                <span class="font-medium">{{ c.author ?? '—' }}</span>
+                <span class="text-xs text-[var(--ll-muted)]">{{ new Date(c.created_at).toLocaleDateString() }}</span>
+                <button v-if="c.mine" class="ml-auto text-[var(--ll-muted)] opacity-0 hover:text-red-600 group-hover:opacity-100" @click="removeComment(c.id)"><Icon name="delete" :size="14" /></button>
+              </div>
+              <p class="whitespace-pre-wrap break-words">{{ c.body }}</p>
+            </div>
+          </div>
+          <form class="flex gap-2 border-t border-[var(--ll-border)] p-3" @submit.prevent="sendComment">
+            <input v-model="cmt.draft" :placeholder="t('gallery.comment_ph')" class="min-w-0 flex-1 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-bg)] px-3 py-2 text-sm focus:border-primary-500 focus:outline-none">
+            <Btn type="submit" variant="solid" size="sm" icon="send" :disabled="!cmt.draft.trim()" />
+          </form>
         </div>
       </div>
     </Teleport>
@@ -1242,14 +1290,15 @@ watch(viewer, () => {
 // ---- Sharing (owner side) ----
 const share = reactive<{
   open: boolean; albumId: number | null; albumName: string; role: 'viewer' | 'editor';
-  public: PublicShareRow | null; internal: InternalShareRow[]; email: string; busy: boolean;
-}>({ open: false, albumId: null, albumName: '', role: 'viewer', public: null, internal: [], email: '', busy: false });
+  public: PublicShareRow | null; internal: InternalShareRow[]; uploadLinks: import('@spa/stores/gallery').UploadLinkRow[]; email: string; busy: boolean;
+}>({ open: false, albumId: null, albumName: '', role: 'viewer', public: null, internal: [], uploadLinks: [], email: '', busy: false });
 
 async function refreshShareState() {
   try {
     const r = await g.loadShares();
     share.public = share.albumId ? (r.public.find((p) => p.album_id === share.albumId) ?? null) : null;
     share.internal = r.internal.filter((s) => (share.albumId ? s.album_id === share.albumId : s.album_id === null));
+    share.uploadLinks = (r.upload_links ?? []).filter((l) => l.album_id === share.albumId);
   } catch { error(t('common.error')); }
 }
 function openShare(a: Album) { share.open = true; share.albumId = a.id; share.albumName = a.name; share.email = ''; share.role = 'viewer'; void refreshShareState(); }
@@ -1289,6 +1338,18 @@ async function addInternal() {
 async function removeInternal(id: number) {
   try { await g.deleteInternalShare(id); await refreshShareState(); } catch { error(t('common.error')); }
 }
+async function addUploadLink() {
+  if (!share.albumId) return;
+  share.busy = true;
+  try { await g.createUploadLink({ album_id: share.albumId }); await refreshShareState(); success(t('common.saved')); }
+  catch { error(t('common.error')); } finally { share.busy = false; }
+}
+async function removeUploadLink(id: number) {
+  try { await g.deleteUploadLink(id); await refreshShareState(); } catch { error(t('common.error')); }
+}
+async function copyUploadLink(token: string) {
+  try { await navigator.clipboard.writeText(g.uploadLinkUrl(token)); success(t('common.copied')); } catch { error(t('common.error')); }
+}
 async function copyShareLink() {
   if (!share.public) return;
   try { await navigator.clipboard.writeText(g.publicShareUrl(share.public.token)); success(t('common.copied')); } catch { error(t('common.error')); }
@@ -1306,6 +1367,24 @@ async function openShared() {
   try { sharedList.value = await g.sharedWithMe(); } catch { error(t('common.error')); }
 }
 function closeShared() { showShared.value = false; sharedView.value = null; sharedViewer.value = -1; }
+// ---- Comments + reactions ----
+const REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
+const cmt = reactive<{ open: boolean; photo: number; list: import('@spa/stores/gallery').Comment[]; reactions: Record<string, number>; mine: string | null; draft: string }>({ open: false, photo: 0, list: [], reactions: {}, mine: null, draft: '' });
+async function openComments(photo: number) {
+  cmt.open = true; cmt.photo = photo; cmt.list = []; cmt.reactions = {}; cmt.mine = null; cmt.draft = '';
+  try { const r = await g.comments(photo); cmt.list = r.comments; cmt.reactions = r.reactions; cmt.mine = r.my_reaction; } catch { error(t('common.error')); }
+}
+async function sendComment() {
+  const body = cmt.draft.trim(); if (!body) return;
+  try { await g.addComment(cmt.photo, body); cmt.draft = ''; const r = await g.comments(cmt.photo); cmt.list = r.comments; } catch { error(t('common.error')); }
+}
+async function removeComment(id: number) {
+  try { await g.deleteComment(id); cmt.list = cmt.list.filter((c) => c.id !== id); } catch { error(t('common.error')); }
+}
+async function toggleReaction(emoji: string) {
+  try { const r = await g.react(cmt.photo, cmt.mine === emoji ? null : emoji); const fresh = await g.comments(cmt.photo); cmt.reactions = fresh.reactions; cmt.mine = r.my_reaction; } catch { error(t('common.error')); }
+}
+
 const sharedCanContribute = ref(false);
 const sharedUploading = ref(false);
 const contributeInput = ref<HTMLInputElement | null>(null);

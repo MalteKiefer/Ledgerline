@@ -128,6 +128,56 @@ class GalleryShareTest extends TestCase
         $this->actingAs(User::factory()->create())->getJson(route('gallery.shared.browse', ['share' => $share->id]))->assertNotFound();
     }
 
+    public function test_comments_and_reactions_are_photo_access_gated(): void
+    {
+        [$owner, $album, $photo] = $this->seedAlbum(User::factory()->create());
+        $recipient = User::factory()->create(['email' => 'friend@example.test']);
+        $stranger = User::factory()->create();
+
+        // Share the album (viewer) so the recipient can access the photo.
+        $this->actingAs($owner)->postJson(route('gallery.shares.internal.store'), ['email' => 'friend@example.test', 'album_id' => $album->id])->assertCreated();
+
+        // Owner comments on their own photo.
+        $this->actingAs($owner)->postJson(route('gallery.comments.store', ['photo' => $photo->id]), ['body' => 'nice'])->assertCreated();
+        // Recipient comments (has access via the share) + reacts.
+        $this->actingAs($recipient)->postJson(route('gallery.comments.store', ['photo' => $photo->id]), ['body' => 'wow'])->assertCreated();
+        $this->actingAs($recipient)->postJson(route('gallery.react', ['photo' => $photo->id]), ['emoji' => '❤️'])->assertOk()->assertJsonPath('my_reaction', '❤️');
+        // Stranger has no access → 404.
+        $this->actingAs($stranger)->postJson(route('gallery.comments.store', ['photo' => $photo->id]), ['body' => 'no'])->assertNotFound();
+
+        $seen = $this->actingAs($owner)->getJson(route('gallery.comments.index', ['photo' => $photo->id]))->assertOk()->json();
+        $this->assertCount(2, $seen['comments']);
+        $this->assertSame(1, $seen['reactions']['❤️']);
+
+        // Reaction toggles off when re-sent.
+        $this->actingAs($recipient)->postJson(route('gallery.react', ['photo' => $photo->id]), ['emoji' => '❤️'])->assertOk()->assertJsonPath('my_reaction', null);
+    }
+
+    public function test_public_album_upload_link_lets_a_guest_contribute(): void
+    {
+        [$owner, $album] = $this->seedAlbum(User::factory()->create());
+
+        $token = $this->actingAs($owner)->postJson(route('gallery.upload-links.store'), [
+            'album_id' => $album->id, 'label' => 'Wedding', 'password' => 'sekret',
+        ])->assertCreated()->json('token');
+
+        // Public meta (no auth) shows label + password requirement.
+        $this->getJson(route('api.public.gallery-upload.meta', ['token' => $token]))
+            ->assertOk()->assertJsonPath('needs_password', true)->assertJsonPath('label', 'Wedding');
+
+        // Wrong / missing password → 403.
+        $this->post(route('api.public.gallery-upload.store', ['token' => $token]), ['file' => UploadedFile::fake()->image('g.jpg', 100, 80)])->assertForbidden();
+
+        // Correct password → contributed under the OWNER, in the album.
+        $this->post(route('api.public.gallery-upload.store', ['token' => $token]), [
+            'file' => UploadedFile::fake()->image('guest.jpg', 200, 150), 'password' => 'sekret',
+        ])->assertCreated();
+
+        $contributed = GalleryPhoto::withoutGlobalScopes()->where('name', 'guest.jpg')->firstOrFail();
+        $this->assertSame($owner->id, $contributed->user_id);
+        $this->assertTrue($album->photos()->withoutGlobalScopes()->whereKey($contributed->id)->exists());
+    }
+
     public function test_collaborative_album_editor_can_contribute_viewer_cannot(): void
     {
         [$owner, $album] = $this->seedAlbum(User::factory()->create());

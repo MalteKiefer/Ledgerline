@@ -45,6 +45,7 @@ use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\FinanceReportController;
+use App\Http\Controllers\GalleryCommentController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryPeopleController;
 use App\Http\Controllers\GalleryShareController;
@@ -73,6 +74,7 @@ use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\PublicGalleryShareController;
+use App\Http\Controllers\PublicGalleryUploadController;
 use App\Http\Controllers\SharedFolderController;
 use App\Http\Controllers\SharedGalleryController;
 use App\Http\Controllers\SharedWithMeController;
@@ -130,6 +132,12 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/photo/{photo}/thumb', [PublicGalleryShareController::class, 'thumb'])->whereNumber('photo')->middleware('throttle:6000,1')->name('photo.thumb');
         Route::get('/photo/{photo}/preview', [PublicGalleryShareController::class, 'preview'])->whereNumber('photo')->middleware('throttle:6000,1')->name('photo.preview');
         Route::get('/photo/{photo}/raw', [PublicGalleryShareController::class, 'raw'])->whereNumber('photo')->middleware('throttle:3000,1')->name('photo.raw');
+    });
+
+    // Public, unauthenticated gallery album upload links (guest contributions).
+    Route::prefix('gallery-upload/{token}')->name('api.public.gallery-upload.')->group(function (): void {
+        Route::get('/', [PublicGalleryUploadController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
+        Route::post('/', [PublicGalleryUploadController::class, 'store'])->middleware('throttle:30,1')->name('store');
     });
 
     // Public, unauthenticated inbound upload links: the token in the path is the
@@ -327,6 +335,12 @@ Route::prefix('v1')->group(function (): void {
             Route::delete('/gallery/shares/public/{share}', [GalleryShareController::class, 'destroyPublic'])->whereNumber('share')->middleware('throttle:60,1')->name('api.gallery.shares.public.destroy');
             Route::post('/gallery/shares/internal', [GalleryShareController::class, 'storeInternal'])->middleware('throttle:60,1')->name('api.gallery.shares.internal.store');
             Route::delete('/gallery/shares/internal/{share}', [GalleryShareController::class, 'destroyInternal'])->whereNumber('share')->middleware('throttle:60,1')->name('api.gallery.shares.internal.destroy');
+            Route::get('/gallery/{photo}/comments', [GalleryCommentController::class, 'index'])->whereNumber('photo')->middleware('throttle:600,1')->name('api.gallery.comments.index');
+            Route::post('/gallery/{photo}/comments', [GalleryCommentController::class, 'store'])->whereNumber('photo')->middleware('throttle:120,1')->name('api.gallery.comments.store');
+            Route::delete('/gallery/comments/{comment}', [GalleryCommentController::class, 'destroy'])->whereNumber('comment')->middleware('throttle:120,1')->name('api.gallery.comments.destroy');
+            Route::post('/gallery/{photo}/react', [GalleryCommentController::class, 'react'])->whereNumber('photo')->middleware('throttle:300,1')->name('api.gallery.react');
+            Route::post('/gallery/upload-links', [GalleryShareController::class, 'storeUploadLink'])->middleware('throttle:30,1')->name('api.gallery.upload-links.store');
+            Route::delete('/gallery/upload-links/{link}', [GalleryShareController::class, 'destroyUploadLink'])->whereNumber('link')->middleware('throttle:30,1')->name('api.gallery.upload-links.destroy');
             // Sharing — recipient side
             Route::get('/gallery/shared-with-me', [SharedGalleryController::class, 'index'])->name('api.gallery.shared.index');
             Route::get('/gallery/shared-with-me/{share}', [SharedGalleryController::class, 'browse'])->whereNumber('share')->name('api.gallery.shared.browse');
