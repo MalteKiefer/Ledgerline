@@ -182,15 +182,12 @@
                         <span class="block text-sm">{{ a.text }}</span>
                         <span v-if="typeLabel(a.type)" class="block text-xs text-[var(--ll-muted)]">{{ typeLabel(a.type) }}</span>
                       </span>
-                      <Btn variant="ghost" size="xs" :icon="mapIdx === i ? 'expand_less' : 'map'" :loading="mapLoading && mapIdx === i" @click="toggleMap(a.text, i)">{{ mapIdx === i ? t('contacts.ui.map_hide') : t('contacts.ui.map_show') }}</Btn>
                       <Btn variant="ghost" size="xs" tag="a" :href="mapUrl(a.text)" target="_blank" rel="noopener" :title="t('contacts.ui.map_open_osm')" icon="open_in_new" />
                     </div>
+                    <!-- Mini-map is always shown for each address (geocoded on view,
+                         cached per session so browsing never re-hits the endpoint). -->
+                    <AddressMiniMap :text="a.text" />
                   </template>
-                </div>
-                <!-- Single mini-map (opt-in geocode). Kept outside the v-for so its
-                     template ref stays a stable single element, not an array. -->
-                <div v-if="mapIdx !== null && !mapLoading" class="mt-1 overflow-hidden rounded-lg border border-[var(--ll-border)]">
-                  <div ref="mapEl" class="h-[180px] w-full" />
                 </div>
               </template>
               <div v-if="str(detail.note)" class="mt-4">
@@ -431,11 +428,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
-import * as L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
+import AddressMiniMap from '@spa/components/AddressMiniMap.vue';
 import { useContactsStore, type ContactRow, type ContactDetail, type ContactGroup, type DuplicateGroup, type DuplicateContact, type AddressBook } from '@spa/stores/contacts';
 import { useToast } from '@spa/composables/useToast';
 import { useAuthStore } from '@spa/stores/auth';
@@ -560,44 +556,6 @@ function typeLabel(raw?: string): string {
 }
 const emailTypeItems = computed(() => ['home', 'work', 'other'].map((k) => ({ title: t(`contacts.ui.type_${k}`), value: k })));
 const phoneTypeItems = computed(() => ['cell', 'home', 'work', 'voice', 'fax', 'main', 'other'].map((k) => ({ title: t(`contacts.ui.type_${k}`), value: k })));
-
-// --- Address mini-map (opt-in: geocode on explicit click, never automatically) ---
-const mapIdx = ref<number | null>(null);
-const mapLoading = ref(false);
-const mapEl = ref<HTMLElement | null>(null);
-let cmap: L.Map | null = null;
-let cmarker: L.Marker | null = null;
-const pinIcon = L.divIcon({
-  className: 'll-map-pin',
-  html: '<svg viewBox="0 0 24 24" width="28" height="28" fill="#6750a4" stroke="#fff" stroke-width="1"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>',
-  iconSize: [28, 28],
-  iconAnchor: [14, 28],
-});
-function closeMap(): void {
-  if (cmap) { cmap.remove(); cmap = null; cmarker = null; }
-  mapIdx.value = null;
-}
-async function toggleMap(text: string, i: number): Promise<void> {
-  if (mapIdx.value === i) { closeMap(); return; }
-  closeMap();
-  mapLoading.value = true;
-  mapIdx.value = i;
-  try {
-    const res = await c.geoSearch(text);
-    const hit = res[0];
-    if (!hit) { error(t('contacts.ui.map_no_result')); mapIdx.value = null; return; }
-    await nextTick();
-    const el = mapEl.value;
-    if (!el) { mapIdx.value = null; return; }
-    cmap = L.map(el, { scrollWheelZoom: false }).setView([hit.lat, hit.lon], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(cmap);
-    cmarker = L.marker([hit.lat, hit.lon], { icon: pinIcon }).addTo(cmap);
-    setTimeout(() => cmap?.invalidateSize(), 60);
-  } catch { error(t('common.error')); closeMap(); } finally { mapLoading.value = false; }
-}
-// A different contact / editor open tears the map down.
-watch([detail, editor], () => closeMap());
-onBeforeUnmount(() => closeMap());
 
 let debTimer: ReturnType<typeof setTimeout> | undefined;
 function debouncedLoad() { clearTimeout(debTimer); debTimer = setTimeout(reload, 300); }

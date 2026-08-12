@@ -242,7 +242,7 @@ Route::prefix('v1')->group(function (): void {
         // Generic address autocomplete (forward geocode). Device-authenticated but
         // NOT module-gated — both the calendar event editor and the contacts map
         // preview use it. Server-proxied to Nominatim (SSRF-guarded), no-store.
-        Route::get('/geo/search', [GeoController::class, 'search'])->middleware('throttle:30,1')->name('api.geo.search');
+        Route::get('/geo/search', [GeoController::class, 'search'])->middleware('throttle:120,1')->name('api.geo.search');
 
         // Contacts module — mirrors the web routes. The web ContactController
         // methods already return JSON (store/update/destroy/show/data/suggest/
