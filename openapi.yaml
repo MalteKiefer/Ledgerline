@@ -3065,6 +3065,29 @@ paths:
       responses:
         "200": { description: Saved. }
         "422": { $ref: '#/components/responses/ValidationError' }
+  /calendar/free-busy:
+    get:
+      tags: [Calendar]
+      operationId: calendarFreeBusy
+      summary: Merged busy intervals across the caller's readable calendars
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: from, in: query, required: true, schema: { type: string } }, { name: to, in: query, required: true, schema: { type: string } } ]
+      responses:
+        "200": { description: Busy., content: { application/json: { schema: { type: object, properties: { busy: { type: array, items: { type: object, properties: { start: { type: string }, end: { type: string } } } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { description: Range too large. }
+  /calendar/slots:
+    post:
+      tags: [Calendar]
+      operationId: calendarSlots
+      summary: Find common free slots for the caller and named local attendees
+      description: "Attendee availability comes from calendars they have shared with the caller; attendees with no shared calendar are returned in unknown_attendees."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [from, to, duration_min], properties: { from: { type: string }, to: { type: string }, duration_min: { type: integer, minimum: 5, maximum: 1440 }, day_start: { type: integer, minimum: 0, maximum: 23 }, day_end: { type: integer, minimum: 1, maximum: 24 }, attendees: { type: array, items: { type: string, format: email } } } } } } }
+      responses:
+        "200": { description: Slots., content: { application/json: { schema: { type: object, properties: { slots: { type: array, items: { type: object, properties: { start: { type: string }, end: { type: string } } } }, unknown_attendees: { type: array, items: { type: string } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /calendar/shares:
     get:
       tags: [Calendar]

@@ -203,6 +203,31 @@
         <TextField v-model="form.start" :label="t('calendar.ui.starts')" :type="form.allDay ? 'date' : 'datetime-local'" />
         <TextField v-model="form.end" :label="t('calendar.ui.ends')" :type="form.allDay ? 'date' : 'datetime-local'" />
       </div>
+      <!-- Scheduling: find a free slot -->
+      <div v-if="!form.allDay" class="rounded-lg border border-[var(--ll-border)] p-2">
+        <button type="button" class="flex w-full items-center gap-2 text-sm font-medium" @click="sched.open = !sched.open">
+          <Icon name="event_available" :size="16" class="text-[var(--ll-muted)]" /> {{ t('calendar.ui.find_slot') }}
+          <Icon :name="sched.open ? 'expand_less' : 'expand_more'" :size="16" class="ml-auto text-[var(--ll-muted)]" />
+        </button>
+        <div v-if="sched.open" class="mt-2 space-y-2">
+          <div class="grid grid-cols-2 gap-2">
+            <Select v-model.number="sched.duration" :label="t('calendar.ui.duration')" :options="durationOptions" />
+            <TextField v-model.number="sched.days" :label="t('calendar.ui.within_days')" type="number" />
+          </div>
+          <TextField v-model="sched.attendees" :label="t('calendar.ui.attendees')" :placeholder="t('calendar.ui.attendees_ph')" />
+          <Btn size="sm" variant="soft" :loading="sched.busy" @click="runFindSlots">{{ t('calendar.ui.find') }}</Btn>
+          <p v-if="sched.unknown.length" class="text-xs text-amber-600">{{ t('calendar.ui.no_availability', { list: sched.unknown.join(', ') }) }}</p>
+          <ul v-if="sched.slots.length" class="max-h-40 divide-y divide-[var(--ll-border)] overflow-y-auto rounded-lg border border-[var(--ll-border)]">
+            <li v-for="(s, i) in sched.slots" :key="i">
+              <button type="button" class="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-black/[0.04] dark:hover:bg-white/5" @click="pickSlot(s)">
+                <span>{{ new Date(s.start).toLocaleString() }}</span>
+                <Icon name="chevron_right" :size="15" class="text-[var(--ll-muted)]" />
+              </button>
+            </li>
+          </ul>
+          <p v-else-if="sched.searched && !sched.busy" class="text-xs text-[var(--ll-muted)]">{{ t('calendar.ui.no_slots') }}</p>
+        </div>
+      </div>
       <LocationField
         v-model="form.location"
         v-model:lat="form.geoLat"
@@ -683,6 +708,28 @@ async function onDelete(): Promise<void> {
 // --- calendar editor (NORMAL calendars only) --------------------------------
 // Special calendars (birthdays/holidays/school holidays) are created from the
 // calendar settings page (profile/Calendar.vue), not here.
+// ---- Scheduling (find a free slot) ----
+const sched = reactive<{ open: boolean; busy: boolean; searched: boolean; duration: number; days: number; attendees: string; slots: { start: string; end: string }[]; unknown: string[] }>(
+  { open: false, busy: false, searched: false, duration: 30, days: 14, attendees: '', slots: [], unknown: [] },
+);
+const durationOptions = [15, 30, 45, 60, 90, 120].map((m) => ({ title: m + ' min', value: m }));
+async function runFindSlots() {
+  sched.busy = true; sched.searched = true;
+  const from = new Date(); const to = new Date(from.getTime() + Math.max(1, sched.days) * 86400000);
+  const emails = sched.attendees.split(/[,;\s]+/).map((s) => s.trim()).filter((s) => s.includes('@'));
+  try {
+    const r = await store.findSlots({ from: from.toISOString(), to: to.toISOString(), duration_min: sched.duration, attendees: emails });
+    sched.slots = r.slots; sched.unknown = r.unknown_attendees;
+  } catch { error(t('common.error')); sched.slots = []; }
+  finally { sched.busy = false; }
+}
+function pickSlot(s: { start: string; end: string }) {
+  form.start = toInput(s.start, false);
+  const end = new Date(new Date(s.start).getTime() + sched.duration * 60000);
+  form.end = toInput(end.toISOString(), false);
+  sched.open = false;
+}
+
 // ---- Calendar sharing ----
 const shareModal = ref(false);
 const shareCal = ref<CalendarCol | null>(null);

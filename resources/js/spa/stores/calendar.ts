@@ -147,6 +147,11 @@ export const useCalendarStore = defineStore('calendar', () => {
   const shareCalendar = (body: { calendar_id: string; email: string; role?: 'viewer' | 'editor' }) => api.post<{ ok: boolean; id: number }>('/api/v1/calendar/shares', body);
   const revokeCalendarShare = (id: number) => api.delete(`/api/v1/calendar/shares/${id}`);
 
+  // Free/busy + scheduling.
+  const freeBusy = (from: string, to: string) => api.get<{ busy: { start: string; end: string }[] }>(`/api/v1/calendar/free-busy?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`).then((r) => r.busy);
+  const findSlots = (body: { from: string; to: string; duration_min: number; day_start?: number; day_end?: number; attendees?: string[] }) =>
+    api.post<{ slots: { start: string; end: string }[]; unknown_attendees: string[] }>('/api/v1/calendar/slots', body);
+
   // Address autocomplete — server-side geo proxy (authenticated, throttled).
   const geoSearch = (q: string) =>
     api.get<{ results: GeoResult[] }>(`/api/v1/geo/search?q=${encodeURIComponent(q)}`).then((r) => r.results);
@@ -167,6 +172,6 @@ export const useCalendarStore = defineStore('calendar', () => {
     loadData, loadRange, show, create, update, destroy, excludeOccurrence, overrideOccurrence,
     createCalendar, updateCalendar, deleteCalendar, createSpecial, regenerate, saveSettings, importIcs, exportUrl,
     loadHolidayCountries, loadHolidaySubdivisions, geoSearch,
-    loadShares, shareCalendar, revokeCalendarShare,
+    loadShares, shareCalendar, revokeCalendarShare, freeBusy, findSlots,
   };
 });
