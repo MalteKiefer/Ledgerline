@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
@@ -108,21 +109,25 @@ class UsersController extends Controller
     {
         $this->validated($request, creating: false, ignoreId: $user->id);
 
-        // Never demote the last remaining admin.
-        if ($user->isAdmin()
-            && $request->string('role')->value() !== 'admin'
-            && $this->adminCount() <= 1
-        ) {
-            return response()->json(['errors' => ['role' => [__('settings.users_last_admin')]]], 422);
-        }
+        // Never demote the last remaining admin. Check + save atomically under a
+        // row lock so two concurrent demote/delete requests can't both pass the
+        // count check and leave zero admins (TOCTOU).
+        return DB::transaction(function () use ($request, $user): JsonResponse {
+            if ($user->isAdmin()
+                && $request->string('role')->value() !== 'admin'
+                && $this->otherAdminsLocked($user) < 1
+            ) {
+                return response()->json(['errors' => ['role' => [__('settings.users_last_admin')]]], 422);
+            }
 
-        $user->forceFill([
-            'name' => $request->string('name')->value(),
-            'email' => $request->string('email')->value(),
-        ] + $this->privilegedFields($request))->save();
-        $user->memberGroups()->sync($this->groupIds($request));
+            $user->forceFill([
+                'name' => $request->string('name')->value(),
+                'email' => $request->string('email')->value(),
+            ] + $this->privilegedFields($request))->save();
+            $user->memberGroups()->sync($this->groupIds($request));
 
-        return response()->json(['user' => $this->present($user->load('memberGroups'))]);
+            return response()->json(['user' => $this->present($user->load('memberGroups'))]);
+        });
     }
 
     /**
@@ -137,13 +142,15 @@ class UsersController extends Controller
         if ($user->id === $caller->id) {
             return response()->json(['errors' => ['delete' => [__('settings.users_no_self_delete')]]], 422);
         }
-        if ($user->isAdmin() && $this->adminCount() <= 1) {
-            return response()->json(['errors' => ['delete' => [__('settings.users_last_admin')]]], 422);
-        }
 
-        $purge->handle($user);
+        return DB::transaction(function () use ($user, $purge): JsonResponse {
+            if ($user->isAdmin() && $this->otherAdminsLocked($user) < 1) {
+                return response()->json(['errors' => ['delete' => [__('settings.users_last_admin')]]], 422);
+            }
+            $purge->handle($user);
 
-        return response()->json([], 204);
+            return response()->json([], 204);
+        });
     }
 
     /**
@@ -353,8 +360,9 @@ class UsersController extends Controller
         ), static fn (int $v): bool => $v > 0));
     }
 
-    private function adminCount(): int
+    /** Count OTHER admins under a row lock (call inside a transaction — TOCTOU-safe). */
+    private function otherAdminsLocked(User $user): int
     {
-        return User::where('role', 'admin')->count();
+        return User::where('role', 'admin')->whereKeyNot($user->getKey())->lockForUpdate()->count();
     }
 }

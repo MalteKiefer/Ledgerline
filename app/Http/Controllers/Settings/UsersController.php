@@ -14,6 +14,7 @@ use App\Support\BlobStore;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
@@ -72,16 +73,23 @@ class UsersController extends Controller
     {
         $this->validated($request, creating: false, ignoreId: $user->id);
 
-        // Never demote the last remaining admin.
-        if ($user->isAdmin() && $request->string('role')->value() !== 'admin' && $this->adminCount() <= 1) {
+        // Never demote the last remaining admin — atomic check+save (TOCTOU-safe).
+        $orphaned = DB::transaction(function () use ($request, $user): bool {
+            if ($user->isAdmin() && $request->string('role')->value() !== 'admin'
+                && User::where('role', 'admin')->whereKeyNot($user->getKey())->lockForUpdate()->count() < 1) {
+                return true;
+            }
+            $user->forceFill([
+                'name' => $request->string('name')->value(),
+                'email' => $request->string('email')->value(),
+            ] + $this->privilegedFields($request))->save();
+            $user->memberGroups()->sync($this->groupIds($request));
+
+            return false;
+        });
+        if ($orphaned) {
             return back()->withErrors(['role' => __('settings.users_last_admin')]);
         }
-
-        $user->forceFill([
-            'name' => $request->string('name')->value(),
-            'email' => $request->string('email')->value(),
-        ] + $this->privilegedFields($request))->save();
-        $user->memberGroups()->sync($this->groupIds($request));
 
         return $this->savedSettings('users', 'settings.users', 'settings.users_saved');
     }
@@ -101,11 +109,17 @@ class UsersController extends Controller
         if ($user->id === $this->requireUser($request)->id) {
             return back()->withErrors(['delete' => __('settings.users_no_self_delete')]);
         }
-        if ($user->isAdmin() && $this->adminCount() <= 1) {
+        $orphaned = DB::transaction(function () use ($user, $purge): bool {
+            if ($user->isAdmin() && User::where('role', 'admin')->whereKeyNot($user->getKey())->lockForUpdate()->count() < 1) {
+                return true;
+            }
+            $purge->handle($user); // purge the user's owned data (plaintext-relational)
+
+            return false;
+        });
+        if ($orphaned) {
             return back()->withErrors(['delete' => __('settings.users_last_admin')]);
         }
-
-        $purge->handle($user); // purge the user's owned data (plaintext-relational)
 
         return $this->savedSettings('users', 'settings.users', 'settings.users_deleted');
     }
@@ -198,10 +212,5 @@ class UsersController extends Controller
             'max_connected_devices' => $limit('max_connected_devices'),
             'modules' => GroupsController::modulesFromRequest($request),
         ];
-    }
-
-    private function adminCount(): int
-    {
-        return User::where('role', 'admin')->count();
     }
 }

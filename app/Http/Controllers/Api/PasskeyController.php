@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\WebauthnCredential;
+use App\Services\Auth\Pairing;
 use App\Support\WebAuthn;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -104,6 +105,7 @@ class PasskeyController extends Controller
         $request->validate([
             'handle' => ['required', 'string'],
             'credential' => ['required', 'array'],
+            'install_id' => ['nullable', 'string', 'max:64'],
         ]);
         $user = $this->webauthn->verifyAssertion(
             $request->string('handle')->value(),
@@ -119,7 +121,11 @@ class PasskeyController extends Controller
             return response()->json(['status' => 'verify-email'], 403);
         }
 
-        $token = $user->createToken('web', ['device'])->plainTextToken;
+        // Count against the shared device cap (Mullvad-style) with browser install_id dedup.
+        $install = $request->string('install_id')->value();
+        $token = app(Pairing::class)->issueDeviceToken($user, 'web', $request->ip(), [
+            'install_id' => $install !== '' ? $install : null,
+        ])->plainTextToken;
 
         return response()->json([
             'token' => $token,

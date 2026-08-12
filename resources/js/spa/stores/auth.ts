@@ -15,6 +15,19 @@ export interface MeUser {
   preferences?: Record<string, unknown>;
 }
 
+// A stable, non-secret per-browser id so this browser counts as ONE device
+// against the shared cap (web + CLI + app), and re-logging-in from the same
+// browser replaces its slot instead of stacking a new device each time.
+function browserInstallId(): string {
+  const KEY = 'll_install_id';
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    id = (crypto?.randomUUID?.() ?? `b-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<MeUser | null>(null);
   const ready = ref(false);
@@ -41,7 +54,7 @@ export const useAuthStore = defineStore('auth', () => {
   /** email+password (+2FA) → bearer token. Returns twoFactor:true when a code is required. */
   async function login(email: string, password: string, code?: string, recovery_code?: string): Promise<{ twoFactor: boolean }> {
     try {
-      const res = await api.post<{ token: string; user: MeUser }>('/api/v1/auth/login', { email, password, code, recovery_code });
+      const res = await api.post<{ token: string; user: MeUser }>('/api/v1/auth/login', { email, password, code, recovery_code, install_id: browserInstallId(), device_name: 'Web browser' });
       setToken(res.token);
       user.value = res.user;
       return { twoFactor: false };
@@ -104,7 +117,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!passkeysSupported()) throw new Error('unsupported');
     const start = await api.post<{ handle: string; options: Record<string, unknown> }>('/api/v1/auth/passkey/options');
     const credential = await getAssertion(start.options as never);
-    const res = await api.post<{ token: string; user: MeUser }>('/api/v1/auth/passkey/verify', { handle: start.handle, credential });
+    const res = await api.post<{ token: string; user: MeUser }>('/api/v1/auth/passkey/verify', { handle: start.handle, credential, install_id: browserInstallId() });
     setToken(res.token);
     user.value = res.user;
   }
