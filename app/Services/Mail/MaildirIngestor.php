@@ -333,7 +333,9 @@ class MaildirIngestor
             $ct = strtolower((string) $attachment->contentType);
             if (str_contains($ct, 'text/calendar')) {
                 try {
-                    app(ImipService::class)->ingest((int) $account->user_id, $attachment->bytes);
+                    // Pass the envelope From so ImipService rejects a spoofed
+                    // invite/reply (sender must match the organizer/attendee).
+                    app(ImipService::class)->ingest((int) $account->user_id, $attachment->bytes, $parsed->fromEmail);
                 } catch (Throwable) {
                     // ignore — archival already succeeded
                 }

@@ -112,9 +112,15 @@ class ImipService
     /**
      * Ingest a received iCalendar payload into the user's calendars.
      *
+     * $senderEmail is the AUTHENTICATED sender of the message carrying this
+     * payload (the SMTP/From identity for the mail auto-hook). When provided it
+     * is enforced against the iCalendar identity so a spoofed .ics cannot flip an
+     * attendee's PARTSTAT (REPLY) or fake an organizer's REQUEST/CANCEL. Null =
+     * trusted, user-initiated ingest (the authenticated owner pasting an .ics).
+     *
      * @return array{method:?string,action:string}
      */
-    public function ingest(int $uid, string $ics): array
+    public function ingest(int $uid, string $ics, ?string $senderEmail = null): array
     {
         try {
             $cal = Reader::read($ics);
@@ -137,25 +143,48 @@ class ImipService
         if ($uidValue === '') {
             return ['method' => $method ?: null, 'action' => 'no_uid'];
         }
+        $sender = $senderEmail !== null ? strtolower(trim($senderEmail)) : null;
 
         return match ($method) {
-            'REPLY' => ['method' => 'REPLY', 'action' => $this->applyReply($uid, $uidValue, $vevent)],
-            'CANCEL' => ['method' => 'CANCEL', 'action' => $this->applyCancel($uid, $uidValue)],
-            default => ['method' => $method ?: 'REQUEST', 'action' => $this->applyRequest($uid, $uidValue, $ics)],
+            'REPLY' => ['method' => 'REPLY', 'action' => $this->applyReply($uid, $uidValue, $vevent, $sender)],
+            'CANCEL' => ['method' => 'CANCEL', 'action' => $this->applyCancel($uid, $uidValue, $vevent, $sender)],
+            default => ['method' => $method ?: 'REQUEST', 'action' => $this->applyRequest($uid, $uidValue, $ics, $vevent, $sender)],
         };
     }
 
+    /** Reject when a verified sender does not match the expected iCalendar identity. */
+    private function senderMismatch(?string $sender, ?string $expected, string $context): bool
+    {
+        if ($sender === null) {
+            return false; // trusted (user-initiated) path — no external sender to check
+        }
+        $exp = $expected !== null ? strtolower(trim($expected)) : '';
+        if ($exp === '' || $sender !== $exp) {
+            Log::warning('iMIP sender mismatch', ['context' => $context, 'sender' => $sender, 'expected' => $exp]);
+
+            return true;
+        }
+
+        return false;
+    }
+
     /** REPLY: update the replying attendee's PARTSTAT on the organizer's event. */
-    private function applyReply(int $uid, string $uidValue, VEvent $vevent): string
+    private function applyReply(int $uid, string $uidValue, VEvent $vevent, ?string $sender): string
     {
         $event = $this->findOwnEventByUid($uid, $uidValue);
         if ($event === null) {
             return 'not_found';
         }
         $replyAttendees = $this->events->parseAttendees($vevent);
-        $reply = $replyAttendees[0] ?? null;
-        if ($reply === null) {
-            return 'no_attendee';
+        // A genuine REPLY carries exactly one ATTENDEE (the responder). Refuse a
+        // multi-attendee / zero-attendee payload — it cannot be authenticated.
+        if (count($replyAttendees) !== 1) {
+            return 'invalid_reply';
+        }
+        $reply = $replyAttendees[0];
+        // The verified sender must be the attendee whose status is changing.
+        if ($this->senderMismatch($sender, $reply['email'], 'reply')) {
+            return 'sender_mismatch';
         }
         $parsed = $this->events->parse($event->ics);
         $attendees = is_array($parsed['attendees'] ?? null) ? $parsed['attendees'] : [];
@@ -176,11 +205,16 @@ class ImipService
         return 'updated';
     }
 
-    private function applyCancel(int $uid, string $uidValue): string
+    private function applyCancel(int $uid, string $uidValue, VEvent $vevent, ?string $sender): string
     {
         $event = $this->findEventByUid($uid, $uidValue);
         if ($event === null) {
             return 'not_found';
+        }
+        // Only the stored organizer may cancel — verified against the message sender.
+        $organizer = $this->organizerOf($event->ics);
+        if ($this->senderMismatch($sender, $organizer, 'cancel')) {
+            return 'sender_mismatch';
         }
         $parsed = $this->events->parse($event->ics);
         $parsed['status'] = 'CANCELLED';
@@ -190,15 +224,17 @@ class ImipService
     }
 
     /** REQUEST: create the invitation in the user's first writable calendar (or update). */
-    private function applyRequest(int $uid, string $uidValue, string $ics): string
+    private function applyRequest(int $uid, string $uidValue, string $ics, VEvent $vevent, ?string $sender): string
     {
         $existing = $this->findEventByUid($uid, $uidValue);
-        $parsedStream = $this->events->parseCalendarStream($ics);
-        $vevent = $parsedStream[0] ?? null;
-        if (! $vevent instanceof VEvent) {
-            return 'no_event';
-        }
         $data = $this->events->parse($this->wrapVevent($vevent));
+        // The organizer of record is the sender: for an update, the EXISTING
+        // event's organizer (a stranger cannot hijack it); for a new invite, the
+        // payload's ORGANIZER.
+        $authority = $existing !== null ? $this->organizerOf($existing->ics) : (is_string($data['organizer'] ?? null) ? $data['organizer'] : null);
+        if ($this->senderMismatch($sender, $authority, 'request')) {
+            return 'sender_mismatch';
+        }
         if ($existing !== null) {
             $this->writer->update($existing, $data);
 
@@ -216,6 +252,13 @@ class ImipService
         $this->writer->create($calendar, $data);
 
         return 'created';
+    }
+
+    private function organizerOf(string $ics): ?string
+    {
+        $org = $this->events->parse($ics)['organizer'] ?? null;
+
+        return is_string($org) ? $org : null;
     }
 
     private function wrapVevent(VEvent $vevent): string
