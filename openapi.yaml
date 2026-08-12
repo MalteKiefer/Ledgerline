@@ -5862,8 +5862,8 @@ paths:
     post:
       tags: [GallerySharing]
       operationId: galleryShareInternal
-      summary: Share an album (or the whole gallery) with a registered user (viewer)
-      description: "Recipient resolved by exact email. album_id null = whole gallery. Unified 422 for unknown user AND self-share (no enumeration)."
+      summary: Share an album (or the whole gallery) with a registered user (viewer/editor)
+      description: "Recipient resolved by exact email. album_id null = whole gallery. role=editor (album shares only) makes it a collaborative album — the recipient may contribute photos. Unified 422 for unknown user AND self-share (no enumeration)."
       security: [ { bearerAuth: [] } ]
       requestBody:
         required: true
@@ -5875,6 +5875,7 @@ paths:
               properties:
                 email: { type: string, format: email }
                 album_id: { type: [integer, "null"] }
+                role: { type: string, enum: [viewer, editor], description: "editor is honored only for a specific album; a whole-gallery share is always viewer." }
       responses:
         "201": { description: Created., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, id: { type: integer } } } } } }
         "200": { description: Already shared (idempotent). }
@@ -5916,9 +5917,25 @@ paths:
           description: Photo list.
           content:
             application/json:
-              schema: { type: object, properties: { name: { type: [string, "null"] }, photos: { type: array, items: { $ref: '#/components/schemas/GallerySharedPhoto' } } } }
+              schema: { type: object, properties: { name: { type: [string, "null"] }, photos: { type: array, items: { $ref: '#/components/schemas/GallerySharedPhoto' } }, can_contribute: { type: boolean } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /gallery/shared-with-me/{share}/upload:
+    post:
+      tags: [GallerySharing]
+      operationId: gallerySharedUpload
+      summary: Contribute a photo to a collaborative album (editor share)
+      description: "Only for an editor share of a specific album. The uploaded photo lands under the album OWNER, joins the album, and counts against the owner's quota. 403 if the share is viewer-only; 413 over the owner's quota; 415 for a non-image/video."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: share, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
+      responses:
+        "201": { description: Contributed., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, photo: { $ref: '#/components/schemas/GalleryPhoto' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { description: Over the owner's storage quota. }
+        "415": { description: Unsupported media type. }
   /gallery/shared-with-me/{share}/photo/{photo}/thumb:
     get:
       tags: [GallerySharing]

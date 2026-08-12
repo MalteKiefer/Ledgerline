@@ -127,4 +127,36 @@ class GalleryShareTest extends TestCase
         // A third user cannot reach the grant.
         $this->actingAs(User::factory()->create())->getJson(route('gallery.shared.browse', ['share' => $share->id]))->assertNotFound();
     }
+
+    public function test_collaborative_album_editor_can_contribute_viewer_cannot(): void
+    {
+        [$owner, $album] = $this->seedAlbum(User::factory()->create());
+        $recipient = User::factory()->create(['email' => 'friend@example.test']);
+
+        // Share the album as editor.
+        $this->actingAs($owner)->postJson(route('gallery.shares.internal.store'), [
+            'email' => 'friend@example.test', 'album_id' => $album->id, 'role' => 'editor',
+        ])->assertCreated();
+        $share = GalleryInternalShare::query()->where('recipient_id', $recipient->id)->firstOrFail();
+        $this->assertSame('editor', $share->role);
+
+        // Recipient contributes a photo → lands under the OWNER, in the album.
+        $this->actingAs($recipient)->post(route('gallery.shared.upload', ['share' => $share->id]), [
+            'file' => UploadedFile::fake()->image('contrib.jpg', 200, 150),
+        ])->assertCreated();
+
+        $contributed = GalleryPhoto::withoutGlobalScopes()->where('name', 'contrib.jpg')->firstOrFail();
+        $this->assertSame($owner->id, $contributed->user_id);
+        $this->assertTrue($album->photos()->withoutGlobalScopes()->whereKey($contributed->id)->exists());
+        // Album now has 2 photos for the recipient's browse view.
+        $this->actingAs($recipient)->getJson(route('gallery.shared.browse', ['share' => $share->id]))->assertOk()->assertJsonCount(2, 'photos');
+
+        // Downgrade to viewer → contribution forbidden.
+        $this->actingAs($owner)->postJson(route('gallery.shares.internal.store'), [
+            'email' => 'friend@example.test', 'album_id' => $album->id, 'role' => 'viewer',
+        ])->assertOk();
+        $this->actingAs($recipient)->post(route('gallery.shared.upload', ['share' => $share->id]), [
+            'file' => UploadedFile::fake()->image('nope.jpg', 90, 90),
+        ])->assertForbidden();
+    }
 }

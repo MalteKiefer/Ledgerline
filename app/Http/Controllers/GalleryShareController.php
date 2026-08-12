@@ -44,6 +44,7 @@ class GalleryShareController extends Controller
                 'album' => $s->album?->name,
                 'recipient' => $s->recipient?->email,
                 'scope' => $s->isAlbum() ? 'album' : 'library',
+                'role' => $s->role,
             ])->values();
 
         return response()->json(['public' => $public, 'internal' => $internal]);
@@ -117,6 +118,7 @@ class GalleryShareController extends Controller
         $request->validate([
             'email' => ['required', 'email'],
             'album_id' => ['nullable', 'integer'], // null = whole gallery
+            'role' => ['nullable', 'in:viewer,editor'],
         ]);
 
         $recipient = User::query()->where('email', $request->string('email')->value())->first();
@@ -130,6 +132,9 @@ class GalleryShareController extends Controller
             $album = GalleryAlbum::query()->where('user_id', $user->id)->findOrFail($request->integer('album_id'));
             $albumId = $album->id;
         }
+        // Editor (collaborative-album contribution) only makes sense for a specific
+        // album; a whole-gallery share is always viewer-only.
+        $role = ($request->string('role')->value() === 'editor' && $albumId !== null) ? 'editor' : 'viewer';
 
         $existing = GalleryInternalShare::query()
             ->where('owner_id', $user->id)
@@ -137,6 +142,8 @@ class GalleryShareController extends Controller
             ->where('gallery_album_id', $albumId)
             ->first();
         if ($existing instanceof GalleryInternalShare) {
+            $existing->forceFill(['role' => $role])->save();
+
             return response()->json(['ok' => true, 'id' => $existing->id]);
         }
 
@@ -145,6 +152,7 @@ class GalleryShareController extends Controller
             'owner_id' => $user->id,
             'recipient_id' => $recipient->id,
             'gallery_album_id' => $albumId,
+            'role' => $role,
         ])->save();
 
         return response()->json(['ok' => true, 'id' => $share->id], 201);

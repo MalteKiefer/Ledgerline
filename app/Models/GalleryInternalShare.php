@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property int $owner_id
  * @property int $recipient_id
  * @property int|null $gallery_album_id
+ * @property string $role
  * @property Carbon|null $created_at
  */
 class GalleryInternalShare extends Model
@@ -37,6 +38,12 @@ class GalleryInternalShare extends Model
     public function isAlbum(): bool
     {
         return $this->gallery_album_id !== null;
+    }
+
+    /** Editor shares of a specific ALBUM may contribute photos (collaborative album). */
+    public function canContribute(): bool
+    {
+        return $this->role === 'editor' && $this->isAlbum();
     }
 
     /**

@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\StreamsGalleryPhoto;
+use App\Models\GalleryAlbum;
 use App\Models\GalleryInternalShare;
 use App\Models\GalleryPhoto;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -39,6 +41,8 @@ class SharedGalleryController extends Controller
                     'owner' => $s->owner?->name,
                     'count' => $this->photos($s)->count(),
                     'cover' => $first?->id,
+                    'role' => $s->role,
+                    'can_contribute' => $s->canContribute(),
                 ];
             })->values();
 
@@ -60,7 +64,43 @@ class SharedGalleryController extends Controller
         return response()->json([
             'name' => $row->isAlbum() ? $row->album?->name : $row->owner?->name,
             'photos' => $photos,
+            'can_contribute' => $row->canContribute(),
         ]);
+    }
+
+    /**
+     * Contribute a photo to a collaborative album (editor share of an album).
+     * The bytes land under the album OWNER and join the album; the acting
+     * recipient never owns them.
+     */
+    public function upload(Request $request, int $share, GalleryController $gallery): JsonResponse
+    {
+        $row = $this->shareForMe($request, $share);
+        abort_unless($row->canContribute(), 403);
+        $maxMb = config('files.max_upload_mb', 512);
+        $maxKb = (is_numeric($maxMb) ? (int) $maxMb : 512) * 1024;
+        $request->validate(['file' => ['required', 'file', 'max:'.$maxKb]]);
+        $upload = $request->file('file');
+        if (! $upload instanceof UploadedFile) {
+            abort(422);
+        }
+        // Resolve the album owner-scope-free (the actor is the recipient, not the
+        // owner) and confirm it belongs to the share's owner.
+        $album = GalleryAlbum::withoutGlobalScopes()
+            ->where('user_id', $row->owner_id)
+            ->find($row->gallery_album_id);
+        if ($album === null) {
+            abort(404);
+        }
+
+        $result = $gallery->contribute((int) $row->owner_id, $upload, $album);
+        if (! ($result['ok'] ?? false)) {
+            $error = $result['error'] ?? 'error';
+
+            return response()->json(['error' => $error], $error === 'quota' ? 413 : 415);
+        }
+
+        return response()->json(['ok' => true, 'photo' => $result['photo'] ?? null], 201);
     }
 
     public function thumb(Request $request, int $share, int $photo): StreamedResponse
@@ -105,7 +145,10 @@ class SharedGalleryController extends Controller
     private function photos(GalleryInternalShare $share): Collection
     {
         if ($share->isAlbum()) {
-            $album = $share->album;
+            // Resolve the album owner-scope-free (the caller is the recipient).
+            $album = GalleryAlbum::withoutGlobalScopes()
+                ->where('user_id', $share->owner_id)
+                ->find($share->gallery_album_id);
             if ($album === null) {
                 return new Collection;
             }

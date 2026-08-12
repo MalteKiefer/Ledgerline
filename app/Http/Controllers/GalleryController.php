@@ -158,6 +158,77 @@ class GalleryController extends Controller
         return response()->json(['photo' => $this->row($photo)], 201);
     }
 
+    /**
+     * Ingest a contributed upload into a collaborative album on behalf of the
+     * album OWNER (not the acting recipient). Bytes are stored under the owner,
+     * count against the OWNER's quota, and the photo joins the album. Owner-side
+     * queries drop the Auth-keyed global scope since the actor is the recipient.
+     *
+     * @return array{ok:bool,error?:string,photo?:array<string,mixed>}
+     */
+    public function contribute(int $ownerId, UploadedFile $upload, GalleryAlbum $album): array
+    {
+        $mime = $upload->getMimeType() ?: $upload->getClientMimeType();
+        $isImage = str_starts_with($mime, 'image/');
+        $isVideo = ! $isImage && $this->looksLikeVideo($mime, $upload->getClientOriginalName());
+        if (! $isImage && ! $isVideo) {
+            return ['ok' => false, 'error' => 'unsupported'];
+        }
+
+        $incoming = (int) $upload->getSize();
+        $mb = config('files.quota_mb');
+        $mb = is_numeric($mb) ? (int) $mb : 0;
+        if ($mb > 0) {
+            $used = FilesUsage::forUser($ownerId)
+                + (int) GalleryPhoto::withoutGlobalScopes()->withTrashed()->where('user_id', $ownerId)->sum('size');
+            if ($used + $incoming > $mb * 1024 * 1024) {
+                return ['ok' => false, 'error' => 'quota'];
+            }
+        }
+
+        $real = $upload->getRealPath();
+        $sha = is_string($real) ? (hash_file('sha256', $real) ?: null) : null;
+        $dupe = $sha !== null
+            ? GalleryPhoto::withoutGlobalScopes()->where('user_id', $ownerId)->where('sha256', $sha)->first()
+            : null;
+        if ($dupe instanceof GalleryPhoto) {
+            $album->photos()->syncWithoutDetaching([$dupe->id]);
+
+            return ['ok' => true, 'photo' => $this->row($dupe)];
+        }
+
+        $path = 'gallery/'.Str::uuid()->toString();
+        $this->fs()->putFileAs('gallery', $upload, basename($path));
+        $name = $upload->getClientOriginalName();
+        $size = (int) $this->fs()->size($path);
+
+        if ($isVideo) {
+            $photo = DB::transaction(fn (): GalleryPhoto => $this->persist(
+                $ownerId, $name, $path, $size, $mime, $sha, null, null, [], 'video', 'processing'
+            ));
+            $album->photos()->syncWithoutDetaching([$photo->id]);
+            ProcessGalleryVideo::dispatch($photo->id);
+
+            return ['ok' => true, 'photo' => $this->row($photo)];
+        }
+
+        $dims = is_string($real) ? @getimagesize($real) : false;
+        $meta = is_string($real) ? $this->extractExif($real) : [];
+        $photo = DB::transaction(fn (): GalleryPhoto => $this->persist(
+            $ownerId, $name, $path, $size, $mime, $sha,
+            is_array($dims) ? (int) $dims[0] : null,
+            is_array($dims) ? (int) $dims[1] : null,
+            $meta,
+        ));
+        $album->photos()->syncWithoutDetaching([$photo->id]);
+        $this->attachEmbeddedMotion($photo, is_string($real) ? $real : null, $mime);
+        GenerateGalleryThumbnail::dispatch($photo->id);
+        EmbedGalleryPhoto::dispatch($photo->id);
+        DetectGalleryFaces::dispatch($photo->id);
+
+        return ['ok' => true, 'photo' => $this->row($photo)];
+    }
+
     // ---- Upload (chunked) ----
 
     public function chunkInit(Request $request): JsonResponse
