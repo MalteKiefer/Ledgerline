@@ -35,6 +35,12 @@ export interface SharedPhoto {
   id: number; name: string; media_type: 'image' | 'video'; taken_at: string | null; width: number | null; height: number | null;
 }
 
+export interface MemoriesResult {
+  on_this_day: { year: number; years_ago: number; photos: Photo[] }[];
+  trips: { from: string; to: string; place: string | null; cover: number | null; count: number; photos: Photo[] }[];
+  themes: { key: string; cover: number | null; count: number; photos: Photo[] }[];
+}
+
 export interface PhotoEdit {
   taken_at?: string | null; place?: string | null;
   lat?: number | null; lng?: number | null;
@@ -94,6 +100,7 @@ export const useGalleryStore = defineStore('gallery', () => {
     if (!sameSet) photos.value = fresh; // add/remove → structural rebuild
   };
   const loadArchived = () => api.get<{ photos: Photo[] }>('/api/v1/gallery/data?archived=1').then((r) => { photos.value = r.photos ?? []; });
+  const memories = () => api.get<MemoriesResult>('/api/v1/gallery/memories');
   const trash = () => api.get<{ photos: Photo[] }>('/api/v1/gallery/trash').then((r) => r.photos);
   const search = (q: string) => api.get<{ photos: Photo[] }>(`/api/v1/gallery/search?q=${encodeURIComponent(q)}`).then((r) => r.photos ?? []);
   const duplicates = () => api.get<{ groups: { photos: Photo[] }[] }>('/api/v1/gallery/duplicates').then((r) => r.groups ?? []);
@@ -205,7 +212,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   const sharedRawUrl = (share: number, photo: number) => api.streamUrl(`/api/v1/gallery/shared-with-me/${share}/photo/${photo}/raw`);
 
   return {
-    photos, albums, load, loadArchived, mergeData, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy, archive, bulkArchive,
+    photos, albums, load, loadArchived, memories, mergeData, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy, archive, bulkArchive,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
     people, browsePerson, updatePerson, deletePerson, mergePeople, photoFaces, assignFace, setFaceCover, hideFace, faceCropUrl, reprocess, mlStatus, loadExif, nameSuggest, contactPhotos,

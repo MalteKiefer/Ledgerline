@@ -14,7 +14,7 @@
     <Card body-class="p-0">
       <!-- Toolbar -->
       <div class="flex items-center gap-2 border-b border-[var(--ll-border)] px-4 py-2.5">
-        <h2 class="text-sm font-semibold">{{ showTrash ? t('gallery.trash') : (showArchive ? t('gallery.archive') : (showPeople ? t('gallery.people') : t('messages.nav.gallery'))) }}</h2>
+        <h2 class="text-sm font-semibold">{{ showTrash ? t('gallery.trash') : (showArchive ? t('gallery.archive') : (showMemories ? t('gallery.memories') : (showPeople ? t('gallery.people') : t('messages.nav.gallery')))) }}</h2>
         <span v-if="!showTrash && !showPeople && !showDupes && !showShared" class="whitespace-nowrap text-xs text-[var(--ll-muted)]">
           {{ mediaCounts.ph }} {{ t('gallery.count_photos') }}<template v-if="mediaCounts.vid"> · {{ mediaCounts.vid }} {{ t('gallery.count_videos') }}</template>
         </span>
@@ -41,6 +41,7 @@
           <Btn variant="solid" size="sm" icon="upload" @click="pick">{{ t('gallery.upload') }}</Btn>
           <Btn v-if="showTrash && trashPhotos.length" variant="ghost" size="sm" icon="delete" class="text-red-600" @click="onEmpty">{{ t('gallery.empty_trash') }}</Btn>
           <Btn v-if="!showTrash" :variant="showPeople ? 'solid' : 'ghost'" size="sm" icon="group" @click="showPeople ? closePeople() : openPeople()">{{ t('gallery.people') }}</Btn>
+          <Btn v-if="!showTrash" :variant="showMemories ? 'solid' : 'ghost'" size="sm" icon="auto_awesome" @click="toggleMemories">{{ t('gallery.memories') }}</Btn>
           <Btn v-if="!showTrash" :variant="showDupes ? 'solid' : 'ghost'" size="sm" icon="content_copy" @click="showDupes ? closeDupes() : openDupes()">{{ t('gallery.duplicates') }}</Btn>
           <Btn v-if="!showTrash" :variant="showShared ? 'solid' : 'ghost'" size="sm" icon="folder_shared" @click="showShared ? closeShared() : openShared()">{{ t('gallery.shared_with_me') }}</Btn>
           <Btn v-if="!showTrash && !showShared" variant="ghost" size="sm" icon="share" @click="openLibraryShare">{{ t('gallery.share_gallery') }}</Btn>
@@ -57,6 +58,7 @@
             </div>
             <button v-if="!showTrash && !showPeople" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="setView(viewMode === 'grid' ? 'map' : 'grid')"><Icon :name="viewMode === 'grid' ? 'map' : 'grid_view'" :size="18" />{{ viewMode === 'grid' ? t('gallery.view_map') : t('gallery.view_grid') }}</button>
             <button v-if="!showTrash" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="showPeople ? closePeople() : openPeople()"><Icon name="group" :size="18" />{{ t('gallery.people') }}</button>
+            <button v-if="!showTrash" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="toggleMemories"><Icon name="auto_awesome" :size="18" />{{ t('gallery.memories') }}</button>
             <button v-if="!showTrash" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="showDupes ? closeDupes() : openDupes()"><Icon name="content_copy" :size="18" />{{ t('gallery.duplicates') }}</button>
             <button v-if="!showTrash" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="showShared ? closeShared() : openShared()"><Icon name="folder_shared" :size="18" />{{ t('gallery.shared_with_me') }}</button>
             <button v-if="!showTrash && !showShared" class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10" @click="openLibraryShare"><Icon name="share" :size="18" />{{ t('gallery.share_gallery') }}</button>
@@ -154,13 +156,48 @@
       </div>
 
       <!-- Map view -->
-      <div v-show="!showTrash && !showDupes && !showPeople && viewMode === 'map'" class="p-3">
+      <div v-show="!showTrash && !showDupes && !showPeople && !showMemories && viewMode === 'map'" class="p-3">
         <div v-if="!mapPhotos.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.no_located') }}</div>
         <div v-show="mapPhotos.length" ref="mapEl" class="h-[calc(100vh-230px)] w-full overflow-hidden rounded-lg border border-[var(--ll-border)]" />
       </div>
 
       <!-- Grid view -->
-      <div v-if="(viewMode === 'grid' || showTrash) && !showDupes && !peopleGrid" class="relative flex p-3">
+      <!-- Memories / auto-curation -->
+      <div v-if="showMemories" class="space-y-6 p-4">
+        <div v-if="memoriesLoading" class="py-16 text-center"><Icon name="progress_activity" :size="28" class="animate-spin text-[var(--ll-muted)]" /></div>
+        <template v-else-if="memoriesData">
+          <div v-if="!memoriesData.on_this_day.length && !memoriesData.trips.length && !memoriesData.themes.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.memories_empty') }}</div>
+          <!-- On this day -->
+          <section v-for="d in memoriesData.on_this_day" :key="'d'+d.year">
+            <h3 class="mb-2 text-sm font-semibold">{{ t('gallery.years_ago', { n: String(d.years_ago) }) }} <span class="text-[var(--ll-muted)]">· {{ d.year }}</span></h3>
+            <div class="flex gap-2 overflow-x-auto pb-1">
+              <img v-for="p in d.photos.slice(0, 16)" :key="p.id" :src="g.thumbUrl(p.id)" loading="lazy" class="h-28 w-28 shrink-0 cursor-pointer rounded-lg object-cover" @click="openMemory(d.photos)">
+            </div>
+          </section>
+          <!-- Trips -->
+          <section v-if="memoriesData.trips.length">
+            <h3 class="mb-2 text-sm font-semibold">{{ t('gallery.trips') }}</h3>
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+              <button v-for="(tr, i) in memoriesData.trips" :key="'t'+i" class="group overflow-hidden rounded-xl border border-[var(--ll-border)] text-left" @click="openMemory(tr.photos)">
+                <div class="aspect-[4/3] bg-black/[0.06] dark:bg-white/10"><img v-if="tr.cover" :src="g.thumbUrl(tr.cover)" loading="lazy" class="h-full w-full object-cover transition group-hover:scale-105"></div>
+                <div class="p-2"><div class="truncate text-sm font-medium">{{ tripLabel(tr) }}</div><div class="text-xs text-[var(--ll-muted)]">{{ tr.count }} · {{ new Date(tr.from).toLocaleDateString() }}</div></div>
+              </button>
+            </div>
+          </section>
+          <!-- Themes (CLIP) -->
+          <section v-if="memoriesData.themes.length">
+            <h3 class="mb-2 text-sm font-semibold">{{ t('gallery.themes') }}</h3>
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+              <button v-for="th in memoriesData.themes" :key="th.key" class="group overflow-hidden rounded-xl border border-[var(--ll-border)] text-left" @click="openMemory(th.photos)">
+                <div class="aspect-square bg-black/[0.06] dark:bg-white/10"><img v-if="th.cover" :src="g.thumbUrl(th.cover)" loading="lazy" class="h-full w-full object-cover transition group-hover:scale-105"></div>
+                <div class="p-2"><div class="truncate text-sm font-medium capitalize">{{ themeLabel(th.key) }}</div><div class="text-xs text-[var(--ll-muted)]">{{ th.count }}</div></div>
+              </button>
+            </div>
+          </section>
+        </template>
+      </div>
+
+      <div v-if="!showMemories && (viewMode === 'grid' || showTrash) && !showDupes && !peopleGrid" class="relative flex p-3">
         <div v-if="!current.length" class="w-full py-20 text-center text-sm text-[var(--ll-muted)]">{{ showTrash ? t('gallery.trash_empty') : (searchActive ? t('gallery.search_none') : t('gallery.empty')) }}</div>
         <div v-else class="grid min-w-0 flex-1 gap-1.5" :class="showScrubber ? 'md:pr-14' : ''" :style="gridStyle">
           <template v-for="(p, i) in current" :key="p.id">
@@ -639,6 +676,24 @@ const { success, error } = useToast();
 const fileInput = ref<HTMLInputElement | null>(null);
 const showTrash = ref(false);
 const showArchive = ref(false);
+const showMemories = ref(false);
+const memoriesData = ref<import('@spa/stores/gallery').MemoriesResult | null>(null);
+const memoriesLoading = ref(false);
+async function toggleMemories() {
+  if (showMemories.value) { showMemories.value = false; return; }
+  if (showPeople.value) closePeople(); if (showDupes.value) closeDupes(); if (showShared.value) closeShared();
+  showTrash.value = false; showArchive.value = false; searchActive.value = false;
+  showMemories.value = true; viewer.value = -1; clearSelection();
+  if (!memoriesData.value) { memoriesLoading.value = true; try { memoriesData.value = await g.memories(); } catch { error(t('common.error')); } finally { memoriesLoading.value = false; } }
+}
+// Open a memory's photos in the main grid (reuses the search-result lane).
+function openMemory(photos: Photo[]) {
+  searchResults.value = photos; searchActive.value = true; showMemories.value = false; viewer.value = -1;
+}
+function themeLabel(key: string): string { const l = t(`gallery.theme_${key}`); return l === `gallery.theme_${key}` ? key : l; }
+function tripLabel(trip: { place: string | null; from: string }): string {
+  return trip.place ?? new Date(trip.from).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
 const viewMode = ref<'grid' | 'map'>('grid');
 // Grid thumbnail size (columns) — fewer columns = larger thumbnails. Persisted.
 const gridCols = ref<number>(Math.min(12, Math.max(2, Number(localStorage.getItem('ll_gallery_cols')) || 6)));
@@ -835,7 +890,7 @@ onMounted(() => {
   // Thumbnails are generated by a worker after upload; while any are still
   // pending, poll so the grid swaps the spinner for the image once ready.
   thumbPoll = setInterval(() => {
-    if (!showTrash.value && !showArchive.value && !searchActive.value && !showDupes.value && !showPeople.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb || p.status === 'processing')) void g.mergeData(albumId.value ?? undefined);
+    if (!showTrash.value && !showArchive.value && !showMemories.value && !searchActive.value && !showDupes.value && !showPeople.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb || p.status === 'processing')) void g.mergeData(albumId.value ?? undefined);
   }, 4000);
 });
 onUnmounted(() => {
