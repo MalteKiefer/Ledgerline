@@ -385,7 +385,7 @@ Route::middleware('auth')->group(function (): void {
 
     // Generic address autocomplete (forward geocode). Authenticated but NOT
     // module-gated — the calendar event editor AND the contacts map preview use it.
-    Route::get('/geo/search', [GeoController::class, 'search'])->middleware('throttle:30,1')->name('geo.search');
+    Route::get('/geo/search', [GeoController::class, 'search'])->middleware('throttle:120,1')->name('geo.search');
 
     // Contacts + CardDAV (plaintext-relational). Static collection routes are
     // declared before /contacts/{contact} so they win over the model binding.

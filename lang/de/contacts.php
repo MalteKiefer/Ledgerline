@@ -109,6 +109,7 @@ return [
         'map_show' => 'Karte',
         'map_hide' => 'Karte ausblenden',
         'map_no_result' => 'Adresse nicht auf der Karte gefunden.',
+        'map_loading' => 'Karte wird geladen…',
         'map_open_osm' => 'In OpenStreetMap öffnen',
         'map_chooser_title' => 'Adresse in neuem Fenster öffnen mit',
         'related' => 'Verknüpfte Kontakte',
