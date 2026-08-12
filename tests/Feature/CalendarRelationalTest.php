@@ -422,6 +422,31 @@ class CalendarRelationalTest extends TestCase
         return is_string($uid) ? $uid : null;
     }
 
+    public function test_free_busy_and_slot_finder(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendar($user->id);
+        // A busy block 10:00–11:00 UTC on 2026-08-10.
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'Busy',
+            'dtstart' => '2026-08-10T10:00:00Z', 'dtend' => '2026-08-10T11:00:00Z',
+        ])->assertCreated();
+
+        $busy = $this->getJson(route('calendar.free-busy', ['from' => '2026-08-10T00:00:00Z', 'to' => '2026-08-11T00:00:00Z']))
+            ->assertOk()->json('busy');
+        $this->assertCount(1, $busy);
+        $this->assertStringStartsWith('2026-08-10T10:00', $busy[0]['start']);
+
+        // 30-min slots on that day, working window 09:00–12:00 → one gap before
+        // (09:00–10:00) and one after (11:00–12:00) the busy block.
+        $slots = $this->postJson(route('calendar.slots'), [
+            'from' => '2026-08-10T00:00:00Z', 'to' => '2026-08-11T00:00:00Z',
+            'duration_min' => 30, 'day_start' => 9, 'day_end' => 12,
+        ])->assertOk()->json('slots');
+        $this->assertGreaterThanOrEqual(2, count($slots));
+        $this->assertSame('2026-08-10T09:00:00Z', $slots[0]['start']);
+    }
+
     public function test_shared_calendar_editor_can_write_viewer_cannot(): void
     {
         $owner = $this->signIn();

@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Calendar;
 use App\Models\CalendarEvent;
+use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Calendar\CalendarEventService;
 use App\Services\Calendar\CalendarImporter;
@@ -13,6 +14,7 @@ use App\Services\Calendar\CalendarWriter;
 use App\Services\Calendar\OpenHolidaysClient;
 use App\Services\Calendar\SpecialCalendarGenerator;
 use App\Support\CalendarAccess;
+use App\Support\FreeBusy;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -142,6 +144,75 @@ class CalendarController extends Controller
         }
 
         return response()->json(['events' => $out]);
+    }
+
+    /** Busy intervals for the current user across their readable calendars. */
+    public function freeBusy(Request $request, FreeBusy $fb): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate(['from' => ['required', 'date'], 'to' => ['required', 'date', 'after:from']]);
+        $from = CarbonImmutable::parse((string) $request->query('from'))->utc();
+        $to = CarbonImmutable::parse((string) $request->query('to'))->utc();
+        if ($from->diffInDays($to) > 400) {
+            return response()->json(['error' => 'range_too_large'], 422);
+        }
+        $busy = array_map(
+            static fn (array $b): array => ['start' => $b['start']->toIso8601ZuluString(), 'end' => $b['end']->toIso8601ZuluString()],
+            $fb->busy(CalendarAccess::readableIds($uid), $from, $to),
+        );
+
+        return response()->json(['busy' => $busy]);
+    }
+
+    /**
+     * Find common free slots for the current user and any named local attendees
+     * (whose availability comes from calendars they have shared with the caller).
+     */
+    public function slots(Request $request, FreeBusy $fb): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'from' => ['required', 'date'],
+            'to' => ['required', 'date', 'after:from'],
+            'duration_min' => ['required', 'integer', 'min:5', 'max:1440'],
+            'day_start' => ['nullable', 'integer', 'min:0', 'max:23'],
+            'day_end' => ['nullable', 'integer', 'min:1', 'max:24'],
+            'attendees' => ['nullable', 'array', 'max:20'],
+            'attendees.*' => ['email'],
+        ]);
+        $from = CarbonImmutable::parse((string) $request->string('from'))->utc();
+        $to = CarbonImmutable::parse((string) $request->string('to'))->utc();
+        if ($from->diffInDays($to) > 62) {
+            return response()->json(['error' => 'range_too_large'], 422);
+        }
+
+        // The caller's readable calendars, plus calendars each attendee has
+        // shared with the caller (already a subset of the readable set).
+        $roles = CalendarAccess::roles($uid);
+        $calIds = array_keys($roles);
+        $unknown = [];
+        foreach ((array) $request->input('attendees', []) as $email) {
+            if (! is_string($email)) {
+                continue;
+            }
+            $att = User::query()->where('email', $email)->first();
+            $sharedFromAtt = $att instanceof User
+                ? Calendar::query()->withoutGlobalScopes()->whereIn('id', array_keys($roles))->where('user_id', $att->id)->exists()
+                : false;
+            if (! $sharedFromAtt) {
+                $unknown[] = $email; // no shared availability for this attendee
+            }
+        }
+
+        $busy = $fb->busy($calIds, $from, $to);
+        $slots = $fb->freeSlots(
+            $busy, $from, $to,
+            (int) $request->integer('duration_min'),
+            $request->filled('day_start') ? (int) $request->integer('day_start') : 8,
+            $request->filled('day_end') ? (int) $request->integer('day_end') : 18,
+        );
+
+        return response()->json(['slots' => $slots, 'unknown_attendees' => $unknown]);
     }
 
     /** Full parsed editor data + ids + etag (mirror ContactController@show). */
