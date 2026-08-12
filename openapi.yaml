@@ -1194,6 +1194,18 @@ components:
         deleted_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time, nullable: true }
         updated_at: { type: string, format: date-time, nullable: true }
+    FileActivity:
+      type: object
+      description: "One Files activity-feed entry (owner-scoped). `actor` is the display name of whoever performed it, or the upload-link label for anonymous external uploads."
+      properties:
+        id: { type: integer }
+        action: { type: string, enum: [upload, external_upload, rename, move, version, trash, restore, delete, share] }
+        file_id: { type: integer, nullable: true }
+        file_name: { type: string, nullable: true }
+        file_folder_id: { type: integer, nullable: true }
+        actor: { type: string, nullable: true }
+        meta: { type: object, nullable: true, additionalProperties: true }
+        created_at: { type: string, format: date-time }
     FileEntry:
       type: object
       description: "A file (files table). Bytes live plaintext on the files disk at storage_path; this row holds metadata. search_text is never serialized."
@@ -6239,6 +6251,27 @@ paths:
       responses:
         "200": { description: "Trashed files + folders.", content: { application/json: { schema: { type: object, properties: { files: { type: array, items: { $ref: "#/components/schemas/FileEntry" } }, folders: { type: array, items: { $ref: "#/components/schemas/FileFolder" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /files/activity:
+    get:
+      tags: [Files]
+      operationId: filesActivity
+      summary: Recent Files activity for the current user (owner-scoped, newest first)
+      description: "Feed of file mutations: upload, external_upload (upload-link), rename, move, version, trash, restore, delete, share."
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: "Activity rows.", content: { application/json: { schema: { type: object, properties: { activity: { type: array, items: { $ref: "#/components/schemas/FileActivity" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /files/entries/{file}/activity:
+    get:
+      tags: [Files]
+      operationId: filesFileActivity
+      summary: Activity history for one file
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "Activity rows for the file.", content: { application/json: { schema: { type: object, properties: { activity: { type: array, items: { $ref: "#/components/schemas/FileActivity" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /files/entries:
     post:
       tags: [Files]

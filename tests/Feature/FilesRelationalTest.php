@@ -39,6 +39,43 @@ class FilesRelationalTest extends TestCase
         Storage::disk(config('files.disk'))->assertExists($file->storage_path);
     }
 
+    public function test_activity_feed_records_upload_rename_and_trash(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $id = (int) $this->post(route('files.rel.upload'), [
+            'file' => UploadedFile::fake()->createWithContent('a.txt', 'x'),
+        ])->assertCreated()->json('file.id');
+        $this->putJson(route('files.rel.update', $id), ['name' => 'b.txt', 'version' => 0])->assertOk();
+
+        // per-file feed is scoped to that file (checked before trashing so the
+        // route binding still resolves the live row)
+        $perFile = $this->getJson(route('files.rel.entries.activity', $id))->assertOk()->json('activity');
+        $this->assertNotEmpty($perFile);
+        foreach ($perFile as $r) {
+            $this->assertSame($id, $r['file_id']);
+        }
+
+        $this->deleteJson(route('files.rel.destroy', $id))->assertOk();
+
+        $rows = $this->getJson(route('files.rel.activity'))->assertOk()->json('activity');
+        $actions = array_column($rows, 'action');
+        $this->assertContains('upload', $actions);
+        $this->assertContains('rename', $actions);
+        $this->assertContains('trash', $actions);
+    }
+
+    public function test_activity_feed_is_owner_scoped(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $this->actingAs($owner)->post(route('files.rel.upload'), [
+            'file' => UploadedFile::fake()->createWithContent('secret.txt', 'x'),
+        ])->assertCreated();
+
+        $this->assertNotEmpty($this->actingAs($owner)->getJson(route('files.rel.activity'))->json('activity'));
+        $this->assertEmpty($this->actingAs($other)->getJson(route('files.rel.activity'))->json('activity'));
+    }
+
     public function test_download_headers_and_owner_scope(): void
     {
         $owner = User::factory()->create();

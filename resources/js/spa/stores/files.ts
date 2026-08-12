@@ -39,6 +39,10 @@ export interface SharedWithMeEntry {
   owner: { id: number | null; name: string | null; email: string | null };
 }
 export interface SharedFolderNode { id: number; name: string; parent_id: number | null }
+export interface FileActivity {
+  id: number; action: string; file_id: number | null; file_name: string | null;
+  file_folder_id: number | null; actor: string | null; meta: Record<string, unknown> | null; created_at: string;
+}
 export interface SharedFileNode {
   id: number; name: string; mime: string | null; size: number; file_folder_id: number | null; updated_at: string | null;
 }
@@ -206,6 +210,8 @@ export const useFilesStore = defineStore('files', () => {
 
   // ---- Storage stats ----
   const stats = () => api.get<FileStats>('/api/v1/files/stats');
+  const activity = () => api.get<{ activity: FileActivity[] }>('/api/v1/files/activity').then((r) => r.activity);
+  const fileActivity = (fileId: number) => api.get<{ activity: FileActivity[] }>(`/api/v1/files/entries/${fileId}/activity`).then((r) => r.activity);
 
   /**
    * ZIP download. Streams a blob via raw fetch (the shared `api` client only
@@ -247,7 +253,7 @@ export const useFilesStore = defineStore('files', () => {
     loadShares, createShare, createFolderShareLink, updateShare, deleteShare, shareUrl,
     loadFolderShares, shareToUser, updateShareMember, removeShareMember, deleteFolderShare,
     loadSharedWithMe, browseShared, sharedRawUrl, uploadToShared, renameShared, deleteShared,
-    stats, zip,
+    stats, zip, activity, fileActivity,
     rawUrl, thumbUrl,
   };
 });

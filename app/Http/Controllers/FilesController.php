@@ -6,14 +6,17 @@ namespace App\Http\Controllers;
 
 use App\Enums\FileType;
 use App\Models\AuditLog;
+use App\Models\FileActivity;
 use App\Models\FileEntry;
 use App\Models\FileFolder;
 use App\Models\FileLabel;
 use App\Models\FileShare;
 use App\Models\FileUploadLink;
 use App\Models\FileVersion;
+use App\Models\User;
 use App\Models\UserSetting;
 use App\Support\DiskTempFile;
+use App\Support\FileActivityLog;
 use App\Support\ImageManagerFactory;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Contracts\View\View;
@@ -155,6 +158,49 @@ class FilesController extends Controller
             'files' => FileEntry::onlyTrashed()->with('labels')->orderByDesc('deleted_at')->get(),
             'folders' => FileFolder::onlyTrashed()->orderByDesc('deleted_at')->get(),
         ]);
+    }
+
+    // ---- Activity feed ----
+
+    /** Recent Files activity for the current user (owner-scoped, newest first). */
+    public function activity(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+        $rows = FileActivity::query()->orderByDesc('id')->limit(100)->get();
+
+        return response()->json(['activity' => $this->activityView($rows)]);
+    }
+
+    /** Activity history for one file (owner-scoped via route binding). */
+    public function fileActivity(Request $request, FileEntry $file): JsonResponse
+    {
+        $this->requireUser($request);
+        $rows = FileActivity::query()->where('file_id', $file->id)->orderByDesc('id')->limit(50)->get();
+
+        return response()->json(['activity' => $this->activityView($rows)]);
+    }
+
+    /**
+     * @param  Collection<int, FileActivity>  $rows
+     * @return array<int, array<string,mixed>>
+     */
+    private function activityView(Collection $rows): array
+    {
+        $fileIds = $rows->pluck('file_id')->filter()->unique()->all();
+        $names = FileEntry::withTrashed()->whereIn('id', $fileIds)->pluck('name', 'id');
+        $actorIds = $rows->pluck('actor_id')->filter()->unique()->all();
+        $actors = User::query()->whereIn('id', $actorIds)->pluck('name', 'id');
+
+        return $rows->map(fn (FileActivity $a): array => [
+            'id' => $a->id,
+            'action' => $a->action,
+            'file_id' => $a->file_id,
+            'file_name' => $a->file_id !== null ? ($names[$a->file_id] ?? null) : null,
+            'file_folder_id' => $a->file_folder_id,
+            'actor' => $a->actor_id !== null ? ($actors[$a->actor_id] ?? null) : $a->actor_name,
+            'meta' => $a->meta,
+            'created_at' => $a->created_at->toIso8601String(),
+        ])->values()->all();
     }
 
     // ---- Folders ----
@@ -333,6 +379,14 @@ class FilesController extends Controller
             return response()->json(['error' => 'version_conflict', 'version' => (int) ($current?->version ?? 0)], 409);
         }
 
+        $owner = (int) $result->user_id;
+        if (array_key_exists('name', $patch) && $patch['name'] !== $file->name) {
+            FileActivityLog::record($owner, 'rename', $result, ['from' => $file->name, 'to' => $result->name]);
+        }
+        if (array_key_exists('file_folder_id', $patch) && $patch['file_folder_id'] !== $file->file_folder_id) {
+            FileActivityLog::record($owner, 'move', $result);
+        }
+
         return response()->json(['file' => $result]);
     }
 
@@ -381,6 +435,8 @@ class FilesController extends Controller
             mime: $mime !== '' ? $mime : null,
             sha: $sha,
         ));
+
+        FileActivityLog::record($uid, 'upload', $file);
 
         return response()->json(['file' => $file], 201);
     }
@@ -469,6 +525,8 @@ class FilesController extends Controller
 
             return $current;
         });
+
+        FileActivityLog::record($uid, 'version', $fresh, ['name' => $fresh->name, 'version' => $fresh->version]);
 
         return response()->json(['file' => $fresh]);
     }
@@ -625,6 +683,8 @@ class FilesController extends Controller
             sha: $sha,
         ));
 
+        FileActivityLog::record($uid, 'upload', $file);
+
         return response()->json(['file' => $file], 201);
     }
 
@@ -697,6 +757,7 @@ class FilesController extends Controller
 
     public function destroy(FileEntry $file): JsonResponse
     {
+        FileActivityLog::record((int) $file->user_id, 'trash', $file, ['name' => $file->name]);
         $file->delete();
 
         return response()->json(['ok' => true]);
@@ -706,6 +767,7 @@ class FilesController extends Controller
     {
         $file = FileEntry::onlyTrashed()->findOrFail($id);
         $file->restore();
+        FileActivityLog::record((int) $file->user_id, 'restore', $file, ['name' => $file->name]);
 
         return response()->json(['file' => $file]);
     }
@@ -713,6 +775,8 @@ class FilesController extends Controller
     public function forceDelete(int $id): JsonResponse
     {
         $file = FileEntry::onlyTrashed()->findOrFail($id);
+        $name = $file->name;
+        $owner = (int) $file->user_id;
         DB::transaction(function () use ($file): void {
             foreach ($file->versions()->get() as $v) {
                 $this->fs()->delete($v->storage_path);
@@ -720,6 +784,7 @@ class FilesController extends Controller
             $this->fs()->delete($file->storage_path);
             $file->forceDelete(); // cascades file_versions rows via FK
         });
+        FileActivityLog::record($owner, 'delete', null, ['name' => $name]);
 
         return response()->json(['ok' => true]);
     }
@@ -1292,7 +1357,7 @@ class FilesController extends Controller
         $name = $upload->getClientOriginalName();
         $mime = $upload->getMimeType() ?: $upload->getClientMimeType();
 
-        DB::transaction(function () use ($link, $uid, $name, $path, $mime, $sha): void {
+        $created = DB::transaction(function () use ($link, $uid, $name, $path, $mime, $sha): FileEntry {
             $file = new FileEntry;
             $file->forceFill([
                 'user_id' => $uid,
@@ -1304,9 +1369,13 @@ class FilesController extends Controller
                 'sha256' => $sha,
             ]);
             $file->save();
+
+            return $file;
         });
 
         AuditLog::record('files.upload_link_used', null, ['link_id' => $link->id, 'user_id' => $uid]);
+        // Anonymous contributor — actor_id stays null; label it with the link name.
+        FileActivityLog::record($uid, 'external_upload', $created, ['name' => $created->name], null, $link->label);
 
         return response()->json(['ok' => true], 201);
     }
@@ -1358,6 +1427,9 @@ class FilesController extends Controller
 
             return $share;
         });
+
+        $sharedFile = $kind === 'file' ? FileEntry::query()->find($request->integer('file_id')) : null;
+        FileActivityLog::record($uid, 'share', $sharedFile, ['kind' => $kind], $kind === 'folder' ? $request->integer('file_folder_id') : null);
 
         return response()->json(['share' => $this->shareView($share)], 201);
     }
