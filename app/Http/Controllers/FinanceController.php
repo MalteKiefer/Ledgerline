@@ -1522,7 +1522,14 @@ class FinanceController extends Controller
     /** Guard: a stored receipt/PDF path must live under the finance blob prefix. */
     private function safeBlobPath(mixed $path): ?string
     {
-        return is_string($path) && str_starts_with($path, 'invoices/') && ! str_contains($path, '..')
+        // Confine to the invoices/ prefix; reject traversal, NUL bytes and any
+        // absolute path. All real blob paths are server-generated (invoices/{uuid})
+        // and client-supplied paths are already dropped upstream — this is a
+        // defence-in-depth guard on every stream/delete site.
+        return is_string($path)
+            && str_starts_with($path, 'invoices/')
+            && ! str_contains($path, '..')
+            && ! str_contains($path, "\0")
             ? $path
             : null;
     }
