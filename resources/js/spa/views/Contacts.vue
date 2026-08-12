@@ -160,7 +160,7 @@
                   <Icon name="call" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
                   <span class="min-w-0 flex-1">
                     <span class="flex items-center gap-1.5 text-sm">
-                      <span v-if="phoneCountry(p.value)" class="text-base leading-none" :title="phoneCountry(p.value)!.iso">{{ phoneCountry(p.value)!.flag }}</span>
+                      <FlagIcon v-if="phoneCountry(p.value)" :iso="phoneCountry(p.value)!.iso" :size="13" :title="phoneCountry(p.value)!.iso" />
                       <span class="truncate">{{ p.value }}</span>
                     </span>
                     <span v-if="typeLabel(p.type)" class="block text-xs text-[var(--ll-muted)]">{{ typeLabel(p.type) }}</span>
@@ -174,32 +174,16 @@
                   </span>
                 </a>
               </div>
-              <!-- Addresses -->
-              <template v-if="addressList(detail).length">
-                <div class="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.addresses') }}</div>
-                <div class="space-y-1">
-                  <template v-for="(a, i) in addressList(detail)" :key="'a'+i">
-                    <div class="flex items-center gap-3 rounded-lg px-2 py-2">
-                      <Icon name="location_on" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
-                      <span class="min-w-0 flex-1">
-                        <span class="block text-sm">{{ a.text }}</span>
-                        <span v-if="typeLabel(a.type)" class="block text-xs text-[var(--ll-muted)]">{{ typeLabel(a.type) }}</span>
-                      </span>
-                      <Btn variant="ghost" size="xs" tag="a" :href="mapUrl(a.text)" target="_blank" rel="noopener" :title="t('contacts.ui.map_open_osm')" icon="open_in_new" />
-                    </div>
-                    <!-- Mini-map is always shown for each address (geocoded on view,
-                         cached per session so browsing never re-hits the endpoint). -->
-                    <AddressMiniMap :text="a.text" />
-                  </template>
-                </div>
-              </template>
-              <!-- More details (birthday, nickname, anniversaries, custom fields, related) -->
-              <template v-if="str(detail.nickname) || str(detail.bday) || anyArr(detail.anniversaries).length || anyArr(detail.custom_fields).length || anyArr(detail.related).length">
+              <!-- More details (birthday + age, nickname, anniversaries, custom fields) -->
+              <template v-if="str(detail.nickname) || str(detail.bday) || anyArr(detail.anniversaries).length || anyArr(detail.custom_fields).length">
                 <div class="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.details') }}</div>
                 <div class="space-y-1">
                   <div v-if="str(detail.bday)" class="flex items-center gap-3 rounded-lg px-2 py-2">
                     <Icon name="cake" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
-                    <span class="min-w-0 flex-1"><span class="block text-sm">{{ fmtBday(str(detail.bday)) }}</span><span class="block text-xs text-[var(--ll-muted)]">{{ t('contacts.ui.bday') }}</span></span>
+                    <span class="min-w-0 flex-1">
+                      <span class="block text-sm">{{ fmtBday(str(detail.bday)) }}<span v-if="ageFrom(str(detail.bday)) !== null" class="text-[var(--ll-muted)]"> · {{ t('contacts.ui.age_years', { n: String(ageFrom(str(detail.bday))) }) }}</span></span>
+                      <span class="block text-xs text-[var(--ll-muted)]">{{ t('contacts.ui.bday') }}</span>
+                    </span>
                   </div>
                   <div v-if="str(detail.nickname)" class="flex items-center gap-3 rounded-lg px-2 py-2">
                     <Icon name="badge" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
@@ -213,10 +197,21 @@
                     <Icon name="label" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
                     <span class="min-w-0 flex-1"><span class="block text-sm">{{ f.value }}</span><span class="block text-xs text-[var(--ll-muted)]">{{ f.label || t('contacts.ui.field_label') }}</span></span>
                   </div>
-                  <div v-for="(r, i) in anyArr(detail.related)" :key="'rel'+i" class="flex items-center gap-3 rounded-lg px-2 py-2">
-                    <Icon name="group" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
-                    <span class="min-w-0 flex-1"><span class="block text-sm">{{ r.name || r.value }}</span><span class="block text-xs text-[var(--ll-muted)]">{{ r.type || t('contacts.ui.related') }}</span></span>
-                  </div>
+                </div>
+              </template>
+              <!-- Relationships (parent / family / spouse / …) -->
+              <template v-if="anyArr(detail.related).length">
+                <div class="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.relationships') }}</div>
+                <div class="space-y-1">
+                  <component
+                    :is="r.contact_id ? 'button' : 'div'" v-for="(r, i) in anyArr(detail.related)" :key="'rel'+i"
+                    class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left" :class="r.contact_id ? 'hover:bg-black/[0.03] dark:hover:bg-white/5' : ''"
+                    @click="r.contact_id ? openById(String(r.contact_id)) : null"
+                  >
+                    <Icon :name="relationIcon(r.type)" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+                    <span class="min-w-0 flex-1"><span class="block truncate text-sm">{{ r.name || r.value }}</span><span class="block text-xs text-[var(--ll-muted)]">{{ relationLabel(r.type) }}</span></span>
+                    <Icon v-if="r.contact_id" name="chevron_right" :size="18" class="shrink-0 text-[var(--ll-muted)]" />
+                  </component>
                 </div>
               </template>
               <div v-if="str(detail.note)" class="mt-4">
@@ -241,6 +236,23 @@
                   </a>
                 </div>
               </div>
+              <!-- Addresses — kept last so the maps sit at the very bottom -->
+              <template v-if="addressList(detail).length">
+                <div class="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.addresses') }}</div>
+                <div class="space-y-1">
+                  <template v-for="(a, i) in addressList(detail)" :key="'a'+i">
+                    <div class="flex items-center gap-3 rounded-lg px-2 py-2">
+                      <Icon name="location_on" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+                      <span class="min-w-0 flex-1">
+                        <span class="block text-sm">{{ a.text }}</span>
+                        <span v-if="typeLabel(a.type)" class="block text-xs text-[var(--ll-muted)]">{{ typeLabel(a.type) }}</span>
+                      </span>
+                      <Btn variant="ghost" size="xs" tag="a" :href="mapUrl(a.text)" target="_blank" rel="noopener" :title="t('contacts.ui.map_open_osm')" icon="open_in_new" />
+                    </div>
+                    <AddressMiniMap :text="a.text" />
+                  </template>
+                </div>
+              </template>
             </div>
           </template>
         </div>
@@ -348,6 +360,16 @@
           <Btn variant="ghost" size="sm" icon="close" @click="form.custom_fields.splice(i,1)" />
         </div>
         <Btn variant="ghost" size="sm" icon="add" @click="form.custom_fields.push({ label: '', value: '' })">{{ t('common.add') }}</Btn>
+      </div>
+
+      <div>
+        <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.relationships') }}</div>
+        <div v-for="(r, i) in form.related" :key="'fr'+i" class="mb-2 flex items-center gap-2">
+          <Select :model-value="r.type || 'kin'" :options="relationOptions" class="w-40 shrink-0" @update:model-value="r.type = String($event)" />
+          <TextField v-model="r.value" :label="t('contacts.ui.rel_name')" class="flex-1" />
+          <Btn variant="ghost" size="sm" icon="close" @click="form.related.splice(i,1)" />
+        </div>
+        <Btn variant="ghost" size="sm" icon="add" @click="form.related.push({ type: 'kin', value: '' })">{{ t('common.add') }}</Btn>
       </div>
 
       <div v-if="c.groups.length">
@@ -491,6 +513,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import AddressMiniMap from '@spa/components/AddressMiniMap.vue';
 import { phoneCountry } from '@spa/lib/phone-country';
+import FlagIcon from '@spa/components/FlagIcon.vue';
 import { useContactsStore, type ContactRow, type ContactDetail, type ContactGroup, type DuplicateGroup, type DuplicateContact, type AddressBook } from '@spa/stores/contacts';
 import { useToast } from '@spa/composables/useToast';
 import { useAuthStore } from '@spa/stores/auth';
@@ -530,12 +553,14 @@ type Field = { value: string; type?: string };
 type Addr = { type: string; street: string; city: string; region: string; zip: string; country: string };
 type CustomField = { label: string; value: string };
 type Anniversary = { date: string; label: string };
+type Relation = { type: string; value: string };
 const form = reactive<{
   book_id: string; first_name: string; last_name: string; org: string; title: string; nickname: string; bday: string; note: string;
-  emails: Field[]; phones: Field[]; urls: Field[]; addresses: Addr[]; anniversaries: Anniversary[]; custom_fields: CustomField[]; group_ids: number[];
+  emails: Field[]; phones: Field[]; urls: Field[]; addresses: Addr[]; anniversaries: Anniversary[]; custom_fields: CustomField[]; related: Relation[]; group_ids: number[];
 }>(
-  { book_id: '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', note: '', emails: [], phones: [], urls: [], addresses: [], anniversaries: [], custom_fields: [], group_ids: [] },
+  { book_id: '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', note: '', emails: [], phones: [], urls: [], addresses: [], anniversaries: [], custom_fields: [], related: [], group_ids: [] },
 );
+const relationOptions = computed(() => RELATION_TYPES.map((k) => ({ title: t(`contacts.ui.rel_${k}`), value: k })));
 function blankAddress(): Addr { return { type: 'home', street: '', city: '', region: '', zip: '', country: '' }; }
 
 // Selection (bulk)
@@ -569,7 +594,7 @@ onMounted(() => c.load());
 
 function str(v: unknown): string { return typeof v === 'string' ? v : ''; }
 function arr(v: unknown): Field[] { return Array.isArray(v) ? (v as Field[]) : []; }
-type DetailItem = { date?: string; label?: string; value?: string; name?: string; type?: string };
+type DetailItem = { date?: string; label?: string; value?: string; name?: string; type?: string; contact_id?: string | number | null };
 function anyArr(v: unknown): DetailItem[] { return Array.isArray(v) ? (v as DetailItem[]) : []; }
 // Format a vCard BDAY/anniversary date for display. Accepts YYYY-MM-DD,
 // YYYYMMDD and the year-less --MMDD form; falls back to the raw string.
@@ -588,6 +613,43 @@ function fmtBday(raw: string): string {
     return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(loc, { month: 'long', day: 'numeric' });
   }
   return s;
+}
+// Age in whole years from a full birth date (needs a year); null otherwise.
+function ageFrom(raw: string): number | null {
+  const m = /^(\d{4})-?(\d{2})-?(\d{2})/.exec(raw.trim());
+  if (!m) return null;
+  const b = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(b.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - b.getFullYear();
+  const md = now.getMonth() - b.getMonth() || now.getDate() - b.getDate();
+  if (md < 0) age--;
+  return age >= 0 && age < 150 ? age : null;
+}
+// vCard RELATED TYPE tokens → localized relationship labels / icons.
+const RELATION_TYPES = ['spouse', 'partner', 'parent', 'child', 'sibling', 'kin', 'friend', 'colleague', 'neighbor', 'acquaintance', 'assistant', 'manager', 'emergency', 'contact'];
+function relationKey(type?: string): string {
+  const k = (type ?? '').toLowerCase().replace(/[\s_-]/g, '');
+  if (k === 'coworker') return 'colleague';
+  if (k === 'relative') return 'kin';
+  return RELATION_TYPES.includes(k) ? k : '';
+}
+function relationLabel(type?: string): string {
+  const k = relationKey(type);
+  return k ? t(`contacts.ui.rel_${k}`) : (type || t('contacts.ui.related'));
+}
+function relationIcon(type?: string): string {
+  const k = relationKey(type);
+  if (['spouse', 'partner'].includes(k)) return 'favorite';
+  if (['parent', 'child', 'sibling', 'kin'].includes(k)) return 'family_restroom';
+  if (['colleague', 'manager', 'assistant'].includes(k)) return 'work';
+  if (k === 'emergency') return 'emergency';
+  return 'group';
+}
+async function openById(id: string) {
+  const row = c.contacts.find((x) => x.id === id);
+  if (row) { await openDetail(row); return; }
+  try { detail.value = await c.show(id); selected.value = null; contactPhotos.value = []; } catch { /* ignore */ }
 }
 function initials(r: ContactRow): string { return ((r.first_name?.[0] ?? '') + (r.last_name?.[0] ?? '') || r.fn?.[0] || '?').toUpperCase(); }
 // Displayed name honours the list display-format preference (last_first → "Last, First").
@@ -693,7 +755,7 @@ async function deleteSelected() {
 
 function openNew() {
   editing.value = false;
-  Object.assign(form, { book_id: c.books[0]?.id ?? '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], addresses: [], anniversaries: [], custom_fields: [], group_ids: [] });
+  Object.assign(form, { book_id: c.books[0]?.id ?? '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], addresses: [], anniversaries: [], custom_fields: [], related: [], group_ids: [] });
   editor.value = true;
 }
 function openEdit() {
@@ -711,6 +773,7 @@ function openEdit() {
     addresses: addrs.map((a) => ({ type: str(a.type), street: str(a.street), city: str(a.city), region: str(a.region), zip: str(a.zip), country: str(a.country) })),
     anniversaries: anns.map((a) => ({ date: str(a.date), label: str(a.label) })),
     custom_fields: cfs.map((f) => ({ label: str(f.label), value: str(f.value) })),
+    related: anyArr(d.related).map((r) => ({ type: relationKey(r.type) || String(r.type ?? ''), value: String(r.name ?? r.value ?? '') })),
     group_ids: [...(d.group_ids ?? [])],
   });
   editor.value = true;
@@ -727,6 +790,7 @@ async function save() {
       addresses: form.addresses.filter((a) => a.street || a.city || a.zip || a.region || a.country),
       anniversaries: form.anniversaries.filter((a) => a.date),
       custom_fields: form.custom_fields.filter((f) => f.value),
+      related: form.related.filter((r) => r.value).map((r) => ({ type: r.type, value: r.value })),
       group_ids: form.group_ids.map((g) => String(g)),
     };
     if (editing.value && selected.value) await c.update(selected.value.id, body);
