@@ -218,24 +218,14 @@
                 <div class="text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.note') }}</div>
                 <div class="mt-1 text-sm">{{ str(detail.note) }}</div>
               </div>
-              <!-- Gallery photos of this contact (face recognition) -->
-              <div v-if="contactPhotos.length" class="mt-4">
-                <div class="mb-1.5 flex items-center gap-1.5">
-                  <Icon name="photo_library" :size="16" class="text-[var(--ll-muted)]" />
-                  <span class="text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('gallery.contact_photos') }}</span>
-                  <Badge tone="primary" class="text-[10px]">{{ contactPhotos.length }}</Badge>
-                  <a href="#/gallery" class="ml-auto text-xs text-primary-600 hover:underline dark:text-primary-300">{{ t('gallery.people') }}</a>
-                </div>
-                <div class="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-                  <a
-                    v-for="p in contactPhotos" :key="p.id" href="#/gallery"
-                    class="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-black/[0.04] dark:bg-white/5"
-                  >
-                    <img v-if="p.thumb" :src="gal.thumbUrl(p.id)" loading="lazy" class="h-full w-full object-cover">
-                    <Icon v-else name="image" :size="18" class="text-[var(--ll-muted)] opacity-50" />
-                  </a>
-                </div>
-              </div>
+              <!-- Gallery photos of this contact (face recognition) — link only, to
+                   keep the detail uncluttered; the grid lives in the gallery. -->
+              <a v-if="contactPhotos.length" href="#/gallery" class="mt-4 flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
+                <Icon name="photo_library" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+                <span class="flex-1 text-sm">{{ t('gallery.contact_photos') }}</span>
+                <Badge tone="primary" class="text-[10px]">{{ contactPhotos.length }}</Badge>
+                <Icon name="chevron_right" :size="18" class="shrink-0 text-[var(--ll-muted)]" />
+              </a>
               <!-- Addresses — kept last so the maps sit at the very bottom -->
               <template v-if="addressList(detail).length">
                 <div class="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.addresses') }}</div>
