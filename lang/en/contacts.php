@@ -114,6 +114,7 @@ return [
         'avatar_from_gallery' => 'From gallery',
         'avatar_from_files' => 'From files',
         'avatar_no_images' => 'No images found.',
+        'details' => 'Details',
         'map_open_osm' => 'Open in OpenStreetMap',
         'map_chooser_title' => 'Open address in a new window with',
         'related' => 'Related contacts',

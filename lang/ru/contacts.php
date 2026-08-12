@@ -114,6 +114,7 @@ return [
         'avatar_from_gallery' => 'Из галереи',
         'avatar_from_files' => 'Из файлов',
         'avatar_no_images' => 'Изображения не найдены.',
+        'details' => 'Подробнее',
         'map_open_osm' => 'Открыть в OpenStreetMap',
         'map_chooser_title' => 'Открыть адрес в новом окне с помощью',
         'related' => 'Связанные контакты',
