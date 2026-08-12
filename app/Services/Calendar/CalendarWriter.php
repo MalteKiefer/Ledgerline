@@ -28,7 +28,11 @@ class CalendarWriter
      */
     public function create(Calendar $calendar, array $data): CalendarEvent
     {
-        $ics = $this->events->build($data);
+        // Preserve an incoming UID when one is supplied (iMIP REQUEST ingest), so
+        // later REPLY/CANCEL messages match; normal creates omit it and get a
+        // fresh UID.
+        $uid = isset($data['uid']) && is_string($data['uid']) && $data['uid'] !== '' ? $data['uid'] : null;
+        $ics = $this->events->build($data, $uid);
 
         return $this->persister->persistNew($calendar, Str::uuid().'.ics', $ics);
     }

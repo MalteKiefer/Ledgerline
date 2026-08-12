@@ -247,6 +247,25 @@
           class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
         ></textarea>
       </label>
+      <!-- Attendees (iMIP) -->
+      <div>
+        <TextField v-model="form.attendees" :label="t('calendar.ui.invite')" :placeholder="t('calendar.ui.attendees_ph')" />
+        <div v-if="attendeeDetails.length" class="mt-1.5 flex flex-wrap gap-1">
+          <span v-for="a in attendeeDetails" :key="a.email" class="inline-flex items-center gap-1 rounded-full bg-black/[0.05] px-2 py-0.5 text-xs dark:bg-white/10">
+            {{ a.name || a.email }}
+            <span :class="a.partstat === 'ACCEPTED' ? 'text-green-600' : a.partstat === 'DECLINED' ? 'text-red-600' : 'text-[var(--ll-muted)]'">· {{ partstatLabel(a.partstat) }}</span>
+          </span>
+        </div>
+      </div>
+      <!-- RSVP (when I am an invited attendee) -->
+      <div v-if="editingId && myAttendee" class="rounded-lg border border-[var(--ll-border)] p-2">
+        <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('calendar.ui.your_response') }}: {{ partstatLabel(myAttendee.partstat) }}</div>
+        <div class="flex gap-2">
+          <Btn size="sm" variant="soft" @click="doRsvp('ACCEPTED')">{{ t('calendar.ui.rsvp_accept') }}</Btn>
+          <Btn size="sm" variant="ghost" @click="doRsvp('TENTATIVE')">{{ t('calendar.ui.rsvp_tentative') }}</Btn>
+          <Btn size="sm" variant="ghost" class="!text-red-600" @click="doRsvp('DECLINED')">{{ t('calendar.ui.rsvp_decline') }}</Btn>
+        </div>
+      </div>
     </div>
     <template #footer>
       <Btn v-if="editingId" variant="danger" class="mr-auto" :loading="deleting" @click="onDelete">{{ t('calendar.ui.delete_event') }}</Btn>
@@ -331,11 +350,13 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { api, ApiError } from '@spa/api/client';
 import { useCalendarStore, type CalendarCol, type Occurrence, type CalendarShareRow } from '@spa/stores/calendar';
+import { useAuthStore } from '@spa/stores/auth';
 import LocationField from '@spa/components/LocationField.vue';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 
 const store = useCalendarStore();
+const auth = useAuthStore();
 const { success, error } = useToast();
 const locale = document.documentElement.lang || 'de';
 
@@ -528,8 +549,8 @@ watch(editScope, (scope) => {
 });
 const saving = ref(false);
 const deleting = ref(false);
-const form = reactive<{ calendar_id: string; summary: string; description: string; location: string; geoLat: number | null; geoLon: number | null; allDay: boolean; start: string; end: string; repeat: string; rruleRaw: string; status: string; reminder: string }>(
-  { calendar_id: '', summary: '', description: '', location: '', geoLat: null, geoLon: null, allDay: false, start: '', end: '', repeat: 'none', rruleRaw: '', status: 'CONFIRMED', reminder: '' },
+const form = reactive<{ calendar_id: string; summary: string; description: string; location: string; geoLat: number | null; geoLon: number | null; allDay: boolean; start: string; end: string; repeat: string; rruleRaw: string; status: string; reminder: string; attendees: string }>(
+  { calendar_id: '', summary: '', description: '', location: '', geoLat: null, geoLon: null, allDay: false, start: '', end: '', repeat: 'none', rruleRaw: '', status: 'CONFIRMED', reminder: '', attendees: '' },
 );
 // Reminder presets (minutes before start; '' = none). Shared with Tasks.vue keys.
 const reminderOptions = computed(() => [
@@ -602,8 +623,9 @@ function openCreate(startVal: string): void {
     allDay,
     start: startVal,
     end: allDay ? dayPart : dayPart + 'T10:00',
-    repeat: 'none', rruleRaw: '', status: 'CONFIRMED', reminder: '',
+    repeat: 'none', rruleRaw: '', status: 'CONFIRMED', reminder: '', attendees: '',
   });
+  attendeeDetails.value = [];
   eventModal.value = true;
 }
 async function openEdit(o: Occurrence): Promise<void> {
@@ -623,7 +645,9 @@ async function openEdit(o: Occurrence): Promise<void> {
       end: d.dtend ? (d.all_day ? shiftDay(toInput(d.dtend, true), -1) : toInput(d.dtend, false)) : '',
       repeat: rruleToPreset(d.rrule), rruleRaw: d.rrule ?? '', status: d.status ?? 'CONFIRMED',
       reminder: d.alarm_minutes_before != null ? String(d.alarm_minutes_before) : '',
+      attendees: (d.attendees ?? []).map((a) => a.email).join(', '),
     });
+    attendeeDetails.value = d.attendees ?? [];
     // Remember both anchors so the scope toggle can swap the shown times.
     masterStart.value = form.start;
     masterEnd.value = form.end;
@@ -664,7 +688,11 @@ function buildBody(): Record<string, unknown> {
     rrule,
     status: form.status,
     alarm_minutes_before: form.reminder === '' ? null : Number(form.reminder),
+    attendees: parseAttendees(form.attendees),
   };
+}
+function parseAttendees(raw: string): { email: string }[] {
+  return raw.split(/[,;\s]+/).map((s) => s.trim()).filter((s) => s.includes('@')).map((email) => ({ email }));
 }
 async function save(): Promise<void> {
   saving.value = true;
@@ -708,6 +736,24 @@ async function onDelete(): Promise<void> {
 // --- calendar editor (NORMAL calendars only) --------------------------------
 // Special calendars (birthdays/holidays/school holidays) are created from the
 // calendar settings page (profile/Calendar.vue), not here.
+// ---- Attendees + RSVP (iMIP) ----
+const attendeeDetails = ref<{ email: string; name: string | null; partstat: string }[]>([]);
+const myEmail = computed(() => (auth.user?.email ?? '').toLowerCase());
+const myAttendee = computed(() => attendeeDetails.value.find((a) => a.email.toLowerCase() === myEmail.value) ?? null);
+async function doRsvp(status: 'ACCEPTED' | 'DECLINED' | 'TENTATIVE') {
+  if (!editingId.value) return;
+  try {
+    await store.rsvp(editingId.value, status);
+    const d = await store.show(editingId.value);
+    attendeeDetails.value = d.attendees ?? [];
+    success(t('common.saved'));
+  } catch { error(t('common.error')); }
+}
+function partstatLabel(ps: string): string {
+  const k = 'calendar.ui.ps_' + ps.toLowerCase().replace('-', '_');
+  const l = t(k); return l === k ? ps : l;
+}
+
 // ---- Scheduling (find a free slot) ----
 const sched = reactive<{ open: boolean; busy: boolean; searched: boolean; duration: number; days: number; attendees: string; slots: { start: string; end: string }[]; unknown: string[] }>(
   { open: false, busy: false, searched: false, duration: 30, days: 14, attendees: '', slots: [], unknown: [] },

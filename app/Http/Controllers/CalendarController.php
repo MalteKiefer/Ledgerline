@@ -11,6 +11,7 @@ use App\Models\UserSetting;
 use App\Services\Calendar\CalendarEventService;
 use App\Services\Calendar\CalendarImporter;
 use App\Services\Calendar\CalendarWriter;
+use App\Services\Calendar\ImipService;
 use App\Services\Calendar\OpenHolidaysClient;
 use App\Services\Calendar\SpecialCalendarGenerator;
 use App\Support\CalendarAccess;
@@ -243,6 +244,9 @@ class CalendarController extends Controller
         // Special calendars are generated + read-only; reject manual event writes.
         abort_if($calendar->isSpecial(), 422);
         $event = $writer->create($calendar, $data);
+        if (! empty($data['attendees'])) {
+            app(ImipService::class)->notifyAttendees($event, 'REQUEST');
+        }
 
         return response()->json(['id' => $event->id], 201);
     }
@@ -261,6 +265,9 @@ class CalendarController extends Controller
         }
 
         $updated = $writer->update($event, $data);
+        if (! empty($data['attendees'])) {
+            app(ImipService::class)->notifyAttendees($updated, 'REQUEST');
+        }
 
         return response()->json(['ok' => true, 'etag' => $updated->etag]);
     }
@@ -268,9 +275,52 @@ class CalendarController extends Controller
     public function destroy(CalendarEvent $event, CalendarWriter $writer): JsonResponse
     {
         $this->authorizeEvent($event, write: true);
+        // Notify attendees of the cancellation before the row is gone.
+        app(ImipService::class)->notifyAttendees($event, 'CANCEL');
         $writer->delete($event);
 
         return response()->json(['ok' => true]);
+    }
+
+    /** RSVP to an event I am an attendee of: set my PARTSTAT + REPLY to organizer. */
+    public function rsvp(Request $request, CalendarEvent $event, ImipService $imip): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $this->authorizeEvent($event); // read access to the calendar holding it
+        $request->validate(['status' => ['required', 'in:ACCEPTED,DECLINED,TENTATIVE']]);
+        $status = $request->string('status')->value();
+
+        $data = app(CalendarEventService::class)->parse($event->ics);
+        $attendees = is_array($data['attendees'] ?? null) ? $data['attendees'] : [];
+        $myEmail = is_string($user->email) ? $user->email : '';
+        $found = false;
+        foreach ($attendees as &$a) {
+            if (! is_array($a)) {
+                continue;
+            }
+            $aEmail = is_string($a['email'] ?? null) ? $a['email'] : '';
+            if ($aEmail !== '' && strcasecmp($aEmail, $myEmail) === 0) {
+                $a['partstat'] = $status;
+                $found = true;
+            }
+        }
+        unset($a);
+        abort_unless($found, 404); // not an attendee of this event
+        $data['attendees'] = $attendees;
+        $updated = app(CalendarWriter::class)->update($event, $data);
+        $imip->sendReply($updated, $user, $status);
+
+        return response()->json(['ok' => true, 'status' => $status]);
+    }
+
+    /** Manually ingest a received iMIP payload (REQUEST/REPLY/CANCEL). */
+    public function imipIngest(Request $request, ImipService $imip): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate(['ics' => ['required', 'string', 'max:1000000']]);
+        $result = $imip->ingest($uid, $request->string('ics')->value());
+
+        return response()->json($result);
     }
 
     /** Delete a single occurrence of a recurring event (EXDATE on the master). */
@@ -522,7 +572,18 @@ class CalendarController extends Controller
             'status' => ['nullable', 'in:CONFIRMED,TENTATIVE,CANCELLED'],
             'alarm_minutes_before' => ['nullable', 'integer', 'between:0,40320'],
             'etag' => ['nullable', 'string', 'max:64'],
+            'attendees' => ['nullable', 'array', 'max:100'],
+            'attendees.*.email' => ['required_with:attendees', 'email'],
+            'attendees.*.name' => ['nullable', 'string', 'max:200'],
+            'attendees.*.partstat' => ['nullable', 'in:NEEDS-ACTION,ACCEPTED,DECLINED,TENTATIVE'],
         ]);
+
+        // When attendees are set, stamp the ORGANIZER as the acting user so the
+        // outbound REQUEST/CANCEL + REPLY matching work (iMIP).
+        if (array_key_exists('attendees', $validated)) {
+            $user = $this->requireUser($request);
+            $validated['organizer'] = (string) $user->email;
+        }
 
         return $validated;
     }

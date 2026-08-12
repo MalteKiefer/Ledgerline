@@ -3065,6 +3065,30 @@ paths:
       responses:
         "200": { description: Saved. }
         "422": { $ref: '#/components/responses/ValidationError' }
+  /calendar/events/{event}/rsvp:
+    post:
+      tags: [Calendar]
+      operationId: calendarRsvp
+      summary: RSVP to an event you are an attendee of (sets your PARTSTAT + iMIP REPLY)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: event, in: path, required: true, schema: { type: string } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [status], properties: { status: { type: string, enum: [ACCEPTED, DECLINED, TENTATIVE] } } } } } }
+      responses:
+        "200": { description: Updated., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, status: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Not an attendee of this event. }
+  /calendar/imip:
+    post:
+      tags: [Calendar]
+      operationId: calendarImipIngest
+      summary: Ingest a received iMIP payload (REQUEST/REPLY/CANCEL)
+      description: "Applies a received iCalendar meeting message to the caller's calendars: REQUEST creates/updates the invitation, REPLY updates an attendee's PARTSTAT on the organizer's event, CANCEL marks the event cancelled. The mail archive also does this automatically for received text/calendar parts."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [ics], properties: { ics: { type: string } } } } } }
+      responses:
+        "200": { description: Processed., content: { application/json: { schema: { type: object, properties: { method: { type: [string,"null"] }, action: { type: string } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /calendar/free-busy:
     get:
       tags: [Calendar]
