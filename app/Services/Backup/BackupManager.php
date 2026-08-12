@@ -333,42 +333,49 @@ final class BackupManager
 
         $work = storage_path('app/backup-tmp/'.Str::uuid()->toString());
         File::ensureDirectoryExists($work, 0700);
-        $local = $work.'/'.$source.'.tar.gz'.($enc ? '.enc' : '');
-        $in = $fs->readStream($remote);
-        $out = fopen($local, 'wb');
-        if (! is_resource($in) || ! is_resource($out)) {
-            throw new RuntimeException('Could not stage the archive.');
-        }
-        stream_copy_to_stream($in, $out);
-        fclose($in);
-        fclose($out);
 
-        if ($enc) {
-            $pass = $job->effectivePassphrase();
-            if ($pass === null) {
-                throw new RuntimeException('Archive is encrypted but no passphrase is set.');
+        // RAII: the staged archive + its DECRYPTED plaintext must be shredded on
+        // every exit path (success, throw, wrong passphrase, corrupt archive), or
+        // a decrypted DB/PII dump lingers in storage/app/backup-tmp.
+        try {
+            $local = $work.'/'.$source.'.tar.gz'.($enc ? '.enc' : '');
+            $in = $fs->readStream($remote);
+            $out = fopen($local, 'wb');
+            if (! is_resource($in) || ! is_resource($out)) {
+                throw new RuntimeException('Could not stage the archive.');
             }
-            $dec = $work.'/'.$source.'.tar.gz';
-            $this->cipher->decryptFile($local, $dec, $pass);
-            @unlink($local);
-            $local = $dec;
-        }
+            stream_copy_to_stream($in, $out);
+            fclose($in);
+            fclose($out);
 
-        $disk = BlobStore::disk();
-        $phar = new \PharData($local);
-        $written = 0;
-        foreach (new \RecursiveIteratorIterator($phar) as $file) {
-            /** @var \PharFileInfo $file */
-            $rel = ltrim(str_replace('phar://'.$local, '', $file->getPathname()), '/');
-            $rel = preg_replace('#^[^/]+/#', '', $rel) ?? $rel; // drop the archive's top dir
-            if ($rel === '' || str_contains($rel, '..')) {
-                continue;
+            if ($enc) {
+                $pass = $job->effectivePassphrase();
+                if ($pass === null) {
+                    throw new RuntimeException('Archive is encrypted but no passphrase is set.');
+                }
+                $dec = $work.'/'.$source.'.tar.gz';
+                $this->cipher->decryptFile($local, $dec, $pass);
+                @unlink($local);
+                $local = $dec;
             }
-            $disk->put($source.'/'.$rel, (string) file_get_contents($file->getPathname()));
-            $written++;
-        }
-        File::deleteDirectory($work);
 
-        return $written;
+            $disk = BlobStore::disk();
+            $phar = new \PharData($local);
+            $written = 0;
+            foreach (new \RecursiveIteratorIterator($phar) as $file) {
+                /** @var \PharFileInfo $file */
+                $rel = ltrim(str_replace('phar://'.$local, '', $file->getPathname()), '/');
+                $rel = preg_replace('#^[^/]+/#', '', $rel) ?? $rel; // drop the archive's top dir
+                if ($rel === '' || str_contains($rel, '..')) {
+                    continue;
+                }
+                $disk->put($source.'/'.$rel, (string) file_get_contents($file->getPathname()));
+                $written++;
+            }
+
+            return $written;
+        } finally {
+            File::deleteDirectory($work);
+        }
     }
 }

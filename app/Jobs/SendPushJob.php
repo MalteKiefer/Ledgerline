@@ -9,6 +9,7 @@ use App\Models\PersonalAccessToken;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Support\OutboundUrl;
+use App\Support\Redactor;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -93,8 +94,15 @@ class SendPushJob implements ShouldQueue
                 $device->forceFill(['push_endpoint' => null])->save();
             }
         } catch (Throwable $e) {
-            // Never let one bad endpoint break the fan-out (or the caller).
-            Log::warning('push delivery failed', ['token_id' => $device->getKey(), 'error' => $e->getMessage()]);
+            // Never let one bad endpoint break the fan-out (or the caller). Log
+            // only the scheme+host of the endpoint — the full URL (path = the
+            // secret ntfy topic capability) must never reach the log; and the
+            // exception message can embed the URL, so redact it too.
+            Log::warning('push delivery failed', [
+                'token_id' => $device->getKey(),
+                'host' => parse_url($endpoint, PHP_URL_HOST),
+                'error' => Redactor::redact($e->getMessage()),
+            ]);
         }
     }
 }

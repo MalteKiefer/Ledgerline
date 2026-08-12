@@ -333,7 +333,7 @@ class BackupController extends Controller
         try {
             $written = $manager->restoreBlobs($job, (string) $run->filename, $request->string('source')->value());
         } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'message' => Str::limit($e->getMessage(), 300)], 422);
+            return response()->json(['ok' => false, 'message' => Str::limit(Redactor::redact($e->getMessage()), 300)], 422);
         }
         AuditLog::record('backup.restored', $run, ['source' => $request->string('source')->value(), 'files' => $written]);
 

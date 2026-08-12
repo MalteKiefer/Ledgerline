@@ -61,6 +61,7 @@ return [
     'users_deleted' => 'Benutzer gelöscht.',
     'users_reset_sent' => 'Ein Link zum Zurücksetzen wurde gesendet.',
     'users_last_admin' => 'Der letzte Admin kann nicht entfernt werden.',
+    'users_no_self_2fa_reset' => 'Du kannst deine eigene Zwei-Faktor-Anmeldung hier nicht zurücksetzen — nutze die Sicherheitsseite in deinem Profil.',
     'users_no_self_delete' => 'Du kannst dein eigenes Konto hier nicht löschen.',
     'users_mail_off' => 'E-Mail ist nicht konfiguriert. Passwörter neuer Benutzer setzen mit: php artisan user:set-password <email>',
     'users_create' => 'Benutzer anlegen',

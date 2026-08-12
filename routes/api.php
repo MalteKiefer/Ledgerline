@@ -601,7 +601,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/account/export', [AccountController::class, 'export'])->middleware('throttle:6,1')->name('api.account.export');
         Route::delete('/account', [AccountController::class, 'destroy'])->name('api.account.destroy');
         Route::get('/account/sessions', [AccountController::class, 'sessions'])->name('api.account.sessions.index');
-        Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->name('api.account.sessions.revoke');
+        Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->middleware('throttle:20,1')->name('api.account.sessions.revoke');
 
         // App-specific WebDAV mount password (set/clear); the password is stored
         // hashed and never returned — GET reports enabled + username + mount URL.

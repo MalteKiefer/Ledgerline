@@ -30,7 +30,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // BlockGuard (early, before controllers) refuses blocked IPs/users on
         // every request; LogRequest (terminable) records the full request trail
         // after the response. Applied to both web + api.
-        $middleware->web(prepend: [BlockGuard::class], append: [SetLocale::class, SecurityHeaders::class, LogRequest::class]);
+        // BlockGuard runs twice on web: prepend (early — IP + any Sanctum bearer)
+        // and again appended AFTER StartSession, where $request->user() resolves the
+        // web-session user — so a blocked account holding a live cookie session
+        // (Redis-backed, not evicted by a DB sessions delete) is refused 403 on its
+        // very next web request, driver-agnostically. The repeat IP check is cached.
+        $middleware->web(prepend: [BlockGuard::class], append: [BlockGuard::class, SetLocale::class, SecurityHeaders::class, LogRequest::class]);
         // WebDAV authenticates via HTTP Basic (Sabre) and uses non-form verbs
         // (PUT/DELETE/PROPFIND/MKCOL/…) — exempt it from session CSRF.
         $middleware->validateCsrfTokens(except: ['dav', 'dav/*']);

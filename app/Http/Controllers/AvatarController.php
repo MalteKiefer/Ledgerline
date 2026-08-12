@@ -25,6 +25,8 @@ class AvatarController extends Controller
     // (checked client-side too). The re-encode normalises whatever arrives.
     private const MAX_KB = 10240; // 10 MiB
 
+    private const MAX_PIXELS = 100 * 1000 * 1000; // ~100 MP decode budget
+
     private const SIZE = 512;
 
     public function __invoke(Request $request): StreamedResponse
@@ -60,6 +62,14 @@ class AvatarController extends Controller
         $file = $request->file('avatar');
         if ($file === null || is_array($file)) {
             abort(422, 'invalid image');
+        }
+
+        // Decompression-bomb guard: reject an image whose pixel count exceeds the
+        // budget from its header, BEFORE decoding it (a 10 KB file can hold a
+        // 30000×30000 image). Driver-independent (GD ignores policy.xml).
+        $dims = @getimagesize($file->getRealPath());
+        if (is_array($dims) && (int) $dims[0] * (int) $dims[1] > self::MAX_PIXELS) {
+            abort(413, 'image too large');
         }
 
         // Re-encode to a normalized square JPEG — this strips EXIF/metadata and

@@ -99,6 +99,22 @@ class AdminUserManagementTest extends TestCase
         $this->assertNull($target->two_factor_confirmed_at);
     }
 
+    public function test_admin_cannot_reset_their_own_two_factor_via_admin_path(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $admin->forceFill([
+            'two_factor_secret' => encrypt('SECRET'),
+            'two_factor_confirmed_at' => now(),
+        ])->save();
+
+        $this->actingAs($admin)
+            ->post(route('settings.users.reset2fa', $admin))
+            ->assertSessionHasErrors('reset');
+
+        // The self-service step-up flow, not this admin-recovery path, must be used.
+        $this->assertNotNull($admin->fresh()->two_factor_secret);
+    }
+
     public function test_two_factor_reset_requires_admin(): void
     {
         $this->actingAs(User::factory()->create());

@@ -176,8 +176,15 @@ class MachineLearning
     private function base(): string
     {
         $url = config('ml.url');
+        $default = 'http://ml:3003';
+        // Fail-safe egress guard: even though ml.url is admin-only, never ship
+        // decrypted photo bytes to a link-local / cloud-metadata target — fall
+        // back to the internal sidecar if the configured host is not safe.
+        if (! is_string($url) || $url === '' || ! OutboundUrl::safe($url)) {
+            return $default;
+        }
 
-        return rtrim(is_string($url) ? $url : 'http://ml:3003', '/');
+        return rtrim($url, '/');
     }
 
     private function model(): string
