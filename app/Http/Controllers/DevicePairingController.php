@@ -134,6 +134,15 @@ class DevicePairingController extends Controller
                             ? __('account.devices_last_used', ['when' => $t->last_used_at->diffForHumans()])
                             : __('account.devices_never_used'),
                     ]))),
+                    // Structured, non-secret detail fields (so a native/API client can
+                    // render them itself instead of parsing the display strings).
+                    'ip' => is_string($t->ip) && $t->ip !== '' ? $t->ip : null,
+                    'last_used_at' => $t->last_used_at?->toIso8601String(),
+                    'created_at' => $t->created_at?->toIso8601String(),
+                    'expires_at' => $t->expires_at?->toIso8601String(),
+                    'os_version' => is_string($t->os_version) && $t->os_version !== '' ? $t->os_version : null,
+                    'app_version' => is_string($t->app_version) && $t->app_version !== '' ? $t->app_version : null,
+                    'abilities' => is_array($t->abilities) ? array_values($t->abilities) : [],
                     'version' => $version !== '' ? $version : null,
                     'installId' => $installId,
                     'syncing' => $syncing,
