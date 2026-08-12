@@ -406,11 +406,16 @@
               <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('gallery.share_with_user') }}</div>
               <form class="mb-2 flex gap-2" @submit.prevent="addInternal">
                 <input v-model="share.email" type="email" :placeholder="t('common.email')" class="min-w-0 flex-1 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-bg)] px-2 py-1.5 text-sm">
+                <select v-if="share.albumId" v-model="share.role" class="rounded-lg border border-[var(--ll-border)] bg-[var(--ll-bg)] px-2 py-1.5 text-sm">
+                  <option value="viewer">{{ t('gallery.role_viewer') }}</option>
+                  <option value="editor">{{ t('gallery.role_editor') }}</option>
+                </select>
                 <Btn type="submit" variant="soft" size="sm" icon="person_add" :loading="share.busy">{{ t('gallery.share_action') }}</Btn>
               </form>
+              <p v-if="share.albumId" class="mb-2 text-xs text-[var(--ll-muted)]">{{ t('gallery.role_hint') }}</p>
               <ul v-if="share.internal.length" class="divide-y divide-[var(--ll-border)] rounded-lg border border-[var(--ll-border)]">
                 <li v-for="s in share.internal" :key="s.id" class="flex items-center justify-between px-3 py-1.5 text-sm">
-                  <span class="truncate">{{ s.recipient }}</span>
+                  <span class="truncate">{{ s.recipient }}<span v-if="s.role === 'editor'" class="ml-1 rounded bg-primary-500/15 px-1 text-[10px] font-medium text-primary-600">{{ t('gallery.role_editor') }}</span></span>
                   <button class="text-red-600 hover:opacity-80" @click="removeInternal(s.id)"><Icon name="close" :size="15" /></button>
                 </li>
               </ul>
@@ -427,7 +432,9 @@
         <div class="flex items-center gap-2 border-b border-[var(--ll-border)] px-4 py-3">
           <Btn v-if="sharedView" variant="ghost" size="sm" icon="arrow_back" @click="sharedView = null">{{ t('common.back') }}</Btn>
           <h2 class="text-sm font-semibold">{{ sharedView ? sharedView.name : t('gallery.shared_with_me') }}</h2>
-          <button class="ml-auto rounded-full p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="closeShared"><Icon name="close" :size="20" /></button>
+          <Btn v-if="sharedView && sharedCanContribute" variant="soft" size="sm" icon="add_photo_alternate" :loading="sharedUploading" class="ml-auto" @click="pickContribute">{{ t('gallery.contribute') }}</Btn>
+          <input ref="contributeInput" type="file" accept="image/*,video/*" multiple class="hidden" @change="onContribute">
+          <button :class="sharedView && sharedCanContribute ? '' : 'ml-auto'" class="rounded-full p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10" @click="closeShared"><Icon name="close" :size="20" /></button>
         </div>
         <div class="flex-1 overflow-y-auto p-3">
           <div v-if="!sharedView">
@@ -1179,9 +1186,9 @@ watch(viewer, () => {
 
 // ---- Sharing (owner side) ----
 const share = reactive<{
-  open: boolean; albumId: number | null; albumName: string;
+  open: boolean; albumId: number | null; albumName: string; role: 'viewer' | 'editor';
   public: PublicShareRow | null; internal: InternalShareRow[]; email: string; busy: boolean;
-}>({ open: false, albumId: null, albumName: '', public: null, internal: [], email: '', busy: false });
+}>({ open: false, albumId: null, albumName: '', role: 'viewer', public: null, internal: [], email: '', busy: false });
 
 async function refreshShareState() {
   try {
@@ -1190,8 +1197,8 @@ async function refreshShareState() {
     share.internal = r.internal.filter((s) => (share.albumId ? s.album_id === share.albumId : s.album_id === null));
   } catch { error(t('common.error')); }
 }
-function openShare(a: Album) { share.open = true; share.albumId = a.id; share.albumName = a.name; share.email = ''; void refreshShareState(); }
-function openLibraryShare() { share.open = true; share.albumId = null; share.albumName = ''; share.email = ''; void refreshShareState(); }
+function openShare(a: Album) { share.open = true; share.albumId = a.id; share.albumName = a.name; share.email = ''; share.role = 'viewer'; void refreshShareState(); }
+function openLibraryShare() { share.open = true; share.albumId = null; share.albumName = ''; share.email = ''; share.role = 'viewer'; void refreshShareState(); }
 async function createPublic() {
   if (!share.albumId) return;
   share.busy = true;
@@ -1220,7 +1227,7 @@ async function togglePassword(on: boolean) {
 async function addInternal() {
   if (!share.email.trim()) return;
   share.busy = true;
-  try { await g.shareInternal({ email: share.email.trim(), album_id: share.albumId }); share.email = ''; await refreshShareState(); success(t('common.saved')); }
+  try { await g.shareInternal({ email: share.email.trim(), album_id: share.albumId, role: share.albumId ? share.role : 'viewer' }); share.email = ''; await refreshShareState(); success(t('common.saved')); }
   catch (e) { error(e instanceof ApiError && e.status === 422 ? t('gallery.recipient_invalid') : t('common.error')); }
   finally { share.busy = false; }
 }
@@ -1244,9 +1251,24 @@ async function openShared() {
   try { sharedList.value = await g.sharedWithMe(); } catch { error(t('common.error')); }
 }
 function closeShared() { showShared.value = false; sharedView.value = null; sharedViewer.value = -1; }
+const sharedCanContribute = ref(false);
+const sharedUploading = ref(false);
+const contributeInput = ref<HTMLInputElement | null>(null);
 async function openSharedShare(s: SharedWithMeRow) {
-  sharedView.value = s; sharedViewer.value = -1;
-  try { sharedPhotos.value = (await g.browseShared(s.id)).photos; } catch { error(t('common.error')); }
+  sharedView.value = s; sharedViewer.value = -1; sharedCanContribute.value = false;
+  try { const r = await g.browseShared(s.id); sharedPhotos.value = r.photos; sharedCanContribute.value = !!r.can_contribute; } catch { error(t('common.error')); }
+}
+function pickContribute() { contributeInput.value?.click(); }
+async function onContribute(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []); input.value = '';
+  const s = sharedView.value; if (!s || !files.length) return;
+  sharedUploading.value = true;
+  let ok = 0;
+  for (const f of files) { try { await g.contributeShared(s.id, f); ok++; } catch { /* count below */ } }
+  sharedUploading.value = false;
+  if (ok) { success(t('common.saved')); try { sharedPhotos.value = (await g.browseShared(s.id)).photos; } catch { /* keep */ } }
+  if (ok < files.length) error(t('common.error'));
 }
 function sharedStep(d: number) {
   const n = sharedPhotos.value.length; if (!n) { sharedViewer.value = -1; return; }

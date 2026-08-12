@@ -331,6 +331,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/gallery/shared-with-me/{share}/photo/{photo}/thumb', [SharedGalleryController::class, 'thumb'])->whereNumber('share')->whereNumber('photo')->middleware('throttle:6000,1')->name('api.gallery.shared.thumb');
             Route::get('/gallery/shared-with-me/{share}/photo/{photo}/preview', [SharedGalleryController::class, 'preview'])->whereNumber('share')->whereNumber('photo')->middleware('throttle:6000,1')->name('api.gallery.shared.preview');
             Route::get('/gallery/shared-with-me/{share}/photo/{photo}/raw', [SharedGalleryController::class, 'raw'])->whereNumber('share')->whereNumber('photo')->middleware('throttle:3000,1')->name('api.gallery.shared.raw');
+            Route::post('/gallery/shared-with-me/{share}/upload', [SharedGalleryController::class, 'upload'])->whereNumber('share')->middleware('throttle:1200,1')->name('api.gallery.shared.upload');
             Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('api.gallery.trash');
             Route::post('/gallery', [GalleryController::class, 'upload'])->middleware('throttle:1200,1')->name('api.gallery.upload');
             Route::post('/gallery/chunk/init', [GalleryController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.gallery.chunk.init');
