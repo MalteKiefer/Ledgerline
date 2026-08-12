@@ -80,6 +80,11 @@ export const useContactsStore = defineStore('contacts', () => {
   const removeShare = (id: number) => api.delete(`/api/v1/contacts/shares/${id}`);
   const sharedWithMe = () => api.get<{ shares: { id: number; name: string | null; owner: string | null; count: number }[] }>('/api/v1/contacts/shared-with-me').then((r) => r.shares);
   const browseShared = (id: number) => api.get<{ name: string | null; contacts: { id: string; fn: string; org: string | null; emails: string[]; phones: string[] }[] }>(`/api/v1/contacts/shared-with-me/${id}`);
+  // Address autocomplete / geocoding — the shared server geo proxy (authenticated,
+  // throttled). Called on demand only (explicit "show map"), never automatically.
+  const geoSearch = (q: string) =>
+    api.get<{ results: { display: string; lat: number; lon: number }[] }>(`/api/v1/geo/search?q=${encodeURIComponent(q)}`).then((r) => r.results);
+
   const birthdayFeed = () => api.get<{ enabled: boolean; url: string | null }>('/api/v1/contacts/birthday-feed');
   const enableBirthdayFeed = () => api.post<{ enabled: boolean; url: string }>('/api/v1/contacts/birthday-feed');
   const disableBirthdayFeed = () => api.delete('/api/v1/contacts/birthday-feed');
@@ -89,6 +94,6 @@ export const useContactsStore = defineStore('contacts', () => {
     createBook, updateBook, deleteBook, saveSettings, avatarUrl,
     createGroup, deleteGroup, loadDuplicates, mergeDuplicates, dismissDuplicate,
     importVcf, exportUrl, uploadAvatar, bulkDestroy,
-    loadShares, shareBook, removeShare, sharedWithMe, browseShared, birthdayFeed, enableBirthdayFeed, disableBirthdayFeed,
+    loadShares, shareBook, removeShare, sharedWithMe, browseShared, birthdayFeed, enableBirthdayFeed, disableBirthdayFeed, geoSearch,
   };
 });

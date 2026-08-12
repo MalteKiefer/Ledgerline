@@ -153,14 +153,14 @@
                   <Icon name="mail" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
                   <span class="min-w-0 flex-1">
                     <span class="block truncate text-sm">{{ e.value }}</span>
-                    <span class="block text-xs text-[var(--ll-muted)]">{{ e.type }}</span>
+                    <span v-if="typeLabel(e.type)" class="block text-xs text-[var(--ll-muted)]">{{ typeLabel(e.type) }}</span>
                   </span>
                 </a>
                 <a v-for="(p, i) in arr(detail.phones)" :key="'p'+i" :href="'tel:' + p.value" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
                   <Icon name="call" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
                   <span class="min-w-0 flex-1">
                     <span class="block truncate text-sm">{{ p.value }}</span>
-                    <span class="block text-xs text-[var(--ll-muted)]">{{ p.type }}</span>
+                    <span v-if="typeLabel(p.type)" class="block text-xs text-[var(--ll-muted)]">{{ typeLabel(p.type) }}</span>
                   </span>
                 </a>
                 <a v-for="(u, i) in arr(detail.urls)" :key="'u'+i" :href="u.value" target="_blank" class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-black/[0.03] dark:hover:bg-white/5">
@@ -175,14 +175,22 @@
               <template v-if="addressList(detail).length">
                 <div class="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('contacts.ui.addresses') }}</div>
                 <div class="space-y-1">
-                  <div v-for="(a, i) in addressList(detail)" :key="'a'+i" class="flex items-center gap-3 rounded-lg px-2 py-2">
-                    <Icon name="location_on" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
-                    <span class="min-w-0 flex-1">
-                      <span class="block truncate text-sm">{{ a.text }}</span>
-                      <span class="block text-xs text-[var(--ll-muted)]">{{ a.type }}</span>
-                    </span>
-                    <Btn variant="ghost" size="xs" tag="a" :href="mapUrl(a.text)" target="_blank" rel="noopener" :title="t('contacts.ui.map_open_osm')">{{ t('contacts.ui.map_open_osm') }}</Btn>
-                  </div>
+                  <template v-for="(a, i) in addressList(detail)" :key="'a'+i">
+                    <div class="flex items-center gap-3 rounded-lg px-2 py-2">
+                      <Icon name="location_on" :size="20" class="shrink-0 text-[var(--ll-muted)]" />
+                      <span class="min-w-0 flex-1">
+                        <span class="block text-sm">{{ a.text }}</span>
+                        <span v-if="typeLabel(a.type)" class="block text-xs text-[var(--ll-muted)]">{{ typeLabel(a.type) }}</span>
+                      </span>
+                      <Btn variant="ghost" size="xs" :icon="mapIdx === i ? 'expand_less' : 'map'" :loading="mapLoading && mapIdx === i" @click="toggleMap(a.text, i)">{{ mapIdx === i ? t('contacts.ui.map_hide') : t('contacts.ui.map_show') }}</Btn>
+                      <Btn variant="ghost" size="xs" tag="a" :href="mapUrl(a.text)" target="_blank" rel="noopener" :title="t('contacts.ui.map_open_osm')" icon="open_in_new" />
+                    </div>
+                  </template>
+                </div>
+                <!-- Single mini-map (opt-in geocode). Kept outside the v-for so its
+                     template ref stays a stable single element, not an array. -->
+                <div v-if="mapIdx !== null && !mapLoading" class="mt-1 overflow-hidden rounded-lg border border-[var(--ll-border)]">
+                  <div ref="mapEl" class="h-[180px] w-full" />
                 </div>
               </template>
               <div v-if="str(detail.note)" class="mt-4">
@@ -232,6 +240,7 @@
         <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.email') }}</div>
         <div v-for="(e, i) in form.emails" :key="'fe'+i" class="mb-2 flex items-center gap-2">
           <TextField v-model="e.value" type="email" class="flex-1" />
+          <Select :model-value="e.type ?? 'other'" :options="emailTypeItems" class="w-28 shrink-0" @update:model-value="e.type = String($event)" />
           <Btn variant="ghost" size="sm" icon="close" @click="form.emails.splice(i,1)" />
         </div>
         <Btn variant="ghost" size="sm" icon="add" @click="form.emails.push({ value: '', type: 'home' })">{{ t('common.add') }}</Btn>
@@ -241,6 +250,7 @@
         <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.phone') }}</div>
         <div v-for="(p, i) in form.phones" :key="'fp'+i" class="mb-2 flex items-center gap-2">
           <TextField v-model="p.value" class="flex-1" />
+          <Select :model-value="p.type ?? 'other'" :options="phoneTypeItems" class="w-28 shrink-0" @update:model-value="p.type = String($event)" />
           <Btn variant="ghost" size="sm" icon="close" @click="form.phones.splice(i,1)" />
         </div>
         <Btn variant="ghost" size="sm" icon="add" @click="form.phones.push({ value: '', type: 'cell' })">{{ t('common.add') }}</Btn>
@@ -421,7 +431,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
+import * as L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useContactsStore, type ContactRow, type ContactDetail, type ContactGroup, type DuplicateGroup, type DuplicateContact, type AddressBook } from '@spa/stores/contacts';
@@ -529,6 +541,63 @@ function addressList(d: ContactDetail): { text: string; type: string }[] {
     .filter((a) => a.text !== '');
 }
 function mapUrl(text: string): string { return `https://www.openstreetmap.org/search?query=${encodeURIComponent(text)}`; }
+
+// Friendly, localized labels for raw vCard TYPE tokens (home/work/cell/…). A
+// value may carry several tokens ("home,voice"); noise like "internet" is dropped.
+const TYPE_KEYS = new Set(['home', 'work', 'cell', 'voice', 'fax', 'main', 'pager', 'text', 'pref', 'other']);
+const TYPE_IGNORE = new Set(['internet', 'parcel', 'dom', 'intl', 'postal']);
+function typeLabel(raw?: string): string {
+  const s = (raw ?? '').trim();
+  if (!s) return '';
+  const parts = s.split(/[,;\s]+/).filter(Boolean)
+    .map((tok) => {
+      const k = tok.toLowerCase() === 'mobile' ? 'cell' : tok.toLowerCase();
+      if (TYPE_IGNORE.has(k)) return '';
+      return TYPE_KEYS.has(k) ? t(`contacts.ui.type_${k}`) : tok.charAt(0).toUpperCase() + tok.slice(1);
+    })
+    .filter(Boolean);
+  return [...new Set(parts)].join(' · ');
+}
+const emailTypeItems = computed(() => ['home', 'work', 'other'].map((k) => ({ title: t(`contacts.ui.type_${k}`), value: k })));
+const phoneTypeItems = computed(() => ['cell', 'home', 'work', 'voice', 'fax', 'main', 'other'].map((k) => ({ title: t(`contacts.ui.type_${k}`), value: k })));
+
+// --- Address mini-map (opt-in: geocode on explicit click, never automatically) ---
+const mapIdx = ref<number | null>(null);
+const mapLoading = ref(false);
+const mapEl = ref<HTMLElement | null>(null);
+let cmap: L.Map | null = null;
+let cmarker: L.Marker | null = null;
+const pinIcon = L.divIcon({
+  className: 'll-map-pin',
+  html: '<svg viewBox="0 0 24 24" width="28" height="28" fill="#6750a4" stroke="#fff" stroke-width="1"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/><circle cx="12" cy="9" r="2.6" fill="#fff" stroke="none"/></svg>',
+  iconSize: [28, 28],
+  iconAnchor: [14, 28],
+});
+function closeMap(): void {
+  if (cmap) { cmap.remove(); cmap = null; cmarker = null; }
+  mapIdx.value = null;
+}
+async function toggleMap(text: string, i: number): Promise<void> {
+  if (mapIdx.value === i) { closeMap(); return; }
+  closeMap();
+  mapLoading.value = true;
+  mapIdx.value = i;
+  try {
+    const res = await c.geoSearch(text);
+    const hit = res[0];
+    if (!hit) { error(t('contacts.ui.map_no_result')); mapIdx.value = null; return; }
+    await nextTick();
+    const el = mapEl.value;
+    if (!el) { mapIdx.value = null; return; }
+    cmap = L.map(el, { scrollWheelZoom: false }).setView([hit.lat, hit.lon], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(cmap);
+    cmarker = L.marker([hit.lat, hit.lon], { icon: pinIcon }).addTo(cmap);
+    setTimeout(() => cmap?.invalidateSize(), 60);
+  } catch { error(t('common.error')); closeMap(); } finally { mapLoading.value = false; }
+}
+// A different contact / editor open tears the map down.
+watch([detail, editor], () => closeMap());
+onBeforeUnmount(() => closeMap());
 
 let debTimer: ReturnType<typeof setTimeout> | undefined;
 function debouncedLoad() { clearTimeout(debTimer); debTimer = setTimeout(reload, 300); }
