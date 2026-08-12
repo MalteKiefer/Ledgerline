@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\WebDavAccessController as ApiWebDavAccessController
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\CalendarBookController;
 use App\Http\Controllers\CalendarController;
+use App\Http\Controllers\CalendarShareController;
 use App\Http\Controllers\CalendarTodoController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactDuplicateController;
@@ -397,6 +398,9 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/calendar/export', [CalendarController::class, 'export'])->name('api.calendar.export');
             Route::post('/calendar/import', [CalendarController::class, 'import'])->middleware('throttle:60,1')->name('api.calendar.import');
             Route::post('/calendar/settings', [CalendarController::class, 'settings'])->middleware('throttle:600,1')->name('api.calendar.settings');
+            Route::get('/calendar/shares', [CalendarShareController::class, 'index'])->middleware('throttle:600,1')->name('api.calendar.shares.index');
+            Route::post('/calendar/shares', [CalendarShareController::class, 'store'])->middleware('throttle:60,1')->name('api.calendar.shares.store');
+            Route::delete('/calendar/shares/{share}', [CalendarShareController::class, 'destroy'])->whereNumber('share')->middleware('throttle:60,1')->name('api.calendar.shares.destroy');
             Route::post('/calendar/events', [CalendarController::class, 'store'])->middleware('throttle:600,1')->name('api.calendar.events.store');
             Route::get('/calendar/events/{event}', [CalendarController::class, 'show'])->name('api.calendar.events.show');
             Route::put('/calendar/events/{event}', [CalendarController::class, 'update'])->middleware('throttle:600,1')->name('api.calendar.events.update');

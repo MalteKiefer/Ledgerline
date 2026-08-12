@@ -12,7 +12,11 @@ export interface CalendarCol {
   country?: string | null;
   subdivision?: string | null;
   owned: boolean;
+  role?: 'owner' | 'editor' | 'viewer';
+  writable?: boolean;
 }
+
+export interface CalendarShareRow { id: number; calendar_id: string; calendar: string | null; recipient: string | null; role: string }
 
 // Country / subdivision options for the special-calendar dialog (from OpenHolidays).
 export interface HolidayCountry {
@@ -138,6 +142,11 @@ export const useCalendarStore = defineStore('calendar', () => {
 
   const saveSettings = (s: CalSettings) => api.post('/api/v1/calendar/settings', s);
 
+  // Calendar sharing (owner side).
+  const loadShares = () => api.get<{ shares: CalendarShareRow[] }>('/api/v1/calendar/shares').then((r) => r.shares);
+  const shareCalendar = (body: { calendar_id: string; email: string; role?: 'viewer' | 'editor' }) => api.post<{ ok: boolean; id: number }>('/api/v1/calendar/shares', body);
+  const revokeCalendarShare = (id: number) => api.delete(`/api/v1/calendar/shares/${id}`);
+
   // Address autocomplete — server-side geo proxy (authenticated, throttled).
   const geoSearch = (q: string) =>
     api.get<{ results: GeoResult[] }>(`/api/v1/geo/search?q=${encodeURIComponent(q)}`).then((r) => r.results);
@@ -158,5 +167,6 @@ export const useCalendarStore = defineStore('calendar', () => {
     loadData, loadRange, show, create, update, destroy, excludeOccurrence, overrideOccurrence,
     createCalendar, updateCalendar, deleteCalendar, createSpecial, regenerate, saveSettings, importIcs, exportUrl,
     loadHolidayCountries, loadHolidaySubdivisions, geoSearch,
+    loadShares, shareCalendar, revokeCalendarShare,
   };
 });

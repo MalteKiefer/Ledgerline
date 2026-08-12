@@ -20,9 +20,13 @@
             <span class="h-3.5 w-3.5 shrink-0 rounded-[4px] border" :style="{ backgroundColor: isVisible(cal.id) ? (cal.color || '#6750a4') : 'transparent', borderColor: cal.color || '#6750a4' }" />
             <span class="truncate" :class="isVisible(cal.id) ? '' : 'text-[var(--ll-muted)] opacity-60'">{{ cal.name }}</span>
           </button>
+          <Icon v-if="cal.owned === false" name="group" :size="14" class="mr-1 shrink-0 text-[var(--ll-muted)]" :title="t('calendar.ui.shared_with_me')" />
           <!-- Special (system) calendars are managed only in Settings → Calendar;
                here they are view-only (color + visibility toggle above). -->
-          <template v-if="cal.kind === 'normal'">
+          <template v-if="cal.kind === 'normal' && cal.owned !== false">
+            <button class="hidden h-7 w-7 place-items-center rounded hover:bg-black/[0.05] group-hover:grid dark:hover:bg-white/10" :title="t('calendar.ui.share')" @click="openShareCalendar(cal)">
+              <Icon name="share" :size="15" class="text-[var(--ll-muted)]" />
+            </button>
             <button class="hidden h-7 w-7 place-items-center rounded hover:bg-black/[0.05] group-hover:grid dark:hover:bg-white/10" :title="t('calendar.ui.rename_calendar')" @click="openEditCalendar(cal)">
               <Icon name="edit" :size="16" class="text-[var(--ll-muted)]" />
             </button>
@@ -242,6 +246,25 @@
   </Modal>
 
   <!-- Import -->
+  <!-- Share calendar -->
+  <Modal v-model="shareModal" :title="t('calendar.ui.share') + (shareCal ? ': ' + shareCal.name : '')" width="460px">
+    <form class="flex gap-2" @submit.prevent="submitShare">
+      <TextField v-model="shareEmail" type="email" :placeholder="t('common.email')" class="flex-1" />
+      <Select v-model="shareRole" :options="[{ title: t('calendar.ui.role_viewer'), value: 'viewer' }, { title: t('calendar.ui.role_editor'), value: 'editor' }]" />
+      <Btn type="submit" variant="soft" :loading="shareBusy">{{ t('calendar.ui.share_action') }}</Btn>
+    </form>
+    <ul v-if="shareList.length" class="mt-3 divide-y divide-[var(--ll-border)] rounded-lg border border-[var(--ll-border)]">
+      <li v-for="sh in shareList" :key="sh.id" class="flex items-center justify-between px-3 py-1.5 text-sm">
+        <span class="truncate">{{ sh.recipient }} <span class="ml-1 text-xs text-[var(--ll-muted)]">{{ sh.role === 'editor' ? t('calendar.ui.role_editor') : t('calendar.ui.role_viewer') }}</span></span>
+        <button class="text-red-600 hover:opacity-80" @click="revokeShare(sh.id)"><Icon name="close" :size="15" /></button>
+      </li>
+    </ul>
+    <p v-else class="mt-3 text-xs text-[var(--ll-muted)]">{{ t('calendar.ui.no_shares') }}</p>
+    <template #footer>
+      <Btn variant="ghost" @click="shareModal = false">{{ t('common.close') }}</Btn>
+    </template>
+  </Modal>
+
   <Modal v-model="importModal" :title="t('calendar.ui.import')" width="460px">
     <div class="space-y-4">
       <Select v-model="importCalId" :label="t('calendar.ui.calendars')" :options="calendarOptions" />
@@ -282,7 +305,7 @@ import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { api, ApiError } from '@spa/api/client';
-import { useCalendarStore, type CalendarCol, type Occurrence } from '@spa/stores/calendar';
+import { useCalendarStore, type CalendarCol, type Occurrence, type CalendarShareRow } from '@spa/stores/calendar';
 import LocationField from '@spa/components/LocationField.vue';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
@@ -494,7 +517,8 @@ const reminderOptions = computed(() => [
   { title: t('calendar.ui.reminder_1d'), value: '1440' },
 ]);
 // Only normal calendars can hold user-created events; special ones are generated.
-const editableCalendars = computed(() => store.calendars.filter((c) => c.kind === 'normal'));
+// Only calendars the user may write to (own + editor-shared) can hold new events.
+const editableCalendars = computed(() => store.calendars.filter((c) => c.kind === 'normal' && c.writable !== false));
 const calendarOptions = computed(() => editableCalendars.value.map((c) => ({ title: c.name, value: c.id })));
 function isSpecialCal(id: string): boolean { return store.calendars.find((c) => c.id === id)?.kind !== 'normal' && store.calendars.some((c) => c.id === id); }
 const repeatOptions = computed(() => [
@@ -659,6 +683,32 @@ async function onDelete(): Promise<void> {
 // --- calendar editor (NORMAL calendars only) --------------------------------
 // Special calendars (birthdays/holidays/school holidays) are created from the
 // calendar settings page (profile/Calendar.vue), not here.
+// ---- Calendar sharing ----
+const shareModal = ref(false);
+const shareCal = ref<CalendarCol | null>(null);
+const shareEmail = ref('');
+const shareRole = ref<'viewer' | 'editor'>('viewer');
+const shareBusy = ref(false);
+const shareList = ref<CalendarShareRow[]>([]);
+async function openShareCalendar(cal: CalendarCol) {
+  shareCal.value = cal; shareModal.value = true; shareEmail.value = ''; shareRole.value = 'viewer';
+  try { shareList.value = (await store.loadShares()).filter((s) => s.calendar_id === cal.id); } catch { error(t('common.error')); }
+}
+async function submitShare() {
+  if (!shareCal.value || !shareEmail.value.trim()) return;
+  shareBusy.value = true;
+  try {
+    await store.shareCalendar({ calendar_id: shareCal.value.id, email: shareEmail.value.trim(), role: shareRole.value });
+    shareEmail.value = '';
+    shareList.value = (await store.loadShares()).filter((s) => s.calendar_id === shareCal.value!.id);
+    success(t('common.saved'));
+  } catch (e) { error(e instanceof ApiError && e.status === 422 ? t('calendar.ui.recipient_invalid') : t('common.error')); }
+  finally { shareBusy.value = false; }
+}
+async function revokeShare(id: number) {
+  try { await store.revokeCalendarShare(id); shareList.value = shareList.value.filter((s) => s.id !== id); } catch { error(t('common.error')); }
+}
+
 const calModal = ref(false);
 const calEditingId = ref<string | null>(null);
 const calSaving = ref(false);

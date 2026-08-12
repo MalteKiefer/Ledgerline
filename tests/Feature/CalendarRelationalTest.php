@@ -421,4 +421,45 @@ class CalendarRelationalTest extends TestCase
 
         return is_string($uid) ? $uid : null;
     }
+
+    public function test_shared_calendar_editor_can_write_viewer_cannot(): void
+    {
+        $owner = $this->signIn();
+        $calendar = $this->calendar($owner->id);
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'Owner event',
+            'dtstart' => '2026-08-10T09:00:00Z', 'dtend' => '2026-08-10T10:00:00Z',
+        ])->assertCreated();
+
+        $editor = User::factory()->create(['email' => 'editor@example.test']);
+        $viewer = User::factory()->create(['email' => 'viewer@example.test']);
+        $stranger = User::factory()->create();
+
+        // Share as editor + viewer.
+        $this->actingAs($owner)->postJson(route('calendar.shares.store'), ['calendar_id' => $calendar->id, 'email' => 'editor@example.test', 'role' => 'editor'])->assertCreated();
+        $this->actingAs($owner)->postJson(route('calendar.shares.store'), ['calendar_id' => $calendar->id, 'email' => 'viewer@example.test', 'role' => 'viewer'])->assertCreated();
+        $this->actingAs($owner)->postJson(route('calendar.shares.store'), ['calendar_id' => $calendar->id, 'email' => $owner->email])->assertStatus(422); // self
+
+        // Recipients see the calendar + its events.
+        $this->actingAs($viewer)->getJson(route('calendar.data'))->assertOk()
+            ->assertJsonFragment(['id' => $calendar->id, 'role' => 'viewer', 'writable' => false]);
+        $this->actingAs($editor)->getJson(route('calendar.events', ['from' => '2026-08-01T00:00:00Z', 'to' => '2026-09-01T00:00:00Z']))
+            ->assertOk()->assertJsonCount(1, 'events');
+
+        // Editor can create an event in the shared calendar; viewer cannot.
+        $this->actingAs($editor)->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'Editor event',
+            'dtstart' => '2026-08-11T09:00:00Z', 'dtend' => '2026-08-11T10:00:00Z',
+        ])->assertCreated();
+        $this->actingAs($viewer)->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'nope',
+            'dtstart' => '2026-08-12T09:00:00Z', 'dtend' => '2026-08-12T10:00:00Z',
+        ])->assertForbidden();
+
+        // Stranger sees nothing + cannot write.
+        $this->actingAs($stranger)->getJson(route('calendar.data'))->assertOk()->assertJsonMissing(['id' => $calendar->id]);
+        $this->actingAs($stranger)->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'nope', 'dtstart' => '2026-08-12T09:00:00Z', 'dtend' => '2026-08-12T10:00:00Z',
+        ])->assertNotFound(); // non-accessible calendar is hidden (404)
+    }
 }

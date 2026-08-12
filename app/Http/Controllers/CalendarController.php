@@ -12,6 +12,7 @@ use App\Services\Calendar\CalendarImporter;
 use App\Services\Calendar\CalendarWriter;
 use App\Services\Calendar\OpenHolidaysClient;
 use App\Services\Calendar\SpecialCalendarGenerator;
+use App\Support\CalendarAccess;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -63,8 +64,14 @@ class CalendarController extends Controller
         $this->ensureCalendar($userId);
         $settings = UserSetting::for($userId);
 
+        // Own calendars + calendars shared TO the user (viewer/editor).
+        $roles = CalendarAccess::roles($userId);
+        $calendars = Calendar::query()->withoutGlobalScopes()
+            ->whereIn('id', array_keys($roles))
+            ->orderBy('name')->get(['id', 'name', 'uri', 'color', 'kind', 'component', 'country', 'subdivision', 'user_id']);
+
         return response()->json([
-            'calendars' => Calendar::query()->orderBy('name')->get(['id', 'name', 'uri', 'color', 'kind', 'component', 'country', 'subdivision', 'user_id'])
+            'calendars' => $calendars
                 ->map(fn (Calendar $c): array => [
                     'id' => $c->id,
                     'name' => $c->name,
@@ -74,7 +81,9 @@ class CalendarController extends Controller
                     'component' => $c->component,
                     'country' => $c->country,
                     'subdivision' => $c->subdivision,
-                    'owned' => (int) $c->user_id === $userId,
+                    'owned' => ($roles[(string) $c->id] ?? null) === 'owner',
+                    'role' => $roles[(string) $c->id] ?? 'owner',
+                    'writable' => in_array($roles[(string) $c->id] ?? '', ['owner', 'editor'], true),
                 ]),
             'settings' => [
                 'default_view' => (string) ($settings->calendar_default_view ?? 'month'),
@@ -101,8 +110,10 @@ class CalendarController extends Controller
             return response()->json(['error' => 'range_too_large'], 422);
         }
 
-        // Owner-scoped calendar ids (OwnsUserData global scope) + colour map.
-        $calendars = Calendar::query()
+        // Accessible calendar ids (own + shared) + colour map.
+        $readable = CalendarAccess::readableIds((int) $this->requireUser($request)->id);
+        $calendars = Calendar::query()->withoutGlobalScopes()
+            ->whereIn('id', $readable)
             ->when($request->query('calendar'), fn ($q) => $q->whereKey($request->query('calendar')))
             ->get(['id', 'color']);
         $colors = $calendars->pluck('color', 'id');
@@ -151,8 +162,13 @@ class CalendarController extends Controller
     public function store(Request $request, CalendarWriter $writer): JsonResponse
     {
         $data = $this->validated($request, creating: true);
-        $calendar = Calendar::query()->ownedBy($this->requireUser($request)->id)
-            ->findOrFail((string) $request->string('calendar_id'));
+        $uid = (int) $this->requireUser($request)->id;
+        $calendarId = $request->string('calendar_id')->value();
+        // Own or editor-shared calendar only. Hide non-accessible calendars (404),
+        // 403 only when readable-but-not-writable (viewer share).
+        abort_unless(CalendarAccess::canRead($uid, $calendarId), 404);
+        abort_unless(CalendarAccess::canWrite($uid, $calendarId), 403);
+        $calendar = Calendar::query()->withoutGlobalScopes()->findOrFail($calendarId);
         // Special calendars are generated + read-only; reject manual event writes.
         abort_if($calendar->isSpecial(), 422);
         $event = $writer->create($calendar, $data);
@@ -162,9 +178,9 @@ class CalendarController extends Controller
 
     public function update(Request $request, CalendarEvent $event, CalendarWriter $writer): JsonResponse
     {
-        $this->authorizeEvent($event);
+        $this->authorizeEvent($event, write: true);
         // Generated events in a special calendar are read-only.
-        abort_if($event->calendar?->isSpecial() ?? false, 422);
+        abort_if($this->eventCalendar($event)?->isSpecial() ?? false, 422);
         $data = $this->validated($request);
 
         // Optimistic concurrency via the DAV-native etag: reject a stale write.
@@ -180,7 +196,7 @@ class CalendarController extends Controller
 
     public function destroy(CalendarEvent $event, CalendarWriter $writer): JsonResponse
     {
-        $this->authorizeEvent($event);
+        $this->authorizeEvent($event, write: true);
         $writer->delete($event);
 
         return response()->json(['ok' => true]);
@@ -189,8 +205,8 @@ class CalendarController extends Controller
     /** Delete a single occurrence of a recurring event (EXDATE on the master). */
     public function excludeOccurrence(Request $request, CalendarEvent $event, CalendarWriter $writer): JsonResponse
     {
-        $this->authorizeEvent($event);
-        abort_if($event->calendar?->isSpecial() ?? false, 422);
+        $this->authorizeEvent($event, write: true);
+        abort_if($this->eventCalendar($event)?->isSpecial() ?? false, 422);
         $request->validate(['start' => ['required', 'date']]);
         $updated = $writer->excludeOccurrence($event, (string) $request->string('start'));
 
@@ -200,8 +216,8 @@ class CalendarController extends Controller
     /** Edit a single occurrence of a recurring event (RECURRENCE-ID override). */
     public function overrideOccurrence(Request $request, CalendarEvent $event, CalendarWriter $writer): JsonResponse
     {
-        $this->authorizeEvent($event);
-        abort_if($event->calendar?->isSpecial() ?? false, 422);
+        $this->authorizeEvent($event, write: true);
+        abort_if($this->eventCalendar($event)?->isSpecial() ?? false, 422);
         $request->validate(['recurrence_id' => ['required', 'date']]);
         $data = $this->validated($request);
         $updated = $writer->overrideOccurrence($event, (string) $request->string('recurrence_id'), $data);
@@ -454,11 +470,22 @@ class CalendarController extends Controller
         }
     }
 
-    private function authorizeEvent(CalendarEvent $event): void
+    private function authorizeEvent(CalendarEvent $event, bool $write = false): void
     {
-        // The calendar relation is owner-scoped, so another user's event resolves
-        // to a null calendar — that must read as forbidden, not a 500.
-        abort_unless($event->calendar?->user_id === auth()->id(), 403);
+        // Owner OR a calendar shared to the caller (write requires editor). The
+        // calendar is resolved via the access map (the belongsTo relation is
+        // owner-scoped, so a shared calendar would otherwise read as null).
+        $uid = (int) auth()->id();
+        $ok = $write
+            ? CalendarAccess::canWrite($uid, (string) $event->calendar_id)
+            : CalendarAccess::canRead($uid, (string) $event->calendar_id);
+        abort_unless($ok, 403);
+    }
+
+    /** The event's calendar resolved without the owner scope (may be shared). */
+    private function eventCalendar(CalendarEvent $event): ?Calendar
+    {
+        return Calendar::query()->withoutGlobalScopes()->find($event->calendar_id);
     }
 
     private function authorizeCalendar(Calendar $calendar): void
