@@ -410,6 +410,8 @@ Route::prefix('v1')->group(function (): void {
         Route::middleware('module:files')->group(function (): void {
             Route::get('/files/data', [FilesController::class, 'index'])->name('api.files.index');
             Route::get('/files/trash', [FilesController::class, 'trashed'])->name('api.files.trash');
+            Route::get('/files/activity', [FilesController::class, 'activity'])->middleware('throttle:600,1')->name('api.files.activity');
+            Route::get('/files/entries/{file}/activity', [FilesController::class, 'fileActivity'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.activity');
             Route::get('/files/search', [FileSearchController::class, 'search'])->middleware('throttle:120,1')->name('api.files.search');
             Route::get('/files/labels', [FilesController::class, 'labels'])->name('api.files.labels');
             Route::post('/files/labels', [FilesController::class, 'storeLabel'])->middleware('throttle:600,1')->name('api.files.labels.store');

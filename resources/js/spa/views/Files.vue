@@ -94,6 +94,7 @@
           <Btn v-if="view==='files'" variant="ghost" size="sm" icon="create_new_folder" @click="newFolder">{{ t('files.new_folder') }}</Btn>
           <Btn v-if="view==='files' && cwd!==null" variant="ghost" size="sm" icon="folder_zip" @click="zipFolder">{{ t('files.download_zip') }}</Btn>
           <Btn variant="ghost" size="sm" icon="storage" @click="openStorage">{{ t('files.storage') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="history" @click="openActivity">{{ t('files.activity') }}</Btn>
           <Btn v-if="view==='trash' && trashFiles.length" variant="ghost" size="sm" icon="delete" class="text-red-600" @click="emptyTrash">{{ t('files.empty_trash') }}</Btn>
           <Btn variant="ghost" size="sm" :icon="layout==='grid' ? 'view_list' : 'grid_view'" @click="layout = layout==='grid' ? 'list' : 'grid'" />
         </div>
@@ -464,6 +465,26 @@
     </template>
   </Modal>
 
+  <!-- Activity feed dialog -->
+  <Modal v-model="activityDlg.show" :title="t('files.activity')" width="560px">
+    <div v-if="activityDlg.loading" class="py-6 text-center"><Icon name="progress_activity" :size="28" class="animate-spin text-[var(--ll-muted)]" /></div>
+    <div v-else-if="!activityDlg.rows.length" class="py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('files.activity_empty') }}</div>
+    <ul v-else class="max-h-[60vh] divide-y divide-[var(--ll-border)] overflow-y-auto">
+      <li v-for="a in activityDlg.rows" :key="a.id" class="flex items-start gap-3 py-2.5">
+        <Icon :name="activityIcon(a.action)" :size="18" class="mt-0.5 shrink-0 text-[var(--ll-muted)]" />
+        <div class="min-w-0 flex-1">
+          <div class="truncate text-sm"><span class="font-medium">{{ activityLabel(a) }}</span></div>
+          <div class="text-xs text-[var(--ll-muted)]">
+            <span v-if="a.actor">{{ a.actor }} · </span>{{ fmtDate(a.created_at) }}
+          </div>
+        </div>
+      </li>
+    </ul>
+    <template #footer>
+      <Btn variant="ghost" @click="activityDlg.show=false">{{ t('common.close') }}</Btn>
+    </template>
+  </Modal>
+
   <!-- Storage stats dialog -->
   <Modal v-model="storageDlg.show" :title="t('files.storage')" width="520px">
     <div v-if="storageDlg.loading" class="py-6 text-center"><Icon name="progress_activity" :size="28" class="animate-spin text-[var(--ll-muted)]" /></div>
@@ -693,7 +714,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
-import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink } from '@spa/stores/files';
+import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity } from '@spa/stores/files';
 import { ApiError } from '@spa/api/client';
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
 import { useToast } from '@spa/composables/useToast';
@@ -741,6 +762,24 @@ const shareTabs = [{ v: 'link' as const, label: 'files.share_link_label' }, { v:
 const roleOptions = computed(() => [{ title: t('files.sf_role_viewer'), value: 'viewer' }, { title: t('files.sf_role_editor'), value: 'editor' }]);
 const labelsDlg = ref<{ show: boolean; busy: boolean; editing: FileLabel | null; name: string; color: string }>({ show: false, busy: false, editing: null, name: '', color: '#6b7280' });
 const storageDlg = ref<{ show: boolean; loading: boolean; data: FileStats | null }>({ show: false, loading: false, data: null });
+const activityDlg = ref<{ show: boolean; loading: boolean; rows: FileActivity[] }>({ show: false, loading: false, rows: [] });
+async function openActivity() {
+  activityDlg.value = { show: true, loading: true, rows: [] };
+  try { activityDlg.value.rows = await s.activity(); }
+  catch { error(t('common.error')); }
+  finally { activityDlg.value.loading = false; }
+}
+const ACTIVITY_ICON: Record<string, string> = {
+  upload: 'upload', external_upload: 'cloud_upload', rename: 'edit', move: 'drive_file_move',
+  version: 'history', trash: 'delete', restore: 'restore', delete: 'delete_forever', share: 'share',
+};
+function activityIcon(action: string): string { return ACTIVITY_ICON[action] ?? 'description'; }
+function activityLabel(a: FileActivity): string {
+  const name = a.file_name ?? (typeof a.meta?.name === 'string' ? a.meta.name : (typeof a.meta?.to === 'string' ? a.meta.to : t('files.activity_a_file')));
+  if (a.action === 'rename' && typeof a.meta?.from === 'string') return t('files.act_rename', { from: a.meta.from as string, to: (a.meta.to as string) ?? name });
+  return t(`files.act_${a.action}`, { name }) || `${a.action}: ${name}`;
+}
+function fmtDate(iso: string): string { try { return new Date(iso).toLocaleString(); } catch { return iso; } }
 
 // Keep the listing fresh without a hard reload: refresh when the tab regains
 // focus (owner comes back after an external upload) + a light periodic poll.

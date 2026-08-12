@@ -303,6 +303,8 @@ Route::middleware('auth')->group(function (): void {
     // served by the SPA (see the catch-all); the data/mutation endpoints follow.
     Route::middleware('module:files')->group(function (): void {
         Route::get('/files/trash', [FilesController::class, 'trashed'])->name('files.rel.trash');
+        Route::get('/files/activity', [FilesController::class, 'activity'])->middleware('throttle:600,1')->name('files.rel.activity');
+        Route::get('/files/entries/{file}/activity', [FilesController::class, 'fileActivity'])->whereNumber('file')->middleware('throttle:600,1')->name('files.rel.entries.activity');
         Route::get('/files/entries', [FilesController::class, 'index'])->name('files.rel.index');
         Route::get('/files/search', [FileSearchController::class, 'search'])->middleware('throttle:120,1')->name('files.rel.search');
         Route::get('/files/labels', [FilesController::class, 'labels'])->name('files.rel.labels');
