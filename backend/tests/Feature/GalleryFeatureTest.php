@@ -16,6 +16,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class GalleryFeatureTest extends TestCase
@@ -400,9 +401,9 @@ class GalleryFeatureTest extends TestCase
         $today = now();
 
         $seed = function (string $takenAt, ?string $place = null) {
-            $p = new \App\Models\GalleryPhoto;
+            $p = new GalleryPhoto;
             $p->forceFill([
-                'storage_path' => 'gallery/'.\Illuminate\Support\Str::uuid(),
+                'storage_path' => 'gallery/'.Str::uuid(),
                 'name' => 'p.jpg', 'mime' => 'image/jpeg', 'media_type' => 'image', 'status' => 'ready',
                 'size' => 10, 'taken_at' => $takenAt, 'place' => $place,
             ])->save();

@@ -16,6 +16,12 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    # Laravel lives in backend/ (repo split); composer/phpstan run there. The
+    # container-action steps (trivy, gitleaks) use their own path inputs and are
+    # unaffected by this default; the npm SBOM step overrides it to frontend/.
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -61,6 +67,7 @@ jobs:
 
       - name: Generate SBOM (CycloneDX, JS deps)
         if: always()
+        working-directory: frontend
         # cyclonedx-npm reads a package-lock; the project uses Yarn, so synthesize
         # a lock from package.json (no install) just for the SBOM. Artifact-only,
         # non-blocking.
@@ -74,8 +81,8 @@ jobs:
         with:
           name: sbom-cyclonedx
           path: |
-            sbom.composer.cdx.json
-            sbom.npm.cdx.json
+            backend/sbom.composer.cdx.json
+            frontend/sbom.npm.cdx.json
 
   secrets:
     runs-on: ubuntu-latest
