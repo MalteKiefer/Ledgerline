@@ -1,23 +1,17 @@
 version: 2
 updates:
   - package-ecosystem: composer
-    directory: "/"
+    directory: "/backend"
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
     labels: ["dependencies"]
   - package-ecosystem: npm
-    directory: "/"
+    directory: "/frontend"
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
     labels: ["dependencies"]
-  - package-ecosystem: npm
-    directory: "/extension"
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    labels: ["dependencies", "extension"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

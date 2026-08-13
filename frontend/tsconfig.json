@@ -16,11 +16,11 @@
     "types": ["vite/client"],
     "baseUrl": ".",
     "paths": {
-      "@spa/*": ["resources/js/spa/*"]
+      "@spa/*": ["src/*"]
     }
   },
   "include": [
-    "resources/js/spa/**/*.ts",
-    "resources/js/spa/**/*.vue"
+    "src/**/*.ts",
+    "src/**/*.vue"
   ]
 }

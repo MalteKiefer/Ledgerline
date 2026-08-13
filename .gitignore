@@ -57,3 +57,20 @@ docs/superpowers/
 # laravel-vue-i18n build artifacts (generated from lang/*.php)
 /lang/php_*.json
 /dist
+
+# --- repo split: frontend/ + backend/ paths ---
+/frontend/node_modules
+/frontend/dist
+/backend/vendor
+/backend/.env
+/backend/.phpunit.result.cache
+/backend/public/build
+/backend/public/hot
+/backend/public/storage
+/backend/storage/*.key
+/backend/storage/pail
+/backend/storage/phpstan
+/backend/storage/app/imgtmp
+/backend/database/*.sqlite
+/backend/database/*.sqlite-journal
+/backend/bootstrap/cache/*.php

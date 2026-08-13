@@ -4,7 +4,7 @@
 // be fetched from a third party at runtime. Run at build time (see Dockerfile).
 import { mkdir, copyFile, readdir, writeFile } from 'node:fs/promises';
 
-const OUT = 'public/tesseract';
+const OUT = 'dist/tesseract';
 const CORE_SRC = 'node_modules/tesseract.js-core';
 const LANGS = ['eng', 'deu'];
 // tessdata_fast: small, fast, good enough for document/photo OCR.

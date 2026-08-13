@@ -170,20 +170,43 @@ endpoints (avatars, file/gallery raw, invoice PDF — bearer or token-in-query, 
 (`resources/views/spa.blade.php`) continues to work for a single-host deployment
 — the standalone build is additive.
 
+## Repository layout
+
+The repo is split so the frontend is independent of the backend (they only meet
+over the API):
+
+```
+frontend/   standalone Vue 3 SPA (own package.json + Vite build → dist/)
+backend/    Laravel API (app, config, routes, database, lang, tests, …)
+Dockerfile  multi-stage: Node builds the SPA, PHP builds the backend and serves
+            the built SPA from public/  (a single image serves both)
+docker-compose.yml, docker/, scripts/, .github/   deploy + CI
+```
+
+The SPA compiles its translations from `backend/lang/*.php` (the single source),
+but at runtime talks only to `/api/v1` — so `frontend/` can also be built and
+hosted on its own (see “Standalone SPA” above) with `backend/` as a pure API.
+
 ## Development
 
 ```bash
+# Backend (Laravel API)
+cd backend
 composer install
-npm install
 cp .env.example .env && php artisan key:generate
 php artisan migrate
-npm run dev          # Vite dev server
-php artisan serve    # Laravel
+php artisan serve            # API on http://localhost:8000
+
+# Frontend (Vue SPA) — in a second terminal
+cd frontend
+npm install
+VITE_API_URL=http://localhost:8000 npm run dev   # Vite dev server
 ```
 
-Quality gates (all green before a release): `vendor/bin/pint`,
-`vendor/bin/phpstan analyse` (level 10), `npm run lint`, `npm run build`,
-`npm run test:js`, `php artisan test`, and EN/DE/RU translation-key parity.
+Quality gates (all green before a release):
+- backend: `cd backend && vendor/bin/pint && vendor/bin/phpstan analyse` (level 10)
+  `&& php artisan test`, plus EN/DE/RU translation-key parity.
+- frontend: `cd frontend && npm run typecheck && npm run lint && npm run build && npm run test:js`.
 
 ## License
 
