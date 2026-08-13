@@ -41,6 +41,10 @@ export const useNotesStore = defineStore('notes', () => {
     fd.append('file', file);
     return api.upload<{ attachment: NoteAttachment }>(`/api/v1/notes/${noteId}/attachments`, fd).then((r) => r.attachment);
   }
+  // Embed an existing Files file or Gallery photo (image/video) into a note by
+  // copying it into a note attachment server-side.
+  const attachFrom = (noteId: number, source: 'file' | 'gallery', id: number) =>
+    api.post<{ attachment: NoteAttachment }>(`/api/v1/notes/${noteId}/attachments/from`, { source, id }).then((r) => r.attachment);
   const deleteAttachment = (noteId: number, attId: number) => api.delete(`/api/v1/notes/${noteId}/attachments/${attId}`);
   const attachmentUrl = (noteId: number, attId: number) => api.streamUrl(`/api/v1/notes/${noteId}/attachments/${attId}/raw`);
   const exportUrl = (id: number) => api.streamUrl(`/api/v1/notes/${id}/export?download=1`);
@@ -58,7 +62,7 @@ export const useNotesStore = defineStore('notes', () => {
   return {
     notes, folders, tags,
     load, show, create, update, destroy, favorite, pin, search, backlinks,
-    attach, deleteAttachment, attachmentUrl, exportUrl,
+    attach, attachFrom, deleteAttachment, attachmentUrl, exportUrl,
     createFolder, updateFolder, deleteFolder,
     trash, restore, forceDelete, restoreFolder,
   };

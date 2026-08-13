@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\FileEntry;
+use App\Models\GalleryPhoto;
 use App\Models\Note;
 use App\Models\NoteAttachment;
 use App\Models\NoteFolder;
@@ -246,7 +248,8 @@ class NotesController extends Controller
         $this->requireUser($request);
         $request->validate([
             // No svg/html (stored-XSS vectors) — defense-in-depth over the serve-time sandbox CSP.
-            'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp,gif', 'max:'.$this->maxUploadKb()],
+            // Images + video embed inline in the note; pdf attaches as a link.
+            'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png,webp,gif,mp4,webm,mov,m4v', 'max:'.$this->maxUploadKb()],
             'name' => ['nullable', 'string', 'max:500'],
         ]);
         $upload = $request->file('file');
@@ -264,6 +267,68 @@ class NotesController extends Controller
             'name' => $this->safeName($name !== '' ? $name : 'file'),
             'mime' => $mime !== '' ? $mime : null,
             'size' => $upload->getSize() ?: 0,
+        ]);
+
+        return response()->json(['attachment' => $this->attachmentRow($att)], 201);
+    }
+
+    /**
+     * Embed an existing owner-scoped image/video from the Files or Gallery module
+     * into a note by copying its bytes into a note attachment. Copying keeps the
+     * note self-contained (no cross-module reference) and reuses the sandboxed
+     * attachment raw endpoint. Both source models are owner-scoped (OwnsUserData),
+     * and Files/Gallery/notes share the one files disk, so the copy stays local.
+     */
+    public function attachFrom(Request $request, Note $note): JsonResponse
+    {
+        $this->requireUser($request);
+        $request->validate([
+            'source' => ['required', 'in:file,gallery'],
+            'id' => ['required', 'integer'],
+        ]);
+        $srcId = $request->integer('id');
+
+        if ($request->string('source')->value() === 'file') {
+            $f = FileEntry::query()->findOrFail($srcId);
+            $srcPath = (string) $f->storage_path;
+            $name = (string) $f->name;
+            $mime = (string) $f->mime;
+            $size = (int) $f->size;
+        } else {
+            $p = GalleryPhoto::query()->findOrFail($srcId);
+            $srcPath = (string) $p->storage_path;
+            $name = (string) $p->name;
+            $mime = (string) $p->mime;
+            $size = (int) $p->size;
+        }
+
+        // Explicit allowlist mirroring the upload attach() rules — NOT a broad
+        // image/* || video/* (that would let image/svg+xml through, an XSS vector
+        // the upload path deliberately excludes; a Files/Gallery row could carry a
+        // spoofed mime). The serve-time sandbox CSP + nosniff already neutralise the
+        // blob, this keeps the embed set consistent with what upload permits.
+        $embeddable = [
+            'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+            'video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v', 'video/m4v',
+        ];
+        if (! in_array($mime, $embeddable, true)) {
+            abort(422, 'unsupported media type for embed');
+        }
+        // The source path is server-set on an owner-scoped model; guard it defensively
+        // (files/ or gallery/ prefix, no traversal) — safeBlobPath is notes/-only.
+        $okPrefix = str_starts_with($srcPath, 'files/') || str_starts_with($srcPath, 'gallery/');
+        if ($srcPath === '' || str_contains($srcPath, '..') || str_starts_with($srcPath, '/') || ! $okPrefix || ! $this->fs()->exists($srcPath)) {
+            abort(404);
+        }
+
+        $path = 'notes/'.Str::uuid()->toString();
+        $this->fs()->copy($srcPath, $path);
+        $att = NoteAttachment::create([
+            'note_id' => $note->id,
+            'blob_path' => $path,
+            'name' => $this->safeName($name !== '' ? $name : 'embed'),
+            'mime' => $mime,
+            'size' => $size > 0 ? $size : ($this->fs()->size($path) ?: 0),
         ]);
 
         return response()->json(['attachment' => $this->attachmentRow($att)], 201);

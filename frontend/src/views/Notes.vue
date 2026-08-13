@@ -153,6 +153,49 @@
       </template>
       <div v-else class="grid h-full place-items-center text-sm text-[var(--ll-muted)]">{{ t('notes.pick_or_create') }}</div>
     </Card>
+
+    <!-- Media picker: embed an image/video from Upload, Files or Gallery; link a File. -->
+    <Modal v-model="pickerOpen" :title="t(pickerMode === 'link' ? 'notes.link_file' : pickerMode === 'video' ? 'notes.embed_video' : 'notes.embed_image')" width="46rem">
+      <div class="flex flex-col gap-3">
+        <div class="flex gap-1 border-b border-[var(--ll-border)]">
+          <button
+            v-for="tab in (pickerMode === 'link' ? (['files'] as const) : (['upload', 'files', 'gallery'] as const))"
+            :key="tab" class="px-3 py-2 text-sm"
+            :class="pickerTab === tab ? 'border-b-2 border-primary-500 text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'"
+            @click="pickerTab = tab"
+          >{{ t('notes.picker_' + tab) }}</button>
+        </div>
+
+        <div v-if="pickerTab === 'upload'" class="p-6 text-center">
+          <input ref="pickerUpload" type="file" :accept="pickerMode === 'video' ? 'video/*' : 'image/*'" class="hidden" @change="onPickerUpload">
+          <Btn icon="upload" @click="pickerUpload?.click()">{{ t('notes.upload') }}</Btn>
+        </div>
+
+        <div v-else-if="pickerTab === 'files'" class="max-h-[50vh] overflow-y-auto">
+          <div v-if="pickerBusy" class="p-4 text-sm text-[var(--ll-muted)]">…</div>
+          <div v-else-if="!pickerFiles.length" class="p-4 text-sm text-[var(--ll-muted)]">{{ t('notes.picker_empty') }}</div>
+          <button
+            v-for="f in pickerFiles" :key="f.id"
+            class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-black/[0.04] dark:hover:bg-white/5"
+            @click="pickFrom('file', f)"
+          >
+            <Icon name="description" :size="18" class="shrink-0 text-[var(--ll-muted)]" /><span class="truncate">{{ f.name }}</span>
+          </button>
+        </div>
+
+        <div v-else class="grid max-h-[50vh] grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-6">
+          <div v-if="pickerBusy" class="col-span-full p-4 text-sm text-[var(--ll-muted)]">…</div>
+          <div v-else-if="!pickerPhotos.length" class="col-span-full p-4 text-sm text-[var(--ll-muted)]">{{ t('notes.picker_empty') }}</div>
+          <button
+            v-for="p in pickerPhotos" :key="p.id"
+            class="aspect-square overflow-hidden rounded-lg border border-[var(--ll-border)] hover:opacity-80"
+            @click="pickFrom('gallery', p)"
+          >
+            <img :src="galleryThumb(p.id)" class="h-full w-full object-cover" loading="lazy" :alt="p.name" >
+          </button>
+        </div>
+      </div>
+    </Modal>
   </div>
 </template>
 
@@ -160,7 +203,8 @@
 import { ref, computed, reactive, onMounted, nextTick } from 'vue';
 import { fmtDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
-import { Card, Btn, TextField, Select, Icon } from '@spa/ui';
+import { Card, Btn, TextField, Select, Icon, Modal } from '@spa/ui';
+import { api } from '@spa/api/client';
 import { useNotesStore, type NoteDetail, type NoteFolder, type NoteRow } from '@spa/stores/notes';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
@@ -305,21 +349,54 @@ function parseFrontmatter(text: string, fallbackTitle: string): { title: string;
   return { title, tags, body };
 }
 
+const isMd = (name: string) => /\.(md|markdown|txt)$/i.test(name);
+
+// Read a dropped FileSystemEntry tree: create a matching note folder per directory
+// and a note per Markdown file inside it. Returns the id of the last note created.
+async function importEntry(entry: FileSystemEntry, parentFolder: number | null, lastRef: { id: number }): Promise<void> {
+  if (entry.isFile) {
+    const file = await new Promise<File>((res, rej) => (entry as FileSystemFileEntry).file(res, rej));
+    if (!isMd(file.name)) return;
+    const base = file.name.replace(/\.(md|markdown|txt)$/i, '');
+    const { title, tags, body } = parseFrontmatter(await file.text(), base);
+    const note = await n.create({ title, body, tags, note_folder_id: parentFolder });
+    lastRef.id = note.id;
+  } else if (entry.isDirectory) {
+    const folder = await n.createFolder({ name: entry.name, parent_id: parentFolder });
+    const reader = (entry as FileSystemDirectoryEntry).createReader();
+    // readEntries returns in batches; drain until empty.
+    for (;;) {
+      const batch = await new Promise<FileSystemEntry[]>((res, rej) => reader.readEntries(res, rej));
+      if (!batch.length) break;
+      for (const child of batch) await importEntry(child, folder.id, lastRef);
+    }
+  }
+}
+
 async function onViewDrop(e: DragEvent) {
   dragDepth.value = 0;
-  const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => /\.(md|markdown|txt)$/i.test(f.name) || f.type === 'text/markdown');
-  if (!files.length) return;
+  // Prefer the entry API so a dropped FOLDER recreates its structure as note
+  // folders; fall back to the flat file list (no directory support) otherwise.
+  const entries = Array.from(e.dataTransfer?.items ?? [])
+    .map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
+    .filter((x): x is FileSystemEntry => x !== null);
+  const hasDir = entries.some((x) => x.isDirectory);
   try {
-    let last = 0;
-    for (const f of files) {
-      const text = await f.text();
-      const base = f.name.replace(/\.(md|markdown|txt)$/i, '');
-      const { title, tags, body } = parseFrontmatter(text, base);
-      const note = await n.create({ title, body, tags, note_folder_id: activeFolder.value });
-      last = note.id;
+    const lastRef = { id: 0 };
+    if (hasDir) {
+      for (const entry of entries) await importEntry(entry, activeFolder.value, lastRef);
+    } else {
+      const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => isMd(f.name) || f.type === 'text/markdown');
+      if (!files.length) return;
+      for (const f of files) {
+        const base = f.name.replace(/\.(md|markdown|txt)$/i, '');
+        const { title, tags, body } = parseFrontmatter(await f.text(), base);
+        const note = await n.create({ title, body, tags, note_folder_id: activeFolder.value });
+        lastRef.id = note.id;
+      }
     }
     await n.load();
-    if (last) await openNote(last);
+    if (lastRef.id) await openNote(lastRef.id);
     success(t('common.saved'));
   } catch { error(t('common.error')); }
 }
@@ -380,6 +457,73 @@ function insertWikilink() {
     return { text, from, to: from + sel.length };
   });
 }
+// --- Media picker: embed an image/video from upload, Files or Gallery; link a File.
+type PickerMode = 'image' | 'video' | 'link';
+interface PickItem { id: number; name: string; mime?: string | null }
+const pickerOpen = ref(false);
+const pickerMode = ref<PickerMode>('image');
+const pickerTab = ref<'upload' | 'files' | 'gallery'>('files');
+const pickerFiles = ref<PickItem[]>([]);
+const pickerPhotos = ref<Array<PickItem & { media_type?: string }>>([]);
+const pickerBusy = ref(false);
+const pickerUpload = ref<HTMLInputElement | null>(null);
+const galleryThumb = (id: number) => api.streamUrl(`/api/v1/gallery/${id}/thumb`);
+
+async function openPicker(mode: PickerMode) {
+  if (!current.value?.id) {
+    insert(mode === 'video' ? '\n<video controls src="url"></video>\n' : mode === 'link' ? '[text](url)' : '![alt](url)');
+    return;
+  }
+  pickerMode.value = mode;
+  pickerTab.value = 'files';
+  pickerOpen.value = true;
+  await loadPickerData();
+}
+async function loadPickerData() {
+  pickerBusy.value = true;
+  try {
+    const isVid = pickerMode.value === 'video';
+    const fd = await api.get<{ files?: Array<{ id: number; name: string; mime?: string | null }> }>('/api/v1/files/data').catch(() => ({ files: [] }));
+    const all = fd.files ?? [];
+    pickerFiles.value = pickerMode.value === 'link'
+      ? all
+      : all.filter((f) => (f.mime || '').startsWith(isVid ? 'video/' : 'image/'));
+    if (pickerMode.value !== 'link') {
+      const gd = await api.get<{ photos?: Array<{ id: number; name: string; media_type?: string }> }>('/api/v1/gallery/data').catch(() => ({ photos: [] }));
+      pickerPhotos.value = (gd.photos ?? []).filter((p) => (isVid ? p.media_type === 'video' : p.media_type !== 'video'));
+    } else { pickerPhotos.value = []; }
+  } finally { pickerBusy.value = false; }
+}
+function insertMedia(mode: PickerMode, name: string, url: string) {
+  if (mode === 'video') insert(`\n<video controls src="${url}"></video>\n`);
+  else if (mode === 'link') insert(`[${name}](${url})`);
+  else insert(`![${name}](${url})`);
+}
+async function pickFrom(source: 'file' | 'gallery', item: PickItem) {
+  if (!current.value?.id) return;
+  try {
+    if (pickerMode.value === 'link') {
+      insertMedia('link', item.name, api.streamUrl(`/api/v1/files/entries/${item.id}/raw`));
+    } else {
+      const att = await n.attachFrom(current.value.id, source, item.id);
+      (current.value.attachments ??= []).push(att);
+      insertMedia(pickerMode.value, att.name, n.attachmentUrl(current.value.id, att.id));
+    }
+    pickerOpen.value = false;
+  } catch { error(t('common.error')); }
+}
+async function onPickerUpload(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0]; input.value = '';
+  if (!file || !current.value?.id) return;
+  try {
+    const att = await n.attach(current.value.id, file);
+    (current.value.attachments ??= []).push(att);
+    insertMedia(pickerMode.value, att.name, n.attachmentUrl(current.value.id, att.id));
+    pickerOpen.value = false;
+  } catch { error(t('common.error')); }
+}
+
 const toolbar = [
   { key: 'bold', icon: 'format_bold', run: () => wrap('**', '**', t('notes.md_bold_text')) },
   { key: 'italic', icon: 'format_italic', run: () => wrap('*', '*', t('notes.md_italic_text')) },
@@ -395,7 +539,9 @@ const toolbar = [
   { key: 'codeblock', icon: 'data_object', run: () => insert('\n```\n\n```\n', 5) },
   { key: 'link', icon: 'link', run: insertLink },
   { key: 'wikilink', icon: 'account_tree', run: insertWikilink },
-  { key: 'image', icon: 'image', run: () => (current.value?.id ? imgInput.value?.click() : insert('![alt](url)', 4)) },
+  { key: 'image', icon: 'image', run: () => openPicker('image') },
+  { key: 'video', icon: 'movie', run: () => openPicker('video') },
+  { key: 'linkfile', icon: 'attach_file', run: () => openPicker('link') },
   { key: 'table', icon: 'table_chart', run: () => insert('\n| A | B |\n| --- | --- |\n| 1 | 2 |\n') },
   { key: 'rule', icon: 'horizontal_rule', run: () => insert('\n---\n') },
 ] as const;
