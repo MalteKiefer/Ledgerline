@@ -6606,6 +6606,50 @@ paths:
         "200": { description: "Activity rows for the file.", content: { application/json: { schema: { type: object, properties: { activity: { type: array, items: { $ref: "#/components/schemas/FileActivity" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{file}/info:
+    get:
+      tags: [Files]
+      operationId: filesInfo
+      summary: Rich info panel for one file
+      description: >
+        Aggregates extracted per-filetype metadata (image EXIF, PDF info,
+        audio/video, STL geometry, text/archive stats), SHA-256 checksum, upload/modify
+        dates, version count, folder path, a content snippet, sharing status,
+        same-checksum duplicates and recent activity. Owner-scoped.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200":
+          description: File info.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sha256: { type: [string, "null"] }
+                  created_at: { type: [string, "null"], format: date-time }
+                  updated_at: { type: [string, "null"], format: date-time }
+                  version: { type: integer }
+                  versions: { type: integer }
+                  path: { type: string }
+                  metadata:
+                    type: [object, "null"]
+                    properties:
+                      kind: { type: string }
+                      fields: { type: object, additionalProperties: { type: string } }
+                  snippet: { type: [string, "null"] }
+                  share:
+                    type: [object, "null"]
+                    properties:
+                      expires_at: { type: [string, "null"], format: date-time }
+                      allow_download: { type: boolean }
+                      protected: { type: boolean }
+                  duplicates:
+                    type: array
+                    items: { type: object, properties: { id: { type: integer }, name: { type: string }, path: { type: string } } }
+                  activity: { type: array, items: { $ref: "#/components/schemas/FileActivity" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /mounts:
     get:
       tags: [Mounts]
