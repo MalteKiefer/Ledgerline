@@ -6,7 +6,6 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AddressBookController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BackupController as ApiBackupController;
-use App\Http\Controllers\Api\BankConnectionController;
 use App\Http\Controllers\Api\CalendarProfileController as ApiCalendarProfileController;
 use App\Http\Controllers\Api\CompanyController as ApiCompanyController;
 use App\Http\Controllers\Api\ContactsProfileController as ApiContactsProfileController;
@@ -224,14 +223,6 @@ Route::prefix('v1')->group(function (): void {
 
             Route::post('/finance/transactions', [FinanceController::class, 'storeTransaction'])->middleware('throttle:600,1')->name('api.finance.transactions.store');
             Route::post('/finance/transactions/bulk', [FinanceController::class, 'bulkTransactions'])->middleware('throttle:120,1')->name('api.finance.transactions.bulk');
-
-            // Direct bank retrieval via GoCardless (PSD2/XS2A), owner-scoped.
-            Route::get('/finance/bank-connections', [BankConnectionController::class, 'index'])->middleware('throttle:120,1')->name('api.finance.bank.index');
-            Route::get('/finance/bank-connections/institutions', [BankConnectionController::class, 'institutions'])->middleware('throttle:60,1')->name('api.finance.bank.institutions');
-            Route::post('/finance/bank-connections', [BankConnectionController::class, 'connect'])->middleware('throttle:30,1')->name('api.finance.bank.connect');
-            Route::post('/finance/bank-connections/{bankConnection}/finalize', [BankConnectionController::class, 'finalize'])->whereNumber('bankConnection')->middleware('throttle:60,1')->name('api.finance.bank.finalize');
-            Route::post('/finance/bank-connections/{bankConnection}/sync', [BankConnectionController::class, 'sync'])->whereNumber('bankConnection')->middleware('throttle:60,1')->name('api.finance.bank.sync');
-            Route::delete('/finance/bank-connections/{bankConnection}', [BankConnectionController::class, 'destroy'])->whereNumber('bankConnection')->middleware('throttle:60,1')->name('api.finance.bank.destroy');
             Route::put('/finance/transactions/{transaction}', [FinanceController::class, 'updateTransaction'])->whereNumber('transaction')->middleware('throttle:600,1')->name('api.finance.transactions.update');
             Route::delete('/finance/transactions/{transaction}', [FinanceController::class, 'destroyTransaction'])->whereNumber('transaction')->middleware('throttle:600,1')->name('api.finance.transactions.destroy');
             Route::post('/finance/transactions/{id}/restore', [FinanceController::class, 'restoreTransaction'])->whereNumber('id')->middleware('throttle:600,1')->name('api.finance.transactions.restore');
@@ -660,10 +651,6 @@ Route::prefix('v1')->group(function (): void {
         Route::middleware('can:manage-global-settings')->prefix('admin')->name('api.admin.')->group(function (): void {
             // Admin overview dashboard (server status, resources, health, counts).
             Route::get('/dashboard', [ApiDashboardController::class, 'show'])->name('dashboard.show');
-
-            // GoCardless (bank retrieval) workspace credentials — never returned.
-            Route::get('/finance/gocardless', [BankConnectionController::class, 'showCredentials'])->name('finance.gocardless.show');
-            Route::put('/finance/gocardless', [BankConnectionController::class, 'updateCredentials'])->middleware('throttle:20,1')->name('finance.gocardless.update');
 
             // Notifications (SMTP / NTFY / webhook) + test send.
             Route::get('/notifications', [ApiNotificationsController::class, 'show'])->name('notifications.show');

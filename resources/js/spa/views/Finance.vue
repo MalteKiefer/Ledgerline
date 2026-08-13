@@ -103,23 +103,11 @@
       <template #actions>
         <div class="flex items-center gap-2">
           <Select v-model.number="bankAccount" :options="bankAccountItems" class="w-44" />
-          <Btn variant="ghost" size="sm" icon="account_balance" @click="openBankConnect">{{ t('invoices.bank_connect') }}</Btn>
           <Btn variant="ghost" size="sm" icon="upload" @click="bankCsvInput?.click()">{{ t('invoices.tx_import') }}</Btn>
           <input ref="bankCsvInput" type="file" accept=".csv,text/csv" class="hidden" @change="onBankCsv">
           <Btn variant="solid" size="sm" icon="add" @click="newTx">{{ t('common.add') }}</Btn>
         </div>
       </template>
-      <!-- Connected banks (GoCardless) -->
-      <div v-if="bank.connections.length" class="flex flex-wrap gap-2 border-b border-[var(--ll-border)] px-4 py-2">
-        <div v-for="c in bank.connections" :key="c.id" class="flex items-center gap-2 rounded-lg bg-black/[0.04] px-2.5 py-1 text-xs dark:bg-white/10">
-          <Icon name="account_balance" :size="14" class="text-[var(--ll-muted)]" />
-          <span>{{ c.institution_name || c.institution_id }}</span>
-          <span v-if="c.status !== 'linked'" class="text-amber-600">({{ c.status }})</span>
-          <button v-if="c.status === 'linked'" class="text-primary-600 hover:underline" @click="doBankSync(c.id)">{{ t('invoices.bank_sync') }}</button>
-          <button v-else class="text-primary-600 hover:underline" @click="doBankFinalize(c.id)">{{ t('invoices.bank_finalize') }}</button>
-          <button class="text-red-600 hover:underline" @click="doBankDisconnect(c.id)">{{ t('common.delete') }}</button>
-        </div>
-      </div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
@@ -151,38 +139,6 @@
         </table>
       </div>
     </Card>
-
-    <!-- Connect a bank (GoCardless) -->
-    <Modal v-model="bankM.open" :title="t('invoices.bank_connect')" width="560px">
-      <div v-if="!bank.configured">
-        <div class="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">{{ t('invoices.bank_not_configured') }}</div>
-        <!-- Admins can set the workspace GoCardless credentials right here. -->
-        <div v-if="auth.isAdmin()" class="mt-3 space-y-2">
-          <TextField v-model="bankM.secretId" :label="t('invoices.bank_secret_id')" />
-          <TextField v-model="bankM.secretKey" type="password" :label="t('invoices.bank_secret_key')" />
-          <Btn variant="solid" size="sm" :loading="bankM.savingCreds" @click="saveBankCreds">{{ t('common.save') }}</Btn>
-        </div>
-      </div>
-      <template v-else>
-        <div class="flex items-center gap-2">
-          <input v-model="bankM.country" maxlength="2" class="w-16 rounded-lg border border-[var(--ll-border)] bg-transparent px-2 py-1.5 text-sm uppercase" placeholder="DE">
-          <Btn variant="soft" size="sm" icon="search" :loading="bankM.loading" @click="loadInstitutions">{{ t('common.search') }}</Btn>
-          <Select v-model.number="bankM.paymentMethodId" :options="bankPmItems" class="flex-1" />
-        </div>
-        <div v-if="bankM.institutions.length" class="mt-3 max-h-72 overflow-y-auto rounded-lg border border-[var(--ll-border)]">
-          <button v-for="i in bankM.institutions" :key="i.id" class="flex w-full items-center gap-2 border-b border-[var(--ll-border)] px-3 py-2 text-left text-sm last:border-0 hover:bg-black/[0.04] disabled:opacity-50 dark:hover:bg-white/5" :disabled="bankM.connecting" @click="doBankConnect(i)">
-            <img v-if="i.logo" :src="i.logo" class="h-5 w-5 rounded" alt="">
-            <Icon v-else name="account_balance" :size="18" class="text-[var(--ll-muted)]" />
-            <span class="flex-1 truncate">{{ i.name }}</span>
-            <span v-if="i.bic" class="text-xs text-[var(--ll-muted)]">{{ i.bic }}</span>
-          </button>
-        </div>
-        <p class="mt-3 text-xs text-[var(--ll-muted)]">{{ t('invoices.bank_connect_hint') }}</p>
-      </template>
-      <template #footer>
-        <Btn variant="ghost" @click="bankM.open = false">{{ t('common.close') }}</Btn>
-      </template>
-    </Modal>
 
     <!-- Receipts -->
     <Card v-show="tab === 'receipts'" :title="t('invoices.receipts_title')" :body-class="'p-0'">
@@ -1112,7 +1068,6 @@ import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
-import { useAuthStore } from '@spa/stores/auth';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, VersionConflict } from '@spa/api/client';
 import {
@@ -1123,7 +1078,6 @@ import {
 } from '@spa/shared/invoice-print';
 
 const f = useFinanceStore();
-const auth = useAuthStore();
 const { success, error } = useToast();
 const route = useRoute();
 const router = useRouter();
@@ -1399,42 +1353,6 @@ const bankAccountItems = computed(() => [
 const bankTransactions = computed(() =>
   bankAccount.value ? f.transactions.filter((x) => x.payment_method_id === bankAccount.value) : f.transactions,
 );
-
-// --- Direct bank retrieval (GoCardless) ---
-const bank = reactive<{ configured: boolean; connections: import('@spa/stores/finance').BankConnection[] }>({ configured: false, connections: [] });
-const bankM = reactive<{ open: boolean; country: string; loading: boolean; connecting: boolean; institutions: import('@spa/stores/finance').Institution[]; paymentMethodId: number; secretId: string; secretKey: string; savingCreds: boolean }>(
-  { open: false, country: 'DE', loading: false, connecting: false, institutions: [], paymentMethodId: 0, secretId: '', secretKey: '', savingCreds: false });
-async function saveBankCreds() {
-  bankM.savingCreds = true;
-  try { const r = await f.gocardlessSave(bankM.secretId, bankM.secretKey); bank.configured = r.configured; bankM.secretId = ''; bankM.secretKey = ''; success(t('common.saved')); } catch { error(t('common.error')); } finally { bankM.savingCreds = false; }
-}
-const bankPmItems = computed(() => [{ title: t('invoices.bank_no_account'), value: 0 }, ...f.paymentMethods.map((p) => ({ title: p.name, value: p.id }))]);
-async function loadBank() {
-  try { const r = await f.bankConnections(); bank.configured = r.configured; bank.connections = r.connections; } catch { /* ignore */ }
-}
-function openBankConnect() { bankM.open = true; bankM.institutions = []; void loadBank(); }
-async function loadInstitutions() {
-  bankM.loading = true;
-  try { bankM.institutions = await f.bankInstitutions(bankM.country || 'DE'); } catch { error(t('common.error')); } finally { bankM.loading = false; }
-}
-async function doBankConnect(i: import('@spa/stores/finance').Institution) {
-  bankM.connecting = true;
-  try {
-    const r = await f.bankConnect({ institution_id: i.id, institution_name: i.name, payment_method_id: bankM.paymentMethodId || null, redirect: window.location.origin + '/#/finance' });
-    // Send the user to the bank's SCA consent page; they return to /finance.
-    window.location.href = r.link;
-  } catch { error(t('common.error')); } finally { bankM.connecting = false; }
-}
-async function doBankFinalize(id: number) {
-  try { await f.bankFinalize(id); await loadBank(); success(t('common.saved')); } catch { error(t('common.error')); }
-}
-async function doBankSync(id: number) {
-  try { const r = await f.bankSync(id); await f.load(); success(t('invoices.bank_synced', { n: String(r.imported) })); } catch { error(t('common.error')); }
-}
-async function doBankDisconnect(id: number) {
-  try { await f.bankDisconnect(id); await loadBank(); } catch { error(t('common.error')); }
-}
-void loadBank();
 const vatCatItems = computed(() => [
   { title: '—', value: '' },
   { title: '19%', value: '19' }, { title: '7%', value: '7' }, { title: '0%', value: '0' },
