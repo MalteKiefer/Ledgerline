@@ -33,6 +33,7 @@ return [
         'location_no_results' => 'No matches',
         'location_on_map' => 'On the map',
         'location_clear' => 'Clear location',
+        'timezone' => 'Time zone',
         'starts' => 'Starts',
         'ends' => 'Ends',
         'all_day' => 'All day',

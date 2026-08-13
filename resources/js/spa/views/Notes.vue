@@ -158,6 +158,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, nextTick } from 'vue';
+import { fmtDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, TextField, Select, Icon } from '@spa/ui';
 import { useNotesStore, type NoteDetail, type NoteFolder, type NoteRow } from '@spa/stores/notes';
@@ -220,7 +221,7 @@ function notesInFolder(id: number | null) {
 }
 
 function fmtDate(iso: string | null) {
-  return iso ? new Date(iso).toLocaleString() : '';
+  return fmtDateTime(iso);
 }
 
 onMounted(() => n.load());

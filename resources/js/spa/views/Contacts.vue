@@ -532,6 +532,7 @@ import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import AddressMiniMap from '@spa/components/AddressMiniMap.vue';
 import AvatarCropModal from '@spa/components/AvatarCropModal.vue';
 import { phoneCountry, formatPhone } from '@spa/lib/phone-country';
+import { fmtYmd } from '@spa/lib/datetime';
 import FlagIcon from '@spa/components/FlagIcon.vue';
 import { useContactsStore, type ContactRow, type ContactDetail, type ContactGroup, type DuplicateGroup, type DuplicateContact, type AddressBook } from '@spa/stores/contacts';
 import { useToast } from '@spa/composables/useToast';
@@ -641,8 +642,8 @@ function fmtBday(raw: string): string {
     return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(loc, { month: 'long', day: 'numeric' });
   }
   if (m) {
-    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-    return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(loc, { year: 'numeric', month: 'long', day: 'numeric' });
+    // Full date → honour the user's date-format preference (civil, no timezone).
+    return fmtYmd(Number(m[1]), Number(m[2]), Number(m[3]));
   }
   m = /^--(\d{2})-?(\d{2})/.exec(s); // year-less birthday
   if (m) {

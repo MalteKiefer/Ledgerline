@@ -121,7 +121,7 @@
           </thead>
           <tbody>
             <tr v-for="tx in bankTransactions" :key="tx.id" class="border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
-              <td class="px-4 py-2.5 whitespace-nowrap">{{ tx.date }}</td>
+              <td class="px-4 py-2.5 whitespace-nowrap">{{ fmtDate(tx.date) }}</td>
               <td class="px-4 py-2.5"><div class="truncate">{{ tx.counterparty || '—' }}</div><div v-if="tx.counterparty_iban" class="truncate text-xs text-[var(--ll-muted)]">{{ tx.counterparty_iban }}</div></td>
               <td class="px-4 py-2.5"><div class="max-w-xs truncate text-[var(--ll-muted)]">{{ tx.purpose || '—' }}</div></td>
               <td class="px-4 py-2.5 text-right font-medium" :class="tx.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400'">{{ money(tx.amount) }}</td>
@@ -1063,6 +1063,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, nextTick } from 'vue';
+import { fmtDate as libDate } from '@spa/lib/datetime';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
@@ -1204,7 +1205,7 @@ function onStatsYear(v: unknown) { void loadReports(Number(v)); }
 
 const fmt = computed(() => new Intl.NumberFormat(document.documentElement.lang || 'de', { style: 'currency', currency: 'EUR' }));
 function money(n: number) { return fmt.value.format(n || 0); }
-function fmtDate(s?: string | null) { return s ? String(s).slice(0, 10) : '—'; }
+function fmtDate(s?: string | null) { return s ? libDate(String(s).slice(0, 10)) : '—'; }
 function statusTone(s: string): 'success' | 'info' | 'warning' | 'gray' { return s === 'paid' ? 'success' : s === 'sent' ? 'info' : s === 'final' ? 'warning' : 'gray'; }
 // A numbered invoice can never revert to draft (GoBD; the server also blocks it).
 const statusOptions = computed(() => {

@@ -751,6 +751,8 @@ components:
         temp: { type: string, enum: [c, f] }
         glucose: { type: string, enum: [mgdl, mmoll] }
         time_format: { type: string, enum: [24h, 12h] }
+        timezone: { type: [string, "null"], description: "Hard IANA timezone override (e.g. Europe/Berlin); null follows the browser/system zone." }
+        date_format: { type: string, enum: [system, dmy, dmy_dot, mdy, ymd], description: "Date-format preset; 'system' uses the locale's regional format." }
         mail_load_remote: { type: boolean, description: "Always load remote images in the mail reader (default false)." }
         mail_signature: { type: [string, "null"], description: "Signature appended to outgoing mail; blank clears it to null." }
         notifications:
@@ -4360,6 +4362,12 @@ paths:
                 time_format:
                   type: string
                   enum: [24h, 12h]
+                timezone:
+                  type: [string, "null"]
+                  description: "IANA timezone override; empty string clears it (follow the browser)."
+                date_format:
+                  type: string
+                  enum: [system, dmy, dmy_dot, mdy, ymd]
                 mail_load_remote:
                   type: boolean
                 mail_signature:

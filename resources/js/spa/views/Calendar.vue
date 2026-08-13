@@ -220,6 +220,7 @@
         <TextField v-model="form.start" :label="t('calendar.ui.starts')" :type="form.allDay ? 'date' : 'datetime-local'" />
         <TextField v-model="form.end" :label="t('calendar.ui.ends')" :type="form.allDay ? 'date' : 'datetime-local'" />
       </div>
+      <Select v-if="!form.allDay" v-model="form.tz" :label="t('calendar.ui.timezone')" :options="tzItems" />
       <!-- Scheduling: find a free slot -->
       <div v-if="!form.allDay" class="rounded-lg border border-[var(--ll-border)] p-2">
         <button type="button" class="flex w-full items-center gap-2 text-sm font-medium" @click="sched.open = !sched.open">
@@ -237,7 +238,7 @@
           <ul v-if="sched.slots.length" class="max-h-40 divide-y divide-[var(--ll-border)] overflow-y-auto rounded-lg border border-[var(--ll-border)]">
             <li v-for="(s, i) in sched.slots" :key="i">
               <button type="button" class="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-black/[0.04] dark:hover:bg-white/5" @click="pickSlot(s)">
-                <span>{{ new Date(s.start).toLocaleString() }}</span>
+                <span>{{ fmtDateTime(s.start) }}</span>
                 <Icon name="chevron_right" :size="15" class="text-[var(--ll-muted)]" />
               </button>
             </li>
@@ -371,6 +372,7 @@ import { useAuthStore } from '@spa/stores/auth';
 import LocationField from '@spa/components/LocationField.vue';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
+import { effectiveTz, timezoneList, utcToZonedInput, zonedInputToUtc, hoursInTz, fmtTime, fmtDateTime } from '@spa/lib/datetime';
 
 const store = useCalendarStore();
 const auth = useAuthStore();
@@ -470,9 +472,12 @@ function occRange(o: Occurrence): { first: string; last: string } {
     }
     return { first, last };
   }
-  const s = new Date(o.start);
-  const e = o.end ? new Date(o.end) : s;
-  return { first: ymd(s), last: ymd(e) };
+  // Place a timed event on its day in the user's effective zone so the day cell
+  // agrees with the time label (matters when a hard timezone override differs
+  // from the browser).
+  const first = utcToZonedInput(o.start, effectiveTz(), true);
+  const last = o.end ? utcToZonedInput(o.end, effectiveTz(), true) : first;
+  return { first, last };
 }
 function sortOcc(a: Occurrence, b: Occurrence): number { if (a.all_day !== b.all_day) return a.all_day ? -1 : 1; return a.start.localeCompare(b.start); }
 
@@ -510,9 +515,9 @@ const agendaGroups = computed<{ key: string; label: string; events: Occurrence[]
 // --- rendering helpers ------------------------------------------------------
 function inMonth(day: Date): boolean { return day.getMonth() === cursor.value.getMonth() && day.getFullYear() === cursor.value.getFullYear(); }
 function isToday(day: Date): boolean { return ymd(day) === todayKey; }
-function timeLabel(o: Occurrence): string { return new Date(o.start).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }); }
+function timeLabel(o: Occurrence): string { return fmtTime(o.start); }
 function hourLabel(h: number): string { return `${pad(h)}:00`; }
-function occTop(o: Occurrence): number { const d = new Date(o.start); return (d.getHours() + d.getMinutes() / 60) * 48; }
+function occTop(o: Occurrence): number { return hoursInTz(o.start) * 48; }
 function occHeight(o: Occurrence): number { const s = new Date(o.start); const e = o.end ? new Date(o.end) : new Date(s.getTime() + 3_600_000); let h = (e.getTime() - s.getTime()) / 3_600_000; if (h < 0.5) h = 0.5; return h * 48; }
 function calColor(id: string): string | null { return store.calendars.find((c) => c.id === id)?.color ?? null; }
 function dotColor(o: Occurrence): string { return o.color || calColor(o.calendar) || '#6750a4'; }
@@ -566,9 +571,12 @@ watch(editScope, (scope) => {
 });
 const saving = ref(false);
 const deleting = ref(false);
-const form = reactive<{ calendar_id: string; summary: string; description: string; location: string; geoLat: number | null; geoLon: number | null; allDay: boolean; start: string; end: string; repeat: string; rruleRaw: string; status: string; reminder: string; attendees: string }>(
-  { calendar_id: '', summary: '', description: '', location: '', geoLat: null, geoLon: null, allDay: false, start: '', end: '', repeat: 'none', rruleRaw: '', status: 'CONFIRMED', reminder: '', attendees: '' },
+const form = reactive<{ calendar_id: string; summary: string; description: string; location: string; geoLat: number | null; geoLon: number | null; allDay: boolean; start: string; end: string; tz: string; repeat: string; rruleRaw: string; status: string; reminder: string; attendees: string }>(
+  { calendar_id: '', summary: '', description: '', location: '', geoLat: null, geoLon: null, allDay: false, start: '', end: '', tz: effectiveTz(), repeat: 'none', rruleRaw: '', status: 'CONFIRMED', reminder: '', attendees: '' },
 );
+// Timezone picker for the event editor: which zone the entered wall-clock time
+// is in. Defaults to the user's effective zone (profile override or browser).
+const tzItems = computed(() => timezoneList().map((z) => ({ title: z, value: z })));
 // Reminder presets (minutes before start; '' = none). Shared with Tasks.vue keys.
 const reminderOptions = computed(() => [
   { title: t('calendar.ui.reminder_none'), value: '' },
@@ -607,14 +615,11 @@ function rruleToPreset(r: string | null): string {
   for (const f of ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY']) if (up.includes('FREQ=' + f)) return f.toLowerCase();
   return 'none';
 }
-function toInput(iso: string, allDay: boolean): string {
-  if (allDay) return iso.slice(0, 10);
-  const d = new Date(iso);
-  return `${ymd(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-// datetime-local values are naive *local* time; the API stores/returns UTC 'Z'.
-// Convert on write so the round-trip doesn't shift by the browser's offset.
-function localToIso(v: string): string { return new Date(v).toISOString(); }
+// UTC ISO → the wall-clock string the datetime-local input expects, in form.tz.
+function toInput(iso: string, allDay: boolean): string { return utcToZonedInput(iso, form.tz, allDay); }
+// datetime-local values are naive wall-clock in the chosen event timezone; the
+// API stores/returns UTC 'Z'. Interpret the input in form.tz on write.
+function localToIso(v: string): string { return zonedInputToUtc(v, form.tz); }
 // All-day DTEND is exclusive (RFC 5545) but the editor shows an inclusive last
 // day; shift by ±1 day between the two representations.
 function shiftDay(dateStr: string, days: number): string { const d = parseKey(dateStr); d.setDate(d.getDate() + days); return ymd(d); }
@@ -640,6 +645,7 @@ function openCreate(startVal: string): void {
     allDay,
     start: startVal,
     end: allDay ? dayPart : dayPart + 'T10:00',
+    tz: effectiveTz(),
     repeat: 'none', rruleRaw: '', status: 'CONFIRMED', reminder: '', attendees: '',
   });
   attendeeDetails.value = [];
@@ -652,8 +658,12 @@ async function openEdit(o: Occurrence): Promise<void> {
     const d = await store.show(o.id);
     editingId.value = d.id;
     currentEtag.value = d.etag;
+    // Show the stored (UTC) times in the user's effective zone; set before the
+    // assign so toInput() below reads the right form.tz.
+    form.tz = effectiveTz();
     Object.assign(form, {
       calendar_id: d.calendar,
+      tz: form.tz,
       summary: d.summary ?? '', description: d.description ?? '', location: d.location ?? '',
       geoLat: coord(d.geo_lat), geoLon: coord(d.geo_lon),
       allDay: d.all_day,

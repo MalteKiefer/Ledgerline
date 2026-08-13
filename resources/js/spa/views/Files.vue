@@ -416,7 +416,7 @@
       <div v-for="v in versionsDlg.list" :key="v.id" class="flex items-center gap-2 py-2.5">
         <div class="min-w-0 flex-1">
           <div class="text-sm ll-mono">{{ fmt(v.size) }}</div>
-          <div class="text-xs text-[var(--ll-muted)]">{{ v.created_at ? new Date(v.created_at).toLocaleString() : '—' }}</div>
+          <div class="text-xs text-[var(--ll-muted)]">{{ v.created_at ? fmtDate(v.created_at) : '—' }}</div>
         </div>
         <Btn variant="ghost" size="sm" icon="download" :title="t('files.version_download')" @click="downloadVersion(v.id)" />
         <Btn variant="ghost" size="sm" icon="restore" :title="t('files.version_restore')" @click="restoreVersion(v.id)" />
@@ -751,7 +751,7 @@
           </div>
           <div>
             <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_modified') }}</dt>
-            <dd>{{ preview.updated_at ? new Date(preview.updated_at).toLocaleString() : '—' }}</dd>
+            <dd>{{ preview.updated_at ? fmtDate(preview.updated_at) : '—' }}</dd>
           </div>
           <div>
             <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.folder') }}</dt>
@@ -801,6 +801,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
+import { fmtDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
@@ -870,7 +871,7 @@ function activityLabel(a: FileActivity): string {
   if (a.action === 'rename' && typeof a.meta?.from === 'string') return t('files.act_rename', { from: a.meta.from as string, to: (a.meta.to as string) ?? name });
   return t(`files.act_${a.action}`, { name }) || `${a.action}: ${name}`;
 }
-function fmtDate(iso: string): string { try { return new Date(iso).toLocaleString(); } catch { return iso; } }
+function fmtDate(iso: string): string { return fmtDateTime(iso); }
 
 // Keep the listing fresh without a hard reload: refresh when the tab regains
 // focus (owner comes back after an external upload) + a light periodic poll.

@@ -33,6 +33,7 @@ return [
         'location_no_results' => 'Keine Treffer',
         'location_on_map' => 'Auf der Karte',
         'location_clear' => 'Ort entfernen',
+        'timezone' => 'Zeitzone',
         'starts' => 'Beginnt',
         'ends' => 'Endet',
         'all_day' => 'Ganztägig',
