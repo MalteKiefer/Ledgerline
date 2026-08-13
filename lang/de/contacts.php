@@ -168,6 +168,8 @@ return [
         'display_last_first' => 'Nachname, Vorname',
         'sort_first' => 'Sortierung: Vorname',
         'sort_last' => 'Sortierung: Nachname',
+        'import_processing' => 'Wird verarbeitet…',
+        'import_processing_hint' => 'Importiere und dedupliziere…',
         'importing' => 'Importiere…',
         'import_result' => 'Importiert: :created neu, :updated aktualisiert, :skipped übersprungen',
         'group_add_placeholder' => 'Gruppe hinzufügen…',

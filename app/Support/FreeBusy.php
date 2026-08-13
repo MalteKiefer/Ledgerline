@@ -55,20 +55,24 @@ final class FreeBusy
 
     /**
      * Free slots of at least $durationMin within a daily [$dayStart,$dayEnd]
-     * (local hours 0–24) window, avoiding the given busy intervals.
+     * window, avoiding the given busy intervals. The daily window is wall-clock
+     * in $tz (the caller's timezone) so "08:00–18:00" means their local hours,
+     * not UTC; returned slots are absolute UTC 'Z' instants.
      *
      * @param  list<array{start:CarbonImmutable,end:CarbonImmutable}>  $busy
      * @return list<array{start:string,end:string}>
      */
-    public function freeSlots(array $busy, CarbonImmutable $from, CarbonImmutable $to, int $durationMin, int $dayStart, int $dayEnd): array
+    public function freeSlots(array $busy, CarbonImmutable $from, CarbonImmutable $to, int $durationMin, int $dayStart, int $dayEnd, string $tz = 'UTC'): array
     {
         $busy = $this->merge($busy);
         $dur = max(5, $durationMin);
         $slots = [];
-        $day = $from->startOfDay();
+        // Walk days in the caller's timezone so the window boundaries land on
+        // their local wall-clock hours (DST-correct).
+        $day = $from->setTimezone($tz)->startOfDay();
         while ($day->lessThan($to) && count($slots) < 50) {
-            $winStart = $day->addHours($dayStart)->max($from);
-            $winEnd = $day->addHours($dayEnd)->min($to);
+            $winStart = $day->setTime($dayStart, 0)->max($from);
+            $winEnd = ($dayEnd >= 24 ? $day->addDay()->startOfDay() : $day->setTime($dayEnd, 0))->min($to);
             $cursor = $winStart;
             foreach ($busy as $b) {
                 if ($b['end']->lessThanOrEqualTo($winStart) || $b['start']->greaterThanOrEqualTo($winEnd)) {

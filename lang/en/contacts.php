@@ -168,6 +168,8 @@ return [
         'display_last_first' => 'Last, First',
         'sort_first' => 'Sort: first name',
         'sort_last' => 'Sort: last name',
+        'import_processing' => 'Processing…',
+        'import_processing_hint' => 'Importing and de-duplicating…',
         'importing' => 'Importing…',
         'import_result' => 'Imported: :created new, :updated updated, :skipped skipped',
         'group_add_placeholder' => 'Add group…',

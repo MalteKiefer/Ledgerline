@@ -462,6 +462,31 @@ class ContactsFeatureTest extends TestCase
         $this->assertSame('02-21', $svc->denormalize($vcf)['bday']);
     }
 
+    public function test_import_keeps_inline_photo_but_drops_remote_url_photo(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+        // A 1x1 JPEG (FF D8 ... FF D9) inline, base64 — the Apple "ENCODING=b" form.
+        $jpeg = base64_encode("\xFF\xD8\xFF\xE0".str_repeat("\x00", 200)."\xFF\xD9");
+        $apple = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Apple Photo\r\nN:Photo;Apple;;;\r\n"
+            ."PHOTO;ENCODING=b;TYPE=JPEG:$jpeg\r\nEND:VCARD\r\n";
+        // Google exports an auth-gated remote URL that can't be served.
+        $google = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Google Photo\r\nN:Photo;Google;;;\r\n"
+            ."PHOTO:https://lh3.googleusercontent.com/contacts/AG6tpzExample\r\nEND:VCARD\r\n";
+
+        $this->post(route('contacts.import'), ['book_id' => $book->id, 'file' => UploadedFile::fake()->createWithContent('a.vcf', $apple.$google)])
+            ->assertOk()->assertJson(['created' => 2]);
+
+        $vcards = app(VCardService::class);
+        $appleC = Contact::where('fn', 'Apple Photo')->firstOrFail();
+        $googleC = Contact::where('fn', 'Google Photo')->firstOrFail();
+        // Inline photo survives as a servable data: URI; remote URL is dropped.
+        $this->assertTrue($appleC->has_photo);
+        $this->assertStringStartsWith('data:image/jpeg;base64,', (string) $vcards->parse($appleC->vcard)['photo']);
+        $this->assertFalse($googleC->has_photo);
+        $this->assertNull($vcards->parse($googleC->vcard)['photo']);
+    }
+
     public function test_export_streams_vcards(): void
     {
         $user = $this->signIn();

@@ -10,6 +10,7 @@ use App\Models\CalendarEvent;
 use App\Models\User;
 use App\Services\Calendar\CalendarEventService;
 use App\Services\Calendar\ImipService;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
@@ -36,7 +37,7 @@ class CalendarRelationalTest extends TestCase
     {
         // The bulk-update path must not lazy-load the calendar relation (disabled
         // app-wide) or every re-imported event is silently skipped.
-        \Illuminate\Database\Eloquent\Model::preventLazyLoading(true);
+        Model::preventLazyLoading(true);
         try {
             $user = $this->signIn();
             $calendar = $this->calendar($user->id);
@@ -60,7 +61,7 @@ class CalendarRelationalTest extends TestCase
             $this->assertStringContainsString('Europe/Berlin', $event->ics);
             $this->assertSame('2026-04-29 07:00:00', $event->dtstart?->utc()->format('Y-m-d H:i:s'));
         } finally {
-            \Illuminate\Database\Eloquent\Model::preventLazyLoading(false);
+            Model::preventLazyLoading(false);
         }
     }
 
@@ -537,6 +538,15 @@ class CalendarRelationalTest extends TestCase
         ])->assertOk()->json('slots');
         $this->assertGreaterThanOrEqual(2, count($slots));
         $this->assertSame('2026-08-10T09:00:00Z', $slots[0]['start']);
+
+        // The daily window is wall-clock in the caller's timezone: 09:00–12:00 in
+        // Europe/Berlin (UTC+2 in August) = 07:00–10:00 UTC, so the first free
+        // slot before the 10:00Z busy block starts at 07:00Z, not 09:00Z.
+        $tzSlots = $this->postJson(route('calendar.slots'), [
+            'from' => '2026-08-10T00:00:00Z', 'to' => '2026-08-11T00:00:00Z',
+            'duration_min' => 30, 'day_start' => 9, 'day_end' => 12, 'timezone' => 'Europe/Berlin',
+        ])->assertOk()->json('slots');
+        $this->assertSame('2026-08-10T07:00:00Z', $tzSlots[0]['start']);
     }
 
     public function test_shared_calendar_editor_can_write_viewer_cannot(): void

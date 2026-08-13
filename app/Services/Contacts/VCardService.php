@@ -409,19 +409,52 @@ class VCardService
         if ($value === '') {
             return null;
         }
-        if (str_starts_with($value, 'data:') || preg_match('#^https?://#i', $value)) {
+        // Already an inline image → use it directly.
+        if (str_starts_with($value, 'data:image/')) {
             return $value;
         }
+        // A remote URL (e.g. Google's auth-gated lh3.googleusercontent.com photo)
+        // can't be served through the sandboxed avatar route and usually isn't
+        // publicly fetchable — treat it as "no local photo" so the UI falls back
+        // to initials instead of showing a broken image.
+        if (preg_match('#^(https?|data):#i', $value)) {
+            return null;
+        }
 
-        // Binary body: infer the mime from the TYPE param (JPEG/PNG/GIF), and
-        // make sure the payload is base64 (encode if sabre handed us raw bytes).
-        $type = strtolower($this->str($prop['TYPE'] ?? null));
-        $mime = str_contains($type, 'png') ? 'image/png' : (str_contains($type, 'gif') ? 'image/gif' : 'image/jpeg');
+        // Inline binary body (vCard 3.0 "ENCODING=b" base64, e.g. Apple). Accept
+        // it only if it is real base64 of a plausibly-sized image; sniff the mime
+        // from the decoded bytes rather than trusting the TYPE param. Never
+        // re-encode a non-base64 string (that produced garbage data URIs before).
         $compact = preg_replace('/\s+/', '', $value) ?? $value;
         $decoded = base64_decode($compact, true);
-        $b64 = ($decoded !== false && base64_encode($decoded) === $compact) ? $compact : base64_encode($value);
+        if ($decoded === false || strlen($decoded) < 100) {
+            return null;
+        }
+        $mime = $this->sniffImageMime($decoded);
+        if ($mime === null) {
+            return null;
+        }
 
-        return 'data:'.$mime.';base64,'.$b64;
+        return 'data:'.$mime.';base64,'.$compact;
+    }
+
+    /** Detect an image mime from magic bytes (JPEG/PNG/GIF/WebP), else null. */
+    private function sniffImageMime(string $bytes): ?string
+    {
+        if (str_starts_with($bytes, "\xFF\xD8\xFF")) {
+            return 'image/jpeg';
+        }
+        if (str_starts_with($bytes, "\x89PNG\r\n\x1a\n")) {
+            return 'image/png';
+        }
+        if (str_starts_with($bytes, 'GIF87a') || str_starts_with($bytes, 'GIF89a')) {
+            return 'image/gif';
+        }
+        if (str_starts_with($bytes, 'RIFF') && substr($bytes, 8, 4) === 'WEBP') {
+            return 'image/webp';
+        }
+
+        return null;
     }
 
     /**

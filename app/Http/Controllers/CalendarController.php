@@ -178,6 +178,7 @@ class CalendarController extends Controller
             'duration_min' => ['required', 'integer', 'min:5', 'max:1440'],
             'day_start' => ['nullable', 'integer', 'min:0', 'max:23'],
             'day_end' => ['nullable', 'integer', 'min:1', 'max:24'],
+            'timezone' => ['nullable', 'string', 'in:'.implode(',', timezone_identifiers_list())],
             'attendees' => ['nullable', 'array', 'max:20'],
             'attendees.*' => ['email'],
         ]);
@@ -206,11 +207,13 @@ class CalendarController extends Controller
         }
 
         $busy = $fb->busy($calIds, $from, $to);
+        $tz = trim($request->string('timezone')->value());
         $slots = $fb->freeSlots(
             $busy, $from, $to,
             (int) $request->integer('duration_min'),
             $request->filled('day_start') ? (int) $request->integer('day_start') : 8,
             $request->filled('day_end') ? (int) $request->integer('day_end') : 18,
+            $tz !== '' ? $tz : 'UTC',
         );
 
         return response()->json(['slots' => $slots, 'unknown_attendees' => $unknown]);

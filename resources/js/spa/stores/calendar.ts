@@ -151,7 +151,7 @@ export const useCalendarStore = defineStore('calendar', () => {
 
   // Free/busy + scheduling.
   const freeBusy = (from: string, to: string) => api.get<{ busy: { start: string; end: string }[] }>(`/api/v1/calendar/free-busy?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`).then((r) => r.busy);
-  const findSlots = (body: { from: string; to: string; duration_min: number; day_start?: number; day_end?: number; attendees?: string[] }) =>
+  const findSlots = (body: { from: string; to: string; duration_min: number; day_start?: number; day_end?: number; timezone?: string; attendees?: string[] }) =>
     api.post<{ slots: { start: string; end: string }[]; unknown_attendees: string[] }>('/api/v1/calendar/slots', body);
 
   // iMIP: RSVP to an event I'm invited to; ingest a received .ics.

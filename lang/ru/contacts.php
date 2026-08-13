@@ -168,6 +168,8 @@ return [
         'display_last_first' => 'Фамилия, Имя',
         'sort_first' => 'Сортировка: имя',
         'sort_last' => 'Сортировка: фамилия',
+        'import_processing' => 'Обработка…',
+        'import_processing_hint' => 'Импорт и удаление дубликатов…',
         'importing' => 'Импорт…',
         'import_result' => 'Импортировано: :created новых, :updated обновлено, :skipped пропущено',
         'group_add_placeholder' => 'Добавить группу…',
