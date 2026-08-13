@@ -10,6 +10,7 @@ use App\Models\ContactGroup;
 use App\Models\User;
 use App\Services\Contacts\ContactWriter;
 use App\Services\Contacts\VCardService;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -400,6 +401,65 @@ class ContactsFeatureTest extends TestCase
         $this->post(route('contacts.import'), ['book_id' => $book->id, 'file' => UploadedFile::fake()->createWithContent('c.vcf', $vcf)])
             ->assertOk()->assertJson(['created' => 0, 'updated' => 1]);
         $this->assertDatabaseCount('contacts', 1);
+    }
+
+    public function test_reimport_updates_under_prevented_lazy_loading(): void
+    {
+        // The bulk-update path must not lazy-load the address book relation
+        // (disabled app-wide) or every re-imported card is silently skipped.
+        Model::preventLazyLoading(true);
+        try {
+            $user = $this->signIn();
+            $book = $this->book($user->id);
+            $vcf = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:u1\r\nFN:One\r\nEMAIL:one@example.com\r\nEND:VCARD\r\n";
+            $this->post(route('contacts.import'), ['book_id' => $book->id, 'file' => UploadedFile::fake()->createWithContent('c.vcf', $vcf)])
+                ->assertOk()->assertJson(['created' => 1]);
+            $this->post(route('contacts.import'), ['book_id' => $book->id, 'file' => UploadedFile::fake()->createWithContent('c.vcf', $vcf)])
+                ->assertOk()->assertJson(['created' => 0, 'updated' => 1, 'skipped' => 0]);
+        } finally {
+            Model::preventLazyLoading(false);
+        }
+    }
+
+    public function test_reimport_contactless_card_dedupes_by_name_org_bday(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+        // No email/phone: matched on name + org + birthday, not duplicated.
+        $vcf = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Tahnee Wilms\r\nN:Wilms;Tahnee;;;\r\n"
+            ."ORG:Finanz Informatik;\r\nBDAY:19890209\r\nEND:VCARD\r\n";
+        $this->post(route('contacts.import'), ['book_id' => $book->id, 'file' => UploadedFile::fake()->createWithContent('c.vcf', $vcf)]);
+        $this->post(route('contacts.import'), ['book_id' => $book->id, 'file' => UploadedFile::fake()->createWithContent('c.vcf', $vcf)])
+            ->assertOk()->assertJson(['created' => 0, 'updated' => 1]);
+        $this->assertDatabaseCount('contacts', 1);
+        // ORG's trailing structured-empty part is stripped in the column.
+        $this->assertSame('Finanz Informatik', Contact::where('address_book_id', $book->id)->first()->org);
+    }
+
+    public function test_parser_fixes_apple_export_quirks(): void
+    {
+        $svc = app(VCardService::class);
+        // Address packed into the extended component, duplicate phone, ORG with a
+        // trailing empty unit, and an Apple year-less (1604) birthday.
+        $vcf = "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Q\r\nN:Q;;;;\r\n"
+            ."ORG:ACME GmbH;\r\n"
+            ."ADR;TYPE=WORK:;Musterstr 1\\nBerlin\\n10115\\nDE;;;;;\r\n"
+            ."TEL;TYPE=CELL:+49 30 12345\r\nTEL;TYPE=VOICE:+49 30 12345\r\n"
+            ."item1.TEL:+49 30 6789\r\nitem1.X-ABLabel:Zentrale\r\n"
+            ."BDAY;X-APPLE-OMIT-YEAR=1604:1604-02-21\r\nEND:VCARD\r\n";
+        $p = $svc->parse($vcf);
+
+        $this->assertSame('ACME GmbH', $p['org']);
+        // Packed ext split into structured street/city/zip/country.
+        $this->assertSame('Musterstr 1', $p['addresses'][0]['street']);
+        $this->assertSame('Berlin', $p['addresses'][0]['city']);
+        $this->assertSame('10115', $p['addresses'][0]['zip']);
+        // Duplicate phone collapsed to one; item-grouped label becomes the type.
+        $phones = $p['phones'];
+        $this->assertCount(2, $phones);
+        $this->assertSame('Zentrale', $phones[1]['type']);
+        // Denormalised birthday keeps only MM-DD (year-agnostic).
+        $this->assertSame('02-21', $svc->denormalize($vcf)['bday']);
     }
 
     public function test_export_streams_vcards(): void
