@@ -628,7 +628,7 @@ class BackupController extends Controller
             ->update(['status' => 'cancelled', 'finished_at' => $now, 'message' => 'Cancelled (worker stopped).']);
 
         BackupRun::where('status', 'running')
-            ->where('updated_at', '<', $now->copy()->subMinutes(30))
+            ->where('updated_at', '<', $now->copy()->subMinutes(120))
             ->update(['status' => 'failed', 'finished_at' => $now, 'message' => 'Interrupted (no progress).']);
     }
 }

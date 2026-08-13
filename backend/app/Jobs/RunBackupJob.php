@@ -18,8 +18,9 @@ class RunBackupJob implements ShouldQueue
 {
     use Queueable;
 
-    /** Backups can be large; give them room but never overlap the same job. */
-    public int $timeout = 3600;
+    /** Backups can be large (a full archive of all blobs); give them room but never
+     *  overlap the same job. 3h covers a big first-full tar/upload; incrementals are small. */
+    public int $timeout = 10800;
 
     public function __construct(public int $backupJobId) {}
 
