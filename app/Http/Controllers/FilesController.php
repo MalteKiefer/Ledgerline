@@ -18,6 +18,7 @@ use App\Models\UserSetting;
 use App\Support\DiskTempFile;
 use App\Support\FileActivityLog;
 use App\Support\ImageManagerFactory;
+use App\Support\UploadLimits;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -78,8 +79,12 @@ class FilesController extends Controller
     private function maxUploadKb(): int
     {
         $mb = config('files.max_upload_mb', 2048);
+        $configured = (is_numeric($mb) ? (int) $mb : 2048) * 1024;
 
-        return (is_numeric($mb) ? (int) $mb : 2048) * 1024;
+        // Never validate above what PHP will actually accept for one request, so
+        // an over-generous app limit degrades to a clean 413 instead of a broken
+        // upload at the PHP layer. (Files >8 MiB use the chunked path anyway.)
+        return UploadLimits::clampKb($configured);
     }
 
     private function maxVersions(int $uid): int

@@ -98,6 +98,8 @@ return [
         'today' => 'Heute',
         'no_events' => 'Keine Termine',
         'import' => '.ics importieren',
+        'import_processing' => 'Wird verarbeitet…',
+        'import_processing_hint' => 'Importiere Termine…',
         'importing' => 'Wird importiert…',
         'export' => '.ics exportieren',
         'import_done' => ':created hinzugefügt, :updated aktualisiert, :skipped übersprungen',

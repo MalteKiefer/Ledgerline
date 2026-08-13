@@ -143,3 +143,7 @@ body { background: var(--ll-bg); color: var(--ll-fg); -webkit-font-smoothing: an
 .dark .ll-prose .hljs-meta { color: #8b949e; }
 .dark .ll-prose .hljs-deletion { color: #ffdcd7; background: #67060c; }
 .dark .ll-prose .hljs-addition { color: #aff5b4; background: #033a16; }
+
+/* Indeterminate progress bar (server processing phase after an upload). */
+@keyframes ll-indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+.ll-indeterminate { width: 40%; animation: ll-indeterminate 1.1s ease-in-out infinite; }

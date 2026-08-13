@@ -353,7 +353,7 @@ class ContactController extends Controller
         abort_unless(is_string($photo) && str_starts_with($photo, 'data:'), 404);
 
         [$meta, $b64] = explode(',', $photo, 2);
-        $mime = str_contains($meta, 'image/png') ? 'image/png' : 'image/jpeg';
+        $mime = preg_match('#data:(image/[a-z+]+)#i', $meta, $mm) === 1 ? strtolower($mm[1]) : 'image/jpeg';
 
         return response(base64_decode($b64), 200, [
             'Content-Type' => $mime,

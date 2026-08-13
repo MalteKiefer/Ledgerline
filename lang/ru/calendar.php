@@ -98,6 +98,8 @@ return [
         'today' => 'Сегодня',
         'no_events' => 'Нет событий',
         'import' => 'Импорт .ics',
+        'import_processing' => 'Обработка…',
+        'import_processing_hint' => 'Импорт событий…',
         'importing' => 'Импорт…',
         'export' => 'Экспорт .ics',
         'import_done' => ':created добавлено, :updated обновлено, :skipped пропущено',

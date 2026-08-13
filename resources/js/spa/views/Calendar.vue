@@ -5,14 +5,15 @@
       <div v-show="importState.active" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/30">
         <div class="w-80 max-w-[90%] rounded-xl bg-[var(--ll-elevated)] px-6 py-5 shadow-xl">
           <div class="flex items-center gap-2 text-sm font-medium">
-            <Icon name="upload" :size="20" class="text-primary-500" />
-            {{ t('calendar.ui.importing') }}<span class="ml-auto tabular-nums text-[var(--ll-muted)]">{{ importState.done }} / {{ importState.total }}</span>
+            <Icon :name="importState.phase === 'processing' ? 'sync' : 'upload'" :size="20" class="text-primary-500" :class="importState.phase === 'processing' ? 'animate-spin' : ''" />
+            {{ importState.phase === 'processing' ? t('calendar.ui.import_processing') : t('calendar.ui.importing') }}<span class="ml-auto tabular-nums text-[var(--ll-muted)]">{{ importState.done }} / {{ importState.total }}</span>
           </div>
           <div class="mt-1 truncate text-xs text-[var(--ll-muted)]">{{ importState.name }}</div>
           <div class="mt-3 h-2 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/10">
-            <div class="h-full rounded-full bg-primary-500 transition-all" :style="{ width: importPct + '%' }" />
+            <div v-if="importState.phase === 'processing'" class="ll-indeterminate h-full rounded-full bg-primary-500" />
+            <div v-else class="h-full rounded-full bg-primary-500 transition-all" :style="{ width: importPct + '%' }" />
           </div>
-          <div class="mt-1 text-right text-xs tabular-nums text-[var(--ll-muted)]">{{ importPct }}%</div>
+          <div class="mt-1 text-right text-xs tabular-nums text-[var(--ll-muted)]">{{ importState.phase === 'processing' ? t('calendar.ui.import_processing_hint') : importPct + '%' }}</div>
         </div>
       </div>
     </Teleport>
@@ -791,7 +792,7 @@ async function runFindSlots() {
   const from = new Date(); const to = new Date(from.getTime() + Math.max(1, sched.days) * 86400000);
   const emails = sched.attendees.split(/[,;\s]+/).map((s) => s.trim()).filter((s) => s.includes('@'));
   try {
-    const r = await store.findSlots({ from: from.toISOString(), to: to.toISOString(), duration_min: sched.duration, attendees: emails });
+    const r = await store.findSlots({ from: from.toISOString(), to: to.toISOString(), duration_min: sched.duration, timezone: effectiveTz(), attendees: emails });
     sched.slots = r.slots; sched.unknown = r.unknown_attendees;
   } catch { error(t('common.error')); sched.slots = []; }
   finally { sched.busy = false; }
@@ -871,7 +872,7 @@ const importCalId = ref('');
 const importFiles = ref<File[]>([]);
 const importing = ref(false);
 // Byte-level upload progress for the .ics import (Apple exports are large).
-const importState = reactive({ active: false, name: '', done: 0, total: 0, frac: 0 });
+const importState = reactive({ active: false, name: '', done: 0, total: 0, frac: 0, phase: 'upload' as 'upload' | 'processing' });
 const importPct = computed(() => (importState.total ? Math.min(100, Math.round(((importState.done + importState.frac) / importState.total) * 100)) : 0));
 const exportHref = computed(() => api.streamUrl(store.exportUrl()));
 function openImport(): void { importFiles.value = []; importCalId.value = store.calendars[0]?.id ?? ''; importModal.value = true; }
@@ -880,12 +881,17 @@ async function runImport(): Promise<void> {
   if (!importFiles.value.length || !importCalId.value) return;
   importModal.value = false;
   importing.value = true;
-  Object.assign(importState, { active: true, done: 0, total: importFiles.value.length, frac: 0, name: importFiles.value[0]?.name ?? '' });
+  Object.assign(importState, { active: true, done: 0, total: importFiles.value.length, frac: 0, phase: 'upload', name: importFiles.value[0]?.name ?? '' });
   try {
     let created = 0; let updated = 0; let skipped = 0;
     for (const f of importFiles.value) {
-      importState.name = f.name; importState.frac = 0;
-      const r = await store.importIcs(f, importCalId.value, (fraction) => { importState.frac = fraction; });
+      importState.name = f.name; importState.frac = 0; importState.phase = 'upload';
+      // After the bytes are uploaded the server parses/dedupes each event — show
+      // an indeterminate "processing" phase instead of a stuck 100%.
+      const r = await store.importIcs(f, importCalId.value, (fraction) => {
+        importState.frac = fraction;
+        if (fraction >= 1) importState.phase = 'processing';
+      });
       created += r.created; updated += r.updated; skipped += r.skipped;
       importState.done++; importState.frac = 0;
     }

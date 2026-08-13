@@ -8,14 +8,15 @@
       <div v-show="importState.active" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/30">
         <div class="w-80 max-w-[90%] rounded-xl bg-[var(--ll-elevated)] px-6 py-5 shadow-xl">
           <div class="flex items-center gap-2 text-sm font-medium">
-            <Icon name="upload" :size="20" class="text-primary-500" />
-            {{ t('contacts.ui.importing') }}<span class="ml-auto tabular-nums text-[var(--ll-muted)]">{{ importState.done }} / {{ importState.total }}</span>
+            <Icon :name="importState.phase === 'processing' ? 'sync' : 'upload'" :size="20" class="text-primary-500" :class="importState.phase === 'processing' ? 'animate-spin' : ''" />
+            {{ importState.phase === 'processing' ? t('contacts.ui.import_processing') : t('contacts.ui.importing') }}<span class="ml-auto tabular-nums text-[var(--ll-muted)]">{{ importState.done }} / {{ importState.total }}</span>
           </div>
           <div class="mt-1 truncate text-xs text-[var(--ll-muted)]">{{ importState.name }}</div>
           <div class="mt-3 h-2 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/10">
-            <div class="h-full rounded-full bg-primary-500 transition-all" :style="{ width: importPct + '%' }" />
+            <div v-if="importState.phase === 'processing'" class="ll-indeterminate h-full rounded-full bg-primary-500" />
+            <div v-else class="h-full rounded-full bg-primary-500 transition-all" :style="{ width: importPct + '%' }" />
           </div>
-          <div class="mt-1 text-right text-xs tabular-nums text-[var(--ll-muted)]">{{ importPct }}%</div>
+          <div class="mt-1 text-right text-xs tabular-nums text-[var(--ll-muted)]">{{ importState.phase === 'processing' ? t('contacts.ui.import_processing_hint') : importPct + '%' }}</div>
         </div>
       </div>
     </Teleport>
@@ -597,7 +598,7 @@ const importFile = ref<File | File[] | null>(null);
 const importBookId = ref('');
 const importing = ref(false);
 // Byte-level upload progress for the .vcf import (files can be MBs of photos).
-const importState = reactive({ active: false, name: '', done: 0, total: 0, frac: 0 });
+const importState = reactive({ active: false, name: '', done: 0, total: 0, frac: 0, phase: 'upload' as 'upload' | 'processing' });
 const importPct = computed(() => {
   if (!importState.total) return 0;
   return Math.min(100, Math.round(((importState.done + importState.frac) / importState.total) * 100));
@@ -950,12 +951,17 @@ async function onViewDrop(e: DragEvent) {
 // Import one or more .vcf files with a byte-level progress bar.
 async function importFiles(files: File[], book: string) {
   importing.value = true;
-  Object.assign(importState, { active: true, done: 0, total: files.length, frac: 0, name: files[0]?.name ?? '' });
+  Object.assign(importState, { active: true, done: 0, total: files.length, frac: 0, phase: 'upload', name: files[0]?.name ?? '' });
   try {
     let created = 0; let updated = 0; let skipped = 0;
     for (const f of files) {
-      importState.name = f.name; importState.frac = 0;
-      const r = await c.importVcf(f, book, (fraction) => { importState.frac = fraction; });
+      importState.name = f.name; importState.frac = 0; importState.phase = 'upload';
+      // Once bytes are uploaded the server parses/dedupes/denormalises — show
+      // an indeterminate "processing" phase instead of a stuck 100%.
+      const r = await c.importVcf(f, book, (fraction) => {
+        importState.frac = fraction;
+        if (fraction >= 1) importState.phase = 'processing';
+      });
       created += r.created; updated += r.updated; skipped += r.skipped;
       importState.done++; importState.frac = 0;
     }
