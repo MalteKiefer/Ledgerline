@@ -302,8 +302,17 @@ class NotesController extends Controller
             $size = (int) $p->size;
         }
 
-        if (! str_starts_with($mime, 'image/') && ! str_starts_with($mime, 'video/')) {
-            abort(422, 'only image/video can be embedded');
+        // Explicit allowlist mirroring the upload attach() rules — NOT a broad
+        // image/* || video/* (that would let image/svg+xml through, an XSS vector
+        // the upload path deliberately excludes; a Files/Gallery row could carry a
+        // spoofed mime). The serve-time sandbox CSP + nosniff already neutralise the
+        // blob, this keeps the embed set consistent with what upload permits.
+        $embeddable = [
+            'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+            'video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v', 'video/m4v',
+        ];
+        if (! in_array($mime, $embeddable, true)) {
+            abort(422, 'unsupported media type for embed');
         }
         // The source path is server-set on an owner-scoped model; guard it defensively
         // (files/ or gallery/ prefix, no traversal) — safeBlobPath is notes/-only.

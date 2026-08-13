@@ -696,7 +696,8 @@
     <div v-if="preview" class="flex flex-col md:h-[calc(70vh-2.5rem)] md:flex-row">
       <!-- Preview pane -->
       <div class="flex min-h-[45vh] flex-1 items-center justify-center overflow-auto rounded-lg bg-black/[0.03] dark:bg-white/5 md:min-h-0">
-        <img v-if="previewKind(preview) === 'image'" :src="s.rawUrl(preview)" class="max-h-full max-w-full object-contain" >
+        <StlViewer v-if="previewKind(preview) === 'stl'" :src="s.rawUrl(preview)" class="h-full w-full" />
+        <img v-else-if="previewKind(preview) === 'image'" :src="s.rawUrl(preview)" class="max-h-full max-w-full object-contain" >
         <iframe v-else-if="previewKind(preview) === 'pdf'" :src="s.rawUrl(preview)" class="h-full w-full border-0"></iframe>
         <video v-else-if="previewKind(preview) === 'video'" :src="s.rawUrl(preview)" controls class="max-h-full max-w-full"></video>
         <audio v-else-if="previewKind(preview) === 'audio'" :src="s.rawUrl(preview)" controls></audio>
@@ -805,6 +806,7 @@ import { fmtDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
+import StlViewer from '@spa/components/StlViewer.vue';
 import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity } from '@spa/stores/files';
 import { ApiError } from '@spa/api/client';
 import { useMountsStore, type Mount, type MountEntry } from '@spa/stores/mounts';
@@ -1172,8 +1174,9 @@ function open(row: Row) {
   preview.value = row.raw as FileEntry;
   previewOpen.value = true;
 }
-function previewKind(f: FileEntry): 'image' | 'pdf' | 'video' | 'audio' | 'text' | 'other' {
+function previewKind(f: FileEntry): 'image' | 'pdf' | 'video' | 'audio' | 'text' | 'stl' | 'other' {
   const m = (f.mime || '').toLowerCase();
+  if (/\.stl$/i.test(f.name) || m === 'model/stl' || m === 'application/sla') return 'stl';
   if (isImage(f.name, f.mime)) return 'image';
   if (m === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) return 'pdf';
   if (m.startsWith('video/')) return 'video';
