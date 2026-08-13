@@ -206,10 +206,12 @@ final class BackupManager
         }
         $cutoff = Carbon::now()->subHours(4)->getTimestamp();
         foreach (File::directories($base) as $dir) {
-            $path = (string) $dir;
-            $mtime = @filemtime($path);
+            if (! is_string($dir)) {
+                continue;
+            }
+            $mtime = @filemtime($dir);
             if ($mtime !== false && $mtime < $cutoff) {
-                File::deleteDirectory($path);
+                File::deleteDirectory($dir);
             }
         }
     }
