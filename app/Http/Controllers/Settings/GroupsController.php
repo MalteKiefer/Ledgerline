@@ -25,7 +25,7 @@ class GroupsController extends Controller
 
     public function index(Request $request): View
     {
-        return view('settings.groups.index', [
+        return view('spa', [
             'groups' => Group::withCount('members')->with('members:id,name,email')->orderBy('name')->get(),
             'users' => User::orderBy('name')->get(['id', 'name', 'email']),
         ]);

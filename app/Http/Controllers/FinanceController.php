@@ -89,7 +89,7 @@ class FinanceController extends Controller
         // Render the existing Finance shell (the client still drives from its own
         // fetches during the frontend-switch window); inline the relational data
         // for the eventual server-hydrated page.
-        return view('invoices.index', $this->snapshot());
+        return view('spa', $this->snapshot());
     }
 
     public function index(Request $request): JsonResponse

@@ -32,7 +32,7 @@ class ContactController extends Controller
     {
         $this->ensureBook($this->requireUser($request)->id);
 
-        return view('contacts.index');
+        return view('spa');
     }
 
     /** Guarantee the user has at least one address book (contacts need a home). */
@@ -54,7 +54,7 @@ class ContactController extends Controller
     /** Dedicated editor page for a new contact. */
     public function create(): View
     {
-        return view('contacts.edit', ['contactId' => null]);
+        return view('spa', ['contactId' => null]);
     }
 
     /** Dedicated editor page for an existing contact. */
@@ -62,7 +62,7 @@ class ContactController extends Controller
     {
         $this->authorizeContact($contact);
 
-        return view('contacts.edit', ['contactId' => $contact->id]);
+        return view('spa', ['contactId' => $contact->id]);
     }
 
     /** Read-only detail page; editing is a separate step (Google-style). */
@@ -70,7 +70,7 @@ class ContactController extends Controller
     {
         $this->authorizeContact($contact);
 
-        return view('contacts.show', ['contactId' => $contact->id]);
+        return view('spa', ['contactId' => $contact->id]);
     }
 
     public function data(Request $request, VCardService $vcards): JsonResponse

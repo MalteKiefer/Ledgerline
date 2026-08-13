@@ -27,7 +27,7 @@ class ContactsController extends Controller
         $user = $this->requireUser($request);
         $davUrl = url('/dav/');
 
-        return view('settings.contacts.edit', [
+        return view('spa', [
             'davUrl' => $davUrl,
             'username' => $user->email,
             'hasPassword' => is_string($user->webdav_password) && $user->webdav_password !== '',

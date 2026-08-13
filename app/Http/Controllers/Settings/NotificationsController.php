@@ -27,7 +27,7 @@ class NotificationsController extends Controller
 
     public function edit(): View
     {
-        return view('settings.notifications.edit', ['settings' => AppSettings::current()]);
+        return view('spa', ['settings' => AppSettings::current()]);
     }
 
     public function update(Request $request): RedirectResponse

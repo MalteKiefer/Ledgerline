@@ -46,7 +46,7 @@ class SystemController extends Controller
             ->values()
             ->all();
 
-        return view('settings.system.index', [
+        return view('spa', [
             'tasks' => $tasks,
             'status' => $status->snapshot(),
             'trend' => $history->trend(30),
