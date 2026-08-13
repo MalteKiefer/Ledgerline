@@ -3,6 +3,23 @@
     class="relative flex min-h-[calc(100vh-120px)] flex-col gap-4 md:flex-row"
     @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave.prevent="onDragLeave" @drop.prevent="onViewDrop"
   >
+    <!-- Import progress modal (teleported so it sits above all page content) -->
+    <Teleport to="body">
+      <div v-show="importState.active" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/30">
+        <div class="w-80 max-w-[90%] rounded-xl bg-[var(--ll-elevated)] px-6 py-5 shadow-xl">
+          <div class="flex items-center gap-2 text-sm font-medium">
+            <Icon name="upload" :size="20" class="text-primary-500" />
+            {{ t('contacts.ui.importing') }}<span class="ml-auto tabular-nums text-[var(--ll-muted)]">{{ importState.done }} / {{ importState.total }}</span>
+          </div>
+          <div class="mt-1 truncate text-xs text-[var(--ll-muted)]">{{ importState.name }}</div>
+          <div class="mt-3 h-2 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/10">
+            <div class="h-full rounded-full bg-primary-500 transition-all" :style="{ width: importPct + '%' }" />
+          </div>
+          <div class="mt-1 text-right text-xs tabular-nums text-[var(--ll-muted)]">{{ importPct }}%</div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Full-view drag & drop vCard import overlay -->
     <div v-show="dragDepth > 0" class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-500/10">
       <div class="rounded-xl bg-[var(--ll-elevated)] px-6 py-4 text-center shadow-lg">
@@ -578,6 +595,12 @@ const importDialog = ref(false);
 const importFile = ref<File | File[] | null>(null);
 const importBookId = ref('');
 const importing = ref(false);
+// Byte-level upload progress for the .vcf import (files can be MBs of photos).
+const importState = reactive({ active: false, name: '', done: 0, total: 0, frac: 0 });
+const importPct = computed(() => {
+  if (!importState.total) return 0;
+  return Math.min(100, Math.round(((importState.done + importState.frac) / importState.total) * 100));
+});
 
 // Duplicates
 const dupDialog = ref(false);
@@ -920,16 +943,24 @@ async function onViewDrop(e: DragEvent) {
   const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => /\.vcf$|\.vcard$/i.test(f.name) || f.type === 'text/vcard');
   const book = bookId.value ?? c.books[0]?.id ?? '';
   if (!files.length || !book) return;
+  await importFiles(files, book);
+}
+
+// Import one or more .vcf files with a byte-level progress bar.
+async function importFiles(files: File[], book: string) {
   importing.value = true;
+  Object.assign(importState, { active: true, done: 0, total: files.length, frac: 0, name: files[0]?.name ?? '' });
   try {
     let created = 0; let updated = 0; let skipped = 0;
     for (const f of files) {
-      const r = await c.importVcf(f, book);
+      importState.name = f.name; importState.frac = 0;
+      const r = await c.importVcf(f, book, (fraction) => { importState.frac = fraction; });
       created += r.created; updated += r.updated; skipped += r.skipped;
+      importState.done++; importState.frac = 0;
     }
     await reload();
     success(t('contacts.ui.import_result', { created: String(created), updated: String(updated), skipped: String(skipped) }));
-  } catch { error(t('common.error')); } finally { importing.value = false; }
+  } catch { error(t('common.error')); } finally { importing.value = false; importState.active = false; }
 }
 
 // --- Import / export ---
@@ -939,15 +970,10 @@ function openImport() {
   importDialog.value = true;
 }
 async function runImport() {
-  const file = Array.isArray(importFile.value) ? importFile.value[0] : importFile.value;
-  if (!file || !importBookId.value) return;
-  importing.value = true;
-  try {
-    const r = await c.importVcf(file, importBookId.value);
-    importDialog.value = false;
-    await reload();
-    success(t('contacts.ui.import_result', { created: String(r.created), updated: String(r.updated), skipped: String(r.skipped) }));
-  } catch { error(t('common.error')); } finally { importing.value = false; }
+  const list = Array.isArray(importFile.value) ? importFile.value : (importFile.value ? [importFile.value] : []);
+  if (!list.length || !importBookId.value) return;
+  importDialog.value = false;
+  await importFiles(list, importBookId.value);
 }
 
 // --- Duplicates ---
