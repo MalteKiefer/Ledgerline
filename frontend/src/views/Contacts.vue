@@ -104,7 +104,7 @@
         <div class="ml-auto flex items-center gap-1.5">
           <Btn variant="outline" size="sm" icon="upload" @click="openImport">{{ t('contacts.ui.import') }}</Btn>
           <Btn variant="soft" size="sm" icon="content_copy" @click="openDuplicates">{{ t('contacts.ui.duplicates') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="download" tag="a" :href="c.exportUrl(bookId ?? undefined)" :title="t('contacts.ui.export')">{{ t('contacts.ui.export') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="download" tag="a" :href="api.streamUrl(c.exportUrl(bookId ?? undefined))" :title="t('contacts.ui.export')">{{ t('contacts.ui.export') }}</Btn>
         </div>
       </div>
 
