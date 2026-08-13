@@ -107,6 +107,18 @@
       </div>
       <div v-else class="px-5 py-6 text-sm text-[var(--ll-muted)]">{{ t('settings.system_no_audit') }}</div>
     </Card>
+
+    <!-- Content reindex (all users) -->
+    <Card class="mt-4">
+      <template #header>
+        <Icon name="search" :size="18" class="text-[var(--ll-muted)]" />
+        <h2 class="text-sm font-semibold">{{ t('settings.reindex_heading') }}</h2>
+      </template>
+      <p class="mb-4 px-5 pt-4 text-sm text-[var(--ll-muted)]">{{ t('settings.reindex_hint') }}</p>
+      <div class="px-5 pb-5">
+        <Btn variant="soft" icon="search" :loading="reindexBusy" @click="reindexAll">{{ t('settings.reindex_button') }}</Btn>
+      </div>
+    </Card>
   </div>
 </template>
 
@@ -160,7 +172,15 @@ interface SystemResponse {
   audit: AuditRow[];
 }
 
-const { error } = useToast();
+const { error, success } = useToast();
+
+const reindexBusy = ref(false);
+async function reindexAll() {
+  reindexBusy.value = true;
+  try { await api.post('/api/v1/admin/reindex'); success(t('settings.reindex_queued')); }
+  catch { error(t('common.error')); }
+  finally { reindexBusy.value = false; }
+}
 
 const tasks = ref<Task[]>([]);
 const status = ref<Record<string, unknown>>({});

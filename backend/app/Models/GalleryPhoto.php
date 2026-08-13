@@ -23,6 +23,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $playback_path
  * @property string|null $content_id
  * @property string $name
+ * @property string|null $ocr_text
+ * @property Carbon|null $ocr_at
  * @property string|null $mime
  * @property string $media_type
  * @property string $status
@@ -53,8 +55,12 @@ class GalleryPhoto extends Model
 
     protected $fillable = ['name', 'favorite'];
 
+    /** OCR text is queried server-side, never serialized (can be large). */
+    protected $hidden = ['ocr_text'];
+
     protected $casts = [
         'size' => 'integer',
+        'ocr_at' => 'datetime',
         'width' => 'integer',
         'height' => 'integer',
         'duration' => 'integer',

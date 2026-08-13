@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\DetectGalleryFaces;
 use App\Jobs\EmbedGalleryPhoto;
+use App\Jobs\ExtractGalleryOcr;
 use App\Jobs\GenerateGalleryThumbnail;
 use App\Jobs\ProcessGalleryVideo;
 use App\Jobs\RefreshGalleryExif;
@@ -13,6 +14,7 @@ use App\Models\GalleryAlbum;
 use App\Models\GalleryFace;
 use App\Models\GalleryPerson;
 use App\Models\GalleryPhoto;
+use App\Services\Files\FileTextIndex;
 use App\Support\BlobStore;
 use App\Support\DiskTempFile;
 use App\Support\FilesUsage;
@@ -22,6 +24,7 @@ use App\Support\MachineLearning;
 use App\Support\Vector;
 use App\Support\VideoProcessor;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -258,6 +261,7 @@ class GalleryController extends Controller
         GenerateGalleryThumbnail::dispatch($photo->id);
         EmbedGalleryPhoto::dispatch($photo->id);
         DetectGalleryFaces::dispatch($photo->id);
+        ExtractGalleryOcr::dispatch($photo->id);
 
         return response()->json(['photo' => $this->row($photo)], 201);
     }
@@ -329,6 +333,7 @@ class GalleryController extends Controller
         GenerateGalleryThumbnail::dispatch($photo->id);
         EmbedGalleryPhoto::dispatch($photo->id);
         DetectGalleryFaces::dispatch($photo->id);
+        ExtractGalleryOcr::dispatch($photo->id);
 
         return ['ok' => true, 'photo' => $this->row($photo)];
     }
@@ -478,6 +483,7 @@ class GalleryController extends Controller
         GenerateGalleryThumbnail::dispatch($photo->id);
         EmbedGalleryPhoto::dispatch($photo->id);
         DetectGalleryFaces::dispatch($photo->id);
+        ExtractGalleryOcr::dispatch($photo->id);
 
         return response()->json(['photo' => $this->row($photo)], 201);
     }
@@ -711,6 +717,57 @@ class GalleryController extends Controller
      * Compute + store a photo's CLIP embedding (worker, via EmbedGalleryPhoto).
      * For a video the poster frame is embedded. No-op when ML/pgvector are off.
      */
+    /**
+     * Photo ids whose OCR text or filename match the query (owner-scoped, non-trashed).
+     * Full-text over the GIN index on pgsql, LIKE fallback elsewhere.
+     *
+     * @return array<int, int>
+     */
+    private function ocrMatchIds(int $uid, string $q): array
+    {
+        $like = '%'.$q.'%';
+        $query = GalleryPhoto::query()->where('user_id', $uid);
+        if (DB::getDriverName() === 'pgsql') {
+            $query->where(function (Builder $inner) use ($q, $like): void {
+                $inner->whereRaw("to_tsvector('simple', coalesce(ocr_text, '')) @@ plainto_tsquery('simple', ?)", [$q])
+                    ->orWhere('name', 'like', $like);
+            });
+        } else {
+            $query->where(function (Builder $inner) use ($like): void {
+                $inner->where('ocr_text', 'like', $like)->orWhere('name', 'like', $like);
+            });
+        }
+
+        return $query->orderByDesc('id')->limit(80)->pluck('id')
+            ->map(static fn ($v): int => is_numeric($v) ? (int) $v : 0)
+            ->filter(static fn (int $v): bool => $v > 0)->values()->all();
+    }
+
+    /**
+     * OCR a photo so text inside the image (signs, screenshots, receipts) becomes
+     * searchable. Runs on the worker (not the web request). Uses the raster preview
+     * (webp) / video poster — tesseract can't read HEIC, and the preview is the same
+     * decodable source ML uses. Best-effort: failure leaves ocr_text null.
+     */
+    public function ocrPhoto(GalleryPhoto $photo): void
+    {
+        $rel = $this->mlSourcePath($photo);
+        if ($rel === '' || ! $this->fs()->exists($rel)) {
+            return;
+        }
+        $ext = strtolower(pathinfo($rel, PATHINFO_EXTENSION));
+        $mime = match ($ext) {
+            'webp' => 'image/webp',
+            'png' => 'image/png',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            default => 'image/jpeg',
+        };
+        $bytes = $this->fs()->get($rel);
+        $text = is_string($bytes) ? (new FileTextIndex)->extractBytes($bytes, $mime) : null;
+        $photo->forceFill(['ocr_text' => $text, 'ocr_at' => now()])->saveQuietly();
+    }
+
     public function embedPhoto(GalleryPhoto $photo, MachineLearning $ml): void
     {
         if (! $ml->enabled() || ! Vector::available()) {
@@ -885,27 +942,40 @@ class GalleryController extends Controller
     {
         $uid = (int) $this->requireUser($request)->id;
         $q = trim($request->string('q')->value());
-        if ($q === '' || ! $ml->enabled() || ! Vector::available()) {
+        if ($q === '') {
             return response()->json(['photos' => []]);
         }
-        $vec = $ml->embedText($q);
-        if ($vec === null || count($vec) !== 512) {
-            return response()->json(['photos' => []]);
+
+        // Semantic (CLIP) hits first, when ML + pgvector are available…
+        $ids = [];
+        if ($ml->enabled() && Vector::available()) {
+            $vec = $ml->embedText($q);
+            if ($vec !== null && count($vec) === 512) {
+                $lit = MachineLearning::toVectorLiteral($vec);
+                $maxCfg = config('ml.search_max_distance', 0.78);
+                $max = is_numeric($maxCfg) ? (float) $maxCfg : 0.78;
+                $rows = DB::select(
+                    'SELECT id FROM gallery_photos
+                     WHERE user_id = ? AND deleted_at IS NULL AND embedding IS NOT NULL
+                       AND (embedding <=> ?::vector) < ?
+                     ORDER BY embedding <=> ?::vector LIMIT 80',
+                    [$uid, $lit, $max, $lit],
+                );
+                $ids = array_values(array_filter(array_map(
+                    static fn ($r): int => is_object($r) && isset($r->id) && is_numeric($r->id) ? (int) $r->id : 0,
+                    $rows,
+                ), static fn (int $i): bool => $i > 0));
+            }
         }
-        $lit = MachineLearning::toVectorLiteral($vec);
-        $maxCfg = config('ml.search_max_distance', 0.78);
-        $max = is_numeric($maxCfg) ? (float) $maxCfg : 0.78;
-        $rows = DB::select(
-            'SELECT id FROM gallery_photos
-             WHERE user_id = ? AND deleted_at IS NULL AND embedding IS NOT NULL
-               AND (embedding <=> ?::vector) < ?
-             ORDER BY embedding <=> ?::vector LIMIT 80',
-            [$uid, $lit, $max, $lit],
-        );
-        $ids = array_values(array_filter(array_map(
-            static fn ($r): int => is_object($r) && isset($r->id) && is_numeric($r->id) ? (int) $r->id : 0,
-            $rows,
-        ), static fn (int $i): bool => $i > 0));
+
+        // …then OCR-text + filename matches (text inside images, works without ML),
+        // appended after the semantic hits (deduped).
+        foreach ($this->ocrMatchIds($uid, $q) as $id) {
+            if (! in_array($id, $ids, true)) {
+                $ids[] = $id;
+            }
+        }
+        $ids = array_slice($ids, 0, 80);
         if ($ids === []) {
             return response()->json(['photos' => []]);
         }

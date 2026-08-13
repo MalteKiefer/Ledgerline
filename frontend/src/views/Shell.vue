@@ -198,7 +198,7 @@ function toggle(k: string) { open[k] = !open[k]; }
 function isActive(to?: string): boolean { if (!to) return false; if (to === '/') return route.path === '/'; return route.path === to || route.path.startsWith(to + '/'); }
 function toggleTheme() { dark.value = !dark.value; document.documentElement.classList.toggle('dark', dark.value); localStorage.setItem('ll_theme', dark.value ? 'dark' : 'light'); }
 async function setLocale(l: string) { await loadLanguageAsync(l); locale.value = l; try { await api.post('/api/v1/locale', { locale: l }); } catch { /* non-fatal */ } }
-function runSearch() { if (globalSearch.value.trim()) router.push({ path: '/files', query: { q: globalSearch.value.trim() } }); }
+function runSearch() { if (globalSearch.value.trim()) router.push({ name: 'search', query: { q: globalSearch.value.trim() } }); }
 async function logout() { await auth.logout(); router.push({ name: 'login' }); }
 
 interface Note { id: string | number; title: string; body: string; read: boolean }
