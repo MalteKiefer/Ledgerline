@@ -332,7 +332,7 @@ export const useMailStore = defineStore('mail', () => {
 
   async function exportMessages(payload: { format: 'mbox' | 'zip'; ids?: string[]; folder?: string | null; label?: number | null }) {
     const token = getToken();
-    const res = await fetch('/api/v1/mail/export', {
+    const res = await fetch(api.url('/api/v1/mail/export'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify(payload),

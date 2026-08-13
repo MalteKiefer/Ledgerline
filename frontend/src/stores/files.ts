@@ -219,7 +219,7 @@ export const useFilesStore = defineStore('files', () => {
    */
   async function zip(sel: { ids?: number[]; folder_id?: number | null }) {
     const token = getToken();
-    const res = await fetch('/api/v1/files/zip', {
+    const res = await fetch(api.url('/api/v1/files/zip'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

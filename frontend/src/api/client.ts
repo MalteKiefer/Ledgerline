@@ -100,6 +100,9 @@ export const api = {
   patch: <T>(path: string, json?: unknown) => request<T>('PATCH', path, { json }),
   delete: <T>(path: string, json?: unknown) => request<T>('DELETE', path, { json }),
   upload: <T>(path: string, form: FormData) => request<T>('POST', path, { form }),
+  // Absolute, base-prefixed URL for a path — use for raw fetch() calls (blob
+  // downloads/streams) so they respect VITE_API_URL just like the JSON client.
+  url: (path: string) => apiUrl(path),
   // Absolute URL for a raw/stream endpoint with the token as a query param
   // (for <img>/<iframe>/<a> that can't set an Authorization header).
   streamUrl: (path: string) => {

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { api, ensureCsrf } from '@spa/api/client';
+import { api, getToken } from '@spa/api/client';
 
 export interface AdminUser {
   id: number;
@@ -117,20 +117,16 @@ export const useSettingsStore = defineStore('settings', () => {
   const restoreRun = (id: number, source: string) =>
     api.post<{ ok: boolean; files?: number; message?: string }>(`/api/v1/backup/runs/${id}/restore`, { source });
   const downloadRunUrl = (id: number, source: string) =>
-    `/api/v1/backup/runs/${id}/download?source=${encodeURIComponent(source)}`;
+    api.streamUrl(`/api/v1/backup/runs/${id}/download?source=${encodeURIComponent(source)}`);
   /** POST decrypt streams the plaintext archive — fetch it as a Blob for the caller to save. */
   const decryptRun = async (id: number, source: string, passphrase: string): Promise<Blob> => {
-    await ensureCsrf();
-    const m = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]*)/);
-    const xsrf = m ? decodeURIComponent(m[1]) : '';
-    const res = await fetch(`/api/v1/backup/runs/${id}/decrypt`, {
+    const token = getToken();
+    const res = await fetch(api.url(`/api/v1/backup/runs/${id}/decrypt`), {
       method: 'POST',
-      credentials: 'same-origin',
       headers: {
         Accept: 'application/octet-stream',
         'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-        'X-XSRF-TOKEN': xsrf,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ source, passphrase }),
     });
