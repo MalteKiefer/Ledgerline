@@ -8,7 +8,7 @@ name: build-image
 
 on:
   push:
-    branches: [main, develop, feat/vue-vuetify-spa]
+    branches: [main, develop, feat/vue-vuetify-spa, feat/repo-split]
     tags: ['v*']
   workflow_dispatch:
 
