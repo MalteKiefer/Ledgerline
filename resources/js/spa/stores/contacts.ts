@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { api } from '@spa/api/client';
+import { uploadWithProgress } from '@spa/api/client';
 
 export interface ContactRow {
   id: string; book: string; fn: string; first_name: string | null; last_name: string | null;
@@ -58,11 +59,11 @@ export const useContactsStore = defineStore('contacts', () => {
   const dismissDuplicate = (payload: { ids: string[] }) => api.post('/api/v1/contacts/duplicates/dismiss', payload);
 
   // Import / export
-  function importVcf(file: File, bookId: string) {
+  function importVcf(file: File, bookId: string, onProgress?: (fraction: number) => void) {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('book_id', bookId);
-    return api.upload<ImportResult>('/api/v1/contacts/import', fd);
+    return uploadWithProgress<ImportResult>('/api/v1/contacts/import', fd, onProgress);
   }
   const exportUrl = (bookId?: string) => `/api/v1/contacts/export${bookId ? `?book=${encodeURIComponent(bookId)}` : ''}`;
 
