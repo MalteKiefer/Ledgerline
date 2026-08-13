@@ -150,6 +150,10 @@ return [
     'export_heading' => 'Meine Daten exportieren',
     'export_hint' => 'Lade eine Kopie deiner Daten als JSON herunter.',
     'export_button' => 'Meine Daten herunterladen',
+    'reindex_heading' => 'Inhalte neu indizieren',
+    'reindex_hint' => 'Deine Dateien und Fotos neu nach durchsuchbarem Text scannen (PDF-Text, Bild-OCR). Läuft im Hintergrund.',
+    'reindex_button' => 'Meine Inhalte neu indizieren',
+    'reindex_queued' => 'Neuindizierung gestartet — läuft im Hintergrund.',
 
     'delete_heading' => 'Konto löschen',
     'delete_hint' => 'Löscht dein Konto und alle deine Daten unwiderruflich. Das kann nicht rückgängig gemacht werden.',

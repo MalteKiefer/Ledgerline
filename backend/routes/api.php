@@ -51,6 +51,7 @@ use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryPeopleController;
 use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GeoController;
+use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailAttachmentController;
 use App\Http\Controllers\MailBlobController;
@@ -76,6 +77,7 @@ use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\PublicGalleryShareController;
 use App\Http\Controllers\PublicGalleryUploadController;
+use App\Http\Controllers\ReindexController;
 use App\Http\Controllers\SharedFolderController;
 use App\Http\Controllers\SharedGalleryController;
 use App\Http\Controllers\SharedWithMeController;
@@ -158,6 +160,8 @@ Route::prefix('v1')->group(function (): void {
     // still pass) so a token's declared scope is actually checked.
     Route::middleware(['auth:sanctum', 'abilities:device', UpdateTokenIp::class, EnsureTwoFactorEnrolled::class])->group(function (): void {
         Route::get('/me', [AuthController::class, 'me'])->name('api.me');
+        Route::get('/search', [GlobalSearchController::class, 'search'])->middleware('throttle:120,1')->name('api.search');
+        Route::post('/me/reindex', [ReindexController::class, 'me'])->middleware('throttle:6,1')->name('api.me.reindex');
         Route::post('/auth/logout', [SpaAuthController::class, 'logout'])->name('api.auth.logout');
         // Streams the signed-in user's stored avatar (same-origin, non-secret);
         // 404 when none stored. `me.user.has_avatar` tells the app whether to fetch it.
@@ -651,6 +655,8 @@ Route::prefix('v1')->group(function (): void {
         // Gated by the admin role on top of the device token. Secret values
         // (SMTP/ntfy/webhook creds, Paperless token) are never serialised.
         Route::middleware('can:manage-global-settings')->prefix('admin')->name('api.admin.')->group(function (): void {
+            // Content reindex for ALL users (file text/OCR + gallery photo OCR), queued.
+            Route::post('/reindex', [ReindexController::class, 'all'])->middleware('throttle:3,1')->name('reindex');
             // Admin overview dashboard (server status, resources, health, counts).
             Route::get('/dashboard', [ApiDashboardController::class, 'show'])->name('dashboard.show');
 

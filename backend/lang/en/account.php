@@ -150,6 +150,10 @@ return [
     'export_heading' => 'Export my data',
     'export_hint' => 'Download a copy of your data as JSON.',
     'export_button' => 'Download my data',
+    'reindex_heading' => 'Reindex content',
+    'reindex_hint' => 'Re-scan your files and photos for searchable text (PDF text, image OCR). Runs in the background.',
+    'reindex_button' => 'Reindex my content',
+    'reindex_queued' => 'Reindex started — running in the background.',
 
     'delete_heading' => 'Delete account',
     'delete_hint' => 'Permanently deletes your account and all of your data. This cannot be undone.',

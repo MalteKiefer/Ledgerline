@@ -33,6 +33,7 @@ const routes: RouteRecordRaw[] = [
           { path: 'data', name: 'profile.data', component: () => import('@spa/views/profile/Data.vue') },
         ],
       },
+      { path: 'search', name: 'search', component: () => import('@spa/views/Search.vue') },
       { path: 'files', name: 'files', component: () => import('@spa/views/Files.vue') },
       { path: 'shared-with-me', name: 'shared-with-me', component: () => import('@spa/views/SharedWithMe.vue') },
       { path: 'contacts', name: 'contacts', component: () => import('@spa/views/Contacts.vue') },

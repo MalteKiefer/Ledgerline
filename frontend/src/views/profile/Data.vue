@@ -6,6 +6,12 @@
       <Btn variant="soft" icon="download" tag="a" href="/api/v1/account/export">{{ t('account.export_button') }}</Btn>
     </Card>
 
+    <!-- Reindex content (OCR + full text) -->
+    <Card :title="t('account.reindex_heading')" class="mb-4">
+      <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('account.reindex_hint') }}</p>
+      <Btn variant="soft" icon="search" :loading="reindexBusy" @click="reindex">{{ t('account.reindex_button') }}</Btn>
+    </Card>
+
     <!-- Delete account -->
     <Card :title="t('account.delete_heading')">
       <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('account.delete_hint') }}</p>
@@ -34,6 +40,7 @@ import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, Modal, TextField } from '@spa/ui';
+import { api } from '@spa/api/client';
 import { useAuthStore } from '@spa/stores/auth';
 import { useProfileStore } from '@spa/stores/profile';
 import { useToast } from '@spa/composables/useToast';
@@ -41,7 +48,15 @@ import { useToast } from '@spa/composables/useToast';
 const auth = useAuthStore();
 const p = useProfileStore();
 const router = useRouter();
-const { error } = useToast();
+const { error, success } = useToast();
+
+const reindexBusy = ref(false);
+async function reindex() {
+  reindexBusy.value = true;
+  try { await api.post('/api/v1/me/reindex'); success(t('account.reindex_queued')); }
+  catch { error(t('common.error')); }
+  finally { reindexBusy.value = false; }
+}
 
 const confirmDelete = ref(false);
 const delConfirm = ref('');

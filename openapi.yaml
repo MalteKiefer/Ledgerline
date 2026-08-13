@@ -3580,6 +3580,59 @@ paths:
   # Me / Device
   # --------------------------------------------------------------------------
 
+  /search:
+    get:
+      tags: [Me/Device]
+      operationId: globalSearch
+      summary: Search across all enabled modules
+      description: >
+        One query across Files (content + OCR), Notes, Gallery (filename + photo OCR),
+        Contacts, Mail, Calendar and Finance. Owner-scoped and module-gated
+        (only modules the user has enabled are searched). Min 2 chars. Throttle 120/min.
+      parameters: [ { name: q, in: query, required: true, schema: { type: string } } ]
+      responses:
+        "200":
+          description: Grouped results.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  q: { type: string }
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        module: { type: string, enum: [files, notes, gallery, contacts, mail, calendar, finance] }
+                        items:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id: { type: integer }
+                              title: { type: string }
+                              subtitle: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /me/reindex:
+    post:
+      tags: [Me/Device]
+      operationId: meReindex
+      summary: Reindex the caller's own content (queued)
+      description: Re-extract file text/OCR + gallery photo OCR for the current user. Queued. Throttle 6/min.
+      responses:
+        "200": { description: Queued., content: { application/json: { schema: { type: object, properties: { queued: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /admin/reindex:
+    post:
+      tags: [Admin]
+      operationId: adminReindex
+      summary: Reindex ALL users' content (queued, admin)
+      description: Re-extract file text/OCR + gallery photo OCR for every user. can:manage-global-settings. Queued. Throttle 3/min.
+      responses:
+        "200": { description: Queued., content: { application/json: { schema: { type: object, properties: { queued: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /me:
     get:
       tags: [Me/Device]

@@ -24,6 +24,7 @@ use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryPeopleController;
 use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GeoController;
+use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\InviteLinkController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailAttachmentController;
@@ -52,6 +53,7 @@ use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\PublicFileShareController;
 use App\Http\Controllers\PublicGalleryShareController;
 use App\Http\Controllers\PublicGalleryUploadController;
+use App\Http\Controllers\ReindexController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CalendarController as SettingsCalendarController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
@@ -144,6 +146,8 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');
     Route::post('/profile/avatar', [AvatarController::class, 'store'])->middleware('throttle:30,1')->name('profile.avatar.store');
     Route::delete('/profile/avatar', [AvatarController::class, 'destroy'])->middleware('throttle:30,1')->name('profile.avatar.destroy');
+    Route::get('/search', [GlobalSearchController::class, 'search'])->middleware('throttle:120,1')->name('search');
+    Route::post('/me/reindex', [ReindexController::class, 'me'])->middleware('throttle:6,1')->name('me.reindex');
     // Self-service account: GDPR export, session revocation, account erasure.
     Route::get('/account/export', [AccountController::class, 'export'])->middleware('throttle:6,1')->name('account.export');
     Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->middleware('throttle:20,1')->name('account.sessions.revoke');
@@ -186,6 +190,7 @@ Route::middleware('auth')->group(function (): void {
 
         // User management: create, edit role + per-user limits, reset, delete.
         Route::post('/settings/users', [SettingsUsersController::class, 'store'])->name('settings.users.store');
+        Route::post('/admin/reindex', [ReindexController::class, 'all'])->middleware('throttle:3,1')->name('admin.reindex');
         Route::put('/settings/users/{user}', [SettingsUsersController::class, 'update'])->name('settings.users.update');
         Route::post('/settings/users/{user}/reset-password', [SettingsUsersController::class, 'resetPassword'])->middleware('throttle:10,1')->name('settings.users.reset');
         Route::post('/settings/users/{user}/reset-2fa', [SettingsUsersController::class, 'resetTwoFactor'])->name('settings.users.reset2fa');
