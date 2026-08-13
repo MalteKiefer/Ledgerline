@@ -52,6 +52,51 @@ export function flagOf(iso: string): string {
 
 export interface PhoneCountry { iso: string; flag: string }
 
+/** Split a digit string into left-to-right groups of `n` (last may be shorter). */
+function chunk(s: string, n: number): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < s.length; i += n) out.push(s.slice(i, i + n));
+  return out;
+}
+
+/**
+ * Format a phone number for readable display, E.123 / DIN 5008 flavoured.
+ *
+ * International form ("+" or "00") → "+<cc> <grouped national>" with a leading
+ * subscriber/area block followed by 3-4 digit groups (NANP gets the canonical
+ * 3-3-4). A national number (no country code) is grouped in 4-digit blocks,
+ * keeping any leading 0. Never merges digits wrongly — no libphonenumber, so
+ * exact per-country area-code boundaries are approximated, not guaranteed.
+ */
+export function formatPhone(value: string): string {
+  const s = (value ?? '').trim();
+  if (!s) return '';
+  const hasExt = s.includes('x') || s.includes(';');
+  const core = hasExt ? s.replace(/[x;].*$/i, '').trim() : s;
+  const intl = core.startsWith('+') || core.startsWith('00');
+  let digits = core.replace(/\D/g, '');
+  if (!digits) return s;
+
+  if (!intl) {
+    const lead0 = core.trim().startsWith('0');
+    return (lead0 && !digits.startsWith('0') ? '0' : '') + chunk(digits, 4).join(' ');
+  }
+
+  digits = digits.replace(/^00/, '');
+  const cc = KEYS.find((c) => digits.startsWith(c));
+  if (!cc) return s;
+  const nat = digits.slice(cc.length);
+  if (nat.length <= 4) return `+${cc} ${nat}`;
+
+  let grouped: string;
+  if (cc === '1' && nat.length === 10) {
+    grouped = `${nat.slice(0, 3)} ${nat.slice(3, 6)} ${nat.slice(6)}`;
+  } else {
+    grouped = [nat.slice(0, 3), ...chunk(nat.slice(3), 4)].join(' ');
+  }
+  return `+${cc} ${grouped}`;
+}
+
 /** Resolve a phone number's country from its "+" calling code, else null. */
 export function phoneCountry(value: string): PhoneCountry | null {
   const s = (value ?? '').trim();

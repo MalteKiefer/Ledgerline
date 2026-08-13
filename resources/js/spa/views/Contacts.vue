@@ -161,7 +161,7 @@
                   <span class="min-w-0 flex-1">
                     <span class="flex items-center gap-1.5 text-sm">
                       <FlagIcon v-if="phoneCountry(p.value)" :iso="phoneCountry(p.value)!.iso" :size="13" :title="phoneCountry(p.value)!.iso" />
-                      <span class="truncate">{{ p.value }}</span>
+                      <span class="truncate">{{ formatPhone(p.value) }}</span>
                     </span>
                     <span v-if="typeLabel(p.type)" class="block text-xs text-[var(--ll-muted)]">{{ typeLabel(p.type) }}</span>
                   </span>
@@ -316,7 +316,7 @@
         <div class="mb-1.5 text-xs font-medium text-[var(--ll-muted)]">{{ t('contacts.ui.addresses') }}</div>
         <div v-for="(a, i) in form.addresses" :key="'fa'+i" class="mb-2 rounded-lg border border-[var(--ll-border)] p-2">
           <div class="mb-2 flex items-center justify-between gap-2">
-            <TextField v-model="a.type" :label="t('contacts.ui.type')" class="w-32" />
+            <Select :model-value="a.type || 'home'" :options="addressTypeItems" class="w-32" @update:model-value="a.type = String($event)" />
             <Btn variant="ghost" size="sm" icon="close" @click="form.addresses.splice(i,1)" />
           </div>
           <TextField v-model="a.street" :label="t('contacts.ui.street')" class="mb-2" />
@@ -514,7 +514,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import AddressMiniMap from '@spa/components/AddressMiniMap.vue';
 import AvatarCropModal from '@spa/components/AvatarCropModal.vue';
-import { phoneCountry } from '@spa/lib/phone-country';
+import { phoneCountry, formatPhone } from '@spa/lib/phone-country';
 import FlagIcon from '@spa/components/FlagIcon.vue';
 import { useContactsStore, type ContactRow, type ContactDetail, type ContactGroup, type DuplicateGroup, type DuplicateContact, type AddressBook } from '@spa/stores/contacts';
 import { useToast } from '@spa/composables/useToast';
@@ -549,6 +549,10 @@ const detail = ref<ContactDetail | null>(null);
 const editor = ref(false);
 const editing = ref(false);
 const saving = ref(false);
+// The contact's original BDAY exactly as parsed (may be year-less "--MMDD" or a
+// compact "YYYYMMDD" the date input can't hold) — preserved on save so editing
+// never wipes a birthday the <input type="date"> couldn't represent.
+const origBday = ref('');
 const avatarVersion = ref(0);
 
 type Field = { value: string; type?: string };
@@ -617,6 +621,17 @@ function fmtBday(raw: string): string {
     return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(loc, { month: 'long', day: 'numeric' });
   }
   return s;
+}
+// Normalize a raw vCard BDAY to the "YYYY-MM-DD" an <input type="date"> needs.
+// Accepts "YYYYMMDD", "YYYY-MM-DD" and a trailing time; returns "" for year-less
+// ("--MMDD") or unparseable forms the date input cannot hold (those are kept
+// verbatim via origBday on save instead of being wiped).
+function bdayForInput(raw: string): string {
+  const m = /^(\d{4})-?(\d{2})-?(\d{2})/.exec(raw.trim());
+  if (!m) return '';
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  if (y < 1 || mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+  return `${m[1]}-${m[2]}-${m[3]}`;
 }
 // Age in whole years from a full birth date (needs a year); null otherwise.
 function ageFrom(raw: string): number | null {
@@ -706,6 +721,12 @@ function typeLabel(raw?: string): string {
 }
 const emailTypeItems = computed(() => ['home', 'work', 'other'].map((k) => ({ title: t(`contacts.ui.type_${k}`), value: k })));
 const phoneTypeItems = computed(() => ['cell', 'home', 'work', 'voice', 'fax', 'main', 'other'].map((k) => ({ title: t(`contacts.ui.type_${k}`), value: k })));
+const addressTypeItems = computed(() => ['home', 'work', 'other'].map((k) => ({ title: t(`contacts.ui.type_${k}`), value: k })));
+// Reduce a raw vCard TYPE token to a known address key (home/work/other).
+function addrTypeKey(raw?: string): string {
+  const k = (raw ?? '').toLowerCase().split(/[,;\s]+/).find(Boolean) ?? '';
+  return k === 'home' || k === 'work' ? k : 'other';
+}
 
 let debTimer: ReturnType<typeof setTimeout> | undefined;
 function debouncedLoad() { clearTimeout(debTimer); debTimer = setTimeout(reload, 300); }
@@ -771,23 +792,29 @@ function openEdit() {
   const anns = Array.isArray(d.anniversaries) ? (d.anniversaries as Record<string, unknown>[]) : [];
   Object.assign(form, {
     book_id: d.book, first_name: str(d.first_name), last_name: str(d.last_name), org: str(d.org), title: str(d.title),
-    nickname: str(d.nickname), bday: str(d.bday), note: str(d.note),
+    nickname: str(d.nickname), bday: bdayForInput(str(d.bday)), note: str(d.note),
     emails: arr(d.emails).map((e) => ({ ...e })), phones: arr(d.phones).map((p) => ({ ...p })),
     urls: arr(d.urls).map((u) => ({ ...u })),
-    addresses: addrs.map((a) => ({ type: str(a.type), street: str(a.street), city: str(a.city), region: str(a.region), zip: str(a.zip), country: str(a.country) })),
+    addresses: addrs.map((a) => ({ type: addrTypeKey(str(a.type)), street: str(a.street), city: str(a.city), region: str(a.region), zip: str(a.zip), country: str(a.country) })),
     anniversaries: anns.map((a) => ({ date: str(a.date), label: str(a.label) })),
     custom_fields: cfs.map((f) => ({ label: str(f.label), value: str(f.value) })),
     related: anyArr(d.related).map((r) => ({ type: relationKey(r.type) || String(r.type ?? ''), value: String(r.name ?? r.value ?? '') })),
     group_ids: [...(d.group_ids ?? [])],
   });
+  origBday.value = str(d.bday);
   editor.value = true;
 }
 async function save() {
   saving.value = true;
   try {
+    // Preserve a year-less / compact birthday the date input couldn't hold: an
+    // empty form.bday only wipes the birthday when the original was itself empty
+    // or an editable full date.
+    const bday = form.bday !== '' ? form.bday
+      : (editing.value && bdayForInput(origBday.value) === '' ? origBday.value : '');
     const body: Record<string, unknown> = {
       book_id: form.book_id, first_name: form.first_name, last_name: form.last_name, org: form.org, title: form.title,
-      nickname: form.nickname, bday: form.bday, note: form.note,
+      nickname: form.nickname, bday, note: form.note,
       fn: [form.first_name, form.last_name].filter(Boolean).join(' ') || form.org,
       emails: form.emails.filter((e) => e.value), phones: form.phones.filter((p) => p.value),
       urls: form.urls.filter((u) => u.value),
