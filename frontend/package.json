@@ -33,7 +33,7 @@
     "dependencies": {
         "@alpinejs/intersect": "^3.15.12",
         "@noble/hashes": "2.2.0",
-        "@noble/post-quantum": "0.6.1",
+        "@noble/post-quantum": "0.7.0",
         "@vueuse/core": "^14.4.0",
         "@zxcvbn-ts/core": "4.1.2",
         "@zxcvbn-ts/language-common": "4.1.3",
