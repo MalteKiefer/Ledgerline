@@ -45,13 +45,19 @@ USER root
 # curl for the healthcheck. Then the PHP extensions the app needs, plus pcntl +
 # opcache for the Octane worker.
 RUN apk add --no-cache \
-      curl ca-certificates gnupg gzip \
+      curl ca-certificates gnupg gzip libcap \
       libheif libde265 x265-libs aom-libs imagemagick imagemagick-heic \
       ffmpeg \
       exiftool \
       postgresql18-client \
       tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-deu poppler-utils \
- && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip pcntl opcache
+ && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip pcntl opcache \
+ # The dunglas image sets cap_net_bind_service+ep on the frankenphp binary so it
+ # can bind :80/:443 as non-root. We bind :8080 (>1024) and run under
+ # no-new-privileges:true + cap_drop:[ALL] — the kernel then REFUSES to exec a
+ # file that carries file-capabilities ("Operation not permitted"). Strip them:
+ # the binary needs no privileged port.
+ && setcap -r /usr/local/bin/frankenphp 2>/dev/null || true
 
 COPY --from=composer /usr/bin/composer /usr/bin/composer
 
