@@ -33,6 +33,7 @@ return [
         'location_no_results' => 'Ничего не найдено',
         'location_on_map' => 'На карте',
         'location_clear' => 'Очистить место',
+        'timezone' => 'Часовой пояс',
         'starts' => 'Начало',
         'ends' => 'Окончание',
         'all_day' => 'Весь день',

@@ -212,6 +212,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue';
+import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { api, ApiError } from '@spa/api/client';
@@ -240,10 +241,7 @@ function toInput(iso: string, allDay: boolean): string {
 function localToIso(v: string): string { return new Date(v).toISOString(); }
 function formatDue(task: CalendarTodo): string {
   if (!task.due) return '';
-  const d = new Date(task.due);
-  return task.all_day
-    ? d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })
-    : d.toLocaleString(locale, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return task.all_day ? libDate(task.due) : libDateTime(task.due);
 }
 
 // --- priority mapping -------------------------------------------------------

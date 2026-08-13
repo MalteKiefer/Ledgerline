@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { api, getToken, setToken, ApiError } from '@spa/api/client';
+import { setDateTimePrefs, type DateTimePrefs } from '@spa/lib/datetime';
 
 export interface MeUser {
   id: number;
@@ -38,6 +39,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const me = await api.get<{ user: MeUser }>('/api/v1/me');
       user.value = me.user;
+      setDateTimePrefs(me.user.preferences as DateTimePrefs | undefined);
     } catch (e) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 419)) {
         user.value = null;

@@ -26,6 +26,10 @@ class PreferencesController extends Controller
             'temp' => ['sometimes', 'string', 'in:c,f'],
             'glucose' => ['sometimes', 'string', 'in:mgdl,mmoll'],
             'time_format' => ['sometimes', 'string', 'in:24h,12h'],
+            // Empty string clears the override (follow the browser); otherwise a
+            // valid IANA zone. date_format is a small preset list.
+            'timezone' => ['sometimes', 'nullable', 'string', 'in:'.implode(',', timezone_identifiers_list())],
+            'date_format' => ['sometimes', 'string', 'in:system,dmy,dmy_dot,mdy,ymd'],
             // Mail display prefs: always-load remote images default + send signature.
             'mail_load_remote' => ['sometimes', 'boolean'],
             'mail_signature' => ['sometimes', 'nullable', 'string', 'max:5000'],
@@ -41,12 +45,18 @@ class PreferencesController extends Controller
             'temp' => 'unit_temp',
             'glucose' => 'unit_glucose',
             'time_format' => 'time_format',
+            'date_format' => 'date_format',
         ];
         $update = [];
         foreach ($map as $key => $column) {
             if ($request->has($key)) {
                 $update[$column] = $request->string($key)->value();
             }
+        }
+        // Timezone: empty string clears the override (follow browser) → null.
+        if ($request->has('timezone')) {
+            $tz = trim($request->string('timezone')->value());
+            $update['timezone'] = $tz !== '' ? $tz : null;
         }
         if ($request->has('mail_load_remote')) {
             $update['mail_load_remote'] = $request->boolean('mail_load_remote');

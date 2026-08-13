@@ -187,7 +187,7 @@
             <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
               <button v-for="(tr, i) in memoriesData.trips" :key="'t'+i" class="group overflow-hidden rounded-xl border border-[var(--ll-border)] text-left" @click="openMemory(tr.photos)">
                 <div class="aspect-[4/3] bg-black/[0.06] dark:bg-white/10"><img v-if="tr.cover" :src="g.thumbUrl(tr.cover)" loading="lazy" class="h-full w-full object-cover transition group-hover:scale-105"></div>
-                <div class="p-2"><div class="truncate text-sm font-medium">{{ tripLabel(tr) }}</div><div class="text-xs text-[var(--ll-muted)]">{{ tr.count }} · {{ new Date(tr.from).toLocaleDateString() }}</div></div>
+                <div class="p-2"><div class="truncate text-sm font-medium">{{ tripLabel(tr) }}</div><div class="text-xs text-[var(--ll-muted)]">{{ tr.count }} · {{ fmtDate(tr.from) }}</div></div>
               </button>
             </div>
           </section>
@@ -702,7 +702,7 @@
             <div v-for="c in cmt.list" :key="c.id" class="group text-sm">
               <div class="flex items-baseline gap-2">
                 <span class="font-medium">{{ c.author ?? '—' }}</span>
-                <span class="text-xs text-[var(--ll-muted)]">{{ new Date(c.created_at).toLocaleDateString() }}</span>
+                <span class="text-xs text-[var(--ll-muted)]">{{ fmtDate(c.created_at) }}</span>
                 <button v-if="c.mine" class="ml-auto text-[var(--ll-muted)] opacity-0 hover:text-red-600 group-hover:opacity-100" @click="removeComment(c.id)"><Icon name="delete" :size="14" /></button>
               </div>
               <p class="whitespace-pre-wrap break-words">{{ c.body }}</p>
@@ -720,6 +720,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { fmtDate, fmtDateTime } from '@spa/lib/datetime';
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { trans as t } from 'laravel-vue-i18n';
@@ -975,11 +976,11 @@ function onFocus() { if (!document.hidden && !up.active && !showTrash.value && !
 
 function dayLabel(iso: string | null): string {
   if (!iso) return '';
-  try { return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }); } catch { return ''; }
+  return fmtDate(iso);
 }
 function fullDate(iso: string | null): string {
   if (!iso) return '';
-  try { return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch { return ''; }
+  return fmtDateTime(iso);
 }
 function fmtDuration(sec: number): string {
   const s = Math.max(0, Math.round(sec));

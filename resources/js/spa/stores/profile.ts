@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { api, ApiError } from '@spa/api/client';
+import { setDateTimePrefs } from '@spa/lib/datetime';
 
 export interface DisplayPreferences {
   unit_distance: 'km' | 'mi';
@@ -9,6 +10,8 @@ export interface DisplayPreferences {
   unit_temp: 'c' | 'f';
   unit_glucose: 'mgdl' | 'mmoll';
   time_format: '24h' | '12h';
+  timezone: string | null;
+  date_format: 'system' | 'dmy' | 'dmy_dot' | 'mdy' | 'ymd';
   mail_load_remote: boolean;
   mail_signature: string | null;
 }
@@ -87,11 +90,13 @@ export const useProfileStore = defineStore('profile', () => {
   async function loadPrefs() {
     const me = await api.get<{ user: { preferences?: DisplayPreferences } }>('/api/v1/me');
     prefs.value = me.user.preferences ?? null;
+    setDateTimePrefs(prefs.value);
   }
 
   async function savePrefs(patch: Partial<DisplayPreferences>) {
     await api.post('/api/v1/preferences', patch);
     prefs.value = { ...(prefs.value as DisplayPreferences), ...patch };
+    setDateTimePrefs(prefs.value);
   }
 
   async function setTheme(theme: 'light' | 'dark' | 'system') {

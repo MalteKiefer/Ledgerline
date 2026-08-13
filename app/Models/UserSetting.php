@@ -65,6 +65,8 @@ use Illuminate\Database\Eloquent\Model;
     'unit_temp',
     'unit_glucose',
     'time_format',
+    'timezone',
+    'date_format',
     'calendar_default_view',
     'calendar_week_start',
     // Mail archive reader display prefs (both default OFF): load remote content
@@ -118,6 +120,7 @@ class UserSetting extends Model
         'unit_temp' => 'c',
         'unit_glucose' => 'mgdl',
         'time_format' => '24h',
+        'date_format' => 'system',
         'calendar_default_view' => 'month',
         'calendar_week_start' => 1,
         'mail_load_remote' => false,
@@ -128,7 +131,7 @@ class UserSetting extends Model
      * The non-secret display preferences as a flat map for injection into the page
      * and the API (window.LLPrefs / GET /me). Presentation only — never data.
      *
-     * @return array{distance:string, elevation:string, weight:string, temp:string, glucose:string, time_format:string}
+     * @return array{distance:string, elevation:string, weight:string, temp:string, glucose:string, time_format:string, timezone:?string, date_format:string}
      */
     public function displayPrefs(): array
     {
@@ -139,6 +142,9 @@ class UserSetting extends Model
             'temp' => (string) ($this->unit_temp ?? 'c'),
             'glucose' => (string) ($this->unit_glucose ?? 'mgdl'),
             'time_format' => (string) ($this->time_format ?? '24h'),
+            // null timezone → the client follows the browser/system zone.
+            'timezone' => $this->timezone !== null ? (string) $this->timezone : null,
+            'date_format' => (string) ($this->date_format ?? 'system'),
             'mail_load_remote' => (bool) ($this->mail_load_remote ?? false),
             'notifications' => is_array($this->notification_prefs) ? $this->notification_prefs : [],
             'mail_signature' => $this->mail_signature !== null ? (string) $this->mail_signature : null,

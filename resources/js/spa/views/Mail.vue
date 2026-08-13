@@ -517,6 +517,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
+import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
@@ -587,8 +588,8 @@ function authTone(v: string): 'success' | 'warning' | 'error' | 'gray' {
   if (x === 'none' || x === 'neutral') return 'gray';
   return 'warning';
 }
-function fmtDate(iso: string | null) { return iso ? new Date(iso).toLocaleDateString() : ''; }
-function fmtDateTime(iso: string | null) { return iso ? new Date(iso).toLocaleString() : ''; }
+function fmtDate(iso: string | null) { return libDate(iso); }
+function fmtDateTime(iso: string | null) { return libDateTime(iso); }
 function fmtBytes(n: number) { if (!n) return '0 B'; const u = ['B', 'KB', 'MB', 'GB']; const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024))); return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${u[i]}`; }
 
 // --- Loading -----------------------------------------------------------------

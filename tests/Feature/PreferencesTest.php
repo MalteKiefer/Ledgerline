@@ -18,8 +18,26 @@ class PreferencesTest extends TestCase
         $prefs = UserSetting::for($user->id)->displayPrefs();
         $this->assertSame([
             'distance' => 'km', 'elevation' => 'm', 'weight' => 'kg', 'temp' => 'c', 'glucose' => 'mgdl',
-            'time_format' => '24h', 'mail_load_remote' => false, 'notifications' => [], 'mail_signature' => null,
+            'time_format' => '24h', 'timezone' => null, 'date_format' => 'system',
+            'mail_load_remote' => false, 'notifications' => [], 'mail_signature' => null,
         ], $prefs);
+    }
+
+    public function test_timezone_and_date_format_are_settable(): void
+    {
+        $user = $this->signIn();
+
+        $this->post(route('preferences.update'), ['timezone' => 'Asia/Tokyo', 'date_format' => 'dmy_dot'])->assertRedirect();
+        $prefs = UserSetting::for($user->id)->displayPrefs();
+        $this->assertSame('Asia/Tokyo', $prefs['timezone']);
+        $this->assertSame('dmy_dot', $prefs['date_format']);
+
+        // A blank timezone clears the override (follow the browser).
+        $this->post(route('preferences.update'), ['timezone' => ''])->assertRedirect();
+        $this->assertNull(UserSetting::for($user->id)->displayPrefs()['timezone']);
+
+        // A bogus zone is rejected.
+        $this->post(route('preferences.update'), ['timezone' => 'Mars/Olympus'])->assertSessionHasErrors('timezone');
     }
 
     public function test_a_single_preference_can_be_updated(): void
