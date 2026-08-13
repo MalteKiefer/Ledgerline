@@ -9,7 +9,7 @@
 #   ./scripts/deploy-pull.sh sha-1a2b3c4     # immutable per-commit tag
 #   ./scripts/deploy-pull.sh v1.560.0
 #
-# Migrations + caches run on app start (serversideup AUTORUN). Requires the box
+# Migrations + caches run in the image entrypoint on app start. Requires the box
 # to be able to PULL the image: either the GHCR package is public, or run once:
 #   echo <PAT-with-read:packages> | docker login ghcr.io -u <github-user> --password-stdin
 #

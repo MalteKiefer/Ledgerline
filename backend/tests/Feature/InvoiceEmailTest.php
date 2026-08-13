@@ -82,6 +82,24 @@ class InvoiceEmailTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['action' => 'invoice.emailed']);
     }
 
+    /**
+     * Octane-safety: the per-user company SMTP creds must not linger in the merged
+     * config after a send, or a persistent worker would carry one finance user's SMTP
+     * password (and mailer) into the next request. companyMailer() sets it; the send
+     * path must tear it back down.
+     */
+    public function test_company_mailer_config_is_torn_down_after_send(): void
+    {
+        $user = User::factory()->create();
+        $inv = $this->withPdf($this->invoice($user));
+        $this->configureSmtp();
+
+        $this->postJson(route('finance.invoices.email', $inv->id))->assertOk();
+
+        $this->assertNull(config('mail.mailers.company_smtp'));
+        $this->assertNull(config('mail.from.company_smtp'));
+    }
+
     public function test_explicit_recipient_overrides_customer_email(): void
     {
         $user = User::factory()->create();
