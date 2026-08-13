@@ -36,6 +36,14 @@ final class BackupManager
     public function run(BackupJob $job): BackupRun
     {
         $run = $job->runs()->create(['status' => 'running', 'started_at' => Carbon::now()]);
+
+        // Self-heal the work-dir leak: a run cleans its own dir in finally, but a
+        // worker KILLED mid-job (OOM, container recreate) never reaches it, leaving a
+        // multi-GB staging/archive dir behind. Prune sibling dirs older than 4h (a run
+        // finishes within the 3h job timeout, so anything older is definitely dead)
+        // before staging this run — otherwise they accumulate to hundreds of GB.
+        $this->pruneStaleWorkDirs();
+
         $workDir = storage_path('app/backup-tmp/'.Str::uuid()->toString());
         File::ensureDirectoryExists($workDir, 0700);
         // Fail loud + actionable instead of a cryptic repeated mkdir warning when
@@ -183,6 +191,27 @@ final class BackupManager
         }
 
         return $run->refresh();
+    }
+
+    /**
+     * Delete backup-tmp/<uuid> work dirs left behind by runs whose worker died
+     * mid-job (the finally cleanup never ran). Anything older than 4h is orphaned —
+     * a live run finishes within the 3h job timeout. Best-effort.
+     */
+    private function pruneStaleWorkDirs(): void
+    {
+        $base = storage_path('app/backup-tmp');
+        if (! is_dir($base)) {
+            return;
+        }
+        $cutoff = Carbon::now()->subHours(4)->getTimestamp();
+        foreach (File::directories($base) as $dir) {
+            $path = (string) $dir;
+            $mtime = @filemtime($path);
+            if ($mtime !== false && $mtime < $cutoff) {
+                File::deleteDirectory($path);
+            }
+        }
     }
 
     /** Full exception chain as a readable one-liner (root cause included). */
