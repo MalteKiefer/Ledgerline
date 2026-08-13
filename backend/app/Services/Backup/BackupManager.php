@@ -97,25 +97,35 @@ final class BackupManager
             // yet, so a fresh target does not fail the first backup.
             $this->destinations->ensureRoot($fs, $job->destination->driver, $job->destination->config ?? []);
 
-            // One RUN produces one timestamped BATCH folder holding one archive per
-            // selected source; GFS retention then rotates whole batches.
-            $batch = $prefix.'/'.Carbon::now()->format('Y-m-d_His');
+            // Two destination areas under the job prefix:
+            //   db/<ts>/database.sql.gz   — point-in-time DB dumps, GFS-rotated
+            //   mirror/<src>/<key>        — a LIVING file mirror per blob source
+            // Blob sources are MIRRORED (upload only new/changed objects, tracked in a
+            // remote ledger), never tarred: memory-flat, delta-only after the first
+            // sync, resumable if a worker dies, and — unlike an incremental-tar chain —
+            // retention can never orphan them. A 38 GB gallery costs one full first
+            // sync, then near-nothing per run. Only the DB dump is a rotated archive.
+            $ts = Carbon::now()->format('Y-m-d_His');
+            $dbBatch = null;
             // The fail-closed guard above already verified a passphrase exists when
             // encryption is on, so this is non-null in the encrypted case.
             $passphrase = $job->encrypt ? $job->effectivePassphrase() : null;
-            $incremental = $job->mode === 'incremental';
-            $sinceTs = $incremental ? $job->last_run_at?->getTimestamp() : null;
 
             $bytes = 0;
             $done = [];
             foreach ($job->effectiveSources() as $src) {
                 $sourceObj = $this->source($src);
-                // Incremental only narrows blob (disk-prefix) sources; the DB dump is
-                // always a full snapshot.
-                if ($sinceTs !== null && $sourceObj instanceof Sources\DiskArchiveSource && in_array($src, BackupJob::INCREMENTAL_SOURCES, true)) {
-                    $sourceObj->onlySince($sinceTs);
+
+                if ($sourceObj instanceof Sources\DiskArchiveSource) {
+                    $step('Mirroring '.$src.'…');
+                    $bytes += $this->mirrorSource($fs, $prefix, $src, $sourceObj->diskPrefix(), $passphrase, $step);
+                    $done[] = $src;
+
+                    continue;
                 }
-                $step('Building '.$src.($sinceTs !== null && in_array($src, BackupJob::INCREMENTAL_SOURCES, true) ? ' (incremental)' : '').' archive…');
+
+                // Database: full point-in-time dump into its own timestamped batch.
+                $step('Building '.$src.' dump…');
                 $artifact = $sourceObj->build($workDir);
                 $uploadPath = $artifact->path;
                 $extension = $artifact->extension;
@@ -128,11 +138,12 @@ final class BackupManager
                     $extension .= '.enc';
                 }
 
-                $filename = $batch.'/'.$src.'.'.$extension;
+                $dbBatch = $prefix.'/db/'.$ts;
+                $filename = $dbBatch.'/'.$src.'.'.$extension;
                 $step('Uploading '.$filename.'…');
                 $stream = fopen($uploadPath, 'rb');
                 if ($stream === false) {
-                    throw new RuntimeException('Could not open the staged archive for upload.');
+                    throw new RuntimeException('Could not open the staged dump for upload.');
                 }
                 try {
                     $fs->writeStream($filename, $stream);
@@ -145,16 +156,21 @@ final class BackupManager
                 @unlink($uploadPath);
                 $done[] = $src;
             }
-            $uploadedArchive = $batch; // the whole batch folder, removed on cancel
-            $step('Upload complete: '.implode(', ', $done).'.');
+            // Only the DB dump of THIS run is removable on cancel — the mirror is a
+            // living copy of valid backups and must never be torn down.
+            $uploadedArchive = $dbBatch;
+            $step('Backup complete: '.implode(', ', $done).'.');
 
-            $deleted = $this->pruneGfs($fs, $prefix, $job);
+            // Retention rotates the DB dump batches only (mirror has no snapshots).
+            $deleted = $this->pruneGfs($fs, $prefix.'/db', $job);
             $step($deleted > 0
-                ? sprintf('GFS retention: removed %d old batch(es).', $deleted)
+                ? sprintf('GFS retention: removed %d old DB dump(s).', $deleted)
                 : 'GFS retention: nothing to remove.');
 
-            $filename = $batch;
-            $summary = sprintf('%s → %s (%s)', implode('+', $done), $batch, Bytes::format($bytes));
+            // filename anchors DB restore/download; falls back to the mirror root so a
+            // mirror-only run (no DB source) still counts as a completed, restorable run.
+            $filename = $dbBatch ?? $prefix.'/mirror';
+            $summary = sprintf('%s (%s)', implode('+', $done), Bytes::format($bytes));
 
             // Log the completion directly (not via $step) so a cancel requested
             // at the very end can't flip an already-finished run to cancelled.
@@ -252,6 +268,151 @@ final class BackupManager
     }
 
     /**
+     * Mirror every object of a blob source to <prefix>/mirror/<key>, uploading only
+     * files that are new or changed since the last sync (tracked in a remote
+     * .ledger-<src>.json). Memory-flat (streams one object at a time), resumable (a
+     * killed run re-syncs only the not-yet-uploaded files next run), and free of any
+     * archive or delta chain — so a huge gallery never OOMs a worker and retention
+     * can never orphan it. Returns the bytes uploaded THIS run (the delta).
+     *
+     * The object key already carries its source prefix (e.g. "gallery/uuid/orig"),
+     * so all sources share one mirror/ tree and namespacing is automatic. Deleted
+     * local files are intentionally NOT removed from the mirror (a backup keeps
+     * copies; a local glitch must never wipe the offsite copy).
+     */
+    private function mirrorSource(Filesystem $fs, string $prefix, string $src, string $diskPrefix, ?string $passphrase, callable $step): int
+    {
+        $disk = BlobStore::disk();
+        $ledgerPath = $prefix.'/mirror/.ledger-'.$src.'.json';
+        $ledger = $this->readLedger($fs, $ledgerPath);
+        $enc = $passphrase !== null;
+
+        $uploaded = 0;
+        $changed = 0;
+        $skipped = 0;
+        foreach ($disk->allFiles($diskPrefix) as $key) {
+            if (! is_string($key) || $key === '') {
+                continue;
+            }
+            $size = (int) $disk->size($key);
+            $prev = $ledger[$key] ?? null;
+            if (is_array($prev) && (int) ($prev['size'] ?? -1) === $size && (bool) ($prev['enc'] ?? false) === $enc) {
+                $skipped++;
+
+                continue; // unchanged since the last sync
+            }
+
+            $remote = $prefix.'/mirror/'.$key;
+            if ($enc) {
+                $tmp = storage_path('app/backup-tmp/mirror-'.Str::uuid()->toString());
+                File::ensureDirectoryExists(dirname($tmp), 0700);
+                $plain = $this->stageLocal($disk, $key, $tmp.'.plain');
+                try {
+                    $this->cipher->encryptFile($plain, $tmp, (string) $passphrase);
+                    $this->streamUp($fs, $remote, $tmp);
+                    $uploaded += (int) (@filesize($tmp) ?: 0);
+                } finally {
+                    @unlink($plain);
+                    @unlink($tmp);
+                }
+            } else {
+                $in = $disk->readStream($key);
+                if (! is_resource($in)) {
+                    throw new RuntimeException('Could not read '.$key.' for mirror.');
+                }
+                try {
+                    $fs->writeStream($remote, $in);
+                } finally {
+                    if (is_resource($in)) {
+                        fclose($in);
+                    }
+                }
+                $uploaded += $size;
+            }
+
+            $ledger[$key] = ['size' => $size, 'enc' => $enc];
+            $changed++;
+            // Heartbeat (also a cancel checkpoint): persist the ledger before the
+            // possible cancel throw so a resume never re-uploads what's already up.
+            if ($changed % 250 === 0) {
+                $this->writeLedger($fs, $ledgerPath, $ledger);
+                $step(sprintf('Mirroring %s: %d uploaded (%s), %d unchanged…', $src, $changed, Bytes::format($uploaded), $skipped));
+            }
+        }
+        $this->writeLedger($fs, $ledgerPath, $ledger);
+        $step(sprintf('Mirror %s: %d uploaded (%s), %d unchanged.', $src, $changed, Bytes::format($uploaded), $skipped));
+
+        return $uploaded;
+    }
+
+    /** Stream a disk object to a local path (so the cipher, which works on paths, can encrypt it). */
+    private function stageLocal(\Illuminate\Contracts\Filesystem\Filesystem $disk, string $key, string $dst): string
+    {
+        $in = $disk->readStream($key);
+        $out = fopen($dst, 'wb');
+        if (! is_resource($in) || ! is_resource($out)) {
+            throw new RuntimeException('Could not stage '.$key.'.');
+        }
+        stream_copy_to_stream($in, $out);
+        fclose($in);
+        fclose($out);
+
+        return $dst;
+    }
+
+    /** Stream a local file up to the destination. */
+    private function streamUp(Filesystem $fs, string $remote, string $local): void
+    {
+        $s = fopen($local, 'rb');
+        if ($s === false) {
+            throw new RuntimeException('Could not open '.$local.' for upload.');
+        }
+        try {
+            $fs->writeStream($remote, $s);
+        } finally {
+            if (is_resource($s)) {
+                fclose($s);
+            }
+        }
+    }
+
+    /**
+     * Read a source's mirror ledger (key → {size, enc}); empty/corrupt is treated as
+     * "nothing mirrored yet" so the next run re-syncs everything (safe, idempotent).
+     *
+     * @return array<string, array{size: int, enc: bool}>
+     */
+    private function readLedger(Filesystem $fs, string $path): array
+    {
+        if (! $fs->fileExists($path)) {
+            return [];
+        }
+        try {
+            $raw = $fs->read($path);
+        } catch (\Throwable) {
+            return [];
+        }
+        $data = json_decode($raw, true);
+        if (! is_array($data)) {
+            return [];
+        }
+        $out = [];
+        foreach ($data as $k => $v) {
+            if (is_string($k) && is_array($v) && isset($v['size']) && is_numeric($v['size'])) {
+                $out[$k] = ['size' => (int) $v['size'], 'enc' => (bool) ($v['enc'] ?? false)];
+            }
+        }
+
+        return $out;
+    }
+
+    /** @param  array<string, array{size: int, enc: bool}>  $ledger */
+    private function writeLedger(Filesystem $fs, string $path, array $ledger): void
+    {
+        $fs->write($path, (string) json_encode($ledger));
+    }
+
+    /**
      * Grandfather-father-son retention over the timestamped batch folders: keep
      * the newest `daily` batches (son), plus one per distinct ISO week for
      * `weekly` weeks (father), plus one per distinct month for `monthly` months
@@ -342,71 +503,91 @@ final class BackupManager
     }
 
     /**
-     * Restore a blob source (files/invoices) from a batch: download the source
-     * archive, decrypt if needed, extract it back onto the source disk (additive
-     * overwrite). Returns the number of files written. DB restore is intentionally
-     * NOT one-click (download the dump + run backup:restore-db).
+     * Restore a blob source from its MIRROR back onto the live files disk (additive
+     * overwrite). Streams each mirrored object one at a time (memory-flat), decrypting
+     * per the ledger's enc flag. Returns the number of files written. DB restore is
+     * intentionally NOT one-click (download the dump + run backup:restore-db).
+     *
+     * $batchPath is accepted for signature compatibility but unused — the mirror lives
+     * at a stable location derived from the job, not inside a timestamped batch.
      */
     public function restoreBlobs(BackupJob $job, string $batchPath, string $source): int
     {
-        if (! in_array($source, ['files', 'invoices'], true)) {
-            throw new RuntimeException('Only files/invoices can be restored in-place.');
+        if ($source === 'database') {
+            throw new RuntimeException('Database restore is not one-click; use backup:restore-db.');
+        }
+        if (! in_array($source, ['files', 'invoices', 'gallery', 'mail', 'notes', 'avatars'], true)) {
+            throw new RuntimeException('Unknown blob source: '.$source);
         }
         if ($job->destination === null) {
             throw new RuntimeException('No destination.');
         }
         $fs = $this->destinations->make($job->destination);
-        $remote = $this->archiveIn($fs, $batchPath, $source);
-        if ($remote === null) {
-            throw new RuntimeException('Archive not found in batch: '.$source);
-        }
-        $enc = str_ends_with($remote, '.enc');
+        $prefix = (Str::slug($job->name) ?: 'backup').'-'.$job->id;
+        $mirrorRoot = $prefix.'/mirror/';
+        $ledger = $this->readLedger($fs, $prefix.'/mirror/.ledger-'.$source.'.json');
+        $disk = BlobStore::disk();
+        $pass = $job->effectivePassphrase();
 
-        $work = storage_path('app/backup-tmp/'.Str::uuid()->toString());
-        File::ensureDirectoryExists($work, 0700);
-
-        // RAII: the staged archive + its DECRYPTED plaintext must be shredded on
-        // every exit path (success, throw, wrong passphrase, corrupt archive), or
-        // a decrypted DB/PII dump lingers in storage/app/backup-tmp.
-        try {
-            $local = $work.'/'.$source.'.tar.gz'.($enc ? '.enc' : '');
-            $in = $fs->readStream($remote);
-            $out = fopen($local, 'wb');
-            if (! is_resource($in) || ! is_resource($out)) {
-                throw new RuntimeException('Could not stage the archive.');
+        $written = 0;
+        // The stored key already carries its source prefix (e.g. "gallery/uuid/orig"),
+        // so it maps straight back onto the disk.
+        foreach ($fs->listContents($mirrorRoot.$source, true) as $item) {
+            if (method_exists($item, 'isDir') ? $item->isDir() : ! $item->isFile()) {
+                continue;
             }
-            stream_copy_to_stream($in, $out);
-            fclose($in);
-            fclose($out);
+            $remote = $item->path();
+            $key = substr($remote, strlen($mirrorRoot));
+            if ($key === '' || str_contains($key, '..') || str_ends_with($key, '.json')) {
+                continue;
+            }
+            $enc = (bool) ($ledger[$key]['enc'] ?? false);
 
             if ($enc) {
-                $pass = $job->effectivePassphrase();
                 if ($pass === null) {
-                    throw new RuntimeException('Archive is encrypted but no passphrase is set.');
+                    throw new RuntimeException('Mirror is encrypted but no passphrase is set.');
                 }
-                $dec = $work.'/'.$source.'.tar.gz';
-                $this->cipher->decryptFile($local, $dec, $pass);
-                @unlink($local);
-                $local = $dec;
-            }
-
-            $disk = BlobStore::disk();
-            $phar = new \PharData($local);
-            $written = 0;
-            foreach (new \RecursiveIteratorIterator($phar) as $file) {
-                /** @var \PharFileInfo $file */
-                $rel = ltrim(str_replace('phar://'.$local, '', $file->getPathname()), '/');
-                $rel = preg_replace('#^[^/]+/#', '', $rel) ?? $rel; // drop the archive's top dir
-                if ($rel === '' || str_contains($rel, '..')) {
+                // RAII: staged ciphertext + decrypted plaintext are shredded on every
+                // exit path so no cleartext PII lingers in storage/app/backup-tmp.
+                $work = storage_path('app/backup-tmp/restore-'.Str::uuid()->toString());
+                File::ensureDirectoryExists(dirname($work), 0700);
+                try {
+                    $in = $fs->readStream($remote);
+                    $out = fopen($work.'.enc', 'wb');
+                    if (! is_resource($in) || ! is_resource($out)) {
+                        throw new RuntimeException('Could not stage '.$key.'.');
+                    }
+                    stream_copy_to_stream($in, $out);
+                    fclose($in);
+                    fclose($out);
+                    $this->cipher->decryptFile($work.'.enc', $work, $pass);
+                    $plain = fopen($work, 'rb');
+                    if (! is_resource($plain)) {
+                        throw new RuntimeException('Could not open decrypted '.$key.'.');
+                    }
+                    try {
+                        $disk->writeStream($key, $plain);
+                    } finally {
+                        fclose($plain);
+                    }
+                } finally {
+                    @unlink($work.'.enc');
+                    @unlink($work);
+                }
+            } else {
+                $in = $fs->readStream($remote);
+                if (! is_resource($in)) {
                     continue;
                 }
-                $disk->put($source.'/'.$rel, (string) file_get_contents($file->getPathname()));
-                $written++;
+                try {
+                    $disk->writeStream($key, $in);
+                } finally {
+                    fclose($in);
+                }
             }
-
-            return $written;
-        } finally {
-            File::deleteDirectory($work);
+            $written++;
         }
+
+        return $written;
     }
 }
