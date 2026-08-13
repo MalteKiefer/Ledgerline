@@ -22,6 +22,6 @@ class SettingsController extends Controller
             return redirect()->route('profile');
         }
 
-        return view('settings.index');
+        return view('spa');
     }
 }

@@ -136,7 +136,7 @@ class FilesController extends Controller
     {
         $uid = (int) $this->requireUser($request)->id;
 
-        return view('files.index', [
+        return view('spa', [
             'folders' => FileFolder::query()->orderBy('name')->get(),
             'files' => FileEntry::query()->with('labels')->orderByDesc('updated_at')->get(),
             'maxVersions' => $this->maxVersions($uid),

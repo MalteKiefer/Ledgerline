@@ -25,7 +25,7 @@ class ProfileController extends Controller
     {
         $user = $this->requireUser($request);
 
-        return view('profile.index', [
+        return view('spa', [
             'user' => $user,
             'sessionCount' => $this->sessionsFor($user)->count(),
             'deviceCount' => $user->tokens()->count(),
@@ -36,13 +36,13 @@ class ProfileController extends Controller
     /** Account identity (read-only, first-party account). */
     public function account(Request $request): View
     {
-        return view('profile.account', ['user' => $this->requireUser($request)]);
+        return view('spa', ['user' => $this->requireUser($request)]);
     }
 
     /** Paired mobile/CLI devices (loaded + kept live client-side). */
     public function devices(Request $request): View
     {
-        return view('profile.devices', ['deviceMax' => $this->deviceMax($this->requireUser($request))]);
+        return view('spa', ['deviceMax' => $this->deviceMax($this->requireUser($request))]);
     }
 
     /** Active web sessions + last sign-in. */
@@ -50,7 +50,7 @@ class ProfileController extends Controller
     {
         $user = $this->requireUser($request);
 
-        return view('profile.sessions', [
+        return view('spa', [
             'user' => $user,
             'sessions' => $this->sessionsFor($user)->all(),
         ]);
@@ -78,7 +78,7 @@ class ProfileController extends Controller
             }
         }
 
-        return view('profile.security', [
+        return view('spa', [
             'user' => $user,
             'enabled' => $enabled,
             'pending' => $pending,
@@ -92,7 +92,7 @@ class ProfileController extends Controller
     {
         $user = $this->requireUser($request);
 
-        return view('profile.appearance', [
+        return view('spa', [
             'theme' => UserSetting::for($user->id)->theme ?? 'system',
         ]);
     }
@@ -102,13 +102,13 @@ class ProfileController extends Controller
     {
         $this->requireUser($request);
 
-        return view('profile.export');
+        return view('spa');
     }
 
     /** Danger zone: delete account. */
     public function danger(Request $request): View
     {
-        return view('profile.danger', ['user' => $this->requireUser($request)]);
+        return view('spa', ['user' => $this->requireUser($request)]);
     }
 
     /**

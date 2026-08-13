@@ -26,7 +26,7 @@ class SecurityController extends Controller
         $s = AppSettings::current();
         $defaultMax = config('devices.max', 3);
 
-        return view('settings.security.edit', [
+        return view('spa', [
             'maxDevices' => $s->max_connected_devices ?: (is_numeric($defaultMax) ? (int) $defaultMax : 3),
         ]);
     }

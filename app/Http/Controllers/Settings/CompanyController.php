@@ -31,7 +31,7 @@ class CompanyController extends Controller
 
     public function edit(Request $request): View
     {
-        return view('settings.company.edit', ['s' => UserSetting::for($this->requireUser($request)->id)]);
+        return view('spa', ['s' => UserSetting::for($this->requireUser($request)->id)]);
     }
 
     public function update(Request $request): RedirectResponse

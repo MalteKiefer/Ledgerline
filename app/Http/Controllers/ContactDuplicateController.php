@@ -23,7 +23,7 @@ class ContactDuplicateController extends Controller
 {
     public function index(): View
     {
-        return view('contacts.duplicates');
+        return view('spa');
     }
 
     public function data(Request $request, ContactDuplicateFinder $finder): JsonResponse

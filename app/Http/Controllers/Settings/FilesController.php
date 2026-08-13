@@ -23,7 +23,7 @@ class FilesController extends Controller
     {
         $user = $this->requireUser($request);
 
-        return view('settings.files.edit', [
+        return view('spa', [
             'maxVersions' => UserSetting::for($user->id)->file_max_versions ?? 10,
         ]);
     }

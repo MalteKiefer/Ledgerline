@@ -11,7 +11,7 @@
         "dev:spa": "vite --config vite.spa.config.ts",
         "test:js": "vitest run",
         "typecheck": "vue-tsc --noEmit -p tsconfig.json",
-        "lint": "eslint resources/js"
+        "lint": "eslint resources/js/spa"
     },
     "devDependencies": {
         "@tailwindcss/forms": "^0.5.11",

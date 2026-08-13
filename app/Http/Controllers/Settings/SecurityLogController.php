@@ -34,7 +34,7 @@ class SecurityLogController extends Controller
         // Distinct actions for the filter dropdown (cheap — the set is small).
         $actions = AuditLog::query()->select('action')->distinct()->orderBy('action')->pluck('action')->all();
 
-        return view('settings.security-log.index', [
+        return view('spa', [
             'logs' => $query->with('actor')->paginate(self::PER_PAGE)->withQueryString(),
             'actions' => $actions,
             'filters' => [

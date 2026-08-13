@@ -13,7 +13,12 @@ namespace App\Support;
  */
 final class UploadLimits
 {
-    /** The smaller of PHP's upload_max_filesize and post_max_size, in bytes (0 = unlimited). */
+    /**
+     * The largest single uploaded file PHP will accept, in bytes (0 = unlimited).
+     * That is upper-bounded by upload_max_filesize; post_max_size bounds the whole
+     * request (file + fields) and is normally >= upload_max_filesize, so it only
+     * binds when it is the smaller of the two.
+     */
     public static function phpMaxBytes(): int
     {
         $upload = self::iniBytes('upload_max_filesize');
@@ -23,15 +28,14 @@ final class UploadLimits
         return $values === [] ? 0 : min($values);
     }
 
-    /** Clamp a requested max (in KiB) to what PHP will actually accept for one request. */
+    /** Clamp a requested max (in KiB) to what PHP will actually accept for one file. */
     public static function clampKb(int $requestedKb): int
     {
         $php = self::phpMaxBytes();
         if ($php <= 0) {
             return $requestedKb;
         }
-        // Leave a little headroom under post_max_size for the multipart envelope.
-        $phpKb = max(1, (int) floor(($php - 1024 * 1024) / 1024));
+        $phpKb = max(1, (int) floor($php / 1024));
 
         return $requestedKb > 0 ? min($requestedKb, $phpKb) : $phpKb;
     }

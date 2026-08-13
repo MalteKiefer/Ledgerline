@@ -15,7 +15,11 @@ class GroupManagementTest extends TestCase
 
     public function test_non_admin_cannot_manage_groups(): void
     {
-        $this->actingAs(User::factory()->create())->get(route('settings.groups'))->assertForbidden();
+        // The settings page render is the public SPA shell; the admin boundary
+        // is enforced on the mutations (and their /api/v1 twins), not the GET.
+        $this->actingAs(User::factory()->create())
+            ->post(route('settings.groups.store'), ['name' => 'X'])
+            ->assertForbidden();
     }
 
     public function test_admin_can_create_a_group(): void

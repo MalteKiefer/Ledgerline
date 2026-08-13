@@ -35,7 +35,7 @@ class UsersController extends Controller
     {
         $users = User::with('memberGroups')->orderBy('id')->get();
 
-        return view('settings.users.index', [
+        return view('spa', [
             'users' => $users,
             'groups' => Group::orderBy('name')->get(),
             'settings' => AppSettings::current(),

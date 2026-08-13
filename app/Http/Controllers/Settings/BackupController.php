@@ -38,7 +38,7 @@ class BackupController extends Controller
     {
         $this->reapStale();
 
-        return view('settings.backup.index', [
+        return view('spa', [
             'destinations' => BackupDestination::orderBy('name')->get(),
             // Eager-load runs so each job's statistics() works in memory (no N+1).
             'jobs' => BackupJob::with(['destination', 'runs'])->orderBy('name')->get(),

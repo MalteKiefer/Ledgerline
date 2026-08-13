@@ -1,23 +1,22 @@
-import globals from 'globals';
+import tsParser from '@typescript-eslint/parser';
+import tsPlugin from '@typescript-eslint/eslint-plugin';
 
-// Correctness-only lint (no style rules — Pint/Prettier are not run on this
-// codebase). The point is to catch undefined references (e.g. a helper that was
-// not imported after the app.js modularization) that the bundler wouldn't flag.
+// Correctness-only lint for the Vue SPA's TypeScript (stores/lib/api/router).
+// Style is not enforced here; the point is to catch unused symbols and obvious
+// mistakes that vue-tsc's typecheck (the primary gate) does not surface as
+// errors. .vue single-file components are covered by `npm run typecheck`.
 export default [
-    {
-        files: ['resources/js/**/*.js'],
-        languageOptions: {
-            ecmaVersion: 2023,
-            sourceType: 'module',
-            globals: {
-                ...globals.browser,
-                ...globals.worker,
-                Alpine: 'readonly',
-            },
-        },
-        rules: {
-            'no-undef': 'error',
-            'no-unused-vars': ['error', { vars: 'all', args: 'none', varsIgnorePattern: '^_', caughtErrors: 'none' }],
-        },
+  {
+    files: ['resources/js/spa/**/*.ts'],
+    languageOptions: {
+      parser: tsParser,
+      ecmaVersion: 2023,
+      sourceType: 'module',
     },
+    plugins: { '@typescript-eslint': tsPlugin },
+    rules: {
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', { args: 'none', varsIgnorePattern: '^_', caughtErrors: 'none' }],
+    },
+  },
 ];

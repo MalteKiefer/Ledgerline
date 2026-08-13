@@ -31,7 +31,7 @@ class PaperlessController extends Controller
     {
         $user = $this->requireUser($request);
 
-        return view('settings.paperless.edit', [
+        return view('spa', [
             'settings' => UserSetting::for($user->id),
             'counts' => $this->counts($user->id),
         ]);
