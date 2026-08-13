@@ -171,15 +171,15 @@ class VCardService
             'fn' => $this->s($card->FN ?? null),
             'last_name' => $this->part($n, 0),
             'first_name' => $this->part($n, 1),
-            'org' => $this->s($card->ORG ?? null),
+            'org' => $this->orgOf($card),
             'title' => $this->s($card->TITLE ?? null),
             'nickname' => $this->s($card->NICKNAME ?? null),
             'bday' => $this->s($card->BDAY ?? null),
             'anniversaries' => $this->anniversaries($card),
             'note' => $this->s($card->NOTE ?? null),
-            'emails' => $this->multi($this->iter($card->EMAIL ?? null)),
-            'phones' => $this->multi($this->iter($card->TEL ?? null)),
-            'urls' => $this->multi($this->iter($card->URL ?? null)),
+            'emails' => $this->multi($card, $this->iter($card->EMAIL ?? null)),
+            'phones' => $this->multi($card, $this->iter($card->TEL ?? null)),
+            'urls' => $this->multi($card, $this->iter($card->URL ?? null)),
             'categories' => $this->parts($card, 'CATEGORIES'),
             'photo' => $this->photoUri($card),
             'addresses' => $this->addresses($card),
@@ -201,7 +201,7 @@ class VCardService
             }
             $p = array_map(fn (mixed $x): string => $this->str($x), $this->arr($adr->getParts()));
             $entry = [
-                'type' => $this->s($adr['TYPE'] ?? null),
+                'type' => $this->typeOf($card, $adr),
                 'ext' => $this->part($p, 1),
                 'street' => $this->part($p, 2),
                 'city' => $this->part($p, 3),
@@ -229,14 +229,44 @@ class VCardService
      */
     private function splitPackedStreet(array $entry): array
     {
-        $street = (string) ($entry['street'] ?? '');
+        // Trim stray whitespace/newlines off every component first (Apple often
+        // leaves a trailing "\n" on an otherwise structured street).
+        foreach (['ext', 'street', 'city', 'region', 'zip', 'country'] as $k) {
+            $v = trim((string) ($entry[$k] ?? ''));
+            $entry[$k] = $v !== '' ? $v : null;
+        }
+
         $othersEmpty = ($entry['city'] ?? null) === null && ($entry['zip'] ?? null) === null
             && ($entry['region'] ?? null) === null && ($entry['country'] ?? null) === null;
-        if (! $othersEmpty || ! str_contains($street, "\n")) {
+
+        // The whole address may be packed (newline-separated) into either the
+        // street OR the extended component (Apple exports use ext). Only unpack
+        // when the granular fields are empty; otherwise keep the first line.
+        $street = (string) ($entry['street'] ?? '');
+        $ext = (string) ($entry['ext'] ?? '');
+        $blob = str_contains($street, "\n") ? $street : (str_contains($ext, "\n") ? $ext : '');
+
+        if (! $othersEmpty || $blob === '') {
+            // A structured street that still carries an embedded newline: keep
+            // only its first line (the rest duplicates the granular fields).
+            if (str_contains($street, "\n")) {
+                $entry['street'] = trim(explode("\n", $street)[0]) ?: null;
+            }
+            // A single-line street parked in the extended component with no
+            // street of its own (Apple quirk) → promote it to street.
+            if ($othersEmpty && ($entry['street'] ?? null) === null && ($entry['ext'] ?? null) !== null) {
+                $entry['street'] = $entry['ext'];
+                $entry['ext'] = null;
+            }
+
             return $entry;
         }
 
-        $lines = array_values(array_filter(array_map('trim', preg_split('/\r?\n/', $street) ?: [])));
+        if ($blob === $ext) {
+            $entry['ext'] = null;
+        }
+
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\r?\n/', $blob) ?: [])));
         if (count($lines) < 2) {
             $entry['street'] = $lines[0] ?? null;
 
@@ -318,11 +348,38 @@ class VCardService
         foreach ($this->iter($card->children()) as $sibling) {
             if ($sibling instanceof Property && $sibling->group === $group
                 && strtoupper($this->str($sibling->name)) === 'X-ABLABEL') {
-                return $this->s($sibling);
+                return $this->appleLabel($this->s($sibling));
             }
         }
 
         return null;
+    }
+
+    /** Unwrap Apple's "_$!<Work>!$_" label encoding to its inner word. */
+    private function appleLabel(?string $label): ?string
+    {
+        if ($label === null) {
+            return null;
+        }
+        if (preg_match('/^_\$!<(.+)>!\$_$/', $label, $m) === 1) {
+            return trim($m[1]);
+        }
+
+        return $label;
+    }
+
+    /**
+     * The TYPE of a multi-instance property: the TYPE parameter, or — for
+     * Apple's itemN-grouped exports that carry no TYPE — the group's X-ABLabel.
+     */
+    private function typeOf(VCard $card, Property $prop): ?string
+    {
+        $type = $this->s($prop['TYPE'] ?? null);
+        if ($type !== null) {
+            return $type;
+        }
+
+        return $prop->group ? $this->labelFor($card, (string) $prop->group) : null;
     }
 
     private function favorite(VCard $card): bool
@@ -388,7 +445,7 @@ class VCardService
             'fn' => $this->s($card->FN ?? null),
             'last_name' => $this->part($n, 0),
             'first_name' => $this->part($n, 1),
-            'org' => $this->s($card->ORG ?? null),
+            'org' => $this->orgOf($card),
             'emails' => $this->values($this->iter($card->EMAIL ?? null)),
             'phones' => $this->values($this->iter($card->TEL ?? null)),
             'has_photo' => $this->photoUri($card) !== null,
@@ -467,17 +524,49 @@ class VCardService
      * @param  iterable<mixed>  $props
      * @return list<array{value: string, type: ?string}>
      */
-    private function multi(iterable $props): array
+    private function multi(VCard $card, iterable $props): array
     {
         $out = [];
+        $seen = [];
         foreach ($props as $prop) {
             if (! $prop instanceof Property) {
                 continue;
             }
-            $out[] = ['value' => trim((string) $prop), 'type' => $this->s($prop['TYPE'] ?? null)];
+            $value = trim((string) $prop);
+            if ($value === '') {
+                continue;
+            }
+            $type = $this->typeOf($card, $prop);
+            // Drop duplicate values (Apple lists the same number twice) — but
+            // keep a typed instance over an earlier untyped one.
+            $norm = strtolower(preg_replace('/\s+/', '', $value) ?? $value);
+            if (isset($seen[$norm])) {
+                if ($type !== null && $out[$seen[$norm]]['type'] === null) {
+                    $out[$seen[$norm]]['type'] = $type;
+                }
+
+                continue;
+            }
+            $seen[$norm] = count($out);
+            $out[] = ['value' => $value, 'type' => $type];
         }
 
-        return $out;
+        return array_values($out);
+    }
+
+    /** Company (+ department) from a structured ORG, without trailing empties. */
+    private function orgOf(VCard $card): ?string
+    {
+        $prop = $card->ORG ?? null;
+        if (! $prop instanceof Property) {
+            return null;
+        }
+        $parts = array_values(array_filter(array_map(
+            fn (mixed $x): string => trim($this->str($x)),
+            $this->arr($prop->getParts()),
+        )));
+
+        return $parts !== [] ? implode(' · ', $parts) : null;
     }
 
     /**

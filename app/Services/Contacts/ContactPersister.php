@@ -42,7 +42,9 @@ class ContactPersister
             $this->vcards->denormalize($vcard),
         ))->save();
 
-        $book = $contact->addressBook;
+        // Explicit relation query (never an implicit lazy load, which is
+        // disabled app-wide and would throw during a bulk import).
+        $book = $contact->addressBook()->first();
         if ($book !== null) {
             $this->changes->record($book, $contact->uri, DavChangeOperation::Modified);
         }

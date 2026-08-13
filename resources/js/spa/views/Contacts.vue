@@ -606,11 +606,17 @@ type DetailItem = { date?: string; label?: string; value?: string; name?: string
 function anyArr(v: unknown): DetailItem[] { return Array.isArray(v) ? (v as DetailItem[]) : []; }
 // Format a vCard BDAY/anniversary date for display. Accepts YYYY-MM-DD,
 // YYYYMMDD and the year-less --MMDD form; falls back to the raw string.
+// Apple stores a year-less birthday with the sentinel year 1604.
+function isYearlessYear(y: number): boolean { return y === 1604; }
 function fmtBday(raw: string): string {
   const s = raw.trim();
   if (!s) return '';
   const loc = document.documentElement.lang || 'en';
   let m = /^(\d{4})-?(\d{2})-?(\d{2})/.exec(s);
+  if (m && isYearlessYear(Number(m[1]))) {
+    const d = new Date(2000, Number(m[2]) - 1, Number(m[3]));
+    return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(loc, { month: 'long', day: 'numeric' });
+  }
   if (m) {
     const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
     return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(loc, { year: 'numeric', month: 'long', day: 'numeric' });
@@ -630,13 +636,14 @@ function bdayForInput(raw: string): string {
   const m = /^(\d{4})-?(\d{2})-?(\d{2})/.exec(raw.trim());
   if (!m) return '';
   const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  if (isYearlessYear(y)) return ''; // year-less: date input can't hold it, keep via origBday
   if (y < 1 || mo < 1 || mo > 12 || d < 1 || d > 31) return '';
   return `${m[1]}-${m[2]}-${m[3]}`;
 }
 // Age in whole years from a full birth date (needs a year); null otherwise.
 function ageFrom(raw: string): number | null {
   const m = /^(\d{4})-?(\d{2})-?(\d{2})/.exec(raw.trim());
-  if (!m) return null;
+  if (!m || isYearlessYear(Number(m[1]))) return null;
   const b = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   if (Number.isNaN(b.getTime())) return null;
   const now = new Date();
@@ -707,12 +714,23 @@ function mapUrl(text: string): string { return `https://www.openstreetmap.org/se
 // value may carry several tokens ("home,voice"); noise like "internet" is dropped.
 const TYPE_KEYS = new Set(['home', 'work', 'cell', 'voice', 'fax', 'main', 'pager', 'text', 'pref', 'other']);
 const TYPE_IGNORE = new Set(['internet', 'parcel', 'dom', 'intl', 'postal']);
+// German / Apple label tokens → canonical vCard type keys.
+const TYPE_ALIASES: Record<string, string> = {
+  mobile: 'cell', mobil: 'cell', handy: 'cell',
+  arbeit: 'work', geschäftlich: 'work', geschaeftlich: 'work', büro: 'work', buero: 'work', business: 'work',
+  privat: 'home', zuhause: 'home', private: 'home', homepage: 'home',
+  zentrale: 'main', hauptnummer: 'main', telefax: 'fax',
+};
+function canonType(tok: string): string {
+  const k = tok.toLowerCase();
+  return TYPE_ALIASES[k] ?? k;
+}
 function typeLabel(raw?: string): string {
   const s = (raw ?? '').trim();
   if (!s) return '';
   const parts = s.split(/[,;\s]+/).filter(Boolean)
     .map((tok) => {
-      const k = tok.toLowerCase() === 'mobile' ? 'cell' : tok.toLowerCase();
+      const k = canonType(tok);
       if (TYPE_IGNORE.has(k)) return '';
       return TYPE_KEYS.has(k) ? t(`contacts.ui.type_${k}`) : tok.charAt(0).toUpperCase() + tok.slice(1);
     })
@@ -724,7 +742,8 @@ const phoneTypeItems = computed(() => ['cell', 'home', 'work', 'voice', 'fax', '
 const addressTypeItems = computed(() => ['home', 'work', 'other'].map((k) => ({ title: t(`contacts.ui.type_${k}`), value: k })));
 // Reduce a raw vCard TYPE token to a known address key (home/work/other).
 function addrTypeKey(raw?: string): string {
-  const k = (raw ?? '').toLowerCase().split(/[,;\s]+/).find(Boolean) ?? '';
+  const first = (raw ?? '').split(/[,;\s]+/).find(Boolean) ?? '';
+  const k = canonType(first);
   return k === 'home' || k === 'work' ? k : 'other';
 }
 

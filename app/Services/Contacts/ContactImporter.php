@@ -44,12 +44,28 @@ class ContactImporter
         // carry no UID (or a freshly regenerated one) updates the matching
         // contact instead of creating a duplicate.
         $byKey = [];
+        $byFallback = [];
+        $byName = [];
+        $nameCount = [];
         foreach (Contact::where('address_book_id', $book->id)->get() as $existing) {
             $emails = is_array($existing->emails) ? $existing->emails : [];
             $phones = is_array($existing->phones) ? $existing->phones : [];
             $key = $this->naturalKey($existing->fn, $emails, $phones);
             if ($key !== '' && ! isset($byKey[$key])) {
                 $byKey[$key] = $existing;
+            }
+            // Secondary key for contactless cards (no email/phone): name + org +
+            // birthday, so re-importing them still updates rather than dupes.
+            $fk = $this->fallbackKey($existing->fn, $existing->org, $existing->bday);
+            if ($fk !== '' && ! isset($byFallback[$fk])) {
+                $byFallback[$fk] = $existing;
+            }
+            // Last resort: an unambiguous full name (used only when a card has
+            // nothing else to match on AND the name is unique in the book).
+            $nm = strtolower(trim(preg_replace('/\s+/', ' ', (string) $existing->fn) ?? ''));
+            if ($nm !== '') {
+                $nameCount[$nm] = ($nameCount[$nm] ?? 0) + 1;
+                $byName[$nm] = $existing;
             }
         }
 
@@ -101,6 +117,24 @@ class ContactImporter
                 if ($existing === null && $key !== '' && isset($byKey[$key])) {
                     $existing = $byKey[$key];
                 }
+                // No email/phone to match on → fall back to name + org + birthday.
+                $fallback = '';
+                if ($existing === null && $key === '') {
+                    $fallback = $this->fallbackKey(
+                        $this->s($card->FN ?? null),
+                        $this->s($card->ORG ?? null),
+                        $this->s($card->BDAY ?? null),
+                    );
+                    if ($fallback !== '' && isset($byFallback[$fallback])) {
+                        $existing = $byFallback[$fallback];
+                    } elseif ($fallback === '') {
+                        // Nothing distinctive at all: match a unique existing name.
+                        $nm = strtolower(trim(preg_replace('/\s+/', ' ', (string) $this->s($card->FN ?? null)) ?? ''));
+                        if ($nm !== '' && ($nameCount[$nm] ?? 0) === 1 && isset($byName[$nm])) {
+                            $existing = $byName[$nm];
+                        }
+                    }
+                }
 
                 // Reuse the matched contact's UID so its vCard identity stays
                 // stable; otherwise mint one for a genuinely new card.
@@ -125,6 +159,13 @@ class ContactImporter
                     $this->syncGroups($contact, $card, $book->user_id);
                     if ($key !== '') {
                         $byKey[$key] = $contact;
+                    } elseif ($fallback !== '') {
+                        $byFallback[$fallback] = $contact;
+                    }
+                    $nm = strtolower(trim(preg_replace('/\s+/', ' ', (string) $this->s($card->FN ?? null)) ?? ''));
+                    if ($nm !== '') {
+                        $nameCount[$nm] = ($nameCount[$nm] ?? 0) + 1;
+                        $byName[$nm] = $contact;
                     }
                     $created++;
                 }
@@ -167,6 +208,41 @@ class ContactImporter
         }
 
         return $name.'|'.implode(',', $mails).'|'.implode(',', $tels);
+    }
+
+    /**
+     * Secondary dedup key for a card with no email/phone: name + org + the
+     * year-agnostic MM-DD birthday. Empty unless a birthday OR org distinguishes
+     * it, so we never merge two same-named contactless people on the name alone.
+     */
+    private function fallbackKey(?string $fn, ?string $org, ?string $bday): string
+    {
+        $name = strtolower(trim(preg_replace('/\s+/', ' ', (string) $fn) ?? ''));
+        // Normalise ORG the same way the denormalised column is built (drop the
+        // trailing structured-empty ";" parts) so raw-card vs stored match.
+        $oParts = array_filter(array_map('trim', explode(';', (string) $org)));
+        $o = strtolower(implode(' · ', $oParts));
+        $mmdd = $this->birthMonthDay((string) $bday);
+        if ($name === '' || ($o === '' && $mmdd === '')) {
+            return '';
+        }
+
+        return 'fb|'.$name.'|'.$o.'|'.$mmdd;
+    }
+
+    /** Reduce any BDAY form (YYYYMMDD, YYYY-MM-DD, --MMDD, MM-DD) to "MM-DD". */
+    private function birthMonthDay(string $bday): string
+    {
+        $digits = preg_replace('/\D/', '', $bday) ?? '';
+        if (str_starts_with(ltrim($bday), '--') || strlen($digits) === 4) {
+            $mmdd = substr($digits, 0, 4);
+        } elseif (strlen($digits) >= 8) {
+            $mmdd = substr($digits, 4, 4);
+        } else {
+            return '';
+        }
+
+        return strlen($mmdd) === 4 ? substr($mmdd, 0, 2).'-'.substr($mmdd, 2, 2) : '';
     }
 
     private function s(mixed $value): ?string
