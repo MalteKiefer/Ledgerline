@@ -6659,6 +6659,17 @@ paths:
         "200": { description: "Activity rows for the file.", content: { application/json: { schema: { type: object, properties: { activity: { type: array, items: { $ref: "#/components/schemas/FileActivity" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{file}/show:
+    get:
+      tags: [Files]
+      operationId: filesShowEntry
+      summary: A single file row (deep-open from global search)
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: The file., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /files/entries/{file}/info:
     get:
       tags: [Files]

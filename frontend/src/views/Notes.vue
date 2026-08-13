@@ -200,7 +200,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, nextTick } from 'vue';
+import { ref, computed, reactive, onMounted, nextTick, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { fmtDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, TextField, Select, Icon, Modal } from '@spa/ui';
@@ -268,7 +269,14 @@ function fmtDate(iso: string | null) {
   return fmtDateTime(iso);
 }
 
-onMounted(() => n.load());
+const route = useRoute();
+// Deep-open from global search (?open=<id>): open that note once loaded.
+watch(() => route.query.open, (v) => { const id = Number(v); if (id) void openNote(id); });
+onMounted(async () => {
+  await n.load();
+  const id = Number(route.query.open);
+  if (id) void openNote(id);
+});
 
 function selectFolder(id: number | null) { activeFolder.value = id; showTrash.value = false; searchHits.value = null; query.value = ''; }
 function toggleTag(tag: string) { activeTag.value = activeTag.value === tag ? null : tag; }

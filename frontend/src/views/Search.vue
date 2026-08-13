@@ -37,9 +37,12 @@ async function run() {
   } catch { if (mine === seq) groups.value = []; } finally { if (mine === seq) loading.value = false; }
 }
 
-function open(module: string) {
+function open(module: string, id?: number) {
   const m = MODULES[module];
-  if (m) router.push({ name: m.name, query: { q: q.value.trim() } });
+  if (!m) return;
+  // Deep-link: every module view opens the item from ?open=<id>; without an id
+  // (clicking the group header) it lands in the module filtered by the query.
+  router.push({ name: m.name, query: id !== undefined ? { open: String(id) } : { q: q.value.trim() } });
 }
 
 watch(() => route.query.q, (v) => { q.value = String(v ?? ''); run(); }, { immediate: true });
@@ -58,7 +61,10 @@ const total = () => groups.value.reduce((n, g) => n + g.items.length, 0);
       >
     </div>
 
-    <div v-if="loading" class="p-8 text-center text-sm text-[var(--ll-muted)]">…</div>
+    <div v-if="loading" class="flex items-center justify-center gap-2 p-8 text-sm text-[var(--ll-muted)]">
+      <Icon name="progress_activity" :size="20" class="animate-spin" />
+      <span>{{ t('search.searching') }}</span>
+    </div>
     <div v-else-if="q.trim().length < 2" class="p-8 text-center text-sm text-[var(--ll-muted)]">{{ t('search.hint') }}</div>
     <div v-else-if="total() === 0" class="p-8 text-center text-sm text-[var(--ll-muted)]">{{ t('search.empty') }}</div>
 
@@ -73,7 +79,7 @@ const total = () => groups.value.reduce((n, g) => n + g.items.length, 0);
         <button
           v-for="it in g.items" :key="g.module + it.id"
           class="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-black/[0.04] dark:hover:bg-white/5"
-          @click="open(g.module)"
+          @click="open(g.module, it.id)"
         >
           <div class="min-w-0 flex-1">
             <div class="truncate text-sm">{{ it.title }}</div>

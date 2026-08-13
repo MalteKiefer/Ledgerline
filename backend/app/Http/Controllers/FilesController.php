@@ -185,6 +185,14 @@ class FilesController extends Controller
         return response()->json(['activity' => $this->activityView($rows)]);
     }
 
+    /** A single file row (owner-scoped via route binding) — used to deep-open from search. */
+    public function showEntry(Request $request, FileEntry $file): JsonResponse
+    {
+        $this->requireUser($request);
+
+        return response()->json(['file' => $file->load('labels')]);
+    }
+
     /**
      * Rich info panel: extracted per-type metadata + checksum, dates, version history,
      * folder path, content snippet, sharing status, same-checksum duplicates and recent

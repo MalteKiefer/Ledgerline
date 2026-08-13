@@ -868,6 +868,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { fmtDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
@@ -954,9 +955,18 @@ async function refreshView() {
 }
 function onFocus() { if (!document.hidden) void refreshView(); }
 let pollTimer: ReturnType<typeof setInterval> | undefined;
+const route = useRoute();
+// Deep-open from global search (?open=<id>): fetch the file and show its preview.
+async function openById(id: number) {
+  try { preview.value = await s.getEntry(id); previewOpen.value = true; } catch { error(t('common.error')); }
+}
+watch(() => route.query.open, (v) => { const id = Number(v); if (id) void openById(id); });
+
 onMounted(() => {
   void s.load();
   void mnt.load();
+  const openId = Number(route.query.open);
+  if (openId) void openById(openId);
   window.addEventListener('focus', onFocus);
   document.addEventListener('visibilitychange', onFocus);
   pollTimer = setInterval(() => { if (!document.hidden && !uploadState.value.active && !conflict.value.show) void refreshView(); }, 20_000);

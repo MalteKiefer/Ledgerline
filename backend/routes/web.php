@@ -323,6 +323,7 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/files/activity', [FilesController::class, 'activity'])->middleware('throttle:600,1')->name('files.rel.activity');
         Route::get('/files/entries/{file}/activity', [FilesController::class, 'fileActivity'])->whereNumber('file')->middleware('throttle:600,1')->name('files.rel.entries.activity');
         Route::get('/files/entries/{file}/info', [FilesController::class, 'info'])->whereNumber('file')->middleware('throttle:600,1')->name('files.rel.entries.info');
+        Route::get('/files/entries/{file}/show', [FilesController::class, 'showEntry'])->whereNumber('file')->middleware('throttle:600,1')->name('files.rel.entries.show');
         Route::get('/files/entries', [FilesController::class, 'index'])->name('files.rel.index');
         Route::get('/files/search', [FileSearchController::class, 'search'])->middleware('throttle:120,1')->name('files.rel.search');
         Route::get('/files/labels', [FilesController::class, 'labels'])->name('files.rel.labels');

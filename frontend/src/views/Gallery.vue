@@ -720,6 +720,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { fmtDate, fmtDateTime } from '@spa/lib/datetime';
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -946,8 +947,17 @@ const edit = reactive({ open: false, saving: false, id: 0, version: 0, date: '',
 const bulk = reactive({ open: false, saving: false, count: 0, rotate: 0, mirror: false, date: '', time: '', place: '' as string, lat: null as number | null, lng: null as number | null });
 
 let thumbPoll: ReturnType<typeof setInterval> | null = null;
+const route = useRoute();
+// Deep-open from global search (?open=<id>): open the lightbox for that photo.
+function openPhotoById(id: number) {
+  const idx = current.value.findIndex((p) => p.id === id);
+  if (idx >= 0) viewer.value = idx;
+}
+watch(() => route.query.open, (v) => { const id = Number(v); if (id) void nextTick(() => openPhotoById(id)); });
+
 onMounted(() => {
-  void g.load(); void g.loadAlbums();
+  void g.load().then(() => { const id = Number(route.query.open); if (id) void nextTick(() => openPhotoById(id)); });
+  void g.loadAlbums();
   window.addEventListener('keydown', onKey); window.addEventListener('focus', onFocus);
   window.addEventListener('scroll', syncScrubber, { passive: true });
   window.addEventListener('resize', onScrubResize);
