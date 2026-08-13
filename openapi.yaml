@@ -1573,17 +1573,6 @@ components:
           items: { type: object, additionalProperties: true }
         version: { type: integer, minimum: 0, description: "Update only: optimistic concurrency (409 on mismatch)." }
 
-    BankConnection:
-      type: object
-      description: A user's link to one bank account via GoCardless (PSD2). Non-secret consent metadata only.
-      properties:
-        id: { type: integer }
-        institution_id: { type: string }
-        institution_name: { type: [string, "null"] }
-        payment_method_id: { type: [integer, "null"] }
-        status: { type: string, enum: [created, linked, expired, error] }
-        consent_expires_at: { type: [string, "null"], format: date-time }
-        last_synced_at: { type: [string, "null"], format: date-time }
     TransactionBulkRow:
       type: object
       required: [date, amount]
@@ -5336,114 +5325,6 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
-  /finance/bank-connections:
-    get:
-      tags: [Finance]
-      operationId: financeBankIndex
-      summary: List the user's bank connections (GoCardless / PSD2)
-      description: "Owner-scoped list of direct bank connections plus whether the workspace has configured GoCardless credentials. module:finance. Throttle 120/min."
-      security: [ { bearerAuth: [] } ]
-      responses:
-        "200": { description: Connections + config state., content: { application/json: { schema: { type: object, properties: { configured: { type: boolean }, connections: { type: array, items: { $ref: "#/components/schemas/BankConnection" } } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-    post:
-      tags: [Finance]
-      operationId: financeBankConnect
-      summary: Start a bank connection (create a GoCardless consent/requisition)
-      description: "Creates a PSD2 consent for the chosen bank and returns the SCA `link` the user must open. On return, call finalize then sync. module:finance. Throttle 30/min."
-      security: [ { bearerAuth: [] } ]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [institution_id, redirect]
-              properties:
-                institution_id: { type: string }
-                institution_name: { type: [string, "null"] }
-                payment_method_id: { type: [integer, "null"], description: "Owned account the pulled transactions are attributed to." }
-                redirect: { type: string, format: uri, description: "Where the bank returns the user after consent." }
-      responses:
-        "201": { description: Consent created., content: { application/json: { schema: { type: object, properties: { id: { type: integer }, link: { type: string, format: uri } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-        "502": { description: "Upstream (GoCardless) request failed." }
-  /finance/bank-connections/institutions:
-    get:
-      tags: [Finance]
-      operationId: financeBankInstitutions
-      summary: List banks for a country (GoCardless)
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: country, in: query, required: true, schema: { type: string, minLength: 2, maxLength: 2 }, description: "ISO 3166 alpha-2 (e.g. de)." } ]
-      responses:
-        "200": { description: Banks., content: { application/json: { schema: { type: object, properties: { institutions: { type: array, items: { type: object, properties: { id: { type: string }, name: { type: string }, bic: { type: [string, "null"] }, logo: { type: [string, "null"] } } } } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "422": { $ref: "#/components/responses/ValidationError" }
-  /finance/bank-connections/{bankConnection}/finalize:
-    post:
-      tags: [Finance]
-      operationId: financeBankFinalize
-      summary: Resolve a consent after the user returned from the bank
-      description: "Fetches the requisition, links the first account and sets a 90-day consent expiry. module:finance."
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: bankConnection, in: path, required: true, schema: { type: integer } } ]
-      responses:
-        "200": { description: Updated connection., content: { application/json: { schema: { $ref: "#/components/schemas/BankConnection" } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "502": { description: "Upstream request failed." }
-  /finance/bank-connections/{bankConnection}/sync:
-    post:
-      tags: [Finance]
-      operationId: financeBankSync
-      summary: Pull booked transactions into bank_transactions (sig-deduplicated)
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: bankConnection, in: path, required: true, schema: { type: integer } } ]
-      responses:
-        "200": { description: Import result., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, imported: { type: integer } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "422": { description: "Connection is not linked yet." }
-        "502": { description: "Upstream request failed." }
-  /finance/bank-connections/{bankConnection}:
-    delete:
-      tags: [Finance]
-      operationId: financeBankDisconnect
-      summary: Remove a bank connection
-      security: [ { bearerAuth: [] } ]
-      parameters: [ { name: bankConnection, in: path, required: true, schema: { type: integer } } ]
-      responses:
-        "204": { description: Removed. }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
-  /admin/finance/gocardless:
-    get:
-      tags: [Backup]
-      operationId: adminGocardlessShow
-      summary: Whether GoCardless credentials are configured (admin)
-      description: "Admin-gated (manage-global-settings). Returns only a boolean — the secrets are never emitted."
-      security: [ { bearerAuth: [] } ]
-      responses:
-        "200": { description: Config state., content: { application/json: { schema: { type: object, properties: { configured: { type: boolean } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-    put:
-      tags: [Backup]
-      operationId: adminGocardlessUpdate
-      summary: Set the workspace GoCardless credentials (admin, blank-preserve)
-      description: "Admin-gated. Stores the encrypted secret_id/secret_key; a blank field keeps the stored value. Throttle 20/min."
-      security: [ { bearerAuth: [] } ]
-      requestBody:
-        content:
-          application/json:
-            schema: { type: object, properties: { secret_id: { type: [string, "null"] }, secret_key: { type: [string, "null"] } } }
-      responses:
-        "200": { description: Saved., content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, configured: { type: boolean } } } } } }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
   /finance/transactions/{transaction}:
     put:
       tags: [Finance]
