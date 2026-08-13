@@ -84,9 +84,11 @@ COPY --from=assets --chown=www-data:www-data /build/frontend/dist ./public
 RUN composer dump-autoload --optimize --no-dev --classmap-authoritative \
  && php artisan package:discover --ansi \
  # FrankenPHP/Caddy state dirs + the app tree must be writable by www-data (82),
- # which owns the app-storage volume — so no root/su-exec at runtime.
+ # which owns the app-storage volume — so no root/su-exec at runtime. The php
+ # conf.d dir too: the entrypoint drops a per-service memory_limit override there
+ # (worker → 2048M), and www-data cannot write a root-owned conf.d otherwise.
  && mkdir -p /data /config \
- && chown -R www-data:www-data /data /config /var/www/html/storage /var/www/html/bootstrap/cache
+ && chown -R www-data:www-data /data /config /usr/local/etc/php/conf.d /var/www/html/storage /var/www/html/bootstrap/cache
 
 USER www-data
 EXPOSE 8080
