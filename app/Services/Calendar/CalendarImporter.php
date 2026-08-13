@@ -39,6 +39,10 @@ class CalendarImporter
     {
         $created = $updated = $skipped = 0;
 
+        // The source calendar declares its VTIMEZONEs once at the top level; keep
+        // them so each extracted event can carry the definitions its TZIDs need.
+        $zones = $this->events->timezones($ics);
+
         foreach ($this->events->parseCalendarStream($ics) as $vevent) {
             try {
                 $rawUid = $vevent->UID ?? null;
@@ -50,6 +54,11 @@ class CalendarImporter
                 }
 
                 $wrapper = new VCalendar;
+                foreach ($this->events->referencedTzids($vevent) as $tzid) {
+                    if (isset($zones[$tzid])) {
+                        $wrapper->add(clone $zones[$tzid]);
+                    }
+                }
                 $wrapper->add(clone $vevent);
                 $serialized = $wrapper->serialize();
                 $eventIcs = is_string($serialized) ? $serialized : '';

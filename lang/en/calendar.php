@@ -97,6 +97,7 @@ return [
         'today' => 'Today',
         'no_events' => 'No events',
         'import' => 'Import .ics',
+        'importing' => 'Importing…',
         'export' => 'Export .ics',
         'import_done' => ':created added, :updated updated, :skipped skipped',
         'week_start' => 'Week starts on',

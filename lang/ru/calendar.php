@@ -97,6 +97,7 @@ return [
         'today' => 'Сегодня',
         'no_events' => 'Нет событий',
         'import' => 'Импорт .ics',
+        'importing' => 'Импорт…',
         'export' => 'Экспорт .ics',
         'import_done' => ':created добавлено, :updated обновлено, :skipped пропущено',
         'week_start' => 'Неделя начинается с',

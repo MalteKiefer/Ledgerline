@@ -9,6 +9,7 @@ use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use DateTimeZone;
 use Illuminate\Support\Str;
+use Sabre\VObject\Component;
 use Sabre\VObject\Component\VAlarm;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Component\VEvent;
@@ -559,6 +560,55 @@ class CalendarEventService
         }
 
         return $out;
+    }
+
+    /**
+     * VTIMEZONE components of a calendar keyed by their TZID, so an event
+     * extracted from a multi-event .ics can carry the definitions its TZID
+     * references need (Apple exports declare them once at the top level).
+     *
+     * @return array<string, Component>
+     */
+    public function timezones(string $ics): array
+    {
+        $cal = $this->readCalendar($ics);
+        if ($cal === null) {
+            return [];
+        }
+        $out = [];
+        foreach ($this->iter($cal->select('VTIMEZONE')) as $tz) {
+            if ($tz instanceof Component) {
+                $id = $this->s($tz->TZID ?? null);
+                if ($id !== null && ! isset($out[$id])) {
+                    $out[$id] = $tz;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The distinct TZIDs a single event references (DTSTART/DTEND/RECURRENCE-ID/
+     * EXDATE TZID parameters).
+     *
+     * @return list<string>
+     */
+    public function referencedTzids(VEvent $event): array
+    {
+        $ids = [];
+        foreach (['DTSTART', 'DTEND', 'RECURRENCE-ID', 'EXDATE'] as $name) {
+            foreach ($this->iter($event->select($name)) as $prop) {
+                if ($prop instanceof Property) {
+                    $tzid = $this->s($prop['TZID'] ?? null);
+                    if ($tzid !== null && ! in_array($tzid, $ids, true)) {
+                        $ids[] = $tzid;
+                    }
+                }
+            }
+        }
+
+        return $ids;
     }
 
     /** Read the calendar as a raw VCALENDAR (forgiving), or null when unreadable. */
