@@ -51,8 +51,12 @@ jobs:
         with:
           node-version: 24
           cache: yarn
+          # The SPA (and its yarn.lock) lives in frontend/ after the repo split;
+          # setup-node's cache otherwise looks for a lock at the repo root.
+          cache-dependency-path: frontend/yarn.lock
 
       - name: yarn audit (runtime deps)
+        working-directory: frontend
         run: |
           yarn install --frozen-lockfile --non-interactive
           # Blocking, like composer audit: a runtime advisory fails the build
