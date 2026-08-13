@@ -806,7 +806,11 @@ class FinanceController extends Controller
             return response()->json(['error' => 'no_smtp'], 422);
         }
 
-        Mail::mailer($mailer)->to($to)->send(new InvoiceMail($invoice));
+        try {
+            Mail::mailer($mailer)->to($to)->send(new InvoiceMail($invoice));
+        } finally {
+            $this->forgetCompanyMailer();
+        }
 
         $sentAt = Carbon::now();
         $invoice->forceFill(['sent_at' => $sentAt])->saveQuietly();
@@ -855,7 +859,11 @@ class FinanceController extends Controller
         }
 
         $level = (int) $invoice->reminder_count + 1;
-        Mail::mailer($mailer)->to($to)->send(new InvoiceReminderMail($invoice, $level));
+        try {
+            Mail::mailer($mailer)->to($to)->send(new InvoiceReminderMail($invoice, $level));
+        } finally {
+            $this->forgetCompanyMailer();
+        }
 
         $now = Carbon::now();
         $invoice->forceFill(['reminded_at' => $now, 'reminder_count' => $level])->saveQuietly();
@@ -927,6 +935,17 @@ class FinanceController extends Controller
         ]);
 
         return 'company_smtp';
+    }
+
+    /**
+     * Tear the per-user runtime company mailer back out of the merged config after
+     * a send (mirrors MailSender's `finally`). Under classic FPM this just keeps the
+     * SMTP password from lingering in-process; under Octane's persistent worker it is
+     * REQUIRED so one finance user's SMTP creds never survive into the next request.
+     */
+    private function forgetCompanyMailer(): void
+    {
+        config(['mail.mailers.company_smtp' => null, 'mail.from.company_smtp' => null]);
     }
 
     /** Render a number template (YYYY/YY/MM/DD + a run of N's → zero-padded seq). */
