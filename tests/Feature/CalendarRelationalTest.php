@@ -32,6 +32,38 @@ class CalendarRelationalTest extends TestCase
         ]);
     }
 
+    public function test_ics_import_dedupes_and_carries_timezone_under_prevented_lazy_loading(): void
+    {
+        // The bulk-update path must not lazy-load the calendar relation (disabled
+        // app-wide) or every re-imported event is silently skipped.
+        \Illuminate\Database\Eloquent\Model::preventLazyLoading(true);
+        try {
+            $user = $this->signIn();
+            $calendar = $this->calendar($user->id);
+            $ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//EN\r\n"
+                ."BEGIN:VTIMEZONE\r\nTZID:Europe/Berlin\r\nBEGIN:STANDARD\r\nDTSTART:19701025T030000\r\n"
+                ."TZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nTZNAME:CET\r\nEND:STANDARD\r\n"
+                ."BEGIN:DAYLIGHT\r\nDTSTART:19700329T020000\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\nTZNAME:CEST\r\nEND:DAYLIGHT\r\nEND:VTIMEZONE\r\n"
+                ."BEGIN:VEVENT\r\nUID:evt-1\r\nSUMMARY:Termin\r\nDTSTART;TZID=Europe/Berlin:20260429T090000\r\n"
+                ."DTEND;TZID=Europe/Berlin:20260429T100000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+            $this->post(route('calendar.import'), ['calendar_id' => $calendar->id, 'file' => UploadedFile::fake()->createWithContent('c.ics', $ics)])
+                ->assertOk()->assertJson(['created' => 1]);
+            $this->post(route('calendar.import'), ['calendar_id' => $calendar->id, 'file' => UploadedFile::fake()->createWithContent('c.ics', $ics)])
+                ->assertOk()->assertJson(['created' => 0, 'updated' => 1, 'skipped' => 0]);
+            $this->assertDatabaseCount('calendar_events', 1);
+
+            $event = CalendarEvent::firstOrFail();
+            // The referenced VTIMEZONE is carried into the stored event, and the
+            // TZID start is denormalised to the correct UTC instant (09:00 CEST → 07:00Z).
+            $this->assertStringContainsString('BEGIN:VTIMEZONE', $event->ics);
+            $this->assertStringContainsString('Europe/Berlin', $event->ics);
+            $this->assertSame('2026-04-29 07:00:00', $event->dtstart?->utc()->format('Y-m-d H:i:s'));
+        } finally {
+            \Illuminate\Database\Eloquent\Model::preventLazyLoading(false);
+        }
+    }
+
     public function test_store_creates_an_event_and_bumps_the_sync_token(): void
     {
         $user = $this->signIn();

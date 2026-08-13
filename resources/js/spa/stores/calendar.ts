@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { api } from '@spa/api/client';
+import { api, uploadWithProgress } from '@spa/api/client';
 
 // A calendar collection (mirrors AddressBook in stores/contacts.ts).
 export interface CalendarCol {
@@ -162,11 +162,11 @@ export const useCalendarStore = defineStore('calendar', () => {
   const geoSearch = (q: string) =>
     api.get<{ results: GeoResult[] }>(`/api/v1/geo/search?q=${encodeURIComponent(q)}`).then((r) => r.results);
 
-  function importIcs(file: File, calendarId: string) {
+  function importIcs(file: File, calendarId: string, onProgress?: (fraction: number) => void) {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('calendar_id', calendarId);
-    return api.upload<CalImportResult>('/api/v1/calendar/import', fd);
+    return uploadWithProgress<CalImportResult>('/api/v1/calendar/import', fd, onProgress);
   }
 
   // Path to the .ics export; the view wraps this with api.streamUrl so the

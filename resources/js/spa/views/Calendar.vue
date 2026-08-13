@@ -1,5 +1,22 @@
 <template>
   <div class="flex min-h-[calc(100vh-120px)] flex-col gap-4 md:flex-row">
+    <!-- Import progress modal (teleported so it sits above all page content) -->
+    <Teleport to="body">
+      <div v-show="importState.active" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/30">
+        <div class="w-80 max-w-[90%] rounded-xl bg-[var(--ll-elevated)] px-6 py-5 shadow-xl">
+          <div class="flex items-center gap-2 text-sm font-medium">
+            <Icon name="upload" :size="20" class="text-primary-500" />
+            {{ t('calendar.ui.importing') }}<span class="ml-auto tabular-nums text-[var(--ll-muted)]">{{ importState.done }} / {{ importState.total }}</span>
+          </div>
+          <div class="mt-1 truncate text-xs text-[var(--ll-muted)]">{{ importState.name }}</div>
+          <div class="mt-3 h-2 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/10">
+            <div class="h-full rounded-full bg-primary-500 transition-all" :style="{ width: importPct + '%' }" />
+          </div>
+          <div class="mt-1 text-right text-xs tabular-nums text-[var(--ll-muted)]">{{ importPct }}%</div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Calendars rail -->
     <Card body-class="p-0" class="w-full shrink-0 self-start md:w-[240px]">
       <div class="p-3">
@@ -315,7 +332,7 @@
       <label class="block">
         <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('calendar.ui.import') }}</span>
         <input
-          type="file" accept=".ics,text/calendar"
+          type="file" accept=".ics,text/calendar" multiple
           class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] file:mr-3 file:rounded-md file:border-0 file:bg-primary-500/10 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-600 dark:file:text-primary-300"
           @change="onImportFile"
         >
@@ -323,7 +340,7 @@
     </div>
     <template #footer>
       <Btn variant="ghost" @click="importModal = false">{{ t('common.cancel') }}</Btn>
-      <Btn variant="solid" :loading="importing" :disabled="!importFile || !importCalId" @click="runImport">{{ t('calendar.ui.import') }}</Btn>
+      <Btn variant="solid" :loading="importing" :disabled="!importFiles.length || !importCalId" @click="runImport">{{ t('calendar.ui.import') }}</Btn>
     </template>
   </Modal>
 
@@ -841,20 +858,30 @@ async function removeCalendar(c: CalendarCol): Promise<void> {
 // --- import / export --------------------------------------------------------
 const importModal = ref(false);
 const importCalId = ref('');
-const importFile = ref<File | null>(null);
+const importFiles = ref<File[]>([]);
 const importing = ref(false);
+// Byte-level upload progress for the .ics import (Apple exports are large).
+const importState = reactive({ active: false, name: '', done: 0, total: 0, frac: 0 });
+const importPct = computed(() => (importState.total ? Math.min(100, Math.round(((importState.done + importState.frac) / importState.total) * 100)) : 0));
 const exportHref = computed(() => api.streamUrl(store.exportUrl()));
-function openImport(): void { importFile.value = null; importCalId.value = store.calendars[0]?.id ?? ''; importModal.value = true; }
-function onImportFile(ev: Event): void { const input = ev.target as HTMLInputElement; importFile.value = input.files?.[0] ?? null; }
+function openImport(): void { importFiles.value = []; importCalId.value = store.calendars[0]?.id ?? ''; importModal.value = true; }
+function onImportFile(ev: Event): void { const input = ev.target as HTMLInputElement; importFiles.value = input.files ? Array.from(input.files) : []; }
 async function runImport(): Promise<void> {
-  if (!importFile.value || !importCalId.value) return;
+  if (!importFiles.value.length || !importCalId.value) return;
+  importModal.value = false;
   importing.value = true;
+  Object.assign(importState, { active: true, done: 0, total: importFiles.value.length, frac: 0, name: importFiles.value[0]?.name ?? '' });
   try {
-    const r = await store.importIcs(importFile.value, importCalId.value);
-    importModal.value = false;
+    let created = 0; let updated = 0; let skipped = 0;
+    for (const f of importFiles.value) {
+      importState.name = f.name; importState.frac = 0;
+      const r = await store.importIcs(f, importCalId.value, (fraction) => { importState.frac = fraction; });
+      created += r.created; updated += r.updated; skipped += r.skipped;
+      importState.done++; importState.frac = 0;
+    }
     await reloadRange();
-    success(t('calendar.ui.import_done', { created: String(r.created), updated: String(r.updated), skipped: String(r.skipped) }));
-  } catch { error(t('common.error')); } finally { importing.value = false; }
+    success(t('calendar.ui.import_done', { created: String(created), updated: String(updated), skipped: String(skipped) }));
+  } catch { error(t('common.error')); } finally { importing.value = false; importState.active = false; }
 }
 
 // --- day overflow -----------------------------------------------------------

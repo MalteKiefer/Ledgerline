@@ -43,7 +43,9 @@ class CalendarEventPersister
             $this->events->denormalize($ics),
         ))->save();
 
-        $calendar = $event->calendar;
+        // Explicit relation query — never an implicit lazy load, which is
+        // disabled app-wide and would throw during a bulk import.
+        $calendar = $event->calendar()->first();
         if ($calendar !== null) {
             $this->changes->record($calendar, $event->uri, DavChangeOperation::Modified);
         }
