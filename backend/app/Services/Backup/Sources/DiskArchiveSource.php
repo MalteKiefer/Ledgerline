@@ -121,9 +121,26 @@ abstract class DiskArchiveSource implements BackupSource
         }
 
         // Pass the file list via a temp list file (-T) so a huge set never hits an
-        // argv length limit and tar streams it directly.
+        // argv length limit and tar streams it directly. Each entry is prefixed with
+        // ./ so a key can never be read as a tar option (argv-flag smuggling), and any
+        // key with a newline/CR/NUL or a .. segment is dropped (would corrupt the list
+        // or escape the root). Keys are server-generated UUID paths, so this is
+        // defence-in-depth, not an expected case.
+        $safe = [];
+        foreach ($keys as $k) {
+            if ($k === '' || preg_match('/[\r\n\0]/', $k) === 1 || str_contains($k, '..') || str_starts_with($k, '/')) {
+                continue;
+            }
+            $safe[] = './'.$k;
+        }
+        if ($safe === []) {
+            // Everything filtered out (shouldn't happen) → treat as empty.
+            $this->tarKeys($root, [], $gzPath, $workDir);
+
+            return;
+        }
         $listFile = $workDir.'/.tarlist-'.$this->name();
-        file_put_contents($listFile, implode("\n", $keys)."\n");
+        file_put_contents($listFile, implode("\n", $safe)."\n");
         try {
             $out = BinaryProcess::run(['tar', '-czf', $gzPath, '-C', $root, '-T', $listFile], self::TAR_TIMEOUT);
         } finally {
