@@ -6,7 +6,9 @@
     "packageManager": "yarn@1.22.22",
     "scripts": {
         "build": "vite build",
+        "build:spa": "vite build --config vite.spa.config.ts",
         "dev": "vite",
+        "dev:spa": "vite --config vite.spa.config.ts",
         "test:js": "vitest run",
         "typecheck": "vue-tsc --noEmit -p tsconfig.json",
         "lint": "eslint resources/js"

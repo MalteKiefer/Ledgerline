@@ -141,7 +141,11 @@ const open = reactive<Record<string, boolean>>({ finance: true, settings: true }
 
 const avatarUrl = computed(() => (auth.user?.has_avatar ? api.streamUrl(`/api/v1/avatar?v=${avatarBust.value}`) : ''));
 const initials = computed(() => (auth.user?.name ?? '?').slice(0, 1).toUpperCase());
-const version = document.querySelector('meta[name="ll-version"]')?.getAttribute('content') || '';
+// Standalone build injects the version at build time (VITE_APP_VERSION); the
+// same-origin Blade build falls back to the <meta name="ll-version"> tag.
+const version = (import.meta.env.VITE_APP_VERSION as string | undefined)
+  || document.querySelector('meta[name="ll-version"]')?.getAttribute('content')
+  || '';
 
 interface NavChild { to: string; label: string }
 interface NavItem { key?: string; to?: string; label: string; icon?: string; children?: NavChild[] }

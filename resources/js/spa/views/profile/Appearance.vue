@@ -41,6 +41,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
 import { trans as t, loadLanguageAsync } from 'laravel-vue-i18n';
+import { persistLocale } from '@spa/plugins/i18n';
 import { Card, Select } from '@spa/ui';
 import { useAuthStore } from '@spa/stores/auth';
 import { useProfileStore, type DisplayPreferences } from '@spa/stores/profile';
@@ -110,6 +111,7 @@ async function onTheme(v: string) {
 
 async function onLocale(v: string) {
   await loadLanguageAsync(v);
+  persistLocale(v); // client-side persistence (standalone-independent)
   try { await p.setLocale(v); } catch { /* non-fatal */ }
 }
 </script>
