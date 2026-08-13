@@ -18,9 +18,11 @@ class RunBackupJob implements ShouldQueue
 {
     use Queueable;
 
-    /** The first mirror sync of a large blob set (e.g. a 38 GB gallery) can upload for
-     *  a while; give it room but never overlap the same job. Later runs are delta-only. */
-    public int $timeout = 10800;
+    /** The first mirror sync of a large blob set (e.g. a 40+ GB gallery over SFTP) can
+     *  take many hours; give it generous room but never overlap the same job. It is
+     *  resumable, so even a timeout here just continues next run — but 8h lets the
+     *  initial full complete in one pass. Later runs are delta-only (minutes). */
+    public int $timeout = 28800;
 
     public function __construct(public int $backupJobId) {}
 
