@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Support\RequestMemo;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
@@ -194,18 +195,14 @@ class UserSetting extends Model
     }
 
     /** The settings row for a user, creating defaults on first use. Memoised in
-     *  the container (per-request in prod, reset between tests) since the layout
+     *  RequestMemo (flushed per Octane request + between tests) since the layout
      *  and nav read the same row several times per page; update() mutates the
      *  cached instance in place. */
     public static function for(int $userId): self
     {
-        $key = 'memo.user_setting.'.$userId;
-        if (! app()->bound($key)) {
-            app()->instance($key, static::query()->firstOrCreate(['user_id' => $userId]));
-        }
-
-        $setting = app($key);
-
-        return $setting instanceof self ? $setting : static::query()->firstOrCreate(['user_id' => $userId]);
+        return RequestMemo::remember(
+            'user_setting.'.$userId,
+            fn (): self => static::query()->firstOrCreate(['user_id' => $userId]),
+        );
     }
 }

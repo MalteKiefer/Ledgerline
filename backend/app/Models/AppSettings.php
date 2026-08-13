@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Support\RequestMemo;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
@@ -136,18 +137,14 @@ class AppSettings extends Model
      * The settings row, creating an empty one on first use.
      */
     /** Request-scoped memo of the single global settings row (read on many pages).
-     *  Held in the container, not a static, so it is per-request in prod (fresh
-     *  app per FPM request) and reset between tests. */
-    private const MEMO_KEY = 'memo.app_settings.current';
+     *  Held in RequestMemo (flushed per Octane request + between tests). */
+    private const MEMO_KEY = 'app_settings.current';
 
     public static function current(): self
     {
-        if (! app()->bound(self::MEMO_KEY)) {
-            app()->instance(self::MEMO_KEY, static::query()->firstOr(fn (): self => static::create()));
-        }
-
-        $settings = app(self::MEMO_KEY);
-
-        return $settings instanceof self ? $settings : static::query()->firstOr(fn (): self => static::create());
+        return RequestMemo::remember(
+            self::MEMO_KEY,
+            fn (): self => static::query()->firstOr(fn (): self => static::create()),
+        );
     }
 }

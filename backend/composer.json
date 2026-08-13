@@ -11,7 +11,7 @@
         "intervention/image": "^4.1",
         "laravel/fortify": "^1.37",
         "laravel/framework": "^13.8",
-        "web-auth/webauthn-lib": "^5.3",
+        "laravel/octane": "^2.19",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
         "league/flysystem-aws-s3-v3": "^3.35",
@@ -20,6 +20,7 @@
         "predis/predis": "^3.5",
         "sabre/dav": "^4.7",
         "spatie/db-dumper": "^4.1",
+        "web-auth/webauthn-lib": "^5.3",
         "zbateson/mail-mime-parser": "^4.0"
     },
     "require-dev": {
