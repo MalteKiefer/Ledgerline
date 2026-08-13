@@ -34,6 +34,12 @@ class BackupJob extends Model
     /** Blob (disk-prefix) sources support incremental mode; the DB dump is always full. */
     public const INCREMENTAL_SOURCES = ['invoices', 'files', 'gallery', 'mail'];
 
+    /**
+     * Blob (files-disk) sources — everything except the DB. These are MIRRORED to the
+     * destination (delta-only, no archive) and restore in-place from the mirror.
+     */
+    public const BLOB_SOURCES = ['invoices', 'files', 'gallery', 'mail', 'notes', 'avatars'];
+
     /** Notification channels a job may fire on completion (any combination). */
     public const NOTIFY_CHANNELS = ['desktop', 'mail', 'ntfy', 'webhook'];
 

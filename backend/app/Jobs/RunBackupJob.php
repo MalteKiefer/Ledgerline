@@ -18,8 +18,8 @@ class RunBackupJob implements ShouldQueue
 {
     use Queueable;
 
-    /** Backups can be large (a full archive of all blobs); give them room but never
-     *  overlap the same job. 3h covers a big first-full tar/upload; incrementals are small. */
+    /** The first mirror sync of a large blob set (e.g. a 38 GB gallery) can upload for
+     *  a while; give it room but never overlap the same job. Later runs are delta-only. */
     public int $timeout = 10800;
 
     public function __construct(public int $backupJobId) {}

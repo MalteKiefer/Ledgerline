@@ -225,7 +225,11 @@ class BackupController extends Controller
             ? array_map(fn (string $s): array => [
                 'source' => $s,
                 'encrypted' => $encrypt,
-                'restorable' => in_array($s, BackupJob::INCREMENTAL_SOURCES, true),
+                // Blob sources are a LIVING mirror (no single archive to download/verify);
+                // only the DB dump is a downloadable, verifiable point-in-time archive.
+                'mirror' => $s !== 'database',
+                'downloadable' => $s === 'database',
+                'restorable' => $s !== 'database',
             ], $r->job?->effectiveSources() ?? [])
             : [];
 
@@ -326,7 +330,7 @@ class BackupController extends Controller
     public function restoreRun(Request $request, BackupRun $run, BackupManager $manager): JsonResponse
     {
         abort_unless($run->status === 'success' && $run->filename, 404);
-        $request->validate(['source' => ['required', Rule::in(BackupJob::INCREMENTAL_SOURCES)]]);
+        $request->validate(['source' => ['required', Rule::in(BackupJob::BLOB_SOURCES)]]);
         $job = $run->job;
         abort_unless($job !== null && $job->destination !== null, 404);
 
@@ -628,7 +632,7 @@ class BackupController extends Controller
             ->update(['status' => 'cancelled', 'finished_at' => $now, 'message' => 'Cancelled (worker stopped).']);
 
         BackupRun::where('status', 'running')
-            ->where('updated_at', '<', $now->copy()->subMinutes(120))
+            ->where('updated_at', '<', $now->copy()->subMinutes(30))
             ->update(['status' => 'failed', 'finished_at' => $now, 'message' => 'Interrupted (no progress).']);
     }
 }

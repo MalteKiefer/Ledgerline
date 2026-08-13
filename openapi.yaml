@@ -1789,13 +1789,15 @@ components:
         size: { type: [string, "null"], description: "Human-readable total batch size (e.g. '4.2 MB'), or null." }
         archives:
           type: array
-          description: "One entry per source backed up in this run's batch. Each is downloadable/verifiable/decryptable/restorable individually via ?source=<source>."
+          description: "One entry per source backed up in this run. The database is a point-in-time dump (downloadable/verifiable/decryptable/restorable via `?source=database`); blob sources are a living MIRROR (delta-synced, no single archive) — restorable in-place but not downloadable/verifiable individually."
           items:
             type: object
             properties:
               source: { type: string, enum: [database, invoices, files, gallery, mail, notes, avatars] }
-              encrypted: { type: boolean, description: "The archive is a .enc — verify/decrypt need the passphrase." }
-              restorable: { type: boolean, description: "Blob sources (files/invoices) can be restored in-place; the database cannot (use artisan backup:restore-db)." }
+              encrypted: { type: boolean, description: "Bytes are encrypted (.enc / per-file) — verify/decrypt/restore need the passphrase." }
+              mirror: { type: boolean, description: "Blob source stored as a living mirror (true) vs. a DB point-in-time dump (false)." }
+              downloadable: { type: boolean, description: "Only the DB dump is a downloadable/verifiable archive; mirror sources are not." }
+              restorable: { type: boolean, description: "Blob sources restore in-place from the mirror; the database cannot (use artisan backup:restore-db)." }
         cancellable: { type: boolean }
         cancelling: { type: boolean, description: "A graceful cancel has been requested and is pending." }
         verifyStatus: { type: [string, "null"] }
@@ -8427,7 +8429,7 @@ paths:
       tags: [Backup]
       operationId: backupRunsRestore
       summary: Restore a blob source onto live data (admin)
-      description: "Extracts a blob source (files/invoices) from the run's batch back onto the live disk (additive overwrite). DESTRUCTIVE. The database is NOT restorable via API — download the dump and run `php artisan backup:restore-db`. Throttle 10/min."
+      description: "Restores a blob source (files/invoices/gallery/mail/notes/avatars) in-place from its mirror back onto the live disk (additive overwrite, decrypting per-file when encrypted). DESTRUCTIVE. The database is NOT restorable via API — download the dump and run `php artisan backup:restore-db`. Throttle 10/min."
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [source], properties: { source: { type: string, enum: [invoices, files, gallery, mail, notes, avatars] } } } } } }
       responses:
         "200": { description: "Restored.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean }, files: { type: integer, description: "Number of files written." } } } } } }

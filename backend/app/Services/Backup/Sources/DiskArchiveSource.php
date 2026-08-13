@@ -42,6 +42,16 @@ abstract class DiskArchiveSource implements BackupSource
         $this->sinceTs = $ts;
     }
 
+    /**
+     * The files-disk prefix this source covers (e.g. "files", "gallery"). Public so
+     * the manager can mirror the source object-by-object to the destination instead
+     * of building a giant tar — memory-flat, delta-only, and never chain-dependent.
+     */
+    public function diskPrefix(): string
+    {
+        return $this->prefix();
+    }
+
     public function build(string $workDir): BackupArtifact
     {
         $disk = BlobStore::disk();
