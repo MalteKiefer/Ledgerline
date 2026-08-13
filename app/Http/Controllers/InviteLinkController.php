@@ -66,11 +66,10 @@ class InviteLinkController extends Controller
             return redirect()->route('login')->withErrors(['email' => __('auth_ui.invite_invalid')]);
         }
 
-        return view('auth.invite', [
-            'invite' => $invite,
-            'token' => $token,
-            'email' => $user->email,
-        ]);
+        // The invite landing is an SPA route (public); it drives set-password +
+        // login through the /api/v1/invite/{invite}/{token} endpoints. Serve the
+        // SPA shell; the token in the URL is validated again by the API on submit.
+        return view('spa');
     }
 
     /** Public: consume the link — set the password, sign the user in. */
