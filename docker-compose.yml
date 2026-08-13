@@ -24,6 +24,8 @@ x-app-image: &app-image
       # Keep this digest in lockstep with the ARG PHP_BASE default in Dockerfile —
       # this build arg overrides that default, so a PHP bump must change BOTH.
       PHP_BASE: serversideup/php:8.5-fpm-nginx-alpine@sha256:13af81f6fb5fbb9e26c6a7cd9e8c8bf22e32dd21842ae3c587b9ac4f24da4c6e
+      # SPA version shown in the sidebar (CI passes the git tag; local builds tag it).
+      APP_VERSION: ${IMAGE_TAG:-local}
   env_file: .env
   environment:
     # This host has no route to the EC2 instance-metadata IP (169.254.169.254),

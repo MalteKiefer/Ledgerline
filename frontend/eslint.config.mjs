@@ -7,7 +7,7 @@ import tsPlugin from '@typescript-eslint/eslint-plugin';
 // errors. .vue single-file components are covered by `npm run typecheck`.
 export default [
   {
-    files: ['resources/js/spa/**/*.ts'],
+    files: ['src/**/*.ts'],
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 2023,

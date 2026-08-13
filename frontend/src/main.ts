@@ -15,7 +15,7 @@ const app = createApp(App);
 app.use(createPinia());
 app.use(i18nVue, {
   lang: initialLocale(),
-  resolve: (lang: string) => import(`../../../lang/php_${lang}.json`),
+  resolve: (lang: string) => import(`../../backend/lang/php_${lang}.json`),
 });
 app.use(router);
 

@@ -1,33 +1,43 @@
 .git
 .github
-node_modules
-vendor
-public/build
-public/hot
-storage/*.key
-storage/app/**
-storage/framework/cache/**
-storage/framework/sessions/**
-storage/framework/views/**
-storage/logs/**
-tests
-.env
-.env.*
-# Do NOT re-include any env file into the build context — a template baked into
-# an image layer leaks the secret-variable names (or real secrets if filled in
-# place). The example lives in the repo for humans, not in the image.
+.claude
+.superpowers
+docs
 *.md
 scripts/*.log
-.phpunit.cache
 .DS_Store
-# Never bake a SQLite database into an image layer: `ledgerline` is the
-# git-tracked dev DB at the repo root (prod uses Postgres), and any *.sqlite is
-# dev/test data — leaking it into the production image is a data-exposure risk.
-ledgerline
+
+# Front-end: node_modules + build output are produced inside the image.
+frontend/node_modules
+frontend/dist
+
+# Back-end: vendor is reinstalled in the image; never bake dev/runtime state.
+backend/vendor
+backend/public/build
+backend/public/hot
+backend/public/storage
+backend/storage/*.key
+backend/storage/app/**
+backend/storage/framework/cache/**
+backend/storage/framework/sessions/**
+backend/storage/framework/views/**
+backend/storage/logs/**
+backend/tests
+backend/.phpunit.cache
+backend/.phpunit.result.cache
+
+# Never bake env files (leak variable names/secrets) or a dev SQLite DB.
+.env
+.env.*
+backend/.env
+backend/.env.*
+backend/ledgerline
+backend/database/*.sqlite
+backend/database/*.sqlite-shm
+backend/database/*.sqlite-wal
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
-# Operator-supplied runtime data (e.g. GraphHopper OSM extracts) is bind-mounted
-# at deploy time, not part of the app image — excluding it keeps multi-GB
-# extracts out of the build context and image layers.
+
+# Operator-supplied runtime data (bind-mounted at deploy time, e.g. GraphHopper).
 data/
