@@ -13,7 +13,7 @@ export default defineConfig({
         laravel({
             // Legacy Blade+Alpine bundle (app.js) stays live until the SPA cutover;
             // the Vue 3 SPA (Tailwind + Reka UI) boots from spa/main.ts.
-            input: ['resources/css/app.css', 'resources/js/app.js', 'resources/js/spa/main.ts'],
+            input: ['resources/js/spa/main.ts'],
             refresh: true,
         }),
         vue(),
