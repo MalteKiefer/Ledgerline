@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\FileEntry;
+use App\Models\GalleryPhoto;
 use App\Models\Note;
 use App\Models\NoteFolder;
 use App\Models\User;
@@ -41,6 +43,59 @@ class NotesFeatureTest extends TestCase
         $this->deleteJson(route('notes.destroy', $id))->assertOk();
         $this->assertSame(0, Note::query()->count()); // soft-deleted → out of the owner scope
         $this->assertSame(1, Note::withTrashed()->count());
+    }
+
+    public function test_attach_from_files_and_gallery_copies_bytes_and_rejects_non_media(): void
+    {
+        Storage::fake('files');
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $id = $this->postJson(route('notes.store'), ['title' => 'N', 'body' => 'b'])->json('note.id');
+
+        // An owner-scoped image in the Files module + a Gallery photo, both on the files disk.
+        Storage::disk('files')->put('files/a.png', 'PNGBYTES');
+        $file = FileEntry::forceCreate([
+            'user_id' => $user->id, 'name' => 'a.png', 'storage_path' => 'files/a.png',
+            'mime' => 'image/png', 'size' => 8, 'sha256' => str_repeat('0', 64), 'version' => 0,
+        ]);
+        Storage::disk('files')->put('gallery/g.jpg', 'JPGBYTES');
+        $photo = GalleryPhoto::forceCreate([
+            'user_id' => $user->id, 'name' => 'g.jpg', 'storage_path' => 'gallery/g.jpg',
+            'mime' => 'image/jpeg', 'size' => 8, 'sha256' => str_repeat('1', 64), 'version' => 0,
+        ]);
+
+        $this->postJson(route('notes.attachments.from', $id), ['source' => 'file', 'id' => $file->id])
+            ->assertCreated()->assertJsonPath('attachment.mime', 'image/png');
+        $this->postJson(route('notes.attachments.from', $id), ['source' => 'gallery', 'id' => $photo->id])
+            ->assertCreated()->assertJsonPath('attachment.mime', 'image/jpeg');
+        $this->getJson(route('notes.show', $id))->assertOk()->assertJsonCount(2, 'note.attachments');
+
+        // A non-media file cannot be embedded.
+        Storage::disk('files')->put('files/d.pdf', '%PDF');
+        $pdf = FileEntry::forceCreate([
+            'user_id' => $user->id, 'name' => 'd.pdf', 'storage_path' => 'files/d.pdf',
+            'mime' => 'application/pdf', 'size' => 4, 'sha256' => str_repeat('2', 64), 'version' => 0,
+        ]);
+        $this->postJson(route('notes.attachments.from', $id), ['source' => 'file', 'id' => $pdf->id])
+            ->assertStatus(422);
+
+        // Another user's file is invisible (owner scope → 404).
+        $other = FileEntry::forceCreate([
+            'user_id' => User::factory()->create()->id, 'name' => 'x.png', 'storage_path' => 'files/x.png',
+            'mime' => 'image/png', 'size' => 1, 'sha256' => str_repeat('3', 64), 'version' => 0,
+        ]);
+        $this->postJson(route('notes.attachments.from', $id), ['source' => 'file', 'id' => $other->id])
+            ->assertNotFound();
+    }
+
+    public function test_video_can_be_attached(): void
+    {
+        Storage::fake('files');
+        $this->actingAs(User::factory()->create());
+        $id = $this->postJson(route('notes.store'), ['title' => 'V', 'body' => 'b'])->json('note.id');
+        $this->post(route('notes.attachments.store', $id), [
+            'file' => UploadedFile::fake()->create('clip.mp4', 20, 'video/mp4'),
+        ])->assertCreated()->assertJsonPath('attachment.mime', 'video/mp4');
     }
 
     public function test_update_is_optimistic(): void

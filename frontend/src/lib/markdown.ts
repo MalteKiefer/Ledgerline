@@ -54,8 +54,13 @@ export function renderMarkdown(md: string, resolve?: (title: string) => number |
       'strong', 'em', 'del', 'blockquote', 'code', 'pre',
       'ul', 'ol', 'li', 'a', 'img', 'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
       'input', // task-list checkboxes (GFM)
+      'video', 'audio', 'source', // embedded note media (sandboxed same-origin src)
     ],
-    ALLOWED_ATTR: ['href', 'title', 'src', 'alt', 'type', 'checked', 'disabled', 'class', 'data-note-id'],
+    ALLOWED_ATTR: [
+      'href', 'title', 'src', 'alt', 'type', 'checked', 'disabled', 'class', 'data-note-id',
+      // media controls — no autoplay; scripts/handlers are stripped regardless.
+      'controls', 'muted', 'loop', 'playsinline', 'preload', 'poster', 'width', 'height',
+    ],
     // http(s)/mailto/anchor + same-origin relative paths (attachment images live
     // at /api/v1/notes/…/raw) + data:image; never javascript: URIs.
     ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|data:image\/(?:png|jpe?g|gif|webp);|#|\/)/i,
