@@ -40,6 +40,19 @@ class ContactImporter
     {
         $created = $updated = $skipped = 0;
 
+        // Natural-key index of existing contacts, so a re-import of cards that
+        // carry no UID (or a freshly regenerated one) updates the matching
+        // contact instead of creating a duplicate.
+        $byKey = [];
+        foreach (Contact::where('address_book_id', $book->id)->get() as $existing) {
+            $emails = is_array($existing->emails) ? $existing->emails : [];
+            $phones = is_array($existing->phones) ? $existing->phones : [];
+            $key = $this->naturalKey($existing->fn, $emails, $phones);
+            if ($key !== '' && ! isset($byKey[$key])) {
+                $byKey[$key] = $existing;
+            }
+        }
+
         // Reader::readAll yields each VCARD in a multi-card document.
         $stream = fopen('php://temp', 'r+');
         if ($stream === false) {
@@ -73,7 +86,27 @@ class ContactImporter
             try {
                 $rawUid = $card->UID ?? null;
                 $uid = is_scalar($rawUid) || $rawUid instanceof \Stringable ? trim((string) $rawUid) : '';
-                if ($uid === '') {
+
+                // Match an existing contact: first by UID, then — when the card
+                // has no UID or the UID is new — by natural key (name + contacts).
+                $existing = $uid !== ''
+                    ? Contact::where('address_book_id', $book->id)->where('uid', $uid)->first()
+                    : null;
+
+                $key = $this->naturalKey(
+                    $this->s($card->FN ?? null),
+                    $this->partValues($card->select('EMAIL')),
+                    $this->partValues($card->select('TEL')),
+                );
+                if ($existing === null && $key !== '' && isset($byKey[$key])) {
+                    $existing = $byKey[$key];
+                }
+
+                // Reuse the matched contact's UID so its vCard identity stays
+                // stable; otherwise mint one for a genuinely new card.
+                if ($existing !== null) {
+                    $uid = (string) $existing->uid;
+                } elseif ($uid === '') {
                     $uid = (string) Str::uuid();
                 }
                 $card->remove('VERSION');
@@ -83,9 +116,6 @@ class ContactImporter
                 $serialized = $card->serialize();
                 $vcard = is_string($serialized) ? $serialized : '';
 
-                $existing = Contact::where('address_book_id', $book->id)
-                    ->where('uid', $uid)->first();
-
                 if ($existing !== null) {
                     $this->persister->persistUpdate($existing, $vcard);
                     $this->syncGroups($existing, $card, $book->user_id);
@@ -93,6 +123,9 @@ class ContactImporter
                 } else {
                     $contact = $this->persister->persistNew($book, Str::uuid().'.vcf', $vcard);
                     $this->syncGroups($contact, $card, $book->user_id);
+                    if ($key !== '') {
+                        $byKey[$key] = $contact;
+                    }
                     $created++;
                 }
             } catch (Throwable) {
@@ -101,6 +134,67 @@ class ContactImporter
         }
 
         return ['created' => $created, 'updated' => $updated, 'skipped' => $skipped];
+    }
+
+    /**
+     * A stable dedup key from name + contact points. Uses email (case-folded)
+     * and the last 8 phone digits (format-agnostic); empty when there's nothing
+     * distinctive to match on (never dedupes on a bare name alone).
+     *
+     * @param  list<string>  $emails
+     * @param  list<string>  $phones
+     */
+    private function naturalKey(?string $fn, array $emails, array $phones): string
+    {
+        $name = strtolower(trim(preg_replace('/\s+/', ' ', (string) $fn) ?? ''));
+        $mails = array_values(array_unique(array_filter(array_map(
+            fn (string $e): string => strtolower(trim($e)),
+            $emails,
+        ))));
+        sort($mails);
+        $tels = array_values(array_unique(array_filter(array_map(
+            function (string $p): string {
+                $d = preg_replace('/\D/', '', $p) ?? '';
+
+                return strlen($d) >= 6 ? substr($d, -8) : '';
+            },
+            $phones,
+        ))));
+        sort($tels);
+
+        if ($mails === [] && $tels === []) {
+            return '';
+        }
+
+        return $name.'|'.implode(',', $mails).'|'.implode(',', $tels);
+    }
+
+    private function s(mixed $value): ?string
+    {
+        $v = is_scalar($value) || $value instanceof \Stringable ? trim((string) $value) : '';
+
+        return $v !== '' ? $v : null;
+    }
+
+    /**
+     * The string values of every instance of a vCard property (from select()).
+     *
+     * @param  array<array-key, mixed>  $props
+     * @return list<string>
+     */
+    private function partValues(array $props): array
+    {
+        $out = [];
+        foreach ($props as $item) {
+            if ($item instanceof Property) {
+                $val = trim((string) $item);
+                if ($val !== '') {
+                    $out[] = $val;
+                }
+            }
+        }
+
+        return $out;
     }
 
     private function syncGroups(Contact $contact, VCard $card, int $userId): void

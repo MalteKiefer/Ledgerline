@@ -382,6 +382,26 @@ class ContactsFeatureTest extends TestCase
         $this->assertDatabaseCount('contacts', 2);
     }
 
+    public function test_reimport_without_uid_dedupes_by_name_and_contacts(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+        // No UID: a fresh random one would be minted each run — must dedupe by
+        // the natural key (name + email/phone) instead of creating a duplicate.
+        $vcf = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Max Muster\r\nN:Muster;Max;;;\r\n"
+            ."EMAIL:max@example.com\r\nTEL:+49 175 4182881\r\nBDAY:19870630\r\nEND:VCARD\r\n";
+
+        $this->post(route('contacts.import'), ['book_id' => $book->id, 'file' => UploadedFile::fake()->createWithContent('c.vcf', $vcf)])
+            ->assertOk()->assertJson(['created' => 1]);
+        $this->assertDatabaseCount('contacts', 1);
+        // Birthday is denormalised on import (year-agnostic MM-DD column).
+        $this->assertSame('06-30', Contact::where('address_book_id', $book->id)->first()->bday);
+
+        $this->post(route('contacts.import'), ['book_id' => $book->id, 'file' => UploadedFile::fake()->createWithContent('c.vcf', $vcf)])
+            ->assertOk()->assertJson(['created' => 0, 'updated' => 1]);
+        $this->assertDatabaseCount('contacts', 1);
+    }
+
     public function test_export_streams_vcards(): void
     {
         $user = $this->signIn();
