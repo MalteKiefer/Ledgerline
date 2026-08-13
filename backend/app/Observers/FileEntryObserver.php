@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Observers;
 
 use App\Models\FileEntry;
+use App\Services\Files\FileMetadata;
 use App\Services\Files\FileTextIndex;
 use Throwable;
 
@@ -45,8 +46,10 @@ class FileEntryObserver
                 }
 
                 $text = (new FileTextIndex)->extract($file);
+                $meta = (new FileMetadata)->extract($file);
                 $file->forceFill([
                     'search_text' => $text,
+                    'metadata' => $meta,
                     'indexed_at' => now(),
                 ])->saveQuietly();
             } catch (Throwable) {

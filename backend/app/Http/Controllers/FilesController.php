@@ -186,6 +186,75 @@ class FilesController extends Controller
     }
 
     /**
+     * Rich info panel: extracted per-type metadata + checksum, dates, version history,
+     * folder path, content snippet, sharing status, same-checksum duplicates and recent
+     * activity. All owner-scoped. Kept off the list response (which stays lean).
+     */
+    public function info(Request $request, FileEntry $file): JsonResponse
+    {
+        $this->requireUser($request);
+
+        $versions = (int) FileVersion::query()->where('file_id', $file->id)->count();
+        $share = FileShare::query()->where('file_id', $file->id)->first();
+
+        $duplicates = [];
+        if (is_string($file->sha256) && $file->sha256 !== '') {
+            $duplicates = FileEntry::query()
+                ->where('sha256', $file->sha256)
+                ->where('id', '!=', $file->id)
+                ->orderBy('name')
+                ->limit(50)
+                ->get()
+                ->map(fn (FileEntry $f): array => [
+                    'id' => $f->id,
+                    'name' => $f->name,
+                    'path' => $this->folderPath($f->file_folder_id),
+                ])->all();
+        }
+
+        $activity = $this->activityView(
+            FileActivity::query()->where('file_id', $file->id)->orderByDesc('id')->limit(10)->get()
+        );
+
+        $snippet = is_string($file->search_text) ? trim(mb_substr($file->search_text, 0, 300)) : '';
+
+        return response()->json([
+            'sha256' => $file->sha256,
+            'created_at' => $file->created_at?->toIso8601String(),
+            'updated_at' => $file->updated_at?->toIso8601String(),
+            'version' => $file->version,
+            'versions' => $versions,
+            'path' => $this->folderPath($file->file_folder_id),
+            'metadata' => is_array($file->metadata) ? $file->metadata : null,
+            'snippet' => $snippet !== '' ? $snippet : null,
+            'share' => $share ? [
+                'expires_at' => $share->expires_at?->toIso8601String(),
+                'allow_download' => (bool) $share->allow_download,
+                'protected' => $share->password_hash !== null,
+            ] : null,
+            'duplicates' => $duplicates,
+            'activity' => $activity,
+        ]);
+    }
+
+    /** Build the "/Parent/Child" ancestor path for a folder id (owner-scoped, cycle-guarded). */
+    private function folderPath(?int $folderId): string
+    {
+        $parts = [];
+        $guard = 0;
+        while ($folderId !== null && $guard++ < 50) {
+            $folder = FileFolder::query()->find($folderId);
+            if (! $folder instanceof FileFolder) {
+                break;
+            }
+            array_unshift($parts, (string) $folder->name);
+            $folderId = $folder->parent_id;
+        }
+
+        return $parts === [] ? '/' : '/'.implode('/', $parts);
+    }
+
+    /**
      * @param  Collection<int, FileActivity>  $rows
      * @return array<int, array<string,mixed>>
      */

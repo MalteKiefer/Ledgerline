@@ -373,7 +373,7 @@
   </div>
 
   <!-- Info dialog -->
-  <Modal v-model="info.show" :title="t('files.info_title')" width="480px">
+  <Modal v-model="info.show" :title="t('files.info_title')" width="560px">
     <div class="flex flex-col gap-3">
       <TextField v-model="info.name" :label="t('files.info_name')" />
       <div class="flex gap-6">
@@ -399,6 +399,72 @@
               : { background: `color-mix(in srgb, ${l.color} 15%, transparent)`, color: l.color }"
             @click="info.labelIds.includes(l.id) ? info.labelIds.splice(info.labelIds.indexOf(l.id), 1) : info.labelIds.push(l.id)"
           >{{ l.name }}</button>
+        </div>
+      </div>
+
+      <!-- Read-only rich detail (Stufe 0/1/2). -->
+      <div class="mt-1 border-t border-[var(--ll-border)] pt-3">
+        <div v-if="infoLoading" class="text-sm text-[var(--ll-muted)]">…</div>
+        <div v-else-if="infoDetail" class="flex flex-col gap-3 text-sm">
+          <!-- General -->
+          <dl class="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1">
+            <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_path') }}</dt>
+            <dd class="ll-mono truncate" :title="infoDetail.path">{{ infoDetail.path }}</dd>
+            <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_uploaded') }}</dt>
+            <dd>{{ infoDetail.created_at ? fmtDateTime(infoDetail.created_at) : '—' }}</dd>
+            <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_modified') }}</dt>
+            <dd>{{ infoDetail.updated_at ? fmtDateTime(infoDetail.updated_at) : '—' }}</dd>
+            <template v-if="infoDetail.versions > 1">
+              <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_version') }}</dt>
+              <dd>{{ t('files.info_version_n', { v: String(infoDetail.version), n: String(infoDetail.versions) }) }}</dd>
+            </template>
+            <template v-if="infoDetail.sha256">
+              <dt class="text-xs text-[var(--ll-muted)]">{{ t('files.info_checksum') }}</dt>
+              <dd class="ll-mono truncate" :title="infoDetail.sha256">{{ infoDetail.sha256.slice(0, 16) }}…</dd>
+            </template>
+          </dl>
+
+          <!-- Type-specific metadata (Stufe 1). -->
+          <div v-if="infoDetail.metadata && Object.keys(infoDetail.metadata.fields).length">
+            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ metaKindLabel(infoDetail.metadata.kind) }}</div>
+            <dl class="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-0.5">
+              <template v-for="(v, k) in infoDetail.metadata.fields" :key="k">
+                <dt class="text-xs text-[var(--ll-muted)]">{{ k }}</dt>
+                <dd class="truncate" :title="v">{{ v }}</dd>
+              </template>
+            </dl>
+          </div>
+
+          <!-- Content snippet (Stufe 2). -->
+          <div v-if="infoDetail.snippet">
+            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('files.info_content') }}</div>
+            <p class="line-clamp-3 text-[var(--ll-muted)]">{{ infoDetail.snippet }}</p>
+          </div>
+
+          <!-- Sharing status (Stufe 0). -->
+          <div v-if="infoDetail.share" class="flex items-center gap-2 text-[var(--ll-muted)]">
+            <Icon name="share" :size="16" />
+            <span>{{ t('files.info_shared') }}<template v-if="infoDetail.share.protected"> · {{ t('files.info_protected') }}</template><template v-if="infoDetail.share.expires_at"> · {{ t('files.info_expires', { d: fmtDateTime(infoDetail.share.expires_at) }) }}</template></span>
+          </div>
+
+          <!-- Duplicates (Stufe 2 = only). -->
+          <div v-if="infoDetail.duplicates.length">
+            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('files.info_duplicates', { n: String(infoDetail.duplicates.length) }) }}</div>
+            <div v-for="d in infoDetail.duplicates" :key="d.id" class="flex items-center gap-2 py-0.5">
+              <Icon name="content_copy" :size="14" class="text-[var(--ll-muted)]" />
+              <span class="truncate">{{ d.name }}</span>
+              <span class="truncate text-xs text-[var(--ll-muted)]">{{ d.path }}</span>
+            </div>
+          </div>
+
+          <!-- Recent activity (Stufe 0). -->
+          <div v-if="infoDetail.activity.length">
+            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ t('files.info_activity') }}</div>
+            <div v-for="a in infoDetail.activity" :key="a.id" class="flex items-center justify-between py-0.5 text-xs">
+              <span>{{ actLabel(a.action) }}<template v-if="a.actor"> · {{ a.actor }}</template></span>
+              <span class="text-[var(--ll-muted)]">{{ fmtDateTime(a.created_at) }}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -807,7 +873,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
 import StlViewer from '@spa/components/StlViewer.vue';
-import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity } from '@spa/stores/files';
+import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity, type FileInfo } from '@spa/stores/files';
 import { ApiError } from '@spa/api/client';
 import { useMountsStore, type Mount, type MountEntry } from '@spa/stores/mounts';
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
@@ -846,6 +912,8 @@ const menuItemCls = 'flex cursor-pointer items-center gap-2.5 rounded-md px-3 py
 const menuItemDangerCls = 'flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-1.5 text-sm text-red-600 outline-none hover:bg-red-500/10';
 
 const info = ref<{ show: boolean; busy: boolean; file: FileEntry | null; name: string; tags: string; note: string; labelIds: number[] }>({ show: false, busy: false, file: null, name: '', tags: '', note: '', labelIds: [] });
+const infoDetail = ref<FileInfo | null>(null);
+const infoLoading = ref(false);
 const versionsDlg = ref<{ show: boolean; loading: boolean; file: FileEntry | null; list: FileVersion[] }>({ show: false, loading: false, file: null, list: [] });
 const shareDlg = ref<{
   show: boolean; busy: boolean; kind: 'file' | 'folder'; targetId: number; tab: 'link' | 'users';
@@ -1468,10 +1536,17 @@ async function zipSelected() {
 }
 
 // ---- Info / tags / note ----
-function openInfo(row: Row) {
+async function openInfo(row: Row) {
   const f = row.raw as FileEntry;
   info.value = { show: true, busy: false, file: f, name: f.name, tags: (f.tags ?? []).join(', '), note: f.note ?? '', labelIds: (f.labels ?? []).map((l) => l.id) };
+  infoDetail.value = null;
+  infoLoading.value = true;
+  try { infoDetail.value = await s.fileInfo(f.id); } catch { /* best-effort */ } finally { infoLoading.value = false; }
 }
+// Localised label for a metadata group / activity action, falling back to the raw
+// key value when no translation exists (t returns the key itself on a miss).
+function metaKindLabel(kind: string): string { const k = 'files.meta_kind_' + kind; const s = t(k); return s === k ? kind : s; }
+function actLabel(action: string): string { const k = 'files.act_' + action; const s = t(k); return s === k ? action : s; }
 async function saveInfo() {
   const f = info.value.file;
   if (!f) return;

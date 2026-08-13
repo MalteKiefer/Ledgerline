@@ -29,6 +29,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $note
  * @property bool $favorite
  * @property int $version
+ * @property array<string, mixed>|null $metadata
  * @property Carbon|null $deleted_at
  */
 class FileEntry extends Model
@@ -41,11 +42,13 @@ class FileEntry extends Model
     /** Server-set fields (size/storage_path/sha256/mime) are never mass-assigned. */
     protected $fillable = ['name', 'file_folder_id', 'tags', 'note', 'favorite'];
 
-    /** Extracted full-text index; queried server-side, never serialized (can be ~1 MiB). */
-    protected $hidden = ['search_text'];
+    /** Full-text index (never serialized, ~1 MiB) + extracted metadata (returned only
+     *  by the info endpoint, not the list). */
+    protected $hidden = ['search_text', 'metadata'];
 
     protected $casts = [
         'tags' => 'array',
+        'metadata' => 'array',
         'favorite' => 'boolean',
         'size' => 'integer',
         'version' => 'integer',
