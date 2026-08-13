@@ -125,6 +125,51 @@ The REST API lives under `/api/v1`, authenticated with Sanctum bearer tokens
 response shape, status code and error type — is in [`openapi.yaml`](openapi.yaml). Native
 mobile clients build against it; a CI check keeps it in lockstep with the routes.
 
+## Standalone SPA (backend-independent hosting)
+
+The web UI is a self-contained Vue 3 SPA that authenticates with a bearer token
+(localStorage) and talks to the backend **purely over `/api/v1`** — no cookies,
+no CSRF, no server-rendered state. It can therefore be built as a static bundle
+and hosted anywhere (nginx, a CDN, object storage), with Laravel acting as a
+pure JSON API. The same contract makes a later swap of Laravel for another
+backend (e.g. Go) a front-end no-op.
+
+Build the standalone bundle:
+
+```bash
+VITE_API_URL=https://api.example.com \
+VITE_APP_VERSION=$(php -r "echo config('app.version');") \
+npm run build:spa            # → dist/spa (static index.html + hashed assets)
+```
+
+Build-time variables:
+
+| Variable | Meaning |
+|----------|---------|
+| `VITE_API_URL` | Absolute API origin. Empty = same origin as the SPA. |
+| `VITE_BASE` | Public base path the SPA is served from (default `/`). |
+| `VITE_APP_VERSION` | Version shown in the sidebar footer. |
+
+Host `dist/spa` on any static server with an **SPA history fallback** (every
+non-file route serves `index.html`). Example nginx:
+
+```nginx
+location / { try_files $uri $uri/ /index.html; }
+```
+
+On the API side, allow the SPA's origin for CORS:
+
+```
+CORS_ALLOWED_ORIGINS=https://app.example.com
+```
+
+Laravel keeps serving only the backend surfaces: `/api/v1`, the byte-stream
+endpoints (avatars, file/gallery raw, invoice PDF — bearer or token-in-query, so
+`<img>`/`<iframe>` work cross-origin), `/dav` (CardDAV/CalDAV/WebDAV),
+`/.well-known/*` and `/up`. The bundled same-origin Blade entry
+(`resources/views/spa.blade.php`) continues to work for a single-host deployment
+— the standalone build is additive.
+
 ## Development
 
 ```bash
