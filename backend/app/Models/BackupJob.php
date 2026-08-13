@@ -60,6 +60,17 @@ class BackupJob extends Model
     }
 
     /**
+     * Stamp the outcome of a run. last_run_at / last_status are operational fields set
+     * only by the manager (never from user input), so they are NOT $fillable — write
+     * them via forceFill so mass-assignment protection doesn't silently drop them
+     * (which left last_run_at forever null, mis-showing the job as "never run").
+     */
+    public function recordRun(string $status): void
+    {
+        $this->forceFill(['last_run_at' => now(), 'last_status' => $status])->save();
+    }
+
+    /**
      * The sources this job backs up — the multi-select list, falling back to the
      * legacy single `source` column. Only known sources.
      *

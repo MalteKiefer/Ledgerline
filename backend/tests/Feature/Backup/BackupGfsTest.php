@@ -84,6 +84,10 @@ class BackupGfsTest extends TestCase
         $manager = app(BackupManager::class);
         $run = $manager->run($job);
         $this->assertSame('success', $run->status, $run->log ?? '');
+        // A successful run stamps the job (last_run_at is a non-fillable operational
+        // field written via forceFill — a plain update() silently dropped it).
+        $this->assertNotNull($job->fresh()->last_run_at);
+        $this->assertSame('success', $job->fresh()->last_status);
 
         // The object landed in the living mirror (key keeps its source prefix), plus a ledger.
         $prefix = $this->prefix($job);

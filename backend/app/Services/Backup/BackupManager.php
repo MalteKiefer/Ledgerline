@@ -182,7 +182,7 @@ final class BackupManager
                 'filename' => $filename,
                 'log' => implode("\n", $log),
             ]);
-            $job->update(['last_run_at' => Carbon::now(), 'last_status' => 'success']);
+            $job->recordRun('success');
             $this->notifier->notify($job, true, $summary);
         } catch (BackupCancelled $e) {
             // Remove the whole batch folder already pushed this run.
@@ -195,12 +195,12 @@ final class BackupManager
             }
             $log[] = Carbon::now()->format('H:i:s').'  Cancelled by request.';
             $run->update(['status' => 'cancelled', 'finished_at' => Carbon::now(), 'message' => 'Cancelled.', 'log' => implode("\n", $log)]);
-            $job->update(['last_run_at' => Carbon::now(), 'last_status' => 'cancelled']);
+            $job->recordRun('cancelled');
         } catch (\Throwable $e) {
             $detail = $this->describe($e);
             $log[] = Carbon::now()->format('H:i:s').'  FAILED: '.$detail;
             $run->update(['status' => 'failed', 'finished_at' => Carbon::now(), 'message' => Str::limit($detail, 1000), 'log' => implode("\n", $log)]);
-            $job->update(['last_run_at' => Carbon::now(), 'last_status' => 'failed']);
+            $job->recordRun('failed');
             $this->notifier->notify($job, false, Str::limit($detail, 300));
         } finally {
             File::deleteDirectory($workDir);
