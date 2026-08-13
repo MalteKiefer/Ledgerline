@@ -23,7 +23,7 @@ x-app-image: &app-image
     args:
       # Keep this digest in lockstep with the ARG PHP_BASE default in Dockerfile —
       # this build arg overrides that default, so a PHP bump must change BOTH.
-      PHP_BASE: serversideup/php:8.5-fpm-nginx-alpine@sha256:13af81f6fb5fbb9e26c6a7cd9e8c8bf22e32dd21842ae3c587b9ac4f24da4c6e
+      PHP_BASE: dunglas/frankenphp:1-php8.5-alpine@sha256:def035e964f46253cb5e46a1f9a4633370f658b8e410305e0730ce7247d0ab6a
       # SPA version shown in the sidebar (CI passes the git tag; local builds tag it).
       APP_VERSION: ${IMAGE_TAG:-local}
   env_file: .env
@@ -34,16 +34,14 @@ x-app-image: &app-image
     # hanging photo processing (renditions/metadata) for minutes. We always pass
     # explicit S3 keys, so IMDS is never needed — disable the probe outright.
     AWS_EC2_METADATA_DISABLED: "true"
-    # Let nginx accept large uploads (the base image defaults to 100M, which
-    # rejects big files with an HTTP/2 stream error). Keep in sync with the PHP
-    # post/upload limits and Caddy's request_body max_size.
-    NGINX_CLIENT_MAX_BODY_SIZE: "560M"
-    # PHP memory_limit (serversideup honours PHP_MEMORY_LIMIT). The base default
-    # (~256M) is too small for the backup worker, which streams blob archives via
-    # PharData — a large fileset overruns it, and a PHP fatal "allowed memory
+    # PHP memory_limit. The entrypoint writes it into a conf.d ini override (app.ini
+    # defaults 512M). Too small breaks the backup worker, which streams blob archives
+    # via PharData — a large fileset overruns it, and a PHP fatal "allowed memory
     # exhausted" is NOT catchable, so the worker process dies mid-job with no
     # recorded exception and the run is later reaped as "Interrupted (no
-    # progress)". The worker service overrides this higher (see below).
+    # progress)". The worker service overrides this higher (see below). FrankenPHP/
+    # Caddy imposes no request-body cap, so large uploads pass; PHP post/upload
+    # limits (app.ini) gate them.
     PHP_MEMORY_LIMIT: "${PHP_MEMORY_LIMIT:-512M}"
     # Image + PHP scratch on the roomy storage volume, NOT the small RAM /tmp
     # tmpfs below. A large HEIC decode makes ImageMagick disk-cache hundreds of
@@ -55,25 +53,18 @@ x-app-image: &app-image
     MAGICK_TMPDIR: /var/www/html/storage/app/imgtmp
     MAGICK_TEMPORARY_PATH: /var/www/html/storage/app/imgtmp
   restart: unless-stopped
-  # NOTE: a fully read-only root filesystem is NOT used — the serversideup base
-  # renders /etc/nginx/nginx.conf from a template at boot (entrypoint
-  # 10-init-webserver-config.sh), which fails on a read-only /etc; S6_READ_ONLY_
-  # ROOT only redirects s6's own /run state, not that write. The container is
-  # already hardened via non-root (www-data), cap_drop:[ALL] and no-new-privileges.
+  # NOTE: a fully read-only root filesystem is NOT used — the entrypoint warms the
+  # Laravel caches (bootstrap/cache) and FrankenPHP/Caddy writes state to /data +
+  # /config, and the per-service PHP_MEMORY_LIMIT override writes a conf.d ini.
+  # The container is hardened instead via non-root (www-data, uid 82 — the image
+  # runs FrankenPHP directly as this user, no root/su-exec), cap_drop:[ALL] and
+  # no-new-privileges.
   security_opt:
     - no-new-privileges:true
-  # Drop ALL Linux capabilities, then add back only what the serversideup base
-  # needs to su-exec from root down to www-data and fix file ownership. Verified
-  # to boot cleanly; blocks NET_RAW (ARP spoofing) and every other unused cap.
+  # The process runs as non-root www-data the whole time (no root→www-data
+  # su-exec), so it holds no effective capabilities regardless — drop them all.
   cap_drop:
     - ALL
-  cap_add:
-    - CHOWN
-    - SETUID
-    - SETGID
-    - DAC_OVERRIDE
-    - FOWNER
-    - KILL
   depends_on:
     db:
       condition: service_healthy
@@ -100,25 +91,12 @@ services:
     environment:
       # Repeated from the x-app-image anchor: an explicit `environment:` here
       # REPLACES (does not merge with) the anchor's, so anything the web app needs
-      # from the anchor must be restated or it is lost. Verified with
-      # `docker compose config`: without restating these the app service falls
-      # back to serversideup's default nginx body size (which rejects big uploads)
-      # and would hang on S3 without the IMDS opt-out.
+      # from the anchor must be restated or it is lost (e.g. the IMDS opt-out that
+      # keeps S3 calls from hanging).
       AWS_EC2_METADATA_DISABLED: "true"
-      # Only this service runs nginx. Restate the upload ceiling (>= the app's
-      # 550 MB max upload / PHP post_max_size / Caddy request_body) and turn off
-      # nginx version disclosure in the Server header + its own error pages
-      # (the app middleware strips Server/X-Powered-By on app responses, but nginx
-      # emits its own error responses e.g. 413/400 before PHP is reached).
-      NGINX_CLIENT_MAX_BODY_SIZE: "560M"
-      NGINX_SERVER_TOKENS: "off"
-      AUTORUN_ENABLED: "true"
-      AUTORUN_LARAVEL_MIGRATION: "true"
-      AUTORUN_LARAVEL_STORAGE_LINK: "true"
-      AUTORUN_LARAVEL_CONFIG_CACHE: "true"
-      AUTORUN_LARAVEL_ROUTE_CACHE: "true"
-      AUTORUN_LARAVEL_VIEW_CACHE: "true"
-      AUTORUN_LARAVEL_EVENT_CACHE: "true"
+      # Migrations + cache warming run in the FrankenPHP entrypoint when the
+      # command is the octane server (this service only); worker/scheduler skip it.
+      # FrankenPHP has no nginx, so the old NGINX_*/AUTORUN_* serversideup env is gone.
       # Image + PHP scratch on the roomy storage volume, NOT the small RAM /tmp
       # tmpfs (a large HEIC decode disk-caches hundreds of MB and would fill it →
       # thumbnail 404). An explicit environment: block REPLACES the anchor's, so
@@ -162,7 +140,6 @@ services:
     # worker (PharData blob-archive builds are memory-hungry).
     environment:
       AWS_EC2_METADATA_DISABLED: "true"
-      NGINX_CLIENT_MAX_BODY_SIZE: "560M"
       PHP_MEMORY_LIMIT: "${WORKER_PHP_MEMORY_LIMIT:-2048M}"
       TMPDIR: /var/www/html/storage/app/imgtmp
       TMP: /var/www/html/storage/app/imgtmp

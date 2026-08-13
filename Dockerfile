@@ -1,14 +1,23 @@
 # syntax=docker/dockerfile:1
 #
-# Ledgerline production image: nginx + PHP-FPM (serversideup base). The repo is
-# split into frontend/ (standalone Vue SPA) and backend/ (Laravel API). This
+# Ledgerline production image: FrankenPHP + Laravel Octane (worker mode). The repo
+# is split into frontend/ (standalone Vue SPA) and backend/ (Laravel API). This
 # multi-stage build compiles the SPA with Node, then builds the Laravel backend
 # and copies the built SPA into public/ so a single image serves both the static
-# frontend and the /api/v1 backend. Runs as non-root (www-data), listens on
-# :8080. TLS + routing are handled by Caddy on the host.
+# frontend (FrankenPHP/Caddy static files) and the /api/v1 backend (Octane worker).
+# Runs as non-root (www-data, uid 82 — matches the existing app-storage volume),
+# listens on :8080. TLS + routing are handled by Caddy on the host.
+#
+# Octane keeps the app in memory across requests (no per-request bootstrap → the
+# throughput win). Per-request state that used to die with the FPM process is
+# reset explicitly: see App\Support\RequestMemo + App\Listeners\FlushRequestMemo
+# and the companyMailer/MailSender teardowns.
 
 # Base images pinned by immutable digest (reproducible, tamper-evident builds).
-ARG PHP_BASE=serversideup/php:8.5-fpm-nginx-alpine@sha256:13af81f6fb5fbb9e26c6a7cd9e8c8bf22e32dd21842ae3c587b9ac4f24da4c6e
+ARG PHP_BASE=dunglas/frankenphp:1-php8.5-alpine@sha256:def035e964f46253cb5e46a1f9a4633370f658b8e410305e0730ce7247d0ab6a
+
+# --- Composer binary (runtime stage has no composer of its own) --------------
+FROM composer:2@sha256:4d71c3c2109c61d5415544264b59ad4087e4c5b7244481723664138fd36d5040 AS composer
 
 # --- Front-end: standalone SPA (Vite build) --------------------------------
 FROM node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS assets
@@ -27,10 +36,14 @@ RUN cd frontend \
  && VITE_APP_VERSION="${APP_VERSION}" yarn build \
  && node scripts/stage-tesseract.mjs
 
-# --- Runtime: Laravel backend + built SPA ----------------------------------
+# --- Runtime: FrankenPHP + Octane serving the Laravel backend + built SPA ----
 FROM ${PHP_BASE} AS runtime
 
 USER root
+# System deps: image/video/OCR/geo toolchain (imagick+heif, ffmpeg, exiftool,
+# tesseract+poppler), the PG18 client for pg_dump backups, gnupg (PGP mail), and
+# curl for the healthcheck. Then the PHP extensions the app needs, plus pcntl +
+# opcache for the Octane worker.
 RUN apk add --no-cache \
       curl ca-certificates gnupg gzip \
       libheif libde265 x265-libs aom-libs imagemagick imagemagick-heic \
@@ -38,22 +51,17 @@ RUN apk add --no-cache \
       exiftool \
       postgresql18-client \
       tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-deu poppler-utils \
- && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip
+ && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip pcntl opcache
+
+COPY --from=composer /usr/bin/composer /usr/bin/composer
+
+# App PHP settings (memory/upload/opcache) + the runtime entrypoint.
+COPY docker/frankenphp/app.ini /usr/local/etc/php/conf.d/zz-app.ini
+COPY docker/frankenphp/entrypoint.sh /usr/local/bin/ll-entrypoint
+RUN chmod +x /usr/local/bin/ll-entrypoint
 
 # Hardened ImageMagick coder/delegate policy (untrusted image decoding).
-COPY docker/imagemagick/policy.xml /etc/ImageMagick-6/policy.xml
 COPY docker/imagemagick/policy.xml /etc/ImageMagick-7/policy.xml
-
-COPY --chown=www-data:www-data docker/nginx/00-assets.conf /etc/nginx/server-opts.d/00-assets.conf
-COPY --chown=www-data:www-data docker/nginx/security.conf /etc/nginx/server-opts.d/security.conf
-
-ENV PHP_OPCACHE_ENABLE=1 \
-    PHP_OPCACHE_MAX_ACCELERATED_FILES=20000 \
-    PHP_MEMORY_LIMIT=512M \
-    PHP_MAX_EXECUTION_TIME=120 \
-    PHP_POST_MAX_SIZE=560M \
-    PHP_UPLOAD_MAX_FILE_SIZE=550M \
-    AUTORUN_ENABLED=false
 
 WORKDIR /var/www/html
 
@@ -63,11 +71,21 @@ RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --no-in
 
 COPY --chown=www-data:www-data backend ./
 # The standalone SPA build (index.html + hashed assets + tesseract) is served as
-# static files from public/; unknown routes fall through to Laravel's catch-all,
-# which streams the same index.html (see resources/views/spa.blade.php).
+# static files from public/ by FrankenPHP/Caddy; unknown routes fall through to
+# Laravel's catch-all, which streams the same index.html (spa.blade.php).
 COPY --from=assets --chown=www-data:www-data /build/frontend/dist ./public
 
 RUN composer dump-autoload --optimize --no-dev --classmap-authoritative \
- && php artisan package:discover --ansi
+ && php artisan package:discover --ansi \
+ # FrankenPHP/Caddy state dirs + the app tree must be writable by www-data (82),
+ # which owns the app-storage volume — so no root/su-exec at runtime.
+ && mkdir -p /data /config \
+ && chown -R www-data:www-data /data /config /var/www/html/storage /var/www/html/bootstrap/cache
 
 USER www-data
+EXPOSE 8080
+
+ENTRYPOINT ["ll-entrypoint"]
+# Web app: Octane on FrankenPHP. --max-requests recycles workers to bound any
+# leak; worker/scheduler services override this command (queue:work/schedule:work).
+CMD ["php", "artisan", "octane:frankenphp", "--host=0.0.0.0", "--port=8080", "--admin-port=2019", "--workers=auto", "--max-requests=500"]

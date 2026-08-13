@@ -11,7 +11,7 @@
 #
 # Rolling: checkout the ref, build image tagged with it, recreate the app/worker/
 # scheduler containers, wait for health, prune. Migrations + caches run on app
-# start (serversideup AUTORUN, migrate is lock-isolated). The previous image tag
+# start (image entrypoint, migrate is lock-isolated on the app service only). The previous image tag
 # is remembered for one-command rollback.
 #
 set -Eeuo pipefail
