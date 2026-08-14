@@ -73,36 +73,76 @@ export interface Face {
 
 const WHOLE_LIMIT = 8 * 1024 * 1024;
 
+const PAGE_SIZE = 200;
+
 export const useGalleryStore = defineStore('gallery', () => {
   const photos = ref<Photo[]>([]);
   const albums = ref<Album[]>([]);
+  // Keyset pagination cursor for the timeline (null = exhausted / not yet loaded).
+  const nextCursor = ref<string | null>(null);
+  const loadingMore = ref(false);
+  // The filter the current timeline page-set was loaded under, so loadMore/poll
+  // request the same slice. archived is a boolean; albumId/personId narrow it.
+  let pageParams: { albumId?: number; personId?: number; archived?: boolean } = {};
 
-  const load = (albumId?: number) => {
-    const q = albumId ? `?album_id=${albumId}` : '';
-    return api.get<{ photos: Photo[] }>(`/api/v1/gallery/data${q}`).then((r) => { photos.value = r.photos ?? []; });
+  const timelineUrl = (extra: Record<string, string | number | undefined>) => {
+    const p = new URLSearchParams();
+    if (pageParams.albumId) p.set('album_id', String(pageParams.albumId));
+    if (pageParams.personId) p.set('person_id', String(pageParams.personId));
+    if (pageParams.archived) p.set('archived', '1');
+    for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== '') p.set(k, String(v));
+    const s = p.toString();
+    return `/api/v1/gallery/data${s ? `?${s}` : ''}`;
   };
 
-  // Lightweight refresh used by the thumbnail/processing poll: fetch the same
-  // list but PATCH the volatile fields (thumb/status/preview/…) in place when
-  // the photo set is unchanged, so the array identity stays stable — the grid
-  // only re-renders the tiles whose fields actually changed, never rebuilds all
-  // ~1200 rows. Only structural changes (add/remove) replace the array.
-  const mergeData = async (albumId?: number) => {
-    const q = albumId ? `?album_id=${albumId}` : '';
-    const r = await api.get<{ photos: Photo[] }>(`/api/v1/gallery/data${q}`);
+  // Load the FIRST page of the timeline under a filter (replaces the list). Keyset
+  // pagination: the un-paged "everything at once" load timed out on large libraries.
+  const load = (albumId?: number, opts?: { archived?: boolean; ym?: string }) => {
+    pageParams = { albumId, archived: opts?.archived };
+    return api.get<{ photos: Photo[]; next_cursor: string | null }>(timelineUrl({ limit: PAGE_SIZE, cursor_ym: opts?.ym }))
+      .then((r) => { photos.value = r.photos ?? []; nextCursor.value = r.next_cursor ?? null; });
+  };
+
+  // Append the next page (infinite scroll). No-op when exhausted or already fetching.
+  const loadMore = async () => {
+    if (nextCursor.value === null || loadingMore.value) return;
+    loadingMore.value = true;
+    try {
+      const r = await api.get<{ photos: Photo[]; next_cursor: string | null }>(timelineUrl({ limit: PAGE_SIZE, cursor: nextCursor.value }));
+      const seen = new Set(photos.value.map((p) => p.id));
+      for (const p of r.photos ?? []) if (!seen.has(p.id)) photos.value.push(p);
+      nextCursor.value = r.next_cursor ?? null;
+    } finally {
+      loadingMore.value = false;
+    }
+  };
+
+  // Jump the timeline to a month (date scrubber): reload the first page at that month.
+  const jumpToMonth = (ym: string) => load(pageParams.albumId, { archived: pageParams.archived, ym });
+
+  // Month histogram for the scrubber (server-side GROUP BY, honours the same filter).
+  const dates = () => api.get<{ months: { ym: string; count: number }[] }>(timelineUrl({}).replace('/gallery/data', '/gallery/dates'))
+    .then((r) => r.months ?? []);
+
+  // Lightweight refresh used by the thumbnail/processing poll: refetch the loaded
+  // slice's first page and PATCH the volatile fields (thumb/preview/status/…) in
+  // place when the set is unchanged, so the array identity stays stable — the grid
+  // only re-renders changed tiles, never rebuilds. New uploads / processing videos
+  // sit at the top (first page), which is exactly what this covers.
+  const mergeData = async () => {
+    const limit = Math.min(500, Math.max(PAGE_SIZE, photos.value.length));
+    const r = await api.get<{ photos: Photo[] }>(timelineUrl({ limit }));
     const fresh = r.photos ?? [];
-    const byId = new Map(photos.value.map((p) => [p.id, p]));
-    let sameSet = fresh.length === photos.value.length;
-    for (const nf of fresh) {
-      const ex = byId.get(nf.id);
-      if (!ex) { sameSet = false; break; }
+    const byId = new Map(fresh.map((p) => [p.id, p]));
+    for (const ex of photos.value) {
+      const nf = byId.get(ex.id);
+      if (!nf) continue;
       ex.thumb = nf.thumb; ex.preview = nf.preview; ex.status = nf.status;
       ex.motion = nf.motion; ex.duration = nf.duration; ex.media_type = nf.media_type;
       ex.width = nf.width; ex.height = nf.height;
     }
-    if (!sameSet) photos.value = fresh; // add/remove → structural rebuild
   };
-  const loadArchived = () => api.get<{ photos: Photo[] }>('/api/v1/gallery/data?archived=1').then((r) => { photos.value = r.photos ?? []; });
+  const loadArchived = () => load(undefined, { archived: true });
   const memories = () => api.get<MemoriesResult>('/api/v1/gallery/memories');
   const trash = () => api.get<{ photos: Photo[] }>('/api/v1/gallery/trash').then((r) => r.photos);
   const search = (q: string) => api.get<{ photos: Photo[] }>(`/api/v1/gallery/search?q=${encodeURIComponent(q)}`).then((r) => r.photos ?? []);
@@ -172,7 +212,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   // Load a person's photos (sortable by capture date) into the main grid.
   const browsePerson = (id: number, sort: 'asc' | 'desc' = 'desc') =>
     api.get<{ person: Person; photos: Photo[] }>(`/api/v1/gallery/people/${id}?sort=${sort}`)
-      .then((r) => { photos.value = r.photos ?? []; return r.person; });
+      .then((r) => { photos.value = r.photos ?? []; nextCursor.value = null; return r.person; });
   const updatePerson = (id: number, patch: { name?: string | null; contact_id?: string | null; cover_face_id?: number | null }) =>
     api.put<{ ok: boolean; person: Person }>(`/api/v1/gallery/people/${id}`, patch).then((r) => r.person);
   const deletePerson = (id: number) => api.delete(`/api/v1/gallery/people/${id}`);
@@ -232,7 +272,7 @@ export const useGalleryStore = defineStore('gallery', () => {
   const sharedRawUrl = (share: number, photo: number) => api.streamUrl(`/api/v1/gallery/shared-with-me/${share}/photo/${photo}/raw`);
 
   return {
-    photos, albums, load, loadArchived, memories, mergeData, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy, archive, bulkArchive,
+    photos, albums, nextCursor, loadingMore, load, loadMore, jumpToMonth, dates, loadArchived, memories, mergeData, trash, search, duplicates, loadAlbums, upload, attachMotion, motionUrl, playUrl, favorite, update, downloadUrl, destroy, bulkDestroy, archive, bulkArchive,
     restore, forceDelete, emptyTrash, createAlbum, renameAlbum, setAlbumCover, deleteAlbum,
     addToAlbum, removeFromAlbum, thumbUrl, previewUrl, rawUrl,
     people, browsePerson, updatePerson, deletePerson, mergePeople, photoFaces, assignFace, setFaceCover, hideFace, faceCropUrl, reprocess, mlStatus, loadExif, nameSuggest, contactPhotos,

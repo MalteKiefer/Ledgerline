@@ -74,6 +74,10 @@ class GalleryPhoto extends Model
         'exif' => 'array',
         'favorite' => 'boolean',
         'version' => 'integer',
+        // Rendition readiness — set by the worker (forceFill), read by the timeline
+        // instead of stat-ing the disk. Not $fillable: server-set only.
+        'thumb_ready' => 'boolean',
+        'preview_ready' => 'boolean',
     ];
 
     /** @return BelongsToMany<GalleryAlbum, $this> */

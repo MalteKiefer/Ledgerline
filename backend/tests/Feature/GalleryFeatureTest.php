@@ -67,6 +67,90 @@ class GalleryFeatureTest extends TestCase
         $this->actingAs($other)->getJson(route('gallery.exif', ['photo' => $photo->id]))->assertNotFound();
     }
 
+    private function makePhoto(User $owner, array $attrs = []): GalleryPhoto
+    {
+        $photo = new GalleryPhoto;
+        $photo->forceFill(array_merge([
+            'user_id' => $owner->id, 'storage_path' => 'gallery/'.Str::uuid(), 'name' => 'p.jpg',
+            'mime' => 'image/jpeg', 'media_type' => 'image', 'status' => 'ready', 'size' => 10,
+        ], $attrs))->save();
+
+        return $photo;
+    }
+
+    public function test_timeline_reads_readiness_from_db_not_disk(): void
+    {
+        $owner = User::factory()->create();
+        // A ready photo whose rendition file does NOT exist on the (empty fake) disk:
+        // if row() stat-ed the disk it would report thumb=false. It reports true →
+        // it reads the DB flag, never the disk (the ~38k-stat timeout is gone).
+        $this->makePhoto($owner, ['thumb_ready' => true, 'preview_ready' => true, 'taken_at' => now()->subDay()]);
+        $this->makePhoto($owner, ['thumb_ready' => false, 'preview_ready' => false, 'taken_at' => now()]);
+
+        $res = $this->actingAs($owner)->getJson(route('gallery.data'))->assertOk();
+        $this->assertCount(2, $res->json('photos'));
+        // Newest-first: the not-ready photo (taken now) is first.
+        $this->assertFalse($res->json('photos.0.thumb'));
+        $this->assertTrue($res->json('photos.1.thumb'));
+        $this->assertTrue($res->json('photos.1.preview'));
+    }
+
+    public function test_timeline_paginates_with_keyset_cursor(): void
+    {
+        $owner = User::factory()->create();
+        for ($i = 0; $i < 5; $i++) {
+            $this->makePhoto($owner, ['taken_at' => now()->subDays($i), 'thumb_ready' => true, 'preview_ready' => true]);
+        }
+
+        $p1 = $this->actingAs($owner)->getJson(route('gallery.data', ['limit' => 2]))->assertOk();
+        $this->assertCount(2, $p1->json('photos'));
+        $this->assertNotNull($p1->json('next_cursor'));
+
+        $seen = collect($p1->json('photos'))->pluck('id')->all();
+        $cursor = $p1->json('next_cursor');
+        for ($guard = 0; $guard < 10 && $cursor !== null; $guard++) {
+            $page = $this->getJson(route('gallery.data', ['limit' => 2, 'cursor' => $cursor]))->assertOk();
+            $seen = array_merge($seen, collect($page->json('photos'))->pluck('id')->all());
+            $cursor = $page->json('next_cursor');
+        }
+        // No gaps or dupes across the keyset boundary; all 5 seen exactly once.
+        $this->assertCount(5, array_unique($seen));
+        $this->assertCount(5, $seen);
+    }
+
+    public function test_dates_histogram_counts_by_month(): void
+    {
+        $owner = User::factory()->create();
+        $this->makePhoto($owner, ['taken_at' => '2026-08-10 12:00:00', 'thumb_ready' => true]);
+        $this->makePhoto($owner, ['taken_at' => '2026-08-20 12:00:00', 'thumb_ready' => true]);
+        $this->makePhoto($owner, ['taken_at' => '2026-07-01 12:00:00', 'thumb_ready' => true]);
+
+        $res = $this->actingAs($owner)->getJson(route('gallery.dates'))->assertOk();
+        $months = collect($res->json('months'));
+        $this->assertSame('2026-08', $months->first()['ym']); // newest-first
+        $this->assertSame(2, $months->firstWhere('ym', '2026-08')['count']);
+        $this->assertSame(1, $months->firstWhere('ym', '2026-07')['count']);
+
+        // cursor_ym jumps into that month (August rows first).
+        $jump = $this->getJson(route('gallery.data', ['cursor_ym' => '2026-08']))->assertOk();
+        $this->assertGreaterThanOrEqual(1, count($jump->json('photos')));
+    }
+
+    public function test_edit_resets_readiness_until_worker_rerenders(): void
+    {
+        Queue::fake();
+        $owner = User::factory()->create();
+        $photo = $this->makePhoto($owner, ['thumb_ready' => true, 'preview_ready' => true]);
+
+        $this->actingAs($owner)->putJson(route('gallery.update', ['photo' => $photo->id]), ['rotation' => 90])->assertOk();
+
+        $fresh = $photo->fresh();
+        $this->assertSame(1, (int) $fresh->version);
+        $this->assertFalse((bool) $fresh->thumb_ready);
+        $this->assertFalse((bool) $fresh->preview_ready);
+        Queue::assertPushed(GenerateGalleryThumbnail::class);
+    }
+
     public function test_thumb_returns_sandboxed_webp(): void
     {
         $this->actingAs(User::factory()->create());
@@ -210,9 +294,12 @@ class GalleryFeatureTest extends TestCase
     {
         config()->set('ml.enabled', false);
         $this->actingAs(User::factory()->create());
-        $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('tree.jpg', 40, 40)]);
+        // Filename must NOT contain the query term — search also matches OCR text +
+        // filename (works without ML), so a matching name would be a false hit here.
+        $this->post(route('gallery.upload'), ['file' => UploadedFile::fake()->image('IMG_1234.jpg', 40, 40)]);
 
-        // ML off (or no pgvector) → graceful empty result; the client falls back.
+        // ML off (or no pgvector) and no text/name match → graceful empty result;
+        // the client falls back to its own name filter.
         $this->get(route('gallery.search', ['q' => 'tree']))->assertOk()->assertExactJson(['photos' => []]);
         // Blank query short-circuits too.
         $this->get(route('gallery.search', ['q' => '']))->assertOk()->assertExactJson(['photos' => []]);

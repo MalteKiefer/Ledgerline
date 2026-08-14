@@ -477,6 +477,7 @@ Route::middleware('auth')->group(function (): void {
     Route::middleware('module:gallery')->group(function (): void {
         Route::get('/gallery/memories', [GalleryController::class, 'memories'])->middleware('throttle:120,1')->name('gallery.memories');
         Route::get('/gallery/data', [GalleryController::class, 'data'])->name('gallery.data');
+        Route::get('/gallery/dates', [GalleryController::class, 'dates'])->name('gallery.dates');
         Route::get('/gallery/search', [GalleryController::class, 'search'])->middleware('throttle:120,1')->name('gallery.search');
         Route::get('/gallery/duplicates', [GalleryController::class, 'duplicates'])->middleware('throttle:60,1')->name('gallery.duplicates');
         Route::get('/gallery/people', [GalleryPeopleController::class, 'people'])->name('gallery.people');
