@@ -73,7 +73,6 @@ final class Archiver
                 'tar.gz' => self::runTarCompress($staging, 'gzip', $lvl, $outPath, '.gz'),
                 'tar.xz' => self::runTarCompress($staging, 'xz', $lvl, $outPath, '.xz'),
                 '7z' => self::run7zCreate($staging, $lvl, $password, $outPath),
-                default => throw new RuntimeException('unreachable'),
             };
         } finally {
             self::rmrf($staging);
