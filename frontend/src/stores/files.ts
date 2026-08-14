@@ -268,6 +268,19 @@ export const useFilesStore = defineStore('files', () => {
   // Which names are extractable archives (drives the "Extract here" action).
   const ARCHIVE_RE = /\.(zip|7z|rar|tar\.gz|tgz|tar\.xz|txz|tar\.bz2|tbz2?|tar\.zst|tzst|tar|gz|bz2|xz|zst)$/i;
   const isArchive = (name: string) => ARCHIVE_RE.test(name);
+  // Encrypted files (drives the "Decrypt" action).
+  const ENC_RE = /\.(gpg|pgp|asc|p7m|p7|smime)$/i;
+  const isEncrypted = (name: string) => ENC_RE.test(name);
+
+  // Encrypt a file to one of your keys (+ optional recipients) → name.gpg / name.p7m.
+  const encryptEntry = (fileId: number, body: { key_id: number; recipient_ids?: number[] }) =>
+    api.post<{ file: FileEntry }>(`/api/v1/files/entries/${fileId}/encrypt`, body).then((r) => r.file);
+  // Decrypt an encrypted file back to plaintext with one of your keys.
+  const decryptEntry = (fileId: number, body: { key_id: number; passphrase?: string }) =>
+    api.post<{ file: FileEntry }>(`/api/v1/files/entries/${fileId}/decrypt`, body).then((r) => r.file);
+  // Encrypt a whole folder (bundled tar.gz) to your key(s).
+  const encryptFolder = (folderId: number, body: { key_id: number; recipient_ids?: number[] }) =>
+    api.post<{ file: FileEntry }>(`/api/v1/files/folders/${folderId}/encrypt`, body).then((r) => r.file);
 
   return {
     folders, files, labels, usage,
@@ -281,6 +294,7 @@ export const useFilesStore = defineStore('files', () => {
     loadSharedWithMe, browseShared, sharedRawUrl, uploadToShared, renameShared, deleteShared,
     stats, zip, activity, fileActivity, fileInfo, getEntry,
     createArchive, extractArchive, isArchive,
+    isEncrypted, encryptEntry, decryptEntry, encryptFolder,
     rawUrl, thumbUrl,
   };
 });

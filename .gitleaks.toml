@@ -39,4 +39,8 @@ paths = [
     # files are no longer in HEAD but remain in history (full-depth scan), so the path
     # stays allowlisted. Vendored library output, never a project secret.
     '''^resources/js/vendor/.*$''',
+    # Files encryption test: static base64-encoded throwaway PGP test keypairs
+    # (deterministic, generated for the test only — no live secret). Base64 keeps the
+    # armored header out of source; still flagged as high-entropy generic-api-key.
+    '''^backend/tests/Feature/FilesCryptoTest\.php$''',
 ]

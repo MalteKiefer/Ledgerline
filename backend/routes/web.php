@@ -14,6 +14,7 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactDuplicateController;
 use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\ContactShareController;
+use App\Http\Controllers\CryptoController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
@@ -138,6 +139,13 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
     Route::post('/theme', [ThemeController::class, 'update'])->name('theme.update');
     Route::post('/preferences', [PreferencesController::class, 'update'])->name('preferences.update');
+    Route::get('/crypto/keys', [MailKeyController::class, 'index'])->name('crypto.keys.index');
+    Route::post('/crypto/keys', [MailKeyController::class, 'store'])->middleware('throttle:60,1')->name('crypto.keys.store');
+    Route::post('/crypto/keys/generate', [MailKeyController::class, 'generate'])->middleware('throttle:30,1')->name('crypto.keys.generate');
+    Route::delete('/crypto/keys/{key}', [MailKeyController::class, 'destroy'])->whereNumber('key')->middleware('throttle:60,1')->name('crypto.keys.destroy');
+    Route::get('/crypto/keyring', [CryptoController::class, 'keyring'])->name('crypto.keyring');
+    Route::post('/crypto/recipients', [CryptoController::class, 'storeRecipient'])->middleware('throttle:60,1')->name('crypto.recipients.store');
+    Route::delete('/crypto/recipients/{recipient}', [CryptoController::class, 'destroyRecipient'])->whereNumber('recipient')->middleware('throttle:60,1')->name('crypto.recipients.destroy');
     // WebDAV app-specific password (mount Files as a network drive).
     Route::put('/profile/webdav', [WebDavAccessController::class, 'update'])->middleware('throttle:20,1')->name('profile.webdav.update');
     Route::delete('/profile/webdav', [WebDavAccessController::class, 'destroy'])->middleware('throttle:20,1')->name('profile.webdav.destroy');
@@ -336,6 +344,9 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/files/zip', [FilesController::class, 'downloadZip'])->middleware('throttle:120,1')->name('files.zip');
         Route::post('/files/archive', [FilesController::class, 'createArchive'])->middleware('throttle:60,1')->name('files.archive');
         Route::post('/files/entries/{file}/extract', [FilesController::class, 'extractArchive'])->whereNumber('file')->middleware('throttle:60,1')->name('files.extract');
+        Route::post('/files/entries/{file}/encrypt', [FilesController::class, 'encryptEntry'])->whereNumber('file')->middleware('throttle:60,1')->name('files.encrypt');
+        Route::post('/files/entries/{file}/decrypt', [FilesController::class, 'decryptEntry'])->whereNumber('file')->middleware('throttle:60,1')->name('files.decrypt');
+        Route::post('/files/folders/{folder}/encrypt', [FilesController::class, 'encryptFolder'])->whereNumber('folder')->middleware('throttle:30,1')->name('files.folders.encrypt');
         Route::get('/files/stats', [FilesController::class, 'stats'])->middleware('throttle:120,1')->name('files.stats');
         Route::get('/mounts', [MountController::class, 'index'])->name('mounts.index');
         Route::post('/mounts', [MountController::class, 'store'])->middleware('throttle:30,1')->name('mounts.store');

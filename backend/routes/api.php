@@ -41,6 +41,7 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactDuplicateController;
 use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\ContactShareController;
+use App\Http\Controllers\CryptoController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
@@ -456,6 +457,9 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/files/zip', [FilesController::class, 'downloadZip'])->middleware('throttle:120,1')->name('api.files.zip');
             Route::post('/files/archive', [FilesController::class, 'createArchive'])->middleware('throttle:60,1')->name('api.files.archive');
             Route::post('/files/entries/{file}/extract', [FilesController::class, 'extractArchive'])->whereNumber('file')->middleware('throttle:60,1')->name('api.files.extract');
+            Route::post('/files/entries/{file}/encrypt', [FilesController::class, 'encryptEntry'])->whereNumber('file')->middleware('throttle:60,1')->name('api.files.encrypt');
+            Route::post('/files/entries/{file}/decrypt', [FilesController::class, 'decryptEntry'])->whereNumber('file')->middleware('throttle:60,1')->name('api.files.decrypt');
+            Route::post('/files/folders/{folder}/encrypt', [FilesController::class, 'encryptFolder'])->whereNumber('folder')->middleware('throttle:30,1')->name('api.files.folders.encrypt');
             Route::get('/files/stats', [FilesController::class, 'stats'])->middleware('throttle:120,1')->name('api.files.stats');
             Route::get('/mounts', [MountController::class, 'index'])->name('api.mounts.index');
             Route::post('/mounts', [MountController::class, 'store'])->middleware('throttle:30,1')->name('api.mounts.store');
@@ -622,6 +626,16 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/locale', [LocaleController::class, 'update'])->name('api.locale.update');
         Route::post('/theme', [ThemeController::class, 'update'])->name('api.theme.update');
         Route::post('/preferences', [PreferencesController::class, 'update'])->name('api.preferences.update');
+
+        // Shared encryption keyring (profile-level): own keys via the mail key
+        // controller mounted here, plus recipients + the encrypt-to picker.
+        Route::get('/crypto/keys', [MailKeyController::class, 'index'])->name('api.crypto.keys.index');
+        Route::post('/crypto/keys', [MailKeyController::class, 'store'])->middleware('throttle:60,1')->name('api.crypto.keys.store');
+        Route::post('/crypto/keys/generate', [MailKeyController::class, 'generate'])->middleware('throttle:30,1')->name('api.crypto.keys.generate');
+        Route::delete('/crypto/keys/{key}', [MailKeyController::class, 'destroy'])->whereNumber('key')->middleware('throttle:60,1')->name('api.crypto.keys.destroy');
+        Route::get('/crypto/keyring', [CryptoController::class, 'keyring'])->name('api.crypto.keyring');
+        Route::post('/crypto/recipients', [CryptoController::class, 'storeRecipient'])->middleware('throttle:60,1')->name('api.crypto.recipients.store');
+        Route::delete('/crypto/recipients/{recipient}', [CryptoController::class, 'destroyRecipient'])->whereNumber('recipient')->middleware('throttle:60,1')->name('api.crypto.recipients.destroy');
         // Per-user non-display settings (contact notify channels + file version cap).
         Route::get('/settings', [ApiSettingsController::class, 'show'])->name('api.settings.show');
         Route::put('/settings', [ApiSettingsController::class, 'update'])->middleware('throttle:60,1')->name('api.settings.update');

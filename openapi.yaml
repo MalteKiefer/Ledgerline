@@ -7322,6 +7322,95 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { description: "Not a recognised archive, or validation error." }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /files/entries/{file}/encrypt:
+    post:
+      tags: [Files]
+      operationId: filesEncryptEntry
+      summary: Encrypt a file to a key (+ recipients)
+      description: >
+        Public-key encrypts the file to one of the user's own keys (from the keyring)
+        plus any chosen recipients — always including the own key so it stays
+        decryptable. PGP → name.gpg, S/MIME → name.p7m, saved beside the original.
+        recipient_ids must be the same type (pgp/smime) as key_id.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [key_id], properties: { key_id: { type: integer, description: "An own key id (mail_pgp_keys)." }, recipient_ids: { type: array, items: { type: integer }, maxItems: 50 } } } } } }
+      responses:
+        "200": { description: "The encrypted file.", content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { description: "Encrypted output exceeds the storage quota." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /files/entries/{file}/decrypt:
+    post:
+      tags: [Files]
+      operationId: filesDecryptEntry
+      summary: Decrypt an encrypted file
+      description: >
+        Decrypts an encrypted file (name.gpg / name.p7m) back to plaintext with one of
+        the user's own keys (private material). Saves the result (extension stripped)
+        beside the ciphertext. 422 if the file isn't encrypted or decryption fails.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [key_id], properties: { key_id: { type: integer }, passphrase: { type: [string, "null"], maxLength: 400 } } } } } }
+      responses:
+        "200": { description: "The decrypted file.", content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Not an encrypted file, or wrong key/passphrase." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /files/folders/{folder}/encrypt:
+    post:
+      tags: [Files]
+      operationId: filesEncryptFolder
+      summary: Encrypt a folder (bundled tar.gz) to a key
+      description: >
+        Bundles the folder's subtree into a tar.gz and encrypts it to the chosen
+        key(s) → folder.tar.gz.gpg (or .p7m), saved beside the folder. Same caps as
+        the zip download.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: folder, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [key_id], properties: { key_id: { type: integer }, recipient_ids: { type: array, items: { type: integer }, maxItems: 50 } } } } } }
+      responses:
+        "200": { description: "The encrypted archive file.", content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Folder empty or missing." }
+        "413": { description: "Over the cap or storage quota." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /crypto/keyring:
+    get:
+      tags: [Crypto]
+      operationId: cryptoKeyring
+      summary: Encryption keyring (own keys + recipients)
+      description: "The user's own PGP/S-MIME keys (public info only) plus saved recipients — the 'encrypt to' picker for the Files module. Own-key management is /crypto/keys; recipients are /crypto/recipients."
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: "Keyring.", content: { application/json: { schema: { type: object, properties: { keys: { type: array, items: { type: object, properties: { id: { type: integer }, type: { type: string }, label: { type: string }, fingerprint: { type: [string, "null"] }, has_private: { type: boolean }, is_own: { type: boolean } } } }, recipients: { type: array, items: { type: object, properties: { id: { type: integer }, type: { type: string }, label: { type: string }, fingerprint: { type: [string, "null"] } } } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /crypto/recipients:
+    post:
+      tags: [Crypto]
+      operationId: cryptoRecipientStore
+      summary: Import a recipient (public key / certificate)
+      description: "Save someone else's armored PGP public key or S/MIME certificate (PEM) as a recipient you can encrypt to. Public material only."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [type, label, material], properties: { type: { type: string, enum: [pgp, smime] }, label: { type: string, maxLength: 200 }, material: { type: string, maxLength: 100000, description: "Armored PGP public key or PEM certificate." } } } } } }
+      responses:
+        "200": { description: "The saved recipient.", content: { application/json: { schema: { type: object, properties: { recipient: { type: object, properties: { id: { type: integer }, type: { type: string }, label: { type: string }, fingerprint: { type: [string, "null"] } } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { description: "Invalid key/certificate." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /crypto/recipients/{recipient}:
+    delete:
+      tags: [Crypto]
+      operationId: cryptoRecipientDestroy
+      summary: Remove a recipient
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: recipient, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "Removed." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /files/stats:
     get:
       tags: [Files]
