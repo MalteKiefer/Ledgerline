@@ -36,8 +36,8 @@
       <div v-show="uploadState.active && !conflict.show" class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/30">
         <div class="w-80 max-w-[90%] rounded-xl bg-[var(--ll-elevated)] px-6 py-5 shadow-xl">
           <div class="flex items-center gap-2 text-sm font-medium">
-            <Icon name="upload" :size="20" class="text-primary-500" />
-            {{ t('files.uploading') }} <span class="ml-auto tabular-nums text-[var(--ll-muted)]">{{ uploadState.done }} / {{ uploadState.total }}</span>
+            <Icon :name="uploadState.icon" :size="20" class="text-primary-500" />
+            {{ uploadState.label || t('files.uploading') }} <span class="ml-auto tabular-nums text-[var(--ll-muted)]">{{ uploadState.done }} / {{ uploadState.total }}</span>
           </div>
           <div class="mt-1 truncate text-xs text-[var(--ll-muted)]">{{ uploadState.name }}</div>
           <div class="mt-3 h-2 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/10">
@@ -1461,7 +1461,7 @@ async function onUploadDir(e: Event) {
     // Existing-name map per target folder (reused across files in that folder).
     const dirNames = new Map<number | null, Map<string, FileEntry>>();
     let failed = 0;
-    uploadState.value = { active: true, done: 0, total: allFiles.length, name: '', frac: 0 };
+    uploadState.value = { active: true, done: 0, total: allFiles.length, name: '', frac: 0, label: t('files.uploading'), icon: 'upload' };
     for (const f of allFiles) {
       const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? '';
       const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
@@ -1556,8 +1556,8 @@ async function doMove(target: number | null) {
     success(t('common.saved'));
   } catch { error(t('common.error')); }
 }
-const uploadState = ref<{ active: boolean; done: number; total: number; name: string; frac: number }>(
-  { active: false, done: 0, total: 0, name: '', frac: 0 },
+const uploadState = ref<{ active: boolean; done: number; total: number; name: string; frac: number; label: string; icon: string }>(
+  { active: false, done: 0, total: 0, name: '', frac: 0, label: '', icon: 'upload' },
 );
 const uploadPct = computed(() => {
   const u = uploadState.value;
@@ -1613,7 +1613,7 @@ async function uploadList(list: FileList | File[]) {
   conflictAll.value = false;
   const all: { v: ConflictAction | null } = { v: null };
 
-  uploadState.value = { active: true, done: 0, total: files.length, name: '', frac: 0 };
+  uploadState.value = { active: true, done: 0, total: files.length, name: '', frac: 0, label: t('files.uploading'), icon: 'upload' };
   try {
     for (const f of files) {
       uploadState.value.name = f.name;
@@ -1717,12 +1717,14 @@ async function bulkTrash() {
   const n = selCount.value;
   if (!n) return;
   if (!await confirmAsk(t('files.bulk_trash_confirm', { n: String(n) }), { danger: true })) return;
+  uploadState.value = { active: true, done: 0, total: n, name: '', frac: 0, label: t('files.trash'), icon: 'delete' };
   try {
-    for (const f of selectedFiles.value) await s.trashFile(f);
-    for (const fo of selectedFolderObjs.value) await s.trashFolder(fo);
+    for (const f of selectedFiles.value) { uploadState.value.name = f.name; await s.trashFile(f); uploadState.value.done++; }
+    for (const fo of selectedFolderObjs.value) { uploadState.value.name = fo.name; await s.trashFolder(fo); uploadState.value.done++; }
     clearSelection(); await s.load(); success(t('common.saved'));
   }
   catch { error(t('common.error')); }
+  finally { uploadState.value.active = false; }
 }
 
 async function doBulk(target: number | null, copy: boolean) {
@@ -1733,22 +1735,28 @@ async function doBulk(target: number | null, copy: boolean) {
   conflictAll.value = false;
   const all: { v: ConflictAction | null } = { v: null };
   let failed = 0;
+  uploadState.value = { active: true, done: 0, total: files.length + folders.length, name: '', frac: 0, label: copy ? t('files.copy') : t('files.move'), icon: copy ? 'content_copy' : 'drive_file_move' };
   try {
     for (const f of files) {
-      if (f.file_folder_id === target && !copy) continue; // already there (move no-op)
+      uploadState.value.name = f.name;
+      if (f.file_folder_id === target && !copy) { uploadState.value.done++; continue; } // already there (move no-op)
       const action = await decideConflict(f.name, existing, all);
-      if (action === 'skip') continue;
+      if (action === 'skip') { uploadState.value.done++; continue; }
       try { await placeFile(f, target, copy, action, existing); } catch { failed++; }
+      uploadState.value.done++;
     }
     for (const fo of folders) {
-      if (fo.parent_id === target) continue; // already there
+      uploadState.value.name = fo.name;
+      if (fo.parent_id === target) { uploadState.value.done++; continue; } // already there
       try { await s.moveFolder(fo, target); } catch { failed++; } // server guards cycles (422)
+      uploadState.value.done++;
     }
     clearSelection();
     await s.load();
     if (failed) error(t('files.move_some_failed', { n: String(failed) }));
     else success(t('common.saved'));
   } catch { error(t('common.error')); }
+  finally { uploadState.value.active = false; }
 }
 // Move/copy one file into `target`, honouring an optional conflict action.
 async function placeFile(f: FileEntry, target: number | null, copy: boolean, action: ConflictAction | null, existing: Map<string, FileEntry>) {
