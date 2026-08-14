@@ -51,6 +51,7 @@ RUN apk add --no-cache \
       exiftool \
       postgresql18-client \
       tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-deu poppler-utils \
+      tar p7zip unzip xz zstd bzip2 unrar \
  && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip pcntl opcache \
  # The dunglas image sets cap_net_bind_service+ep on the frankenphp binary so it
  # can bind :80/:443 as non-root. We bind :8080 (>1024) and run under

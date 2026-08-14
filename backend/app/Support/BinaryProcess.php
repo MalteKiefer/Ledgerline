@@ -50,12 +50,14 @@ final class BinaryProcess
      * returns ok=false with the throwable message in `err` and exit=null.
      *
      * @param  array<int, string>  $argv
+     * @param  string|null  $cwd  Working directory to run in (e.g. a staging dir for
+     *                            7z, which has no -C flag). Null = inherit.
      * @return array{ok: bool, out: string, err: string, exit: ?int}
      */
-    public static function runCapture(array $argv, int $timeout = 60): array
+    public static function runCapture(array $argv, int $timeout = 60, ?string $cwd = null): array
     {
         try {
-            $process = new Process($argv);
+            $process = new Process($argv, $cwd);
             $process->setTimeout($timeout);
             $process->run();
 

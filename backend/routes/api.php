@@ -454,6 +454,8 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/files/entries', [FilesController::class, 'upload'])->middleware('throttle:1200,1')->name('api.files.upload');
             Route::post('/files/entries/trash/empty', [FilesController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('api.files.empty');
             Route::post('/files/zip', [FilesController::class, 'downloadZip'])->middleware('throttle:120,1')->name('api.files.zip');
+            Route::post('/files/archive', [FilesController::class, 'createArchive'])->middleware('throttle:60,1')->name('api.files.archive');
+            Route::post('/files/entries/{file}/extract', [FilesController::class, 'extractArchive'])->whereNumber('file')->middleware('throttle:60,1')->name('api.files.extract');
             Route::get('/files/stats', [FilesController::class, 'stats'])->middleware('throttle:120,1')->name('api.files.stats');
             Route::get('/mounts', [MountController::class, 'index'])->name('api.mounts.index');
             Route::post('/mounts', [MountController::class, 'store'])->middleware('throttle:30,1')->name('api.mounts.store');

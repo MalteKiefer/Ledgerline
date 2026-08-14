@@ -546,11 +546,26 @@ class NotesController extends Controller
             'id' => $n->id,
             'note_folder_id' => $n->note_folder_id,
             'title' => $n->title ?? '',
+            'excerpt' => $this->excerpt($n->body),
             'tags' => $tags,
             'pinned' => (bool) $n->pinned,
             'favorite' => (bool) $n->favorite,
             'updated_at' => $n->updated_at?->toIso8601String(),
         ];
+    }
+
+    /** A short, plain-text preview of a note's Markdown body (list cards). Strips the common syntax. */
+    private function excerpt(?string $body): string
+    {
+        $text = (string) $body;
+        // Drop fenced code blocks and images, then strip inline markdown markers to plain text.
+        $text = (string) preg_replace('/```.*?```/s', '', $text);
+        $text = (string) preg_replace('/!\[[^\]]*]\([^)]*\)/', '', $text);           // images
+        $text = (string) preg_replace('/\[([^\]]+)]\([^)]*\)/', '$1', $text);        // links → text
+        $text = (string) preg_replace('/[#>*_`~\-]+/', ' ', $text);                  // headings/emphasis/rules
+        $text = trim((string) preg_replace('/\s+/', ' ', $text));
+
+        return mb_substr($text, 0, 200);
     }
 
     /** @return array<string, mixed> */

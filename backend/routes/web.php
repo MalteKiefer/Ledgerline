@@ -334,6 +334,8 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/files/entries', [FilesController::class, 'upload'])->middleware('throttle:1200,1')->name('files.rel.upload');
         Route::post('/files/entries/trash/empty', [FilesController::class, 'emptyTrash'])->middleware('throttle:60,1')->name('files.rel.empty');
         Route::post('/files/zip', [FilesController::class, 'downloadZip'])->middleware('throttle:120,1')->name('files.zip');
+        Route::post('/files/archive', [FilesController::class, 'createArchive'])->middleware('throttle:60,1')->name('files.archive');
+        Route::post('/files/entries/{file}/extract', [FilesController::class, 'extractArchive'])->whereNumber('file')->middleware('throttle:60,1')->name('files.extract');
         Route::get('/files/stats', [FilesController::class, 'stats'])->middleware('throttle:120,1')->name('files.stats');
         Route::get('/mounts', [MountController::class, 'index'])->name('mounts.index');
         Route::post('/mounts', [MountController::class, 'store'])->middleware('throttle:30,1')->name('mounts.store');

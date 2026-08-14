@@ -7256,6 +7256,71 @@ paths:
         "413": { description: "Over the ZIP export cap (>5000 files or >2 GiB total)." }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /files/archive:
+    post:
+      tags: [Files]
+      operationId: filesCreateArchive
+      summary: Create an archive from a selection or folder subtree
+      description: >
+        Archives the selected files (`ids`) or a folder subtree (`folder_id`) and
+        SAVES the result as a new file in `target_folder_id` (default: root or the
+        source folder), returning it (download via its normal raw URL). Runs inline
+        on trusted input with the same caps as /files/zip (≤5000 files, ≤2 GiB).
+        `format` ∈ {zip, tar.gz, tar.xz, 7z}; `level` 0..9 (0 = store). A `password`
+        is only accepted for zip (AES-256) and 7z (header-encrypted) — 422 otherwise.
+        Entries are stored flat (deduped names).
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [format]
+              properties:
+                ids: { type: array, items: { type: integer }, maxItems: 5000 }
+                folder_id: { type: integer, description: "Archive this folder's subtree instead of ids." }
+                target_folder_id: { type: [integer, "null"], description: "Where to save the archive file (default: root or the source folder)." }
+                format: { type: string, enum: [zip, tar.gz, tar.xz, 7z] }
+                level: { type: integer, minimum: 0, maximum: 9, description: "Compression level (0 = store, 9 = max)." }
+                password: { type: [string, "null"], maxLength: 200, description: "Encrypts the archive; only zip/7z." }
+                name: { type: [string, "null"], maxLength: 200 }
+      responses:
+        "200": { description: "The created archive file.", content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Nothing to archive." }
+        "413": { description: "Over the cap (>5000 files or >2 GiB total) or the archive exceeds the storage quota." }
+        "422": { description: "Validation error, or a password on a format that can't hold one." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /files/entries/{file}/extract:
+    post:
+      tags: [Files]
+      operationId: filesExtractArchive
+      summary: Extract an archive file into a new folder
+      description: >
+        Creates a new folder (named after the archive) and queues a WORKER job to
+        extract the archive into it — the untrusted decode never runs in the web
+        request (bomb defence). Supports zip/7z/rar/tar(.gz/.xz/.bz2/.zst)/gz/bz2/xz/zst.
+        Hardened against zip-slip (entries confined to the folder), entry-count/size
+        caps and a per-process timeout, and enforces the owner's storage quota; the
+        outcome (done / wrong-password / quota) arrives as a notification. Returns the
+        destination folder immediately. 422 if the file isn't a recognised archive.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password: { type: [string, "null"], maxLength: 200, description: "For an encrypted archive." }
+                target_folder_id: { type: [integer, "null"], description: "Parent for the new folder (default: the archive's own folder)." }
+      responses:
+        "200": { description: "The destination folder (fills as the worker extracts).", content: { application/json: { schema: { type: object, properties: { folder: { type: object, properties: { id: { type: integer }, name: { type: string }, parent_id: { type: [integer, "null"] } } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Not a recognised archive, or validation error." }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /files/stats:
     get:
       tags: [Files]
