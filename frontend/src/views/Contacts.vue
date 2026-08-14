@@ -527,7 +527,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import AddressMiniMap from '@spa/components/AddressMiniMap.vue';
@@ -555,6 +556,8 @@ const TONE_BG: Record<string, string> = {
 };
 
 const c = useContactsStore();
+const route = useRoute();
+const router = useRouter();
 const gal = useGalleryStore();
 const auth = useAuthStore();
 const { success, error } = useToast();
@@ -623,7 +626,38 @@ function galleryPicks(photos: Photo[]): AvatarPick[] {
 
 const bookItems = computed(() => c.books.map((b) => ({ title: b.name, value: b.id })));
 
-onMounted(() => c.load());
+// ---- Deep links: mirror the selected book/open contact in the URL query so a
+// reload or shared link lands on the same place. `restoring` gates the
+// write-watch while we apply an incoming URL.
+let restoring = false;
+function buildQuery(): Record<string, string> {
+  const q: Record<string, string> = {};
+  if (bookId.value !== null) q.book = String(bookId.value);
+  if (selected.value) q.contact = String(selected.value.id);
+  return q;
+}
+watch([bookId, selected], () => {
+  if (restoring) return;
+  const q = buildQuery();
+  const keys = ['book', 'contact'];
+  const cur: Record<string, string> = {};
+  for (const k of keys) { const v = route.query[k]; if (typeof v === 'string') cur[k] = v; }
+  if (JSON.stringify(q) !== JSON.stringify(cur)) void router.replace({ query: q });
+});
+// Apply the URL query on load: restore the book filter, load, then reopen the
+// deep-linked contact (best-effort: skip if it isn't in the loaded list).
+async function applyRoute() {
+  restoring = true;
+  const q = route.query;
+  bookId.value = typeof q.book === 'string' ? q.book : null;
+  try { await reload(); }
+  catch { /* fall back to empty list */ }
+  finally { restoring = false; }
+  const cid = typeof q.contact === 'string' ? q.contact : '';
+  if (cid) { const row = c.contacts.find((x) => x.id === cid); if (row) await openDetail(row); }
+}
+
+onMounted(() => { void applyRoute(); });
 
 function str(v: unknown): string { return typeof v === 'string' ? v : ''; }
 function arr(v: unknown): Field[] { return Array.isArray(v) ? (v as Field[]) : []; }

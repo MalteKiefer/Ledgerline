@@ -212,6 +212,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
@@ -221,6 +222,8 @@ import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 
 const store = useTasksStore();
+const route = useRoute();
+const router = useRouter();
 const { success, error } = useToast();
 const locale = document.documentElement.lang || 'de';
 
@@ -633,8 +636,42 @@ watch(() => form.allDay, (allDay) => {
   }
 });
 
-onMounted(async () => {
-  try { await store.loadTaskLists(); } catch { /* ignore */ }
-  await reload();
+// ---- Deep links: mirror the navigational state (selected list + view toggles)
+// in the URL query so a reload or shared link lands on the same place.
+// `restoring` gates the write-watch while we apply an incoming URL.
+const STATUS_VALUES = ['all', 'NEEDS-ACTION', 'IN-PROCESS', 'COMPLETED', 'CANCELLED'] as const;
+const SORT_VALUES = ['due', 'priority', 'manual'] as const;
+let restoring = false;
+function buildQuery(): Record<string, string> {
+  const q: Record<string, string> = {};
+  if (filters.listId) q.list = filters.listId;
+  if (filters.status !== 'all') q.status = filters.status;
+  if (filters.sort !== 'manual') q.sort = filters.sort;
+  if (!filters.hideCompleted) q.hide = '0';
+  return q;
+}
+watch([() => filters.listId, () => filters.status, () => filters.sort, () => filters.hideCompleted], () => {
+  if (restoring) return;
+  const q = buildQuery();
+  const keys = ['list', 'status', 'sort', 'hide'];
+  const cur: Record<string, string> = {};
+  for (const k of keys) { const v = route.query[k]; if (typeof v === 'string') cur[k] = v; }
+  if (JSON.stringify(q) !== JSON.stringify(cur)) void router.replace({ query: q });
 });
+// Apply the URL query on load: set the view toggles + selected list, then load.
+async function applyRoute(): Promise<void> {
+  restoring = true;
+  const q = route.query;
+  if (typeof q.status === 'string' && (STATUS_VALUES as readonly string[]).includes(q.status)) filters.status = q.status as typeof filters.status;
+  if (typeof q.sort === 'string' && (SORT_VALUES as readonly string[]).includes(q.sort)) filters.sort = q.sort as typeof filters.sort;
+  if (q.hide === '0') filters.hideCompleted = false;
+  try {
+    await store.loadTaskLists();
+    if (typeof q.list === 'string' && store.taskLists.some((l) => l.id === q.list)) filters.listId = q.list;
+    await reload();
+  } catch { /* fall back to default view */ }
+  finally { restoring = false; }
+}
+
+onMounted(() => { void applyRoute(); });
 </script>

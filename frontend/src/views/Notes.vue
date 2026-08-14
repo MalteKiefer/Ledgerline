@@ -201,7 +201,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, nextTick, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { fmtDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { Card, Btn, TextField, Select, Icon, Modal } from '@spa/ui';
@@ -270,12 +270,43 @@ function fmtDate(iso: string | null) {
 }
 
 const route = useRoute();
+const router = useRouter();
 // Deep-open from global search (?open=<id>): open that note once loaded.
 watch(() => route.query.open, (v) => { const id = Number(v); if (id) void openNote(id); });
+
+// ---- Deep links: mirror the active folder/tag/open note into the URL query so
+// a reload or shared link lands on the same place. `restoring` gates the
+// write-watch while we apply an incoming URL.
+let restoring = false;
+function buildQuery(): Record<string, string> {
+  const q: Record<string, string> = {};
+  if (activeFolder.value !== null) q.folder = String(activeFolder.value);
+  if (activeTag.value !== null) q.tag = activeTag.value;
+  if (current.value?.id) q.note = String(current.value.id);
+  return q;
+}
+watch([activeFolder, activeTag, () => current.value?.id], () => {
+  if (restoring) return;
+  const q = buildQuery();
+  const keys = ['folder', 'tag', 'note'];
+  const cur: Record<string, string> = {};
+  for (const k of keys) { const v = route.query[k]; if (typeof v === 'string') cur[k] = v; }
+  if (JSON.stringify(q) !== JSON.stringify(cur)) void router.replace({ query: q });
+});
+// Apply the URL query on load: restore folder/tag, then open the deep-linked note.
+async function applyRoute() {
+  restoring = true;
+  const q = route.query;
+  try {
+    activeFolder.value = q.folder ? Number(q.folder) : null;
+    activeTag.value = typeof q.tag === 'string' ? q.tag : null;
+  } finally { restoring = false; }
+  const nid = Number(q.note || q.open);
+  if (nid) await openNote(nid);
+}
 onMounted(async () => {
   await n.load();
-  const id = Number(route.query.open);
-  if (id) void openNote(id);
+  await applyRoute();
 });
 
 function selectFolder(id: number | null) { activeFolder.value = id; showTrash.value = false; searchHits.value = null; query.value = ''; }

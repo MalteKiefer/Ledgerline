@@ -365,6 +365,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { api, ApiError } from '@spa/api/client';
@@ -376,6 +377,8 @@ import { confirmAsk } from '@spa/composables/useConfirm';
 import { effectiveTz, timezoneList, utcToZonedInput, zonedInputToUtc, hoursInTz, fmtTime, fmtDateTime } from '@spa/lib/datetime';
 
 const store = useCalendarStore();
+const route = useRoute();
+const router = useRouter();
 const auth = useAuthStore();
 const { success, error } = useToast();
 const locale = document.documentElement.lang || 'de';
@@ -907,12 +910,53 @@ const dayModalEvents = computed<Occurrence[]>(() => eventsByDay.value.get(dayMod
 const dayModalLabel = computed<string>(() => (dayModalKey.value ? parseKey(dayModalKey.value).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' }) : ''));
 function openDay(key: string): void { dayModalKey.value = key; dayModal.value = true; }
 
+// ---- Deep links: mirror the current view/date/open-event in the URL query so a
+// reload or shared link lands on the same place. `restoring` gates the
+// write-watch while we apply an incoming URL.
+let restoring = false;
+function buildQuery(): Record<string, string> {
+  const q: Record<string, string> = {};
+  q.view = view.value;
+  q.date = ymd(cursor.value);
+  if (eventModal.value && editingId.value) q.event = editingId.value;
+  return q;
+}
+watch([view, cursor, eventModal, editingId], () => {
+  if (restoring) return;
+  const q = buildQuery();
+  const keys = ['view', 'date', 'event'];
+  const cur: Record<string, string> = {};
+  for (const k of keys) { const v = route.query[k]; if (typeof v === 'string') cur[k] = v; }
+  if (JSON.stringify(q) !== JSON.stringify(cur)) void router.replace({ query: q });
+});
+// Apply the URL query on load: restore the view + date cursor before the range
+// loads (so the correct window is fetched), then reopen ?event best-effort.
+function applyRoute(): void {
+  restoring = true;
+  const q = route.query;
+  try {
+    if (q.view === 'month' || q.view === 'week' || q.view === 'agenda') view.value = q.view;
+    if (typeof q.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(q.date)) {
+      const d = parseKey(q.date);
+      if (!Number.isNaN(d.getTime())) cursor.value = startOfDay(d);
+    }
+  } finally { restoring = false; }
+}
+async function reopenEvent(): Promise<void> {
+  const id = route.query.event;
+  if (typeof id !== 'string' || !id) return;
+  const occ = store.events.find((o) => o.id === id);
+  if (occ) await openEdit(occ);
+}
+
 onMounted(async () => {
   try {
     await store.loadData();
     activeCalendars.value = new Set(store.calendars.map((c) => c.id));
     view.value = store.settings.default_view;
   } catch { /* ignore */ }
+  applyRoute();
   await reloadRange();
+  await reopenEvent();
 });
 </script>

@@ -1018,7 +1018,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { fmtDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
@@ -1107,6 +1107,7 @@ async function refreshView() {
 function onFocus() { if (!document.hidden) void refreshView(); }
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 const route = useRoute();
+const router = useRouter();
 // Deep-open from global search (?open=<id>): fetch the file and show its preview.
 async function openById(id: number) {
   try { preview.value = await s.getEntry(id); previewOpen.value = true; } catch { error(t('common.error')); }
@@ -1114,7 +1115,7 @@ async function openById(id: number) {
 watch(() => route.query.open, (v) => { const id = Number(v); if (id) void openById(id); });
 
 onMounted(() => {
-  void s.load();
+  void applyRoute();
   void mnt.load();
   const openId = Number(route.query.open);
   if (openId) void openById(openId);
@@ -2058,4 +2059,52 @@ watch(tagInput, (v) => {
   tagInput.value = parts.pop() ?? '';
   void commitTags(parts.map((x) => x.trim()).filter(Boolean));
 });
+
+// ---- Deep links: mirror the current view/folder/mount/open file in the URL
+// query so a reload or shared link lands on the same place. `restoring` gates
+// the write-watch while we apply an incoming URL.
+let restoring = false;
+function buildQuery(): Record<string, string> {
+  const q: Record<string, string> = {};
+  if (view.value !== 'files') q.view = view.value;
+  if (view.value === 'files' && cwd.value !== null) q.folder = String(cwd.value);
+  if (view.value === 'mount' && activeMount.value) q.mount = String(activeMount.value.id);
+  if (previewOpen.value && preview.value) q.file = String(preview.value.id);
+  return q;
+}
+watch([view, cwd, activeMount, previewOpen, preview], () => {
+  if (restoring) return;
+  const q = buildQuery();
+  const keys = ['view', 'folder', 'mount', 'file'];
+  const cur: Record<string, string> = {};
+  for (const k of keys) { const v = route.query[k]; if (typeof v === 'string') cur[k] = v; }
+  if (JSON.stringify(q) !== JSON.stringify(cur)) void router.replace({ query: q });
+});
+// Apply the URL query on load: restore the view/folder/mount, then reopen the
+// deep-linked file (best-effort: only if it is in the loaded set).
+async function applyRoute() {
+  restoring = true;
+  const q = route.query;
+  const v = typeof q.view === 'string' ? q.view : 'files';
+  try {
+    cwd.value = q.folder ? Number(q.folder) : null;
+    await s.load();
+    if (v === 'mount') {
+      if (!mnt.mounts.length) await mnt.load();
+      const m = mnt.mounts.find((x) => x.id === Number(q.mount));
+      if (m) await openMount(m);
+      else view.value = 'files';
+    } else if (v === 'favorites' || v === 'shared' || v === 'trash') {
+      await setView(v);
+    } else {
+      view.value = 'files';
+    }
+  } catch { /* fall back to the files view */ }
+  finally { restoring = false; }
+  const fid = Number(q.file);
+  if (fid) {
+    const f = (s.files as FileEntry[]).find((x) => x.id === fid);
+    if (f) { preview.value = f; previewOpen.value = true; }
+  }
+}
 </script>
