@@ -1247,7 +1247,7 @@ async function refreshPeople() { try { peopleList.value = await g.people(); } ca
 async function loadViewerFaces() {
   const p = viewerPhoto.value;
   viewerFaces.value = [];
-  if (!p || p.media_type !== 'image') return;
+  if (!p || p.media_type !== 'image' || showTrash.value) return;
   try { viewerFaces.value = await g.photoFaces(p.id); } catch { /* face ML off → no chips */ }
 }
 async function setCoverFromChip(f: Face) {
@@ -1368,7 +1368,7 @@ function initExifMap() {
 
 async function loadViewerExif() {
   const p = viewerPhoto.value;
-  if (!p) { viewerExif.value = null; destroyExifMap(); return; }
+  if (!p || showTrash.value) { viewerExif.value = null; destroyExifMap(); return; }
   exifLoading.value = true;
   try { viewerExif.value = await g.loadExif(p.id); } catch { viewerExif.value = null; }
   finally { exifLoading.value = false; }
