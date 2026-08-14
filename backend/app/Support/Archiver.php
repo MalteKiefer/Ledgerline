@@ -254,15 +254,8 @@ final class Archiver
 
             return;
         }
-        if ($format === 'rar') {
-            $pw = $password !== null && $password !== '' ? '-p'.$password : '-p-';
-            $r = BinaryProcess::runCapture(['unrar', 'x', '-y', '-o+', $pw, $archive, $dest.'/'], self::TIMEOUT);
-            if ($r['ok']) {
-                return;
-            }
-            // Fall through to 7z (handles many rar files too).
-        }
-        // 7z handles 7z (and rar/zip/etc. as a fallback).
+        // 7z handles 7z, rar (RAR4 fully, RAR5 best-effort — no unrar in Alpine),
+        // and zip/tar/etc. as a fallback.
         $argv = ['7z', 'x', '-y', '-bd', '-o'.$dest];
         $argv[] = $password !== null && $password !== '' ? '-p'.$password : '-p';
         $argv[] = $archive;
