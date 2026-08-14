@@ -375,6 +375,7 @@ return [
     'archive_failed' => 'Не удалось создать архив.',
     'archive_extract' => 'Распаковать сюда',
     'archive_extract_password' => 'Возможно, архив защищён паролем. Введите пароль (оставьте пустым, если его нет):',
+    'archive_extract_new_folder' => 'Распаковать в новую папку',
     'archive_extracting' => 'Распаковка :name… папка заполнится по завершении.',
     'archive_extract_done' => ':name распакован (файлов: :count).',
     'archive_extract_empty' => 'Из :name нечего распаковывать.',

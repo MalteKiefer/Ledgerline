@@ -7314,9 +7314,10 @@ paths:
               type: object
               properties:
                 password: { type: [string, "null"], maxLength: 200, description: "For an encrypted archive." }
-                target_folder_id: { type: [integer, "null"], description: "Parent for the new folder (default: the archive's own folder)." }
+                target_folder_id: { type: [integer, "null"], description: "Parent folder (default: the archive's own folder)." }
+                into_new_folder: { type: boolean, default: true, description: "true (default) = extract into a fresh folder named after the archive; false = extract straight into the target folder." }
       responses:
-        "200": { description: "The destination folder (fills as the worker extracts).", content: { application/json: { schema: { type: object, properties: { folder: { type: object, properties: { id: { type: integer }, name: { type: string }, parent_id: { type: [integer, "null"] } } } } } } } }
+        "200": { description: "The destination folder (fills as the worker extracts); folder is null when into_new_folder=false (extracted into the target/root).", content: { application/json: { schema: { type: object, properties: { folder: { type: [object, "null"], properties: { id: { type: integer }, name: { type: string }, parent_id: { type: [integer, "null"] } } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { description: "Not a recognised archive, or validation error." }

@@ -276,7 +276,7 @@
                 <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
                   <template v-if="!row._folder && view!=='trash'">
                     <DropdownMenuItem as="a" :href="s.rawUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
-                    <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="doExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
+                    <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="openExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
@@ -346,7 +346,7 @@
                     <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
                       <template v-if="!row._folder && view!=='trash'">
                         <DropdownMenuItem as="a" :href="s.rawUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
-                        <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="doExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
+                        <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="openExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
@@ -739,6 +739,25 @@
       <div class="flex justify-end gap-2 pt-1">
         <Btn variant="ghost" size="sm" @click="archiveDlg.show = false">{{ t('common.close') }}</Btn>
         <Btn size="sm" :loading="archiveDlg.busy" @click="doArchive">{{ t('files.archive_create') }}</Btn>
+      </div>
+    </div>
+  </Modal>
+
+  <!-- Extract an archive: optional new folder + optional password -->
+  <Modal v-model="extractDlg.show" :title="t('files.archive_extract')" width="440px">
+    <div class="space-y-3">
+      <p class="text-sm text-[var(--ll-muted)]">{{ extractDlg.name }}</p>
+      <label class="flex items-center gap-2 text-sm">
+        <input v-model="extractDlg.newFolder" type="checkbox" class="accent-primary-500">
+        {{ t('files.archive_extract_new_folder') }}
+      </label>
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{{ t('files.archive_password') }}</span>
+        <input v-model="extractDlg.password" type="password" autocomplete="new-password" class="w-full rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] px-3 py-2 text-sm">
+      </label>
+      <div class="flex justify-end gap-2 pt-1">
+        <Btn variant="ghost" size="sm" @click="extractDlg.show = false">{{ t('common.close') }}</Btn>
+        <Btn size="sm" :loading="extractDlg.busy" @click="doExtract">{{ t('files.archive_extract') }}</Btn>
       </div>
     </div>
   </Modal>
@@ -1602,16 +1621,21 @@ async function doArchive() {
     d.show = false; selected.value = []; await s.load(); success(t('files.archive_created'));
   } catch { error(t('files.archive_failed')); } finally { d.busy = false; }
 }
-async function doExtract(row: { id: number; name: string }) {
-  const pw = await promptAsk(t('files.archive_extract_password'));
-  if (pw === null) return; // cancelled
+const extractDlg = ref<{ show: boolean; busy: boolean; id: number; name: string; newFolder: boolean; password: string }>({ show: false, busy: false, id: 0, name: '', newFolder: true, password: '' });
+function openExtract(row: { id: number; name: string }) {
+  extractDlg.value = { show: true, busy: false, id: row.id, name: String(row.name), newFolder: true, password: '' };
+}
+async function doExtract() {
+  const d = extractDlg.value;
+  d.busy = true;
   try {
-    await s.extractArchive(row.id, { password: pw || undefined, target_folder_id: cwd.value });
-    success(t('files.archive_extracting', { name: String(row.name) }));
-    // The worker fills the new folder; refresh a couple of times so it shows up.
+    await s.extractArchive(d.id, { password: d.password || undefined, target_folder_id: cwd.value, into_new_folder: d.newFolder });
+    d.show = false;
+    success(t('files.archive_extracting', { name: d.name }));
+    // The worker fills the folder; refresh a couple of times so it shows up.
     setTimeout(() => void s.load(), 1500);
     setTimeout(() => void s.load(), 5000);
-  } catch { error(t('files.archive_failed')); }
+  } catch { error(t('files.archive_failed')); } finally { d.busy = false; }
 }
 
 // ---- Info / tags / note ----

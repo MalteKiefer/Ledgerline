@@ -1340,21 +1340,30 @@ class FilesController extends Controller
         $request->validate([
             'password' => ['nullable', 'string', 'max:200'],
             'target_folder_id' => ['nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'into_new_folder' => ['nullable', 'boolean'],
         ]);
-        // Destination = a fresh folder named after the archive base, under the
-        // chosen target (default: the archive's own folder).
-        $base = preg_replace('/\.(zip|7z|rar|tar\.gz|tgz|tar\.xz|txz|tar\.bz2|tbz2?|tar\.zst|tzst|tar|gz|bz2|xz|zst)$/i', '', (string) $file->name);
-        $base = $this->safeName(is_string($base) && $base !== '' ? $base : 'extracted');
         $parent = $request->filled('target_folder_id') ? $request->integer('target_folder_id') : $file->file_folder_id;
+        // Default: extract into a fresh folder named after the archive (keeps the
+        // destination tidy). Optional: extract straight into the target folder.
+        $newFolder = $request->boolean('into_new_folder', true);
 
-        $folder = new FileFolder;
-        $folder->fill(['name' => $this->uniqueFolderName($uid, $parent, $base), 'parent_id' => $parent]);
-        $folder->save();
+        if ($newFolder) {
+            $base = preg_replace('/\.(zip|7z|rar|tar\.gz|tgz|tar\.xz|txz|tar\.bz2|tbz2?|tar\.zst|tzst|tar|gz|bz2|xz|zst)$/i', '', (string) $file->name);
+            $base = $this->safeName(is_string($base) && $base !== '' ? $base : 'extracted');
+            $folder = new FileFolder;
+            $folder->fill(['name' => $this->uniqueFolderName($uid, $parent, $base), 'parent_id' => $parent]);
+            $folder->save();
+            $destId = (int) $folder->id;
+            $resp = ['id' => $folder->id, 'name' => $folder->name, 'parent_id' => $folder->parent_id];
+        } else {
+            $destId = $parent;
+            $resp = null; // extracted directly into the current folder (or root)
+        }
 
-        ExtractArchive::dispatch((int) $file->id, $uid, (int) $folder->id, $request->filled('password') ? $request->string('password')->value() : null);
-        FileActivityLog::record($uid, 'extract_started', $file, ['into' => $folder->id]);
+        ExtractArchive::dispatch((int) $file->id, $uid, $destId, $request->filled('password') ? $request->string('password')->value() : null);
+        FileActivityLog::record($uid, 'extract_started', $file, ['into' => $destId, 'new_folder' => $newFolder]);
 
-        return response()->json(['folder' => ['id' => $folder->id, 'name' => $folder->name, 'parent_id' => $folder->parent_id]]);
+        return response()->json(['folder' => $resp]);
     }
 
     /** A folder name not already used among the siblings (append " (n)"). */
