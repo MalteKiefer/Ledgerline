@@ -138,6 +138,12 @@ tags:
       Admin user management (requires the admin role on top of the device token —
       `can:manage-global-settings`). No credentials (password hashes, 2FA secrets)
       are ever returned. Non-admins get 403.
+  - name: Crypto
+    description: >
+      Shared encryption keyring (profile-level, not mail-gated): the user's own
+      PGP/S-MIME keys (managed via the same MailKeyController as /mail/keys — the
+      /crypto/keys ops are identical) plus saved recipients (other people's public
+      keys/certs). Drives the Files module's encrypt/decrypt.
   - name: Backup
     description: >
       Admin backup management (admin role + device token). Credential hygiene is
@@ -7377,6 +7383,53 @@ paths:
         "404": { description: "Folder empty or missing." }
         "413": { description: "Over the cap or storage quota." }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /crypto/keys:
+    get:
+      tags: [Crypto]
+      operationId: cryptoKeysIndex
+      summary: List own encryption keys
+      description: "Identical to GET /mail/keys (same MailKeyController) — the user's own PGP/S-MIME keys (public info; private material never returned). Exposed here as the profile-level keyring, not mail-gated."
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: "Own keys.", content: { application/json: { schema: { type: object, properties: { keys: { type: array, items: { type: object } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Crypto]
+      operationId: cryptoKeysStore
+      summary: Import an own key (armored PGP private / S-MIME PKCS#12)
+      description: "Identical to POST /mail/keys — see that operation for the full request body (type, label, armored_private_key / p12_base64, passphrase)."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [type, label], properties: { type: { type: string, enum: [pgp, smime] }, label: { type: string, maxLength: 200 }, armored_private_key: { type: [string, "null"] }, p12_base64: { type: [string, "null"] }, passphrase: { type: [string, "null"], maxLength: 2000 } } } } } }
+      responses:
+        "201": { description: "Imported key." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { description: "Invalid or missing key material." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /crypto/keys/generate:
+    post:
+      tags: [Crypto]
+      operationId: cryptoKeysGenerate
+      summary: Generate a new own keypair (server-side)
+      description: "Identical to POST /mail/keys/generate — see that operation for the full request body (type, label, identities[], algorithm, etc.)."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [type, label, identities], properties: { type: { type: string, enum: [pgp, smime] }, label: { type: string }, identities: { type: array, items: { type: object, properties: { name: { type: [string, "null"] }, email: { type: string } } } }, passphrase: { type: [string, "null"] } } } } } }
+      responses:
+        "201": { description: "Generated key." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { description: "Validation error." }
+        "501": { description: "Toolchain unavailable." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /crypto/keys/{key}:
+    delete:
+      tags: [Crypto]
+      operationId: cryptoKeysDestroy
+      summary: Delete an own key
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: key, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "204": { description: "Deleted." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /crypto/keyring:
     get:
       tags: [Crypto]
