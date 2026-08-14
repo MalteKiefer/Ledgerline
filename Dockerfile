@@ -51,7 +51,6 @@ RUN apk add --no-cache \
       exiftool \
       postgresql18-client \
       tesseract-ocr tesseract-ocr-data-eng tesseract-ocr-data-deu poppler-utils \
-      tar p7zip unzip xz zstd bzip2 unrar \
  && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip pcntl opcache \
  # The dunglas image sets cap_net_bind_service+ep on the frankenphp binary so it
  # can bind :80/:443 as non-root. We bind :8080 (>1024) and run under
@@ -59,6 +58,11 @@ RUN apk add --no-cache \
  # file that carries file-capabilities ("Operation not permitted"). Strip them:
  # the binary needs no privileged port.
  && setcap -r /usr/local/bin/frankenphp 2>/dev/null || true
+
+# Archive tools for the Files archiver/unarchiver — a SEPARATE apk layer so these
+# packages never interfere with install-php-extensions' build-dep cleanup (mixing
+# them into the RUN above silently left pdo_pgsql/pgsql/zip uninstalled).
+RUN apk add --no-cache tar p7zip unzip xz zstd bzip2 unrar
 
 COPY --from=composer /usr/bin/composer /usr/bin/composer
 
