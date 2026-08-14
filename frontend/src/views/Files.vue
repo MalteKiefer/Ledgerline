@@ -1435,38 +1435,48 @@ async function onUploadDir(e: Event) {
       dirCache.set(rel, id);
       return id;
     };
-    const allFiles = Array.from(list);
+    // Directory pickers include OS junk the browser cannot read (macOS
+    // .DS_Store / resource forks ._*, Windows Thumbs.db) — reading their body
+    // throws net::ERR_ACCESS_DENIED. Drop them up front.
+    const isJunk = (n: string) => n === '.DS_Store' || n === 'Thumbs.db' || n.startsWith('._');
+    const allFiles = Array.from(list).filter((f) => !isJunk(f.name));
     conflictAll.value = false;
     const all: { v: ConflictAction | null } = { v: null };
     // Existing-name map per target folder (reused across files in that folder).
     const dirNames = new Map<number | null, Map<string, FileEntry>>();
+    let failed = 0;
     uploadState.value = { active: true, done: 0, total: allFiles.length, name: '', frac: 0 };
     for (const f of allFiles) {
       const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? '';
       const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
       uploadState.value.name = f.name;
       uploadState.value.frac = 0;
-      const targetId = await ensureDir(dir);
-      if (!dirNames.has(targetId)) dirNames.set(targetId, entriesIn(targetId));
-      const existing = dirNames.get(targetId) as Map<string, FileEntry>;
-      const prog = (fr: number) => { uploadState.value.frac = fr; };
-      const action = await decideConflict(f.name, existing, all);
-      if (action === 'skip') { uploadState.value.done++; continue; }
-      if (action === 'overwrite') {
-        await s.replaceContent(existing.get(f.name.toLowerCase()) as FileEntry, f, prog);
-      } else if (action === 'copy') {
-        const name = uniqueName(f.name, new Set([...existing.keys()]));
-        await s.upload(new File([f], name, { type: f.type }), targetId, prog);
-        existing.set(name.toLowerCase(), {} as FileEntry);
-      } else {
-        await s.upload(f, targetId, prog);
-        existing.set(f.name.toLowerCase(), {} as FileEntry);
-      }
+      // One unreadable file (ERR_ACCESS_DENIED, gone, permission) must not
+      // abort the whole folder — count it and keep going.
+      try {
+        const targetId = await ensureDir(dir);
+        if (!dirNames.has(targetId)) dirNames.set(targetId, entriesIn(targetId));
+        const existing = dirNames.get(targetId) as Map<string, FileEntry>;
+        const prog = (fr: number) => { uploadState.value.frac = fr; };
+        const action = await decideConflict(f.name, existing, all);
+        if (action === 'skip') { uploadState.value.done++; continue; }
+        if (action === 'overwrite') {
+          await s.replaceContent(existing.get(f.name.toLowerCase()) as FileEntry, f, prog);
+        } else if (action === 'copy') {
+          const name = uniqueName(f.name, new Set([...existing.keys()]));
+          await s.upload(new File([f], name, { type: f.type }), targetId, prog);
+          existing.set(name.toLowerCase(), {} as FileEntry);
+        } else {
+          await s.upload(f, targetId, prog);
+          existing.set(f.name.toLowerCase(), {} as FileEntry);
+        }
+      } catch { failed++; }
       uploadState.value.frac = 0;
       uploadState.value.done++;
     }
     await s.load();
-    success(t('common.saved'));
+    if (failed > 0) error(t('files.upload_some_failed', { n: String(failed) }));
+    else success(t('common.saved'));
   } catch { error(t('common.error')); }
   finally { input.value = ''; uploadState.value.active = false; }
 }
