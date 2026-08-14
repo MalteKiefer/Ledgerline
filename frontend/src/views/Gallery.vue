@@ -736,7 +736,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { fmtDate, fmtDateTime } from '@spa/lib/datetime';
 import * as L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -976,12 +976,58 @@ const bulk = reactive({ open: false, saving: false, count: 0, rotate: 0, mirror:
 
 let thumbPoll: ReturnType<typeof setInterval> | null = null;
 const route = useRoute();
+const router = useRouter();
 // Deep-open from global search (?open=<id>): open the lightbox for that photo.
 function openPhotoById(id: number) {
   const idx = current.value.findIndex((p) => p.id === id);
   if (idx >= 0) viewer.value = idx;
 }
 watch(() => route.query.open, (v) => { const id = Number(v); if (id) void nextTick(() => openPhotoById(id)); });
+
+// ---- Deep links: mirror the current view/album/person/open photo in the URL
+// query so a reload or shared link lands on the same place. `restoring` gates
+// the write-watch while we apply an incoming URL.
+let restoring = false;
+function buildQuery(): Record<string, string> {
+  const q: Record<string, string> = {};
+  if (showTrash.value) q.view = 'trash';
+  else if (showArchive.value) q.view = 'archive';
+  else if (showDupes.value) q.view = 'dupes';
+  else if (showPeople.value) q.view = 'people';
+  if (personView.value) q.person = String(personView.value.id);
+  if (albumId.value !== null) q.album = String(albumId.value);
+  const p = current.value[viewer.value];
+  if (p) q.photo = String(p.id);
+  return q;
+}
+watch([showTrash, showArchive, showDupes, showPeople, personView, albumId, viewer], () => {
+  if (restoring) return;
+  const q = buildQuery();
+  const keys = ['view', 'person', 'album', 'photo'];
+  const cur: Record<string, string> = {};
+  for (const k of keys) { const v = route.query[k]; if (typeof v === 'string') cur[k] = v; }
+  if (JSON.stringify(q) !== JSON.stringify(cur)) void router.replace({ query: q });
+});
+// Apply the URL query on load: restore the view, then open the deep-linked photo.
+async function applyRoute() {
+  restoring = true;
+  const q = route.query;
+  albumId.value = q.album ? Number(q.album) : null;
+  try {
+    if (q.view === 'trash') await toggleTrash();
+    else if (q.view === 'archive') await toggleArchive();
+    else if (q.view === 'dupes') await openDupes();
+    else if (q.view === 'people') {
+      await openPeople();
+      if (q.person) { const p = peopleList.value.find((x) => x.id === Number(q.person)); if (p) await openPerson(p); }
+    } else {
+      await (albumId.value !== null ? refresh() : g.load());
+    }
+  } catch { /* fall back to empty view */ }
+  finally { restoring = false; }
+  const pid = Number(q.photo || q.open);
+  if (pid) await nextTick(() => openPhotoById(pid));
+}
 
 const loadSentinel = ref<HTMLElement | null>(null);
 let moreObserver: IntersectionObserver | null = null;
@@ -995,7 +1041,7 @@ function maybeLoadMore() {
 }
 
 onMounted(() => {
-  void g.load().then(() => { const id = Number(route.query.open); if (id) void nextTick(() => openPhotoById(id)); });
+  void applyRoute();
   void loadDates();
   void g.loadAlbums();
   window.addEventListener('keydown', onKey); window.addEventListener('focus', onFocus);
