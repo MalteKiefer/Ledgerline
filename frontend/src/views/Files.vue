@@ -160,6 +160,7 @@
       <!-- Selection bar -->
       <div v-if="selected.length && view!=='mount'" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2.5">
         <span class="text-xs font-medium">{{ selected.length }} {{ t('files.selected_word') }}</span>
+        <Btn variant="ghost" size="sm" icon="select_all" @click="selectAllFiles">{{ t('files.select_all') }}</Btn>
         <div class="ml-auto flex items-center gap-1">
           <Btn variant="ghost" size="sm" icon="folder_zip" @click="zipSelected">{{ t('files.download_zip') }}</Btn>
           <Btn variant="ghost" size="sm" icon="archive" @click="openArchive">{{ t('files.archive_create') }}</Btn>
@@ -308,7 +309,7 @@
           <table class="w-full text-sm">
             <tbody>
               <tr
-                v-for="row in rows" :key="row._k"
+                v-for="(row, ri) in rows" :key="row._k"
                 class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5"
                 @click="open(row)"
               >
@@ -316,7 +317,7 @@
                   <input
                     v-if="!row._folder" type="checkbox" class="accent-primary-500"
                     :checked="selected.includes(row.id)"
-                    @click.stop="toggleSelect(row.id)"
+                    @click.stop="onRowCheck(ri, row, $event)"
                   >
                 </td>
                 <td class="py-2 pl-2 pr-3">
@@ -1637,6 +1638,23 @@ function toggleLabelFilter(id: number) {
 function toggleSelect(id: number) {
   const i = selected.value.indexOf(id);
   if (i >= 0) selected.value.splice(i, 1); else selected.value.push(id);
+}
+// Row index (in `rows`) of the last checkbox click — anchors shift-range select.
+let selAnchor = -1;
+function onRowCheck(ri: number, row: Row, e: MouseEvent) {
+  if (e.shiftKey && selAnchor >= 0) {
+    // Select every file row between the anchor and this row (union, like the gallery).
+    const [a, b] = selAnchor < ri ? [selAnchor, ri] : [ri, selAnchor];
+    const set = new Set(selected.value);
+    for (let k = a; k <= b; k++) { const r = rows.value[k]; if (r && !r._folder) set.add(r.id); }
+    selected.value = [...set];
+  } else {
+    toggleSelect(row.id);
+  }
+  selAnchor = ri;
+}
+function selectAllFiles() {
+  selected.value = rows.value.filter((r) => !r._folder).map((r) => r.id);
 }
 // Checkboxes only appear on files (not folders), so the selection is file ids.
 const selectedFiles = computed(() => (s.files as FileEntry[]).filter((f) => selected.value.includes(f.id)));
