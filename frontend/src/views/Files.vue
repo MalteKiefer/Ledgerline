@@ -158,16 +158,16 @@
       </div>
 
       <!-- Selection bar -->
-      <div v-if="selected.length && view!=='mount'" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2.5">
-        <span class="text-xs font-medium">{{ selected.length }} {{ t('files.selected_word') }}</span>
-        <Btn variant="ghost" size="sm" icon="select_all" @click="selectAllFiles">{{ t('files.select_all') }}</Btn>
+      <div v-if="selCount && view!=='mount'" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2.5">
+        <span class="text-xs font-medium">{{ selCount }} {{ t('files.selected_word') }}</span>
+        <Btn variant="ghost" size="sm" icon="select_all" @click="selectAllRows">{{ t('files.select_all') }}</Btn>
         <div class="ml-auto flex items-center gap-1">
           <Btn variant="ghost" size="sm" icon="folder_zip" @click="zipSelected">{{ t('files.download_zip') }}</Btn>
           <Btn variant="ghost" size="sm" icon="archive" @click="openArchive">{{ t('files.archive_create') }}</Btn>
           <Btn variant="ghost" size="sm" icon="drive_file_move" @click="openBulk('move')">{{ t('files.move') }}</Btn>
           <Btn variant="ghost" size="sm" icon="content_copy" @click="openBulk('copy')">{{ t('files.copy') }}</Btn>
           <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="bulkTrash">{{ t('files.trash') }}</Btn>
-          <Btn variant="ghost" size="sm" @click="selected = []">{{ t('common.close') }}</Btn>
+          <Btn variant="ghost" size="sm" @click="clearSelection()">{{ t('common.close') }}</Btn>
         </div>
       </div>
 
@@ -315,8 +315,8 @@
               >
                 <td v-if="view!=='trash'" class="w-9 pl-3">
                   <input
-                    v-if="!row._folder" type="checkbox" class="accent-primary-500"
-                    :checked="selected.includes(row.id)"
+                    type="checkbox" class="accent-primary-500"
+                    :checked="isRowSelected(row)"
                     @click.stop="onRowCheck(ri, row, $event)"
                   >
                 </td>
@@ -682,40 +682,55 @@
     </template>
   </Modal>
 
-  <!-- Move file/folder into another folder -->
-  <Modal v-model="moveDlg.show" :title="t('files.move')" width="440px">
-    <template v-if="moveDlg.row">
-      <p class="mb-2 truncate text-sm text-[var(--ll-muted)]">{{ moveDlg.row.name }}</p>
-      <div class="max-h-80 overflow-y-auto">
-        <button
-          v-for="o in moveTargets" :key="String(o.id)"
-          class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-black/[0.04] dark:hover:bg-white/5"
-          @click="doMove(o.id)"
-        >
-          <Icon name="folder" :size="18" class="text-[var(--ll-muted)]" />{{ o.label }}
-        </button>
+  <!-- Move / copy into a folder: navigable folder browser (breadcrumb + click through) -->
+  <Modal v-model="movePick.show" :title="movePick.mode === 'copy' ? t('files.copy') : t('files.move')" width="600px">
+    <div class="space-y-2">
+      <p class="truncate text-sm text-[var(--ll-muted)]">
+        <template v-if="movePick.mode === 'single' && movePick.row">{{ movePick.row.name }}</template>
+        <template v-else>{{ selCount }} {{ t('files.selected_word') }}</template>
+      </p>
+      <div class="rounded-lg border border-[var(--ll-border)]">
+        <div class="flex flex-wrap items-center gap-1 border-b border-[var(--ll-border)] px-3 py-2 text-sm">
+          <template v-for="(c, i) in pickerCrumbs" :key="String(c.id)">
+            <Icon v-if="i > 0" name="chevron_right" :size="16" class="text-[var(--ll-muted)]" />
+            <button class="rounded px-1.5 py-0.5 hover:bg-black/[0.04] dark:hover:bg-white/5" :class="c.id === pickerCwd ? 'font-semibold text-primary-600 dark:text-primary-300' : ''" @click="pickerCwd = c.id">{{ c.name }}</button>
+          </template>
+        </div>
+        <div class="h-64 overflow-y-auto p-1">
+          <button
+            v-for="fo in pickerChildren" :key="fo.id" type="button"
+            class="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-black/[0.04] dark:hover:bg-white/5"
+            @click="pickerCwd = fo.id"
+          >
+            <Icon name="folder" :size="18" class="text-primary-500" />
+            <span class="min-w-0 flex-1 truncate">{{ fo.name }}</span>
+            <Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" />
+          </button>
+          <div v-if="!pickerChildren.length" class="px-3 py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('files.ul_empty_folder') }}</div>
+        </div>
+        <div class="flex items-center gap-2 border-t border-[var(--ll-border)] px-3 py-2">
+          <template v-if="ulShowNew">
+            <TextField v-model="ulNewFolder" class="flex-1" :placeholder="t('files.folder_name_ph')" @keydown.enter.prevent="pickerCreateFolder" />
+            <Btn variant="solid" size="sm" :loading="ulBusy" :disabled="!ulNewFolder.trim()" @click="pickerCreateFolder">{{ t('common.add') }}</Btn>
+            <Btn variant="ghost" size="sm" @click="ulShowNew = false">{{ t('common.cancel') }}</Btn>
+          </template>
+          <Btn v-else variant="ghost" size="sm" icon="create_new_folder" @click="ulShowNew = true">{{ t('files.new_folder') }}</Btn>
+        </div>
       </div>
-    </template>
-  </Modal>
-
-  <!-- Bulk move / copy the selection into a folder -->
-  <Modal v-model="bulkDlg.show" :title="bulkDlg.mode === 'copy' ? t('files.copy') : t('files.move')" width="440px">
-    <p class="mb-2 text-sm text-[var(--ll-muted)]">{{ selected.length }} {{ t('files.selected_word') }}</p>
-    <div class="max-h-80 overflow-y-auto">
-      <button
-        v-for="o in bulkTargets" :key="String(o.id)"
-        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-black/[0.04] dark:hover:bg-white/5"
-        @click="doBulk(o.id)"
-      >
-        <Icon name="folder" :size="18" class="text-[var(--ll-muted)]" />{{ o.label }}
-      </button>
+      <p class="mt-1 text-xs" :class="moveTargetInvalid ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--ll-muted)]'">
+        {{ moveTargetInvalid ? t('files.move_invalid_target') : t('files.move_target_is', { path: pickerCwd == null ? t('files.all_files') : folderPath(pickerCwd) }) }}
+      </p>
     </div>
+    <template #footer>
+      <Btn variant="ghost" @click="movePick.show = false">{{ t('common.cancel') }}</Btn>
+      <Btn variant="solid" :disabled="moveTargetInvalid" @click="confirmMove">{{ movePick.mode === 'copy' ? t('files.copy') : t('files.move_here') }}</Btn>
+    </template>
   </Modal>
 
   <!-- Create an archive from the selection (format / compression / password) -->
   <Modal v-model="archiveDlg.show" :title="t('files.archive_title')" width="460px">
     <div class="space-y-3">
-      <p class="text-sm text-[var(--ll-muted)]">{{ selected.length }} {{ t('files.selected_word') }}</p>
+      <p class="text-sm text-[var(--ll-muted)]">{{ selCount }} {{ t('files.selected_word') }}</p>
       <label class="block text-sm">
         <span class="mb-1 block font-medium">{{ t('files.archive_format') }}</span>
         <select v-model="archiveDlg.format" class="w-full rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] px-3 py-2 text-sm">
@@ -1045,9 +1060,9 @@ const searching = ref(false);
 const serverResults = ref<FileEntry[] | null>(null);
 const activeLabels = ref<number[]>([]);
 const selected = ref<number[]>([]);
+const selectedFolders = ref<number[]>([]);
 const uploadInput = ref<HTMLInputElement | null>(null);
 const uploadDirInput = ref<HTMLInputElement | null>(null);
-const moveDlg = ref<{ show: boolean; row: Row | null }>({ show: false, row: null });
 const trashFiles = ref<FileEntry[]>([]);
 const trashFolders = ref<FileFolder[]>([]);
 const preview = ref<FileEntry | null>(null);
@@ -1297,11 +1312,11 @@ watch(query, (v) => {
 });
 
 // Clear transient selection when the listing context changes.
-watch([view, cwd], () => { selected.value = []; });
+watch([view, cwd], () => { clearSelection(); });
 
 async function setView(v: 'files' | 'favorites' | 'shared' | 'trash') {
   view.value = v;
-  selected.value = [];
+  clearSelection();
   if (v === 'trash') { const r = await s.loadTrash(); trashFiles.value = r.files; trashFolders.value = r.folders; }
   if (v === 'shared') await loadShared();
 }
@@ -1481,11 +1496,51 @@ async function onUploadDir(e: Event) {
   } catch { error(t('common.error')); }
   finally { input.value = ''; uploadState.value.active = false; }
 }
-function openMove(row: Row) { moveDlg.value = { show: true, row }; }
+// Navigable move/copy picker (breadcrumb browser, like the upload-link modal).
+// mode: 'single' moves the one `row`; 'bulk' moves the selection; 'copy' copies files.
+const movePick = ref<{ show: boolean; mode: 'single' | 'bulk' | 'copy'; row: Row | null }>({ show: false, mode: 'single', row: null });
+function folderParentId(id: number | null): number | null {
+  const fo = (s.folders as FileFolder[]).find((x) => x.id === id);
+  return fo ? (fo.parent_id ?? null) : null;
+}
+// Is `target` the folder `root` itself or somewhere inside it? (can't move a folder into its own subtree)
+function isInsideOrSelf(target: number | null, root: number): boolean {
+  let cur = target;
+  while (cur != null) { if (cur === root) return true; cur = folderParentId(cur); }
+  return false;
+}
+// The picked target is invalid when it would move a folder into itself/its subtree.
+const moveTargetInvalid = computed(() => {
+  const t2 = pickerCwd.value;
+  if (movePick.value.mode === 'single') {
+    const row = movePick.value.row;
+    return !!(row?._folder && isInsideOrSelf(t2, row.id));
+  }
+  if (movePick.value.mode === 'bulk') {
+    return selectedFolderObjs.value.some((fo) => isInsideOrSelf(t2, fo.id));
+  }
+  return false; // copy of files: any target ok
+});
+function openMove(row: Row) {
+  movePick.value = { show: true, mode: 'single', row };
+  pickerCwd.value = row._folder ? ((row.raw as FileFolder).parent_id ?? null) : ((row.raw as FileEntry).file_folder_id ?? null);
+  ulNewFolder.value = ''; ulShowNew.value = false;
+}
+function openBulk(mode: 'move' | 'copy') {
+  movePick.value = { show: true, mode: mode === 'copy' ? 'copy' : 'bulk', row: null };
+  pickerCwd.value = cwd.value;
+  ulNewFolder.value = ''; ulShowNew.value = false;
+}
+async function confirmMove() {
+  const m = movePick.value;
+  movePick.value.show = false;
+  const target = pickerCwd.value;
+  if (m.mode === 'single') await doMove(target);
+  else await doBulk(target, m.mode === 'copy');
+}
 async function doMove(target: number | null) {
-  const row = moveDlg.value.row;
+  const row = movePick.value.row;
   if (!row) return;
-  moveDlg.value.show = false;
   try {
     if (row._folder) {
       await s.moveFolder(row.raw as FileFolder, target);
@@ -1501,15 +1556,6 @@ async function doMove(target: number | null) {
     success(t('common.saved'));
   } catch { error(t('common.error')); }
 }
-const moveTargets = computed(() => {
-  const opts: { id: number | null; label: string }[] = [{ id: null, label: t('files.all_files') }];
-  const selfId = moveDlg.value.row?._folder ? moveDlg.value.row.id : null;
-  for (const fo of s.folders as FileFolder[]) {
-    if (fo.id === selfId) continue; // a folder can't move into itself (subtree guarded server-side)
-    opts.push({ id: fo.id, label: folderPath(fo.id) });
-  }
-  return opts;
-});
 const uploadState = ref<{ active: boolean; done: number; total: number; name: string; frac: number }>(
   { active: false, done: 0, total: 0, name: '', frac: 0 },
 );
@@ -1634,63 +1680,74 @@ function toggleLabelFilter(id: number) {
   if (i >= 0) activeLabels.value.splice(i, 1); else activeLabels.value.push(id);
 }
 
-// ---- Multi-select ----
-function toggleSelect(id: number) {
-  const i = selected.value.indexOf(id);
-  if (i >= 0) selected.value.splice(i, 1); else selected.value.push(id);
+// ---- Multi-select (files AND folders) ----
+const selCount = computed(() => selected.value.length + selectedFolders.value.length);
+function isRowSelected(row: Row): boolean {
+  return row._folder ? selectedFolders.value.includes(row.id) : selected.value.includes(row.id);
 }
+function toggleRow(row: Row) {
+  const arr = row._folder ? selectedFolders : selected;
+  const i = arr.value.indexOf(row.id);
+  if (i >= 0) arr.value.splice(i, 1); else arr.value.push(row.id);
+}
+function clearSelection() { selected.value = []; selectedFolders.value = []; }
 // Row index (in `rows`) of the last checkbox click — anchors shift-range select.
 let selAnchor = -1;
 function onRowCheck(ri: number, row: Row, e: MouseEvent) {
   if (e.shiftKey && selAnchor >= 0) {
-    // Select every file row between the anchor and this row (union, like the gallery).
+    // Select every row between the anchor and this row (union, like the gallery) —
+    // files and folders alike, each into its own list.
     const [a, b] = selAnchor < ri ? [selAnchor, ri] : [ri, selAnchor];
-    const set = new Set(selected.value);
-    for (let k = a; k <= b; k++) { const r = rows.value[k]; if (r && !r._folder) set.add(r.id); }
-    selected.value = [...set];
+    const fset = new Set(selected.value); const dset = new Set(selectedFolders.value);
+    for (let k = a; k <= b; k++) { const r = rows.value[k]; if (!r) continue; (r._folder ? dset : fset).add(r.id); }
+    selected.value = [...fset]; selectedFolders.value = [...dset];
   } else {
-    toggleSelect(row.id);
+    toggleRow(row);
   }
   selAnchor = ri;
 }
-function selectAllFiles() {
+function selectAllRows() {
   selected.value = rows.value.filter((r) => !r._folder).map((r) => r.id);
+  selectedFolders.value = rows.value.filter((r) => r._folder).map((r) => r.id);
 }
-// Checkboxes only appear on files (not folders), so the selection is file ids.
 const selectedFiles = computed(() => (s.files as FileEntry[]).filter((f) => selected.value.includes(f.id)));
+const selectedFolderObjs = computed(() => (s.folders as FileFolder[]).filter((fo) => selectedFolders.value.includes(fo.id)));
 
 async function bulkTrash() {
-  if (!selectedFiles.value.length) return;
-  if (!await confirmAsk(t('files.bulk_trash_confirm', { n: String(selectedFiles.value.length) }), { danger: true })) return;
-  try { for (const f of selectedFiles.value) await s.trashFile(f); selected.value = []; await s.load(); success(t('common.saved')); }
+  const n = selCount.value;
+  if (!n) return;
+  if (!await confirmAsk(t('files.bulk_trash_confirm', { n: String(n) }), { danger: true })) return;
+  try {
+    for (const f of selectedFiles.value) await s.trashFile(f);
+    for (const fo of selectedFolderObjs.value) await s.trashFolder(fo);
+    clearSelection(); await s.load(); success(t('common.saved'));
+  }
   catch { error(t('common.error')); }
 }
 
-const bulkDlg = ref<{ show: boolean; mode: 'move' | 'copy' }>({ show: false, mode: 'move' });
-function openBulk(mode: 'move' | 'copy') { bulkDlg.value = { show: true, mode }; }
-const bulkTargets = computed(() => {
-  const opts: { id: number | null; label: string }[] = [{ id: null, label: t('files.all_files') }];
-  for (const fo of s.folders as FileFolder[]) opts.push({ id: fo.id, label: folderPath(fo.id) });
-  return opts;
-});
-async function doBulk(target: number | null) {
+async function doBulk(target: number | null, copy: boolean) {
   const files = selectedFiles.value;
-  if (!files.length) return;
-  const copy = bulkDlg.value.mode === 'copy';
-  bulkDlg.value.show = false;
+  const folders = copy ? [] : selectedFolderObjs.value; // no folder-copy endpoint → move only
+  if (!files.length && !folders.length) return;
   const existing = entriesIn(target);
   conflictAll.value = false;
   const all: { v: ConflictAction | null } = { v: null };
+  let failed = 0;
   try {
     for (const f of files) {
       if (f.file_folder_id === target && !copy) continue; // already there (move no-op)
       const action = await decideConflict(f.name, existing, all);
       if (action === 'skip') continue;
-      await placeFile(f, target, copy, action, existing);
+      try { await placeFile(f, target, copy, action, existing); } catch { failed++; }
     }
-    selected.value = [];
+    for (const fo of folders) {
+      if (fo.parent_id === target) continue; // already there
+      try { await s.moveFolder(fo, target); } catch { failed++; } // server guards cycles (422)
+    }
+    clearSelection();
     await s.load();
-    success(t('common.saved'));
+    if (failed) error(t('files.move_some_failed', { n: String(failed) }));
+    else success(t('common.saved'));
   } catch { error(t('common.error')); }
 }
 // Move/copy one file into `target`, honouring an optional conflict action.
@@ -1738,7 +1795,7 @@ async function doArchive() {
   try {
     const hasPw = (d.format === 'zip' || d.format === '7z') && d.password !== '';
     await s.createArchive({ ids: [...selected.value], target_folder_id: cwd.value, format: d.format, level: d.level, name: d.name || undefined, password: hasPw ? d.password : undefined });
-    d.show = false; selected.value = []; await s.load(); success(t('files.archive_created'));
+    d.show = false; clearSelection(); await s.load(); success(t('files.archive_created'));
   } catch { error(t('files.archive_failed')); } finally { d.busy = false; }
 }
 const extractDlg = ref<{ show: boolean; busy: boolean; id: number; name: string; newFolder: boolean; password: string }>({ show: false, busy: false, id: 0, name: '', newFolder: true, password: '' });
