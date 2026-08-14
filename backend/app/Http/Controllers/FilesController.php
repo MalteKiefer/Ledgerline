@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Enums\FileType;
+use App\Jobs\ExtractArchive;
 use App\Models\AuditLog;
 use App\Models\FileActivity;
 use App\Models\FileEntry;
@@ -15,6 +16,7 @@ use App\Models\FileUploadLink;
 use App\Models\FileVersion;
 use App\Models\User;
 use App\Models\UserSetting;
+use App\Support\Archiver;
 use App\Support\DiskTempFile;
 use App\Support\FileActivityLog;
 use App\Support\ImageManagerFactory;
@@ -1213,6 +1215,159 @@ class FilesController extends Controller
         fclose($out);
 
         return $tmp;
+    }
+
+    /** Filename extension for a create format. */
+    private const ARCHIVE_EXT = ['zip' => 'zip', 'tar.gz' => 'tar.gz', 'tar.xz' => 'tar.xz', '7z' => '7z'];
+
+    /**
+     * Create an archive from a selection (ids) or a folder subtree, save it as a
+     * new file in the target folder, and return it (the client can then download
+     * it). Runs inline — the input is TRUSTED (the user's own files) — with the
+     * same DoS caps as the zip download. Format/level/password are user-chosen;
+     * only zip and 7z accept a password (AES-256 / 7z header-encryption).
+     */
+    public function createArchive(Request $request): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'ids' => ['nullable', 'array', 'max:'.self::ZIP_MAX_FILES],
+            'ids.*' => ['integer'],
+            'folder_id' => ['nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'target_folder_id' => ['nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'format' => ['required', Rule::in(Archiver::CREATE_FORMATS)],
+            'level' => ['nullable', 'integer', 'between:0,9'],
+            'password' => ['nullable', 'string', 'max:200'],
+            'name' => ['nullable', 'string', 'max:200'],
+        ]);
+        $format = (string) $request->string('format');
+        $password = $request->filled('password') ? $request->string('password')->value() : null;
+        if ($password !== null && ! in_array($format, Archiver::PASSWORD_FORMATS, true)) {
+            return response()->json(['error' => 'password_unsupported'], 422);
+        }
+
+        $ids = array_values(array_filter($request->array('ids'), 'is_numeric'));
+        $query = FileEntry::query();
+        if ($request->filled('folder_id')) {
+            $query->whereIn('file_folder_id', $this->descendantFolderIds($request->integer('folder_id')));
+        } elseif ($ids !== []) {
+            $query->whereIn('id', $ids);
+        } else {
+            abort(422);
+        }
+        /** @var Collection<int, FileEntry> $files */
+        $files = $query->get();
+        abort_if($files->isEmpty(), 404);
+        abort_if($files->count() > self::ZIP_MAX_FILES, 413);
+        abort_if($files->sum(fn (FileEntry $f): int => (int) $f->size) > self::ZIP_MAX_BYTES, 413);
+
+        // Build entryName → local path (staging remote-disk blobs to temp, held
+        // via RAII until the archive is written).
+        /** @var list<DiskTempFile> $temps */
+        $temps = [];
+        $entries = [];
+        $used = [];
+        foreach ($files as $f) {
+            $path = (string) $f->storage_path;
+            if ($path === '' || ! $this->fs()->exists($path)) {
+                continue;
+            }
+            $local = $this->localDiskPath($path);
+            if ($local === null) {
+                $t = $this->streamBlobToTemp($path);
+                if ($t === null) {
+                    continue;
+                }
+                $temps[] = $t;
+                $local = $t->path();
+            }
+            $name = $this->safeName((string) $f->name);
+            $entry = $name;
+            $n = 1;
+            while (isset($used[$entry])) {
+                $dot = strrpos($name, '.');
+                $entry = $dot === false ? $name.' ('.$n.')' : substr($name, 0, $dot).' ('.$n.')'.substr($name, $dot);
+                $n++;
+            }
+            $used[$entry] = true;
+            $entries[$entry] = $local;
+        }
+        abort_if($entries === [], 404);
+
+        $out = DiskTempFile::create('llmkarc');
+        try {
+            Archiver::create($entries, $format, $request->has('level') ? $request->integer('level') : null, $password, $out->path());
+            $size = (int) @filesize($out->path());
+            if (($resp = $this->overQuota($uid, $size)) !== null) {
+                return $resp;
+            }
+            $ext = self::ARCHIVE_EXT[$format];
+            $base = $request->filled('name') ? $this->safeName($request->string('name')->value()) : 'archive-'.now()->format('Ymd-His');
+            $archiveName = str_ends_with(strtolower($base), '.'.$ext) ? $base : $base.'.'.$ext;
+
+            $blobPath = 'files/'.Str::uuid()->toString();
+            $fh = fopen($out->path(), 'rb');
+            if ($fh === false) {
+                abort(500);
+            }
+            $this->fs()->writeStream($blobPath, $fh);
+            if (is_resource($fh)) {
+                fclose($fh);
+            }
+            $targetFolder = $request->filled('target_folder_id') ? $request->integer('target_folder_id') : ($request->filled('folder_id') ? $request->integer('folder_id') : null);
+            $entry = DB::transaction(fn (): FileEntry => $this->persistFile(
+                $archiveName, $targetFolder, $blobPath, $size, self::ARCHIVE_MIME[$format] ?? 'application/octet-stream', @hash_file('sha256', $out->path()) ?: null,
+            ));
+            FileActivityLog::record($uid, 'archived', $entry, ['format' => $format, 'files' => count($entries)]);
+
+            return response()->json(['file' => $entry->load('labels')]);
+        } finally {
+            // temps + $out RAII-cleaned on destruct.
+        }
+    }
+
+    private const ARCHIVE_MIME = ['zip' => 'application/zip', 'tar.gz' => 'application/gzip', 'tar.xz' => 'application/x-xz', '7z' => 'application/x-7z-compressed'];
+
+    /**
+     * Extract an archive file into a new folder (named after the archive) and
+     * return that folder. The heavy, UNTRUSTED decoding runs on the worker
+     * (ExtractArchive) — a decompression bomb must never block a web worker.
+     */
+    public function extractArchive(Request $request, FileEntry $file): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        abort_unless(Archiver::isArchive((string) $file->name), 422);
+        $request->validate([
+            'password' => ['nullable', 'string', 'max:200'],
+            'target_folder_id' => ['nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+        ]);
+        // Destination = a fresh folder named after the archive base, under the
+        // chosen target (default: the archive's own folder).
+        $base = preg_replace('/\.(zip|7z|rar|tar\.gz|tgz|tar\.xz|txz|tar\.bz2|tbz2?|tar\.zst|tzst|tar|gz|bz2|xz|zst)$/i', '', (string) $file->name);
+        $base = $this->safeName(is_string($base) && $base !== '' ? $base : 'extracted');
+        $parent = $request->filled('target_folder_id') ? $request->integer('target_folder_id') : $file->file_folder_id;
+
+        $folder = new FileFolder;
+        $folder->fill(['name' => $this->uniqueFolderName($uid, $parent, $base), 'parent_id' => $parent]);
+        $folder->save();
+
+        ExtractArchive::dispatch((int) $file->id, $uid, (int) $folder->id, $request->filled('password') ? $request->string('password')->value() : null);
+        FileActivityLog::record($uid, 'extract_started', $file, ['into' => $folder->id]);
+
+        return response()->json(['folder' => ['id' => $folder->id, 'name' => $folder->name, 'parent_id' => $folder->parent_id]]);
+    }
+
+    /** A folder name not already used among the siblings (append " (n)"). */
+    private function uniqueFolderName(int $uid, ?int $parentId, string $base): string
+    {
+        $name = $base;
+        $n = 1;
+        while (FileFolder::query()->where('parent_id', $parentId)->where('name', $name)->whereNull('deleted_at')->exists()) {
+            $name = $base.' ('.$n.')';
+            $n++;
+        }
+
+        return $name;
     }
 
     /**

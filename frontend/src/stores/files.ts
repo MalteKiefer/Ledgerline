@@ -258,6 +258,17 @@ export const useFilesStore = defineStore('files', () => {
   const rawUrl = (f: FileEntry) => api.streamUrl(`/api/v1/files/entries/${f.id}/raw`);
   const thumbUrl = (f: FileEntry) => api.streamUrl(`/api/v1/files/entries/${f.id}/thumb`);
 
+  // Create an archive from a selection (or folder subtree) — saved as a file in
+  // the target folder and returned (downloadable via its normal raw URL).
+  interface ArchivePayload { ids?: number[]; folder_id?: number | null; target_folder_id?: number | null; format: string; level?: number; password?: string; name?: string }
+  const createArchive = (payload: ArchivePayload) => api.post<{ file: FileEntry }>('/api/v1/files/archive', payload).then((r) => r.file);
+  // Extract an archive into a new folder (worker does the untrusted decode).
+  const extractArchive = (fileId: number, opts?: { password?: string; target_folder_id?: number | null }) =>
+    api.post<{ folder: { id: number; name: string; parent_id: number | null } }>(`/api/v1/files/entries/${fileId}/extract`, opts ?? {}).then((r) => r.folder);
+  // Which names are extractable archives (drives the "Extract here" action).
+  const ARCHIVE_RE = /\.(zip|7z|rar|tar\.gz|tgz|tar\.xz|txz|tar\.bz2|tbz2?|tar\.zst|tzst|tar|gz|bz2|xz|zst)$/i;
+  const isArchive = (name: string) => ARCHIVE_RE.test(name);
+
   return {
     folders, files, labels, usage,
     load, loadTrash, createFolder, createFolderId, upload, replaceContent, rename, move, copy, toggleFav,
@@ -269,6 +280,7 @@ export const useFilesStore = defineStore('files', () => {
     loadFolderShares, shareToUser, updateShareMember, removeShareMember, deleteFolderShare,
     loadSharedWithMe, browseShared, sharedRawUrl, uploadToShared, renameShared, deleteShared,
     stats, zip, activity, fileActivity, fileInfo, getEntry,
+    createArchive, extractArchive, isArchive,
     rawUrl, thumbUrl,
   };
 });

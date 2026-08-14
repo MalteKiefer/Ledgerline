@@ -162,6 +162,7 @@
         <span class="text-xs font-medium">{{ selected.length }} {{ t('files.selected_word') }}</span>
         <div class="ml-auto flex items-center gap-1">
           <Btn variant="ghost" size="sm" icon="folder_zip" @click="zipSelected">{{ t('files.download_zip') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="archive" @click="openArchive">{{ t('files.archive_create') }}</Btn>
           <Btn variant="ghost" size="sm" icon="drive_file_move" @click="openBulk('move')">{{ t('files.move') }}</Btn>
           <Btn variant="ghost" size="sm" icon="content_copy" @click="openBulk('copy')">{{ t('files.copy') }}</Btn>
           <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" @click="bulkTrash">{{ t('files.trash') }}</Btn>
@@ -275,6 +276,7 @@
                 <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
                   <template v-if="!row._folder && view!=='trash'">
                     <DropdownMenuItem as="a" :href="s.rawUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
+                    <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="doExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
@@ -344,6 +346,7 @@
                     <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
                       <template v-if="!row._folder && view!=='trash'">
                         <DropdownMenuItem as="a" :href="s.rawUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
+                        <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="doExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
@@ -699,6 +702,44 @@
       >
         <Icon name="folder" :size="18" class="text-[var(--ll-muted)]" />{{ o.label }}
       </button>
+    </div>
+  </Modal>
+
+  <!-- Create an archive from the selection (format / compression / password) -->
+  <Modal v-model="archiveDlg.show" :title="t('files.archive_title')" width="460px">
+    <div class="space-y-3">
+      <p class="text-sm text-[var(--ll-muted)]">{{ selected.length }} {{ t('files.selected_word') }}</p>
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{{ t('files.archive_format') }}</span>
+        <select v-model="archiveDlg.format" class="w-full rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] px-3 py-2 text-sm">
+          <option value="zip">ZIP (.zip)</option>
+          <option value="tar.gz">TAR.GZ (.tar.gz)</option>
+          <option value="tar.xz">TAR.XZ (.tar.xz)</option>
+          <option value="7z">7-Zip (.7z)</option>
+        </select>
+      </label>
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{{ t('files.archive_level') }}</span>
+        <select v-model.number="archiveDlg.level" class="w-full rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] px-3 py-2 text-sm">
+          <option :value="0">{{ t('files.archive_level_store') }}</option>
+          <option :value="1">{{ t('files.archive_level_fast') }}</option>
+          <option :value="6">{{ t('files.archive_level_normal') }}</option>
+          <option :value="9">{{ t('files.archive_level_max') }}</option>
+        </select>
+      </label>
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{{ t('files.archive_name') }}</span>
+        <input v-model="archiveDlg.name" type="text" :placeholder="'archive'" class="w-full rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] px-3 py-2 text-sm">
+      </label>
+      <label v-if="archiveDlg.format === 'zip' || archiveDlg.format === '7z'" class="block text-sm">
+        <span class="mb-1 block font-medium">{{ t('files.archive_password') }}</span>
+        <input v-model="archiveDlg.password" type="password" autocomplete="new-password" class="w-full rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] px-3 py-2 text-sm">
+        <span class="mt-1 block text-xs text-[var(--ll-muted)]">{{ t('files.archive_password_hint') }}</span>
+      </label>
+      <div class="flex justify-end gap-2 pt-1">
+        <Btn variant="ghost" size="sm" @click="archiveDlg.show = false">{{ t('common.close') }}</Btn>
+        <Btn size="sm" :loading="archiveDlg.busy" @click="doArchive">{{ t('files.archive_create') }}</Btn>
+      </div>
     </div>
   </Modal>
 
@@ -1543,6 +1584,34 @@ async function zipFolder() { try { await s.zip({ folder_id: cwd.value }); } catc
 async function zipSelected() {
   if (!selected.value.length) return;
   try { await s.zip({ ids: [...selected.value] }); } catch { error(t('common.error')); }
+}
+
+// ---- Archive (create) / extract ----
+const archiveDlg = ref<{ show: boolean; busy: boolean; format: string; level: number; name: string; password: string }>({ show: false, busy: false, format: 'zip', level: 6, name: '', password: '' });
+function openArchive() {
+  if (!selected.value.length) return;
+  archiveDlg.value = { show: true, busy: false, format: 'zip', level: 6, name: '', password: '' };
+}
+async function doArchive() {
+  if (!selected.value.length) return;
+  const d = archiveDlg.value;
+  d.busy = true;
+  try {
+    const hasPw = (d.format === 'zip' || d.format === '7z') && d.password !== '';
+    await s.createArchive({ ids: [...selected.value], target_folder_id: cwd.value, format: d.format, level: d.level, name: d.name || undefined, password: hasPw ? d.password : undefined });
+    d.show = false; selected.value = []; await s.load(); success(t('files.archive_created'));
+  } catch { error(t('files.archive_failed')); } finally { d.busy = false; }
+}
+async function doExtract(row: { id: number; name: string }) {
+  const pw = await promptAsk(t('files.archive_extract_password'));
+  if (pw === null) return; // cancelled
+  try {
+    await s.extractArchive(row.id, { password: pw || undefined, target_folder_id: cwd.value });
+    success(t('files.archive_extracting', { name: String(row.name) }));
+    // The worker fills the new folder; refresh a couple of times so it shows up.
+    setTimeout(() => void s.load(), 1500);
+    setTimeout(() => void s.load(), 5000);
+  } catch { error(t('files.archive_failed')); }
 }
 
 // ---- Info / tags / note ----
