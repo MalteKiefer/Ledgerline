@@ -6,3 +6,4 @@ export { default as Select } from './Select.vue';
 export { default as Badge } from './Badge.vue';
 export { default as Modal } from './Modal.vue';
 export { default as ConfirmDialog } from './ConfirmDialog.vue';
+export { default as Chart } from './Chart.vue';

@@ -8,6 +8,7 @@ use App\Models\BankTransaction;
 use App\Models\UserSetting;
 use App\Services\Finance\CategorySuggester;
 use App\Services\Finance\FinanceDuplicates;
+use App\Services\Finance\FinanceNumberGaps;
 use App\Services\Finance\FinanceReports;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -85,6 +86,14 @@ class FinanceReportController extends Controller
         $this->requireUser($request);
 
         return response()->json($dupes->detect());
+    }
+
+    /** Read-only GoBD invoice-numbering gap report (never mutates a row). */
+    public function numberGaps(Request $request, FinanceNumberGaps $gaps): JsonResponse
+    {
+        $this->requireUser($request);
+
+        return response()->json(['groups' => $gaps->detect()]);
     }
 
     /** Read-only merchant->category suggestions for uncategorised transactions. */

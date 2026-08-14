@@ -529,6 +529,10 @@ class FinanceController extends Controller
             'name' => ['required', 'string', 'max:160', $unique],
             'color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'icon' => ['nullable', 'string', 'max:40', Rule::in(self::CATEGORY_ICONS)],
+            // Sachkonto/account number (e.g. a SKR03/04 chart-of-accounts code) — free
+            // text the owner enters to match their own accountant's chart of accounts;
+            // the app never assigns or validates a specific number itself.
+            'account_no' => ['nullable', 'string', 'max:40'],
         ];
     }
 
@@ -541,6 +545,7 @@ class FinanceController extends Controller
             'name' => $request->string('name')->value(),
             'color' => $request->filled('color') ? $request->string('color')->value() : null,
             'icon' => $request->filled('icon') ? $request->string('icon')->value() : null,
+            'account_no' => $request->filled('account_no') ? $request->string('account_no')->value() : null,
         ];
     }
 
