@@ -199,7 +199,10 @@ final class FileCipher
         return is_string($r) ? $r : null;
     }
 
-    /** @param  list<string>  $extra @return list<string> */
+    /**
+     * @param  list<string>  $extra
+     * @return list<string>
+     */
     private function base(string $home, array $extra): array
     {
         // --yes so gpg overwrites the pre-created (empty) --output temp file instead

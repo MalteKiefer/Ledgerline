@@ -134,7 +134,11 @@ class GalleryController extends Controller
         ]);
     }
 
-    /** Decode an opaque timeline cursor; null when absent or malformed. @return array{ts: string, id: int}|null */
+    /**
+     * Decode an opaque timeline cursor; null when absent or malformed.
+     *
+     * @return array{ts: string, id: int}|null
+     */
     private function decodeGalleryCursor(string $raw): ?array
     {
         if ($raw === '') {
@@ -175,8 +179,9 @@ class GalleryController extends Controller
         }
 
         // Portable "YYYY-MM" of COALESCE(taken_at, created_at) across pgsql + sqlite.
+        $dbDriver = config('database.default');
         $ym = match (true) {
-            str_contains(strtolower((string) config('database.default')), 'sqlite') => "strftime('%Y-%m', COALESCE(taken_at, created_at))",
+            is_string($dbDriver) && str_contains(strtolower($dbDriver), 'sqlite') => "strftime('%Y-%m', COALESCE(taken_at, created_at))",
             default => "to_char(COALESCE(taken_at, created_at), 'YYYY-MM')",
         };
         $rows = $query->selectRaw("$ym as ym, COUNT(*) as count")
@@ -185,7 +190,15 @@ class GalleryController extends Controller
             ->get();
 
         return response()->json([
-            'months' => $rows->map(fn ($r): array => ['ym' => (string) $r->ym, 'count' => (int) $r->count])->all(),
+            'months' => $rows->map(function ($r): array {
+                $rowYm = $r->getAttribute('ym');
+                $rowCount = $r->getAttribute('count');
+
+                return [
+                    'ym' => is_scalar($rowYm) ? (string) $rowYm : '',
+                    'count' => is_numeric($rowCount) ? (int) $rowCount : 0,
+                ];
+            })->all(),
         ]);
     }
 

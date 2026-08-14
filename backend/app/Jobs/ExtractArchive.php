@@ -107,9 +107,7 @@ class ExtractArchive implements ShouldQueue
                     continue;
                 }
                 $disk->writeStream($blobPath, $fh);
-                if (is_resource($fh)) {
-                    fclose($fh);
-                }
+                fclose($fh);
                 $size = (int) @filesize($abs);
                 $mime = $this->mimeOf($abs);
                 $sha = @hash_file('sha256', $abs) ?: null;
@@ -138,7 +136,11 @@ class ExtractArchive implements ShouldQueue
         }
     }
 
-    /** Create (or reuse) the folder chain for a relative dir under the destination. */
+    /**
+     * Create (or reuse) the folder chain for a relative dir under the destination.
+     *
+     * @param array<string, int|null> $cache
+     */
     private function ensureFolderPath(string $dir, array &$cache): ?int
     {
         if (array_key_exists($dir, $cache)) {
