@@ -375,6 +375,7 @@ return [
     'archive_failed' => 'Archiv konnte nicht erstellt werden.',
     'archive_extract' => 'Hier entpacken',
     'archive_extract_password' => 'Dieses Archiv ist evtl. passwortgeschützt. Passwort eingeben (leer lassen, wenn keins):',
+    'archive_extract_new_folder' => 'In einen neuen Ordner entpacken',
     'archive_extracting' => ':name wird entpackt… der Ordner füllt sich, sobald es fertig ist.',
     'archive_extract_done' => ':name entpackt (:count Dateien).',
     'archive_extract_empty' => 'Aus :name gibt es nichts zu entpacken.',

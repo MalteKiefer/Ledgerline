@@ -375,6 +375,7 @@ return [
     'archive_failed' => 'Could not create the archive.',
     'archive_extract' => 'Extract here',
     'archive_extract_password' => 'This archive may be password-protected. Enter the password (leave blank if none):',
+    'archive_extract_new_folder' => 'Extract into a new folder',
     'archive_extracting' => 'Extracting :name… the folder will fill as it finishes.',
     'archive_extract_done' => 'Extracted :name (:count files).',
     'archive_extract_empty' => 'Nothing to extract from :name.',

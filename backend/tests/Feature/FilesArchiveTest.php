@@ -175,6 +175,30 @@ class FilesArchiveTest extends TestCase
         $this->assertSame('SEVENZIP', BlobStore::disk()->get((string) $f->storage_path));
     }
 
+    public function test_extract_into_new_folder_default_and_optional_direct(): void
+    {
+        $u = User::factory()->create();
+        $home = new FileFolder;
+        $home->forceFill(['user_id' => $u->id, 'name' => 'Home', 'parent_id' => null])->save();
+        $archive = $this->archiveEntry($u, ['doc.txt' => 'HI'], 'zip');
+
+        // Default: a new folder (named after the archive) is created under the target.
+        $res = $this->actingAs($u)->postJson(route('files.extract', ['file' => $archive->id]), ['target_folder_id' => $home->id])->assertOk();
+        $this->assertNotNull($res->json('folder'));
+        $newId = (int) $res->json('folder.id');
+        $doc = FileEntry::withoutGlobalScopes()->where('user_id', $u->id)->where('name', 'doc.txt')->first();
+        $this->assertNotNull($doc);
+        $this->assertSame($newId, (int) $doc->file_folder_id);
+
+        // Optional: extract straight into the target folder (no new folder, folder=null).
+        $archive2 = $this->archiveEntry($u, ['flat.txt' => 'YO'], 'zip');
+        $res2 = $this->actingAs($u)->postJson(route('files.extract', ['file' => $archive2->id]), ['target_folder_id' => $home->id, 'into_new_folder' => false])->assertOk();
+        $this->assertNull($res2->json('folder'));
+        $flat = FileEntry::withoutGlobalScopes()->where('user_id', $u->id)->where('name', 'flat.txt')->first();
+        $this->assertNotNull($flat);
+        $this->assertSame((int) $home->id, (int) $flat->file_folder_id);
+    }
+
     public function test_extract_rejects_non_archive(): void
     {
         $u = User::factory()->create();

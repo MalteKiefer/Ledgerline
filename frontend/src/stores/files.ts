@@ -263,8 +263,8 @@ export const useFilesStore = defineStore('files', () => {
   interface ArchivePayload { ids?: number[]; folder_id?: number | null; target_folder_id?: number | null; format: string; level?: number; password?: string; name?: string }
   const createArchive = (payload: ArchivePayload) => api.post<{ file: FileEntry }>('/api/v1/files/archive', payload).then((r) => r.file);
   // Extract an archive into a new folder (worker does the untrusted decode).
-  const extractArchive = (fileId: number, opts?: { password?: string; target_folder_id?: number | null }) =>
-    api.post<{ folder: { id: number; name: string; parent_id: number | null } }>(`/api/v1/files/entries/${fileId}/extract`, opts ?? {}).then((r) => r.folder);
+  const extractArchive = (fileId: number, opts?: { password?: string; target_folder_id?: number | null; into_new_folder?: boolean }) =>
+    api.post<{ folder: { id: number; name: string; parent_id: number | null } | null }>(`/api/v1/files/entries/${fileId}/extract`, opts ?? {}).then((r) => r.folder);
   // Which names are extractable archives (drives the "Extract here" action).
   const ARCHIVE_RE = /\.(zip|7z|rar|tar\.gz|tgz|tar\.xz|txz|tar\.bz2|tbz2?|tar\.zst|tzst|tar|gz|bz2|xz|zst)$/i;
   const isArchive = (name: string) => ARCHIVE_RE.test(name);
