@@ -170,6 +170,25 @@ class GalleryFeatureTest extends TestCase
         $this->assertSame('image/webp', $prev->headers->get('Content-Type'));
     }
 
+    public function test_trashed_photo_thumbnail_and_preview_still_serve(): void
+    {
+        // The trash view shows thumbnails; the byte endpoints must resolve a
+        // soft-deleted photo (route binding is withTrashed) — otherwise 404.
+        $this->actingAs(User::factory()->create());
+        $id = (int) $this->post(route('gallery.upload'), [
+            'file' => UploadedFile::fake()->image('t.png', 200, 200),
+        ])->json('photo.id');
+        $this->get(route('gallery.thumb', ['photo' => $id]))->assertOk(); // renders + caches
+
+        GalleryPhoto::findOrFail($id)->delete(); // soft-delete → trash
+        $this->assertNotNull(GalleryPhoto::withTrashed()->find($id)->deleted_at);
+
+        // Both still serve the cached bytes for the trashed photo.
+        $this->get(route('gallery.thumb', ['photo' => $id]))->assertOk()
+            ->assertHeader('Content-Type', 'image/webp');
+        $this->get(route('gallery.preview', ['photo' => $id]))->assertOk();
+    }
+
     public function test_upload_queues_thumbnail_and_thumb_endpoint_is_cache_only(): void
     {
         Queue::fake();

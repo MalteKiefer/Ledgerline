@@ -19,7 +19,7 @@ use RuntimeException;
  * hardened against: zip-slip (every entry path is confined under the destination),
  * bomb blow-up (entry-count + total-uncompressed-byte caps, checked after a bounded
  * extract into an empty temp dir), and runaway CPU (per-process timeout). The
- * matching binaries (p7zip, unrar, xz, zstd, bzip2, unzip, tar) are in the image.
+ * matching binaries (p7zip, xz, zstd, bzip2, unzip, tar) are in the image (RAR via p7zip; no unrar in Alpine).
  */
 final class Archiver
 {
