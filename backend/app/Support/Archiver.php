@@ -218,6 +218,10 @@ final class Archiver
 
     private static function run7zCreate(string $staging, ?int $level, ?string $password, string $outPath): void
     {
+        // 7z's "add" appends to an existing archive; the caller pre-creates an empty
+        // 0-byte temp file, which 7z treats as a corrupt existing archive and bails
+        // on (leaving a 0-byte output). Remove it so 7z creates a fresh archive.
+        @unlink($outPath);
         $argv = ['7z', 'a', '-t7z', '-mx='.($level ?? 5), '-bd', '-y'];
         if ($password !== null && $password !== '') {
             $argv[] = '-p'.$password;
