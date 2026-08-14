@@ -1026,6 +1026,7 @@ components:
         name: { type: string }
         color: { type: [string, "null"], description: "Hex colour #RRGGBB, or null.", example: "#7066f5" }
         icon: { type: [string, "null"], description: "Monochrome icon name (heroicons-outline), or null.", example: "hashtag" }
+        account_no: { type: [string, "null"], description: "Owner-entered Sachkonto/chart-of-accounts code (e.g. SKR03/04) for this category, or null. Free text — the server never assigns or validates a specific number.", example: "4930" }
         created_at: { type: [string, "null"], format: date-time }
         updated_at: { type: [string, "null"], format: date-time }
 
@@ -1190,6 +1191,17 @@ components:
         reason: { type: string }
         key: { type: string }
         ids: { type: array, items: { type: integer } }
+
+    NumberGapGroup:
+      type: object
+      description: "A run of missing invoice numbers within one numbering regime (read-only, never mutates a row). `group` is `year:YYYY` for YYYY-NNNN numbers (reset per calendar year) or the literal `sequence` for every other format (bare integers, R-NNNNN, …), which is treated as one continuous ordinal sequence across all years."
+      required: [group, missing, min, max, count]
+      properties:
+        group: { type: string, example: "year:2025" }
+        missing: { type: array, items: { type: string }, description: "The missing numbers, formatted like the group's highest-numbered sample." }
+        min: { type: string, description: "Lowest number observed in this group." }
+        max: { type: string, description: "Highest number observed in this group." }
+        count: { type: integer }
 
     FinanceReceipt:
       type: object
@@ -1550,11 +1562,12 @@ components:
     CategoryInput:
       type: object
       required: [name]
-      description: "Receipt-category create/update body (name/colour/icon — a full replace, not just a rename)."
+      description: "Receipt-category create/update body (name/colour/icon/account_no — a full replace, not just a rename)."
       properties:
         name: { type: string, maxLength: 160, description: "Unique per user (the current category id is ignored on update)." }
         color: { type: [string, "null"], pattern: "^#[0-9a-fA-F]{6}$", example: "#7066f5" }
         icon: { type: [string, "null"], maxLength: 40, description: "Monochrome heroicons-outline name from the fixed allowlist (FinanceController::CATEGORY_ICONS), e.g. hashtag/tag/banknotes." }
+        account_no: { type: [string, "null"], maxLength: 40, description: "Owner-entered Sachkonto/chart-of-accounts code, free text.", example: "4930" }
 
     TransactionInput:
       type: object
@@ -4761,6 +4774,32 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/number-gaps:
+    get:
+      tags: [Finance]
+      operationId: financeNumberGaps
+      summary: GoBD invoice-numbering gap report (read-only)
+      description: >
+        Read-only report of missing invoice numbers, grouped by numbering
+        regime (YYYY-NNNN resets per year; every other format is one
+        continuous ordinal sequence across all years). Reports only — never
+        deletes, merges, or renumbers anything; the owner decides whether a
+        gap is a still-unimported historical invoice or a real numbering
+        problem. Throttle 60/min.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: Groups with missing numbers (empty array when the numbering is gapless).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [groups]
+                properties:
+                  groups: { type: array, items: { $ref: "#/components/schemas/NumberGapGroup" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/category-suggestions:
     get:
       tags: [Finance]
@@ -5365,8 +5404,8 @@ paths:
     put:
       tags: [Finance]
       operationId: financeCategoryUpdate
-      summary: Update a category (name, colour, icon)
-      description: "Full replace of name/colour/icon (not just a rename). Name uniqueness ignores the current id. Throttle 600/min."
+      summary: Update a category (name, colour, icon, account_no)
+      description: "Full replace of name/colour/icon/account_no (not just a rename). Name uniqueness ignores the current id. Throttle 600/min."
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: category, in: path, required: true, schema: { type: integer } } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CategoryInput" } } } }

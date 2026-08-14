@@ -19,8 +19,8 @@
       </Card>
 
       <div class="min-w-0 flex-1">
-    <!-- Dashboard -->
-    <div v-show="tab === 'dashboard'">
+    <!-- Dashboard (consolidated: headline KPIs + charts + all statistics, one view) -->
+    <div v-show="tab === 'dashboard'" class="space-y-4">
       <div v-if="kpis" class="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card :body-class="'p-4'">
           <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.stat_revenue') }} {{ kpis.year }}</div>
@@ -33,6 +33,121 @@
         <Card :body-class="'p-4'">
           <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.vat_payable') }}</div>
           <div class="mt-1 font-mono text-2xl font-bold tabular-nums text-primary-600 dark:text-primary-300">{{ money(vatPayable) }}</div>
+        </Card>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-[var(--ll-muted)]">{{ t('invoices.tab_stats') }}</h2>
+        <div class="w-32">
+          <Select
+            :model-value="String(statsYear)"
+            :options="years.map((y) => ({ title: String(y), value: y }))"
+            @update:model-value="onStatsYear"
+          />
+        </div>
+      </div>
+
+      <div v-if="kpis" class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <Card :body-class="'p-4'">
+          <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.stat_revenue') }}</div>
+          <div class="mt-1 font-mono text-xl font-bold tabular-nums">{{ money(kpis.net) }}</div>
+        </Card>
+        <Card :body-class="'p-4'">
+          <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.invoice_count') }}</div>
+          <div class="mt-1 font-mono text-xl font-bold tabular-nums">{{ kpis.count }}</div>
+        </Card>
+        <Card v-if="kpis.growthPct != null" :body-class="'p-4'">
+          <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">YoY</div>
+          <div class="mt-1 font-mono text-xl font-bold tabular-nums">{{ kpis.growthPct }}%</div>
+        </Card>
+      </div>
+
+      <!-- Charts -->
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card :title="t('invoices.stat_monthly')">
+          <div v-if="months.length" class="-ml-1"><Chart :data="monthlyChartData" :options="monthlyChartOptions" bars /></div>
+          <div v-else class="py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</div>
+        </Card>
+        <Card :title="t('invoices.chart_by_category')">
+          <div v-if="categoryBreakdown.length" class="-ml-1"><Chart :data="categoryChartData" :options="categoryChartOptions" bars /></div>
+          <div v-else class="py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</div>
+        </Card>
+      </div>
+
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <!-- VAT advance -->
+        <Card :title="t('invoices.vat_title')">
+          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.vat_output') }}</span><span class="font-mono tabular-nums">{{ money(Number(vatAdv?.outputVat ?? 0)) }}</span></div>
+          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.vat_input') }}</span><span class="font-mono tabular-nums">{{ money(Number(vatAdv?.inputVat ?? 0)) }}</span></div>
+          <div class="my-1 border-t border-[var(--ll-border)]" />
+          <div class="flex justify-between py-1 text-sm font-medium"><span>{{ t('invoices.vat_payable') }}</span><span class="font-mono tabular-nums text-primary-600 dark:text-primary-300">{{ money(Number(vatAdv?.payable ?? 0)) }}</span></div>
+        </Card>
+
+        <!-- EÜR -->
+        <Card :title="t('invoices.euer_title')">
+          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.euer_income') }}</span><span class="font-mono tabular-nums">{{ money(Number(euerData?.income?.total ?? 0)) }}</span></div>
+          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.euer_expenses') }}</span><span class="font-mono tabular-nums">{{ money(Number(euerData?.expenses?.total ?? 0)) }}</span></div>
+          <div class="my-1 border-t border-[var(--ll-border)]" />
+          <div class="flex justify-between py-1 text-sm font-medium"><span>{{ t('invoices.euer_profit') }}</span><span class="font-mono tabular-nums">{{ money(Number(euerData?.profit ?? 0)) }}</span></div>
+        </Card>
+
+        <!-- Aging -->
+        <Card :title="t('invoices.aging_title')">
+          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.aging_current') }}</span><span class="font-mono tabular-nums">{{ money(agingGross('current')) }}</span></div>
+          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.aging_1_30') }}</span><span class="font-mono tabular-nums">{{ money(agingGross('1_30')) }}</span></div>
+          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.aging_31_60') }}</span><span class="font-mono tabular-nums">{{ money(agingGross('31_60')) }}</span></div>
+          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.aging_60plus') }}</span><span class="font-mono tabular-nums">{{ money(agingGross('60_plus')) }}</span></div>
+          <div class="my-1 border-t border-[var(--ll-border)]" />
+          <div class="flex justify-between py-1 text-sm font-medium"><span>{{ t('invoices.aging_open_total') }}</span><span class="font-mono tabular-nums text-amber-600 dark:text-amber-400">{{ money(openGross) }}</span></div>
+        </Card>
+
+        <!-- Revenue by customer -->
+        <Card :title="t('invoices.stat_by_customer')">
+          <div v-for="c in customers" :key="c.name" class="flex justify-between py-1 text-sm">
+            <span class="max-w-[70%] truncate">{{ c.name }}</span><span class="font-mono tabular-nums">{{ money(Number(c.net ?? 0)) }}</span>
+          </div>
+          <div v-if="!customers.length" class="text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</div>
+        </Card>
+      </div>
+
+      <!-- GoBD invoice-numbering gaps -->
+      <Card v-if="numberGapGroups.length" :title="t('invoices.gaps_title')" class="border-amber-500/40">
+        <div v-for="(g, gi) in numberGapGroups" :key="gi" class="py-1.5 text-sm">
+          <div class="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+            <Icon name="warning" :size="14" />
+            <span>{{ t('invoices.gaps_range', { group: gapGroupLabel(g.group), min: g.min, max: g.max }) }}</span>
+          </div>
+          <div class="mt-0.5 flex flex-wrap gap-1.5">
+            <span v-for="n in g.missing" :key="n" class="rounded bg-amber-500/15 px-2 py-0.5 font-mono text-xs text-amber-700 dark:text-amber-400">{{ n }}</span>
+          </div>
+        </div>
+      </Card>
+
+      <div class="grid gap-4 md:grid-cols-2">
+        <!-- Possible duplicates -->
+        <Card :title="t('invoices.duplicates_title')">
+          <div v-if="!dupInvoices.length && !dupTransactions.length" class="text-sm text-[var(--ll-muted)]">{{ t('invoices.duplicates_none') }}</div>
+          <div v-for="(g, gi) in dupInvoices" :key="'i' + gi" class="py-1.5 text-sm">
+            <div class="text-xs text-[var(--ll-muted)]">{{ t('invoices.dup_reason_' + g.reason) }}</div>
+            <div class="mt-0.5 flex flex-wrap gap-1.5">
+              <button v-for="id in g.ids" :key="id" class="rounded bg-black/[0.05] px-2 py-0.5 text-xs hover:bg-primary-500/15 dark:bg-white/10" @click="openInvoiceById(id)">{{ invoiceLabel(id) }}</button>
+            </div>
+          </div>
+          <div v-for="(g, gi) in dupTransactions" :key="'t' + gi" class="py-1.5 text-sm">
+            <div class="text-xs text-[var(--ll-muted)]">{{ t('invoices.dup_reason_' + g.reason) }}</div>
+            <div class="mt-0.5 flex flex-wrap gap-1.5">
+              <button v-for="id in g.ids" :key="id" class="rounded bg-black/[0.05] px-2 py-0.5 text-xs hover:bg-primary-500/15 dark:bg-white/10" @click="go('bank')">{{ txLabel(id) }}</button>
+            </div>
+          </div>
+        </Card>
+
+        <!-- Category suggestions (learned merchant → category) -->
+        <Card :title="t('invoices.suggestions_title')">
+          <div v-if="!catSuggestions.length" class="text-sm text-[var(--ll-muted)]">{{ t('invoices.suggestions_none') }}</div>
+          <div v-for="s in catSuggestions" :key="s.tx_id" class="flex items-center justify-between gap-2 py-1 text-sm">
+            <span class="max-w-[55%] truncate">{{ s.merchant }}</span>
+            <Badge tone="gray">{{ s.suggested_category }}</Badge>
+          </div>
         </Card>
       </div>
     </div>
@@ -68,7 +183,7 @@
                 <div class="flex items-center justify-end gap-0.5">
                   <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editInvoice(item)" />
                   <Btn variant="ghost" size="sm" icon="print" :title="t('invoices.print')" :loading="pdfBusy && printingId === item.id" @click="doPrint(item)" />
-                  <Btn v-if="item.number" tag="a" variant="ghost" size="sm" icon="picture_as_pdf" :href="f.invoicePdfUrl(item.id)" target="_blank" />
+                  <Btn v-if="item.number" variant="ghost" size="sm" icon="picture_as_pdf" :title="t('common.open')" @click="openPreview(f.invoicePdfUrl(item.id), (item.number || 'invoice') + '.pdf', 'application/pdf')" />
                   <Btn v-if="item.number" variant="ghost" size="sm" icon="mail" :title="t('invoices.email_send')" @click="doEmail(item)" />
                   <Btn v-if="item.number" variant="ghost" size="sm" icon="gavel" :title="t('invoices.dun_send')" @click="doDun(item)" />
                   <Btn v-if="item.number && item.type !== 'credit_note'" variant="ghost" size="sm" icon="cancel" :title="t('invoices.storno')" @click="doStorno(item)" />
@@ -140,11 +255,28 @@
       </div>
     </Card>
 
-    <!-- Receipts -->
-    <Card v-show="tab === 'receipts'" :title="t('invoices.receipts_title')" :body-class="'p-0'">
+    <!-- Receipts — the whole card is a drop zone: drop one or many files to auto-capture
+         them (OCR + recognise + auto-match/create a partner), Candis-inbox-style. -->
+    <Card
+      v-show="tab === 'receipts'" :title="t('invoices.receipts_title')" :body-class="'p-0'"
+      class="relative" @dragover.prevent="inboxDrag = true" @dragenter.prevent="inboxDrag = true"
+      @dragleave.prevent="inboxDrag = false" @drop.prevent="onInboxDrop"
+    >
+      <div v-if="inboxDrag || inboxBusy" class="absolute inset-0 z-10 grid place-items-center rounded-xl border-2 border-dashed border-primary-500 bg-primary-500/5 backdrop-blur-sm">
+        <div v-if="inboxBusy" class="text-center">
+          <Icon name="progress_activity" :size="28" class="mx-auto mb-2 animate-spin text-primary-600 dark:text-primary-300" />
+          <div class="text-sm font-medium">{{ t('invoices.inbox_processing', { done: String(inboxDone), total: String(inboxTotal) }) }}</div>
+        </div>
+        <div v-else class="text-center text-primary-600 dark:text-primary-300">
+          <Icon name="inbox" :size="28" class="mx-auto mb-2" />
+          <div class="text-sm font-medium">{{ t('invoices.inbox_drop_hint') }}</div>
+        </div>
+      </div>
       <template #actions>
         <div class="flex items-center gap-2">
           <Btn variant="ghost" size="sm" icon="sell" @click="catDialog = true">{{ t('invoices.categories') }}</Btn>
+          <input ref="inboxInput" type="file" multiple accept="application/pdf,image/*" class="hidden" @change="onInboxPick">
+          <Btn variant="soft" size="sm" icon="inbox" :loading="inboxBusy" @click="inboxInput?.click()">{{ t('invoices.inbox_upload') }}</Btn>
           <Btn variant="solid" size="sm" icon="add" @click="newReceipt">{{ t('common.add') }}</Btn>
         </div>
       </template>
@@ -171,11 +303,12 @@
               <td class="px-4 py-2.5 text-right font-mono tabular-nums">{{ item.amount != null ? money(Number(item.amount)) : '—' }}</td>
               <td class="px-4 py-2.5">
                 <Badge v-if="item.category" tone="gray">{{ item.category }}</Badge>
+                <span v-if="catAccountNo(item.category)" class="ml-1 font-mono text-xs text-[var(--ll-muted)]">{{ catAccountNo(item.category) }}</span>
                 <span v-else class="text-[var(--ll-muted)]">—</span>
               </td>
               <td class="px-4 py-2.5">
                 <div class="flex items-center justify-end gap-0.5">
-                  <Btn tag="a" variant="ghost" size="sm" icon="open_in_new" :href="f.receiptFileUrl(item.id)" target="_blank" />
+                  <Btn variant="ghost" size="sm" icon="open_in_new" :title="t('common.open')" @click="openPreview(f.receiptFileUrl(item.id), item.name, item.mime)" />
                   <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editReceipt(item)" />
                   <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delReceipt(item)" />
                 </div>
@@ -315,108 +448,6 @@
             </Card>
           </div>
         </div>
-      </div>
-    </div>
-
-    <!-- Stats / Reports -->
-    <div v-show="tab === 'stats'" class="space-y-4">
-      <div class="max-w-xs">
-        <Select
-          :label="t('invoices.euer_year')"
-          :model-value="String(statsYear)"
-          :options="years.map((y) => ({ title: String(y), value: y }))"
-          @update:model-value="onStatsYear"
-        />
-      </div>
-
-      <div v-if="kpis" class="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <Card :body-class="'p-4'">
-          <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.stat_revenue') }}</div>
-          <div class="mt-1 font-mono text-xl font-bold tabular-nums">{{ money(kpis.net) }}</div>
-        </Card>
-        <Card :body-class="'p-4'">
-          <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">{{ t('invoices.invoice_count') }}</div>
-          <div class="mt-1 font-mono text-xl font-bold tabular-nums">{{ kpis.count }}</div>
-        </Card>
-        <Card v-if="kpis.growthPct != null" :body-class="'p-4'">
-          <div class="text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--ll-muted)]">YoY</div>
-          <div class="mt-1 font-mono text-xl font-bold tabular-nums">{{ kpis.growthPct }}%</div>
-        </Card>
-      </div>
-
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <!-- VAT advance -->
-        <Card :title="t('invoices.vat_title')">
-          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.vat_output') }}</span><span class="font-mono tabular-nums">{{ money(Number(vatAdv?.outputVat ?? 0)) }}</span></div>
-          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.vat_input') }}</span><span class="font-mono tabular-nums">{{ money(Number(vatAdv?.inputVat ?? 0)) }}</span></div>
-          <div class="my-1 border-t border-[var(--ll-border)]" />
-          <div class="flex justify-between py-1 text-sm font-medium"><span>{{ t('invoices.vat_payable') }}</span><span class="font-mono tabular-nums text-primary-600 dark:text-primary-300">{{ money(Number(vatAdv?.payable ?? 0)) }}</span></div>
-        </Card>
-
-        <!-- EÜR -->
-        <Card :title="t('invoices.euer_title')">
-          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.euer_income') }}</span><span class="font-mono tabular-nums">{{ money(Number(euerData?.income?.total ?? 0)) }}</span></div>
-          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.euer_expenses') }}</span><span class="font-mono tabular-nums">{{ money(Number(euerData?.expenses?.total ?? 0)) }}</span></div>
-          <div class="my-1 border-t border-[var(--ll-border)]" />
-          <div class="flex justify-between py-1 text-sm font-medium"><span>{{ t('invoices.euer_profit') }}</span><span class="font-mono tabular-nums">{{ money(Number(euerData?.profit ?? 0)) }}</span></div>
-        </Card>
-
-        <!-- Aging -->
-        <Card :title="t('invoices.aging_title')">
-          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.aging_current') }}</span><span class="font-mono tabular-nums">{{ money(agingGross('current')) }}</span></div>
-          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.aging_1_30') }}</span><span class="font-mono tabular-nums">{{ money(agingGross('1_30')) }}</span></div>
-          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.aging_31_60') }}</span><span class="font-mono tabular-nums">{{ money(agingGross('31_60')) }}</span></div>
-          <div class="flex justify-between py-1 text-sm"><span class="text-[var(--ll-muted)]">{{ t('invoices.aging_60plus') }}</span><span class="font-mono tabular-nums">{{ money(agingGross('60_plus')) }}</span></div>
-          <div class="my-1 border-t border-[var(--ll-border)]" />
-          <div class="flex justify-between py-1 text-sm font-medium"><span>{{ t('invoices.aging_open_total') }}</span><span class="font-mono tabular-nums text-amber-600 dark:text-amber-400">{{ money(openGross) }}</span></div>
-        </Card>
-
-        <!-- Revenue by customer -->
-        <Card :title="t('invoices.stat_by_customer')">
-          <div v-for="c in customers" :key="c.name" class="flex justify-between py-1 text-sm">
-            <span class="max-w-[70%] truncate">{{ c.name }}</span><span class="font-mono tabular-nums">{{ money(Number(c.net ?? 0)) }}</span>
-          </div>
-          <div v-if="!customers.length" class="text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</div>
-        </Card>
-      </div>
-
-      <!-- Monthly revenue -->
-      <Card :title="t('invoices.stat_monthly')">
-        <div v-for="m in months" :key="m.month" class="flex items-center gap-3 py-1 text-sm">
-          <span class="w-11 shrink-0 text-[var(--ll-muted)]">{{ monthLabel(m.month) }}</span>
-          <div class="h-2 flex-1 overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/10">
-            <div class="h-full rounded-full bg-primary-500" :style="{ width: monthPct(m.net) + '%' }" />
-          </div>
-          <span class="w-28 shrink-0 text-right font-mono tabular-nums">{{ money(Number(m.net ?? 0)) }}</span>
-        </div>
-      </Card>
-
-      <div class="grid gap-4 md:grid-cols-2">
-        <!-- Possible duplicates -->
-        <Card :title="t('invoices.duplicates_title')">
-          <div v-if="!dupInvoices.length && !dupTransactions.length" class="text-sm text-[var(--ll-muted)]">{{ t('invoices.duplicates_none') }}</div>
-          <div v-for="(g, gi) in dupInvoices" :key="'i' + gi" class="py-1.5 text-sm">
-            <div class="text-xs text-[var(--ll-muted)]">{{ t('invoices.dup_reason_' + g.reason) }}</div>
-            <div class="mt-0.5 flex flex-wrap gap-1.5">
-              <button v-for="id in g.ids" :key="id" class="rounded bg-black/[0.05] px-2 py-0.5 text-xs hover:bg-primary-500/15 dark:bg-white/10" @click="openInvoiceById(id)">{{ invoiceLabel(id) }}</button>
-            </div>
-          </div>
-          <div v-for="(g, gi) in dupTransactions" :key="'t' + gi" class="py-1.5 text-sm">
-            <div class="text-xs text-[var(--ll-muted)]">{{ t('invoices.dup_reason_' + g.reason) }}</div>
-            <div class="mt-0.5 flex flex-wrap gap-1.5">
-              <button v-for="id in g.ids" :key="id" class="rounded bg-black/[0.05] px-2 py-0.5 text-xs hover:bg-primary-500/15 dark:bg-white/10" @click="go('bank')">{{ txLabel(id) }}</button>
-            </div>
-          </div>
-        </Card>
-
-        <!-- Category suggestions (learned merchant → category) -->
-        <Card :title="t('invoices.suggestions_title')">
-          <div v-if="!catSuggestions.length" class="text-sm text-[var(--ll-muted)]">{{ t('invoices.suggestions_none') }}</div>
-          <div v-for="s in catSuggestions" :key="s.tx_id" class="flex items-center justify-between gap-2 py-1 text-sm">
-            <span class="max-w-[55%] truncate">{{ s.merchant }}</span>
-            <Badge tone="gray">{{ s.suggested_category }}</Badge>
-          </div>
-        </Card>
       </div>
     </div>
 
@@ -588,6 +619,19 @@
       </template>
     </Modal>
 
+    <!-- Document preview: receipts + invoice PDFs, in-app instead of a new tab -->
+    <Modal v-model="previewOpen" :title="previewName" width="64rem">
+      <div class="flex h-[70vh] items-center justify-center overflow-auto rounded-lg bg-black/[0.03] dark:bg-white/5">
+        <img v-if="previewIsImage" :src="previewUrl" class="max-h-full max-w-full object-contain" :alt="previewName">
+        <iframe v-else :src="previewUrl" class="h-full w-full border-0"></iframe>
+      </div>
+      <template #footer>
+        <Btn variant="ghost" tag="a" :href="previewUrl" target="_blank" icon="open_in_new">{{ t('invoices.preview_new_tab') }}</Btn>
+        <Btn variant="ghost" tag="a" :href="previewDownloadUrl" download icon="download">{{ t('files.download') }}</Btn>
+        <Btn variant="solid" @click="previewOpen = false">{{ t('common.close') }}</Btn>
+      </template>
+    </Modal>
+
     <!-- Category suggestions for receipt/partner category inputs -->
     <datalist id="fin-cats">
       <option v-for="c in f.financeCategories" :key="c.id" :value="c.name" />
@@ -598,7 +642,8 @@
       <div class="space-y-2">
         <div v-for="c in f.financeCategories" :key="c.id" class="flex items-center gap-2 rounded-lg border border-[var(--ll-border)] px-3 py-2">
           <span class="h-4 w-4 shrink-0 rounded-full border border-[var(--ll-border)]" :style="{ backgroundColor: c.color || 'transparent' }" />
-          <span class="flex-1 truncate text-sm">{{ c.name }}</span>
+          <span class="min-w-0 flex-1 truncate text-sm">{{ c.name }}</span>
+          <span v-if="c.account_no" class="shrink-0 rounded bg-black/[0.05] px-1.5 py-0.5 font-mono text-xs text-[var(--ll-muted)] dark:bg-white/10">{{ c.account_no }}</span>
           <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editCat(c)" />
           <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delCat(c)" />
         </div>
@@ -610,6 +655,7 @@
             <Btn variant="solid" :loading="saving" :disabled="!catForm.name.trim()" @click="saveCat">{{ catForm.id ? t('common.save') : t('common.add') }}</Btn>
             <Btn v-if="catForm.id" variant="ghost" @click="resetCat">{{ t('common.cancel') }}</Btn>
           </div>
+          <TextField v-model="catForm.account_no" :label="t('invoices.cat_account_no')" :hint="t('invoices.cat_account_no_hint')" class="mt-2" />
         </div>
       </div>
       <template #footer>
@@ -646,7 +692,11 @@
           <Select v-model="partnerForm.currency" :label="t('invoices.partner_currency')" :options="currencyOptions" />
         </div>
 
-        <TextField v-model="partnerForm.vat_id" :label="t('invoices.partner_vat')" placeholder="DE…" />
+        <div class="flex items-end gap-2">
+          <TextField v-model="partnerForm.vat_id" :label="t('invoices.partner_vat')" placeholder="DE…" class="min-w-0 flex-1" />
+          <input ref="partnerOcrInput" type="file" accept="application/pdf,image/*" class="hidden" @change="scanPartnerDoc">
+          <Btn variant="soft" size="sm" icon="document_scanner" :loading="partnerOcrBusy" :title="t('invoices.partner_scan_doc')" @click="partnerOcrInput?.click()">{{ t('invoices.partner_scan_doc') }}</Btn>
+        </div>
 
         <label class="block">
           <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.partner_address') }}</span>
@@ -698,11 +748,14 @@
       <div class="space-y-3">
         <label v-if="!rForm.id" class="block">
           <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipt') }}</span>
-          <input
-            type="file" accept="application/pdf,image/*"
-            class="block w-full text-sm text-[var(--ll-fg)] file:mr-3 file:rounded-lg file:border-0 file:bg-primary-500/10 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-600 hover:file:bg-primary-500/15 dark:file:text-primary-300"
-            @change="rFile = ($event.target as HTMLInputElement).files?.[0] ?? null"
-          >
+          <div class="flex items-center gap-2">
+            <input
+              type="file" accept="application/pdf,image/*"
+              class="block w-full flex-1 text-sm text-[var(--ll-fg)] file:mr-3 file:rounded-lg file:border-0 file:bg-primary-500/10 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-600 hover:file:bg-primary-500/15 dark:file:text-primary-300"
+              @change="rFile = ($event.target as HTMLInputElement).files?.[0] ?? null"
+            >
+            <Btn v-if="rFile" variant="soft" size="sm" icon="document_scanner" :loading="ocrBusy" @click="scanReceipt">{{ t('invoices.ocr_scan') }}</Btn>
+          </div>
         </label>
         <TextField v-model="rForm.name" :label="t('invoices.receipt_rename')" />
         <TextField v-model="rForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" list="fin-cats" />
@@ -1066,11 +1119,13 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { fmtDate as libDate } from '@spa/lib/datetime';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
-import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion } from '@spa/stores/finance';
+import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart } from '@spa/ui';
+import type { AlignedData, Options } from 'uplot';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, VersionConflict } from '@spa/api/client';
+import { analyzeReceiptText } from '@spa/shared/receipt-ocr';
 import {
   type PrintInvoice, type PrintCompany, type PrintLine,
   computeTotals as printComputeTotals, vatRatesOf as printVatRatesOf,
@@ -1085,15 +1140,18 @@ const router = useRouter();
 const VALID = ['dashboard', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners', 'stats'];
 const tab = computed(() => {
   const s = String(route.params.section || 'dashboard');
+  // 'stats' merged into 'dashboard' (one consolidated overview) — kept as an alias
+  // so a bookmarked/shared `/finance/stats` link still lands somewhere sensible.
+  if (s === 'stats') return 'dashboard';
   return VALID.includes(s) ? s : 'dashboard';
 });
 function go(v: unknown) { router.push(`/finance/${String(v)}`); }
 
 // In-page left submenu sections (mirrors the Profile/Settings hub layout).
-const sections = ['dashboard', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners', 'stats'] as const;
+const sections = ['dashboard', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners'] as const;
 const secIcon: Record<string, string> = {
   dashboard: 'space_dashboard', invoices: 'receipt_long', payments: 'account_balance_wallet',
-  bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups', stats: 'insights',
+  bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups',
 };
 const q = ref('');
 
@@ -1160,6 +1218,8 @@ const pForm = reactive<PPForm>({ name: '', type: 'bank', business: false });
 // Receipt form
 const rDialog = ref(false);
 const rFile = ref<File | File[] | null>(null);
+const ocrBusy = ref(false);
+const lastOcrText = ref('');
 interface RForm { id?: number; version?: number; name: string; category: string; tags: string[]; vat: string; note: string; partner_id: number | null }
 const rForm = reactive<RForm>({ name: '', category: '', tags: [], vat: '', note: '', partner_id: null });
 
@@ -1192,12 +1252,15 @@ async function loadReports(year?: number) {
     dupInvoices.value = dup.invoices ?? [];
     dupTransactions.value = dup.transactions ?? [];
     catSuggestions.value = (await f.categorySuggestions()).suggestions ?? [];
+    numberGapGroups.value = (await f.numberGaps()).groups ?? [];
   } catch { /* ignore */ }
 }
-// Duplicate + category-suggestion read-outs (stats tab).
+// Duplicate + category-suggestion + number-gap read-outs (stats tab).
 const dupInvoices = ref<DuplicateGroup[]>([]);
 const dupTransactions = ref<DuplicateGroup[]>([]);
 const catSuggestions = ref<CategorySuggestion[]>([]);
+const numberGapGroups = ref<NumberGapGroup[]>([]);
+function gapGroupLabel(group: string) { return group.startsWith('year:') ? group.slice(5) : t('invoices.gap_sequence'); }
 function invoiceLabel(id: number) { const i = f.invoices.find((x) => x.id === id); return i?.number || `#${id}`; }
 function txLabel(id: number) { const x = f.transactions.find((tx) => tx.id === id); return x ? `${x.date ?? ''} ${money(x.amount)}`.trim() : `#${id}`; }
 function openInvoiceById(id: number) { const i = f.invoices.find((x) => x.id === id); if (i) { go('invoices'); editInvoice(i); } }
@@ -1224,6 +1287,57 @@ function agingGross(k: string) { return Number(agingBuckets.value[k]?.gross ?? 0
 function monthLabel(m: number) { return new Intl.DateTimeFormat(document.documentElement.lang || 'de', { month: 'short' }).format(new Date(2000, m - 1, 1)); }
 const monthMax = computed(() => months.value.reduce((mx, m) => Math.max(mx, m.net || 0), 0));
 function monthPct(net: number) { return monthMax.value > 0 ? Math.round(((net || 0) / monthMax.value) * 100) : 0; }
+
+// ---- Dashboard charts (uPlot, lazy-loaded — see ui/Chart.vue) ----
+const CHART_INK = '#6d4aff'; // --color-primary-500
+const monthlyChartData = computed<AlignedData>(() => [
+  months.value.map((m) => m.month),
+  months.value.map((m) => Number(m.net ?? 0)),
+]);
+const monthlyChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
+  padding: [12, 8, 0, 0],
+  legend: { show: false },
+  cursor: { drag: { x: false, y: false } },
+  series: [
+    {},
+    { label: t('invoices.stat_monthly'), stroke: CHART_INK, fill: CHART_INK + '33' },
+  ],
+  axes: [
+    { stroke: '#8888', grid: { show: false }, values: (_u, vals) => vals.map((v) => monthLabel(v)) },
+    { stroke: '#8888', grid: { stroke: 'rgba(128,128,128,.15)' }, size: 56, values: (_u, vals) => vals.map((v) => money(v)) },
+  ],
+  scales: { x: { time: false } },
+}));
+
+// Category breakdown (from standalone receipts — the source that actually carries a
+// category) for the currently selected year, summed by absolute gross amount.
+const categoryBreakdown = computed(() => {
+  const byCat = new Map<string, number>();
+  for (const r of f.standaloneReceipts) {
+    if (!r.category || r.amount == null) continue;
+    if (r.date && new Date(r.date).getFullYear() !== statsYear.value) continue;
+    byCat.set(r.category, (byCat.get(r.category) ?? 0) + Math.abs(Number(r.amount)));
+  }
+  return [...byCat.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+});
+const categoryChartData = computed<AlignedData>(() => [
+  categoryBreakdown.value.map((_, i) => i),
+  categoryBreakdown.value.map(([, sum]) => sum),
+]);
+const categoryChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
+  padding: [12, 8, 0, 0],
+  legend: { show: false },
+  cursor: { drag: { x: false, y: false } },
+  series: [
+    {},
+    { label: t('invoices.receipt_category'), stroke: CHART_INK, fill: CHART_INK + '33' },
+  ],
+  axes: [
+    { stroke: '#8888', grid: { show: false }, values: (_u, vals) => vals.map((v) => categoryBreakdown.value[v]?.[0] ?? '') },
+    { stroke: '#8888', grid: { stroke: 'rgba(128,128,128,.15)' }, size: 56, values: (_u, vals) => vals.map((v) => money(v)) },
+  ],
+  scales: { x: { time: false } },
+}));
 
 const filteredInvoices = computed(() => {
   const s = q.value.trim().toLowerCase();
@@ -1464,6 +1578,19 @@ function parseBankCsv(text: string): Record<string, unknown>[] {
   return out;
 }
 
+// ---- Document preview (receipts + invoice PDFs), in-app instead of a new tab ----
+const previewOpen = ref(false);
+const previewUrl = ref('');
+const previewName = ref('');
+const previewIsImage = ref(false);
+function openPreview(url: string, name: string, mime?: string | null) {
+  previewUrl.value = url;
+  previewName.value = name;
+  previewIsImage.value = !!mime && mime.startsWith('image/');
+  previewOpen.value = true;
+}
+const previewDownloadUrl = computed(() => previewUrl.value + (previewUrl.value.includes('?') ? '&' : '?') + 'download=1');
+
 // ---- Bank-transaction receipts (reconcile: attach receipt documents to a booking) ----
 const txRecDialog = ref(false);
 const txRecTx = ref<BankTransaction | null>(null);
@@ -1471,7 +1598,7 @@ const txRecInput = ref<HTMLInputElement | null>(null);
 const txRecBusy = ref(false);
 function openTxReceipts(tx: BankTransaction) { txRecTx.value = tx; txRecDialog.value = true; }
 function openTxReceipt(r: import('@spa/stores/finance').TxReceipt) {
-  if (txRecTx.value) window.open(f.txReceiptUrl(txRecTx.value.id, r.id), '_blank');
+  if (txRecTx.value) openPreview(f.txReceiptUrl(txRecTx.value.id, r.id), r.name, r.mime);
 }
 async function onTxReceiptFile(e: Event) {
   const input = e.target as HTMLInputElement;
@@ -1501,15 +1628,15 @@ async function delTxReceipt(r: import('@spa/stores/finance').TxReceipt) {
 
 // ---- Finance categories (managed list feeding the receipt/partner category datalist) ----
 const catDialog = ref(false);
-const catForm = reactive<{ id?: number; version?: number; name: string; color: string }>({ name: '', color: '#6750a4' });
-function resetCat() { Object.assign(catForm, { id: undefined, version: undefined, name: '', color: '#6750a4' }); }
-function editCat(c: FinanceCategory) { Object.assign(catForm, { id: c.id, version: c.version, name: c.name, color: c.color ?? '#6750a4' }); }
+const catForm = reactive<{ id?: number; version?: number; name: string; color: string; account_no: string }>({ name: '', color: '#6750a4', account_no: '' });
+function resetCat() { Object.assign(catForm, { id: undefined, version: undefined, name: '', color: '#6750a4', account_no: '' }); }
+function editCat(c: FinanceCategory) { Object.assign(catForm, { id: c.id, version: c.version, name: c.name, color: c.color ?? '#6750a4', account_no: c.account_no ?? '' }); }
 async function saveCat() {
   const name = catForm.name.trim();
   if (!name) return;
   saving.value = true;
   try {
-    const body = { name, color: catForm.color, version: catForm.version };
+    const body = { name, color: catForm.color, account_no: catForm.account_no.trim() || null, version: catForm.version };
     if (catForm.id) await f.updateCategory(catForm.id, body);
     else await f.createCategory(body);
     resetCat(); await f.load(); success(t('common.saved'));
@@ -1615,6 +1742,28 @@ async function loadPartnerLogo() {
   } catch { error(t('common.error')); } finally { logoBusy.value = false; }
 }
 
+// Complete this partner's profile from a scanned document (invoice/letterhead/business
+// card) — fills only EMPTY fields (address, VAT-ID), never overwrites what's there.
+const partnerOcrInput = ref<HTMLInputElement | null>(null);
+const partnerOcrBusy = ref(false);
+async function scanPartnerDoc(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  partnerOcrBusy.value = true;
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await api.upload<{ text: string }>('/api/v1/invoices/ocr', fd);
+    const a = analyzeReceiptText(res.text, ownNames.value);
+    let filled = false;
+    if (a.vatId && !partnerForm.vat_id) { partnerForm.vat_id = a.vatId; filled = true; }
+    if (!partnerForm.category && a.category) { partnerForm.category = a.category; filled = true; }
+    success(filled ? t('invoices.ocr_done') : t('invoices.ocr_nothing_new'));
+  } catch { error(t('invoices.ocr_failed')); } finally { partnerOcrBusy.value = false; }
+}
+
 async function savePartnerForm() {
   if (!partnerForm.name.trim()) { error(t('common.error')); return; }
   saving.value = true;
@@ -1643,7 +1792,109 @@ async function delPartner(p: Partner) {
 }
 
 // ---- Receipts ----
-function newReceipt() { Object.assign(rForm, { id: undefined, version: undefined, name: '', category: '', tags: [], vat: '', note: '', partner_id: null }); rFile.value = null; rDialog.value = true; }
+function newReceipt() { Object.assign(rForm, { id: undefined, version: undefined, name: '', category: '', tags: [], vat: '', note: '', partner_id: null }); rFile.value = null; lastOcrText.value = ''; rDialog.value = true; }
+
+// Normalise a merchant/partner name for matching: lowercase, strip legal-form suffixes
+// (GmbH/AG/UG/…) and punctuation, so "IntellyTec GmbH" and "IntellyTec" match.
+function normMerchant(name: string): string {
+  return name.toLowerCase()
+    .replace(/\b(gmbh|mbh|ug|ag|kg|ohg|gbr|ltd|limited|llc|inc|corp|e\.?v\.?|& co)\b/g, '')
+    .replace(/[^a-z0-9äöüß]+/g, '').trim();
+}
+
+/**
+ * Find an existing partner matching the scanned merchant name, or create one. If a
+ * match is found and it is missing a VAT-ID that the scan discovered, complete it
+ * (never overwrites a VAT-ID the owner already entered). Returns the partner id, or
+ * null when there is no merchant name to act on.
+ */
+async function autoPartner(merchant: string, vatId: string): Promise<number | null> {
+  const key = normMerchant(merchant);
+  if (!key) return null;
+  const existing = f.partners.find((p) => normMerchant(p.name) === key);
+  if (existing) {
+    if (vatId && !existing.vat_id) {
+      try { await f.savePartner({ id: existing.id, version: existing.version, vat_id: vatId }); await f.load(); } catch { /* best-effort completion */ }
+    }
+    return existing.id;
+  }
+  try {
+    const res = await f.savePartner({ name: merchant, vat_id: vatId || null }) as { partner: Partner };
+    await f.load();
+    return res.partner.id;
+  } catch { return null; }
+}
+
+/** Scan the selected receipt file server-side (text only) and autofill the form. */
+async function scanReceipt() {
+  const file = Array.isArray(rFile.value) ? rFile.value[0] : rFile.value;
+  if (!file) return;
+  ocrBusy.value = true;
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await api.upload<{ text: string }>('/api/v1/invoices/ocr', fd);
+    lastOcrText.value = res.text;
+    const a = analyzeReceiptText(res.text, ownNames.value);
+    if (a.category && !rForm.category) rForm.category = a.category;
+    if (a.vat && !rForm.vat) rForm.vat = a.vat;
+    for (const tag of a.tags) if (!rForm.tags.includes(tag)) rForm.tags.push(tag);
+    if (a.merchant && rForm.partner_id == null) rForm.partner_id = await autoPartner(a.merchant, a.vatId);
+    success(t('invoices.ocr_done'));
+  } catch { error(t('invoices.ocr_failed')); } finally { ocrBusy.value = false; }
+}
+
+// ---- Receipt inbox: drop/pick one or many files, each is captured automatically
+// (OCR'd, recognised, auto-matched/created a partner) without opening a dialog per
+// file — the Candis-style "drop a batch, review afterwards" flow.
+const inboxDrag = ref(false);
+const inboxBusy = ref(false);
+const inboxDone = ref(0);
+const inboxTotal = ref(0);
+const inboxInput = ref<HTMLInputElement | null>(null);
+
+function onInboxDrop(e: DragEvent) {
+  inboxDrag.value = false;
+  const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => /^application\/pdf$|^image\//.test(f.type));
+  if (files.length) void processInboxFiles(files);
+}
+function onInboxPick(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  input.value = '';
+  if (files.length) void processInboxFiles(files);
+}
+
+async function processInboxFiles(files: File[]) {
+  inboxBusy.value = true;
+  inboxTotal.value = files.length;
+  inboxDone.value = 0;
+  let failed = 0;
+  for (const file of files) {
+    try {
+      const ocrFd = new FormData();
+      ocrFd.append('file', file);
+      const res = await api.upload<{ text: string }>('/api/v1/invoices/ocr', ocrFd);
+      const a = analyzeReceiptText(res.text, ownNames.value);
+      const partnerId = a.merchant ? await autoPartner(a.merchant, a.vatId) : null;
+
+      const fd = new FormData();
+      fd.append('file', file);
+      if (a.merchant) fd.append('name', a.merchant + (a.date ? ` ${a.date}` : ''));
+      if (a.category) fd.append('category', a.category);
+      if (a.vat) fd.append('vat', a.vat);
+      if (partnerId != null) fd.append('partner_id', String(partnerId));
+      fd.append('ocr', res.text.slice(0, 200000));
+      for (const tag of a.tags) fd.append('tags[]', tag);
+      await f.createReceipt(fd);
+    } catch { failed++; }
+    inboxDone.value++;
+  }
+  await f.load();
+  inboxBusy.value = false;
+  if (failed) error(t('invoices.inbox_some_failed', { failed: String(failed), total: String(files.length) }));
+  else success(t('invoices.inbox_done', { count: String(files.length) }));
+}
 function editReceipt(r: Receipt) {
   Object.assign(rForm, {
     id: r.id, version: r.version, name: r.name, category: r.category ?? '',
@@ -1670,6 +1921,7 @@ async function saveReceipt() {
       if (rForm.vat) fd.append('vat', rForm.vat);
       if (rForm.note) fd.append('note', rForm.note);
       if (rForm.partner_id != null) fd.append('partner_id', String(rForm.partner_id));
+      if (lastOcrText.value) fd.append('ocr', lastOcrText.value.slice(0, 200000));
       for (const tag of rForm.tags) fd.append('tags[]', tag);
       await f.createReceipt(fd);
     }
@@ -1719,6 +1971,16 @@ const printQr = ref('');
 const printTpl = computed(() => (printCompany.template === 'schlicht' ? 'elegant' : (printCompany.template || 'editorial')));
 const printTotals = computed(() => printComputeTotals(printInv.value));
 const printVatRates = computed(() => printVatRatesOf(printInv.value, printCompany.small_business));
+
+// The viewer's own name(s)/company — passed to the OCR recogniser so a merged
+// multi-column letterhead never misreads the document's OWNER as its own merchant.
+const ownNames = computed(() => [printCompany.name, ...printCompany.contacts.map((c) => c.name ?? '')].filter(Boolean));
+
+/** The owner-entered Sachkonto for a category name, if any managed category carries one. */
+function catAccountNo(name: string | null | undefined): string {
+  if (!name) return '';
+  return f.financeCategories.find((c) => c.name === name)?.account_no ?? '';
+}
 
 async function loadPrintCompany() {
   try {

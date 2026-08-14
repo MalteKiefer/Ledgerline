@@ -29,7 +29,7 @@ export interface PaymentMethod {
 export interface Project { id: number; name: string; parent_id: number | null; note: string | null; version: number }
 export interface Receipt {
   id: number; name: string; category: string | null; tags: string[] | null; vat: string | null;
-  note: string | null; partner_id: number | null; version: number;
+  note: string | null; partner_id: number | null; version: number; mime?: string | null;
   // Optional presentation fields (may be absent depending on backend serialization).
   amount?: number | null; date?: string | null; created_at?: string | null; file_url?: string | null;
 }
@@ -45,8 +45,9 @@ export interface TxReceipt {
   id: string; name: string; mime: string | null; kind: string | null;
   category?: string | null; tags?: string[] | null; partnerId?: number | null;
 }
-export interface FinanceCategory { id: number; name: string; color: string | null; icon: string | null; version?: number }
+export interface FinanceCategory { id: number; name: string; color: string | null; icon: string | null; account_no: string | null; version?: number }
 export interface DuplicateGroup { reason: string; key: string; ids: number[] }
+export interface NumberGapGroup { group: string; missing: string[]; min: string; max: string; count: number }
 export interface CategorySuggestion { tx_id: number; merchant: string; suggested_category: string }
 
 export const useFinanceStore = defineStore('finance', () => {
@@ -99,6 +100,7 @@ export const useFinanceStore = defineStore('finance', () => {
   };
   const euer = (year?: number) => api.get<Record<string, unknown>>(`/api/v1/finance/reports/euer${year ? `?year=${year}` : ''}`);
   const duplicates = () => api.get<{ invoices: DuplicateGroup[]; transactions: DuplicateGroup[] }>('/api/v1/finance/duplicates');
+  const numberGaps = () => api.get<{ groups: NumberGapGroup[] }>('/api/v1/finance/number-gaps');
   const categorySuggestions = () => api.get<{ suggestions: CategorySuggestion[] }>('/api/v1/finance/category-suggestions');
   const accountVat = (accountId?: number, year?: number) => {
     const p = new URLSearchParams();
@@ -136,7 +138,7 @@ export const useFinanceStore = defineStore('finance', () => {
 
   return {
     invoices, partners, paymentMethods, projects, standaloneReceipts, transactions, financeCategories,
-    load, reports, vatAdvance, euer, accountVat, duplicates, categorySuggestions,
+    load, reports, vatAdvance, euer, accountVat, duplicates, numberGaps, categorySuggestions,
     createTransaction, updateTransaction, deleteTransaction, restoreTransaction, forceTransaction, bulkTransactions, loadTrash,
     attachTxReceipt, deleteTxReceipt, txReceiptUrl,
     createCategory, updateCategory, deleteCategory,

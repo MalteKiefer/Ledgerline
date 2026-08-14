@@ -188,6 +188,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/finance/reports/vat-advance', [FinanceReportController::class, 'vatAdvance'])->middleware('throttle:120,1')->name('api.finance.reports.vat-advance');
             Route::get('/finance/reports/euer', [FinanceReportController::class, 'euer'])->middleware('throttle:120,1')->name('api.finance.reports.euer');
             Route::get('/finance/duplicates', [FinanceReportController::class, 'duplicates'])->middleware('throttle:60,1')->name('api.finance.duplicates');
+            Route::get('/finance/number-gaps', [FinanceReportController::class, 'numberGaps'])->middleware('throttle:60,1')->name('api.finance.number-gaps');
             Route::get('/finance/category-suggestions', [FinanceReportController::class, 'categorySuggestions'])->middleware('throttle:60,1')->name('api.finance.category-suggestions');
             Route::get('/finance/trash', [FinanceController::class, 'trash'])->name('api.finance.trash');
 
