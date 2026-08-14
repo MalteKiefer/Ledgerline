@@ -61,8 +61,9 @@ RUN apk add --no-cache \
 
 # Archive tools for the Files archiver/unarchiver — a SEPARATE apk layer so these
 # packages never interfere with install-php-extensions' build-dep cleanup (mixing
-# them into the RUN above silently left pdo_pgsql/pgsql/zip uninstalled).
-RUN apk add --no-cache tar p7zip unzip xz zstd bzip2 unrar
+# them into the RUN above silently left pdo_pgsql/pgsql/zip uninstalled). No unrar
+# (not in Alpine's repos) — p7zip handles RAR4 fully and RAR5 best-effort.
+RUN apk add --no-cache tar p7zip unzip xz zstd bzip2
 
 COPY --from=composer /usr/bin/composer /usr/bin/composer
 
