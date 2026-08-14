@@ -171,6 +171,7 @@ return [
     'select_all' => 'Alle auswählen',
     'selected_word' => 'ausgewählt',
     'upload' => 'Hochladen',
+    'upload_some_failed' => ':n Datei(en) konnten nicht hochgeladen werden (nicht lesbare/System-Dateien übersprungen).',
     'uploading' => 'Wird hochgeladen',
     'quota_exceeded' => 'Speicherkontingent überschritten.',
     'storage_used' => ':used von :total belegt',

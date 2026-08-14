@@ -171,6 +171,7 @@ return [
     'select_all' => 'Select all',
     'selected_word' => 'selected',
     'upload' => 'Upload',
+    'upload_some_failed' => ':n file(s) could not be uploaded (unreadable/system files skipped).',
     'uploading' => 'Uploading',
     'quota_exceeded' => 'Storage quota exceeded.',
     'storage_used' => ':used of :total used',

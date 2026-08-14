@@ -171,6 +171,7 @@ return [
     'select_all' => 'Выбрать все',
     'selected_word' => 'выбрано',
     'upload' => 'Загрузить',
+    'upload_some_failed' => ':n файл(ов) не удалось загрузить (нечитаемые/системные файлы пропущены).',
     'uploading' => 'Загрузка',
     'quota_exceeded' => 'Превышена квота хранилища.',
     'storage_used' => 'Использовано :used из :total',
