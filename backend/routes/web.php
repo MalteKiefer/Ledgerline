@@ -498,7 +498,7 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/gallery/people/{person}', [GalleryPeopleController::class, 'person'])->whereNumber('person')->name('gallery.people.show');
         Route::put('/gallery/people/{person}', [GalleryPeopleController::class, 'personUpdate'])->whereNumber('person')->middleware('throttle:120,1')->name('gallery.people.update');
         Route::delete('/gallery/people/{person}', [GalleryPeopleController::class, 'personDestroy'])->whereNumber('person')->middleware('throttle:120,1')->name('gallery.people.destroy');
-        Route::get('/gallery/{photo}/faces', [GalleryPeopleController::class, 'photoFaces'])->whereNumber('photo')->name('gallery.photo.faces');
+        Route::get('/gallery/{photo}/faces', [GalleryPeopleController::class, 'photoFaces'])->whereNumber('photo')->withTrashed()->name('gallery.photo.faces');
         Route::get('/gallery/faces/{face}/crop', [GalleryPeopleController::class, 'faceCrop'])->whereNumber('face')->middleware('throttle:6000,1')->name('gallery.faces.crop');
         Route::post('/gallery/faces/{face}/assign', [GalleryPeopleController::class, 'faceAssign'])->whereNumber('face')->middleware('throttle:300,1')->name('gallery.faces.assign');
         Route::post('/gallery/faces/{face}/hide', [GalleryPeopleController::class, 'faceHide'])->whereNumber('face')->middleware('throttle:300,1')->name('gallery.faces.hide');
@@ -534,7 +534,7 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/gallery/{photo}/raw', [GalleryController::class, 'raw'])->whereNumber('photo')->withTrashed()->middleware('throttle:3000,1')->name('gallery.raw');
         Route::get('/gallery/{photo}/thumb', [GalleryController::class, 'thumb'])->whereNumber('photo')->withTrashed()->middleware('throttle:6000,1')->name('gallery.thumb');
         Route::get('/gallery/{photo}/preview', [GalleryController::class, 'preview'])->whereNumber('photo')->withTrashed()->middleware('throttle:6000,1')->name('gallery.preview');
-        Route::get('/gallery/{photo}/exif', [GalleryController::class, 'exif'])->whereNumber('photo')->middleware('throttle:600,1')->name('gallery.exif');
+        Route::get('/gallery/{photo}/exif', [GalleryController::class, 'exif'])->whereNumber('photo')->middleware('throttle:600,1')->withTrashed()->name('gallery.exif');
         Route::patch('/gallery/{photo}/favorite', [GalleryController::class, 'favorite'])->whereNumber('photo')->middleware('throttle:600,1')->name('gallery.favorite');
         Route::patch('/gallery/{photo}/archive', [GalleryController::class, 'archive'])->whereNumber('photo')->middleware('throttle:600,1')->name('gallery.archive');
         Route::post('/gallery/bulk-archive', [GalleryController::class, 'bulkArchive'])->middleware('throttle:600,1')->name('gallery.bulk-archive');
