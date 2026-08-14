@@ -143,6 +143,16 @@
         </div>
       </div>
 
+      <!-- Trash selection bar -->
+      <div v-if="showTrash && selected.size" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-4 py-2 text-sm">
+        <span class="font-medium">{{ selected.size }} {{ t('gallery.selected') }}</span>
+        <div class="ml-auto flex items-center gap-1">
+          <Btn variant="ghost" size="sm" icon="restore" :disabled="trashBusy" @click="bulkRestore">{{ t('common.restore') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="delete_forever" class="text-red-600" :disabled="trashBusy" @click="bulkForce">{{ t('gallery.delete_forever') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="close" @click="clearSelection">{{ t('gallery.clear_selection') }}</Btn>
+        </div>
+      </div>
+
       <!-- Duplicates view -->
       <div v-if="showDupes && !showTrash" class="space-y-4 p-3">
         <div v-if="!dupeGroups.length" class="py-20 text-center text-sm text-[var(--ll-muted)]">{{ t('gallery.dupes_none') }}</div>
@@ -230,17 +240,17 @@
               </div>
               <img
                 v-else-if="p.thumb"
-                :src="g.thumbUrl(p.id)" loading="lazy"
+                :src="g.thumbUrl(p.id)" loading="lazy" draggable="false"
                 class="h-full w-full cursor-pointer object-cover"
                 :class="selected.has(p.id) ? 'opacity-80' : ''"
-                @click="showTrash ? undefined : onTileClick($event, i, p)"
+                @click="onTileClick($event, i, p)"
                 @error="onThumbError"
               >
               <button
                 v-else
                 class="flex h-full w-full items-center justify-center text-[var(--ll-muted)]"
                 :title="t('gallery.thumb_pending')"
-                @click="showTrash ? undefined : onTileClick($event, i, p)"
+                @click="onTileClick($event, i, p)"
               >
                 <Icon name="progress_activity" :size="22" class="animate-spin opacity-60" />
               </button>
@@ -258,7 +268,6 @@
                 <Icon name="motion_photos_on" :size="11" /> Live
               </span>
               <button
-                v-if="!showTrash"
                 class="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white/80 shadow transition"
                 :class="selected.has(p.id) ? 'bg-primary-500' : 'bg-black/30 opacity-0 group-hover:opacity-100'"
                 @click.stop="toggleAt(i, p)"
@@ -268,8 +277,8 @@
               <Icon v-if="p.lat !== null && !showTrash" name="location_on" :size="14" class="absolute bottom-1 left-1 text-white drop-shadow" />
               <Icon v-if="p.favorite && !showTrash" name="star" :size="16" class="absolute right-1 top-1 text-amber-400 drop-shadow" />
               <div v-if="showTrash" class="absolute inset-x-0 bottom-0 flex justify-center gap-1 bg-black/40 p-1">
-                <button class="rounded p-1 text-white hover:bg-white/20" :title="t('common.restore')" @click="onRestore(p.id)"><Icon name="restore" :size="16" /></button>
-                <button class="rounded p-1 text-white hover:bg-white/20" :title="t('gallery.delete_forever')" @click="onForce(p.id)"><Icon name="delete_forever" :size="16" /></button>
+                <button class="rounded p-1 text-white hover:bg-white/20" :title="t('common.restore')" @click.stop="onRestore(p.id)"><Icon name="restore" :size="16" /></button>
+                <button class="rounded p-1 text-white hover:bg-white/20" :title="t('gallery.delete_forever')" @click.stop="onForce(p.id)"><Icon name="delete_forever" :size="16" /></button>
               </div>
             </div>
           </template>
@@ -771,6 +780,7 @@ const gridCols = ref<number>(Math.min(12, Math.max(2, Number(localStorage.getIte
 const gridStyle = computed(() => ({ gridTemplateColumns: `repeat(${gridCols.value}, minmax(0, 1fr))` }));
 function setGridCols(n: number) { gridCols.value = Math.min(12, Math.max(2, n || 6)); localStorage.setItem('ll_gallery_cols', String(gridCols.value)); }
 const trashPhotos = ref<Photo[]>([]);
+const trashBusy = ref(false);
 const albumId = ref<number | null>(null);
 const albumMenu = ref(false);
 const menuOpen = ref(false);
@@ -1049,7 +1059,7 @@ function onThumbError(e: Event) { (e.target as HTMLImageElement).style.visibilit
 function hasFiles(e: DragEvent) { return Array.from(e.dataTransfer?.types ?? []).includes('Files'); }
 function onDragEnter(e: DragEvent) { if (hasFiles(e)) dragDepth.value++; }
 function onDragLeave(e: DragEvent) { if (hasFiles(e)) dragDepth.value = Math.max(0, dragDepth.value - 1); }
-function onDrop(e: DragEvent) { dragDepth.value = 0; const l = e.dataTransfer?.files; if (l && l.length) void uploadList(l); }
+function onDrop(e: DragEvent) { dragDepth.value = 0; if (!hasFiles(e)) return; const l = e.dataTransfer?.files; if (l && l.length) void uploadList(l); }
 
 function baseName(name: string): string { return name.replace(/\.[^.]+$/, '').toLowerCase(); }
 function isMotionFile(f: File): boolean { return f.type.startsWith('video/') || /\.(mov|mp4|m4v|qt)$/i.test(f.name); }
@@ -1666,10 +1676,41 @@ async function archiveOne(p: Row, archived: boolean) {
     if (showArchive.value) await g.loadArchived(); else await refresh();
   } catch { error(t('common.error')); }
 }
-async function onRestore(id: number) { try { await g.restore(id); trashPhotos.value = await g.trash(); await refresh(); } catch { error(t('common.error')); } }
+async function onRestore(id: number) {
+  trashBusy.value = true;
+  try { await g.restore(id); trashPhotos.value = await g.trash(); await refresh(); success(t('gallery.restored')); }
+  catch { error(t('common.error')); }
+  finally { trashBusy.value = false; }
+}
 async function onForce(id: number) {
   if (!await confirmAsk(t('gallery.delete_forever_confirm'), { danger: true })) return;
-  try { await g.forceDelete(id); trashPhotos.value = await g.trash(); } catch { error(t('common.error')); }
+  trashBusy.value = true;
+  try { await g.forceDelete(id); trashPhotos.value = await g.trash(); success(t('gallery.deleted_forever')); }
+  catch { error(t('common.error')); }
+  finally { trashBusy.value = false; }
+}
+async function bulkRestore() {
+  const ids = [...selected.value];
+  if (!ids.length) return;
+  trashBusy.value = true;
+  try {
+    for (const id of ids) await g.restore(id);
+    trashPhotos.value = await g.trash(); await refresh(); clearSelection();
+    success(t('gallery.restored'));
+  } catch { error(t('common.error')); }
+  finally { trashBusy.value = false; }
+}
+async function bulkForce() {
+  const ids = [...selected.value];
+  if (!ids.length) return;
+  if (!await confirmAsk(t('gallery.delete_forever_confirm'), { danger: true })) return;
+  trashBusy.value = true;
+  try {
+    for (const id of ids) await g.forceDelete(id);
+    trashPhotos.value = await g.trash(); clearSelection();
+    success(t('gallery.deleted_forever'));
+  } catch { error(t('common.error')); }
+  finally { trashBusy.value = false; }
 }
 async function onEmpty() {
   if (!await confirmAsk(t('gallery.delete_forever_confirm'), { danger: true })) return;

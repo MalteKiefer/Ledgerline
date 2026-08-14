@@ -40,6 +40,8 @@ return [
     'back' => 'Назад',
     'favorite' => 'Избранное',
     'delete_forever' => 'Удалить навсегда',
+    'restored' => 'Восстановлено',
+    'deleted_forever' => 'Удалено навсегда',
     'delete_confirm' => 'Переместить это фото в корзину?',
     'delete_forever_confirm' => 'Удалить навсегда? Это нельзя отменить.',
     'all_photos' => 'Все фото',
