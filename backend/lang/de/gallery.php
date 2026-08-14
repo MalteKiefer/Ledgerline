@@ -40,6 +40,8 @@ return [
     'back' => 'Zurück',
     'favorite' => 'Favorit',
     'delete_forever' => 'Endgültig löschen',
+    'restored' => 'Wiederhergestellt',
+    'deleted_forever' => 'Endgültig gelöscht',
     'delete_confirm' => 'Dieses Foto in den Papierkorb verschieben?',
     'delete_forever_confirm' => 'Endgültig löschen? Kann nicht rückgängig gemacht werden.',
     'all_photos' => 'Alle Fotos',

@@ -40,6 +40,8 @@ return [
     'back' => 'Back',
     'favorite' => 'Favorite',
     'delete_forever' => 'Delete permanently',
+    'restored' => 'Restored',
+    'deleted_forever' => 'Deleted permanently',
     'delete_confirm' => 'Move this photo to the trash?',
     'delete_forever_confirm' => 'Permanently delete? This cannot be undone.',
     'all_photos' => 'All photos',
