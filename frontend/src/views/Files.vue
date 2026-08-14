@@ -277,6 +277,8 @@
                   <template v-if="!row._folder && view!=='trash'">
                     <DropdownMenuItem as="a" :href="s.rawUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
                     <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="openExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
+                    <DropdownMenuItem v-if="!s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openEncrypt(row)"><Icon name="lock" :size="18" />{{ t('files.encrypt') }}</DropdownMenuItem>
+                    <DropdownMenuItem v-if="s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openDecrypt(row)"><Icon name="lock_open" :size="18" />{{ t('files.decrypt') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
@@ -347,6 +349,10 @@
                       <template v-if="!row._folder && view!=='trash'">
                         <DropdownMenuItem as="a" :href="s.rawUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
                         <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="openExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
+                        <DropdownMenuItem v-if="!s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openEncrypt(row)"><Icon name="lock" :size="18" />{{ t('files.encrypt') }}</DropdownMenuItem>
+                        <DropdownMenuItem v-if="s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openDecrypt(row)"><Icon name="lock_open" :size="18" />{{ t('files.decrypt') }}</DropdownMenuItem>
+                    <DropdownMenuItem v-if="!s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openEncrypt(row)"><Icon name="lock" :size="18" />{{ t('files.encrypt') }}</DropdownMenuItem>
+                    <DropdownMenuItem v-if="s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openDecrypt(row)"><Icon name="lock_open" :size="18" />{{ t('files.decrypt') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
@@ -762,6 +768,90 @@
     </div>
   </Modal>
 
+  <!-- Encrypt a file to a key (+ recipients) -->
+  <Modal v-model="encDlg.show" :title="t('files.encrypt')" width="460px">
+    <div class="space-y-3">
+      <p class="text-sm text-[var(--ll-muted)]">{{ encDlg.name }}</p>
+      <div v-if="!crypto.keys.length" class="rounded-lg bg-amber-500/10 p-3 text-sm">
+        {{ t('files.enc_no_keys') }}
+        <button class="ml-1 font-medium text-primary-600 hover:underline" @click="openKeyring">{{ t('files.enc_manage_keys') }}</button>
+      </div>
+      <template v-else>
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium">{{ t('files.enc_key') }}</span>
+          <select v-model.number="encDlg.keyId" class="w-full rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] px-3 py-2 text-sm">
+            <option v-for="k in crypto.keys" :key="k.id" :value="k.id">{{ k.label }} ({{ k.type.toUpperCase() }})</option>
+          </select>
+        </label>
+        <div v-if="encRecipients.length" class="text-sm">
+          <span class="mb-1 block font-medium">{{ t('files.enc_recipients') }}</span>
+          <label v-for="r in encRecipients" :key="r.id" class="flex items-center gap-2 py-0.5">
+            <input v-model="encDlg.recipientIds" type="checkbox" :value="r.id" class="accent-primary-500">{{ r.label }}
+          </label>
+        </div>
+        <button class="text-xs text-primary-600 hover:underline" @click="openKeyring">{{ t('files.enc_manage_keys') }}</button>
+      </template>
+      <div class="flex justify-end gap-2 pt-1">
+        <Btn variant="ghost" size="sm" @click="encDlg.show = false">{{ t('common.close') }}</Btn>
+        <Btn size="sm" :loading="encDlg.busy" :disabled="!crypto.keys.length" @click="doEncrypt">{{ t('files.encrypt') }}</Btn>
+      </div>
+    </div>
+  </Modal>
+
+  <!-- Decrypt a file with your key -->
+  <Modal v-model="decDlg.show" :title="t('files.decrypt')" width="440px">
+    <div class="space-y-3">
+      <p class="text-sm text-[var(--ll-muted)]">{{ decDlg.name }}</p>
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{{ t('files.enc_key') }}</span>
+        <select v-model.number="decDlg.keyId" class="w-full rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] px-3 py-2 text-sm">
+          <option v-for="k in ownPrivateKeys" :key="k.id" :value="k.id">{{ k.label }} ({{ k.type.toUpperCase() }})</option>
+        </select>
+      </label>
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{{ t('files.enc_passphrase') }}</span>
+        <input v-model="decDlg.passphrase" type="password" autocomplete="new-password" class="w-full rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] px-3 py-2 text-sm">
+      </label>
+      <div class="flex justify-end gap-2 pt-1">
+        <Btn variant="ghost" size="sm" @click="decDlg.show = false">{{ t('common.close') }}</Btn>
+        <Btn size="sm" :loading="decDlg.busy" :disabled="!ownPrivateKeys.length" @click="doDecrypt">{{ t('files.decrypt') }}</Btn>
+      </div>
+    </div>
+  </Modal>
+
+  <!-- Keyring: own keys (generate/import) + recipients -->
+  <Modal v-model="keyringDlg" :title="t('files.keyring')" width="560px">
+    <div class="space-y-4">
+      <section>
+        <h3 class="mb-1 text-sm font-semibold">{{ t('files.my_keys') }}</h3>
+        <div v-for="k in crypto.keys" :key="k.id" class="flex items-center gap-2 border-b border-[var(--ll-border)] py-1.5 text-sm">
+          <Icon name="key" :size="16" class="text-[var(--ll-muted)]" />
+          <span class="flex-1">{{ k.label }} <span class="text-xs text-[var(--ll-muted)]">{{ k.type.toUpperCase() }}{{ k.fingerprint ? ' · ' + k.fingerprint.slice(-8) : '' }}</span></span>
+          <button class="text-red-600 hover:underline" @click="delKey(k.id)">{{ t('common.delete') }}</button>
+        </div>
+        <div class="mt-2 grid gap-1.5 rounded-lg bg-black/[0.03] p-2 text-sm dark:bg-white/5">
+          <input v-model="genForm.label" type="text" :placeholder="t('files.key_label')" class="rounded border border-[var(--ll-border)] bg-[var(--ll-surface)] px-2 py-1">
+          <input v-model="genForm.email" type="email" :placeholder="t('common.email')" class="rounded border border-[var(--ll-border)] bg-[var(--ll-surface)] px-2 py-1">
+          <input v-model="genForm.passphrase" type="password" autocomplete="new-password" :placeholder="t('files.enc_passphrase') + ' (' + t('files.ul_optional') + ')'" class="rounded border border-[var(--ll-border)] bg-[var(--ll-surface)] px-2 py-1">
+          <Btn size="sm" :loading="genBusy" @click="doGenerate">{{ t('files.generate_key') }}</Btn>
+        </div>
+      </section>
+      <section>
+        <h3 class="mb-1 text-sm font-semibold">{{ t('files.recipients') }}</h3>
+        <div v-for="r in crypto.recipients" :key="r.id" class="flex items-center gap-2 border-b border-[var(--ll-border)] py-1.5 text-sm">
+          <Icon name="person" :size="16" class="text-[var(--ll-muted)]" />
+          <span class="flex-1">{{ r.label }} <span class="text-xs text-[var(--ll-muted)]">{{ r.type.toUpperCase() }}</span></span>
+          <button class="text-red-600 hover:underline" @click="delRecipient(r.id)">{{ t('common.delete') }}</button>
+        </div>
+        <div class="mt-2 grid gap-1.5 rounded-lg bg-black/[0.03] p-2 text-sm dark:bg-white/5">
+          <input v-model="rcptForm.label" type="text" :placeholder="t('files.key_label')" class="rounded border border-[var(--ll-border)] bg-[var(--ll-surface)] px-2 py-1">
+          <textarea v-model="rcptForm.material" rows="3" :placeholder="t('files.recipient_material')" class="rounded border border-[var(--ll-border)] bg-[var(--ll-surface)] px-2 py-1 font-mono text-xs"></textarea>
+          <Btn size="sm" :loading="rcptBusy" @click="doAddRecipient">{{ t('files.add_recipient') }}</Btn>
+        </div>
+      </section>
+    </div>
+  </Modal>
+
   <!-- Create a public upload link: browse the folder tree to pick the target -->
   <Modal v-model="ulDlg" :title="t('files.ul_create')" width="720px">
     <div class="space-y-3">
@@ -935,6 +1025,7 @@ import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenu
 import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
 import StlViewer from '@spa/components/StlViewer.vue';
 import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity, type FileInfo } from '@spa/stores/files';
+import { useCryptoStore } from '@spa/stores/crypto';
 import { ApiError } from '@spa/api/client';
 import { useMountsStore, type Mount, type MountEntry } from '@spa/stores/mounts';
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
@@ -1636,6 +1727,82 @@ async function doExtract() {
     setTimeout(() => void s.load(), 1500);
     setTimeout(() => void s.load(), 5000);
   } catch { error(t('files.archive_failed')); } finally { d.busy = false; }
+}
+
+// ---- Encryption (PGP / S-MIME) ----
+const crypto = useCryptoStore();
+const keyringDlg = ref(false);
+const genForm = ref({ label: '', email: '', passphrase: '' });
+const genBusy = ref(false);
+const rcptForm = ref({ label: '', material: '' });
+const rcptBusy = ref(false);
+const encDlg = ref<{ show: boolean; busy: boolean; id: number; name: string; keyId: number; recipientIds: number[] }>({ show: false, busy: false, id: 0, name: '', keyId: 0, recipientIds: [] });
+const decDlg = ref<{ show: boolean; busy: boolean; id: number; name: string; keyId: number; passphrase: string }>({ show: false, busy: false, id: 0, name: '', keyId: 0, passphrase: '' });
+
+const ownPrivateKeys = computed(() => crypto.keys.filter((k) => k.has_private));
+// Recipients matching the chosen key's type.
+const encRecipients = computed(() => {
+  const k = crypto.keys.find((x) => x.id === encDlg.value.keyId);
+  return k ? crypto.recipients.filter((r) => r.type === k.type) : [];
+});
+
+function openKeyring() { keyringDlg.value = true; void crypto.load(); }
+async function ensureKeyring() { if (!crypto.keys.length && !crypto.recipients.length) await crypto.load().catch(() => {}); }
+
+async function openEncrypt(row: { id: number; name: string }) {
+  await ensureKeyring();
+  encDlg.value = { show: true, busy: false, id: row.id, name: String(row.name), keyId: crypto.keys[0]?.id ?? 0, recipientIds: [] };
+}
+async function doEncrypt() {
+  const d = encDlg.value;
+  if (!d.keyId) return;
+  d.busy = true;
+  try {
+    await s.encryptEntry(d.id, { key_id: d.keyId, recipient_ids: d.recipientIds });
+    d.show = false; await s.load(); success(t('files.encrypted_ok'));
+  } catch { error(t('files.encrypt_failed')); } finally { d.busy = false; }
+}
+async function openDecrypt(row: { id: number; name: string }) {
+  await ensureKeyring();
+  decDlg.value = { show: true, busy: false, id: row.id, name: String(row.name), keyId: ownPrivateKeys.value[0]?.id ?? 0, passphrase: '' };
+}
+async function doDecrypt() {
+  const d = decDlg.value;
+  if (!d.keyId) return;
+  d.busy = true;
+  try {
+    await s.decryptEntry(d.id, { key_id: d.keyId, passphrase: d.passphrase || undefined });
+    d.show = false; await s.load(); success(t('files.decrypted_ok'));
+  } catch { error(t('files.decrypt_failed')); } finally { d.busy = false; }
+}
+async function doGenerate() {
+  const f = genForm.value;
+  if (!f.label || !f.email) return;
+  genBusy.value = true;
+  try {
+    await crypto.generatePgp({ label: f.label, email: f.email, passphrase: f.passphrase });
+    genForm.value = { label: '', email: '', passphrase: '' };
+    await crypto.load(); success(t('files.key_generated'));
+  } catch { error(t('files.key_gen_failed')); } finally { genBusy.value = false; }
+}
+async function delKey(id: number) {
+  if (!await confirmAsk(t('files.key_delete_confirm'), { danger: true })) return;
+  try { await crypto.deleteKey(id); await crypto.load(); } catch { error(t('common.error')); }
+}
+async function doAddRecipient() {
+  const f = rcptForm.value;
+  if (!f.label || !f.material) return;
+  rcptBusy.value = true;
+  try {
+    // Detect type from the pasted material.
+    const type = f.material.includes('BEGIN CERTIFICATE') ? 'smime' : 'pgp';
+    await crypto.importRecipient({ type, label: f.label, material: f.material });
+    rcptForm.value = { label: '', material: '' };
+    await crypto.load(); success(t('files.recipient_added'));
+  } catch { error(t('files.recipient_failed')); } finally { rcptBusy.value = false; }
+}
+async function delRecipient(id: number) {
+  try { await crypto.deleteRecipient(id); await crypto.load(); } catch { error(t('common.error')); }
 }
 
 // ---- Info / tags / note ----

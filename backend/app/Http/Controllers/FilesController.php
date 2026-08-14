@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Enums\FileType;
 use App\Jobs\ExtractArchive;
 use App\Models\AuditLog;
+use App\Models\CryptoRecipient;
 use App\Models\FileActivity;
 use App\Models\FileEntry;
 use App\Models\FileFolder;
@@ -14,9 +15,11 @@ use App\Models\FileLabel;
 use App\Models\FileShare;
 use App\Models\FileUploadLink;
 use App\Models\FileVersion;
+use App\Models\MailPgpKey;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Support\Archiver;
+use App\Support\Crypto\FileCipher;
 use App\Support\DiskTempFile;
 use App\Support\FileActivityLog;
 use App\Support\ImageManagerFactory;
@@ -1364,6 +1367,234 @@ class FilesController extends Controller
         FileActivityLog::record($uid, 'extract_started', $file, ['into' => $destId, 'new_folder' => $newFolder]);
 
         return response()->json(['folder' => $resp]);
+    }
+
+    private const PGP_EXT = ['gpg', 'pgp', 'asc'];
+
+    private const SMIME_EXT = ['p7m', 'p7', 'smime'];
+
+    /**
+     * Encrypt a file to one of the user's own keys (so they can decrypt it) plus any
+     * chosen recipients — public-key PGP or S/MIME. Saves the ciphertext as a new
+     * file (name.gpg / name.p7m) in the same folder; the original is left in place.
+     * Inline (trusted own file + own key, one cipher call).
+     */
+    public function encryptEntry(Request $request, FileEntry $file): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'key_id' => ['required', 'integer'],
+            'recipient_ids' => ['nullable', 'array', 'max:50'],
+            'recipient_ids.*' => ['integer'],
+        ]);
+        $key = MailPgpKey::query()->where('user_id', $uid)->whereKey($request->integer('key_id'))->first();
+        abort_if($key === null, 404);
+        $type = (string) $key->type; // pgp|smime
+        $recipientIds = array_values(array_filter($request->array('recipient_ids'), 'is_numeric'));
+        $recipients = CryptoRecipient::query()->where('user_id', $uid)->where('type', $type)
+            ->whereIn('id', $recipientIds === [] ? [0] : $recipientIds)->get();
+
+        $cipher = app(FileCipher::class);
+        $src = (string) $file->storage_path;
+        abort_if($src === '' || ! $this->fs()->exists($src), 404);
+        $in = $this->stageToTemp($src);
+        $out = DiskTempFile::create('llenc');
+        try {
+            if ($type === 'pgp') {
+                $pubs = array_values(array_filter([(string) $key->public_key, ...$recipients->map(fn ($r): string => (string) $r->public_key)->all()], fn (string $p): bool => trim($p) !== ''));
+                $ok = $cipher->encryptPgp($in->path(), $pubs, $out->path());
+            } else {
+                $certs = array_values(array_filter([(string) $key->cert_pem, ...$recipients->map(fn ($r): string => (string) $r->cert_pem)->all()], fn (string $p): bool => trim($p) !== ''));
+                $ok = $cipher->encryptSmime($in->path(), $certs, $out->path());
+            }
+            abort_unless($ok, 500);
+            $size = (int) @filesize($out->path());
+            if (($resp = $this->overQuota($uid, $size)) !== null) {
+                return $resp;
+            }
+            $ext = $type === 'pgp' ? 'gpg' : 'p7m';
+            $newName = $this->safeName((string) $file->name).'.'.$ext;
+            $entry = $this->storeBlobAsFile($out->path(), $newName, $file->file_folder_id, $size);
+            FileActivityLog::record($uid, 'encrypted', $entry, ['type' => $type]);
+
+            return response()->json(['file' => $entry->load('labels')]);
+        } finally {
+            // $in/$out RAII-cleaned.
+        }
+    }
+
+    /**
+     * Decrypt an encrypted file (name.gpg / name.p7m) back to its plaintext, using
+     * one of the user's own keys (with a private key) + passphrase. Saves the result
+     * as a new file (extension stripped) in the same folder.
+     */
+    public function decryptEntry(Request $request, FileEntry $file): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'key_id' => ['required', 'integer'],
+            'passphrase' => ['nullable', 'string', 'max:400'],
+        ]);
+        $name = strtolower((string) $file->name);
+        $isPgp = false;
+        $isSmime = false;
+        foreach (self::PGP_EXT as $e) {
+            if (str_ends_with($name, '.'.$e)) {
+                $isPgp = true;
+            }
+        }
+        foreach (self::SMIME_EXT as $e) {
+            if (str_ends_with($name, '.'.$e)) {
+                $isSmime = true;
+            }
+        }
+        abort_unless($isPgp || $isSmime, 422);
+
+        $key = MailPgpKey::query()->where('user_id', $uid)->whereKey($request->integer('key_id'))->first();
+        abort_if($key === null, 404);
+        abort_if($key->private_key === null || $key->private_key === '', 422);
+
+        $cipher = app(FileCipher::class);
+        $src = (string) $file->storage_path;
+        abort_if($src === '' || ! $this->fs()->exists($src), 404);
+        $in = $this->stageToTemp($src);
+        $out = DiskTempFile::create('lldec');
+        try {
+            $pass = $request->filled('passphrase') ? $request->string('passphrase')->value() : ($key->passphrase !== null ? (string) $key->passphrase : null);
+            $ok = $isPgp
+                ? $cipher->decryptPgp($in->path(), (string) $key->private_key, $pass, $out->path())
+                : $cipher->decryptSmime($in->path(), (string) $key->private_key, (string) $key->cert_pem, $out->path());
+            if (! $ok) {
+                return response()->json(['error' => 'decrypt_failed'], 422);
+            }
+            $size = (int) @filesize($out->path());
+            if (($resp = $this->overQuota($uid, $size)) !== null) {
+                return $resp;
+            }
+            $newName = preg_replace('/\.(gpg|pgp|asc|p7m|p7|smime)$/i', '', (string) $file->name) ?: 'decrypted';
+            $entry = $this->storeBlobAsFile($out->path(), $this->safeName($newName), $file->file_folder_id, $size);
+            FileActivityLog::record($uid, 'decrypted', $entry);
+
+            return response()->json(['file' => $entry->load('labels')]);
+        } finally {
+            // RAII cleanup.
+        }
+    }
+
+    /**
+     * Encrypt a whole folder: bundle its subtree into a tar.gz (the archiver) then
+     * encrypt that to the chosen key(s) → folder.tar.gz.gpg, saved beside the folder.
+     */
+    public function encryptFolder(Request $request, FileFolder $folder): JsonResponse
+    {
+        $uid = (int) $this->requireUser($request)->id;
+        $request->validate([
+            'key_id' => ['required', 'integer'],
+            'recipient_ids' => ['nullable', 'array', 'max:50'],
+            'recipient_ids.*' => ['integer'],
+        ]);
+        $key = MailPgpKey::query()->where('user_id', $uid)->whereKey($request->integer('key_id'))->first();
+        abort_if($key === null, 404);
+        $type = (string) $key->type;
+
+        $files = FileEntry::query()->whereIn('file_folder_id', $this->descendantFolderIds((int) $folder->id))->get();
+        abort_if($files->isEmpty(), 404);
+        abort_if($files->count() > self::ZIP_MAX_FILES, 413);
+        abort_if($files->sum(fn (FileEntry $f): int => (int) $f->size) > self::ZIP_MAX_BYTES, 413);
+
+        /** @var list<DiskTempFile> $temps */
+        $temps = [];
+        $entries = [];
+        $used = [];
+        foreach ($files as $f) {
+            $path = (string) $f->storage_path;
+            if ($path === '' || ! $this->fs()->exists($path)) {
+                continue;
+            }
+            $local = $this->localDiskPath($path);
+            if ($local === null) {
+                $t = $this->streamBlobToTemp($path);
+                if ($t === null) {
+                    continue;
+                }
+                $temps[] = $t;
+                $local = $t->path();
+            }
+            $entry = $this->safeName((string) $f->name);
+            $n = 1;
+            while (isset($used[$entry])) {
+                $entry = $this->safeName((string) $f->name).' ('.$n++.')';
+            }
+            $used[$entry] = true;
+            $entries[$entry] = $local;
+        }
+        abort_if($entries === [], 404);
+
+        $tar = DiskTempFile::create('llfenc');
+        $out = DiskTempFile::create('llfeout');
+        try {
+            Archiver::create($entries, 'tar.gz', 6, null, $tar->path());
+            $recipients = CryptoRecipient::query()->where('user_id', $uid)->where('type', $type)
+                ->whereIn('id', array_values(array_filter($request->array('recipient_ids'), 'is_numeric')) ?: [0])->get();
+            $cipher = app(FileCipher::class);
+            if ($type === 'pgp') {
+                $pubs = array_values(array_filter([(string) $key->public_key, ...$recipients->map(fn ($r): string => (string) $r->public_key)->all()], fn (string $p): bool => trim($p) !== ''));
+                $ok = $cipher->encryptPgp($tar->path(), $pubs, $out->path());
+            } else {
+                $certs = array_values(array_filter([(string) $key->cert_pem, ...$recipients->map(fn ($r): string => (string) $r->cert_pem)->all()], fn (string $p): bool => trim($p) !== ''));
+                $ok = $cipher->encryptSmime($tar->path(), $certs, $out->path());
+            }
+            abort_unless($ok, 500);
+            $size = (int) @filesize($out->path());
+            if (($resp = $this->overQuota($uid, $size)) !== null) {
+                return $resp;
+            }
+            $ext = $type === 'pgp' ? 'gpg' : 'p7m';
+            $newName = $this->safeName((string) $folder->name).'.tar.gz.'.$ext;
+            $entry = $this->storeBlobAsFile($out->path(), $newName, $folder->parent_id, $size);
+            FileActivityLog::record($uid, 'folder_encrypted', $entry, ['folder' => $folder->id]);
+
+            return response()->json(['file' => $entry->load('labels')]);
+        } finally {
+            // temps/tar/out RAII-cleaned.
+        }
+    }
+
+    /** Stage a stored blob to a local RAII temp file (local path directly, or streamed). */
+    private function stageToTemp(string $relative): DiskTempFile
+    {
+        $local = $this->localDiskPath($relative);
+        if ($local !== null) {
+            // Copy so the caller can treat it like an owned temp (encrypt reads it).
+            $t = DiskTempFile::create('llstage');
+            copy($local, $t->path());
+
+            return $t;
+        }
+        $t = $this->streamBlobToTemp($relative);
+        if ($t === null) {
+            abort(500);
+        }
+
+        return $t;
+    }
+
+    /** Write a local file's bytes to a new blob + FileEntry in the given folder. */
+    private function storeBlobAsFile(string $localPath, string $name, ?int $folderId, int $size): FileEntry
+    {
+        $blobPath = 'files/'.Str::uuid()->toString();
+        $fh = fopen($localPath, 'rb');
+        if ($fh === false) {
+            abort(500);
+        }
+        $this->fs()->writeStream($blobPath, $fh);
+        if (is_resource($fh)) {
+            fclose($fh);
+        }
+
+        return DB::transaction(fn (): FileEntry => $this->persistFile(
+            $name, $folderId, $blobPath, $size, null, @hash_file('sha256', $localPath) ?: null,
+        ));
     }
 
     /** A folder name not already used among the siblings (append " (n)"). */
