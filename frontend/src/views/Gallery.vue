@@ -273,23 +273,30 @@
               </div>
             </div>
           </template>
+          <!-- Infinite-scroll sentinel: loads the next keyset page as it nears view. -->
+          <div v-if="!showTrash" ref="loadSentinel" class="col-span-full h-1"></div>
+          <div v-if="g.loadingMore" class="col-span-full flex justify-center py-4 text-[var(--ll-muted)]">
+            <Icon name="progress_activity" :size="20" class="animate-spin opacity-60" />
+          </div>
         </div>
         <!-- Google-Photos-style draggable date scrubber: an invisible fixed
-             rail on the right; drag/click maps to the timeline scroll
-             position, a bubble shows the date, faint year ticks appear while
-             active. -->
+             rail on the right; drag/click maps to the timeline scroll position,
+             a bubble shows the date. Year ticks (from /gallery/dates, the full
+             histogram) are clickable to jump straight to any year — even one not
+             yet loaded (keyset pagination fetches that page on demand). -->
         <div
           v-if="showScrubber" ref="railRef"
           class="fixed right-0 top-[4.75rem] bottom-3 z-20 hidden w-8 cursor-ns-resize touch-none md:block"
           @pointerenter="scrubHover = true" @pointerleave="scrubHover = false"
           @pointerdown="scrubStart" @pointermove="scrubMove" @pointerup="scrubEnd" @pointercancel="scrubEnd"
         >
-          <!-- faint year ticks (only while active) -->
-          <div
-            v-for="y in yearTicks" :key="y.year"
-            class="pointer-events-none absolute right-2.5 -translate-y-1/2 whitespace-nowrap text-[10px] font-semibold text-[var(--ll-muted)] transition-opacity duration-150"
-            :class="scrubActive ? 'opacity-90' : 'opacity-0'" :style="{ top: y.pct + '%' }"
-          >{{ y.year }}</div>
+          <!-- clickable year jump ticks (full range from the histogram) -->
+          <button
+            v-for="y in yearTicks" :key="y.year" type="button"
+            class="absolute right-2.5 -translate-y-1/2 whitespace-nowrap text-[10px] font-semibold text-[var(--ll-muted)] transition-opacity duration-150 hover:text-primary-500"
+            :class="scrubActive ? 'opacity-90' : 'opacity-40'" :style="{ top: y.pct + '%' }"
+            @pointerdown.stop @click.stop="jumpYear(y.ym)"
+          >{{ y.year }}</button>
           <!-- slim always-on thumb indicator -->
           <div class="pointer-events-none absolute right-1 h-9 w-1 -translate-y-1/2 rounded-full bg-[var(--ll-border)] transition-colors" :class="scrubActive ? 'bg-primary-500' : ''" :style="{ top: thumbTop + 'px' }" />
           <!-- date bubble (only while active) -->
@@ -835,7 +842,7 @@ const scrubber = computed(() => {
   }
   return out;
 });
-const showScrubber = computed(() => viewMode.value === 'grid' && !showTrash.value && !searchActive.value && scrubber.value.length > 3);
+const showScrubber = computed(() => viewMode.value === 'grid' && !showTrash.value && !searchActive.value && (scrubber.value.length > 3 || allMonths.value.length > 3));
 
 // ---- Google-Photos-style scrubber ----------------------------------------
 const railRef = ref<HTMLElement | null>(null);
@@ -844,7 +851,31 @@ const scrubDrag = ref(false);
 const scrubActive = computed(() => scrubHover.value || scrubDrag.value);
 const thumbTop = ref(0);           // px from the rail's top edge
 const scrubLabel = ref('');
-const yearTicks = ref<{ year: number; pct: number }[]>([]);
+
+// Full month histogram from the server (/gallery/dates) — the timeline is now
+// keyset-paginated, so the scrubber can't derive the whole date range from the
+// loaded rows. Newest-first { ym, count }.
+const allMonths = ref<{ ym: string; count: number }[]>([]);
+const loadDates = () => g.dates().then((m) => { allMonths.value = m; }).catch(() => { /* best-effort */ });
+
+// Year jump ticks: one per distinct year in the full histogram, positioned by
+// cumulative photo count (an estimate of where the year sits in the timeline).
+// Clicking a tick jumps straight to that year via cursor_ym — no need to have
+// scrolled/loaded that far. Covers the whole library regardless of what's loaded.
+const yearTicks = computed(() => {
+  const total = allMonths.value.reduce((s, m) => s + m.count, 0) || 1;
+  const out: { year: number; ym: string; pct: number }[] = [];
+  let cum = 0; let lastYear = -1;
+  for (const m of allMonths.value) {
+    const year = Number(m.ym.slice(0, 4));
+    if (year !== lastYear && Number.isFinite(year)) { out.push({ year, ym: m.ym, pct: Math.min(98, (cum / total) * 100) }); lastYear = year; }
+    cum += m.count;
+  }
+  return out;
+});
+function jumpYear(ym: string) {
+  void g.jumpToMonth(ym).then(() => (document.scrollingElement || document.documentElement).scrollTo({ top: 0 }));
+}
 
 function scrollMetrics() {
   const el = (document.scrollingElement || document.documentElement) as HTMLElement;
@@ -861,19 +892,6 @@ function currentMonthLabel(): string {
   }
   const m = hit ?? scrubber.value[0];
   return m ? `${m.label} ${m.year}` : '';
-}
-// Faint year ticks positioned by each year's first-month anchor.
-function measureYears() {
-  const { max } = scrollMetrics();
-  const out: { year: number; pct: number }[] = [];
-  const seen = new Set<number>();
-  for (const m of scrubber.value) {
-    if (seen.has(m.year)) continue; seen.add(m.year);
-    const a = document.getElementById('g-m-' + m.key);
-    if (!a) continue;
-    out.push({ year: m.year, pct: Math.min(100, Math.max(0, (a.offsetTop / max) * 100)) });
-  }
-  yearTicks.value = out;
 }
 let syncQueued = false;
 function syncScrubber() {
@@ -900,7 +918,7 @@ function scrubToClientY(clientY: number) {
 function scrubStart(e: PointerEvent) {
   scrubDrag.value = true;
   try { railRef.value?.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-  measureYears();
+
   scrubToClientY(e.clientY);
 }
 function scrubMove(e: PointerEvent) { if (scrubDrag.value) scrubToClientY(e.clientY); }
@@ -955,17 +973,31 @@ function openPhotoById(id: number) {
 }
 watch(() => route.query.open, (v) => { const id = Number(v); if (id) void nextTick(() => openPhotoById(id)); });
 
+const loadSentinel = ref<HTMLElement | null>(null);
+let moreObserver: IntersectionObserver | null = null;
+// Load the next timeline page when the sentinel near the bottom scrolls into
+// view — but only in the plain timeline (not search/trash/album-person grids,
+// which are their own sets). Keyset cursor drives it; no-op when exhausted.
+function maybeLoadMore() {
+  if (searchActive.value || showTrash.value || showArchive.value || showDupes.value || showPeople.value) return;
+  if (g.nextCursor === null || g.loadingMore) return;
+  void g.loadMore();
+}
+
 onMounted(() => {
   void g.load().then(() => { const id = Number(route.query.open); if (id) void nextTick(() => openPhotoById(id)); });
+  void loadDates();
   void g.loadAlbums();
   window.addEventListener('keydown', onKey); window.addEventListener('focus', onFocus);
   window.addEventListener('scroll', syncScrubber, { passive: true });
   window.addEventListener('resize', onScrubResize);
-  void nextTick(() => { measureYears(); syncScrubber(); });
+  void nextTick(() => { syncScrubber(); });
+  moreObserver = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) maybeLoadMore(); }, { rootMargin: '800px' });
+  void nextTick(() => { if (loadSentinel.value) moreObserver?.observe(loadSentinel.value); });
   // Thumbnails are generated by a worker after upload; while any are still
   // pending, poll so the grid swaps the spinner for the image once ready.
   thumbPoll = setInterval(() => {
-    if (!showTrash.value && !showArchive.value && !showMemories.value && !searchActive.value && !showDupes.value && !showPeople.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb || p.status === 'processing')) void g.mergeData(albumId.value ?? undefined);
+    if (!showTrash.value && !showArchive.value && !showMemories.value && !searchActive.value && !showDupes.value && !showPeople.value && !up.active && !edit.open && g.photos.some((p) => !p.thumb || p.status === 'processing')) void g.mergeData();
   }, 4000);
 });
 onUnmounted(() => {
@@ -973,15 +1005,19 @@ onUnmounted(() => {
   window.removeEventListener('scroll', syncScrubber);
   window.removeEventListener('resize', onScrubResize);
   if (thumbPoll) clearInterval(thumbPoll);
+  moreObserver?.disconnect();
   destroyMap();
   destroyExifMap();
 });
-function onScrubResize() { measureYears(); syncScrubber(); }
+function onScrubResize() { syncScrubber(); }
+// Re-attach the infinite-scroll observer whenever the sentinel remounts (e.g. an
+// empty album, then photos appear, or switching back to the timeline grid).
+watch(loadSentinel, (el) => { if (el && moreObserver) { moreObserver.disconnect(); moreObserver.observe(el); } });
 // Re-measure tick positions when the timeline changes (photos load / album switch).
 watch(() => [g.photos.length, scrubber.value.length, viewMode.value], () => {
-  void nextTick(() => { measureYears(); syncScrubber(); });
+  void nextTick(() => { syncScrubber(); });
 });
-watch(scrubActive, (a) => { if (a) { measureYears(); scrubLabel.value = currentMonthLabel(); } });
+watch(scrubActive, (a) => { if (a) { scrubLabel.value = currentMonthLabel(); } });
 function onFocus() { if (!document.hidden && !up.active && !showTrash.value && !showArchive.value && !searchActive.value && !showPeople.value) void g.load(albumId.value ?? undefined); }
 
 function dayLabel(iso: string | null): string {
@@ -1056,7 +1092,7 @@ async function uploadList(list: FileList) {
     if (dupes > 0) success(t('gallery.dupes_skipped', { n: String(dupes) }));
   } catch { error(t('common.error')); } finally { up.active = false; }
 }
-function refresh() { return g.load(albumId.value ?? undefined); }
+function refresh() { return g.load(albumId.value ?? undefined).then(() => loadDates()); }
 function setView(m: 'grid' | 'map') { if (showPeople.value) closePeople(); viewMode.value = m; if (m === 'map') void nextTick().then(syncMap); }
 
 // ---- Semantic search (CLIP) ----

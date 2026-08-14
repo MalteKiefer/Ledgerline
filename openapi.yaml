@@ -5669,12 +5669,33 @@ paths:
     get:
       tags: [Gallery]
       operationId: galleryData
-      summary: All photos for the current user (by capture date, newest first)
-      description: "Ordered by COALESCE(taken_at, created_at) DESC. Optional album_id filters to one album."
+      summary: Photos for the current user (by capture date, newest first, keyset-paginated)
+      description: "Ordered by COALESCE(taken_at, created_at) DESC, id DESC. Keyset (cursor) pagination: pass `limit` (default 200, max 500) and `cursor` (the previous response's `next_cursor`). `next_cursor` is null when exhausted. With no `cursor`/`limit` a client still gets a usable first page (the default limit) — the old un-paged 'everything at once' response is gone because it timed out on large libraries. `cursor_ym` jumps the first page to a month (scrubber). album_id/person_id/archived filters compose with pagination. Rendition readiness (thumb/preview) is read from the DB (worker-set) — the timeline never stats storage."
       security: [ { bearerAuth: [] } ]
-      parameters: [ { name: album_id, in: query, required: false, schema: { type: integer } }, { name: person_id, in: query, required: false, schema: { type: integer }, description: "Filter to photos containing a visible face of this person." }, { name: archived, in: query, required: false, schema: { type: boolean }, description: "1 = only archived photos (Archive view); default hides archived from the timeline. Ignored when album_id/person_id is set." } ]
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 200 }, description: "Page size (clamped to 1..500)." }
+        - { name: cursor, in: query, required: false, schema: { type: string }, description: "Opaque keyset cursor from the previous response's next_cursor." }
+        - { name: cursor_ym, in: query, required: false, schema: { type: string, pattern: "^\\d{4}-\\d{2}$" }, description: "Jump the first page to this YYYY-MM month (date scrubber). Ignored if a cursor is given." }
+        - { name: album_id, in: query, required: false, schema: { type: integer } }
+        - { name: person_id, in: query, required: false, schema: { type: integer }, description: "Filter to photos containing a visible face of this person." }
+        - { name: archived, in: query, required: false, schema: { type: boolean }, description: "1 = only archived photos (Archive view); default hides archived from the timeline. Ignored when album_id/person_id is set." }
       responses:
-        "200": { description: "Photos (without bytes).", content: { application/json: { schema: { type: object, properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } } } } } } }
+        "200": { description: "One page of photos (without bytes) plus the next cursor.", content: { application/json: { schema: { type: object, required: [photos], properties: { photos: { type: array, items: { $ref: "#/components/schemas/GalleryPhoto" } }, next_cursor: { type: [string, "null"], description: "Pass as ?cursor= for the next page; null when the timeline is exhausted." } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /gallery/dates:
+    get:
+      tags: [Gallery]
+      operationId: galleryDates
+      summary: Month histogram for the date scrubber
+      description: "One bucket per month (YYYY-MM) with a photo count, newest-first, honouring the same album_id/person_id/archived filters as /gallery/data. Lets the scrubber show the full date range and jump into the right page (via ?cursor_ym=) without loading every row."
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - { name: album_id, in: query, required: false, schema: { type: integer } }
+        - { name: person_id, in: query, required: false, schema: { type: integer } }
+        - { name: archived, in: query, required: false, schema: { type: boolean } }
+      responses:
+        "200": { description: "Month buckets, newest-first.", content: { application/json: { schema: { type: object, required: [months], properties: { months: { type: array, items: { type: object, required: [ym, count], properties: { ym: { type: string, example: "2026-08" }, count: { type: integer } } } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /gallery/memories:

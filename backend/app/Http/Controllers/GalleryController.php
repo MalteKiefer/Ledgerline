@@ -89,10 +89,104 @@ class GalleryController extends Controller
         if ($albumId <= 0 && $personId <= 0) {
             $query->{$request->boolean('archived') ? 'whereNotNull' : 'whereNull'}('archived_at');
         }
-        $photos = $query->orderByRaw('COALESCE(taken_at, created_at) DESC')->orderByDesc('id')->get()
-            ->map(fn (GalleryPhoto $p): array => $this->row($p))->all();
 
-        return response()->json(['photos' => $photos]);
+        // Keyset (cursor) pagination over COALESCE(taken_at, created_at) DESC, id DESC.
+        // Backward compatible: with no limit/cursor a client still gets a usable first
+        // page (the default limit) — the old "everything at once" behaviour is gone
+        // because it timed out on large libraries. Old clients that ignore next_cursor
+        // simply see the newest page.
+        $limit = max(1, min(500, $request->integer('limit') ?: 200));
+        $sortExpr = 'COALESCE(taken_at, created_at)';
+
+        // Jump straight to a month (scrubber): first row at or before the end of that
+        // month, newest-first — i.e. everything strictly before the following month.
+        $cursorYm = (string) $request->string('cursor_ym');
+        if (preg_match('/^\d{4}-\d{2}$/', $cursorYm) === 1) {
+            $monthEnd = Carbon::createFromFormat('Y-m-d', $cursorYm.'-01', 'UTC')?->startOfMonth()->addMonth();
+            if ($monthEnd !== null) {
+                $query->whereRaw("$sortExpr < ?", [$monthEnd->toDateTimeString()]);
+            }
+        }
+
+        // Opaque cursor = base64(json{ts, id}) of the last row of the previous page.
+        $cursor = $this->decodeGalleryCursor((string) $request->string('cursor'));
+        if ($cursor !== null) {
+            // Row-value comparison: (sort_ts, id) < (cursor_ts, cursor_id).
+            $query->whereRaw("($sortExpr < ? OR ($sortExpr = ? AND id < ?))", [$cursor['ts'], $cursor['ts'], $cursor['id']]);
+        }
+
+        $rows = $query->orderByRaw($sortExpr.' DESC')->orderByDesc('id')->limit($limit + 1)->get();
+
+        $hasMore = $rows->count() > $limit;
+        $page = $rows->take($limit);
+        $next = null;
+        if ($hasMore) {
+            $last = $page->last();
+            if ($last instanceof GalleryPhoto) {
+                $ts = ($last->taken_at ?? $last->created_at)?->toDateTimeString() ?? '';
+                $next = base64_encode((string) json_encode(['ts' => $ts, 'id' => (int) $last->id]));
+            }
+        }
+
+        return response()->json([
+            'photos' => $page->map(fn (GalleryPhoto $p): array => $this->row($p))->values()->all(),
+            'next_cursor' => $next,
+        ]);
+    }
+
+    /** Decode an opaque timeline cursor; null when absent or malformed. @return array{ts: string, id: int}|null */
+    private function decodeGalleryCursor(string $raw): ?array
+    {
+        if ($raw === '') {
+            return null;
+        }
+        $json = base64_decode($raw, true);
+        if ($json === false) {
+            return null;
+        }
+        $data = json_decode($json, true);
+        if (! is_array($data) || ! isset($data['ts'], $data['id']) || ! is_string($data['ts']) || ! is_numeric($data['id'])) {
+            return null;
+        }
+
+        return ['ts' => $data['ts'], 'id' => (int) $data['id']];
+    }
+
+    /**
+     * Month histogram for the date scrubber: one bucket per month with a count,
+     * newest-first, honouring the same album/person/archived filters as data().
+     * A single GROUP BY — cheap and indexable — so the scrubber shows the full
+     * range without loading every row.
+     */
+    public function dates(Request $request): JsonResponse
+    {
+        $this->requireUser($request);
+        $query = GalleryPhoto::query();
+        $albumId = $request->integer('album_id');
+        if ($albumId > 0) {
+            $query->whereHas('albums', fn ($q) => $q->whereKey($albumId));
+        }
+        $personId = $request->integer('person_id');
+        if ($personId > 0) {
+            $query->whereHas('faces', fn ($q) => $q->where('gallery_person_id', $personId)->where('hidden', false));
+        }
+        if ($albumId <= 0 && $personId <= 0) {
+            $query->{$request->boolean('archived') ? 'whereNotNull' : 'whereNull'}('archived_at');
+        }
+
+        // Portable "YYYY-MM" of COALESCE(taken_at, created_at) across pgsql + sqlite.
+        $ym = match (true) {
+            str_contains(strtolower((string) config('database.default')), 'sqlite') => "strftime('%Y-%m', COALESCE(taken_at, created_at))",
+            default => "to_char(COALESCE(taken_at, created_at), 'YYYY-MM')",
+        };
+        $rows = $query->selectRaw("$ym as ym, COUNT(*) as count")
+            ->groupByRaw($ym)
+            ->orderByRaw('ym DESC')
+            ->get();
+
+        return response()->json([
+            'months' => $rows->map(fn ($r): array => ['ym' => (string) $r->ym, 'count' => (int) $r->count])->all(),
+        ]);
     }
 
     /** Seed terms for CLIP-based auto theme cards (client localizes the label). */
@@ -1125,6 +1219,8 @@ class GalleryController extends Controller
         $haveThumb = $this->fs()->exists($thumbPath);
         $havePreview = $this->fs()->exists($previewPath);
         if ($haveThumb && $havePreview) {
+            $this->markRenditionReady($photo, true, true);
+
             return true;
         }
         if ($src === '' || ! $this->fs()->exists($src)) {
@@ -1157,8 +1253,21 @@ class GalleryController extends Controller
         } catch (\Throwable) {
             return false;
         }
+        // Record readiness for the CURRENT version so the timeline (and clients) know
+        // the rendition landed without stat-ing the disk. A later edit bumps version
+        // and resets these to false (see update()).
+        $this->markRenditionReady($photo, true, true);
 
         return true;
+    }
+
+    /** Persist rendition readiness on the row (worker-only; the timeline reads it). */
+    private function markRenditionReady(GalleryPhoto $photo, bool $thumb, bool $preview): void
+    {
+        if ((bool) $photo->thumb_ready === $thumb && (bool) $photo->preview_ready === $preview) {
+            return;
+        }
+        $photo->forceFill(['thumb_ready' => $thumb, 'preview_ready' => $preview])->saveQuietly();
     }
 
     // ---- Mutations ----
@@ -1282,6 +1391,11 @@ class GalleryController extends Controller
                 $patch['flip_h'] = $request->boolean('flip_h');
             }
             $patch['version'] = (int) $fresh->version + 1;
+            // The version bump changes the rendition cache path, so the current
+            // renditions no longer apply — mark not-ready so clients show a spinner
+            // until the worker re-renders and flips these back to true.
+            $patch['thumb_ready'] = false;
+            $patch['preview_ready'] = false;
             $fresh->forceFill($patch)->save();
             // Version bump changes the thumb cache path; regenerate off the web path.
             GenerateGalleryThumbnail::dispatch($fresh->id);
@@ -1524,8 +1638,11 @@ class GalleryController extends Controller
             'height' => $p->height,
             'size' => $p->size,
             'favorite' => (bool) $p->favorite,
-            'thumb' => $this->fs()->exists($this->thumbPath($p)),
-            'preview' => $this->fs()->exists($this->previewPath($p)),
+            // Readiness comes from the DB (set by the worker after rendering) — never
+            // stat the disk here: the timeline serializes thousands of rows and two
+            // exists() per row timed out the request on large libraries.
+            'thumb' => (bool) $p->thumb_ready,
+            'preview' => (bool) $p->preview_ready,
             'motion' => $p->motion_path !== null && $p->motion_path !== '',
             'media_type' => $p->media_type,
             'status' => $p->status,
