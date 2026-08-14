@@ -516,7 +516,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
@@ -527,6 +528,8 @@ import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
 const s = useMailStore();
+const route = useRoute();
+const router = useRouter();
 const { success, error } = useToast();
 const filters = s.filters;
 
@@ -592,12 +595,56 @@ function fmtDate(iso: string | null) { return libDate(iso); }
 function fmtDateTime(iso: string | null) { return libDateTime(iso); }
 function fmtBytes(n: number) { if (!n) return '0 B'; const u = ['B', 'KB', 'MB', 'GB']; const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024))); return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${u[i]}`; }
 
+// ---- Deep links: mirror the selected account/folder/label + open message in
+// the URL query so a reload or shared link lands on the same place. `restoring`
+// gates the write-watch while we apply an incoming URL.
+let restoring = false;
+function buildQuery(): Record<string, string> {
+  const q: Record<string, string> = {};
+  if (filters.accountId !== null) q.account = String(filters.accountId);
+  if (filters.folder) q.folder = filters.folder;
+  if (filters.label !== null) q.label = String(filters.label);
+  if (readerOpen.value && reader.value) q.message = String(reader.value.id);
+  return q;
+}
+watch([() => filters.accountId, () => filters.folder, () => filters.label, readerOpen, reader], () => {
+  if (restoring) return;
+  const q = buildQuery();
+  const keys = ['account', 'folder', 'label', 'message'];
+  const cur: Record<string, string> = {};
+  for (const k of keys) { const v = route.query[k]; if (typeof v === 'string') cur[k] = v; }
+  if (JSON.stringify(q) !== JSON.stringify(cur)) void router.replace({ query: q });
+});
+// Apply the URL query on load: restore account/folder/label, load the list,
+// then reopen the deep-linked message (best-effort — skip if not in the list).
+async function applyRoute() {
+  restoring = true;
+  try {
+    const q = route.query;
+    const label = q.label ? Number(q.label) : null;
+    const account = q.account ? Number(q.account) : null;
+    if (label !== null) {
+      filters.label = label;
+    } else if (account !== null) {
+      filters.accountId = account;
+      filters.folder = typeof q.folder === 'string' ? q.folder : null;
+    }
+    await s.loadFolders(filters.accountId);
+    await reload();
+    const mid = q.message;
+    if (typeof mid === 'string' && mid) {
+      const m = s.messages.find((x) => x.id === mid);
+      if (m) await openReader(m);
+    }
+  } catch { /* fall back to the default view */ }
+  finally { restoring = false; }
+}
+
 // --- Loading -----------------------------------------------------------------
 let statusTimer: ReturnType<typeof setInterval> | undefined;
 onMounted(async () => {
   await Promise.all([s.loadAccounts(), s.loadLabels(), s.loadSavedSearches()]);
-  await s.loadFolders(null);
-  await reload();
+  await applyRoute();
   statusTimer = setInterval(async () => {
     if (s.accounts.some((a) => a.status === 'syncing')) { await s.pollStatus(); await s.loadFolders(filters.accountId); }
   }, 5000);
