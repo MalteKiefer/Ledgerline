@@ -1728,6 +1728,10 @@ class FinanceController extends Controller
             'tags' => ['nullable', 'array', 'max:100'],
             'tags.*' => ['string', 'max:100'],
             'vat' => ['nullable', 'string', 'max:16'],
+            'amount' => ['nullable', 'numeric', 'min:0', 'max:999999999.99'],
+            'date' => ['nullable', 'date'],
+            'order_ref' => ['nullable', 'string', 'max:64'],
+            'doc_number' => ['nullable', 'string', 'max:64'],
             'note' => ['nullable', 'string', 'max:2000'],
             'ocr' => ['nullable', 'string', 'max:200000'],
             'sig' => ['nullable', 'string', 'max:128'],
@@ -1756,6 +1760,10 @@ class FinanceController extends Controller
                 'category' => $request->filled('category') ? $request->string('category')->value() : null,
                 'tags' => $tags,
                 'vat' => $request->filled('vat') ? $request->string('vat')->value() : null,
+                'amount' => $request->filled('amount') ? $request->input('amount') : null,
+                'date' => $request->filled('date') ? $request->string('date')->value() : null,
+                'order_ref' => $request->filled('order_ref') ? $request->string('order_ref')->value() : null,
+                'doc_number' => $request->filled('doc_number') ? $request->string('doc_number')->value() : null,
                 'note' => $request->filled('note') ? $request->string('note')->value() : null,
                 'ocr' => $request->filled('ocr') ? $request->string('ocr')->value() : null,
                 'name' => $name !== '' ? $name : 'receipt',
@@ -1789,6 +1797,10 @@ class FinanceController extends Controller
             'tags' => ['sometimes', 'nullable', 'array', 'max:100'],
             'tags.*' => ['string', 'max:100'],
             'vat' => ['sometimes', 'nullable', 'string', 'max:16'],
+            'amount' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:999999999.99'],
+            'date' => ['sometimes', 'nullable', 'date'],
+            'order_ref' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'doc_number' => ['sometimes', 'nullable', 'string', 'max:64'],
             'note' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'partner_id' => ['sometimes', 'nullable', 'integer', Rule::exists('finance_partners', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
             'bank_transaction_id' => ['sometimes', 'nullable', 'integer', Rule::exists('bank_transactions', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
@@ -1796,7 +1808,7 @@ class FinanceController extends Controller
             'version' => ['sometimes', 'integer', 'min:0'],
         ]);
         $patch = [];
-        foreach (['name', 'category', 'vat', 'note', 'partner_id', 'bank_transaction_id', 'finance_project_id', 'tags'] as $f) {
+        foreach (['name', 'category', 'vat', 'amount', 'date', 'order_ref', 'doc_number', 'note', 'partner_id', 'bank_transaction_id', 'finance_project_id', 'tags'] as $f) {
             if ($request->has($f)) {
                 $patch[$f] = $request->input($f);
             }

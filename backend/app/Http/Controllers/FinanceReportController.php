@@ -10,6 +10,7 @@ use App\Services\Finance\CategorySuggester;
 use App\Services\Finance\FinanceDuplicates;
 use App\Services\Finance\FinanceNumberGaps;
 use App\Services\Finance\FinanceReports;
+use App\Services\Finance\ReceiptMatcher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -102,5 +103,17 @@ class FinanceReportController extends Controller
         $this->requireUser($request);
 
         return response()->json(['suggestions' => $suggester->suggestions()]);
+    }
+
+    /**
+     * Read-only suggested links between unlinked standalone receipts and unlinked bank
+     * transactions — including several receipts summing to one charge. Never mutates a
+     * row; the client applies an accepted group by PUTing bank_transaction_id per receipt.
+     */
+    public function receiptMatches(Request $request, ReceiptMatcher $matcher): JsonResponse
+    {
+        $this->requireUser($request);
+
+        return response()->json($matcher->detect());
     }
 }

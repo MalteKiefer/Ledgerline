@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   extractTotal, extractDate, extractMerchant, extractNumber,
-  extractVatRate, extractVatId, extractCurrency, analyzeReceiptText,
+  extractVatRate, extractVatId, extractCurrency, extractOrderRef, analyzeReceiptText,
 } from '../receipt-ocr';
 
 describe('extractTotal', () => {
@@ -78,6 +78,21 @@ describe('extractCurrency', () => {
   it('detects USD', () => { expect(extractCurrency('Total: $45.00 USD')).toBe('USD'); });
 });
 
+describe('extractOrderRef', () => {
+  // Real Amazon invoice snippets (August 2026) — Amazon prints the SAME
+  // "Zahlungsreferenznummer" on every invoice of one order/charge, which is the
+  // signal the receipt<->transaction matcher groups on for a split order.
+  it('reads the reference from a real Amazon invoice header', () => {
+    expect(extractOrderRef('Zahlungsreferenznummer 3lOvS0TSid0aZgi3lA6S\nVerkauft von memoryking GmbH & Co. KG')).toBe('3lOvS0TSid0aZgi3lA6S');
+  });
+  it('is case-insensitive on the label', () => {
+    expect(extractOrderRef('zahlungsreferenznummer X2WmQiYAdVrdhYhmIF1X')).toBe('X2WmQiYAdVrdhYhmIF1X');
+  });
+  it('returns empty when the document has no such reference', () => {
+    expect(extractOrderRef('Rechnungsnummer DE60GTQMP053RU\nZahlbetrag 11,99 €')).toBe('');
+  });
+});
+
 describe('analyzeReceiptText', () => {
   it('classifies a known category and collects tags', () => {
     const r = analyzeReceiptText('netcup GmbH\nHosting-Vertrag\n19% MwSt\nGesamt 23,80 €\n27.07.2026');
@@ -87,6 +102,10 @@ describe('analyzeReceiptText', () => {
     expect(r.vat).toBe('19');
     expect(r.date).toBe('2026-07-27');
     expect(r.tags).toContain('Software');
+  });
+  it('extracts the order/payment reference alongside the other fields', () => {
+    const r = analyzeReceiptText('Zahlungsreferenznummer 3eTEaMIJmYRBXpEc2Rm4\nVerkauft von Spigen Korea Co.,Ltd.\nZahlbetrag 19,99 €');
+    expect(r.orderRef).toBe('3eTEaMIJmYRBXpEc2Rm4');
   });
   it('avoids the "kündbar" false positive for Geschäftsessen (bar)', () => {
     expect(analyzeReceiptText('Vertrag monatlich kündbar\n19,99 €').category).toBe('');

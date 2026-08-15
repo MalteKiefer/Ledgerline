@@ -243,7 +243,7 @@
               <td class="px-4 py-2.5 text-right whitespace-nowrap">
                 <button class="relative mr-1 inline-flex items-center rounded p-1.5 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('invoices.tx_receipts')" @click="openTxReceipts(tx)">
                   <Icon name="attach_file" :size="18" />
-                  <span v-if="(tx.receipts?.length ?? 0)" class="ml-0.5 text-xs tabular-nums">{{ tx.receipts?.length }}</span>
+                  <span v-if="(tx.receipts?.length ?? 0) + standaloneReceiptsForTx(tx.id).length" class="ml-0.5 text-xs tabular-nums">{{ (tx.receipts?.length ?? 0) + standaloneReceiptsForTx(tx.id).length }}</span>
                 </button>
                 <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editTx(tx)" />
                 <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delTx(tx)" />
@@ -275,6 +275,7 @@
       <template #actions>
         <div class="flex items-center gap-2">
           <Btn variant="ghost" size="sm" icon="sell" @click="catDialog = true">{{ t('invoices.categories') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="join_inner" :loading="matchBusy" @click="runAutoMatch">{{ t('invoices.auto_match') }}</Btn>
           <input ref="inboxInput" type="file" multiple accept="application/pdf,image/*" class="hidden" @change="onInboxPick">
           <Btn variant="soft" size="sm" icon="inbox" :loading="inboxBusy" @click="inboxInput?.click()">{{ t('invoices.inbox_upload') }}</Btn>
           <Btn variant="solid" size="sm" icon="add" @click="newReceipt">{{ t('common.add') }}</Btn>
@@ -288,6 +289,7 @@
               <th class="px-4 py-2.5 font-medium">{{ t('common.date') }}</th>
               <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.gross') }}</th>
               <th class="px-4 py-2.5 font-medium">{{ t('invoices.receipt_category') }}</th>
+              <th class="px-4 py-2.5 font-medium">{{ t('invoices.tx_receipts') }}</th>
               <th class="px-4 py-2.5"></th>
             </tr>
           </thead>
@@ -307,6 +309,16 @@
                 <span v-else class="text-[var(--ll-muted)]">—</span>
               </td>
               <td class="px-4 py-2.5">
+                <button
+                  v-if="item.bank_transaction_id != null" type="button"
+                  class="inline-flex items-center gap-1 rounded-md bg-green-500/12 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400"
+                  :title="txSummary(item.bank_transaction_id)" @click="go('bank')"
+                >
+                  <Icon name="link" :size="14" />{{ t('invoices.receipts_linked') }}
+                </button>
+                <span v-else class="text-[var(--ll-muted)]">—</span>
+              </td>
+              <td class="px-4 py-2.5">
                 <div class="flex items-center justify-end gap-0.5">
                   <Btn variant="ghost" size="sm" icon="open_in_new" :title="t('common.open')" @click="openPreview(f.receiptFileUrl(item.id), item.name, item.mime)" />
                   <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editReceipt(item)" />
@@ -314,7 +326,7 @@
                 </div>
               </td>
             </tr>
-            <tr v-if="!f.standaloneReceipts.length"><td colspan="5" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.receipts_none') }}</td></tr>
+            <tr v-if="!f.standaloneReceipts.length"><td colspan="6" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.receipts_none') }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -608,7 +620,17 @@
           <Btn variant="ghost" size="sm" icon="open_in_new" :title="t('common.open')" @click="openTxReceipt(r)" />
           <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delTxReceipt(r)" />
         </div>
-        <div v-if="!(txRecTx.receipts?.length ?? 0)" class="py-4 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</div>
+        <div v-if="!(txRecTx.receipts?.length ?? 0) && !standaloneReceiptsForTx(txRecTx.id).length" class="py-4 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</div>
+        <div v-if="standaloneReceiptsForTx(txRecTx.id).length" class="space-y-2 border-t border-[var(--ll-border)] pt-3">
+          <span class="block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipts_title') }}</span>
+          <div v-for="r in standaloneReceiptsForTx(txRecTx.id)" :key="'std-' + r.id" class="flex items-center gap-2 rounded-lg border border-[var(--ll-border)] px-3 py-2">
+            <Icon name="receipt_long" :size="18" class="shrink-0 text-[var(--ll-muted)]" />
+            <span class="flex-1 truncate text-sm">{{ r.name }}</span>
+            <span class="font-mono text-xs tabular-nums text-[var(--ll-muted)]">{{ r.amount != null ? money(Number(r.amount)) : '' }}</span>
+            <Btn variant="ghost" size="sm" icon="open_in_new" :title="t('common.open')" @click="openPreview(f.receiptFileUrl(r.id), r.name, r.mime)" />
+            <Btn variant="ghost" size="sm" icon="link_off" class="text-red-600 dark:text-red-400" :title="t('invoices.receipts_unlink')" @click="unlinkStandaloneReceipt(r)" />
+          </div>
+        </div>
         <div class="mt-3 border-t border-[var(--ll-border)] pt-3">
           <input ref="txRecInput" type="file" accept=".pdf,image/*" class="hidden" @change="onTxReceiptFile">
           <Btn variant="soft" icon="upload" :loading="txRecBusy" @click="txRecInput?.click()">{{ t('invoices.tx_receipt_attach') }}</Btn>
@@ -758,6 +780,10 @@
           </div>
         </label>
         <TextField v-model="rForm.name" :label="t('invoices.receipt_rename')" />
+        <div class="grid grid-cols-2 gap-3">
+          <TextField v-model="rForm.amount" :label="t('invoices.gross')" type="number" />
+          <TextField v-model="rForm.date" :label="t('common.date')" type="date" />
+        </div>
         <TextField v-model="rForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" list="fin-cats" />
         <div>
           <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipt_tags') }}</span>
@@ -779,6 +805,16 @@
           @update:model-value="rForm.partner_id = $event ? Number($event) : null"
         />
         <TextField v-model="rForm.vat" :label="t('invoices.vat')" />
+        <div>
+          <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.tx_receipts') }}</span>
+          <div v-if="rForm.bank_transaction_id != null" class="flex items-center gap-2 rounded-lg border border-[var(--ll-border)] px-3 py-2">
+            <Icon name="link" :size="16" class="shrink-0 text-green-600 dark:text-green-400" />
+            <span class="flex-1 truncate text-sm">{{ txSummary(rForm.bank_transaction_id) }}</span>
+            <Btn variant="ghost" size="sm" @click="openAssignTx">{{ t('common.edit') }}</Btn>
+            <Btn variant="ghost" size="sm" icon="link_off" class="text-red-600 dark:text-red-400" :title="t('invoices.receipts_unlink')" @click="unassignTx" />
+          </div>
+          <Btn v-else variant="soft" size="sm" icon="link" @click="openAssignTx">{{ t('invoices.receipts_assign_tx') }}</Btn>
+        </div>
         <label class="block">
           <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipt_note') }}</span>
           <textarea
@@ -790,6 +826,62 @@
       <template #footer>
         <Btn variant="ghost" @click="rDialog = false">{{ t('common.cancel') }}</Btn>
         <Btn variant="solid" :loading="saving" @click="saveReceipt">{{ t('common.save') }}</Btn>
+      </template>
+    </Modal>
+
+    <!-- Manual "assign a booking" picker: ranked suggestions (amount known) or a
+         searchable list of every unlinked transaction (amount unknown). -->
+    <Modal v-model="assignTxDialog" :title="t('invoices.receipts_assign_tx')" width="480px">
+      <div class="space-y-2">
+        <TextField v-model="assignTxQuery" :placeholder="t('common.search')" />
+        <div class="max-h-80 space-y-1.5 overflow-y-auto">
+          <button
+            v-for="s in assignTxCandidates" :key="s.t.id" type="button"
+            class="flex w-full items-center gap-2 rounded-lg border border-[var(--ll-border)] px-3 py-2 text-left hover:bg-black/[0.02] dark:hover:bg-white/5"
+            @click="pickAssignTx(s.t.id)"
+          >
+            <Badge v-if="s.kind === 'fx'" tone="warning">{{ t('invoices.match_reason_fx') }}</Badge>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm">{{ fmtDate(s.t.date) }} · {{ (f.transactions.find((x) => x.id === s.t.id))?.counterparty || '—' }}</div>
+            </div>
+            <span class="font-mono text-sm tabular-nums">{{ money(s.t.amount) }}</span>
+          </button>
+          <div v-if="!assignTxCandidates.length" class="py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('invoices.receipts_assign_tx_none') }}</div>
+        </div>
+      </div>
+      <template #footer>
+        <Btn variant="ghost" @click="assignTxDialog = false">{{ t('common.close') }}</Btn>
+      </template>
+    </Modal>
+
+    <!-- Auto-Zuordnen: review + apply server-suggested receipt<->transaction links
+         (incl. several receipts summing to one charge, e.g. a split Amazon order). -->
+    <Modal v-model="matchDialog" :title="t('invoices.auto_match')" width="640px">
+      <div class="space-y-3">
+        <div v-if="matchDuplicates.length" class="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          {{ t('invoices.match_duplicates_found', { count: String(matchDuplicates.length) }) }}
+        </div>
+        <label
+          v-for="g in matchGroups" :key="g.transaction_id + '-' + g.receipt_ids.join(',')"
+          class="flex items-start gap-3 rounded-lg border border-[var(--ll-border)] px-3 py-2.5"
+        >
+          <input v-model="g.accepted" type="checkbox" class="mt-1">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium">{{ txSummary(g.transaction_id) }}</span>
+              <Badge tone="info">{{ matchReasonLabel(g.reason) }}</Badge>
+            </div>
+            <div class="mt-0.5 text-xs text-[var(--ll-muted)]">
+              {{ g.receipt_ids.map((id) => receiptLabel(id)).join(', ') }}
+            </div>
+          </div>
+          <span class="shrink-0 font-mono text-sm tabular-nums">{{ money(g.total) }}</span>
+        </label>
+        <div v-if="!matchGroups.length" class="py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('invoices.match_none') }}</div>
+      </div>
+      <template #footer>
+        <Btn variant="ghost" @click="matchDialog = false">{{ t('common.cancel') }}</Btn>
+        <Btn v-if="matchGroups.length" variant="solid" :loading="matchApplying" @click="applyMatches">{{ t('invoices.match_apply') }}</Btn>
       </template>
     </Modal>
 
@@ -1121,11 +1213,12 @@ import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart } from '@spa/ui';
 import type { AlignedData, Options } from 'uplot';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup } from '@spa/stores/finance';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type ReceiptDuplicate } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, VersionConflict } from '@spa/api/client';
 import { analyzeReceiptText } from '@spa/shared/receipt-ocr';
+import { autoPick, suggestBookings, type BookingSuggestion } from '@spa/shared/receipt-match';
 import {
   type PrintInvoice, type PrintCompany, type PrintLine,
   computeTotals as printComputeTotals, vatRatesOf as printVatRatesOf,
@@ -1220,8 +1313,21 @@ const rDialog = ref(false);
 const rFile = ref<File | File[] | null>(null);
 const ocrBusy = ref(false);
 const lastOcrText = ref('');
-interface RForm { id?: number; version?: number; name: string; category: string; tags: string[]; vat: string; note: string; partner_id: number | null }
-const rForm = reactive<RForm>({ name: '', category: '', tags: [], vat: '', note: '', partner_id: null });
+interface RForm {
+  id?: number; version?: number; name: string; category: string; tags: string[]; vat: string; note: string; partner_id: number | null;
+  amount: string; date: string; order_ref: string; doc_number: string; bank_transaction_id: number | null;
+}
+const rForm = reactive<RForm>({
+  name: '', category: '', tags: [], vat: '', note: '', partner_id: null,
+  amount: '', date: '', order_ref: '', doc_number: '', bank_transaction_id: null,
+});
+
+// ---- Assign-a-booking picker (manual fallback when nothing auto-matched) ----
+const assignTxDialog = ref(false);
+const assignTxQuery = ref('');
+function openAssignTx() { assignTxQuery.value = ''; assignTxDialog.value = true; }
+function pickAssignTx(id: number) { rForm.bank_transaction_id = id; assignTxDialog.value = false; }
+function unassignTx() { rForm.bank_transaction_id = null; }
 
 // Project form
 const prjDialog = ref(false);
@@ -1468,6 +1574,35 @@ const bankAccountItems = computed(() => [
 const bankTransactions = computed(() =>
   bankAccount.value ? f.transactions.filter((x) => x.payment_method_id === bankAccount.value) : f.transactions,
 );
+
+// ---- Receipt <-> transaction linking (auto/manual assignment) ----
+// Standalone receipts ("Fremdbelege") linked to a transaction via bank_transaction_id
+// — distinct from a transaction's own embedded receipts[] (direct-upload reconcile).
+function standaloneReceiptsForTx(txId: number): Receipt[] { return f.standaloneReceipts.filter((r) => r.bank_transaction_id === txId); }
+function isTxDocumented(tx: BankTransaction): boolean { return (tx.receipts?.length ?? 0) > 0 || standaloneReceiptsForTx(tx.id).length > 0; }
+// Candidate pool for auto-pick/suggestions: expense transactions with no receipt yet.
+const unlinkedTransactions = computed<BankTransaction[]>(() => f.transactions.filter((t) => t.amount < 0 && !isTxDocumented(t)));
+function txSummary(id: number): string {
+  const t = f.transactions.find((x) => x.id === id);
+  return t ? `${fmtDate(t.date)} · ${t.counterparty || '—'} · ${money(t.amount)}` : `#${id}`;
+}
+// Manual "Buchung zuordnen" picker: ranked suggestions when the receipt has a
+// recognised amount (fuzzy/FX-aware, a human reviews it here), else every unlinked
+// transaction filtered by the free-text search, newest first.
+const assignTxCandidates = computed<BookingSuggestion[]>(() => {
+  const q = assignTxQuery.value.trim().toLowerCase();
+  const matchesQuery = (t: BankTransaction) => !q || (t.counterparty || '').toLowerCase().includes(q) || (t.purpose || '').toLowerCase().includes(q);
+  const amount = rForm.amount.trim() === '' ? null : Number(rForm.amount);
+  if (amount != null && Number.isFinite(amount)) {
+    return suggestBookings({ total: amount, date: rForm.date || null }, unlinkedTransactions.value.filter(matchesQuery), { limit: 30 });
+  }
+  return unlinkedTransactions.value
+    .filter(matchesQuery)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    .slice(0, 30)
+    .map((t) => ({ t, kind: 'exact' as const, dd: null, score: 0 }));
+});
+
 const vatCatItems = computed(() => [
   { title: '—', value: '' },
   { title: '19%', value: '19' }, { title: '7%', value: '7' }, { title: '0%', value: '0' },
@@ -1624,6 +1759,10 @@ async function delTxReceipt(r: import('@spa/stores/finance').TxReceipt) {
     await f.load();
     success(t('common.saved'));
   } catch { error(t('common.error')); }
+}
+async function unlinkStandaloneReceipt(r: Receipt) {
+  try { await f.updateReceipt(r.id, { bank_transaction_id: null, version: r.version }); await f.load(); success(t('common.saved')); }
+  catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); }
 }
 
 // ---- Finance categories (managed list feeding the receipt/partner category datalist) ----
@@ -1792,7 +1931,13 @@ async function delPartner(p: Partner) {
 }
 
 // ---- Receipts ----
-function newReceipt() { Object.assign(rForm, { id: undefined, version: undefined, name: '', category: '', tags: [], vat: '', note: '', partner_id: null }); rFile.value = null; lastOcrText.value = ''; rDialog.value = true; }
+function newReceipt() {
+  Object.assign(rForm, {
+    id: undefined, version: undefined, name: '', category: '', tags: [], vat: '', note: '', partner_id: null,
+    amount: '', date: '', order_ref: '', doc_number: '', bank_transaction_id: null,
+  });
+  rFile.value = null; lastOcrText.value = ''; rDialog.value = true;
+}
 
 // Normalise a merchant/partner name for matching: lowercase, strip legal-form suffixes
 // (GmbH/AG/UG/…) and punctuation, so "IntellyTec GmbH" and "IntellyTec" match.
@@ -1838,8 +1983,19 @@ async function scanReceipt() {
     const a = analyzeReceiptText(res.text, ownNames.value);
     if (a.category && !rForm.category) rForm.category = a.category;
     if (a.vat && !rForm.vat) rForm.vat = a.vat;
+    if (a.total != null && !rForm.amount) rForm.amount = String(a.total);
+    if (a.date && !rForm.date) rForm.date = a.date;
+    if (a.orderRef && !rForm.order_ref) rForm.order_ref = a.orderRef;
+    if (a.number && !rForm.doc_number) rForm.doc_number = a.number;
     for (const tag of a.tags) if (!rForm.tags.includes(tag)) rForm.tags.push(tag);
     if (a.merchant && rForm.partner_id == null) rForm.partner_id = await autoPartner(a.merchant, a.vatId);
+    // Immediate "Autozuweisung": an unambiguous cent-exact match auto-links right
+    // away; anything ambiguous is left for the "Buchung zuordnen" picker or the
+    // batch Auto-Zuordnen pass (which also handles the multi-receipt-per-charge case).
+    if (rForm.bank_transaction_id == null && a.total != null) {
+      const pick = autoPick({ total: a.total, date: a.date || null }, unlinkedTransactions.value);
+      if (pick) rForm.bank_transaction_id = pick.id;
+    }
     success(t('invoices.ocr_done'));
   } catch { error(t('invoices.ocr_failed')); } finally { ocrBusy.value = false; }
 }
@@ -1870,6 +2026,10 @@ async function processInboxFiles(files: File[]) {
   inboxTotal.value = files.length;
   inboxDone.value = 0;
   let failed = 0;
+  // Track transactions this batch already claimed so two files in the same drop
+  // can't both auto-pick the same booking (the batch Auto-Zuordnen pass afterwards
+  // still catches anything ambiguous, incl. several receipts summing to one charge).
+  const claimed = new Set<number>();
   for (const file of files) {
     try {
       const ocrFd = new FormData();
@@ -1877,13 +2037,22 @@ async function processInboxFiles(files: File[]) {
       const res = await api.upload<{ text: string }>('/api/v1/invoices/ocr', ocrFd);
       const a = analyzeReceiptText(res.text, ownNames.value);
       const partnerId = a.merchant ? await autoPartner(a.merchant, a.vatId) : null;
+      const pick = a.total != null
+        ? autoPick({ total: a.total, date: a.date || null }, unlinkedTransactions.value.filter((t) => !claimed.has(t.id)))
+        : null;
+      if (pick) claimed.add(pick.id);
 
       const fd = new FormData();
       fd.append('file', file);
       if (a.merchant) fd.append('name', a.merchant + (a.date ? ` ${a.date}` : ''));
       if (a.category) fd.append('category', a.category);
       if (a.vat) fd.append('vat', a.vat);
+      if (a.total != null) fd.append('amount', String(a.total));
+      if (a.date) fd.append('date', a.date);
+      if (a.orderRef) fd.append('order_ref', a.orderRef);
+      if (a.number) fd.append('doc_number', a.number);
       if (partnerId != null) fd.append('partner_id', String(partnerId));
+      if (pick) fd.append('bank_transaction_id', String(pick.id));
       fd.append('ocr', res.text.slice(0, 200000));
       for (const tag of a.tags) fd.append('tags[]', tag);
       await f.createReceipt(fd);
@@ -1899,6 +2068,8 @@ function editReceipt(r: Receipt) {
   Object.assign(rForm, {
     id: r.id, version: r.version, name: r.name, category: r.category ?? '',
     tags: Array.isArray(r.tags) ? [...r.tags] : [], vat: r.vat ?? '', note: r.note ?? '', partner_id: r.partner_id,
+    amount: r.amount != null ? String(r.amount) : '', date: r.date ?? '',
+    order_ref: r.order_ref ?? '', doc_number: r.doc_number ?? '', bank_transaction_id: r.bank_transaction_id,
   });
   rFile.value = null; rDialog.value = true;
 }
@@ -1908,7 +2079,10 @@ async function saveReceipt() {
     if (rForm.id) {
       const body: Record<string, unknown> = {
         name: rForm.name, category: rForm.category || null, tags: rForm.tags,
-        vat: rForm.vat || null, note: rForm.note || null, partner_id: rForm.partner_id, version: rForm.version,
+        vat: rForm.vat || null, note: rForm.note || null, partner_id: rForm.partner_id,
+        amount: rForm.amount.trim() === '' ? null : Number(rForm.amount),
+        date: rForm.date || null, order_ref: rForm.order_ref || null, doc_number: rForm.doc_number || null,
+        bank_transaction_id: rForm.bank_transaction_id, version: rForm.version,
       };
       await f.updateReceipt(rForm.id, body);
     } else {
@@ -1920,7 +2094,12 @@ async function saveReceipt() {
       if (rForm.category) fd.append('category', rForm.category);
       if (rForm.vat) fd.append('vat', rForm.vat);
       if (rForm.note) fd.append('note', rForm.note);
+      if (rForm.amount.trim() !== '') fd.append('amount', rForm.amount);
+      if (rForm.date) fd.append('date', rForm.date);
+      if (rForm.order_ref) fd.append('order_ref', rForm.order_ref);
+      if (rForm.doc_number) fd.append('doc_number', rForm.doc_number);
       if (rForm.partner_id != null) fd.append('partner_id', String(rForm.partner_id));
+      if (rForm.bank_transaction_id != null) fd.append('bank_transaction_id', String(rForm.bank_transaction_id));
       if (lastOcrText.value) fd.append('ocr', lastOcrText.value.slice(0, 200000));
       for (const tag of rForm.tags) fd.append('tags[]', tag);
       await f.createReceipt(fd);
@@ -1929,6 +2108,51 @@ async function saveReceipt() {
   } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); } finally { saving.value = false; }
 }
 async function delReceipt(r: Receipt) { if (!await confirmAsk(t('invoices.receipt_delete_confirm'), { danger: true })) return; await f.deleteReceipt(r.id); await f.load(); }
+
+// ---- Auto-Zuordnen: batch, retroactive receipt<->transaction linking (server-side
+// ReceiptMatcher — handles the many-receipts-for-one-charge case, e.g. Amazon
+// splitting an order into several shipment invoices settled by one card charge). ----
+interface ReviewGroup extends ReceiptMatchGroup { accepted: boolean }
+const matchDialog = ref(false);
+const matchBusy = ref(false);
+const matchApplying = ref(false);
+const matchGroups = ref<ReviewGroup[]>([]);
+const matchDuplicates = ref<ReceiptDuplicate[]>([]);
+function receiptLabel(id: number): string { const r = f.standaloneReceipts.find((x) => x.id === id); return r ? `${r.name} (${money(Number(r.amount ?? 0))})` : `#${id}`; }
+function matchReasonLabel(reason: string): string {
+  return reason === 'order_ref' ? t('invoices.match_reason_order_ref')
+    : reason === 'sum' ? t('invoices.match_reason_sum')
+      : t('invoices.match_reason_exact');
+}
+async function runAutoMatch() {
+  matchBusy.value = true;
+  try {
+    const res = await f.receiptMatches();
+    matchGroups.value = res.groups.map((g) => ({ ...g, accepted: true }));
+    matchDuplicates.value = res.duplicates;
+    if (!matchGroups.value.length && !matchDuplicates.value.length) { success(t('invoices.match_none')); return; }
+    matchDialog.value = true;
+  } catch { error(t('common.error')); } finally { matchBusy.value = false; }
+}
+async function applyMatches() {
+  matchApplying.value = true;
+  let linked = 0; let failed = 0;
+  try {
+    for (const g of matchGroups.value) {
+      if (!g.accepted) continue;
+      for (const id of g.receipt_ids) {
+        const r = f.standaloneReceipts.find((x) => x.id === id);
+        if (!r) continue;
+        try { await f.updateReceipt(id, { bank_transaction_id: g.transaction_id, version: r.version }); linked++; }
+        catch { failed++; }
+      }
+    }
+    await f.load();
+    matchDialog.value = false;
+    if (failed) error(t('invoices.match_some_failed', { failed: String(failed) }));
+    else success(t('invoices.match_applied', { count: String(linked) }));
+  } finally { matchApplying.value = false; }
+}
 
 // ---- Projects ----
 function newProject() { Object.assign(prjForm, { id: undefined, version: undefined, name: '', parent_id: null, note: '' }); prjDialog.value = true; }
