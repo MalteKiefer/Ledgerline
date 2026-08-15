@@ -7,3 +7,4 @@ export { default as Badge } from './Badge.vue';
 export { default as Modal } from './Modal.vue';
 export { default as ConfirmDialog } from './ConfirmDialog.vue';
 export { default as Chart } from './Chart.vue';
+export { default as SortLabel } from './SortLabel.vue';
