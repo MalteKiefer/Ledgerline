@@ -21,7 +21,6 @@ return [
     'save_failed' => 'Не удалось загрузить счета.',
 
     'col_number' => 'Номер',
-    'col_created' => 'Дата (создания)',
     'col_customer' => 'Клиент',
     'col_date' => 'Дата',
     'col_total' => 'Сумма',
