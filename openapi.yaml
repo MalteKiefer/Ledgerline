@@ -1205,11 +1205,12 @@ components:
 
     FinanceReceipt:
       type: object
-      description: "Standalone receipt (relational finance_receipts) — a receipt document WITHOUT a bank transaction (\"Fremdbeleg\"). Bytes plaintext on the files disk; blob_path/size/sig server-owned. Optional bank_transaction_id links it to a booking."
+      description: "Standalone receipt (relational finance_receipts) — a receipt document WITHOUT a bank transaction (\"Fremdbeleg\"). Bytes plaintext on the files disk; blob_path/size/sig server-owned. Optional bank_transaction_id links it to a booking, or — for a split payment (one receipt settled by several separate charges) — linked_transaction_ids links it to all of them instead; the two are mutually exclusive."
       properties:
         id: { type: integer }
         user_id: { type: integer, description: "Owner (stamped server-side; read-only)." }
-        bank_transaction_id: { type: integer, nullable: true, description: "Optional link to a bank booking." }
+        bank_transaction_id: { type: integer, nullable: true, description: "Optional link to a bank booking (the common single-charge case)." }
+        linked_transaction_ids: { type: array, items: { type: integer }, nullable: true, description: "Split-payment link: this receipt's total was debited as several separate bank transactions, e.g. one INWX invoice settled by two charges a week apart. Mutually exclusive with bank_transaction_id — setting one server-side clears the other." }
         finance_project_id: { type: integer, nullable: true }
         blob_path: { type: string, description: "Server-owned storage path (files disk)." }
         name: { type: string }
@@ -1249,6 +1250,15 @@ components:
       properties:
         receipt_id: { type: integer }
         duplicate_of: { type: integer, description: "The earlier-uploaded receipt this one duplicates." }
+    SplitPaymentGroup:
+      type: object
+      description: "The inverse of ReceiptMatchGroup: one unlinked standalone receipt whose amount matches no SINGLE unlinked transaction, but a bounded subset-sum of several does (e.g. one INWX invoice billed as one document but debited as two separate charges a week apart). Read-only, never mutates a row. The client applies an accepted group by PUTing linked_transaction_ids on the receipt."
+      required: [receipt_id, transaction_ids, reason, total]
+      properties:
+        receipt_id: { type: integer }
+        transaction_ids: { type: array, items: { type: integer }, description: "Two or more transactions summing to `total`." }
+        reason: { type: string, enum: [sum], description: "Always sum — a single matching transaction is already handled elsewhere (the client's own auto-pick on upload), so this only ever fires for a combination." }
+        total: { type: number, format: double }
 
     FileFolder:
       type: object
@@ -4830,29 +4840,35 @@ paths:
       summary: Suggested receipt<->transaction links (read-only)
       description: >
         Read-only suggestions for linking unlinked standalone receipts to
-        unlinked bank transactions — including the case one charge is settled
-        by SEVERAL receipts (e.g. Amazon splitting an order into multiple
-        shipment invoices that are charged together). Matching is
-        deterministic and cent-exact: receipts sharing a merchant-printed
-        payment/order reference are summed first, then a single exact-amount
-        receipt, then a bounded subset-sum (<=4 receipts) within a date
-        window of the transaction. Accidental re-uploads of the same document
-        are de-duplicated before matching and reported separately. Never
-        mutates a row — the client applies an accepted group by PUTing
-        bank_transaction_id on each listed receipt (PUT
-        /finance/receipts/{receipt}). Throttle 60/min.
+        unlinked bank transactions, in both directions. groups: one charge
+        settled by SEVERAL receipts (e.g. Amazon splitting an order into
+        multiple shipment invoices that are charged together) — deterministic
+        and cent-exact: receipts sharing a merchant-printed payment/order
+        reference are summed first, then a single exact-amount receipt, then
+        a bounded subset-sum (<=4 receipts) within a date window of the
+        transaction. splitPayments: the inverse — one receipt whose total was
+        actually debited as SEVERAL separate charges (e.g. one INWX invoice
+        billed as one document but settled by two transactions a week apart)
+        — a bounded subset-sum (<=4 transactions) within a date window of the
+        receipt. Accidental re-uploads of the same document are de-duplicated
+        before matching and reported separately. Never mutates a row — the
+        client applies an accepted `groups` entry by PUTing
+        bank_transaction_id on each listed receipt, and an accepted
+        `splitPayments` entry by PUTing linked_transaction_ids on the receipt
+        (both via PUT /finance/receipts/{receipt}). Throttle 60/min.
       security: [ { bearerAuth: [] } ]
       responses:
         "200":
-          description: Suggested groups + de-duplicated receipts (both empty arrays when there is nothing to suggest).
+          description: Suggested groups (both directions) + de-duplicated receipts (all empty arrays when there is nothing to suggest).
           content:
             application/json:
               schema:
                 type: object
-                required: [groups, duplicates]
+                required: [groups, duplicates, splitPayments]
                 properties:
                   groups: { type: array, items: { $ref: "#/components/schemas/ReceiptMatchGroup" } }
                   duplicates: { type: array, items: { $ref: "#/components/schemas/ReceiptDuplicate" } }
+                  splitPayments: { type: array, items: { $ref: "#/components/schemas/SplitPaymentGroup" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimited" }
@@ -5712,7 +5728,8 @@ paths:
                 doc_number: { type: string, nullable: true }
                 note: { type: string, nullable: true }
                 partner_id: { type: integer, nullable: true }
-                bank_transaction_id: { type: integer, nullable: true, description: "Link/unlink this receipt to a bank transaction (null unlinks)." }
+                bank_transaction_id: { type: integer, nullable: true, description: "Link/unlink this receipt to a single bank transaction (null unlinks). Setting this server-side clears linked_transaction_ids — the two are mutually exclusive." }
+                linked_transaction_ids: { type: array, items: { type: integer }, maxItems: 8, nullable: true, description: "Split-payment link: link/unlink this receipt to SEVERAL bank transactions whose amounts sum to it (null unlinks). Setting a non-empty array server-side clears bank_transaction_id." }
                 finance_project_id: { type: integer, nullable: true }
                 version: { type: integer, minimum: 0 }
       responses:

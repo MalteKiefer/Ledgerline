@@ -323,7 +323,7 @@
                 <span v-else class="text-[var(--ll-muted)]">—</span>
               </td>
               <td class="px-4 py-2.5">
-                <Icon v-if="item.bank_transaction_id != null" name="link" size="14" class="inline align-middle text-[var(--ll-muted)]" :title="txSummary(item.bank_transaction_id)" />
+                <Icon v-if="receiptLinkSummary(item)" name="link" size="14" class="inline align-middle text-[var(--ll-muted)]" :title="receiptLinkSummary(item) ?? ''" />
                 <span v-else class="text-[var(--ll-muted)]">—</span>
               </td>
               <td class="px-4 py-2.5" @click.stop>
@@ -835,6 +835,14 @@
             <Btn variant="ghost" size="sm" @click="openAssignTx">{{ t('common.edit') }}</Btn>
             <Btn variant="ghost" size="sm" icon="link_off" class="text-red-600 dark:text-red-400" :title="t('invoices.receipts_unlink')" @click="unassignTx" />
           </div>
+          <div v-else-if="rForm.linked_transaction_ids?.length" class="space-y-1.5 rounded-lg border border-[var(--ll-border)] px-3 py-2">
+            <div class="text-xs text-[var(--ll-muted)]">{{ t('invoices.receipts_split_hint') }}</div>
+            <div v-for="txId in rForm.linked_transaction_ids" :key="txId" class="flex items-center gap-2">
+              <Icon name="link" :size="16" class="shrink-0 text-green-600 dark:text-green-400" />
+              <span class="flex-1 truncate text-sm">{{ txSummary(txId) }}</span>
+            </div>
+            <Btn variant="ghost" size="sm" icon="link_off" class="text-red-600 dark:text-red-400" :title="t('invoices.receipts_unlink')" @click="unassignSplitTx">{{ t('invoices.receipts_unlink') }}</Btn>
+          </div>
           <Btn v-else variant="soft" size="sm" icon="link" @click="openAssignTx">{{ t('invoices.receipts_assign_tx') }}</Btn>
         </div>
         <label class="block">
@@ -918,6 +926,14 @@
               <Btn variant="ghost" size="sm" @click="openAssignTx">{{ t('common.edit') }}</Btn>
               <Btn variant="ghost" size="sm" icon="link_off" class="text-red-600 dark:text-red-400" :title="t('invoices.receipts_unlink')" @click="unassignTx" />
             </div>
+            <div v-else-if="rForm.linked_transaction_ids?.length" class="space-y-1.5 rounded-lg border border-[var(--ll-border)] px-3 py-2">
+              <div class="text-xs text-[var(--ll-muted)]">{{ t('invoices.receipts_split_hint') }}</div>
+              <div v-for="txId in rForm.linked_transaction_ids" :key="txId" class="flex items-center gap-2">
+                <Icon name="link" :size="16" class="shrink-0 text-green-600 dark:text-green-400" />
+                <span class="flex-1 truncate text-sm">{{ txSummary(txId) }}</span>
+              </div>
+              <Btn variant="ghost" size="sm" icon="link_off" class="text-red-600 dark:text-red-400" :title="t('invoices.receipts_unlink')" @click="unassignSplitTx">{{ t('invoices.receipts_unlink') }}</Btn>
+            </div>
             <Btn v-else variant="soft" size="sm" icon="link" @click="openAssignTx">{{ t('invoices.receipts_assign_tx') }}</Btn>
           </div>
           <label class="block">
@@ -988,8 +1004,10 @@
       </template>
     </Modal>
 
-    <!-- Auto-Zuordnen: review + apply server-suggested receipt<->transaction links
-         (incl. several receipts summing to one charge, e.g. a split Amazon order). -->
+    <!-- Auto-Zuordnen: review + apply server-suggested receipt<->transaction links, both
+         directions — several receipts summing to one charge (e.g. a split Amazon
+         order) AND one receipt summing to several charges (e.g. one INWX invoice
+         settled by two separate bookings). -->
     <Modal v-model="matchDialog" :title="t('invoices.auto_match')" width="640px">
       <div class="space-y-3">
         <div v-if="matchDuplicates.length" class="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
@@ -1011,11 +1029,30 @@
           </div>
           <span class="shrink-0 font-mono text-sm tabular-nums">{{ money(g.total) }}</span>
         </label>
-        <div v-if="!matchGroups.length" class="py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('invoices.match_none') }}</div>
+        <!-- The inverse case: one receipt that no single transaction matches, but a
+             combination of several does (e.g. one INWX invoice settled by two
+             separate charges). Applying links the receipt to ALL of them. -->
+        <label
+          v-for="g in splitGroups" :key="'split-' + g.receipt_id"
+          class="flex items-start gap-3 rounded-lg border border-[var(--ll-border)] px-3 py-2.5"
+        >
+          <input v-model="g.accepted" type="checkbox" class="mt-1">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium">{{ receiptLabel(g.receipt_id) }}</span>
+              <Badge tone="info">{{ t('invoices.match_reason_split') }}</Badge>
+            </div>
+            <div class="mt-0.5 text-xs text-[var(--ll-muted)]">
+              {{ g.transaction_ids.map((id) => txSummary(id)).join(' + ') }}
+            </div>
+          </div>
+          <span class="shrink-0 font-mono text-sm tabular-nums">{{ money(g.total) }}</span>
+        </label>
+        <div v-if="!matchGroups.length && !splitGroups.length" class="py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('invoices.match_none') }}</div>
       </div>
       <template #footer>
         <Btn variant="ghost" @click="matchDialog = false">{{ t('common.cancel') }}</Btn>
-        <Btn v-if="matchGroups.length" variant="solid" :loading="matchApplying" @click="applyMatches">{{ t('invoices.match_apply') }}</Btn>
+        <Btn v-if="matchGroups.length || splitGroups.length" variant="solid" :loading="matchApplying" @click="applyMatches">{{ t('invoices.match_apply') }}</Btn>
       </template>
     </Modal>
 
@@ -1373,7 +1410,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel } from '@spa/ui';
 import type { AlignedData, Options } from 'uplot';
-import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type ReceiptDuplicate } from '@spa/stores/finance';
+import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, VersionConflict } from '@spa/api/client';
@@ -1510,7 +1547,7 @@ function rSortValue(r: Receipt, key: string): unknown {
     case 'name': return r.name;
     case 'amount': return r.amount != null ? Number(r.amount) : null;
     case 'category': return r.category;
-    case 'linked': return r.bank_transaction_id != null ? 1 : 0;
+    case 'linked': return (r.bank_transaction_id != null || (r.linked_transaction_ids?.length ?? 0) > 0) ? 1 : 0;
     default: return null;
   }
 }
@@ -1533,10 +1570,11 @@ function openReceiptWorkspace(r: Receipt) { editReceipt(r); rWorkspace.value = t
 interface RForm {
   id?: number; version?: number; name: string; category: string; tags: string[]; vat: string; note: string; partner_id: number | null;
   amount: string; currency: string; date: string; order_ref: string; doc_number: string; bank_transaction_id: number | null;
+  linked_transaction_ids: number[] | null;
 }
 const rForm = reactive<RForm>({
   name: '', category: '', tags: [], vat: '', note: '', partner_id: null,
-  amount: '', currency: '', date: '', order_ref: '', doc_number: '', bank_transaction_id: null,
+  amount: '', currency: '', date: '', order_ref: '', doc_number: '', bank_transaction_id: null, linked_transaction_ids: null,
 });
 const CURRENCY_OPTIONS = [
   { title: '—', value: '' }, { title: 'EUR', value: 'EUR' }, { title: 'USD', value: 'USD' },
@@ -1547,8 +1585,9 @@ const CURRENCY_OPTIONS = [
 const assignTxDialog = ref(false);
 const assignTxQuery = ref('');
 function openAssignTx() { assignTxQuery.value = ''; assignTxDialog.value = true; }
-function pickAssignTx(id: number) { rForm.bank_transaction_id = id; assignTxDialog.value = false; }
+function pickAssignTx(id: number) { rForm.bank_transaction_id = id; rForm.linked_transaction_ids = null; assignTxDialog.value = false; }
 function unassignTx() { rForm.bank_transaction_id = null; }
+function unassignSplitTx() { rForm.linked_transaction_ids = null; }
 
 // Project form
 const prjDialog = ref(false);
@@ -1867,15 +1906,26 @@ const bankTransactions = computed(() => {
 });
 
 // ---- Receipt <-> transaction linking (auto/manual assignment) ----
-// Standalone receipts ("Fremdbelege") linked to a transaction via bank_transaction_id
-// — distinct from a transaction's own embedded receipts[] (direct-upload reconcile).
-function standaloneReceiptsForTx(txId: number): Receipt[] { return f.standaloneReceipts.filter((r) => r.bank_transaction_id === txId); }
+// Standalone receipts ("Fremdbelege") linked to a transaction either via
+// bank_transaction_id (the common single-link case) or, for a split payment (one
+// receipt settled by several separate charges), via linked_transaction_ids —
+// distinct from a transaction's own embedded receipts[] (direct-upload reconcile).
+function standaloneReceiptsForTx(txId: number): Receipt[] {
+  return f.standaloneReceipts.filter((r) => r.bank_transaction_id === txId || (r.linked_transaction_ids ?? []).includes(txId));
+}
 function isTxDocumented(tx: BankTransaction): boolean { return (tx.receipts?.length ?? 0) > 0 || standaloneReceiptsForTx(tx.id).length > 0; }
 // Candidate pool for auto-pick/suggestions: expense transactions with no receipt yet.
 const unlinkedTransactions = computed<BankTransaction[]>(() => f.transactions.filter((t) => t.amount < 0 && !isTxDocumented(t)));
 function txSummary(id: number): string {
   const t = f.transactions.find((x) => x.id === id);
   return t ? `${fmtDate(t.date)} · ${t.counterparty || '—'} · ${money(t.amount)}` : `#${id}`;
+}
+// The receipts table's link badge: either the single linked transaction, or —
+// for a split payment — every transaction it's linked to, joined together.
+function receiptLinkSummary(r: Receipt): string | null {
+  if (r.bank_transaction_id != null) return txSummary(r.bank_transaction_id);
+  if (r.linked_transaction_ids?.length) return r.linked_transaction_ids.map((id) => txSummary(id)).join(' + ');
+  return null;
 }
 // Manual "Buchung zuordnen" picker: ranked suggestions when the receipt has a
 // recognised amount (fuzzy/FX-aware, a human reviews it here), else every unlinked
@@ -2029,7 +2079,10 @@ async function delTxReceipt(r: import('@spa/stores/finance').TxReceipt) {
   } catch { error(t('common.error')); }
 }
 async function unlinkStandaloneReceipt(r: Receipt) {
-  try { await f.updateReceipt(r.id, { bank_transaction_id: null, version: r.version }); await f.load(); success(t('common.saved')); }
+  // Clears whichever link is set — the single bank_transaction_id, or (for a split
+  // payment) linked_transaction_ids — regardless of which transaction's modal this
+  // was clicked from: unlinking undocuments the receipt entirely, not per-charge.
+  try { await f.updateReceipt(r.id, { bank_transaction_id: null, linked_transaction_ids: null, version: r.version }); await f.load(); success(t('common.saved')); }
   catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); }
 }
 
@@ -2215,7 +2268,7 @@ async function delPartner(p: Partner) {
 function newReceipt() {
   Object.assign(rForm, {
     id: undefined, version: undefined, name: '', category: '', tags: [], vat: '', note: '', partner_id: null,
-    amount: '', currency: '', date: '', order_ref: '', doc_number: '', bank_transaction_id: null,
+    amount: '', currency: '', date: '', order_ref: '', doc_number: '', bank_transaction_id: null, linked_transaction_ids: null,
   });
   rFile.value = null; lastOcrText.value = ''; rDialog.value = true;
 }
@@ -2451,6 +2504,7 @@ function editReceipt(r: Receipt) {
     // Same full-ISO-datetime-vs-<input type="date"> mismatch as invoices/transactions.
     date: r.date ? String(r.date).slice(0, 10) : '',
     order_ref: r.order_ref ?? '', doc_number: r.doc_number ?? '', bank_transaction_id: r.bank_transaction_id,
+    linked_transaction_ids: r.linked_transaction_ids ?? null,
   });
   rFile.value = null;
 }
@@ -2463,7 +2517,7 @@ async function saveReceipt() {
         vat: rForm.vat || null, note: rForm.note || null, partner_id: rForm.partner_id,
         amount: rForm.amount.trim() === '' ? null : Number(rForm.amount), currency: rForm.currency || null,
         date: rForm.date || null, order_ref: rForm.order_ref || null, doc_number: rForm.doc_number || null,
-        bank_transaction_id: rForm.bank_transaction_id, version: rForm.version,
+        bank_transaction_id: rForm.bank_transaction_id, linked_transaction_ids: rForm.linked_transaction_ids, version: rForm.version,
       };
       await f.updateReceipt(rForm.id, body);
     } else {
@@ -2500,10 +2554,12 @@ async function delReceipt(r: Receipt) {
 // ReceiptMatcher — handles the many-receipts-for-one-charge case, e.g. Amazon
 // splitting an order into several shipment invoices settled by one card charge). ----
 interface ReviewGroup extends ReceiptMatchGroup { accepted: boolean }
+interface SplitReviewGroup extends SplitPaymentGroup { accepted: boolean }
 const matchDialog = ref(false);
 const matchBusy = ref(false);
 const matchApplying = ref(false);
 const matchGroups = ref<ReviewGroup[]>([]);
+const splitGroups = ref<SplitReviewGroup[]>([]);
 const matchDuplicates = ref<ReceiptDuplicate[]>([]);
 function receiptLabel(id: number): string { const r = f.standaloneReceipts.find((x) => x.id === id); return r ? `${r.name} (${money(Number(r.amount ?? 0))})` : `#${id}`; }
 function matchReasonLabel(reason: string): string {
@@ -2542,8 +2598,9 @@ async function runAutoMatch() {
     await backfillReceiptFields();
     const res = await f.receiptMatches();
     matchGroups.value = res.groups.map((g) => ({ ...g, accepted: true }));
+    splitGroups.value = res.splitPayments.map((g) => ({ ...g, accepted: true }));
     matchDuplicates.value = res.duplicates;
-    if (!matchGroups.value.length && !matchDuplicates.value.length) { success(t('invoices.match_none')); return; }
+    if (!matchGroups.value.length && !splitGroups.value.length && !matchDuplicates.value.length) { success(t('invoices.match_none')); return; }
     matchDialog.value = true;
   } catch { error(t('common.error')); } finally { matchBusy.value = false; }
 }
@@ -2559,6 +2616,13 @@ async function applyMatches() {
         try { await f.updateReceipt(id, { bank_transaction_id: g.transaction_id, version: r.version }); linked++; }
         catch { failed++; }
       }
+    }
+    for (const g of splitGroups.value) {
+      if (!g.accepted) continue;
+      const r = f.standaloneReceipts.find((x) => x.id === g.receipt_id);
+      if (!r) continue;
+      try { await f.updateReceipt(g.receipt_id, { linked_transaction_ids: g.transaction_ids, version: r.version }); linked++; }
+      catch { failed++; }
     }
     await f.load();
     matchDialog.value = false;

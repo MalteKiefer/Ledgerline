@@ -218,4 +218,104 @@ class ReceiptMatcherTest extends TestCase
 
         $this->assertSame([], $result['groups']);
     }
+
+    public function test_a_receipt_settled_by_two_separate_charges_is_found_by_detect_split_payments(): void
+    {
+        // The real case that motivated this: an INWX invoice (42.07, eight line
+        // items — seven domain transfers + one registration) was billed as one
+        // document but debited as two separate "WWW.INWX.DE" charges a week apart:
+        // 32.55 (the seven transfers) on the 18th, 9.52 (the registration) on the
+        // 25th. No single transaction matches 42.07 at all.
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $pm = $this->account();
+
+        $receipt = $this->receipt(['amount' => 42.07, 'date' => '2026-07-31']);
+        $txA = BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-07-18', 'amount' => -32.55,
+            'counterparty' => 'WWW.INWX.DE', 'sig' => 'sig-inwx-a',
+        ]);
+        $txB = BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-07-25', 'amount' => -9.52,
+            'counterparty' => 'WWW.INWX.DE', 'sig' => 'sig-inwx-b',
+        ]);
+
+        $result = app(ReceiptMatcher::class)->detectSplitPayments();
+
+        $this->assertCount(1, $result);
+        $this->assertSame($receipt->id, $result[0]['receipt_id']);
+        $this->assertSame('sum', $result[0]['reason']);
+        $this->assertEqualsWithDelta(42.07, $result[0]['total'], 0.001);
+        $ids = $result[0]['transaction_ids'];
+        sort($ids);
+        $expected = [$txA->id, $txB->id];
+        sort($expected);
+        $this->assertSame($expected, $ids);
+    }
+
+    public function test_a_transaction_already_claimed_by_another_receipt_is_not_reused_in_a_split(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $pm = $this->account();
+
+        $claimedTx = BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-07-18', 'amount' => -32.55,
+            'counterparty' => 'WWW.INWX.DE', 'sig' => 'sig-claimed',
+        ]);
+        // Already linked to a DIFFERENT, unrelated receipt — off the table for anyone else.
+        $this->receipt(['amount' => 32.55, 'date' => '2026-07-18', 'bank_transaction_id' => $claimedTx->id]);
+        BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-07-25', 'amount' => -9.52,
+            'counterparty' => 'WWW.INWX.DE', 'sig' => 'sig-unclaimed',
+        ]);
+        $this->receipt(['amount' => 42.07, 'date' => '2026-07-31']);
+
+        $result = app(ReceiptMatcher::class)->detectSplitPayments();
+
+        $this->assertSame([], $result);
+    }
+
+    public function test_a_receipt_already_split_linked_is_never_regrouped(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $pm = $this->account();
+
+        $txA = BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-07-18', 'amount' => -32.55,
+            'counterparty' => 'WWW.INWX.DE', 'sig' => 'sig-linked-a',
+        ]);
+        $txB = BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-07-25', 'amount' => -9.52,
+            'counterparty' => 'WWW.INWX.DE', 'sig' => 'sig-linked-b',
+        ]);
+        $this->receipt(['amount' => 42.07, 'date' => '2026-07-31', 'linked_transaction_ids' => [$txA->id, $txB->id]]);
+
+        $result = app(ReceiptMatcher::class)->detectSplitPayments();
+
+        $this->assertSame([], $result);
+    }
+
+    public function test_split_payment_matches_are_owner_scoped(): void
+    {
+        $a = User::factory()->create();
+        $b = User::factory()->create();
+
+        $this->actingAs($a);
+        $pm = $this->account();
+        $this->receipt(['amount' => 42.07, 'date' => '2026-07-31']);
+        BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-07-18', 'amount' => -32.55,
+            'counterparty' => 'WWW.INWX.DE', 'sig' => 'sig-owner-scope-a',
+        ]);
+        BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-07-25', 'amount' => -9.52,
+            'counterparty' => 'WWW.INWX.DE', 'sig' => 'sig-owner-scope-b',
+        ]);
+
+        $this->actingAs($b);
+        $result = app(ReceiptMatcher::class)->detectSplitPayments();
+        $this->assertSame([], $result);
+    }
 }
