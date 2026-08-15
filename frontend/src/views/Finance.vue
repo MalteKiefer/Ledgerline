@@ -1416,6 +1416,7 @@ import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, VersionConflict } from '@spa/api/client';
 import { analyzeReceiptText, buildReceiptName } from '@spa/shared/receipt-ocr';
 import { autoPick, suggestBookings, type BookingSuggestion } from '@spa/shared/receipt-match';
+import { fileSig } from '@spa/shared/file-sig';
 import { matchInvoices, type InvoiceMatch } from '@spa/shared/invoice-match';
 import { parseBankCsv } from '@spa/shared/bank-csv';
 import {
@@ -2456,12 +2457,23 @@ async function processInboxFiles(files: File[]) {
   inboxTotal.value = files.length;
   inboxDone.value = 0;
   let failed = 0;
+  let skippedDupes = 0;
+  // Content-dedup: a byte-identical file already on file (or repeated within
+  // THIS same drop, e.g. the same file picked twice) never re-triggers an OCR
+  // call or upload — real case: 27 files dropped, several hit the OCR rate
+  // limit and failed, so the whole 27 got re-dropped to retry, silently
+  // re-uploading the ones that had already succeeded. Seeded from the already
+  // loaded receipts; growed as this batch's own uploads land.
+  const knownSigs = new Set(f.standaloneReceipts.map((r) => r.sig).filter((s): s is string => !!s));
   // Track transactions this batch already claimed so two files in the same drop
   // can't both auto-pick the same booking (the batch Auto-Zuordnen pass afterwards
   // still catches anything ambiguous, incl. several receipts summing to one charge).
   const claimed = new Set<number>();
   for (const file of files) {
     try {
+      const sig = await fileSig(file);
+      if (knownSigs.has(sig)) { skippedDupes++; inboxDone.value++; continue; }
+
       const ocrFd = new FormData();
       ocrFd.append('file', file);
       const res = await api.upload<{ text: string }>('/api/v1/invoices/ocr', ocrFd);
@@ -2475,6 +2487,7 @@ async function processInboxFiles(files: File[]) {
       const suggestedName = buildReceiptName(a.date, a.merchant, a.number);
       const fd = new FormData();
       fd.append('file', file);
+      fd.append('sig', sig);
       if (suggestedName) fd.append('name', suggestedName);
       if (a.category) fd.append('category', a.category);
       if (a.vat) fd.append('vat', a.vat);
@@ -2487,13 +2500,16 @@ async function processInboxFiles(files: File[]) {
       if (pick) fd.append('bank_transaction_id', String(pick.id));
       fd.append('ocr', res.text.slice(0, 200000));
       for (const tag of a.tags) fd.append('tags[]', tag);
-      await f.createReceipt(fd);
+      const created = await f.createReceipt(fd);
+      if (created.duplicate) skippedDupes++;
+      knownSigs.add(sig);
     } catch { failed++; }
     inboxDone.value++;
   }
   await f.load();
   inboxBusy.value = false;
   if (failed) error(t('invoices.inbox_some_failed', { failed: String(failed), total: String(files.length) }));
+  else if (skippedDupes) success(t('invoices.inbox_done_with_dupes', { count: String(files.length - skippedDupes), dupes: String(skippedDupes) }));
   else success(t('invoices.inbox_done', { count: String(files.length) }));
 }
 function editReceipt(r: Receipt) {
@@ -2525,6 +2541,7 @@ async function saveReceipt() {
       if (!file) { error(t('common.error')); saving.value = false; return; }
       const fd = new FormData();
       fd.append('file', file);
+      fd.append('sig', await fileSig(file));
       if (rForm.name) fd.append('name', rForm.name);
       if (rForm.category) fd.append('category', rForm.category);
       if (rForm.vat) fd.append('vat', rForm.vat);
@@ -2538,7 +2555,12 @@ async function saveReceipt() {
       if (rForm.bank_transaction_id != null) fd.append('bank_transaction_id', String(rForm.bank_transaction_id));
       if (lastOcrText.value) fd.append('ocr', lastOcrText.value.slice(0, 200000));
       for (const tag of rForm.tags) fd.append('tags[]', tag);
-      await f.createReceipt(fd);
+      const created = await f.createReceipt(fd);
+      if (created.duplicate) {
+        rDialog.value = false; rWorkspace.value = false; await f.load();
+        success(t('invoices.receipt_already_uploaded', { name: created.receipt.name }));
+        return;
+      }
     }
     rDialog.value = false; rWorkspace.value = false; await f.load(); success(t('common.saved'));
   } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); } finally { saving.value = false; }
