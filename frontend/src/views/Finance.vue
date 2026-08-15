@@ -158,6 +158,7 @@
         <TextField v-model="q" :placeholder="t('common.search')" icon="search" class="w-full sm:w-72" />
       </template>
       <template #actions>
+        <Btn variant="ghost" size="sm" icon="join_inner" :loading="invMatchBusy" @click="runInvoiceAutoMatch">{{ t('invoices.auto_match') }}</Btn>
         <Btn variant="solid" size="sm" icon="add" @click="newInvoice">{{ t('invoices.new') }}</Btn>
       </template>
       <div class="overflow-x-auto">
@@ -178,7 +179,10 @@
               <td class="px-4 py-2.5">{{ custName(item) }}</td>
               <td class="px-4 py-2.5">{{ fmtDate(item.issue_date) }}</td>
               <td class="px-4 py-2.5 text-right font-mono tabular-nums">{{ money(Number(item.gross ?? 0)) }}</td>
-              <td class="px-4 py-2.5"><Badge :tone="statusTone(item.status)">{{ t('invoices.status_' + item.status) }}</Badge></td>
+              <td class="px-4 py-2.5">
+                <Badge :tone="statusTone(item.status)">{{ t('invoices.status_' + item.status) }}</Badge>
+                <Icon v-if="isInvoiceLinked(item.id)" name="link" size="14" class="ml-1 inline align-middle text-[var(--ll-muted)]" :title="t('invoices.linked_badge')" />
+              </td>
               <td class="px-4 py-2.5">
                 <div class="flex items-center justify-end gap-0.5">
                   <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editInvoice(item)" />
@@ -258,7 +262,7 @@
     <!-- Receipts — the whole card is a drop zone: drop one or many files to auto-capture
          them (OCR + recognise + auto-match/create a partner), Candis-inbox-style. -->
     <Card
-      v-show="tab === 'receipts'" :title="t('invoices.receipts_title')" :body-class="'p-0'"
+      v-show="tab === 'receipts'" :body-class="'p-0'"
       class="relative" @dragover.prevent="inboxDrag = true" @dragenter.prevent="inboxDrag = true"
       @dragleave.prevent="inboxDrag = false" @drop.prevent="onInboxDrop"
     >
@@ -272,10 +276,14 @@
           <div class="text-sm font-medium">{{ t('invoices.inbox_drop_hint') }}</div>
         </div>
       </div>
+      <template #header>
+        <TextField v-model="rq" :placeholder="t('common.search')" icon="search" class="w-full sm:w-72" />
+      </template>
       <template #actions>
         <div class="flex items-center gap-2">
           <Btn variant="ghost" size="sm" icon="sell" @click="catDialog = true">{{ t('invoices.categories') }}</Btn>
           <Btn variant="ghost" size="sm" icon="join_inner" :loading="matchBusy" @click="runAutoMatch">{{ t('invoices.auto_match') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="document_scanner" :loading="bulkRescanBusy" @click="runBulkRescan">{{ t('invoices.ocr_rescan_all') }}</Btn>
           <input ref="inboxInput" type="file" multiple accept="application/pdf,image/*" class="hidden" @change="onInboxPick">
           <Btn variant="soft" size="sm" icon="inbox" :loading="inboxBusy" @click="inboxInput?.click()">{{ t('invoices.inbox_upload') }}</Btn>
           <Btn variant="solid" size="sm" icon="add" @click="newReceipt">{{ t('common.add') }}</Btn>
@@ -294,13 +302,12 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in f.standaloneReceipts" :key="item.id" class="border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5">
-              <td class="px-4 py-2.5">
-                <div class="flex items-center gap-2">
-                  <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary-500/12 text-primary-600 dark:text-primary-300"><Icon name="receipt_long" :size="18" /></span>
-                  <span>{{ item.name }}</span>
-                </div>
-              </td>
+            <tr
+              v-for="item in filteredReceipts" :key="item.id"
+              class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5"
+              @click="openReceiptWorkspace(item)"
+            >
+              <td class="px-4 py-2.5 font-medium">{{ item.name }}</td>
               <td class="px-4 py-2.5">{{ fmtDate(item.date ?? item.created_at) }}</td>
               <td class="px-4 py-2.5 text-right font-mono tabular-nums">{{ item.amount != null ? money(Number(item.amount)) : '—' }}</td>
               <td class="px-4 py-2.5">
@@ -309,24 +316,17 @@
                 <span v-else class="text-[var(--ll-muted)]">—</span>
               </td>
               <td class="px-4 py-2.5">
-                <button
-                  v-if="item.bank_transaction_id != null" type="button"
-                  class="inline-flex items-center gap-1 rounded-md bg-green-500/12 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400"
-                  :title="txSummary(item.bank_transaction_id)" @click="go('bank')"
-                >
-                  <Icon name="link" :size="14" />{{ t('invoices.receipts_linked') }}
-                </button>
+                <Icon v-if="item.bank_transaction_id != null" name="link" size="14" class="inline align-middle text-[var(--ll-muted)]" :title="txSummary(item.bank_transaction_id)" />
                 <span v-else class="text-[var(--ll-muted)]">—</span>
               </td>
-              <td class="px-4 py-2.5">
+              <td class="px-4 py-2.5" @click.stop>
                 <div class="flex items-center justify-end gap-0.5">
-                  <Btn variant="ghost" size="sm" icon="open_in_new" :title="t('common.open')" @click="openPreview(f.receiptFileUrl(item.id), item.name, item.mime)" />
-                  <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editReceipt(item)" />
+                  <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="openReceiptWorkspace(item)" />
                   <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delReceipt(item)" />
                 </div>
               </td>
             </tr>
-            <tr v-if="!f.standaloneReceipts.length"><td colspan="6" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.receipts_none') }}</td></tr>
+            <tr v-if="!filteredReceipts.length"><td colspan="6" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('invoices.receipts_none') }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -468,7 +468,10 @@
       <div v-if="draft">
         <!-- header actions + status -->
         <div class="mb-3 flex items-center gap-1">
-          <Select v-if="draft.id && !draft.imported" v-model="draft.status" :options="statusOptions" class="w-40" />
+          <!-- Paid is terminal: once settled, the status can't be flipped back to
+               open/sent from here (GoBD — a correction goes through Storno, not a
+               silent status edit). Same read-only badge as an imported invoice. -->
+          <Select v-if="draft.id && !draft.imported && draft.status !== 'paid'" v-model="draft.status" :options="statusOptions" class="w-40" />
           <Badge v-else-if="draft.status" :tone="statusTone(draft.status)">{{ t('invoices.status_' + draft.status) }}</Badge>
           <div v-if="draft.id && draft.number" class="ml-auto flex items-center gap-0.5">
             <Btn variant="ghost" size="sm" icon="mail" :title="t('invoices.email_send')" @click="doEmail(draft as Invoice)" />
@@ -477,7 +480,7 @@
           </div>
         </div>
 
-        <div v-if="draft.imported" class="mb-3 rounded-lg bg-blue-500/10 px-3 py-2 text-sm text-blue-600 dark:text-blue-400">{{ t('invoices.status_final') }}</div>
+        <div v-if="draft.imported" class="mb-3 rounded-lg bg-blue-500/10 px-3 py-2 text-sm text-blue-600 dark:text-blue-400">{{ t('invoices.imported_readonly') }}</div>
 
         <fieldset :disabled="isLocked" class="m-0 border-0 p-0">
           <div class="mb-3">
@@ -841,6 +844,106 @@
       </template>
     </Modal>
 
+    <!-- Receipt workspace: opened by clicking a row. Preview + edit fields side by
+         side in ONE surface — no bouncing between a read-only preview modal and a
+         separate edit modal via two different buttons. -->
+    <Modal v-model="rWorkspace" :title="rForm.name || t('common.edit')" width="1100px">
+      <div class="flex flex-col gap-5 lg:flex-row">
+        <div class="min-w-0 flex-1">
+          <div class="grid h-[60vh] place-items-center overflow-hidden rounded-lg border border-[var(--ll-border)] bg-black/[0.02] dark:bg-white/5">
+            <img v-if="rWorkspaceIsImage" :src="f.receiptFileUrl(rForm.id ?? 0)" class="max-h-full max-w-full object-contain" :alt="rForm.name">
+            <iframe v-else-if="rWorkspaceIsPdf" :src="f.receiptFileUrl(rForm.id ?? 0)" class="h-full w-full border-0"></iframe>
+            <div v-else class="p-6 text-center text-sm text-[var(--ll-muted)]">
+              <Icon name="description" :size="32" class="mx-auto mb-2" />
+              {{ t('invoices.receipt_no_preview') }}
+            </div>
+          </div>
+          <div class="mt-2 flex justify-end">
+            <Btn variant="ghost" size="sm" tag="a" :href="f.receiptFileUrl(rForm.id ?? 0)" target="_blank" icon="open_in_new">{{ t('invoices.preview_new_tab') }}</Btn>
+          </div>
+        </div>
+        <div class="w-full space-y-3 lg:w-80 lg:shrink-0">
+          <div class="flex justify-end">
+            <Btn variant="soft" size="sm" icon="document_scanner" :loading="rescanBusy" @click="rescanReceipt">{{ t('invoices.ocr_rescan') }}</Btn>
+          </div>
+          <TextField v-model="rForm.name" :label="t('invoices.receipt_rename')" />
+          <div class="grid grid-cols-2 gap-3">
+            <TextField v-model="rForm.amount" :label="t('invoices.gross')" type="number" />
+            <TextField v-model="rForm.date" :label="t('common.date')" type="date" />
+          </div>
+          <TextField v-model="rForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" list="fin-cats" />
+          <div>
+            <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipt_tags') }}</span>
+            <div class="flex flex-wrap items-center gap-1.5 rounded-lg border border-[var(--ll-border)] px-2 py-1.5">
+              <span v-for="(tag, i) in rForm.tags" :key="i" class="inline-flex items-center gap-1 rounded-md bg-primary-500/12 px-2 py-0.5 text-xs font-medium text-primary-600 dark:text-primary-300">
+                {{ tag }}
+                <button type="button" class="grid place-items-center" @click="rForm.tags.splice(i, 1)"><Icon name="close" :size="14" /></button>
+              </span>
+              <input
+                class="min-w-[6rem] flex-1 bg-transparent text-sm text-[var(--ll-fg)] focus:outline-none"
+                @keyup.enter="(($event.target as HTMLInputElement).value.trim()) && (rForm.tags.push(($event.target as HTMLInputElement).value.trim()), (($event.target as HTMLInputElement).value = ''))"
+              >
+            </div>
+          </div>
+          <Select
+            :label="t('invoices.tab_partners')"
+            :model-value="rForm.partner_id ?? ''"
+            :options="[{ title: '—', value: '' }, ...partnerOptions.map((o) => ({ title: o.name, value: o.id }))]"
+            @update:model-value="rForm.partner_id = $event ? Number($event) : null"
+          />
+          <TextField v-model="rForm.vat" :label="t('invoices.vat')" />
+          <div>
+            <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.tx_receipts') }}</span>
+            <div v-if="rForm.bank_transaction_id != null" class="flex items-center gap-2 rounded-lg border border-[var(--ll-border)] px-3 py-2">
+              <Icon name="link" :size="16" class="shrink-0 text-green-600 dark:text-green-400" />
+              <span class="flex-1 truncate text-sm">{{ txSummary(rForm.bank_transaction_id) }}</span>
+              <Btn variant="ghost" size="sm" @click="openAssignTx">{{ t('common.edit') }}</Btn>
+              <Btn variant="ghost" size="sm" icon="link_off" class="text-red-600 dark:text-red-400" :title="t('invoices.receipts_unlink')" @click="unassignTx" />
+            </div>
+            <Btn v-else variant="soft" size="sm" icon="link" @click="openAssignTx">{{ t('invoices.receipts_assign_tx') }}</Btn>
+          </div>
+          <label class="block">
+            <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipt_note') }}</span>
+            <textarea
+              v-model="rForm.note" rows="2"
+              class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+            />
+          </label>
+        </div>
+      </div>
+      <template #footer>
+        <Btn variant="ghost" @click="rWorkspace = false">{{ t('common.cancel') }}</Btn>
+        <Btn variant="solid" :loading="saving" @click="saveReceipt">{{ t('common.save') }}</Btn>
+      </template>
+    </Modal>
+
+    <!-- Bulk rescan: re-run OCR recognition against every already-uploaded receipt's
+         stored text and review what changed, per document, before applying. -->
+    <Modal v-model="bulkRescanDialog" :title="t('invoices.ocr_rescan_all')" width="640px">
+      <div class="space-y-3">
+        <label
+          v-for="row in bulkRescanRows" :key="row.id"
+          class="flex items-start gap-3 rounded-lg border border-[var(--ll-border)] px-3 py-2.5"
+        >
+          <input v-model="row.accepted" type="checkbox" class="mt-1">
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-medium">{{ row.name }}</div>
+            <div class="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs text-[var(--ll-muted)]">
+              <div v-if="row.date"><span class="font-medium text-[var(--ll-fg)]">{{ t('common.date') }}:</span> {{ fmtDate(row.date) }}</div>
+              <div v-if="row.total != null"><span class="font-medium text-[var(--ll-fg)]">{{ t('invoices.gross') }}:</span> {{ money(row.total) }}</div>
+              <div v-if="row.category"><span class="font-medium text-[var(--ll-fg)]">{{ t('invoices.receipt_category') }}:</span> {{ row.category }}</div>
+              <div v-if="row.suggestedName && row.suggestedName !== row.name" class="col-span-2 truncate"><span class="font-medium text-[var(--ll-fg)]">{{ t('invoices.receipt_rename') }}:</span> {{ row.suggestedName }}</div>
+            </div>
+          </div>
+        </label>
+        <div v-if="!bulkRescanRows.length" class="py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('invoices.ocr_rescan_all_none') }}</div>
+      </div>
+      <template #footer>
+        <Btn variant="ghost" @click="bulkRescanDialog = false">{{ t('common.cancel') }}</Btn>
+        <Btn v-if="bulkRescanRows.length" variant="solid" :loading="bulkRescanApplying" @click="applyBulkRescan">{{ t('invoices.match_apply') }}</Btn>
+      </template>
+    </Modal>
+
     <!-- Manual "assign a booking" picker: ranked suggestions (amount known) or a
          searchable list of every unlinked transaction (amount unknown). -->
     <Modal v-model="assignTxDialog" :title="t('invoices.receipts_assign_tx')" width="480px">
@@ -894,6 +997,32 @@
       <template #footer>
         <Btn variant="ghost" @click="matchDialog = false">{{ t('common.cancel') }}</Btn>
         <Btn v-if="matchGroups.length" variant="solid" :loading="matchApplying" @click="applyMatches">{{ t('invoices.match_apply') }}</Btn>
+      </template>
+    </Modal>
+
+    <!-- Auto-Zuordnen: review + apply invoice<->transaction links (marks the
+         invoice paid, or for an already-paid one just backfills the link). -->
+    <Modal v-model="invMatchDialog" :title="t('invoices.match_run')" width="640px">
+      <div class="space-y-3">
+        <label
+          v-for="m in invMatches" :key="m.invoiceId + '-' + m.txId"
+          class="flex items-start gap-3 rounded-lg border border-[var(--ll-border)] px-3 py-2.5"
+        >
+          <input v-model="m.accepted" type="checkbox" class="mt-1">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium">{{ invoiceLabel(m.invoiceId) }}</span>
+              <Badge tone="info">{{ invMatchReasonLabel(m.reason) }}</Badge>
+              <Badge v-if="!m.markPaid" tone="gray">{{ t('invoices.linked_badge') }}</Badge>
+            </div>
+            <div class="mt-0.5 text-xs text-[var(--ll-muted)]">{{ txSummary(m.txId) }}</div>
+          </div>
+        </label>
+        <div v-if="!invMatches.length" class="py-6 text-center text-sm text-[var(--ll-muted)]">{{ t('invoices.inv_match_none') }}</div>
+      </div>
+      <template #footer>
+        <Btn variant="ghost" @click="invMatchDialog = false">{{ t('common.cancel') }}</Btn>
+        <Btn v-if="invMatches.length" variant="solid" :loading="invMatchApplying" @click="applyInvoiceMatches">{{ t('invoices.match_apply') }}</Btn>
       </template>
     </Modal>
 
@@ -1231,6 +1360,7 @@ import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, VersionConflict } from '@spa/api/client';
 import { analyzeReceiptText, buildReceiptName } from '@spa/shared/receipt-ocr';
 import { autoPick, suggestBookings, type BookingSuggestion } from '@spa/shared/receipt-match';
+import { matchInvoices, type InvoiceMatch } from '@spa/shared/invoice-match';
 import { parseBankCsv } from '@spa/shared/bank-csv';
 import {
   type PrintInvoice, type PrintCompany, type PrintLine,
@@ -1326,6 +1456,28 @@ const rDialog = ref(false);
 const rFile = ref<File | File[] | null>(null);
 const ocrBusy = ref(false);
 const lastOcrText = ref('');
+// The receipts table + its edit dialog used to be two disconnected surfaces — a
+// document could only be opened (read-only preview) OR edited, via two separate
+// buttons/modals. `rq`/`filteredReceipts` gives it the same search box as the
+// invoices table; `rWorkspace` is a single wide modal (preview left, edit
+// fields as a sidebar right) opened by clicking a row — no bouncing between
+// two dialogs to see the document while correcting its fields.
+const rq = ref('');
+const filteredReceipts = computed(() => {
+  const s = rq.value.trim().toLowerCase();
+  if (!s) return f.standaloneReceipts;
+  return f.standaloneReceipts.filter((r) => (
+    r.name.toLowerCase().includes(s)
+    || (r.category ?? '').toLowerCase().includes(s)
+    || (r.tags ?? []).some((t) => t.toLowerCase().includes(s))
+    || (partnerOptions.value.find((p) => p.id === r.partner_id)?.name ?? '').toLowerCase().includes(s)
+  ));
+});
+const rWorkspace = ref(false);
+const rWorkspaceMime = computed(() => f.standaloneReceipts.find((x) => x.id === rForm.id)?.mime ?? null);
+const rWorkspaceIsImage = computed(() => !!rWorkspaceMime.value && rWorkspaceMime.value.startsWith('image/'));
+const rWorkspaceIsPdf = computed(() => rWorkspaceMime.value === 'application/pdf');
+function openReceiptWorkspace(r: Receipt) { editReceipt(r); rWorkspace.value = true; }
 interface RForm {
   id?: number; version?: number; name: string; category: string; tags: string[]; vat: string; note: string; partner_id: number | null;
   amount: string; date: string; order_ref: string; doc_number: string; bank_transaction_id: number | null;
@@ -1501,7 +1653,14 @@ function newInvoice() {
   invDialog.value = true;
 }
 function editInvoice(i: Invoice) {
-  draft.value = { ...i };
+  // issue_date/due_date come back from the API as full ISO datetimes (Laravel
+  // serialises `date`-cast columns the same as `datetime`-cast ones) — a native
+  // <input type="date"> silently renders blank unless fed exactly YYYY-MM-DD.
+  draft.value = {
+    ...i,
+    issue_date: i.issue_date ? String(i.issue_date).slice(0, 10) : i.issue_date,
+    due_date: i.due_date ? String(i.due_date).slice(0, 10) : i.due_date,
+  };
   lines.value = Array.isArray(i.lines) ? i.lines.map((l) => ({ ...l })) : [];
   loadCustomerFields(i.customer);
   invDialog.value = true;
@@ -1640,7 +1799,8 @@ function newTx() { Object.assign(txForm, blankTx()); txDialog.value = true; }
 function editTx(tx: BankTransaction) {
   Object.assign(txForm, {
     id: tx.id, version: tx.version, payment_method_id: tx.payment_method_id,
-    date: tx.date ?? '', amount: String(tx.amount ?? ''), counterparty: tx.counterparty ?? '',
+    // Same full-ISO-datetime-vs-<input type="date"> mismatch as invoices/receipts.
+    date: tx.date ? String(tx.date).slice(0, 10) : '', amount: String(tx.amount ?? ''), counterparty: tx.counterparty ?? '',
     counterparty_iban: tx.counterparty_iban ?? '', bic: tx.bic ?? '', purpose: tx.purpose ?? '',
     booking_text: tx.booking_text ?? '', vat_cat: tx.vat_cat ?? '',
   });
@@ -2020,6 +2180,58 @@ async function rescanReceipt() {
   } finally { rescanBusy.value = false; }
 }
 
+// ---- Bulk rescan: re-run recognition against every already-uploaded receipt's
+// stored OCR text (no re-upload) and review what it found, per document, before
+// applying — the batch counterpart to the single-receipt rescan above. ----
+interface BulkRescanRow { id: number; name: string; suggestedName: string; date: string | null; total: number | null; category: string | null; accepted: boolean }
+const bulkRescanDialog = ref(false);
+const bulkRescanBusy = ref(false);
+const bulkRescanApplying = ref(false);
+const bulkRescanRows = ref<BulkRescanRow[]>([]);
+function runBulkRescan() {
+  bulkRescanBusy.value = true;
+  try {
+    const rows: BulkRescanRow[] = [];
+    for (const r of f.standaloneReceipts) {
+      if (!r.ocr) continue;
+      const a = analyzeReceiptText(r.ocr, ownNames.value);
+      const suggestedName = buildReceiptName(a.date, a.merchant, a.number) || r.name;
+      const fillsDate = !r.date && !!a.date;
+      const fillsTotal = r.amount == null && a.total != null;
+      const fillsCategory = !r.category && !!a.category;
+      if (!fillsDate && !fillsTotal && !fillsCategory && suggestedName === r.name) continue;
+      rows.push({
+        id: r.id, name: r.name, suggestedName,
+        date: fillsDate ? a.date : null, total: fillsTotal ? a.total : null, category: fillsCategory ? a.category : null,
+        accepted: true,
+      });
+    }
+    bulkRescanRows.value = rows;
+    if (!rows.length) { success(t('invoices.ocr_rescan_all_none')); return; }
+    bulkRescanDialog.value = true;
+  } finally { bulkRescanBusy.value = false; }
+}
+async function applyBulkRescan() {
+  bulkRescanApplying.value = true;
+  let updated = 0; let failed = 0;
+  try {
+    for (const row of bulkRescanRows.value) {
+      if (!row.accepted) continue;
+      const r = f.standaloneReceipts.find((x) => x.id === row.id);
+      if (!r) continue;
+      const body: Record<string, unknown> = { name: row.suggestedName, version: r.version };
+      if (row.date) body.date = row.date;
+      if (row.total != null) body.amount = row.total;
+      if (row.category) body.category = row.category;
+      try { await f.updateReceipt(row.id, body); updated++; } catch { failed++; }
+    }
+    await f.load();
+    bulkRescanDialog.value = false;
+    if (failed) error(t('invoices.match_some_failed', { failed: String(failed) }));
+    else success(t('invoices.ocr_rescan_all_done', { n: String(updated) }));
+  } finally { bulkRescanApplying.value = false; }
+}
+
 // ---- Receipt inbox: drop/pick one or many files, each is captured automatically
 // (OCR'd, recognised, auto-matched/created a partner) without opening a dialog per
 // file — the Candis-style "drop a batch, review afterwards" flow.
@@ -2089,10 +2301,12 @@ function editReceipt(r: Receipt) {
   Object.assign(rForm, {
     id: r.id, version: r.version, name: r.name, category: r.category ?? '',
     tags: Array.isArray(r.tags) ? [...r.tags] : [], vat: r.vat ?? '', note: r.note ?? '', partner_id: r.partner_id,
-    amount: r.amount != null ? String(r.amount) : '', date: r.date ?? '',
+    amount: r.amount != null ? String(r.amount) : '',
+    // Same full-ISO-datetime-vs-<input type="date"> mismatch as invoices/transactions.
+    date: r.date ? String(r.date).slice(0, 10) : '',
     order_ref: r.order_ref ?? '', doc_number: r.doc_number ?? '', bank_transaction_id: r.bank_transaction_id,
   });
-  rFile.value = null; rDialog.value = true;
+  rFile.value = null;
 }
 async function saveReceipt() {
   saving.value = true;
@@ -2125,10 +2339,15 @@ async function saveReceipt() {
       for (const tag of rForm.tags) fd.append('tags[]', tag);
       await f.createReceipt(fd);
     }
-    rDialog.value = false; await f.load(); success(t('common.saved'));
+    rDialog.value = false; rWorkspace.value = false; await f.load(); success(t('common.saved'));
   } catch (e) { if (e instanceof VersionConflict) conflict(); else error(t('common.error')); } finally { saving.value = false; }
 }
-async function delReceipt(r: Receipt) { if (!await confirmAsk(t('invoices.receipt_delete_confirm'), { danger: true })) return; await f.deleteReceipt(r.id); await f.load(); }
+async function delReceipt(r: Receipt) {
+  if (!await confirmAsk(t('invoices.receipt_delete_confirm'), { danger: true })) return;
+  await f.deleteReceipt(r.id);
+  rWorkspace.value = false;
+  await f.load();
+}
 
 // ---- Auto-Zuordnen: batch, retroactive receipt<->transaction linking (server-side
 // ReceiptMatcher — handles the many-receipts-for-one-charge case, e.g. Amazon
@@ -2199,6 +2418,53 @@ async function applyMatches() {
     if (failed) error(t('invoices.match_some_failed', { failed: String(failed) }));
     else success(t('invoices.match_applied', { count: String(linked) }));
   } finally { matchApplying.value = false; }
+}
+
+// ---- Invoice <-> bank transaction auto-assign (the invoice-side mirror of the
+// receipt matcher above: links an issued invoice to the incoming payment that
+// settled it, and marks it paid — or, for an invoice already marked paid on
+// import, just backfills the missing link without touching its status). ----
+function isInvoiceLinked(id: number): boolean { return f.transactions.some((t) => t.invoice_id === id); }
+interface InvReviewRow extends InvoiceMatch { accepted: boolean }
+const invMatchDialog = ref(false);
+const invMatchBusy = ref(false);
+const invMatchApplying = ref(false);
+const invMatches = ref<InvReviewRow[]>([]);
+function invMatchReasonLabel(reason: string): string {
+  return reason === 'number_ref' ? t('invoices.match_reason_number_ref') : t('invoices.match_reason_exact');
+}
+function runInvoiceAutoMatch() {
+  invMatchBusy.value = true;
+  try {
+    const found = matchInvoices(f.invoices, f.transactions);
+    invMatches.value = found.map((m) => ({ ...m, accepted: true }));
+    if (!invMatches.value.length) { success(t('invoices.inv_match_none')); return; }
+    invMatchDialog.value = true;
+  } finally { invMatchBusy.value = false; }
+}
+async function applyInvoiceMatches() {
+  invMatchApplying.value = true;
+  let linked = 0; let failed = 0;
+  try {
+    for (const m of invMatches.value) {
+      if (!m.accepted) continue;
+      const tx = f.transactions.find((x) => x.id === m.txId);
+      const inv = f.invoices.find((x) => x.id === m.invoiceId);
+      if (!tx || !inv) continue;
+      try {
+        await f.updateTransaction(tx.id, { invoice_id: inv.id, invoice_number: inv.number, version: tx.version });
+        if (m.markPaid) {
+          const account = f.paymentMethods.find((p) => p.id === tx.payment_method_id)?.name ?? null;
+          await f.updateInvoice(inv.id, { status: 'paid', paid_at: tx.date, payment_account: account, version: inv.version });
+        }
+        linked++;
+      } catch { failed++; }
+    }
+    await f.load();
+    invMatchDialog.value = false;
+    if (failed) error(t('invoices.match_some_failed', { failed: String(failed) }));
+    else success(t('invoices.match_done', { n: String(linked) }));
+  } finally { invMatchApplying.value = false; }
 }
 
 // ---- Projects ----
