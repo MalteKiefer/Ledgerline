@@ -62,13 +62,18 @@ final class SecurityHeaders
         $response->headers->set('Cross-Origin-Resource-Policy', 'same-origin');
         // Deny access to powerful browser features the app never uses. (The
         // deprecated FLoC `interest-cohort` token was dropped — Chrome removed
-        // FLoC and now logs "Unrecognized feature" for it.)
+        // FLoC and now logs "Unrecognized feature" for it. Same reason
+        // `bluetooth` was dropped too — Brave's Chromium doesn't register Web
+        // Bluetooth as a policy-controlled feature at all and logs the same
+        // "Unrecognized feature" error for it; removing an unrecognised token
+        // grants nothing back, since a browser that doesn't know the feature
+        // ignores the directive either way.)
         $response->headers->set(
             'Permissions-Policy',
             'geolocation=(), camera=(), microphone=(), payment=(), usb=(), '
             .'accelerometer=(), gyroscope=(), magnetometer=(), autoplay=(), '
             .'display-capture=(), fullscreen=(self), '
-            .'serial=(), midi=(), hid=(), bluetooth=(), idle-detection=()'
+            .'serial=(), midi=(), hid=(), idle-detection=()'
         );
 
         // Pin HTTPS only when the deployment is actually served over TLS

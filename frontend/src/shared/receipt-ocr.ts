@@ -202,16 +202,93 @@ export function extractMerchant(text: string, excludeNames: string[] = []): stri
 // "Kiefer Networks   Rechnungsnummer:   2026061702224").
 // The value may contain internal spaces between digit groups (e.g. Telekom's
 // "25 5828 2901 2681") — [^\S\r\n] keeps that on the same line without also
-// swallowing the next line the way a bare \s would.
-const NUMBER_RE = /(?:rechnungs?\s*-?\s*(?:nr|nummer)|invoice\s*(?:no|number|#)|beleg\s*-?\s*nr|rg\s*-?\s*nr|receipt\s*(?:no|number))\.?[^\S\r\n]*[:#]?[^\S\r\n]*([A-Za-z]{0,3}-?[0-9][A-Za-z0-9./-]{0,24}(?:[^\S\r\n][A-Za-z0-9./-]{1,8}){0,4})/i;
+// swallowing the next line the way a bare \s would. IDs sometimes carry an
+// underscore (Backblaze's "021abe1f7af3_158"), hence "_" in the value classes.
+const NUMBER_VALUE = '([A-Za-z]{0,3}-?[0-9][A-Za-z0-9_./-]{0,24}(?:[^\\S\\r\\n][A-Za-z0-9_./-]{1,8}){0,4})';
+const NUMBER_RE = new RegExp(`(?:rechnungs?\\s*-?\\s*(?:nr|nummer)|invoice\\s*(?:no|number|#)|beleg\\s*-?\\s*nr|rg\\s*-?\\s*nr|receipt\\s*(?:no|number))\\.?[^\\S\\r\\n]*[:#]?[^\\S\\r\\n]*${NUMBER_VALUE}`, 'i');
+// A bare "Rechnung"/"Invoice"/"Receipt" — no "-nr"/"-nummer" suffix — covers
+// phrasing like a dunning letter's "Ihrer Rechnung nc-5287300" or "unserer
+// Rechnung nc-5287300 vom …". Safe against prose because the value group
+// still requires a digit within the first few characters, so it can't match
+// a sentence continuing after the word ("Rechnungsdatum", "Rechnung wurde …")
+// — but a bare small number ("Rechnung 2026") could coincidentally be a year,
+// not an ID, so this path additionally requires the value to contain a
+// letter or be at least 5 digits long (checked in extractNumber below). Unlike
+// NUMBER_VALUE above, this is a SINGLE contiguous token with no multi-chunk
+// continuation: that clause exists for Telekom's space-grouped digit format
+// after an explicit label, but here — with only a bare, much weaker trigger
+// word — it would happily annex the next word of an ordinary sentence too
+// ("Rechnung 2026 sorgfältig" → "2026sorgfä", which still "looks like an ID").
+const NUMBER_VALUE_BARE = '([A-Za-z]{0,3}-?[0-9][A-Za-z0-9_./-]{0,24})';
+const NUMBER_RE_BARE = new RegExp(`\\b(?:rechnung|invoice|receipt)\\.?[^\\S\\r\\n]*[:#]?[^\\S\\r\\n]*${NUMBER_VALUE_BARE}`, 'i');
+function isPlausibleNumber(t: string): boolean {
+  if (/^\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}$/.test(t)) return false;      // a numeric date, not a number
+  if (/^\d{1,2}[.\/-][A-Za-z]{3,}[.\/-]\d{2,4}$/.test(t)) return false; // "27-MAR-2025"
+  if (t.replace(/[^A-Za-z0-9]/g, '').length < 3) return false;         // too short/ambiguous ("25")
+  return true;
+}
+function looksLikeAnId(t: string): boolean {
+  return /[A-Za-z]/.test(t) || t.replace(/[^0-9]/g, '').length >= 5;
+}
+// Some vendors (netcup's original invoice, Backblaze) print a two-column
+// key/value form whose PDF text extraction linearises into two separate line
+// runs — every label first, then every value, in matching order — rather
+// than "label: value" on one line (which NUMBER_RE/NUMBER_RE_BARE above
+// handle). Only tried once both same-line attempts find nothing: find a
+// label line that is, on its own, exactly one of the known words; walk to
+// the start of its contiguous run of short label-only lines to get its
+// ordinal position; then take the line at that same ordinal offset in the
+// next run of lines after the label block. The candidate must fully look
+// like a code (CODE_LINE_RE, no internal spaces) — rejects picking up an
+// unrelated sentence/table header that happens to precede a "RECHNUNG"
+// section heading.
+const NUMBER_LABEL_LINES = new Set([
+  'rechnungs-nr', 'rechnungs nr', 'rechnungsnr', 'rechnungsnummer', 'rechnung',
+  'invoice no', 'invoice number', 'invoice #', 'invoice',
+  'beleg-nr', 'beleg nr', 'belegnr', 'rg-nr', 'rg nr', 'rgnr',
+  'receipt no', 'receipt number', 'receipt',
+]);
+const CODE_LINE_RE = /^[A-Za-z]{0,4}-?[0-9][A-Za-z0-9_./-]{0,30}$/;
+function looksLikeLabelLine(s: string): boolean {
+  const t = s.trim();
+  return t.length > 0 && t.length <= 40 && !/[0-9@]/.test(t) && /[A-Za-zÄÖÜäöüß]/.test(t);
+}
+function normLabelLine(s: string): string {
+  return s.trim().toLowerCase().replace(/[.:]+$/, '').replace(/\s+/g, ' ');
+}
+function extractNumberFromBlock(text: string): string {
+  const lines = String(text || '').split(/\r\n|\r|\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (!looksLikeLabelLine(lines[i]) || !NUMBER_LABEL_LINES.has(normLabelLine(lines[i]))) continue;
+    let start = i;
+    while (start > 0 && looksLikeLabelLine(lines[start - 1])) start--;
+    let end = i;
+    while (end < lines.length - 1 && looksLikeLabelLine(lines[end + 1])) end++;
+    if (end - start < 1) continue; // need a real block (≥2 label lines), not a lone heading
+    const ordinal = i - start;
+    let vStart = end + 1;
+    while (vStart < lines.length && lines[vStart].trim() === '') vStart++;
+    const idx = vStart + ordinal;
+    if (idx >= lines.length) continue;
+    const candidate = lines[idx].trim().replace(/[.,;:]+$/, '');
+    if (!CODE_LINE_RE.test(candidate) || !isPlausibleNumber(candidate)) continue;
+    return candidate;
+  }
+  return '';
+}
 export function extractNumber(text: string): string {
-  const m = String(text || '').match(NUMBER_RE);
-  if (!m) return '';
-  const t = m[1].replace(/\s+/g, '').replace(/[.,;:]+$/, '');
-  if (/^\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}$/.test(t)) return '';      // a numeric date, not a number
-  if (/^\d{1,2}[.\/-][A-Za-z]{3,}[.\/-]\d{2,4}$/.test(t)) return ''; // "27-MAR-2025"
-  if (t.replace(/[^A-Za-z0-9]/g, '').length < 3) return '';          // too short/ambiguous ("25")
-  return t;
+  const s = String(text || '');
+  let m = s.match(NUMBER_RE);
+  if (m) {
+    const t = m[1].replace(/\s+/g, '').replace(/[.,;:]+$/, '');
+    if (isPlausibleNumber(t)) return t;
+  }
+  m = s.match(NUMBER_RE_BARE);
+  if (m) {
+    const t = m[1].replace(/\s+/g, '').replace(/[.,;:]+$/, '');
+    if (isPlausibleNumber(t) && looksLikeAnId(t)) return t;
+  }
+  return extractNumberFromBlock(s);
 }
 
 // The document's VAT rate → '19' | '16' | '7' | '0' | '' (matches the booking vatCat

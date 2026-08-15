@@ -943,6 +943,7 @@
               <div v-if="row.date"><span class="font-medium text-[var(--ll-fg)]">{{ t('common.date') }}:</span> {{ fmtDate(row.date) }}</div>
               <div v-if="row.total != null"><span class="font-medium text-[var(--ll-fg)]">{{ t('invoices.gross') }}:</span> {{ money(row.total) }}</div>
               <div v-if="row.category"><span class="font-medium text-[var(--ll-fg)]">{{ t('invoices.receipt_category') }}:</span> {{ row.category }}</div>
+              <div v-if="row.number"><span class="font-medium text-[var(--ll-fg)]">{{ t('invoices.receipt_doc_number') }}:</span> {{ row.number }}</div>
               <div v-if="row.suggestedName && row.suggestedName !== row.name" class="col-span-2 truncate"><span class="font-medium text-[var(--ll-fg)]">{{ t('invoices.receipt_rename') }}:</span> {{ row.suggestedName }}</div>
             </div>
           </div>
@@ -2242,10 +2243,13 @@ const rescanBusy = ref(false);
 /**
  * Re-run recognition on an ALREADY-uploaded receipt, from its stored OCR text
  * (no re-upload, no server call — the text was captured once at first scan).
- * Empty fields are filled in as usual, but the NAME is always refreshed: an
- * existing receipt's name is almost always still the original uploaded
- * filename, so "only fill if empty" would never trigger the one thing this
- * button exists for.
+ * Empty fields are filled in as usual, but the NAME and the invoice NUMBER
+ * are always refreshed: an existing receipt's name is almost always still
+ * the original uploaded filename (so "only fill if empty" would never
+ * trigger the one thing the name part of this button exists for), and the
+ * invoice number has repeatedly been reported wrong/missing from an older,
+ * weaker extraction — a stale wrong value must not survive a fill-only-if-
+ * empty guard forever when the user explicitly asks to try again.
  */
 async function rescanReceipt() {
   if (!rForm.id) return;
@@ -2261,7 +2265,7 @@ async function rescanReceipt() {
     if (a.currency && !rForm.currency) rForm.currency = a.currency;
     if (a.date && !rForm.date) rForm.date = a.date;
     if (a.orderRef && !rForm.order_ref) rForm.order_ref = a.orderRef;
-    if (a.number && !rForm.doc_number) rForm.doc_number = a.number;
+    if (a.number) rForm.doc_number = a.number;
     for (const tag of a.tags) if (!rForm.tags.includes(tag)) rForm.tags.push(tag);
     const suggested = buildReceiptName(a.date, a.merchant, a.number);
     if (suggested) rForm.name = suggested;
@@ -2272,7 +2276,7 @@ async function rescanReceipt() {
 // ---- Bulk rescan: re-run recognition against every already-uploaded receipt's
 // stored OCR text (no re-upload) and review what it found, per document, before
 // applying — the batch counterpart to the single-receipt rescan above. ----
-interface BulkRescanRow { id: number; name: string; suggestedName: string; date: string | null; total: number | null; category: string | null; accepted: boolean }
+interface BulkRescanRow { id: number; name: string; suggestedName: string; date: string | null; total: number | null; category: string | null; number: string | null; accepted: boolean }
 const bulkRescanDialog = ref(false);
 const bulkRescanBusy = ref(false);
 const bulkRescanApplying = ref(false);
@@ -2288,10 +2292,17 @@ function runBulkRescan() {
       const fillsDate = !r.date && !!a.date;
       const fillsTotal = r.amount == null && a.total != null;
       const fillsCategory = !r.category && !!a.category;
-      if (!fillsDate && !fillsTotal && !fillsCategory && suggestedName === r.name) continue;
+      // Unlike the other fields (fill-only-if-empty), the invoice number is
+      // proposed whenever the fresh scan disagrees with what's stored — this
+      // is a human-reviewed batch (every row needs an explicit checkbox
+      // accept before applyBulkRescan writes anything), so it's safe to also
+      // surface a correction of an already-populated-but-wrong value here.
+      const fillsNumber = !!a.number && a.number !== r.doc_number;
+      if (!fillsDate && !fillsTotal && !fillsCategory && !fillsNumber && suggestedName === r.name) continue;
       rows.push({
         id: r.id, name: r.name, suggestedName,
         date: fillsDate ? a.date : null, total: fillsTotal ? a.total : null, category: fillsCategory ? a.category : null,
+        number: fillsNumber ? a.number : null,
         accepted: true,
       });
     }
@@ -2312,6 +2323,7 @@ async function applyBulkRescan() {
       if (row.date) body.date = row.date;
       if (row.total != null) body.amount = row.total;
       if (row.category) body.category = row.category;
+      if (row.number) body.doc_number = row.number;
       try { await f.updateReceipt(row.id, body); updated++; } catch { failed++; }
     }
     await f.load();
