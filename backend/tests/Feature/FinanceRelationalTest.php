@@ -320,6 +320,33 @@ class FinanceRelationalTest extends TestCase
         $this->assertSame('paid', Invoice::find($id)->status);
     }
 
+    public function test_a_paid_invoice_cannot_revert_to_an_earlier_status(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        UserSetting::for((int) $user->id)->update(['invoice_number_format' => 'YYYY-NNNN', 'invoice_next_number' => 1]);
+
+        $id = $this->postJson(route('finance.invoices.store'), ['issue_date' => '2026-05-01'])->json('invoice.id');
+        $this->postJson(route('finance.invoices.finalize', $id))->assertOk();
+        $this->putJson(route('finance.invoices.update', $id), ['status' => 'paid'])->assertOk();
+
+        // GoBD: once paid, the status is terminal — no silent revert to open/sent.
+        // A correction must go through Storno (credit note), never a status edit.
+        $this->putJson(route('finance.invoices.update', $id), ['status' => 'final'])
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'status_paid_locked');
+        $this->putJson(route('finance.invoices.update', $id), ['status' => 'sent'])
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'status_paid_locked');
+        $this->assertSame('paid', Invoice::find($id)->status);
+
+        // Re-sending the SAME status (e.g. patching an unrelated field alongside it)
+        // is not a "revert" and must keep working.
+        $this->putJson(route('finance.invoices.update', $id), ['status' => 'paid', 'note' => 'settled by wire'])
+            ->assertOk();
+        $this->assertSame('paid', Invoice::find($id)->status);
+    }
+
     public function test_invoice_stores_partner_discount_skonto_and_customer_details(): void
     {
         $user = User::factory()->create();

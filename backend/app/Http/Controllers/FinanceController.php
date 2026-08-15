@@ -576,6 +576,14 @@ class FinanceController extends Controller
             && is_string($invoice->number) && $invoice->number !== '') {
             return response()->json(['error' => 'status_draft_blocked'], 422);
         }
+        // GoBD: once settled, "paid" is terminal — it never reverts to an earlier
+        // status via a plain edit (a correction goes through Storno/credit-note,
+        // which never mutates the original). The client already hides the status
+        // selector once paid; this is the authoritative guard.
+        if ($invoice->status === 'paid' && $request->filled('status')
+            && $request->string('status')->value() !== 'paid') {
+            return response()->json(['error' => 'status_paid_locked'], 422);
+        }
         $expected = $request->has('version') ? $request->integer('version') : null;
         $result = $this->optimistic(Invoice::class, $invoice->id, $this->invoicePatch($request, false, $invoice), $expected);
 

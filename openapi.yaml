@@ -4929,7 +4929,9 @@ paths:
         "422":
           description: >
             Standard Laravel validation body ({ message, errors }) OR a GoBD business
-            rejection — a numbered invoice cannot revert to draft ({ error: status_draft_blocked }).
+            rejection — a numbered invoice cannot revert to draft ({ error: status_draft_blocked }),
+            or a paid invoice cannot revert to an earlier status ({ error: status_paid_locked };
+            paid is terminal, a correction goes through /storno instead).
           content:
             application/json:
               schema:
@@ -4937,7 +4939,7 @@ paths:
                   - $ref: "#/components/schemas/ValidationError"
                   - allOf:
                       - $ref: "#/components/schemas/FinanceError"
-                      - properties: { error: { enum: [status_draft_blocked] } }
+                      - properties: { error: { enum: [status_draft_blocked, status_paid_locked] } }
         "429": { $ref: "#/components/responses/RateLimited" }
     delete:
       tags: [Finance]

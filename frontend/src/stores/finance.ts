@@ -8,7 +8,7 @@ export interface Invoice {
   type: 'invoice' | 'credit_note'; issue_date: string | null; due_date: string | null; currency: string;
   vat_rate: number | null; gross: number | null; net: number | null; vat: number | null; imported: boolean;
   partner_id: number | null; customer: Record<string, unknown> | null; lines: InvoiceLine[] | null;
-  note: string | null; paid_at: string | null; version: number;
+  note: string | null; paid_at: string | null; payment_account: string | null; version: number;
   discount_type: 'percent' | 'amount' | null; discount_value: number | string | null;
   skonto_percent: number | string | null; skonto_days: number | null;
 }
