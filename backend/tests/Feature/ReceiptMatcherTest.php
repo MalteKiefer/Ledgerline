@@ -253,6 +253,41 @@ class ReceiptMatcherTest extends TestCase
         $this->assertSame($expected, $ids);
     }
 
+    public function test_a_split_payment_never_combines_transactions_from_different_counterparties(): void
+    {
+        // A real false positive caught against production data BEFORE it could be
+        // applied: four completely unrelated charges from four different companies
+        // (two different Amazon orders, INWX, fonial) summed to the exact cent of
+        // an unrelated PayPal receipt (16.98 + 9.52 + 19.99 + 17.49 = 63.98) — and
+        // in doing so would have stolen the real INWX transaction a genuine split
+        // match needed. A combination may only ever come from ONE counterparty.
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $pm = $this->account();
+
+        $this->receipt(['amount' => 63.98, 'date' => '2026-07-16']);
+        BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-07-18', 'amount' => -16.98,
+            'counterparty' => 'AMAZON* AV7AS9875', 'sig' => 'sig-coincidence-a',
+        ]);
+        BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-07-25', 'amount' => -9.52,
+            'counterparty' => 'WWW.INWX.DE', 'sig' => 'sig-coincidence-b',
+        ]);
+        BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-06-30', 'amount' => -19.99,
+            'counterparty' => 'AMAZON* GC6U83NW5', 'sig' => 'sig-coincidence-c',
+        ]);
+        BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-08-06', 'amount' => -17.49,
+            'counterparty' => 'fonial GmbH', 'sig' => 'sig-coincidence-d',
+        ]);
+
+        $result = app(ReceiptMatcher::class)->detectSplitPayments();
+
+        $this->assertSame([], $result);
+    }
+
     public function test_a_transaction_already_claimed_by_another_receipt_is_not_reused_in_a_split(): void
     {
         $user = User::factory()->create();
