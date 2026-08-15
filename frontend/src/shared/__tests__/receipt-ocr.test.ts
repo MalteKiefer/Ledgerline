@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   extractTotal, extractDate, extractMerchant, extractNumber,
-  extractVatRate, extractVatId, extractCurrency, extractOrderRef, analyzeReceiptText,
+  extractVatRate, extractVatId, extractCurrency, extractOrderRef, buildReceiptName, analyzeReceiptText,
 } from '../receipt-ocr';
 
 describe('extractTotal', () => {
@@ -41,6 +41,19 @@ describe('extractMerchant', () => {
   it('excludes the viewer\'s own name/company (merged multi-column letterhead)', () => {
     const text = 'Herrn Hochburgerstr. 4\nMalte Kiefer Telefon: 07666-9379021\nClaudia Faber GmbH\nRechnung';
     expect(extractMerchant(text, ['Malte Kiefer', 'Kiefer Networks'])).toBe('Claudia Faber GmbH');
+  });
+  // Regression: "ab" (Swedish "Aktiebolag" company suffix) is also an extremely
+  // common German word ("...buchen wir am 22.07. ab.") — a real Telekom invoice
+  // had that exact sentence hijack the merchant match away from the actual
+  // "Telekom Deutschland GmbH" letterhead line a few lines later. Lower/mixed
+  // case "ab" mid-sentence must NOT count as a company suffix; only ALL-CAPS
+  // "AB" (as real Swedish invoices print it, e.g. "Spotify AB") should.
+  it('does not mistake the German word "ab" inside a sentence for a company suffix', () => {
+    const text = 'Rechnungsbetrag 42,40 €\nDen Betrag von 42,40 € buchen wir am 22.07.2026 ab.\nTelekom Deutschland GmbH, PF 300464, 53184 Bonn';
+    expect(extractMerchant(text)).toBe('Telekom Deutschland GmbH');
+  });
+  it('still recognises a real Swedish AB company suffix (all-caps)', () => {
+    expect(extractMerchant('Danke für Ihre Bestellung\nSpotify AB\nBox 1234')).toBe('Spotify AB');
   });
 });
 
@@ -91,6 +104,20 @@ describe('extractOrderRef', () => {
   it('returns empty when the document has no such reference', () => {
     expect(extractOrderRef('Rechnungsnummer DE60GTQMP053RU\nZahlbetrag 11,99 €')).toBe('');
   });
+});
+
+describe('buildReceiptName', () => {
+  it('joins date (compact) + issuer + number', () => {
+    expect(buildReceiptName('2026-07-02', 'fonial GmbH', '2026061702224')).toBe('20260702; fonial GmbH; 2026061702224');
+  });
+  it('omits a part that was not recognised instead of inserting a placeholder', () => {
+    expect(buildReceiptName('2026-07-02', 'fonial GmbH', '')).toBe('20260702; fonial GmbH');
+    expect(buildReceiptName('', 'fonial GmbH', '123')).toBe('fonial GmbH; 123');
+  });
+  it('strips characters that would break the "; "-separated format or a filename', () => {
+    expect(buildReceiptName('2026-07-02', 'Acme; Corp / Ltd', 'AB:12')).toBe('20260702; Acme Corp Ltd; AB12');
+  });
+  it('is empty when nothing was recognised', () => { expect(buildReceiptName('', '', '')).toBe(''); });
 });
 
 describe('analyzeReceiptText', () => {
