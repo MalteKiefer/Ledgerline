@@ -32,6 +32,7 @@ export interface Receipt {
   note: string | null; partner_id: number | null; version: number; mime?: string | null;
   bank_transaction_id: number | null;
   amount: number | string | null; date: string | null; order_ref: string | null; doc_number: string | null;
+  ocr?: string | null;
   created_at?: string | null; file_url?: string | null;
 }
 

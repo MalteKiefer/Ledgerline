@@ -30,8 +30,15 @@ use Illuminate\Support\Collection;
  */
 class ReceiptMatcher
 {
-    /** Settlement can lag a receipt's document date by a few days; be generous. */
-    private const DAY_WINDOW = 14;
+    /**
+     * Settlement can lag a receipt's document date well beyond "a few days" — an
+     * invoice with net-30 terms (e.g. a Telekom/netcup bill) commonly settles 2-3
+     * weeks after its document date, verified against real invoice<->payment pairs
+     * (netcup: invoice dated the 22nd, debited the 10th of the next month, 18 days
+     * later). 14 days excluded that real pair; 30 covers typical net-30 terms
+     * without being so wide it starts pulling in unrelated recurring charges.
+     */
+    private const DAY_WINDOW = 30;
 
     private const CENT_TOL = 0.01;
 
