@@ -32,6 +32,9 @@ export interface Receipt {
   id: number; name: string; category: string | null; tags: string[] | null; vat: string | null;
   note: string | null; partner_id: number | null; version: number; mime?: string | null;
   bank_transaction_id: number | null;
+  // A split-payment link (one receipt settled by several separate bank charges) —
+  // mutually exclusive with bank_transaction_id, see FinanceReceipt on the backend.
+  linked_transaction_ids: number[] | null;
   amount: number | string | null; currency: string | null; date: string | null; order_ref: string | null; doc_number: string | null;
   ocr?: string | null;
   created_at?: string | null; file_url?: string | null;
@@ -52,6 +55,7 @@ export interface FinanceCategory { id: number; name: string; color: string | nul
 export interface DuplicateGroup { reason: string; key: string; ids: number[] }
 export interface NumberGapGroup { group: string; missing: string[]; min: string; max: string; count: number }
 export interface ReceiptMatchGroup { transaction_id: number; receipt_ids: number[]; reason: 'order_ref' | 'exact' | 'sum'; total: number }
+export interface SplitPaymentGroup { receipt_id: number; transaction_ids: number[]; reason: 'sum'; total: number }
 export interface ReceiptDuplicate { receipt_id: number; duplicate_of: number }
 export interface CategorySuggestion { tx_id: number; merchant: string; suggested_category: string }
 
@@ -106,7 +110,7 @@ export const useFinanceStore = defineStore('finance', () => {
   const euer = (year?: number) => api.get<Record<string, unknown>>(`/api/v1/finance/reports/euer${year ? `?year=${year}` : ''}`);
   const duplicates = () => api.get<{ invoices: DuplicateGroup[]; transactions: DuplicateGroup[] }>('/api/v1/finance/duplicates');
   const numberGaps = () => api.get<{ groups: NumberGapGroup[] }>('/api/v1/finance/number-gaps');
-  const receiptMatches = () => api.get<{ groups: ReceiptMatchGroup[]; duplicates: ReceiptDuplicate[] }>('/api/v1/finance/receipt-matches');
+  const receiptMatches = () => api.get<{ groups: ReceiptMatchGroup[]; duplicates: ReceiptDuplicate[]; splitPayments: SplitPaymentGroup[] }>('/api/v1/finance/receipt-matches');
   const categorySuggestions = () => api.get<{ suggestions: CategorySuggestion[] }>('/api/v1/finance/category-suggestions');
   const accountVat = (accountId?: number, year?: number) => {
     const p = new URLSearchParams();

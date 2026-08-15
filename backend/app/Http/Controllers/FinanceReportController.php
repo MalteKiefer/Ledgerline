@@ -107,13 +107,17 @@ class FinanceReportController extends Controller
 
     /**
      * Read-only suggested links between unlinked standalone receipts and unlinked bank
-     * transactions — including several receipts summing to one charge. Never mutates a
-     * row; the client applies an accepted group by PUTing bank_transaction_id per receipt.
+     * transactions, both directions: several receipts summing to one charge (groups,
+     * applied by PUTing bank_transaction_id per receipt), and one receipt summing to
+     * several charges (splitPayments, applied by PUTing linked_transaction_ids on the
+     * receipt). Never mutates a row.
      */
     public function receiptMatches(Request $request, ReceiptMatcher $matcher): JsonResponse
     {
         $this->requireUser($request);
+        $result = $matcher->detect();
+        $result['splitPayments'] = $matcher->detectSplitPayments();
 
-        return response()->json($matcher->detect());
+        return response()->json($result);
     }
 }

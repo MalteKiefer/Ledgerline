@@ -467,6 +467,47 @@ class FinanceRelationalTest extends TestCase
             ->assertOk()->assertJsonPath('receipt.currency', 'GBP');
     }
 
+    public function test_standalone_receipt_split_link_is_mutually_exclusive_with_the_single_link(): void
+    {
+        // The real INWX case: one receipt, settled by two separate bank charges.
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $pm = PaymentMethod::create(['type' => 'bank', 'name' => 'Business', 'business' => true]);
+        $txA = BankTransaction::create(['payment_method_id' => $pm->id, 'date' => '2026-07-18', 'amount' => -32.55, 'sig' => 'sig-a']);
+        $txB = BankTransaction::create(['payment_method_id' => $pm->id, 'date' => '2026-07-25', 'amount' => -9.52, 'sig' => 'sig-b']);
+
+        $id = $this->post(route('finance.receipts.store'), [
+            'file' => UploadedFile::fake()->create('inwx.pdf', 20, 'application/pdf'),
+            'amount' => 42.07,
+        ])->assertCreated()->json('receipt.id');
+
+        // Linking to several transactions clears any single link, and vice versa —
+        // never both set at once, regardless of what the client sends together.
+        $this->putJson(route('finance.receipts.update', $id), [
+            'linked_transaction_ids' => [$txA->id, $txB->id], 'version' => 0,
+        ])->assertOk()
+            ->assertJsonPath('receipt.bank_transaction_id', null)
+            ->assertJsonPath('receipt.linked_transaction_ids', [$txA->id, $txB->id]);
+
+        $this->putJson(route('finance.receipts.update', $id), [
+            'bank_transaction_id' => $txA->id, 'version' => 1,
+        ])->assertOk()
+            ->assertJsonPath('receipt.bank_transaction_id', $txA->id)
+            ->assertJsonPath('receipt.linked_transaction_ids', null);
+
+        // A transaction id belonging to someone else is rejected (owner-scoped
+        // Rule::exists on linked_transaction_ids.*, not just the receipt binding).
+        $other = User::factory()->create();
+        $this->actingAs($other);
+        $otherPm = PaymentMethod::create(['type' => 'bank', 'name' => 'Other', 'business' => true]);
+        $otherTx = BankTransaction::create(['payment_method_id' => $otherPm->id, 'date' => '2026-07-18', 'amount' => -1.00, 'sig' => 'sig-other']);
+
+        $this->actingAs($user);
+        $this->putJson(route('finance.receipts.update', $id), [
+            'linked_transaction_ids' => [$otherTx->id], 'version' => 2,
+        ])->assertStatus(422);
+    }
+
     public function test_standalone_receipt_is_owner_scoped(): void
     {
         $owner = User::factory()->create();

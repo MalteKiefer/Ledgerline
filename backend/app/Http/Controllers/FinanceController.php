@@ -1815,17 +1815,29 @@ class FinanceController extends Controller
             'note' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'partner_id' => ['sometimes', 'nullable', 'integer', Rule::exists('finance_partners', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
             'bank_transaction_id' => ['sometimes', 'nullable', 'integer', Rule::exists('bank_transactions', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            // A split-payment link (one receipt settled by several separate charges,
+            // e.g. a vendor that bills domain transfers and a registration on the
+            // same invoice but debits them two days apart) — see FinanceReceipt.
+            'linked_transaction_ids' => ['sometimes', 'nullable', 'array', 'max:8'],
+            'linked_transaction_ids.*' => ['integer', Rule::exists('bank_transactions', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
             'finance_project_id' => ['sometimes', 'nullable', 'integer', Rule::exists('finance_projects', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
             'version' => ['sometimes', 'integer', 'min:0'],
         ]);
         $patch = [];
-        foreach (['name', 'category', 'vat', 'amount', 'currency', 'date', 'order_ref', 'doc_number', 'note', 'partner_id', 'bank_transaction_id', 'finance_project_id', 'tags'] as $f) {
+        foreach (['name', 'category', 'vat', 'amount', 'currency', 'date', 'order_ref', 'doc_number', 'note', 'partner_id', 'bank_transaction_id', 'linked_transaction_ids', 'finance_project_id', 'tags'] as $f) {
             if ($request->has($f)) {
                 $patch[$f] = $request->input($f);
             }
         }
         if (array_key_exists('currency', $patch) && is_string($patch['currency'])) {
             $patch['currency'] = mb_strtoupper($patch['currency']) ?: null;
+        }
+        // Mutually exclusive: a split-payment link replaces the single link, and vice
+        // versa — never let a stale value from the other field linger alongside it.
+        if (array_key_exists('linked_transaction_ids', $patch) && is_array($patch['linked_transaction_ids']) && $patch['linked_transaction_ids'] !== []) {
+            $patch['bank_transaction_id'] = null;
+        } elseif (array_key_exists('bank_transaction_id', $patch) && $patch['bank_transaction_id'] !== null) {
+            $patch['linked_transaction_ids'] = null;
         }
         $expected = $request->has('version') ? $request->integer('version') : null;
         $result = $this->optimistic(FinanceReceipt::class, $receipt->id, $patch, $expected);

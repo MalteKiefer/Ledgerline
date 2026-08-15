@@ -10,10 +10,15 @@ use Illuminate\Support\Collection;
 
 /**
  * Read-only suggestions for linking standalone receipts ("Fremdbelege") to the bank
- * transaction that settled them — including the case a single card charge covers
- * SEVERAL receipts (e.g. Amazon splitting an order into multiple shipment invoices
- * that are charged together). This only groups/sums, it never mutates a row — the
- * owner applies a suggestion by PUTing bank_transaction_id on each receipt.
+ * transaction(s) that settled them, in BOTH directions:
+ *   - detect(): several receipts summing to ONE charge (e.g. Amazon splitting an
+ *     order into multiple shipment invoices that are charged together);
+ *   - detectSplitPayments(): the inverse — ONE receipt whose total was actually
+ *     debited as several separate charges (e.g. an INWX invoice billed as one
+ *     document but settled by two transactions two days apart).
+ * This only groups/sums, it never mutates a row — the owner applies a detect()
+ * suggestion by PUTing bank_transaction_id on each receipt, and a
+ * detectSplitPayments() suggestion by PUTing linked_transaction_ids on the receipt.
  *
  * Matching is deterministic and cent-exact (no currency guessing — that stays in the
  * client-side manual "assign a booking" picker, which a human reviews anyway):
@@ -25,7 +30,11 @@ use Illuminate\Support\Collection;
  *   3) a single receipt whose amount matches a transaction to the cent,
  *   4) a small (<= MAX_GROUP) combination of receipts near the transaction's date
  *      whose amounts sum to it — the generic case for any merchant that splits a
- *      charge across several documents without a shared reference.
+ *      charge across several documents without a shared reference,
+ *   5) (detectSplitPayments only) a small (<= MAX_GROUP) combination of
+ *      transactions near the receipt's date whose amounts sum to the receipt's
+ *      total — the mirror of (4) when the split happened on the bank's side
+ *      instead of the vendor's paperwork.
  * Each transaction and each receipt is used in at most one suggested group.
  */
 class ReceiptMatcher
@@ -124,6 +133,145 @@ class ReceiptMatcher
         }
 
         return ['groups' => $groups, 'duplicates' => $duplicates];
+    }
+
+    /**
+     * The inverse of detect(): a receipt whose amount matches no SINGLE undocumented
+     * transaction, but a small combination of them sums to it — the real case this
+     * was built for: an INWX invoice (42.07 EUR, several line items) was actually
+     * debited as two separate charges (32.55 EUR + 9.52 EUR two days apart), one
+     * receipt needing several bank_transaction rows rather than the usual one. Same
+     * bounded subset-sum search as matchSubsetSum, just swapping which side is
+     * fixed (one receipt total) and which side is combined (several transactions).
+     * Read-only; the client applies a group by PUTing linked_transaction_ids on the
+     * receipt.
+     *
+     * @return list<array{receipt_id: int, transaction_ids: list<int>, reason: string, total: float}>
+     */
+    public function detectSplitPayments(): array
+    {
+        $receipts = FinanceReceipt::query()
+            ->whereNull('bank_transaction_id')
+            ->whereNull('linked_transaction_ids')
+            ->whereNotNull('amount')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+
+        if ($receipts->isEmpty()) {
+            return [];
+        }
+
+        // Any transaction a receipt already claims — via the single link or a prior
+        // split link — is off the table, same as embedded-receipt transactions.
+        $singleClaimed = FinanceReceipt::query()
+            ->whereNotNull('bank_transaction_id')
+            ->get('bank_transaction_id')
+            ->pluck('bank_transaction_id')
+            ->filter()
+            ->map(static fn (mixed $id): int => is_numeric($id) ? (int) $id : 0);
+        $splitClaimed = FinanceReceipt::query()
+            ->whereNotNull('linked_transaction_ids')
+            ->get('linked_transaction_ids')
+            ->flatMap(static fn (FinanceReceipt $r): array => is_array($r->linked_transaction_ids) ? $r->linked_transaction_ids : [])
+            ->map(static fn (mixed $id): int => is_numeric($id) ? (int) $id : 0);
+        $claimedTxIds = $singleClaimed->merge($splitClaimed)->unique();
+
+        /** @var Collection<int, BankTransaction> $pool */
+        $pool = BankTransaction::query()
+            ->where('amount', '<', 0)
+            ->get()
+            ->reject(function (BankTransaction $t) use ($claimedTxIds): bool {
+                $embedded = is_array($t->receipts) ? $t->receipts : [];
+
+                return count($embedded) > 0 || $claimedTxIds->contains((int) $t->id);
+            })
+            ->values();
+
+        $used = [];
+        $groups = [];
+
+        foreach ($receipts as $r) {
+            $target = round(abs((float) $r->amount), 2);
+            if ($target <= 0.0) {
+                continue;
+            }
+
+            $candidates = $pool
+                ->reject(static fn (BankTransaction $t): bool => isset($used[$t->id]))
+                ->filter(function (BankTransaction $t) use ($r): bool {
+                    if ($t->date === null || $r->date === null) {
+                        return true; // no date on either side — still eligible, just unranked
+                    }
+
+                    return abs($t->date->diffInDays($r->date)) <= self::DAY_WINDOW;
+                })
+                ->values();
+
+            $hit = $this->matchTransactionSubsetSum($candidates, $r, $target);
+            if ($hit === null) {
+                continue;
+            }
+
+            foreach ($hit['ids'] as $id) {
+                $used[$id] = true;
+            }
+            $groups[] = [
+                'receipt_id' => (int) $r->id,
+                'transaction_ids' => $hit['ids'],
+                'reason' => $hit['reason'],
+                'total' => $target,
+            ];
+        }
+
+        return $groups;
+    }
+
+    /**
+     * Bounded subset-sum over transactions instead of receipts — the mirror of
+     * matchSubsetSum(). Only sizes 2..MAX_GROUP: a single matching transaction is
+     * already handled by the client's own auto-pick on upload, so this only ever
+     * fires for the case nothing single-handedly matched.
+     *
+     * @param  Collection<int, BankTransaction>  $candidates
+     * @return array{ids: list<int>, reason: string}|null
+     */
+    private function matchTransactionSubsetSum(Collection $candidates, FinanceReceipt $r, float $target): ?array
+    {
+        /** @var list<BankTransaction> $pool */
+        $pool = array_values(
+            $candidates
+                ->sortBy(function (BankTransaction $t) use ($r): int {
+                    if ($t->date === null || $r->date === null) {
+                        return PHP_INT_MAX;
+                    }
+
+                    return (int) abs($t->date->diffInDays($r->date));
+                })
+                ->take(self::POOL_CAP)
+                ->all()
+        );
+
+        $n = count($pool);
+        if ($n < 2) {
+            return null;
+        }
+
+        for ($size = 2; $size <= self::MAX_GROUP && $size <= $n; $size++) {
+            foreach ($this->combinations(range(0, $n - 1), $size) as $combo) {
+                $sum = 0.0;
+                foreach ($combo as $idx) {
+                    $sum += abs((float) $pool[$idx]->amount);
+                }
+                if (abs(round($sum, 2) - $target) < self::CENT_TOL) {
+                    $ids = array_values(array_map(static fn (int $idx): int => (int) $pool[$idx]->id, $combo));
+
+                    return ['ids' => $ids, 'reason' => 'sum'];
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

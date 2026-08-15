@@ -13,11 +13,15 @@ use Illuminate\Support\Carbon;
  * A standalone finance receipt ("Fremdbeleg") — a receipt document that does not
  * need a bank transaction. Private per user via OwnsUserData; plaintext at rest.
  * The file bytes live plaintext on the files disk; blob_path is server-owned
- * (never mass-assigned). An optional bank_transaction_id links it to a booking.
+ * (never mass-assigned). An optional bank_transaction_id links it to a booking —
+ * or, when a vendor split one invoice across several separate charges,
+ * linked_transaction_ids holds ALL of them instead (mutually exclusive with
+ * bank_transaction_id, never both set at once).
  *
  * @property int $id
  * @property int $user_id
  * @property int|null $bank_transaction_id
+ * @property array<int, int>|null $linked_transaction_ids
  * @property int|null $finance_project_id
  * @property string $blob_path
  * @property string $name
@@ -49,13 +53,14 @@ class FinanceReceipt extends Model
     // blob_path / size / sig are server-set (never trust the client), so they are
     // NOT fillable — the controller sets them via forceFill on create.
     protected $fillable = [
-        'bank_transaction_id', 'finance_project_id', 'name', 'kind',
+        'bank_transaction_id', 'linked_transaction_ids', 'finance_project_id', 'name', 'kind',
         'category', 'tags', 'vat', 'amount', 'currency', 'date', 'order_ref', 'doc_number',
         'note', 'partner_id', 'ocr',
     ];
 
     protected $casts = [
         'tags' => 'array',
+        'linked_transaction_ids' => 'array',
         'size' => 'integer',
         'version' => 'integer',
         'bank_transaction_id' => 'integer',
