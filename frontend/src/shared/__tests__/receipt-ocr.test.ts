@@ -55,6 +55,35 @@ describe('extractMerchant', () => {
   it('still recognises a real Swedish AB company suffix (all-caps)', () => {
     expect(extractMerchant('Danke für Ihre Bestellung\nSpotify AB\nBox 1234')).toBe('Spotify AB');
   });
+  // Regression: a real invoice from a sole trader (Andy Hempel/datonga.com, no
+  // legal-form suffix on his own letterhead) was misdetected as "PayPal" purely
+  // because the document's payment-confirmation sentence mentions the processor,
+  // not the issuer — "Der Rechnungsbetrag wurde per PayPal bezahlt." PayPal is a
+  // real BRANDS entry (it also issues its own transaction receipts), so a bare
+  // full-text scan hijacked onto the payment-method mention instead of the real
+  // seller's own letterhead line further up the document.
+  it('does not mistake a payment-method mention ("...per PayPal bezahlt") for the merchant', () => {
+    const text = 'Rechnung\nAndy Hempel | Anemonenweg 24 | 71672 Marbach am Neckar\nSehr geehrter Kunde,\n'
+      + 'Summe Artikel   63,98 €\nDer Rechnungsbetrag wurde   per PayPal   bezahlt. Vielen Dank!\n'
+      + 'Kiefer Networks\nMalte Kiefer\nAdalbert-Stifter-Str. 6\n95512 Neudrossenfeld';
+    expect(extractMerchant(text, ['Malte Kiefer', 'Kiefer Networks'])).toBe('Andy Hempel');
+  });
+  // A genuine PayPal-issued receipt (no other seller letterhead anywhere) must
+  // still fall back to the brand keyword — the exclusion only removes lines that
+  // pair "PayPal" with a settlement verb, not every mention of the word.
+  it('still recognises PayPal itself when the document has no unrelated seller letterhead', () => {
+    expect(extractMerchant('Ihre PayPal-Transaktion\nBetrag: 12,00 €\nTransaktions-ID: 8AB123')).toBe('PayPal');
+  });
+  // Regression: extractMerchant's step-3 "first meaningful line" fallback checked
+  // the RAW line's length before splitting off the " | address" tail that
+  // cleanMerchant() strips — a short company name glued to a long pipe-separated
+  // address ("Andy Hempel | Anemonenweg 24 | 71672 Marbach am Neckar", 56 chars)
+  // was rejected outright by the pre-clean length cap, leaving merchant empty even
+  // once the PayPal brand hijack above is fixed.
+  it('cleans a letterhead line before applying the length cap, not after', () => {
+    const text = 'Rechnung\nAndy Hempel | Anemonenweg 24 | 71672 Marbach am Neckar\nSehr geehrter Kunde,';
+    expect(extractMerchant(text)).toBe('Andy Hempel');
+  });
 });
 
 describe('extractNumber', () => {
