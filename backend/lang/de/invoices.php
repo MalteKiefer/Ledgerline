@@ -21,7 +21,6 @@ return [
     'save_failed' => 'Rechnungen konnten nicht geladen werden.',
 
     'col_number' => 'Nummer',
-    'col_created' => 'Datum (Erstellung)',
     'col_customer' => 'Kunde',
     'col_date' => 'Datum',
     'col_total' => 'Summe',

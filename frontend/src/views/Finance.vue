@@ -165,10 +165,9 @@
         <table class="w-full text-sm">
           <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
             <tr class="border-b border-[var(--ll-border)]">
-              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('created_at')"><SortLabel :label="t('invoices.col_created')" active-key="created_at" :sort="invSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('issue_date')"><SortLabel :label="t('invoices.issue_date')" active-key="issue_date" :sort="invSort" /></th>
               <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('number')"><SortLabel :label="t('invoices.col_number')" active-key="number" :sort="invSort" /></th>
               <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('customer')"><SortLabel :label="t('invoices.customer')" active-key="customer" :sort="invSort" /></th>
-              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('issue_date')"><SortLabel :label="t('invoices.issue_date')" active-key="issue_date" :sort="invSort" /></th>
               <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="invSortBy('gross')"><SortLabel :label="t('invoices.gross')" active-key="gross" :sort="invSort" justify="end" /></th>
               <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('status')"><SortLabel :label="t('common.status')" active-key="status" :sort="invSort" /></th>
               <th class="px-4 py-2.5"></th>
@@ -176,10 +175,9 @@
           </thead>
           <tbody>
             <tr v-for="item in filteredInvoices" :key="item.id" class="border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5">
-              <td class="px-4 py-2.5 text-[var(--ll-muted)]">{{ fmtDate(item.created_at) }}</td>
+              <td class="px-4 py-2.5 text-[var(--ll-muted)]">{{ fmtDate(item.issue_date) }}</td>
               <td class="px-4 py-2.5 font-mono">{{ item.number || '—' }}</td>
               <td class="px-4 py-2.5">{{ custName(item) }}</td>
-              <td class="px-4 py-2.5">{{ fmtDate(item.issue_date) }}</td>
               <td class="px-4 py-2.5 text-right font-mono tabular-nums">{{ money(Number(item.gross ?? 0)) }}</td>
               <td class="px-4 py-2.5">
                 <Badge :tone="statusTone(item.status)">{{ t('invoices.status_' + item.status) }}</Badge>
@@ -233,10 +231,10 @@
         <table class="w-full text-sm">
           <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
             <tr class="border-b border-[var(--ll-border)]">
-              <th class="px-4 py-2.5 font-medium">{{ t('common.date') }}</th>
-              <th class="px-4 py-2.5 font-medium">{{ t('invoices.tx_counterparty') }}</th>
-              <th class="px-4 py-2.5 font-medium">{{ t('invoices.tx_purpose') }}</th>
-              <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.gross') }}</th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="txSortBy('date')"><SortLabel :label="t('common.date')" active-key="date" :sort="txSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="txSortBy('counterparty')"><SortLabel :label="t('invoices.tx_counterparty')" active-key="counterparty" :sort="txSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="txSortBy('purpose')"><SortLabel :label="t('invoices.tx_purpose')" active-key="purpose" :sort="txSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="txSortBy('amount')"><SortLabel :label="t('invoices.gross')" active-key="amount" :sort="txSort" justify="end" /></th>
               <th class="px-4 py-2.5" />
             </tr>
           </thead>
@@ -295,7 +293,7 @@
         <table class="w-full text-sm">
           <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
             <tr class="border-b border-[var(--ll-border)]">
-              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="rSortBy('created_at')"><SortLabel :label="t('invoices.col_created')" active-key="created_at" :sort="rSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="rSortBy('date')"><SortLabel :label="t('common.date')" active-key="date" :sort="rSort" /></th>
               <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="rSortBy('name')"><SortLabel :label="t('common.name')" active-key="name" :sort="rSort" /></th>
               <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="rSortBy('amount')"><SortLabel :label="t('invoices.gross')" active-key="amount" :sort="rSort" justify="end" /></th>
               <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="rSortBy('category')"><SortLabel :label="t('invoices.receipt_category')" active-key="category" :sort="rSort" /></th>
@@ -309,7 +307,7 @@
               class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5"
               @click="openReceiptWorkspace(item)"
             >
-              <td class="px-4 py-2.5 text-[var(--ll-muted)]">{{ fmtDate(item.created_at) }}</td>
+              <td class="px-4 py-2.5 text-[var(--ll-muted)]">{{ fmtDate(item.date ?? item.created_at) }}</td>
               <td class="px-4 py-2.5 font-medium">{{ item.name }}</td>
               <td class="px-4 py-2.5 text-right font-mono tabular-nums">{{ item.amount != null ? money(Number(item.amount)) : '—' }}</td>
               <td class="px-4 py-2.5">
@@ -363,12 +361,12 @@
           <table class="w-full text-sm">
             <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
               <tr class="border-b border-[var(--ll-border)]">
-                <th class="px-4 py-2.5 font-medium">{{ t('invoices.partner_name') }}</th>
-                <th class="hidden px-4 py-2.5 font-medium md:table-cell">{{ t('invoices.partner_contact_person') }}</th>
-                <th class="hidden px-4 py-2.5 font-medium lg:table-cell">{{ t('invoices.partner_email') }}</th>
-                <th class="hidden px-4 py-2.5 font-medium lg:table-cell">{{ t('invoices.partner_phone') }}</th>
-                <th class="hidden px-4 py-2.5 font-medium md:table-cell">{{ t('invoices.partner_vat') }}</th>
-                <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.partner_links') }}</th>
+                <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="partnerSortBy('name')"><SortLabel :label="t('invoices.partner_name')" active-key="name" :sort="partnerSort" /></th>
+                <th class="hidden cursor-pointer select-none px-4 py-2.5 font-medium md:table-cell" @click="partnerSortBy('contact')"><SortLabel :label="t('invoices.partner_contact_person')" active-key="contact" :sort="partnerSort" /></th>
+                <th class="hidden cursor-pointer select-none px-4 py-2.5 font-medium lg:table-cell" @click="partnerSortBy('email')"><SortLabel :label="t('invoices.partner_email')" active-key="email" :sort="partnerSort" /></th>
+                <th class="hidden cursor-pointer select-none px-4 py-2.5 font-medium lg:table-cell" @click="partnerSortBy('phone')"><SortLabel :label="t('invoices.partner_phone')" active-key="phone" :sort="partnerSort" /></th>
+                <th class="hidden cursor-pointer select-none px-4 py-2.5 font-medium md:table-cell" @click="partnerSortBy('vat')"><SortLabel :label="t('invoices.partner_vat')" active-key="vat" :sort="partnerSort" /></th>
+                <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="partnerSortBy('links')"><SortLabel :label="t('invoices.partner_links')" active-key="links" :sort="partnerSort" justify="end" /></th>
                 <th class="px-4 py-2.5"></th>
               </tr>
             </thead>
@@ -1469,10 +1467,13 @@ const rDialog = ref(false);
 const rFile = ref<File | File[] | null>(null);
 const ocrBusy = ref(false);
 const lastOcrText = ref('');
-// ---- Sortable-table helper (invoices + receipts): a shared comparator +
-// click-to-sort toggle, used by both tables' <thead> — clicking a column
+// ---- Sortable-table helper (all finance tables): a shared comparator +
+// click-to-sort toggle, used by every sortable <thead> — clicking a column
 // header sorts by it (desc first; a second click on the same column flips to
-// asc). Defaults to "Datum (Erstellung)" desc on both tables.
+// asc). Invoices/receipts default to their own document date desc (issue_date
+// / recognised receipt date, not upload created_at — a batch of invoices or
+// scanned receipts uploaded on the same day would otherwise all cluster on
+// that one day instead of sorting by when they actually happened).
 type SortDir = 'asc' | 'desc';
 function sortCmp(a: unknown, b: unknown): number {
   if (a == null && b == null) return 0;
@@ -1493,11 +1494,11 @@ function toggleSort(state: { key: string; dir: SortDir }, key: string) {
 // fields as a sidebar right) opened by clicking a row — no bouncing between
 // two dialogs to see the document while correcting its fields.
 const rq = ref('');
-const rSort = reactive<{ key: string; dir: SortDir }>({ key: 'created_at', dir: 'desc' });
+const rSort = reactive<{ key: string; dir: SortDir }>({ key: 'date', dir: 'desc' });
 function rSortBy(key: string) { toggleSort(rSort, key); }
 function rSortValue(r: Receipt, key: string): unknown {
   switch (key) {
-    case 'created_at': return r.created_at;
+    case 'date': return r.date ?? r.created_at;
     case 'name': return r.name;
     case 'amount': return r.amount != null ? Number(r.amount) : null;
     case 'category': return r.category;
@@ -1657,11 +1658,10 @@ const categoryChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => (
   scales: { x: { time: false } },
 }));
 
-const invSort = reactive<{ key: string; dir: SortDir }>({ key: 'created_at', dir: 'desc' });
+const invSort = reactive<{ key: string; dir: SortDir }>({ key: 'issue_date', dir: 'desc' });
 function invSortBy(key: string) { toggleSort(invSort, key); }
 function invSortValue(i: Invoice, key: string): unknown {
   switch (key) {
-    case 'created_at': return i.created_at;
     case 'number': return i.number;
     case 'customer': return custName(i);
     case 'issue_date': return i.issue_date;
@@ -1804,9 +1804,22 @@ const bankAccountItems = computed(() => [
   { title: t('invoices.tx_all_accounts'), value: 0 },
   ...f.paymentMethods.map((p) => ({ title: p.name, value: p.id })),
 ]);
-const bankTransactions = computed(() =>
-  bankAccount.value ? f.transactions.filter((x) => x.payment_method_id === bankAccount.value) : f.transactions,
-);
+const txSort = reactive<{ key: string; dir: SortDir }>({ key: 'date', dir: 'desc' });
+function txSortBy(key: string) { toggleSort(txSort, key); }
+function txSortValue(tx: BankTransaction, key: string): unknown {
+  switch (key) {
+    case 'date': return tx.date;
+    case 'counterparty': return tx.counterparty;
+    case 'purpose': return tx.purpose;
+    case 'amount': return tx.amount;
+    default: return null;
+  }
+}
+const bankTransactions = computed(() => {
+  const base = bankAccount.value ? f.transactions.filter((x) => x.payment_method_id === bankAccount.value) : f.transactions;
+  const dirMul = txSort.dir === 'asc' ? 1 : -1;
+  return [...base].sort((a, b) => sortCmp(txSortValue(a, txSort.key), txSortValue(b, txSort.key)) * dirMul);
+});
 
 // ---- Receipt <-> transaction linking (auto/manual assignment) ----
 // Standalone receipts ("Fremdbelege") linked to a transaction via bank_transaction_id
@@ -2025,12 +2038,25 @@ function uid(): string { return globalThis.crypto?.randomUUID?.() ?? `${Date.now
 function logoSrc(v?: string | null): string { return typeof v === 'string' && /^(data:|https?:)/.test(v) ? v : ''; }
 function partnerContactName(p: Partner): string { return p.contacts?.[0]?.name ?? ''; }
 
+const partnerSort = reactive<{ key: string; dir: SortDir }>({ key: 'name', dir: 'asc' });
+function partnerSortBy(key: string) { toggleSort(partnerSort, key); }
+function partnerSortValue(p: Partner, key: string): unknown {
+  switch (key) {
+    case 'name': return p.name;
+    case 'contact': return partnerContactName(p);
+    case 'email': return p.email;
+    case 'phone': return p.phone;
+    case 'vat': return p.vat_id;
+    case 'links': return partnerLinkCount(p.id);
+    default: return null;
+  }
+}
 const filteredPartners = computed<Partner[]>(() => {
-  const list = [...f.partners].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   const s = partnerSearch.value.trim().toLowerCase();
-  if (!s) return list;
-  return list.filter((p) => [p.name, p.email, p.invoice_email, p.phone, p.vat_id, p.address, p.url, p.category, p.note, ...(p.contacts?.map((c) => c.name) ?? [])]
+  const base = !s ? f.partners : f.partners.filter((p) => [p.name, p.email, p.invoice_email, p.phone, p.vat_id, p.address, p.url, p.category, p.note, ...(p.contacts?.map((c) => c.name) ?? [])]
     .some((v) => String(v ?? '').toLowerCase().includes(s)));
+  const dirMul = partnerSort.dir === 'asc' ? 1 : -1;
+  return [...base].sort((a, b) => sortCmp(partnerSortValue(a, partnerSort.key), partnerSortValue(b, partnerSort.key)) * dirMul);
 });
 const openPartnerRec = computed<Partner | null>(() => f.partners.find((p) => p.id === openPartnerId.value) ?? null);
 

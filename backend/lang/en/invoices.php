@@ -21,7 +21,6 @@ return [
     'save_failed' => 'Could not load invoices.',
 
     'col_number' => 'Number',
-    'col_created' => 'Date (created)',
     'col_customer' => 'Customer',
     'col_date' => 'Date',
     'col_total' => 'Total',
