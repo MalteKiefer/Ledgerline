@@ -1737,6 +1737,7 @@ class FinanceController extends Controller
             'tags.*' => ['string', 'max:100'],
             'vat' => ['nullable', 'string', 'max:16'],
             'amount' => ['nullable', 'numeric', 'min:0', 'max:999999999.99'],
+            'currency' => ['nullable', 'string', 'max:8'],
             'date' => ['nullable', 'date'],
             'order_ref' => ['nullable', 'string', 'max:64'],
             'doc_number' => ['nullable', 'string', 'max:64'],
@@ -1769,6 +1770,7 @@ class FinanceController extends Controller
                 'tags' => $tags,
                 'vat' => $request->filled('vat') ? $request->string('vat')->value() : null,
                 'amount' => $request->filled('amount') ? $request->input('amount') : null,
+                'currency' => $request->filled('currency') ? $request->string('currency')->upper()->value() : null,
                 'date' => $request->filled('date') ? $request->string('date')->value() : null,
                 'order_ref' => $request->filled('order_ref') ? $request->string('order_ref')->value() : null,
                 'doc_number' => $request->filled('doc_number') ? $request->string('doc_number')->value() : null,
@@ -1806,6 +1808,7 @@ class FinanceController extends Controller
             'tags.*' => ['string', 'max:100'],
             'vat' => ['sometimes', 'nullable', 'string', 'max:16'],
             'amount' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:999999999.99'],
+            'currency' => ['sometimes', 'nullable', 'string', 'max:8'],
             'date' => ['sometimes', 'nullable', 'date'],
             'order_ref' => ['sometimes', 'nullable', 'string', 'max:64'],
             'doc_number' => ['sometimes', 'nullable', 'string', 'max:64'],
@@ -1816,10 +1819,13 @@ class FinanceController extends Controller
             'version' => ['sometimes', 'integer', 'min:0'],
         ]);
         $patch = [];
-        foreach (['name', 'category', 'vat', 'amount', 'date', 'order_ref', 'doc_number', 'note', 'partner_id', 'bank_transaction_id', 'finance_project_id', 'tags'] as $f) {
+        foreach (['name', 'category', 'vat', 'amount', 'currency', 'date', 'order_ref', 'doc_number', 'note', 'partner_id', 'bank_transaction_id', 'finance_project_id', 'tags'] as $f) {
             if ($request->has($f)) {
                 $patch[$f] = $request->input($f);
             }
+        }
+        if (array_key_exists('currency', $patch) && is_string($patch['currency'])) {
+            $patch['currency'] = mb_strtoupper($patch['currency']) ?: null;
         }
         $expected = $request->has('version') ? $request->integer('version') : null;
         $result = $this->optimistic(FinanceReceipt::class, $receipt->id, $patch, $expected);

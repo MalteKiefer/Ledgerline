@@ -63,6 +63,18 @@ describe('extractNumber', () => {
   it('joins a space-grouped reference number onto one line (Telekom-style)', () => {
     expect(extractNumber('Rechnungsnummer                          25 5828 2901 2681')).toBe('25582829012681');
   });
+  it('ignores a payment-instruction sentence merely mentioning the label, and finds the real one below it (netcup)', () => {
+    const text = 'Wichtig: Bitte nutzen Sie Ihre Rechnungs-Nr.\nDE-95512 Neudrossenfeld\n'
+      + 'als Verwendungszweck für Ihre Überweisung!\nDatum                     22.07.2026\n'
+      + 'Kunden-Nr.                     95788\nRechnungs-Nr.             nc-5384423\nSeite                              1';
+    expect(extractNumber(text)).toBe('nc-5384423');
+  });
+  it('reads a label sharing a line with unrelated text before it (two-column merge, fonial-style)', () => {
+    expect(extractNumber('Kiefer Networks   Rechnungsnummer:   2026061702224')).toBe('2026061702224');
+  });
+  it('never crosses a newline from the label into the next, unrelated line', () => {
+    expect(extractNumber('Rechnungsnr.:\nUSt-IdNr. DE123456789')).toBe('');
+  });
 });
 
 describe('extractVatRate', () => {

@@ -31,7 +31,7 @@ export interface Receipt {
   id: number; name: string; category: string | null; tags: string[] | null; vat: string | null;
   note: string | null; partner_id: number | null; version: number; mime?: string | null;
   bank_transaction_id: number | null;
-  amount: number | string | null; date: string | null; order_ref: string | null; doc_number: string | null;
+  amount: number | string | null; currency: string | null; date: string | null; order_ref: string | null; doc_number: string | null;
   ocr?: string | null;
   created_at?: string | null; file_url?: string | null;
 }
