@@ -149,4 +149,8 @@ describe('analyzeReceiptText', () => {
   it('avoids the "kündbar" false positive for Geschäftsessen (bar)', () => {
     expect(analyzeReceiptText('Vertrag monatlich kündbar\n19,99 €').category).toBe('');
   });
+  it('classifies a tax-advisor invoice as Steuerberatung', () => {
+    const r = analyzeReceiptText('Buchen und kontieren der laufenden Geschäftsvorfälle\nNettobetrag 400,00\n+ 19,00 % USt 76,00\nBruttobetrag 476,00');
+    expect(r.category).toBe('Steuerberatung');
+  });
 });
