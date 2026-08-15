@@ -229,7 +229,20 @@ class ReceiptMatcher
 
     /**
      * Bounded subset-sum over transactions instead of receipts — the mirror of
-     * matchSubsetSum(). Only sizes 2..MAX_GROUP: a single matching transaction is
+     * matchSubsetSum(), but with an extra restriction the receipt-side search
+     * doesn't need: a combination is only ever tried WITHIN one counterparty (e.g.
+     * two "WWW.INWX.DE" charges), never across different vendors. Receipts are a
+     * small, self-curated pool (the owner's own uploads); undocumented expense
+     * transactions across a real account are not — verified against real
+     * production data that an unrestricted search finds coincidental matches:
+     * four unrelated charges from four different companies (two different Amazon
+     * orders, INWX, fonial) summed to the exact cent of an unrelated PayPal
+     * receipt, and in doing so would have stolen the real INWX transaction the
+     * correct match needed. Grouping by counterparty first also directly matches
+     * how the owner described this: "eine Buchung im Namen wie inwx passt" — the
+     * anchor is a matching vendor name, not a blind date-windowed sum.
+     *
+     * Only sizes 2..MAX_GROUP within a group: a single matching transaction is
      * already handled by the client's own auto-pick on upload, so this only ever
      * fires for the case nothing single-handedly matched.
      *
@@ -238,9 +251,29 @@ class ReceiptMatcher
      */
     private function matchTransactionSubsetSum(Collection $candidates, FinanceReceipt $r, float $target): ?array
     {
+        $byCounterparty = $candidates
+            ->filter(static fn (BankTransaction $t): bool => trim((string) ($t->counterparty ?? '')) !== '')
+            ->groupBy(static fn (BankTransaction $t): string => mb_strtolower(trim((string) $t->counterparty)));
+
+        foreach ($byCounterparty as $group) {
+            $hit = $this->subsetSumWithinCounterparty($group, $r, $target);
+            if ($hit !== null) {
+                return $hit;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  Collection<int, BankTransaction>  $group
+     * @return array{ids: list<int>, reason: string}|null
+     */
+    private function subsetSumWithinCounterparty(Collection $group, FinanceReceipt $r, float $target): ?array
+    {
         /** @var list<BankTransaction> $pool */
         $pool = array_values(
-            $candidates
+            $group
                 ->sortBy(function (BankTransaction $t) use ($r): int {
                     if ($t->date === null || $r->date === null) {
                         return PHP_INT_MAX;
