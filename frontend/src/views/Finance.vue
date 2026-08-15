@@ -2110,9 +2110,35 @@ function matchReasonLabel(reason: string): string {
     : reason === 'sum' ? t('invoices.match_reason_sum')
       : t('invoices.match_reason_exact');
 }
+/**
+ * Recognition fields (amount/date/order_ref/doc_number) only started being
+ * persisted with this feature — a receipt captured before it exists with those
+ * fields empty even though its OCR text (from the original scan) is already
+ * stored, so the matcher has nothing to work with for it. Re-running the same
+ * client-side recognition against the already-stored text (no re-fetch, no
+ * server OCR call) backfills them for free before every auto-match pass.
+ */
+async function backfillReceiptFields(): Promise<number> {
+  const targets = f.standaloneReceipts.filter((r) => r.amount == null && r.ocr);
+  let updated = 0;
+  for (const r of targets) {
+    const a = analyzeReceiptText(r.ocr ?? '', ownNames.value);
+    if (a.total == null && !a.date && !a.orderRef && !a.number) continue;
+    try {
+      await f.updateReceipt(r.id, {
+        amount: a.total, date: a.date || null, order_ref: a.orderRef || null, doc_number: a.number || null,
+        version: r.version,
+      });
+      updated++;
+    } catch { /* best-effort — a stale version just leaves this receipt for a later pass */ }
+  }
+  if (updated) await f.load();
+  return updated;
+}
 async function runAutoMatch() {
   matchBusy.value = true;
   try {
+    await backfillReceiptFields();
     const res = await f.receiptMatches();
     matchGroups.value = res.groups.map((g) => ({ ...g, accepted: true }));
     matchDuplicates.value = res.duplicates;

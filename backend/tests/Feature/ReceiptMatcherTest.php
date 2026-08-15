@@ -179,4 +179,43 @@ class ReceiptMatcherTest extends TestCase
         $this->assertSame([], $result['groups']);
         $this->assertSame([], $result['duplicates']);
     }
+
+    public function test_a_net_30_invoice_still_matches_within_the_30_day_window(): void
+    {
+        // Real case: a netcup invoice dated the 22nd was actually debited on the
+        // 10th of the following month — 18 days later. A too-tight window (the
+        // original 14 days) missed this real pair; 30 days must catch it.
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $pm = $this->account();
+
+        $receipt = $this->receipt(['amount' => 35.37, 'date' => '2026-06-22']);
+        $tx = BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-07-10', 'amount' => -35.37,
+            'counterparty' => 'netcup GmbH', 'sig' => 'sig-net30',
+        ]);
+
+        $result = app(ReceiptMatcher::class)->detect();
+
+        $this->assertCount(1, $result['groups']);
+        $this->assertSame($tx->id, $result['groups'][0]['transaction_id']);
+        $this->assertSame([$receipt->id], $result['groups'][0]['receipt_ids']);
+    }
+
+    public function test_a_receipt_well_outside_the_window_is_not_matched(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $pm = $this->account();
+
+        $this->receipt(['amount' => 12.00, 'date' => '2026-01-01']);
+        BankTransaction::create([
+            'payment_method_id' => $pm->id, 'date' => '2026-04-01', 'amount' => -12.00,
+            'counterparty' => 'Unrelated by now', 'sig' => 'sig-far',
+        ]);
+
+        $result = app(ReceiptMatcher::class)->detect();
+
+        $this->assertSame([], $result['groups']);
+    }
 }
