@@ -115,7 +115,16 @@ export function extractDate(text: string): string {
 // Prefix match (no trailing \b) so German compounds like "Rechnungsdatum" /
 // "Kundennummer" are skipped too. Kept specific to avoid eating real names.
 const MERCHANT_SKIP = /^(ihre|ihr\b|your|rechnung|invoice|beleg|quittung|gutschrift|credit ?note|datum|date|kunde|customer|seite|page|betreff|subject|from\b|bill ?to|ship ?to|paid\b|vat\b|ust|steuer|item|menge|position|betrag|summe|total|details|leistungen|verkauft|sold by|umsatzsteuer|payment|sequenz|order\b|bestell|herrn\b|frau\b|firma\b|sehr geehrte)/i;
-const COMPANY_SUFFIX = /\b(gmbh|mbh|ug|ag|kg|ohg|gbr|ltd|limited|llc|inc|corp|b\.?v\.?|s\.?[àa]\.?r\.?l|s\.?a\.?|ab|oy|llp|plc)\b|& co/i;
+// "ab" (Swedish Aktiebolag, e.g. "Spotify AB") is deliberately EXCLUDED from the
+// case-insensitive alternation below and checked separately, case-SENSITIVE
+// (only ALL-CAPS "AB" counts) — "ab" is also an extremely common German word
+// ("...buchen wir am 22.07. ab.") and lower/mixed-case "ab" inside a German
+// sentence was misread as a company suffix, hijacking the merchant match onto
+// that sentence instead of the real "Telekom Deutschland GmbH" letterhead line
+// a few lines away (verified against a real Telekom invoice).
+const COMPANY_SUFFIX = /\b(gmbh|mbh|ug|ag|kg|ohg|gbr|ltd|limited|llc|inc|corp|b\.?v\.?|s\.?[àa]\.?r\.?l|s\.?a\.?|oy|llp|plc)\b|& co/i;
+const COMPANY_SUFFIX_AB = /\bAB\b/;
+const hasCompanySuffix = (l: string): boolean => COMPANY_SUFFIX.test(l) || COMPANY_SUFFIX_AB.test(l);
 // Collapse letter-spaced runs ("I n t e l l y T e c" → "IntellyTec"): 3+ single-letter
 // tokens in a row (some PDFs render tracked/letter-spaced headings as separate glyphs).
 const despace = (s: string) => String(s).replace(/(?:\b[A-Za-zÄÖÜäöü] ){2,}\b[A-Za-zÄÖÜäöü]\b/g, (m) => m.replace(/ /g, ''));
@@ -160,7 +169,7 @@ export function extractMerchant(text: string, excludeNames: string[] = []): stri
   const isOwn = (l: string) => own.some((n) => l.toLowerCase().includes(n));
   // 1. A company-legal-form line in the letterhead — almost always the seller.
   for (const l of lines.slice(0, 15)) {
-    if (l.length < 3 || MERCHANT_SKIP.test(l) || isOwn(l) || !COMPANY_SUFFIX.test(l)) continue;
+    if (l.length < 3 || MERCHANT_SKIP.test(l) || isOwn(l) || !hasCompanySuffix(l)) continue;
     const c = cleanMerchant(l);
     if (c.length >= 3 && c.length <= 50) return c;
   }
@@ -255,6 +264,19 @@ export function extractCurrency(text: string): string {
   if (hasEur) return 'EUR';
   if (/\$\s?\d/.test(s)) return 'USD';
   return '';
+}
+
+/**
+ * A suggested document name: "YYYYMMDD; Issuer; InvoiceNumber" — sorts
+ * chronologically, groups by issuer, and the invoice number makes it possible to
+ * find a specific document again. A part that wasn't recognised is simply
+ * omitted (never a placeholder); `;` and filesystem-hostile characters are
+ * stripped from the free-text parts so the format stays parseable.
+ */
+export function buildReceiptName(date: string, merchant: string, number: string): string {
+  const clean = (s: string) => String(s || '').replace(/[;/\\:*?"<>|]/g, '').replace(/\s{2,}/g, ' ').trim();
+  const parts = [date ? date.replace(/-/g, '') : '', clean(merchant), clean(number)].filter(Boolean);
+  return parts.join('; ');
 }
 
 /**

@@ -788,6 +788,9 @@
             <Btn v-if="rFile" variant="soft" size="sm" icon="document_scanner" :loading="ocrBusy" @click="scanReceipt">{{ t('invoices.ocr_scan') }}</Btn>
           </div>
         </label>
+        <div v-if="rForm.id" class="flex justify-end">
+          <Btn variant="soft" size="sm" icon="document_scanner" :loading="rescanBusy" @click="rescanReceipt">{{ t('invoices.ocr_rescan') }}</Btn>
+        </div>
         <TextField v-model="rForm.name" :label="t('invoices.receipt_rename')" />
         <div class="grid grid-cols-2 gap-3">
           <TextField v-model="rForm.amount" :label="t('invoices.gross')" type="number" />
@@ -1226,7 +1229,7 @@ import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type Pay
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, VersionConflict } from '@spa/api/client';
-import { analyzeReceiptText } from '@spa/shared/receipt-ocr';
+import { analyzeReceiptText, buildReceiptName } from '@spa/shared/receipt-ocr';
 import { autoPick, suggestBookings, type BookingSuggestion } from '@spa/shared/receipt-match';
 import { parseBankCsv } from '@spa/shared/bank-csv';
 import {
@@ -1973,6 +1976,7 @@ async function scanReceipt() {
     if (a.date && !rForm.date) rForm.date = a.date;
     if (a.orderRef && !rForm.order_ref) rForm.order_ref = a.orderRef;
     if (a.number && !rForm.doc_number) rForm.doc_number = a.number;
+    if (!rForm.name && (a.date || a.merchant || a.number)) rForm.name = buildReceiptName(a.date, a.merchant, a.number);
     for (const tag of a.tags) if (!rForm.tags.includes(tag)) rForm.tags.push(tag);
     if (a.merchant && rForm.partner_id == null) rForm.partner_id = await autoPartner(a.merchant, a.vatId);
     // Immediate "Autozuweisung": an unambiguous cent-exact match auto-links right
@@ -1984,6 +1988,36 @@ async function scanReceipt() {
     }
     success(t('invoices.ocr_done'));
   } catch { error(t('invoices.ocr_failed')); } finally { ocrBusy.value = false; }
+}
+
+const rescanBusy = ref(false);
+/**
+ * Re-run recognition on an ALREADY-uploaded receipt, from its stored OCR text
+ * (no re-upload, no server call — the text was captured once at first scan).
+ * Empty fields are filled in as usual, but the NAME is always refreshed: an
+ * existing receipt's name is almost always still the original uploaded
+ * filename, so "only fill if empty" would never trigger the one thing this
+ * button exists for.
+ */
+async function rescanReceipt() {
+  if (!rForm.id) return;
+  const current = f.standaloneReceipts.find((x) => x.id === rForm.id);
+  const text = current?.ocr ?? '';
+  if (!text) { error(t('invoices.ocr_no_text')); return; }
+  rescanBusy.value = true;
+  try {
+    const a = analyzeReceiptText(text, ownNames.value);
+    if (a.category && !rForm.category) rForm.category = a.category;
+    if (a.vat && !rForm.vat) rForm.vat = a.vat;
+    if (a.total != null && !rForm.amount) rForm.amount = String(a.total);
+    if (a.date && !rForm.date) rForm.date = a.date;
+    if (a.orderRef && !rForm.order_ref) rForm.order_ref = a.orderRef;
+    if (a.number && !rForm.doc_number) rForm.doc_number = a.number;
+    for (const tag of a.tags) if (!rForm.tags.includes(tag)) rForm.tags.push(tag);
+    const suggested = buildReceiptName(a.date, a.merchant, a.number);
+    if (suggested) rForm.name = suggested;
+    success(t('invoices.ocr_done'));
+  } finally { rescanBusy.value = false; }
 }
 
 // ---- Receipt inbox: drop/pick one or many files, each is captured automatically
@@ -2028,9 +2062,10 @@ async function processInboxFiles(files: File[]) {
         : null;
       if (pick) claimed.add(pick.id);
 
+      const suggestedName = buildReceiptName(a.date, a.merchant, a.number);
       const fd = new FormData();
       fd.append('file', file);
-      if (a.merchant) fd.append('name', a.merchant + (a.date ? ` ${a.date}` : ''));
+      if (suggestedName) fd.append('name', suggestedName);
       if (a.category) fd.append('category', a.category);
       if (a.vat) fd.append('vat', a.vat);
       if (a.total != null) fd.append('amount', String(a.total));
