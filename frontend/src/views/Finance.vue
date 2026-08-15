@@ -218,7 +218,14 @@
     </Card>
 
     <!-- Bank transactions -->
-    <Card v-show="tab === 'bank'" :title="t('invoices.tab_bank')" :body-class="'p-0'">
+    <Card v-show="tab === 'bank'" :body-class="'p-0'">
+      <template #header>
+        <div class="flex flex-wrap items-center gap-2">
+          <TextField v-model="txQuery" :placeholder="t('invoices.tx_search_ph')" icon="search" class="w-full sm:w-64" />
+          <Select v-model="txDirection" :options="txDirectionItems" class="w-40" />
+          <Select v-model="txDocFilter" :options="txDocItems" class="w-44" />
+        </div>
+      </template>
       <template #actions>
         <div class="flex items-center gap-2">
           <Select v-model.number="bankAccount" :options="bankAccountItems" class="w-44" />
@@ -1816,8 +1823,45 @@ function txSortValue(tx: BankTransaction, key: string): unknown {
     default: return null;
   }
 }
+// Search + filter: free-text across every identifying field a transaction
+// carries (not just what's shown in the table — counterparty IBAN/BIC,
+// booking text, end-to-end reference, and the linked invoice number all
+// count as a match, since that's exactly what someone hunting for "did the
+// INWX invoice actually get paid" would search by), plus a direction
+// (income/expense) and a documentation-status (has a receipt attached) filter.
+// Substring match against a transaction's signed/absolute amount, accepting
+// either "." or "," as the decimal separator (so a German "9,52" search hits
+// an amount stored as -9.52 just like "9.52" or "-9.52" would).
+function amountMatches(amount: number, query: string): boolean {
+  const q = query.trim().replace(',', '.');
+  if (!/^-?\d/.test(q)) return false;
+  return amount.toFixed(2).includes(q) || Math.abs(amount).toFixed(2).includes(q);
+}
+const txQuery = ref('');
+const txDirection = ref<'all' | 'income' | 'expense'>('all');
+const txDocFilter = ref<'all' | 'documented' | 'undocumented'>('all');
+const txDirectionItems = computed(() => [
+  { title: t('invoices.tx_dir_all'), value: 'all' },
+  { title: t('invoices.tx_dir_in'), value: 'income' },
+  { title: t('invoices.tx_dir_out'), value: 'expense' },
+]);
+const txDocItems = computed(() => [
+  { title: t('invoices.tx_doc_all'), value: 'all' },
+  { title: t('invoices.tx_doc_documented'), value: 'documented' },
+  { title: t('invoices.tx_doc_undocumented'), value: 'undocumented' },
+]);
 const bankTransactions = computed(() => {
-  const base = bankAccount.value ? f.transactions.filter((x) => x.payment_method_id === bankAccount.value) : f.transactions;
+  let base = bankAccount.value ? f.transactions.filter((x) => x.payment_method_id === bankAccount.value) : f.transactions;
+  if (txDirection.value === 'income') base = base.filter((x) => x.amount >= 0);
+  else if (txDirection.value === 'expense') base = base.filter((x) => x.amount < 0);
+  if (txDocFilter.value === 'documented') base = base.filter((x) => isTxDocumented(x));
+  else if (txDocFilter.value === 'undocumented') base = base.filter((x) => !isTxDocumented(x));
+  const s = txQuery.value.trim().toLowerCase();
+  if (s) {
+    base = base.filter((x) => [
+      x.counterparty, x.counterparty_iban, x.bic, x.purpose, x.booking_text, x.eref, x.invoice_number,
+    ].some((v) => String(v ?? '').toLowerCase().includes(s)) || amountMatches(x.amount, s));
+  }
   const dirMul = txSort.dir === 'asc' ? 1 : -1;
   return [...base].sort((a, b) => sortCmp(txSortValue(a, txSort.key), txSortValue(b, txSort.key)) * dirMul);
 });
