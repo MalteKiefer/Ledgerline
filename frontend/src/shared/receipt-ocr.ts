@@ -188,11 +188,21 @@ export function extractMerchant(text: string, excludeNames: string[] = []): stri
 }
 
 // An invoice/receipt number when the document labels one ("Rechnungsnr.", "Invoice No",
-// "Beleg-Nr", …). Conservative — only after an explicit label.
+// "Beleg-Nr", …). Conservative — only after an explicit label, and the value MUST sit
+// on the same line as the label ([^\S\r\n] between label and value, never a bare \s
+// that could also match a newline): a two-column layout can place a payment-
+// instruction sentence ("Bitte nutzen Sie Ihre Rechnungs-Nr. als Verwendungszweck…")
+// at the same text-extraction y-position as the recipient address block, ending the
+// line right after the label with nothing else on it — an unanchored \s* would then
+// cross the newline and let the address on the NEXT line satisfy the capture group as
+// a plausible-looking "number" (netcup: matched "DE-95512Neudross" out of
+// "DE-95512 Neudrossenfeld"). Requiring same-line correctly still matches labels that
+// share a line with unrelated text before them (e.g. fonial's two-column
+// "Kiefer Networks   Rechnungsnummer:   2026061702224").
 // The value may contain internal spaces between digit groups (e.g. Telekom's
 // "25 5828 2901 2681") — [^\S\r\n] keeps that on the same line without also
 // swallowing the next line the way a bare \s would.
-const NUMBER_RE = /(?:rechnungs?\s*-?\s*(?:nr|nummer)|invoice\s*(?:no|number|#)|beleg\s*-?\s*nr|rg\s*-?\s*nr|receipt\s*(?:no|number))\.?\s*[:#]?\s*([A-Za-z]{0,3}-?[0-9][A-Za-z0-9./-]{0,24}(?:[^\S\r\n][A-Za-z0-9./-]{1,8}){0,4})/i;
+const NUMBER_RE = /(?:rechnungs?\s*-?\s*(?:nr|nummer)|invoice\s*(?:no|number|#)|beleg\s*-?\s*nr|rg\s*-?\s*nr|receipt\s*(?:no|number))\.?[^\S\r\n]*[:#]?[^\S\r\n]*([A-Za-z]{0,3}-?[0-9][A-Za-z0-9./-]{0,24}(?:[^\S\r\n][A-Za-z0-9./-]{1,8}){0,4})/i;
 export function extractNumber(text: string): string {
   const m = String(text || '').match(NUMBER_RE);
   if (!m) return '';

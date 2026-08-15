@@ -29,6 +29,7 @@ use Illuminate\Support\Carbon;
  * @property array<int, string>|null $tags
  * @property string|null $vat
  * @property numeric-string|null $amount
+ * @property string|null $currency
  * @property Carbon|null $date
  * @property string|null $order_ref
  * @property string|null $doc_number
@@ -49,7 +50,7 @@ class FinanceReceipt extends Model
     // NOT fillable — the controller sets them via forceFill on create.
     protected $fillable = [
         'bank_transaction_id', 'finance_project_id', 'name', 'kind',
-        'category', 'tags', 'vat', 'amount', 'date', 'order_ref', 'doc_number',
+        'category', 'tags', 'vat', 'amount', 'currency', 'date', 'order_ref', 'doc_number',
         'note', 'partner_id', 'ocr',
     ];
 

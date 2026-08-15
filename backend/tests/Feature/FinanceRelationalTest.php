@@ -449,6 +449,24 @@ class FinanceRelationalTest extends TestCase
         $this->assertSoftDeleted('finance_receipts', ['id' => $id]);
     }
 
+    public function test_standalone_receipt_stores_currency_and_order_ref_and_uppercases_currency(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $id = $this->post(route('finance.receipts.store'), [
+            'file' => UploadedFile::fake()->create('beleg.pdf', 20, 'application/pdf'),
+            'currency' => 'usd', 'order_ref' => 'B2-20260205113013',
+        ])->assertCreated()->json('receipt.id');
+
+        $r = FinanceReceipt::find($id);
+        $this->assertSame('USD', $r->currency);
+        $this->assertSame('B2-20260205113013', $r->order_ref);
+
+        $this->putJson(route('finance.receipts.update', $id), ['currency' => 'gbp', 'version' => 0])
+            ->assertOk()->assertJsonPath('receipt.currency', 'GBP');
+    }
+
     public function test_standalone_receipt_is_owner_scoped(): void
     {
         $owner = User::factory()->create();

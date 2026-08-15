@@ -1221,6 +1221,7 @@ components:
         tags: { type: array, items: { type: string } }
         vat: { type: string, nullable: true }
         amount: { type: number, format: double, nullable: true, description: "Gross total (editable, prefilled by OCR recognition)." }
+        currency: { type: string, nullable: true, description: "ISO 4217 code (EUR/USD/GBP/CHF), uppercased server-side; editable, prefilled by OCR recognition. Display/reference only — amount is never converted." }
         date: { type: string, format: date, nullable: true, description: "Document date (editable, prefilled by OCR recognition)." }
         order_ref: { type: string, nullable: true, description: "Merchant-printed payment/order reference (e.g. Amazon's \"Zahlungsreferenznummer\") — the strongest signal for grouping several receipts that settle as one charge." }
         doc_number: { type: string, nullable: true, description: "Recognised invoice/receipt number — display + de-dup signal for accidental re-uploads." }
@@ -5669,6 +5670,7 @@ paths:
                 tags: { type: array, items: { type: string, maxLength: 100 } }
                 vat: { type: string, maxLength: 16 }
                 amount: { type: number, format: double }
+                currency: { type: string, maxLength: 8, description: "Uppercased server-side." }
                 date: { type: string, format: date }
                 order_ref: { type: string, maxLength: 64 }
                 doc_number: { type: string, maxLength: 64 }
@@ -5704,6 +5706,7 @@ paths:
                 tags: { type: array, items: { type: string } }
                 vat: { type: string, nullable: true }
                 amount: { type: number, format: double, nullable: true }
+                currency: { type: string, nullable: true, description: "Uppercased server-side." }
                 date: { type: string, format: date, nullable: true }
                 order_ref: { type: string, nullable: true }
                 doc_number: { type: string, nullable: true }

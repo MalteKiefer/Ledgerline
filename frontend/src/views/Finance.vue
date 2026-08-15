@@ -869,9 +869,17 @@
           <TextField v-model="rForm.name" :label="t('invoices.receipt_rename')" />
           <div class="grid grid-cols-2 gap-3">
             <TextField v-model="rForm.amount" :label="t('invoices.gross')" type="number" />
-            <TextField v-model="rForm.date" :label="t('common.date')" type="date" />
+            <Select v-model="rForm.currency" :label="t('invoices.currency')" :options="CURRENCY_OPTIONS" />
           </div>
-          <TextField v-model="rForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" list="fin-cats" />
+          <div class="grid grid-cols-2 gap-3">
+            <TextField v-model="rForm.date" :label="t('common.date')" type="date" />
+            <TextField v-model="rForm.doc_number" :label="t('invoices.receipt_doc_number')" />
+          </div>
+          <TextField v-model="rForm.order_ref" :label="t('invoices.receipt_order_ref')" :placeholder="t('invoices.receipt_order_ref_ph')" />
+          <div>
+            <TextField v-model="rForm.category" :label="t('invoices.receipt_category')" :placeholder="t('invoices.receipt_category_ph')" list="fin-cats" />
+            <div v-if="catAccountNo(rForm.category)" class="mt-1 text-xs text-[var(--ll-muted)]">{{ t('invoices.cat_account_no') }}: <span class="font-mono">{{ catAccountNo(rForm.category) }}</span></div>
+          </div>
           <div>
             <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipt_tags') }}</span>
             <div class="flex flex-wrap items-center gap-1.5 rounded-lg border border-[var(--ll-border)] px-2 py-1.5">
@@ -885,12 +893,15 @@
               >
             </div>
           </div>
-          <Select
-            :label="t('invoices.tab_partners')"
-            :model-value="rForm.partner_id ?? ''"
-            :options="[{ title: '—', value: '' }, ...partnerOptions.map((o) => ({ title: o.name, value: o.id }))]"
-            @update:model-value="rForm.partner_id = $event ? Number($event) : null"
-          />
+          <div>
+            <Select
+              :label="t('invoices.tab_partners')"
+              :model-value="rForm.partner_id ?? ''"
+              :options="[{ title: '—', value: '' }, ...partnerOptions.map((o) => ({ title: o.name, value: o.id }))]"
+              @update:model-value="rForm.partner_id = $event ? Number($event) : null"
+            />
+            <div v-if="partnerVatId(rForm.partner_id)" class="mt-1 text-xs text-[var(--ll-muted)]">{{ t('invoices.vat_id') }}: <span class="font-mono">{{ partnerVatId(rForm.partner_id) }}</span></div>
+          </div>
           <TextField v-model="rForm.vat" :label="t('invoices.vat')" />
           <div>
             <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.tx_receipts') }}</span>
@@ -1480,12 +1491,16 @@ const rWorkspaceIsPdf = computed(() => rWorkspaceMime.value === 'application/pdf
 function openReceiptWorkspace(r: Receipt) { editReceipt(r); rWorkspace.value = true; }
 interface RForm {
   id?: number; version?: number; name: string; category: string; tags: string[]; vat: string; note: string; partner_id: number | null;
-  amount: string; date: string; order_ref: string; doc_number: string; bank_transaction_id: number | null;
+  amount: string; currency: string; date: string; order_ref: string; doc_number: string; bank_transaction_id: number | null;
 }
 const rForm = reactive<RForm>({
   name: '', category: '', tags: [], vat: '', note: '', partner_id: null,
-  amount: '', date: '', order_ref: '', doc_number: '', bank_transaction_id: null,
+  amount: '', currency: '', date: '', order_ref: '', doc_number: '', bank_transaction_id: null,
 });
+const CURRENCY_OPTIONS = [
+  { title: '—', value: '' }, { title: 'EUR', value: 'EUR' }, { title: 'USD', value: 'USD' },
+  { title: 'GBP', value: 'GBP' }, { title: 'CHF', value: 'CHF' },
+];
 
 // ---- Assign-a-booking picker (manual fallback when nothing auto-matched) ----
 const assignTxDialog = ref(false);
@@ -2083,7 +2098,7 @@ async function delPartner(p: Partner) {
 function newReceipt() {
   Object.assign(rForm, {
     id: undefined, version: undefined, name: '', category: '', tags: [], vat: '', note: '', partner_id: null,
-    amount: '', date: '', order_ref: '', doc_number: '', bank_transaction_id: null,
+    amount: '', currency: '', date: '', order_ref: '', doc_number: '', bank_transaction_id: null,
   });
   rFile.value = null; lastOcrText.value = ''; rDialog.value = true;
 }
@@ -2133,6 +2148,7 @@ async function scanReceipt() {
     if (a.category && !rForm.category) rForm.category = a.category;
     if (a.vat && !rForm.vat) rForm.vat = a.vat;
     if (a.total != null && !rForm.amount) rForm.amount = String(a.total);
+    if (a.currency && !rForm.currency) rForm.currency = a.currency;
     if (a.date && !rForm.date) rForm.date = a.date;
     if (a.orderRef && !rForm.order_ref) rForm.order_ref = a.orderRef;
     if (a.number && !rForm.doc_number) rForm.doc_number = a.number;
@@ -2170,6 +2186,7 @@ async function rescanReceipt() {
     if (a.category && !rForm.category) rForm.category = a.category;
     if (a.vat && !rForm.vat) rForm.vat = a.vat;
     if (a.total != null && !rForm.amount) rForm.amount = String(a.total);
+    if (a.currency && !rForm.currency) rForm.currency = a.currency;
     if (a.date && !rForm.date) rForm.date = a.date;
     if (a.orderRef && !rForm.order_ref) rForm.order_ref = a.orderRef;
     if (a.number && !rForm.doc_number) rForm.doc_number = a.number;
@@ -2281,6 +2298,7 @@ async function processInboxFiles(files: File[]) {
       if (a.category) fd.append('category', a.category);
       if (a.vat) fd.append('vat', a.vat);
       if (a.total != null) fd.append('amount', String(a.total));
+      if (a.currency) fd.append('currency', a.currency);
       if (a.date) fd.append('date', a.date);
       if (a.orderRef) fd.append('order_ref', a.orderRef);
       if (a.number) fd.append('doc_number', a.number);
@@ -2301,7 +2319,7 @@ function editReceipt(r: Receipt) {
   Object.assign(rForm, {
     id: r.id, version: r.version, name: r.name, category: r.category ?? '',
     tags: Array.isArray(r.tags) ? [...r.tags] : [], vat: r.vat ?? '', note: r.note ?? '', partner_id: r.partner_id,
-    amount: r.amount != null ? String(r.amount) : '',
+    amount: r.amount != null ? String(r.amount) : '', currency: r.currency ?? '',
     // Same full-ISO-datetime-vs-<input type="date"> mismatch as invoices/transactions.
     date: r.date ? String(r.date).slice(0, 10) : '',
     order_ref: r.order_ref ?? '', doc_number: r.doc_number ?? '', bank_transaction_id: r.bank_transaction_id,
@@ -2315,7 +2333,7 @@ async function saveReceipt() {
       const body: Record<string, unknown> = {
         name: rForm.name, category: rForm.category || null, tags: rForm.tags,
         vat: rForm.vat || null, note: rForm.note || null, partner_id: rForm.partner_id,
-        amount: rForm.amount.trim() === '' ? null : Number(rForm.amount),
+        amount: rForm.amount.trim() === '' ? null : Number(rForm.amount), currency: rForm.currency || null,
         date: rForm.date || null, order_ref: rForm.order_ref || null, doc_number: rForm.doc_number || null,
         bank_transaction_id: rForm.bank_transaction_id, version: rForm.version,
       };
@@ -2330,6 +2348,7 @@ async function saveReceipt() {
       if (rForm.vat) fd.append('vat', rForm.vat);
       if (rForm.note) fd.append('note', rForm.note);
       if (rForm.amount.trim() !== '') fd.append('amount', rForm.amount);
+      if (rForm.currency) fd.append('currency', rForm.currency);
       if (rForm.date) fd.append('date', rForm.date);
       if (rForm.order_ref) fd.append('order_ref', rForm.order_ref);
       if (rForm.doc_number) fd.append('doc_number', rForm.doc_number);
@@ -2517,6 +2536,12 @@ const ownNames = computed(() => [printCompany.name, ...printCompany.contacts.map
 function catAccountNo(name: string | null | undefined): string {
   if (!name) return '';
   return f.financeCategories.find((c) => c.name === name)?.account_no ?? '';
+}
+/** A linked partner's VAT-ID — the recogniser writes it onto the PARTNER (autoPartner),
+ * not per-receipt, since it's a vendor attribute; shown here read-only for visibility. */
+function partnerVatId(partnerId: number | null | undefined): string {
+  if (partnerId == null) return '';
+  return f.partners.find((p) => p.id === partnerId)?.vat_id ?? '';
 }
 
 async function loadPrintCompany() {
