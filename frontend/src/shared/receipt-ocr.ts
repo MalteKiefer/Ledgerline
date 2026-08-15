@@ -150,6 +150,20 @@ const BRANDS: [string, RegExp][] = [
 ];
 export function detectBrand(text: string): string { for (const [n, re] of BRANDS) if (re.test(String(text || ''))) return n; return ''; }
 
+// A payment-method sentence ("wurde per PayPal bezahlt", "bezahlt mit Kreditkarte",
+// "Kreditkarte mit den Endziffern …", "paid via PayPal") names how the invoice was
+// SETTLED, not who ISSUED it. Left in the brand-detection text, "PayPal" (a real
+// BRANDS entry, since PayPal issues its own transaction receipts too) would hijack
+// the match on ANY unrelated seller's invoice that happened to be paid through it —
+// verified against a real invoice (Andy Hempel/datonga.com, a rack-mount seller
+// with no legal-form suffix on his letterhead) that was misdetected as "PayPal"
+// purely because of the trailing "Der Rechnungsbetrag wurde per PayPal bezahlt."
+// line. Lines matching this are excluded before the brand scan.
+const PAYMENT_METHOD_LINE = /\b(bezahlt|gezahlt|zahlungsart|payment\s*method|paid)\b.{0,40}\b(paypal|kreditkarte|credit\s*card|lastschrift|klarna|sofort[üu]berweisung|giropay|debit\s*card|banküberweisung)\b|\b(paypal|kreditkarte|credit\s*card|lastschrift|klarna|debit\s*card)\b.{0,40}\b(bezahlt|gezahlt|paid)\b/i;
+function stripPaymentMethodLines(text: string): string {
+  return String(text || '').split(/\r?\n/).filter((l) => !PAYMENT_METHOD_LINE.test(l)).join('\n');
+}
+
 // A contact-detail line (phone/fax/website/tax-id) — never a merchant name on its own,
 // but on a merged multi-column letterhead (pdftotext -layout flattens side-by-side
 // columns onto one line) it can appear glued to an unrelated name; excluding it keeps
@@ -175,15 +189,24 @@ export function extractMerchant(text: string, excludeNames: string[] = []): stri
     if (c.length >= 3 && c.length <= 50) return c;
   }
   // 2. A known brand keyword (Amazon, Adobe, Telekom, Kaufland, …) — beats a random
-  //    first line, which is often the recipient, a greeting or a table header.
-  const brand = detectBrand(String(text || ''));
+  //    first line, which is often the recipient, a greeting or a table header. A
+  //    payment-method sentence ("wurde per PayPal bezahlt") is excluded first so a
+  //    payment PROCESSOR mention never outranks the document's actual issuer.
+  const brand = detectBrand(stripPaymentMethodLines(String(text || '')));
   if (brand) return brand;
-  // 3. First meaningful line.
+  // 3. First meaningful line. The length cap applies to the CLEANED candidate, not
+  //    the raw line — a letterhead line often carries a "| address" tail via
+  //    cleanMerchant's pipe-split ("Andy Hempel | Anemonenweg 24 | 71672 Marbach am
+  //    Neckar") that pushes the raw line past any reasonable cap while the company
+  //    name itself is short; checking the raw line first rejected such letterheads
+  //    outright and fell through to an empty merchant (verified against the same
+  //    Andy Hempel/datonga.com invoice from the brand-hijack fix above).
   for (const l of lines.slice(0, 8)) {
-    if (l.length < 3 || l.length > 42) continue;
+    if (l.length < 3) continue;
     if (/^\d/.test(l) || /\d{2}[.:]\d{2}/.test(l) || CONTACT_LINE.test(l)) continue;
     if (MERCHANT_SKIP.test(l) || isOwn(l) || !/[a-zäöüß]/i.test(l)) continue;
-    return cleanMerchant(l);
+    const c = cleanMerchant(l);
+    if (c.length >= 3 && c.length <= 50) return c;
   }
   return '';
 }
