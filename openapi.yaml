@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Ledgerline API
-  version: 1.636.0
+  version: 1.671.0
   license:
     name: Proprietary
   description: >
@@ -1220,6 +1220,10 @@ components:
         category: { type: string, nullable: true }
         tags: { type: array, items: { type: string } }
         vat: { type: string, nullable: true }
+        amount: { type: number, format: double, nullable: true, description: "Gross total (editable, prefilled by OCR recognition)." }
+        date: { type: string, format: date, nullable: true, description: "Document date (editable, prefilled by OCR recognition)." }
+        order_ref: { type: string, nullable: true, description: "Merchant-printed payment/order reference (e.g. Amazon's \"Zahlungsreferenznummer\") — the strongest signal for grouping several receipts that settle as one charge." }
+        doc_number: { type: string, nullable: true, description: "Recognised invoice/receipt number — display + de-dup signal for accidental re-uploads." }
         note: { type: string, nullable: true }
         partner_id: { type: integer, nullable: true }
         ocr: { type: string, nullable: true }
@@ -1227,6 +1231,24 @@ components:
         created_at: { type: string, format: date-time, nullable: true }
         updated_at: { type: string, format: date-time, nullable: true }
         deleted_at: { type: string, format: date-time, nullable: true }
+
+    ReceiptMatchGroup:
+      type: object
+      description: "A suggested link between one or more unlinked standalone receipts and one unlinked bank transaction (read-only, never mutates a row) — covers the case a single charge is settled by several receipts (e.g. Amazon splitting an order into multiple shipment invoices). The client applies an accepted group by PUTing bank_transaction_id on each listed receipt."
+      required: [transaction_id, receipt_ids, reason, total]
+      properties:
+        transaction_id: { type: integer }
+        receipt_ids: { type: array, items: { type: integer }, description: "One or more receipts summing to `total`." }
+        reason: { type: string, enum: [order_ref, exact, sum], description: "order_ref = receipts share a merchant-printed payment reference; exact = one receipt matches the amount to the cent; sum = a bounded subset-sum of nearby receipts matches the amount." }
+        total: { type: number, format: double }
+    ReceiptDuplicate:
+      type: object
+      description: "An accidental re-upload of the same receipt document (same order_ref/doc_number + amount as an earlier upload), excluded from ReceiptMatchGroup sums so it is never double-counted."
+      required: [receipt_id, duplicate_of]
+      properties:
+        receipt_id: { type: integer }
+        duplicate_of: { type: integer, description: "The earlier-uploaded receipt this one duplicates." }
+
     FileFolder:
       type: object
       description: "A folder in the plaintext file tree (file_folders). Owner-scoped; parent_id forms the nested tree."
@@ -4800,6 +4822,39 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /finance/receipt-matches:
+    get:
+      tags: [Finance]
+      operationId: financeReceiptMatches
+      summary: Suggested receipt<->transaction links (read-only)
+      description: >
+        Read-only suggestions for linking unlinked standalone receipts to
+        unlinked bank transactions — including the case one charge is settled
+        by SEVERAL receipts (e.g. Amazon splitting an order into multiple
+        shipment invoices that are charged together). Matching is
+        deterministic and cent-exact: receipts sharing a merchant-printed
+        payment/order reference are summed first, then a single exact-amount
+        receipt, then a bounded subset-sum (<=4 receipts) within a date
+        window of the transaction. Accidental re-uploads of the same document
+        are de-duplicated before matching and reported separately. Never
+        mutates a row — the client applies an accepted group by PUTing
+        bank_transaction_id on each listed receipt (PUT
+        /finance/receipts/{receipt}). Throttle 60/min.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: Suggested groups + de-duplicated receipts (both empty arrays when there is nothing to suggest).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [groups, duplicates]
+                properties:
+                  groups: { type: array, items: { $ref: "#/components/schemas/ReceiptMatchGroup" } }
+                  duplicates: { type: array, items: { $ref: "#/components/schemas/ReceiptDuplicate" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /finance/category-suggestions:
     get:
       tags: [Finance]
@@ -5611,6 +5666,10 @@ paths:
                 category: { type: string, maxLength: 160 }
                 tags: { type: array, items: { type: string, maxLength: 100 } }
                 vat: { type: string, maxLength: 16 }
+                amount: { type: number, format: double }
+                date: { type: string, format: date }
+                order_ref: { type: string, maxLength: 64 }
+                doc_number: { type: string, maxLength: 64 }
                 note: { type: string, maxLength: 2000 }
                 ocr: { type: string, maxLength: 200000 }
                 sig: { type: string, maxLength: 128 }
@@ -5642,9 +5701,13 @@ paths:
                 category: { type: string, nullable: true }
                 tags: { type: array, items: { type: string } }
                 vat: { type: string, nullable: true }
+                amount: { type: number, format: double, nullable: true }
+                date: { type: string, format: date, nullable: true }
+                order_ref: { type: string, nullable: true }
+                doc_number: { type: string, nullable: true }
                 note: { type: string, nullable: true }
                 partner_id: { type: integer, nullable: true }
-                bank_transaction_id: { type: integer, nullable: true }
+                bank_transaction_id: { type: integer, nullable: true, description: "Link/unlink this receipt to a bank transaction (null unlinks)." }
                 finance_project_id: { type: integer, nullable: true }
                 version: { type: integer, minimum: 0 }
       responses:

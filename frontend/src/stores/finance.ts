@@ -30,8 +30,9 @@ export interface Project { id: number; name: string; parent_id: number | null; n
 export interface Receipt {
   id: number; name: string; category: string | null; tags: string[] | null; vat: string | null;
   note: string | null; partner_id: number | null; version: number; mime?: string | null;
-  // Optional presentation fields (may be absent depending on backend serialization).
-  amount?: number | null; date?: string | null; created_at?: string | null; file_url?: string | null;
+  bank_transaction_id: number | null;
+  amount: number | string | null; date: string | null; order_ref: string | null; doc_number: string | null;
+  created_at?: string | null; file_url?: string | null;
 }
 
 export interface BankTransaction {
@@ -48,6 +49,8 @@ export interface TxReceipt {
 export interface FinanceCategory { id: number; name: string; color: string | null; icon: string | null; account_no: string | null; version?: number }
 export interface DuplicateGroup { reason: string; key: string; ids: number[] }
 export interface NumberGapGroup { group: string; missing: string[]; min: string; max: string; count: number }
+export interface ReceiptMatchGroup { transaction_id: number; receipt_ids: number[]; reason: 'order_ref' | 'exact' | 'sum'; total: number }
+export interface ReceiptDuplicate { receipt_id: number; duplicate_of: number }
 export interface CategorySuggestion { tx_id: number; merchant: string; suggested_category: string }
 
 export const useFinanceStore = defineStore('finance', () => {
@@ -101,6 +104,7 @@ export const useFinanceStore = defineStore('finance', () => {
   const euer = (year?: number) => api.get<Record<string, unknown>>(`/api/v1/finance/reports/euer${year ? `?year=${year}` : ''}`);
   const duplicates = () => api.get<{ invoices: DuplicateGroup[]; transactions: DuplicateGroup[] }>('/api/v1/finance/duplicates');
   const numberGaps = () => api.get<{ groups: NumberGapGroup[] }>('/api/v1/finance/number-gaps');
+  const receiptMatches = () => api.get<{ groups: ReceiptMatchGroup[]; duplicates: ReceiptDuplicate[] }>('/api/v1/finance/receipt-matches');
   const categorySuggestions = () => api.get<{ suggestions: CategorySuggestion[] }>('/api/v1/finance/category-suggestions');
   const accountVat = (accountId?: number, year?: number) => {
     const p = new URLSearchParams();
@@ -138,7 +142,7 @@ export const useFinanceStore = defineStore('finance', () => {
 
   return {
     invoices, partners, paymentMethods, projects, standaloneReceipts, transactions, financeCategories,
-    load, reports, vatAdvance, euer, accountVat, duplicates, numberGaps, categorySuggestions,
+    load, reports, vatAdvance, euer, accountVat, duplicates, numberGaps, receiptMatches, categorySuggestions,
     createTransaction, updateTransaction, deleteTransaction, restoreTransaction, forceTransaction, bulkTransactions, loadTrash,
     attachTxReceipt, deleteTxReceipt, txReceiptUrl,
     createCategory, updateCategory, deleteCategory,

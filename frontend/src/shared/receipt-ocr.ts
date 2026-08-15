@@ -16,6 +16,7 @@ export interface ReceiptAnalysis {
   vat: string;
   vatId: string;
   currency: string;
+  orderRef: string;
   tags: string[];
 }
 
@@ -228,6 +229,20 @@ export function extractVatId(text: string): string {
   return norm;
 }
 
+// A merchant-printed payment/order reference that groups several documents belonging
+// to one charge (Amazon prints "Zahlungsreferenznummer" on every invoice of an order —
+// when a shipment splits into several invoices, ALL of them repeat the SAME reference,
+// which is what lets the matcher sum them onto the one card-statement line). Kept
+// generically named (not "amazonRef") since other marketplaces may print an equivalent
+// field under a different label later. [^\S\r\n] keeps the match on one line.
+const ORDER_REF_RE = /zahlungsreferenznummer[^\S\r\n]*[:#]?[^\S\r\n]*([A-Za-z0-9]{6,32})/i;
+
+/** A merchant-printed payment/order reference (e.g. Amazon's Zahlungsreferenznummer), or ''. */
+export function extractOrderRef(text: string): string {
+  const m = String(text || '').match(ORDER_REF_RE);
+  return m ? m[1] : '';
+}
+
 // The document currency → 'USD' | 'GBP' | 'CHF' | 'EUR' | '' (default '' is treated as EUR
 // downstream). Prefers an explicit ISO code, then a symbol; a bare '$' only wins when no €
 // is present (many EU invoices show both a logo $ and a € total).
@@ -259,6 +274,7 @@ export function analyzeReceiptText(text: string, excludeNames: string[] = []): R
   const vat = extractVatRate(text);
   const vatId = extractVatId(text);
   const currency = extractCurrency(text);
+  const orderRef = extractOrderRef(text);
   const tags = [...new Set([merchant, category].filter(Boolean))];
-  return { merchant, category, total, date, number, vat, vatId, currency, tags };
+  return { merchant, category, total, date, number, vat, vatId, currency, orderRef, tags };
 }
