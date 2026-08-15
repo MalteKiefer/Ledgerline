@@ -34,6 +34,7 @@ const CATEGORY_RULES: [string, RegExp][] = [
   ['Versicherung', /versicherung|\ballianz\b|\baxa\b|\bhuk\b|\bpolice\b/i],
   ['Fortbildung', /\bseminar\b|\bschulung\b|fortbildung|udemy|coursera|\bkonferenz\b|\bworkshop\b/i],
   ['Geschäftsessen', /restaurant|gastst[äa]tte|pizzeria|trattoria|bistro|imbiss|\bcaf[ée]\b|\bkaffee\b|\bbar\b|brauhaus|wirtshaus|speisekarte|trinkgeld|bewirtung|mcdonald|\bburger\b|d[öo]ner/i],
+  ['Steuerberatung', /steuerberat|buchf[üu]hrung|kontieren|jahresabschluss|gewinnermittlung|lohnbuchhaltung|wirtschaftspr[üu]f/i],
 ];
 
 /** Parse a German/EN amount ("12,90", "1.234,56", "9.99") → number or null. */
