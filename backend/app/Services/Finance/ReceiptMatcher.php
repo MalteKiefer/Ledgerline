@@ -62,7 +62,7 @@ class ReceiptMatcher
             ->get('bank_transaction_id')
             ->pluck('bank_transaction_id')
             ->filter()
-            ->map(static fn (mixed $id): int => (int) $id)
+            ->map(static fn (mixed $id): int => is_numeric($id) ? (int) $id : 0)
             ->unique();
 
         /** @var Collection<int, BankTransaction> $transactions */
@@ -169,7 +169,9 @@ class ReceiptMatcher
         foreach ($byRef as $group) {
             $sum = round((float) $group->sum(static fn (FinanceReceipt $r): float => (float) $r->amount), 2);
             if (abs($sum - $target) < self::CENT_TOL) {
-                return ['ids' => $group->map(static fn (FinanceReceipt $r): int => (int) $r->id)->values()->all(), 'reason' => 'order_ref'];
+                $ids = array_values($group->map(static fn (FinanceReceipt $r): int => (int) $r->id)->all());
+
+                return ['ids' => $ids, 'reason' => 'order_ref'];
             }
         }
 
@@ -204,18 +206,21 @@ class ReceiptMatcher
      */
     private function matchSubsetSum(Collection $candidates, BankTransaction $tx, float $target): ?array
     {
-        $pool = $candidates
-            ->sortBy(function (FinanceReceipt $r) use ($tx): int {
-                if ($r->date === null || $tx->date === null) {
-                    return PHP_INT_MAX;
-                }
+        /** @var list<FinanceReceipt> $pool */
+        $pool = array_values(
+            $candidates
+                ->sortBy(function (FinanceReceipt $r) use ($tx): int {
+                    if ($r->date === null || $tx->date === null) {
+                        return PHP_INT_MAX;
+                    }
 
-                return abs($tx->date->diffInDays($r->date));
-            })
-            ->take(self::POOL_CAP)
-            ->values();
+                    return (int) abs($tx->date->diffInDays($r->date));
+                })
+                ->take(self::POOL_CAP)
+                ->all()
+        );
 
-        $n = $pool->count();
+        $n = count($pool);
         if ($n < 2) {
             return null;
         }
@@ -227,10 +232,9 @@ class ReceiptMatcher
                     $sum += (float) $pool[$idx]->amount;
                 }
                 if (abs(round($sum, 2) - $target) < self::CENT_TOL) {
-                    return [
-                        'ids' => array_values(array_map(static fn (int $idx): int => (int) $pool[$idx]->id, $combo)),
-                        'reason' => 'sum',
-                    ];
+                    $ids = array_values(array_map(static fn (int $idx): int => (int) $pool[$idx]->id, $combo));
+
+                    return ['ids' => $ids, 'reason' => 'sum'];
                 }
             }
         }
@@ -239,11 +243,12 @@ class ReceiptMatcher
     }
 
     /**
-     * All k-combinations of $items, as an index generator (memory-safe for the sizes
-     * this ever sees — a handful of receipts, group size <= MAX_GROUP).
+     * All k-combinations of the indices 0..count($items)-1, as a generator
+     * (memory-safe for the sizes this ever sees — a handful of receipts, group
+     * size <= MAX_GROUP).
      *
      * @param  list<int>  $items
-     * @return \Generator<list<int>>
+     * @return \Generator<array<int, int>>
      */
     private function combinations(array $items, int $k): \Generator
     {
