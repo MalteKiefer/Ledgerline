@@ -165,16 +165,18 @@
         <table class="w-full text-sm">
           <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
             <tr class="border-b border-[var(--ll-border)]">
-              <th class="px-4 py-2.5 font-medium">{{ t('invoices.col_number') }}</th>
-              <th class="px-4 py-2.5 font-medium">{{ t('invoices.customer') }}</th>
-              <th class="px-4 py-2.5 font-medium">{{ t('invoices.issue_date') }}</th>
-              <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.gross') }}</th>
-              <th class="px-4 py-2.5 font-medium">{{ t('common.status') }}</th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('created_at')"><SortLabel :label="t('invoices.col_created')" active-key="created_at" :sort="invSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('number')"><SortLabel :label="t('invoices.col_number')" active-key="number" :sort="invSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('customer')"><SortLabel :label="t('invoices.customer')" active-key="customer" :sort="invSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('issue_date')"><SortLabel :label="t('invoices.issue_date')" active-key="issue_date" :sort="invSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="invSortBy('gross')"><SortLabel :label="t('invoices.gross')" active-key="gross" :sort="invSort" justify="end" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="invSortBy('status')"><SortLabel :label="t('common.status')" active-key="status" :sort="invSort" /></th>
               <th class="px-4 py-2.5"></th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="item in filteredInvoices" :key="item.id" class="border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5">
+              <td class="px-4 py-2.5 text-[var(--ll-muted)]">{{ fmtDate(item.created_at) }}</td>
               <td class="px-4 py-2.5 font-mono">{{ item.number || '—' }}</td>
               <td class="px-4 py-2.5">{{ custName(item) }}</td>
               <td class="px-4 py-2.5">{{ fmtDate(item.issue_date) }}</td>
@@ -293,11 +295,11 @@
         <table class="w-full text-sm">
           <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
             <tr class="border-b border-[var(--ll-border)]">
-              <th class="px-4 py-2.5 font-medium">{{ t('common.name') }}</th>
-              <th class="px-4 py-2.5 font-medium">{{ t('common.date') }}</th>
-              <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.gross') }}</th>
-              <th class="px-4 py-2.5 font-medium">{{ t('invoices.receipt_category') }}</th>
-              <th class="px-4 py-2.5 font-medium">{{ t('invoices.tx_receipts') }}</th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="rSortBy('created_at')"><SortLabel :label="t('invoices.col_created')" active-key="created_at" :sort="rSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="rSortBy('name')"><SortLabel :label="t('common.name')" active-key="name" :sort="rSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="rSortBy('amount')"><SortLabel :label="t('invoices.gross')" active-key="amount" :sort="rSort" justify="end" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="rSortBy('category')"><SortLabel :label="t('invoices.receipt_category')" active-key="category" :sort="rSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="rSortBy('linked')"><SortLabel :label="t('invoices.tx_receipts')" active-key="linked" :sort="rSort" /></th>
               <th class="px-4 py-2.5"></th>
             </tr>
           </thead>
@@ -307,8 +309,8 @@
               class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5"
               @click="openReceiptWorkspace(item)"
             >
+              <td class="px-4 py-2.5 text-[var(--ll-muted)]">{{ fmtDate(item.created_at) }}</td>
               <td class="px-4 py-2.5 font-medium">{{ item.name }}</td>
-              <td class="px-4 py-2.5">{{ fmtDate(item.date ?? item.created_at) }}</td>
               <td class="px-4 py-2.5 text-right font-mono tabular-nums">{{ item.amount != null ? money(Number(item.amount)) : '—' }}</td>
               <td class="px-4 py-2.5">
                 <Badge v-if="item.category" tone="gray">{{ item.category }}</Badge>
@@ -1363,7 +1365,7 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { fmtDate as libDate } from '@spa/lib/datetime';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
-import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart } from '@spa/ui';
+import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel } from '@spa/ui';
 import type { AlignedData, Options } from 'uplot';
 import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type ReceiptDuplicate } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
@@ -1467,6 +1469,23 @@ const rDialog = ref(false);
 const rFile = ref<File | File[] | null>(null);
 const ocrBusy = ref(false);
 const lastOcrText = ref('');
+// ---- Sortable-table helper (invoices + receipts): a shared comparator +
+// click-to-sort toggle, used by both tables' <thead> — clicking a column
+// header sorts by it (desc first; a second click on the same column flips to
+// asc). Defaults to "Datum (Erstellung)" desc on both tables.
+type SortDir = 'asc' | 'desc';
+function sortCmp(a: unknown, b: unknown): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+}
+function toggleSort(state: { key: string; dir: SortDir }, key: string) {
+  if (state.key === key) state.dir = state.dir === 'asc' ? 'desc' : 'asc';
+  else { state.key = key; state.dir = 'desc'; }
+}
+
 // The receipts table + its edit dialog used to be two disconnected surfaces — a
 // document could only be opened (read-only preview) OR edited, via two separate
 // buttons/modals. `rq`/`filteredReceipts` gives it the same search box as the
@@ -1474,15 +1493,28 @@ const lastOcrText = ref('');
 // fields as a sidebar right) opened by clicking a row — no bouncing between
 // two dialogs to see the document while correcting its fields.
 const rq = ref('');
+const rSort = reactive<{ key: string; dir: SortDir }>({ key: 'created_at', dir: 'desc' });
+function rSortBy(key: string) { toggleSort(rSort, key); }
+function rSortValue(r: Receipt, key: string): unknown {
+  switch (key) {
+    case 'created_at': return r.created_at;
+    case 'name': return r.name;
+    case 'amount': return r.amount != null ? Number(r.amount) : null;
+    case 'category': return r.category;
+    case 'linked': return r.bank_transaction_id != null ? 1 : 0;
+    default: return null;
+  }
+}
 const filteredReceipts = computed(() => {
   const s = rq.value.trim().toLowerCase();
-  if (!s) return f.standaloneReceipts;
-  return f.standaloneReceipts.filter((r) => (
+  const base = !s ? f.standaloneReceipts : f.standaloneReceipts.filter((r) => (
     r.name.toLowerCase().includes(s)
     || (r.category ?? '').toLowerCase().includes(s)
     || (r.tags ?? []).some((t) => t.toLowerCase().includes(s))
     || (partnerOptions.value.find((p) => p.id === r.partner_id)?.name ?? '').toLowerCase().includes(s)
   ));
+  const dirMul = rSort.dir === 'asc' ? 1 : -1;
+  return [...base].sort((a, b) => sortCmp(rSortValue(a, rSort.key), rSortValue(b, rSort.key)) * dirMul);
 });
 const rWorkspace = ref(false);
 const rWorkspaceMime = computed(() => f.standaloneReceipts.find((x) => x.id === rForm.id)?.mime ?? null);
@@ -1625,10 +1657,24 @@ const categoryChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => (
   scales: { x: { time: false } },
 }));
 
+const invSort = reactive<{ key: string; dir: SortDir }>({ key: 'created_at', dir: 'desc' });
+function invSortBy(key: string) { toggleSort(invSort, key); }
+function invSortValue(i: Invoice, key: string): unknown {
+  switch (key) {
+    case 'created_at': return i.created_at;
+    case 'number': return i.number;
+    case 'customer': return custName(i);
+    case 'issue_date': return i.issue_date;
+    case 'gross': return i.gross != null ? Number(i.gross) : null;
+    case 'status': return i.status;
+    default: return null;
+  }
+}
 const filteredInvoices = computed(() => {
   const s = q.value.trim().toLowerCase();
-  if (!s) return f.invoices;
-  return f.invoices.filter((i) => (i.number ?? '').toLowerCase().includes(s) || custName(i).toLowerCase().includes(s));
+  const base = !s ? f.invoices : f.invoices.filter((i) => (i.number ?? '').toLowerCase().includes(s) || custName(i).toLowerCase().includes(s));
+  const dirMul = invSort.dir === 'asc' ? 1 : -1;
+  return [...base].sort((a, b) => sortCmp(invSortValue(a, invSort.key), invSortValue(b, invSort.key)) * dirMul);
 });
 
 const isLocked = computed(() => !!(draft.value?.imported || (draft.value?.number && draft.value?.status !== 'draft')));
