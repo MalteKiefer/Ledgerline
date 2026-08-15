@@ -588,6 +588,15 @@
       </template>
     </Modal>
 
+    <!-- CSV import status (was previously invisible — the whole import ran with no
+         feedback at all while the user waited, not knowing whether anything happened). -->
+    <Modal v-model="csvImportDialog" :title="t('invoices.tx_import')" width="380px">
+      <div class="flex items-center gap-3 py-2">
+        <Icon name="progress_activity" :size="24" class="shrink-0 animate-spin text-primary-600 dark:text-primary-300" />
+        <span class="text-sm">{{ csvImportStage === 'parsing' ? t('invoices.tx_import_parsing') : t('invoices.tx_import_uploading') }}</span>
+      </div>
+    </Modal>
+
     <!-- Bank transaction editor -->
     <Modal v-model="txDialog" :title="txForm.id ? t('common.edit') : t('common.add')" width="480px">
       <div class="space-y-3">
@@ -1219,6 +1228,7 @@ import { confirmAsk } from '@spa/composables/useConfirm';
 import { api, VersionConflict } from '@spa/api/client';
 import { analyzeReceiptText } from '@spa/shared/receipt-ocr';
 import { autoPick, suggestBookings, type BookingSuggestion } from '@spa/shared/receipt-match';
+import { parseBankCsv } from '@spa/shared/bank-csv';
 import {
   type PrintInvoice, type PrintCompany, type PrintLine,
   computeTotals as printComputeTotals, vatRatesOf as printVatRatesOf,
@@ -1653,64 +1663,40 @@ async function delTx(tx: BankTransaction) {
   catch { error(t('common.error')); }
 }
 
-// CSV bank-statement import: header row + comma/semicolon delimiter; maps date/amount/counterparty/purpose.
+// CSV bank-statement import — parsing lives in shared/bank-csv.ts (pure + unit
+// tested; a previous inline version here mis-parsed ISO dates and silently
+// corrupted 351 real production transactions, see CLAUDE.md changelog).
+const csvImportDialog = ref(false);
+const csvImportStage = ref<'parsing' | 'uploading'>('parsing');
 async function onBankCsv(e: Event) {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = '';
   if (!file) return;
-  const acct = bankAccount.value || f.paymentMethods[0]?.id;
-  if (!acct) { error(t('invoices.tx_import_no_account')); return; }
-  try {
-    const rows = parseBankCsv(await file.text());
-    if (!rows.length) { error(t('invoices.tx_import_empty')); return; }
-    const res = await f.bulkTransactions(acct, rows);
-    await f.load();
-    success(t('invoices.tx_import_done', { created: String(res.created), skipped: String(res.skipped) }));
-  } catch { error(t('common.error')); }
-}
-function csvAmount(raw: string): number {
-  let s = raw.replace(/[^\d.,-]/g, '');
-  if (s.includes(',') && s.includes('.')) {
-    s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
-  } else if (s.includes(',')) s = s.replace(',', '.');
-  return Number(s);
-}
-function csvDate(s: string): string | null {
-  if (!s) return null;
-  const m = s.match(/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/);
-  if (m) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
-  const iso = s.match(/(\d{4})-(\d{2})-(\d{2})/);
-  return iso ? iso[0] : null;
-}
-// Returns rows the backend bulk endpoint accepts (date + amount required per row).
-function parseBankCsv(text: string): Record<string, unknown>[] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return [];
-  const delim = (lines[0].match(/;/g)?.length ?? 0) >= (lines[0].match(/,/g)?.length ?? 0) ? ';' : ',';
-  const split = (l: string) => l.split(delim).map((c) => c.trim().replace(/^"|"$/g, ''));
-  const header = split(lines[0]).map((h) => h.toLowerCase());
-  const idx = (...names: string[]) => header.findIndex((h) => names.some((n) => h.includes(n)));
-  const di = idx('datum', 'date', 'buchung');
-  const ai = idx('betrag', 'amount', 'value');
-  const ci = idx('empfänger', 'auftraggeber', 'counterparty', 'name', 'beguenstigter', 'begünstigter', 'zahlungspflichtiger');
-  const pi = idx('verwendung', 'purpose', 'reference', 'zweck');
-  const out: Record<string, unknown>[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const c = split(lines[i]);
-    if (ai < 0 || !c[ai]) continue;
-    const amount = csvAmount(c[ai]);
-    if (!Number.isFinite(amount)) continue;
-    const date = di >= 0 ? csvDate(c[di]) : null;
-    if (!date) continue; // date is required by the endpoint
-    out.push({
-      date,
-      amount,
-      counterparty: ci >= 0 ? (c[ci] ?? '') : '',
-      purpose: pi >= 0 ? (c[pi] ?? '') : '',
-    });
+
+  // The account dropdown doubles as "which account do new rows belong to" — on
+  // the ambiguous "All accounts" selection with more than one account, refuse
+  // to silently guess (this is exactly how a bulk import once landed unnoticed
+  // under the wrong/first account). Auto-use the account only when it is the
+  // single unambiguous choice.
+  let acct: number | null = bankAccount.value || null;
+  if (!acct) {
+    if (f.paymentMethods.length === 0) { error(t('invoices.tx_import_no_account')); return; }
+    if (f.paymentMethods.length > 1) { error(t('invoices.tx_import_pick_account')); return; }
+    acct = f.paymentMethods[0].id;
   }
-  return out;
+
+  csvImportDialog.value = true;
+  csvImportStage.value = 'parsing';
+  try {
+    const { rows, skipped: parseSkipped } = parseBankCsv(await file.text());
+    if (!rows.length) { error(t('invoices.tx_import_empty')); return; }
+    csvImportStage.value = 'uploading';
+    const res = await f.bulkTransactions(acct, rows as unknown as Record<string, unknown>[]);
+    await f.load();
+    const skipped = res.skipped + parseSkipped;
+    success(t('invoices.tx_import_done', { created: String(res.created), skipped: String(skipped) }));
+  } catch { error(t('common.error')); } finally { csvImportDialog.value = false; }
 }
 
 // ---- Document preview (receipts + invoice PDFs), in-app instead of a new tab ----
