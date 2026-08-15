@@ -20,6 +20,25 @@ describe('extractTotal', () => {
   it('reads a 4-digit total without a thousands separator ("1071,00", not "071,00")', () => {
     expect(extractTotal('Gesamtbetrag 1071,00 EUR')).toBe(1071);
   });
+  // Regression: a real Telekom invoice's "Insgesamt verbrauchtes Datenvolumen:
+  // 791.004 KB" line was picked as the receipt total (791,00 €) over the real
+  // "Rechnungsbetrag 39,85 €" — two compounding causes. (1) The plain decimal
+  // alternative in amountsIn() truncated the extra trailing digit of a bare
+  // three-group thousands figure with no cents at all ("791.004" -> "791.00").
+  // (2) The bare "gesamt" label keyword matched inside "insgesamt" (a common
+  // German adverb, "in total", not itself a total-amount label).
+  it('does not mistake a KB data-volume reading for the receipt total (real Telekom invoice)', () => {
+    const text = 'Summe Betrag   33,49 €\n+19 % USt. auf 33,49 €   6,36 €\nRechnungsbetrag   39,85 €\n'
+      + 'Vertraglich vereinbartes Datenvolumen: 26.214.400 KB\nInsgesamt verbrauchtes Datenvolumen: 791.004 KB';
+    expect(extractTotal(text)).toBe(39.85);
+  });
+  // A genuine "Insgesamt: <amount>" TOTAL LABEL (Backblaze's own wording for
+  // "Total:") must still be recognised — the fix above must not require a
+  // leading word boundary on "gesamt" (which would also reject this legitimate
+  // case), since the same substring is used both ways across real invoices.
+  it('still recognises a bare "Insgesamt:" total label (Backblaze-style)', () => {
+    expect(extractTotal('B2 Cloud Storage   ($2.57)\nInsgesamt: ($2.57)')).toBe(2.57);
+  });
 });
 
 describe('extractDate', () => {

@@ -53,10 +53,16 @@ function amount(s: string): number | null {
 // (so "Total: 45 €" is caught but a bare year "2026" or quantity "3" is not). The
 // integer part is EITHER a proper thousands-grouped run ("1.071" / "1 071") OR — since
 // not every template groups thousands — a bare digit run ("1071"); grouped is tried
-// first so "1.071,00" isn't misread as "071,00" via the ungrouped fallback.
+// first so "1.071,00" isn't misread as "071,00" via the ungrouped fallback. The
+// trailing `(?!\d)` on both decimal alternatives rejects a MORE-than-2-digit tail: a
+// three-group thousands figure with no cents at all ("791.004", a KB data-volume
+// reading) would otherwise be read as "791.00" by silently truncating the extra
+// trailing digit — verified against a real Telekom invoice whose "Insgesamt
+// verbrauchtes Datenvolumen: 791.004 KB" line got picked as the receipt total
+// (791,00 €) over the real "Rechnungsbetrag 39,85 €".
 function amountsIn(line: string): number[] {
   const out: number[] = [];
-  const re = /(\d{1,3}(?:[.\s]\d{3})+[.,]\d{2}|\d+[.,]\d{2})|€\s*(\d{1,3}(?:[.\s]\d{3})*)(?![.,]\d)|(\d{1,3}(?:[.\s]\d{3})*)(?![.,]\d)\s*(?:€|eur\b)/gi;
+  const re = /(\d{1,3}(?:[.\s]\d{3})+[.,]\d{2}(?!\d)|\d+[.,]\d{2}(?!\d))|€\s*(\d{1,3}(?:[.\s]\d{3})*)(?![.,]\d)|(\d{1,3}(?:[.\s]\d{3})*)(?![.,]\d)\s*(?:€|eur\b)/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(line))) { const v = amount(m[1] || m[2] || m[3]); if (v != null) out.push(v); }
   return out;
@@ -77,6 +83,13 @@ export function extractTotal(text: string): number | null {
     // Net subtotal / tax lines are NOT the payable gross — "Zwischensumme" matches the
     // "summe" keyword but is the net amount (Apple/iCloud 8,40 net vs 9,99 gross).
     if (/zwischensumme|zwischensal|nettosumme|nettobetrag|nettogesamt|netto-?summe|subtotal|\bmwst\b|umsatzsteuer|\bust\b|mehrwertsteuer|\bvat\b|sales tax/i.test(ln)) continue;
+    // "gesamt" is intentionally left unanchored: Backblaze prints its own total as
+    // a bare "Insgesamt: ($2.57)" line (verified real invoice) — restricting to a
+    // leading \b would reject that genuine label along with the German ADVERB
+    // "insgesamt" ("in total", e.g. "Insgesamt verbrauchtes Datenvolumen"), which
+    // is excluded instead at the source: the digit over-match fix in amountsIn()
+    // above already keeps a bare data-volume figure like "791.004 KB" from ever
+    // producing a value on that line, so it never reaches this label check at all.
     if (/summe|gesamt|rechnungsbetrag|endbetrag|grand total|\btotal\b|amount paid|\bpaid\b|bezahlt|gezahlt|zu zahlen/i.test(ln)) {
       const v = vals[vals.length - 1];
       if (v != null && v !== 0 && (labelled == null || v > labelled)) labelled = v;
