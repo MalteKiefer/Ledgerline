@@ -75,6 +75,37 @@ describe('extractNumber', () => {
   it('never crosses a newline from the label into the next, unrelated line', () => {
     expect(extractNumber('Rechnungsnr.:\nUSt-IdNr. DE123456789')).toBe('');
   });
+  it('reads a bare "Rechnung <code>" in a dunning-letter sentence, no -nr/-nummer suffix (real netcup reminder text)', () => {
+    const text = 'Karlsruhe, den 10.07.2026\r\n1. Mahnung zu Ihrer Rechnung nc-5287300\r\nGuten Tag Malte Kiefer,\r\n'
+      + 'vielen Dank für Ihr Vertrauen in unsere Dienste. Leider konnten wir bislang keinen Zahlungseingang zu\r\n'
+      + 'unserer Rechnung nc-5287300 vom 22.06.2026 über den Betrag von 35,37 EUR feststellen.\r\n'
+      + 'R.-Nr.   R.-Datum   R.-Betrag\r\nnc-5287300   22.06.2026   35,37 EUR\r\nZwischensumme   35,37 EUR';
+    expect(extractNumber(text)).toBe('nc-5287300');
+  });
+  it('rejects a bare year mistaken for an ID after a bare "Rechnung" ("Rechnung 2026" is not a number)', () => {
+    expect(extractNumber('Bitte prüfen Sie Ihre Rechnung 2026 sorgfältig.')).toBe('');
+  });
+  it('reconstructs a value from a two-column label-block/value-block layout (real netcup invoice text, label and value on separate lines)', () => {
+    const text = 'Wichtig: Bitte nutzen Sie Ihre Rechnungs-Nr.\r\nals Verwendungszweck für Ihre Überweisung!\r\n'
+      + 'Datum\r\nKunden-Nr.\r\nRechnungs-Nr.\r\nSeite\r\n22.06.2026\r\n95788\r\nnc-5287300\r\n1\r\nIhre Rechnung';
+    expect(extractNumber(text)).toBe('nc-5287300');
+  });
+  it('reconstructs a value with an underscore from a two-column label-block/value-block layout (real Backblaze invoice text)', () => {
+    const text = 'Zahlung Datum\r\nE-Mail-Adresse\r\nZahlung\r\nUnternehmen\r\nRechnung\r\nMwSt\r\nAnderes\r\n'
+      + '2026-02-05 UTC\r\nmalte.kiefer@kiefer-networks.de\r\nKreditkarte mit den Endziffern 1548\r\nKiefer Networks\r\n'
+      + '021abe1f7af3_158\r\nDE 30 43 23 922\r\nAdalbert-Stifter-Str.   6\r\n95512   Neudrossenfeld';
+    expect(extractNumber(text)).toBe('021abe1f7af3_158');
+  });
+  it('reconstructs a value from a two-column block layout with a generic "Invoice" heading label (real INWX invoice text)', () => {
+    const text = 'Germany\r\nInvoice\r\nCustomer number:\r\nDocument number:\r\nDate:\r\nPage:\r\n'
+      + '254945\r\n2026078217\r\n2026-07-31\r\n1 / 1\r\nYour Invoice';
+    expect(extractNumber(text)).toBe('2026078217');
+  });
+  it('does not mistake a table header + first item line for a number when a "RECHNUNG" heading is not part of a real label block (fonial-style)', () => {
+    const text = 'Lieferdatum entspricht Rechnungsdatum.\r\nRECHNUNG\r\nProdukt   Menge   Datum / Zeitraum   Nettogesamtpreis\r\n'
+      + 'fonial PLUS   01.06.2026 - 30.06.2026';
+    expect(extractNumber(text)).toBe('');
+  });
 });
 
 describe('extractVatRate', () => {
