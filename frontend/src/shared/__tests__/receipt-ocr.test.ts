@@ -47,6 +47,20 @@ describe('extractDate', () => {
   it('parses an English month name', () => { expect(extractDate('July 27, 2026')).toBe('2026-07-27'); });
   it('parses a dash month abbreviation', () => { expect(extractDate('27-MAR-2025')).toBe('2025-03-27'); });
   it('rejects an invalid day/month', () => { expect(extractDate('99.99.2026')).toBe(''); });
+  // Regression: a real Telekom invoice's OWN "Datum 11.06.2026" line lost to an
+  // earlier, unlabelled SEPA-debit sentence ("Den Betrag von 39,85 € buchen wir
+  // am 23.06.2026 ab.") purely because of where each happened to land in the
+  // text-extraction order — the old code just took the first date pattern found
+  // anywhere. A labelled date must now win regardless of position.
+  it('prefers a labelled "Datum" line over an earlier unlabelled date', () => {
+    const text = 'Den Betrag von 39,85 € buchen wir am 23.06.2026 ab.\nDatum   11.06.2026\nRechnungsnummer   25 4492 2701 2681';
+    expect(extractDate(text)).toBe('2026-06-11');
+  });
+  // A real Ubiquiti receipt prints "Invoice Date: 2026/06/23" — year-first, with
+  // slashes rather than the usual hyphenated ISO form.
+  it('parses a labelled year-first date with slash separators', () => {
+    expect(extractDate('Invoice No.: EU5675973\nInvoice Date:     2026/06/23')).toBe('2026-06-23');
+  });
 });
 
 describe('extractMerchant', () => {
@@ -102,6 +116,22 @@ describe('extractMerchant', () => {
   it('cleans a letterhead line before applying the length cap, not after', () => {
     const text = 'Rechnung\nAndy Hempel | Anemonenweg 24 | 71672 Marbach am Neckar\nSehr geehrter Kunde,';
     expect(extractMerchant(text)).toBe('Andy Hempel');
+  });
+  // Regression: a real FastSpring/Royal Apps receipt's own bare "RECEIPT" heading
+  // (no company-suffix line, no known-brand keyword) was picked as the merchant
+  // by the "first meaningful line" fallback — "receipt" was missing from the
+  // generic-document-word skip list that already excludes "beleg"/"quittung".
+  it('does not mistake a bare "RECEIPT" heading for the merchant', () => {
+    const text = 'RECEIPT\nOrder ID: ROYALAPPS260608-2052-69131\nOrder Created: 8 June 2026';
+    expect(extractMerchant(text)).not.toBe('RECEIPT');
+  });
+  // Regression: on the same document, once "RECEIPT" is excluded, the next
+  // candidate line was "PO Number:" — a form label with an empty value (no PO
+  // number on this order), not a company name. A line ending in a bare colon is
+  // never a real letterhead.
+  it('does not mistake an empty "PO Number:" field for the merchant', () => {
+    const text = 'Some Heading\nPO Number:\nMore text here';
+    expect(extractMerchant(text)).not.toBe('PO Number:');
   });
 });
 

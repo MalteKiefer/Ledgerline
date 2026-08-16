@@ -107,16 +107,43 @@ const MONTHS: Record<string, number> = {
 
 const okDate = (y: number, mo: number, d: number) => mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && y >= 2000 && y <= 2100;
 
+// A date next to an explicit label ("Datum: 11.03.2026", "Rechnungsdatum
+// 22.06.2026", "Invoice Date: 2026/06/23") is checked FIRST, before any bare date
+// found elsewhere in the document. Without this, an earlier UNLABELLED date that
+// happens to appear first in the text-extraction order wins over the document's
+// own real date — verified against a real Telekom invoice: its own "Datum
+// 11.06.2026" line lost to an earlier, unlabelled SEPA-debit sentence ("Den
+// Betrag von 39,85 € buchen wir am 23.06.2026 ab.") purely because of where each
+// happened to land in the extracted text. The captured value can be either
+// day-first (DD.MM.YYYY) or year-first (YYYY/MM/DD, e.g. a Ubiquiti invoice) —
+// disambiguated by whether the first captured number is 4 digits.
+const DATE_LABEL_RE = /(?:rechnungsdatum|invoice\s*date|date\s*of\s*invoice|belegdatum|\bdatum)\b\.?[^\S\r\n]*:?[^\S\r\n]*(\d{1,4})[.\/-](\d{1,2})[.\/-](\d{1,4})/i;
+function extractLabelledDate(s: string): string {
+  const m = s.match(DATE_LABEL_RE);
+  if (!m) return '';
+  const [, a, b, c] = m;
+  if (a.length === 4) {
+    const y = Number(a); const mo = Number(b); const d = Number(c);
+    return okDate(y, mo, d) ? `${a}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}` : '';
+  }
+  const d = Number(a); const mo = Number(b);
+  const y = c.length === 2 ? 2000 + Number(c) : Number(c);
+  return okDate(y, mo, d) ? `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}` : '';
+}
+
 /** First plausible date in the text → ISO yyyy-mm-dd, or ''. Validates the day/month. */
 export function extractDate(text: string): string {
   const s = String(text || '');
+  const labelled = extractLabelledDate(s);
+  if (labelled) return labelled;
   // DD.MM.YYYY (day first — German/most receipts). Scan for the first VALID one.
   for (const mm of s.matchAll(/\b(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})\b/g)) {
     const y = mm[3].length === 2 ? 2000 + Number(mm[3]) : Number(mm[3]);
     const d = Number(mm[1]); const mo = Number(mm[2]);
     if (okDate(y, mo, d)) return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   }
-  let m = s.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  // ISO order, hyphen OR slash (e.g. a Ubiquiti receipt prints "2026/06/23").
+  let m = s.match(/\b(\d{4})[\/-](\d{2})[\/-](\d{2})\b/);
   if (m && okDate(Number(m[1]), Number(m[2]), Number(m[3]))) return `${m[1]}-${m[2]}-${m[3]}`;
   // "27. Juli 2026" / "27-MAR-2025" — day, month name (space/dot/dash separators).
   m = s.match(/\b(\d{1,2})[.\s-]+([A-Za-zäöüÄÖÜ]{3,})[.\s-]+(\d{4})\b/);
@@ -128,7 +155,7 @@ export function extractDate(text: string): string {
 
 // Prefix match (no trailing \b) so German compounds like "Rechnungsdatum" /
 // "Kundennummer" are skipped too. Kept specific to avoid eating real names.
-const MERCHANT_SKIP = /^(ihre|ihr\b|your|rechnung|invoice|beleg|quittung|gutschrift|credit ?note|datum|date|kunde|customer|seite|page|betreff|subject|from\b|bill ?to|ship ?to|paid\b|vat\b|ust|steuer|item|menge|position|betrag|summe|total|details|leistungen|verkauft|sold by|umsatzsteuer|payment|sequenz|order\b|bestell|herrn\b|frau\b|firma\b|sehr geehrte)/i;
+const MERCHANT_SKIP = /^(ihre|ihr\b|your|rechnung|invoice|receipt\b|beleg|quittung|gutschrift|credit ?note|datum|date|kunde|customer|seite|page|betreff|subject|from\b|bill ?to|ship ?to|paid\b|vat\b|ust|steuer|item|menge|position|betrag|summe|total|details|leistungen|verkauft|sold by|umsatzsteuer|payment|sequenz|order\b|bestell|herrn\b|frau\b|firma\b|sehr geehrte)/i;
 // "ab" (Swedish Aktiebolag, e.g. "Spotify AB") is deliberately EXCLUDED from the
 // case-insensitive alternation below and checked separately, case-SENSITIVE
 // (only ALL-CAPS "AB" counts) — "ab" is also an extremely common German word
@@ -217,6 +244,9 @@ export function extractMerchant(text: string, excludeNames: string[] = []): stri
   for (const l of lines.slice(0, 8)) {
     if (l.length < 3) continue;
     if (/^\d/.test(l) || /\d{2}[.:]\d{2}/.test(l) || CONTACT_LINE.test(l)) continue;
+    // A label ending in a bare colon with nothing after it ("PO Number:") is an
+    // empty form field, not a company name — real letterheads never end in ":".
+    if (l.trimEnd().endsWith(':')) continue;
     if (MERCHANT_SKIP.test(l) || isOwn(l) || !/[a-zäöüß]/i.test(l)) continue;
     const c = cleanMerchant(l);
     if (c.length >= 3 && c.length <= 50) return c;
