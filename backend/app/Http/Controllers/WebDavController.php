@@ -137,11 +137,15 @@ class WebDavController extends Controller
         $laravelResponse = response($server->httpResponse->getBodyAsString(), $server->httpResponse->getStatus());
         foreach ($server->httpResponse->getHeaders() as $name => $values) {
             // Sabre's Message::getHeaders() is declared `array` with no
-            // generic annotation, so PHPStan sees $values as mixed even
-            // though setHeader()/addHeader() only ever store string[]
-            // (verified against sabre/http's own source).
+            // generic annotation, so PHPStan sees $values/$value as mixed
+            // even though setHeader()/addHeader() only ever store string[]
+            // (verified against sabre/http's own source) — guard rather than
+            // blind-cast so a genuinely unexpected value is dropped, not
+            // silently stringified into something wrong.
             foreach ((array) $values as $i => $value) {
-                $laravelResponse->headers->set($name, (string) $value, $i === 0);
+                if (is_string($value)) {
+                    $laravelResponse->headers->set($name, $value, $i === 0);
+                }
             }
         }
 
