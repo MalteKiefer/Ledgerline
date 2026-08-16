@@ -51,6 +51,28 @@ class WebDavTest extends TestCase
         $this->call('PROPFIND', '/dav/')->assertStatus(401);
     }
 
+    public function test_authenticated_propfind_returns_a_real_multistatus_body(): void
+    {
+        // Regression test: WebDavController used to hand Sabre's response to the
+        // PHP SAPI (raw header()/echo) and return an empty Laravel Response,
+        // trusting that output to reach the client directly. Under FrankenPHP's
+        // worker mode it never does — every real DAV client (Contacts, Calendar,
+        // a WebDAV mount) received a status code with no body. Assert the body
+        // itself, not just the status, so that regression can't come back silent.
+        $user = User::factory()->create();
+        $this->actingAs($user)->put(route('profile.webdav.update'), ['webdav_password' => 'a-strong-dav-pass']);
+        Auth::logout();
+
+        $response = $this->call('PROPFIND', '/dav/', server: [
+            'HTTP_AUTHORIZATION' => 'Basic '.base64_encode($user->email.':a-strong-dav-pass'),
+            'HTTP_DEPTH' => '0',
+        ]);
+
+        $response->assertStatus(207);
+        $this->assertStringContainsString('multistatus', $response->getContent());
+        $this->assertNotSame('', $response->getContent());
+    }
+
     public function test_auth_backend_validates_the_app_password(): void
     {
         $user = User::factory()->create();
