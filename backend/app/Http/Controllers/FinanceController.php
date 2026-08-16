@@ -1754,6 +1754,20 @@ class FinanceController extends Controller
             abort(422);
         }
 
+        // Content-dedup: the same byte-identical document uploaded twice (e.g. a
+        // user re-drops a whole batch to retry files a rate limit failed, silently
+        // duplicating the ones that had already succeeded) returns the EXISTING
+        // row instead of creating a second one — no new blob is ever written for
+        // it. Client-computed sig (sha256 of the file), so this only fires when
+        // the client sends one; nothing changes for a request without it.
+        if ($request->filled('sig')) {
+            $sig = $request->string('sig')->value();
+            $existing = FinanceReceipt::query()->where('sig', $sig)->first();
+            if ($existing instanceof FinanceReceipt) {
+                return response()->json(['receipt' => $existing, 'duplicate' => true]);
+            }
+        }
+
         $path = 'invoices/'.Str::uuid()->toString();
         $this->fs()->putFileAs('invoices', $upload, basename($path));
 

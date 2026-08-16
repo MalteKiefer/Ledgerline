@@ -32,6 +32,7 @@ export interface Receipt {
   id: number; name: string; category: string | null; tags: string[] | null; vat: string | null;
   note: string | null; partner_id: number | null; version: number; mime?: string | null;
   bank_transaction_id: number | null;
+  sig?: string | null;
   // A split-payment link (one receipt settled by several separate bank charges) —
   // mutually exclusive with bank_transaction_id, see FinanceReceipt on the backend.
   linked_transaction_ids: number[] | null;
@@ -137,7 +138,9 @@ export const useFinanceStore = defineStore('finance', () => {
   const deletePayment = (id: number) => api.delete(`/api/v1/finance/payment-methods/${id}`);
 
   // ---- Receipts (standalone "Fremdbelege") ----
-  const createReceipt = (form: FormData) => api.upload<{ receipt: Receipt }>('/api/v1/finance/receipts', form);
+  // duplicate:true means the server matched the sent `sig` against an existing
+  // receipt and returned THAT one unchanged instead of creating a new row/blob.
+  const createReceipt = (form: FormData) => api.upload<{ receipt: Receipt; duplicate?: boolean }>('/api/v1/finance/receipts', form);
   const updateReceipt = (id: number, body: Record<string, unknown>) => api.put<{ receipt: Receipt }>(`/api/v1/finance/receipts/${id}`, body);
   const deleteReceipt = (id: number) => api.delete(`/api/v1/finance/receipts/${id}`);
   const receiptFileUrl = (id: number) => api.streamUrl(`/api/v1/finance/receipts/${id}/raw`);

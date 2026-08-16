@@ -176,8 +176,13 @@ Route::prefix('v1')->group(function (): void {
         Route::delete('/auth/session', [AuthController::class, 'destroy'])->name('api.auth.destroy');
 
         // Transient server-side OCR of a raw receipt: returns line-structured text
-        // only (recognition is client-side). Nothing is persisted/logged.
-        Route::post('/invoices/ocr', [InvoiceOcrController::class, 'ocr'])->middleware(['throttle:20,1', 'module:finance'])->name('api.invoices.ocr');
+        // only (recognition is client-side). Nothing is persisted/logged. 120/min
+        // (the original v1.506.88 design value) — the endpoint drives the receipt
+        // inbox's own bulk-upload feature (drop many files at once), which fires
+        // one OCR call per file sequentially with no inter-request delay; a real
+        // batch of ~27 mostly text-layer PDFs (near-instant per call) blew through
+        // a since-tightened 20/min within seconds, well before finishing.
+        Route::post('/invoices/ocr', [InvoiceOcrController::class, 'ocr'])->middleware(['throttle:120,1', 'module:finance'])->name('api.invoices.ocr');
 
         // Plaintext-relational Finance: invoices + partners + payment methods +
         // bank transactions + projects + categories as owner-scoped rows.

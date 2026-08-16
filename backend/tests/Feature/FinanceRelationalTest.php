@@ -467,6 +467,51 @@ class FinanceRelationalTest extends TestCase
             ->assertOk()->assertJsonPath('receipt.currency', 'GBP');
     }
 
+    public function test_uploading_a_receipt_with_a_sig_already_on_file_returns_the_existing_row_instead_of_a_duplicate(): void
+    {
+        // Real case: a user re-dropped a whole batch to retry files a rate limit
+        // failed, silently re-uploading files that had already succeeded.
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $first = $this->post(route('finance.receipts.store'), [
+            'file' => UploadedFile::fake()->create('netcup.pdf', 20, 'application/pdf'),
+            'name' => '20260722; netcup GmbH; nc-5384423',
+            'sig' => 'same-bytes-sig',
+        ])->assertCreated();
+        $id = $first->json('receipt.id');
+        $this->assertNull($first->json('duplicate'));
+
+        // Same sig again (even with different metadata attached this time) —
+        // no second row, no second blob; the ORIGINAL receipt comes back.
+        $again = $this->post(route('finance.receipts.store'), [
+            'file' => UploadedFile::fake()->create('netcup-2.pdf', 20, 'application/pdf'),
+            'name' => 'a different name this time',
+            'sig' => 'same-bytes-sig',
+        ])->assertOk();
+        $this->assertTrue($again->json('duplicate'));
+        $this->assertSame($id, $again->json('receipt.id'));
+        $this->assertSame('20260722; netcup GmbH; nc-5384423', $again->json('receipt.name'));
+
+        $this->assertSame(1, FinanceReceipt::count());
+
+        // No sig at all — dedup never engages, a normal second row is created.
+        $this->post(route('finance.receipts.store'), [
+            'file' => UploadedFile::fake()->create('unrelated.pdf', 20, 'application/pdf'),
+        ])->assertCreated();
+        $this->assertSame(2, FinanceReceipt::count());
+
+        // A different owner's identical bytes/sig is NOT deduped against — sig
+        // lookup is scoped to the caller via the OwnsUserData global scope.
+        $other = User::factory()->create();
+        $this->actingAs($other);
+        $this->post(route('finance.receipts.store'), [
+            'file' => UploadedFile::fake()->create('same-bytes-other-user.pdf', 20, 'application/pdf'),
+            'sig' => 'same-bytes-sig',
+        ])->assertCreated();
+        $this->assertSame(3, FinanceReceipt::count());
+    }
+
     public function test_standalone_receipt_split_link_is_mutually_exclusive_with_the_single_link(): void
     {
         // The real INWX case: one receipt, settled by two separate bank charges.
