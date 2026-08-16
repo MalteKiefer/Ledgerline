@@ -7,7 +7,7 @@ namespace App\Dav;
 use App\Models\FileEntry;
 use App\Models\FileVersion;
 use App\Support\BlobStore;
-use App\Support\FilesUsage;
+use App\Support\StorageUsage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -51,16 +51,11 @@ class DavStorage
      */
     public static function assertWithinQuota(int $justWrittenSize, string $blobPath): void
     {
-        $cfg = config('files.quota_mb', 0);
-        $quotaMb = is_numeric($cfg) ? (int) $cfg : 0;
-        if ($quotaMb <= 0) {
-            return; // unlimited
-        }
         $uid = (int) (Auth::id() ?? 0);
-        $used = $uid > 0 ? FilesUsage::forUser($uid) : 0;
         // `used` already includes the blob we just wrote (its row isn't saved yet,
-        // but FilesUsage sums file rows — so subtract nothing; compare used vs cap).
-        if ($used + $justWrittenSize > $quotaMb * 1024 * 1024) {
+        // but the sum is over file/gallery rows — so this still means comparing
+        // used vs cap with the fresh blob's bytes added again on top).
+        if ($uid > 0 && StorageUsage::wouldExceed($uid, $justWrittenSize)) {
             BlobStore::disk()->delete($blobPath);
             throw new InsufficientStorage('Storage quota exceeded.');
         }

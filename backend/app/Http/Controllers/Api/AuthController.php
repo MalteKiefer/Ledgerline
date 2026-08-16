@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Auth\Pairing;
 use App\Support\DeviceAudit;
+use App\Support\StorageUsage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -72,6 +73,12 @@ class AuthController extends Controller
             'user' => $this->userPayload($user),
             // Kill switch: the owner asked to wipe this client from the web.
             'wipe' => $this->wipeRequested($request),
+            // Combined Files+Gallery storage usage (the one shared workspace-wide
+            // quota — see App\Support\StorageUsage). Not folded into userPayload():
+            // that method also feeds the (much more frequent) device-pairing
+            // collect() response, where a DB-heavy usage query on every poll would
+            // be wasted work.
+            'usage' => StorageUsage::snapshotForUser((int) $user->id),
         ]);
     }
 

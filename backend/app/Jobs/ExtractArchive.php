@@ -9,8 +9,8 @@ use App\Models\FileEntry;
 use App\Models\FileFolder;
 use App\Support\Archiver;
 use App\Support\BlobStore;
-use App\Support\FilesUsage;
 use App\Support\Redactor;
+use App\Support\StorageUsage;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Str;
@@ -79,10 +79,10 @@ class ExtractArchive implements ShouldQueue
                 return;
             }
 
-            // Quota: total extracted bytes must fit the owner's remaining quota.
+            // Quota: total extracted bytes must fit the owner's remaining quota
+            // (Files+Gallery combined — one shared workspace-wide cap).
             $incoming = array_sum(array_map(fn (string $p): int => (int) @filesize($p), $files));
-            $quota = $this->quotaBytes();
-            if ($quota !== null && FilesUsage::forUser($this->userId) + $incoming > $quota) {
+            if (StorageUsage::wouldExceed($this->userId, $incoming)) {
                 AppNotification::record($this->userId, 'error', __('files.archive_extract_quota', ['name' => $archive->name]), null, 'files');
 
                 return;
@@ -176,14 +176,6 @@ class ExtractArchive implements ShouldQueue
         $cache[$dir] = $parent;
 
         return $parent;
-    }
-
-    private function quotaBytes(): ?int
-    {
-        $mb = config('files.quota_mb');
-        $mb = is_numeric($mb) ? (int) $mb : 0;
-
-        return $mb > 0 ? $mb * 1024 * 1024 : null;
     }
 
     private function mimeOf(string $path): ?string

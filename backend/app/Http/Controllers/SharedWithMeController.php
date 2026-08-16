@@ -9,7 +9,7 @@ use App\Models\FileFolder;
 use App\Models\FolderShare;
 use App\Models\FolderShareMember;
 use App\Models\User;
-use App\Support\FilesUsage;
+use App\Support\StorageUsage;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -50,15 +50,6 @@ class SharedWithMeController extends Controller
         $mb = config('files.max_upload_mb', 2048);
 
         return (is_numeric($mb) ? (int) $mb : 2048) * 1024;
-    }
-
-    /** Effective quota of the SHARE OWNER in bytes, or null when unlimited (config-driven). */
-    private function ownerQuotaBytes(int $ownerId): ?int
-    {
-        $mb = config('files.quota_mb');
-        $mb = is_numeric($mb) ? (int) $mb : 0;
-
-        return $mb <= 0 ? null : $mb * 1024 * 1024;
     }
 
     /** Filesystem-safe download filename (strips path separators + control chars). */
@@ -243,8 +234,7 @@ class SharedWithMeController extends Controller
 
         $ownerId = $shareModel->owner_id;
         $incoming = (int) $upload->getSize();
-        $quota = $this->ownerQuotaBytes($ownerId);
-        if ($quota !== null && FilesUsage::forUser($ownerId) + $incoming > $quota) {
+        if (StorageUsage::wouldExceed($ownerId, $incoming)) {
             return response()->json(['error' => 'quota'], 413);
         }
 
