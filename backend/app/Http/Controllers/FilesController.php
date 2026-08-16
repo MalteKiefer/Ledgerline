@@ -22,7 +22,9 @@ use App\Support\Archiver;
 use App\Support\Crypto\FileCipher;
 use App\Support\DiskTempFile;
 use App\Support\FileActivityLog;
+use App\Support\FilesUsage;
 use App\Support\ImageManagerFactory;
+use App\Support\StorageUsage;
 use App\Support\UploadLimits;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Contracts\View\View;
@@ -97,33 +99,16 @@ class FilesController extends Controller
         return min(200, max(1, (int) UserSetting::for($uid)->file_max_versions));
     }
 
-    /** Effective quota in bytes, or null when unlimited (0/unset). Versions count too. */
-    private function quotaBytes(int $uid): ?int
-    {
-        $mb = config('files.quota_mb');
-        $mb = is_numeric($mb) ? (int) $mb : 0;
-
-        return $mb <= 0 ? null : $mb * 1024 * 1024;
-    }
-
-    /** Bytes the user currently occupies: live + trashed files plus every version blob. */
-    private function usedBytes(int $uid): int
-    {
-        $fileIds = FileEntry::withTrashed()->pluck('id');
-        $files = (int) FileEntry::withTrashed()->sum('size');
-        $versions = (int) FileVersion::query()->whereIn('file_id', $fileIds)->sum('size');
-
-        return $files + $versions;
-    }
-
     /**
-     * The current usage snapshot for API/page payloads.
+     * The current usage snapshot for API/page payloads. Combined with Gallery
+     * (StorageUsage) — both modules share one workspace-wide quota, so a
+     * Files-only figure here would understate what's actually enforced.
      *
      * @return array{used: int, quota: int|null}
      */
     private function usage(int $uid): array
     {
-        return ['used' => $this->usedBytes($uid), 'quota' => $this->quotaBytes($uid)];
+        return StorageUsage::snapshotForUser($uid);
     }
 
     /** Filesystem-safe download filename (strips path separators + control chars). */
@@ -984,15 +969,10 @@ class FilesController extends Controller
 
     // ---- Shared helpers ----
 
-    /** 413 quota response if used+incoming exceeds the cap, else null. */
+    /** 413 quota response if used+incoming exceeds the cap (Files+Gallery combined), else null. */
     private function overQuota(int $uid, int $incoming): ?JsonResponse
     {
-        $quota = $this->quotaBytes($uid);
-        if ($quota !== null && $this->usedBytes($uid) + $incoming > $quota) {
-            return response()->json(['error' => 'quota'], 413);
-        }
-
-        return null;
+        return StorageUsage::wouldExceed($uid, $incoming) ? response()->json(['error' => 'quota'], 413) : null;
     }
 
     /** Persist a new file row with server-set byte metadata (never mass-assigned). */
@@ -1659,7 +1639,9 @@ class FilesController extends Controller
         $dupes = array_values(array_filter($groups, fn (array $g): bool => count($g) >= 2));
 
         return response()->json([
-            'used' => $this->usedBytes((int) $this->requireUser($request)->id),
+            // Files-only bytes here (matching by_type/duplicates, both Files-domain
+            // concepts) — not the combined Files+Gallery quota figure `usage()` returns.
+            'used' => FilesUsage::forUser((int) $this->requireUser($request)->id),
             'by_type' => $byType,
             'duplicates' => $dupes,
         ]);

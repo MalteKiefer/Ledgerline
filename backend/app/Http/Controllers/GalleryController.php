@@ -17,10 +17,10 @@ use App\Models\GalleryPhoto;
 use App\Services\Files\FileTextIndex;
 use App\Support\BlobStore;
 use App\Support\DiskTempFile;
-use App\Support\FilesUsage;
 use App\Support\GalleryMemories;
 use App\Support\ImageManagerFactory;
 use App\Support\MachineLearning;
+use App\Support\StorageUsage;
 use App\Support\Vector;
 use App\Support\VideoProcessor;
 use Illuminate\Contracts\Filesystem\Filesystem;
@@ -391,14 +391,8 @@ class GalleryController extends Controller
         }
 
         $incoming = (int) $upload->getSize();
-        $mb = config('files.quota_mb');
-        $mb = is_numeric($mb) ? (int) $mb : 0;
-        if ($mb > 0) {
-            $used = FilesUsage::forUser($ownerId)
-                + (int) GalleryPhoto::withoutGlobalScopes()->withTrashed()->where('user_id', $ownerId)->sum('size');
-            if ($used + $incoming > $mb * 1024 * 1024) {
-                return ['ok' => false, 'error' => 'quota'];
-            }
+        if (StorageUsage::wouldExceed($ownerId, $incoming)) {
+            return ['ok' => false, 'error' => 'quota'];
         }
 
         $real = $upload->getRealPath();
@@ -2108,17 +2102,7 @@ class GalleryController extends Controller
     /** Combined files+gallery quota against config('files.quota_mb') (null = unlimited). */
     private function overQuota(int $uid, int $incoming): ?JsonResponse
     {
-        $mb = config('files.quota_mb');
-        $mb = is_numeric($mb) ? (int) $mb : 0;
-        if ($mb <= 0) {
-            return null;
-        }
-        $used = FilesUsage::forUser($uid) + (int) GalleryPhoto::withTrashed()->where('user_id', $uid)->sum('size');
-        if ($used + $incoming > $mb * 1024 * 1024) {
-            return response()->json(['error' => 'quota'], 413);
-        }
-
-        return null;
+        return StorageUsage::wouldExceed($uid, $incoming) ? response()->json(['error' => 'quota'], 413) : null;
     }
 
     private function tmpDir(int $uid, string $id): string

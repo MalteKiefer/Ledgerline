@@ -8,8 +8,8 @@ use App\Models\FileEntry;
 use App\Models\MailAttachment;
 use App\Services\Paperless\PaperlessClient;
 use App\Support\BlobStore;
-use App\Support\FilesUsage;
 use App\Support\Redactor;
+use App\Support\StorageUsage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -134,16 +134,10 @@ class MailAttachmentController extends Controller
         return response()->json(['ok' => true, 'target' => 'paperless', 'task' => $task]);
     }
 
-    /** 413 when storing the bytes would exceed the owner's Files quota. */
+    /** 413 when storing the bytes would exceed the owner's combined Files+Gallery quota. */
     private function overFilesQuota(int $uid, int $incoming): ?JsonResponse
     {
-        $mb = config('files.quota_mb');
-        $mb = is_numeric($mb) ? (int) $mb : 0;
-        if ($mb > 0 && FilesUsage::forUser($uid) + $incoming > $mb * 1024 * 1024) {
-            return response()->json(['error' => 'quota'], 413);
-        }
-
-        return null;
+        return StorageUsage::wouldExceed($uid, $incoming) ? response()->json(['error' => 'quota'], 413) : null;
     }
 
     private function safeName(?string $name): string

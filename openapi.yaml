@@ -1476,11 +1476,11 @@ components:
         mime: { type: string, nullable: true }
         sha256: { type: string, nullable: true }
         created_at: { type: string, format: date-time, nullable: true }
-    FilesUsage:
+    StorageUsage:
       type: object
-      description: "Combined storage usage (current files + version history) vs. the effective quota."
+      description: "Combined Files (incl. version history) + Gallery storage usage vs. the one shared workspace-wide quota — both modules draw from a single cap."
       properties:
-        used: { type: integer, description: "Bytes occupied." }
+        used: { type: integer, description: "Bytes occupied (Files + Gallery, incl. trashed)." }
         quota: { type: integer, nullable: true, description: "Byte cap, or null when unlimited." }
     BankTransaction:
       type: object
@@ -3693,9 +3693,10 @@ paths:
       operationId: meShow
       summary: Authenticated user info
       description: >
-        Returns the authenticated user's profile and a `wipe` flag that signals the
-        owner has requested a remote wipe of this token. No throttle beyond the
-        default API rate.
+        Returns the authenticated user's profile, a `wipe` flag that signals the
+        owner has requested a remote wipe of this token, and the combined
+        Files+Gallery storage usage snapshot. No throttle beyond the default API
+        rate.
       responses:
         "200":
           description: User payload.
@@ -3703,7 +3704,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [user, wipe]
+                required: [user, wipe, usage]
                 properties:
                   user:
                     $ref: "#/components/schemas/MeUser"
@@ -3712,6 +3713,8 @@ paths:
                     description: >
                       Kill switch. If true, the owner has requested a remote wipe of
                       this token — the client should erase its local data and log out.
+                  usage:
+                    $ref: "#/components/schemas/StorageUsage"
         "401":
           description: Unauthenticated.
 
@@ -6783,7 +6786,7 @@ paths:
       summary: All folders + files for the current user (+ usage)
       security: [ { bearerAuth: [] } ]
       responses:
-        "200": { description: "Folders, files, labels and usage snapshot.", content: { application/json: { schema: { type: object, properties: { folders: { type: array, items: { $ref: "#/components/schemas/FileFolder" } }, files: { type: array, items: { $ref: "#/components/schemas/FileEntry" } }, labels: { type: array, items: { $ref: "#/components/schemas/FileLabel" } }, usage: { $ref: "#/components/schemas/FilesUsage" } } } } } }
+        "200": { description: "Folders, files, labels and usage snapshot.", content: { application/json: { schema: { type: object, properties: { folders: { type: array, items: { $ref: "#/components/schemas/FileFolder" } }, files: { type: array, items: { $ref: "#/components/schemas/FileEntry" } }, labels: { type: array, items: { $ref: "#/components/schemas/FileLabel" } }, usage: { $ref: "#/components/schemas/StorageUsage" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /files/trash:
