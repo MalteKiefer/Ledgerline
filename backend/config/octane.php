@@ -218,9 +218,21 @@ return [
     | being handled by Octane. You may set this value to 0 to indicate that
     | there isn't a specific time limit on Octane request execution time.
     |
+    | Set to 0 (unlimited): the framework default of 30s is SHORTER than
+    | several deliberately-configured, per-operation subprocess timeouts
+    | already baked into the app (e.g. the receipt-OCR rasterise+tesseract
+    | fallback at 60s, BinaryProcess-based archive creation at up to 1800s —
+    | see the Security Register in CLAUDE.md) — Octane killed those requests
+    | with an ungraceful FatalError at 30s, well before their OWN documented
+    | timeout/graceful-degrade path could ever run (verified live: OCR on an
+    | image-only PDF 500'd with "Maximum execution time of 30 seconds
+    | exceeded" instead of the documented 501-on-timeout). This blanket cap
+    | is a redundant, uncoordinated second layer on top of those already-
+    | tuned bounds, not a security control — Octane's own worker recycling
+    | (--max-requests) remains the guard against a genuinely stuck worker.
     */
 
-    'max_execution_time' => 30,
+    'max_execution_time' => 0,
 
     /*
     |--------------------------------------------------------------------------
