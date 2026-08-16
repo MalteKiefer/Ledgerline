@@ -62,7 +62,7 @@ function amount(s: string): number | null {
 // (791,00 €) over the real "Rechnungsbetrag 39,85 €".
 function amountsIn(line: string): number[] {
   const out: number[] = [];
-  const re = /(\d{1,3}(?:[.\s]\d{3})+[.,]\d{2}(?!\d)|\d+[.,]\d{2}(?!\d))|€\s*(\d{1,3}(?:[.\s]\d{3})*)(?![.,]\d)|(\d{1,3}(?:[.\s]\d{3})*)(?![.,]\d)\s*(?:€|eur\b)/gi;
+  const re = /(\d{1,3}(?:[.\s]\d{3})+[.,]\d{2}(?!\d)|\d+[.,]\d{2}(?!\d))|€[ \t]{0,3}(\d{1,3}(?:[.\s]\d{3})*)(?![.,]\d)(?!\d)|(\d{1,3}(?:[.\s]\d{3})*)(?![.,]\d)(?!\d)[ \t]{0,3}(?:€|eur\b)/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(line))) { const v = amount(m[1] || m[2] || m[3]); if (v != null) out.push(v); }
   return out;

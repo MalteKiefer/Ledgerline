@@ -39,6 +39,23 @@ describe('extractTotal', () => {
   it('still recognises a bare "Insgesamt:" total label (Backblaze-style)', () => {
     expect(extractTotal('B2 Cloud Storage   ($2.57)\nInsgesamt: ($2.57)')).toBe(2.57);
   });
+  // Regression: a real Hetzner invoice's "Summe" row lists three €-suffixed
+  // columns (net/tax/gross) separated by wide table-column padding, e.g.
+  // "16,18 €               3,07 €             19,25 €". The bare-integer-
+  // after-€ alternative in amountsIn() only rejected a following DECIMAL
+  // continuation ([.,]\d), not a following bare digit — so it could bridge
+  // across the padding from one column's "€" and swallow just the leading
+  // digit of the NEXT column's number ("1" of "19,25"), corrupting the real
+  // total into two spurious values ("1" and "9,25") and yielding 9.25 instead
+  // of 19.25. Both a bare-digit AND a decimal-separator continuation must be
+  // rejected, and the €-adjacency whitespace must stay tightly bounded so it
+  // can't leap across a distant, unrelated column at all.
+  it('reads a full gross total from a wide multi-column table row without splitting it (real Hetzner invoice)', () => {
+    const text = 'Service   Zeitraum   Netto   Steuer   Brutto\n'
+      + 'Projekt "RMM"   04/2026   8,49 €   1,61 €                10,10 €\n'
+      + 'Summe                          16,18 €               3,07 €             19,25 €';
+    expect(extractTotal(text)).toBe(19.25);
+  });
 });
 
 describe('extractDate', () => {
