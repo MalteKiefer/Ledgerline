@@ -60,9 +60,33 @@ function amount(s: string): number | null {
 // trailing digit — verified against a real Telekom invoice whose "Insgesamt
 // verbrauchtes Datenvolumen: 791.004 KB" line got picked as the receipt total
 // (791,00 €) over the real "Rechnungsbetrag 39,85 €".
+// The spelled-out currency word ("EUR"/"Euro") is matched letter-tolerant — a real
+// self-generated Eigenbeleg PDF prints "150 E u r o" (each letter individually
+// positioned, a PDF text-layer justification artifact, same class as "W a l d k
+// i r c h" seen on an address line elsewhere) — `eur\b` alone can't match that,
+// and neither can it match plain "Euro" at all (its own trailing "o" blocks the
+// \b). `e[ \t]?u[ \t]?r[ \t]?o\b` accepts zero OR one space between each letter,
+// so it covers both the compact and the letter-spaced form while still rejecting
+// a real following word ("Eurozone", "Euroschein" — \b still applies at the end).
+const CURRENCY_WORD = 'eur\\b|e[ \\t]?u[ \\t]?r[ \\t]?o\\b';
+// The bare-integer amount is EITHER a proper thousands-grouped run OR a plain
+// digit run of 4+ (no separator at all) — a real self-issued Eigenbeleg writes
+// a whole-euro amount by hand with no grouping ("3741 Euro"). Without the 4+
+// fallback, `\d{1,3}` alone caps the FIRST attempt at 3 digits, that capture
+// gets rejected by the trailing (?!\d) guard (a 4th digit still follows), and
+// the global regex scan then retries starting at the 2nd digit instead —
+// silently truncating "3741" down to just "741". A short bare run (1-3 bare
+// digits with nothing after) is intentionally NOT extended this way: it stays
+// capped so an adjacent bare year etc. can't be misread as a 4+ digit amount.
+const BARE_DIGITS = '\\d{1,3}(?:[.\\s]\\d{3})*|\\d{4,}';
 function amountsIn(line: string): number[] {
   const out: number[] = [];
-  const re = /(\d{1,3}(?:[.\s]\d{3})+[.,]\d{2}(?!\d)|\d+[.,]\d{2}(?!\d))|€[ \t]{0,3}(\d{1,3}(?:[.\s]\d{3})*)(?![.,]\d)(?!\d)|(\d{1,3}(?:[.\s]\d{3})*)(?![.,]\d)(?!\d)[ \t]{0,3}(?:€|eur\b)/gi;
+  const re = new RegExp(
+    `(\\d{1,3}(?:[.\\s]\\d{3})+[.,]\\d{2}(?!\\d)|\\d+[.,]\\d{2}(?!\\d))|` +
+    `€[ \\t]{0,3}(${BARE_DIGITS})(?![.,]\\d)(?!\\d)|` +
+    `(${BARE_DIGITS})(?![.,]\\d)(?!\\d)[ \\t]{0,3}(?:€|${CURRENCY_WORD})`,
+    'gi',
+  );
   let m: RegExpExecArray | null;
   while ((m = re.exec(line))) { const v = amount(m[1] || m[2] || m[3]); if (v != null) out.push(v); }
   return out;
@@ -73,24 +97,43 @@ function amountsIn(line: string): number[] {
  * Total …), else the max. "Amount due / zu zahlen" is ignored when 0 (a paid invoice
  * shows due = 0 but the real total is the paid gross, e.g. Mullvad "paid 60 / due 0").
  */
+const TOTAL_EXCLUDE_RE = /zwischensumme|zwischensal|nettosumme|nettobetrag|nettogesamt|netto-?summe|subtotal|\bmwst\b|umsatzsteuer|\bust\b|mehrwertsteuer|\bvat\b|sales tax/i;
+// "gesamt" is intentionally left unanchored: Backblaze prints its own total as
+// a bare "Insgesamt: ($2.57)" line (verified real invoice) — restricting to a
+// leading \b would reject that genuine label along with the German ADVERB
+// "insgesamt" ("in total", e.g. "Insgesamt verbrauchtes Datenvolumen"), which
+// is excluded instead at the source: the digit over-match fix in amountsIn()
+// above already keeps a bare data-volume figure like "791.004 KB" from ever
+// producing a value on that line, so it never reaches this label check at all.
+const TOTAL_LABEL_RE = /summe|gesamt|rechnungsbetrag|endbetrag|grand total|\btotal\b|amount paid|\bpaid\b|bezahlt|gezahlt|zu zahlen/i;
 export function extractTotal(text: string): number | null {
   const lines = String(text || '').split(/\r?\n/);
   let labelled: number | null = null; let max: number | null = null;
-  for (const ln of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const ln = lines[i];
     const vals = amountsIn(ln);
     if (!vals.length) continue;
     for (const v of vals) if (max == null || v > max) max = v;
     // Net subtotal / tax lines are NOT the payable gross — "Zwischensumme" matches the
     // "summe" keyword but is the net amount (Apple/iCloud 8,40 net vs 9,99 gross).
-    if (/zwischensumme|zwischensal|nettosumme|nettobetrag|nettogesamt|netto-?summe|subtotal|\bmwst\b|umsatzsteuer|\bust\b|mehrwertsteuer|\bvat\b|sales tax/i.test(ln)) continue;
-    // "gesamt" is intentionally left unanchored: Backblaze prints its own total as
-    // a bare "Insgesamt: ($2.57)" line (verified real invoice) — restricting to a
-    // leading \b would reject that genuine label along with the German ADVERB
-    // "insgesamt" ("in total", e.g. "Insgesamt verbrauchtes Datenvolumen"), which
-    // is excluded instead at the source: the digit over-match fix in amountsIn()
-    // above already keeps a bare data-volume figure like "791.004 KB" from ever
-    // producing a value on that line, so it never reaches this label check at all.
-    if (/summe|gesamt|rechnungsbetrag|endbetrag|grand total|\btotal\b|amount paid|\bpaid\b|bezahlt|gezahlt|zu zahlen/i.test(ln)) {
+    if (TOTAL_EXCLUDE_RE.test(ln)) continue;
+    let isLabelled = TOTAL_LABEL_RE.test(ln);
+    // A "hero" total figure can sit alone on its own line, with the caption label
+    // printed on the very next line instead of alongside it — a real Grover
+    // subscription invoice does exactly this ("24,80 €" on one line, "ZU ZAHLEN"
+    // on the line right after). Restricted to a BARE value line (nothing but the
+    // number itself, once whitespace/currency-symbol padding is stripped) — a
+    // real invoice's date-range line ("... 26.08.2024 - 25.09.2024", itself a
+    // date misread as a decimal amount) must NOT qualify just because an
+    // unrelated "BEZAHLT" badge happens to appear several blank lines later;
+    // it carries other real text (a company name, a label word), so it's
+    // rejected by this bareness check before the label search even runs.
+    if (!isLabelled && /^[\d.,\s€]+$/.test(ln)) {
+      let j = i + 1;
+      while (j < lines.length && lines[j].trim() === '') j++;
+      if (j < lines.length && !TOTAL_EXCLUDE_RE.test(lines[j]) && TOTAL_LABEL_RE.test(lines[j])) isLabelled = true;
+    }
+    if (isLabelled) {
       const v = vals[vals.length - 1];
       if (v != null && v !== 0 && (labelled == null || v > labelled)) labelled = v;
     }
@@ -101,7 +144,7 @@ export function extractTotal(text: string): number | null {
 const MONTHS: Record<string, number> = {
   januar: 1, februar: 2, 'märz': 3, maerz: 3, april: 4, mai: 5, juni: 6, juli: 7,
   august: 8, september: 9, oktober: 10, november: 11, dezember: 12,
-  january: 1, february: 2, march: 3, june: 6, july: 7, october: 10, december: 12,
+  january: 1, february: 2, march: 3, may: 5, june: 6, july: 7, october: 10, december: 12,
   jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, okt: 10, nov: 11, dec: 12, dez: 12,
 };
 
@@ -145,8 +188,10 @@ export function extractDate(text: string): string {
   // ISO order, hyphen OR slash (e.g. a Ubiquiti receipt prints "2026/06/23").
   let m = s.match(/\b(\d{4})[\/-](\d{2})[\/-](\d{2})\b/);
   if (m && okDate(Number(m[1]), Number(m[2]), Number(m[3]))) return `${m[1]}-${m[2]}-${m[3]}`;
-  // "27. Juli 2026" / "27-MAR-2025" — day, month name (space/dot/dash separators).
-  m = s.match(/\b(\d{1,2})[.\s-]+([A-Za-zäöüÄÖÜ]{3,})[.\s-]+(\d{4})\b/);
+  // "27. Juli 2026" / "27-MAR-2025" / "24/Sep/2024" (a real Tresorit invoice's
+  // "Invoice Date:  24/Sep/2024" — day, month name, slash separators) — day,
+  // month name (space/dot/dash/slash separators).
+  m = s.match(/\b(\d{1,2})[.\s\/-]+([A-Za-zäöüÄÖÜ]{3,})[.\s\/-]+(\d{4})\b/);
   if (m) { const mo = MONTHS[m[2].toLowerCase()]; if (mo) return `${m[3]}-${String(mo).padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
   m = s.match(/\b([A-Za-zäöüÄÖÜ]+)\.?\s+(\d{1,2}),?\s+(\d{4})\b/);
   if (m) { const mo = MONTHS[m[1].toLowerCase()]; if (mo) return `${m[3]}-${String(mo).padStart(2, '0')}-${m[2].padStart(2, '0')}`; }
@@ -155,7 +200,13 @@ export function extractDate(text: string): string {
 
 // Prefix match (no trailing \b) so German compounds like "Rechnungsdatum" /
 // "Kundennummer" are skipped too. Kept specific to avoid eating real names.
-const MERCHANT_SKIP = /^(ihre|ihr\b|your|rechnung|invoice|receipt\b|beleg|quittung|gutschrift|credit ?note|datum|date|kunde|customer|seite|page|betreff|subject|from\b|bill ?to|ship ?to|paid\b|vat\b|ust|steuer|item|menge|position|betrag|summe|total|details|leistungen|verkauft|sold by|umsatzsteuer|payment|sequenz|order\b|bestell|herrn\b|frau\b|firma\b|sehr geehrte)/i;
+// "ausstellungsdatum"/"fällig" don't start with the generic "date"/"rechnung"
+// prefixes above (they're their own German compounds) — a real ente.io invoice
+// left both unskipped, and cleanMerchant's address-tail stripper (which cuts
+// off everything from the first digit onward, meant for a housenumber) then
+// silently ate the trailing date off "Ausstellungsdatum 1. September 2024",
+// leaving the bare label word "Ausstellungsdatum" as the returned "merchant".
+const MERCHANT_SKIP = /^(ihre|ihr\b|your|rechnung|invoice|receipt\b|beleg|quittung|gutschrift|credit ?note|datum|date|kunde|customer|seite|page|betreff|subject|from\b|bill ?to|ship ?to|paid\b|vat\b|ust|steuer|item|menge|position|betrag|summe|total|details|leistungen|verkauft|sold by|umsatzsteuer|payment|sequenz|order\b|bestell|herrn\b|frau\b|firma\b|sehr geehrte|ausstellungsdatum|f[äa]llig)/i;
 // "ab" (Swedish Aktiebolag, e.g. "Spotify AB") is deliberately EXCLUDED from the
 // case-insensitive alternation below and checked separately, case-SENSITIVE
 // (only ALL-CAPS "AB" counts) — "ab" is also an extremely common German word
@@ -163,17 +214,26 @@ const MERCHANT_SKIP = /^(ihre|ihr\b|your|rechnung|invoice|receipt\b|beleg|quittu
 // sentence was misread as a company suffix, hijacking the merchant match onto
 // that sentence instead of the real "Telekom Deutschland GmbH" letterhead line
 // a few lines away (verified against a real Telekom invoice).
-const COMPANY_SUFFIX = /\b(gmbh|mbh|ug|ag|kg|ohg|gbr|ltd|limited|llc|inc|corp|b\.?v\.?|s\.?[àa]\.?r\.?l|s\.?a\.?|oy|llp|plc)\b|& co/i;
+const COMPANY_SUFFIX = /\b(gmbh|mbh|ug|ag|kg|ohg|gbr|ltd|limited|llc|inc|corp(?:oration)?|b\.?v\.?|s\.?[àa]\.?r\.?l|s\.?a\.?|oy|llp|plc)\b|& co/i;
 const COMPANY_SUFFIX_AB = /\bAB\b/;
 const hasCompanySuffix = (l: string): boolean => COMPANY_SUFFIX.test(l) || COMPANY_SUFFIX_AB.test(l);
 // Collapse letter-spaced runs ("I n t e l l y T e c" → "IntellyTec"): 3+ single-letter
 // tokens in a row (some PDFs render tracked/letter-spaced headings as separate glyphs).
 const despace = (s: string) => String(s).replace(/(?:\b[A-Za-zÄÖÜäöü] ){2,}\b[A-Za-zÄÖÜäöü]\b/g, (m) => m.replace(/ /g, ''));
-// Trim a letterhead line to just the company name: split on | / • / · separators, drop a
-// trailing document word/label, and cut an address tail (", PF 3004", ", Industriestr. 25").
-const cleanMerchant = (l: string) => despace(l).split(/\s*[|•·]\s*/)[0]
+// Trim a letterhead line to just the company name: split on | / • / · separators
+// (or a bare "." used the same way, WHITESPACE ON BOTH SIDES ONLY — a real
+// IntellyTec letterhead reads "IntellyTec GmbH . Grünenborn 1 . 53797 Lohmar";
+// requiring space on both sides keeps a genuine abbreviation period like
+// "Str." or "Msg." — which only has a following space, never a leading one —
+// from being misread as a separator), drop a trailing document word/label,
+// and cut an address tail (", PF 3004", ", Industriestr. 25"). "Rechnungs-
+// empfänger"/"Empfänger"/"recipient" (a column-header word, "invoice
+// recipient") is stripped the same way as "customer"/"kundennummer" — a real
+// ente.io invoice merges "ente.io" (the real merchant) with that header word on
+// one pdftotext-flattened two-column line ("ente.io Rechnungsempfänger").
+const cleanMerchant = (l: string) => despace(l).split(/\s*[|•·]\s*|\s+\.\s+/)[0]
   .replace(/\s*(bill|ship)\s*to\b.*$/i, '')
-  .replace(/\s+(place\s*\/?\s*date|place of invoice|date of invoice|invoice (requested|number|date|no)\b|customer\b|kundennummer\b).*$/i, '')
+  .replace(/\s+(place\s*\/?\s*date|place of invoice|date of invoice|invoice (requested|number|date|no)\b|customer\b|kundennummer\b|rechnungsempf[äa]nger\b|empf[äa]nger\b|recipient\b).*$/i, '')
   .replace(/,?\s*(pf\b|postfach|\d|[^,]*(?:stra(?:ß|ss)e|str\.|weg|ring|platz|allee|gasse)\b).*$/i, '')
   .replace(/\s+(invoice|rechnung|receipt|quittung|beleg)\s*$/i, '')
   .replace(/\s{2,}/g, ' ').trim().slice(0, 50);
@@ -187,6 +247,20 @@ const BRANDS: [string, RegExp][] = [
   ['DeepL', /\bdeepl\b/i], ['Telekom', /\btelekom\b|magenta/i], ['Vodafone', /vodafone/i],
   ['Kaufland', /kaufland/i], ['Edeka', /\bedeka\b/i], ['REWE', /\brewe\b/i], ['Lidl', /\blidl\b/i], ['Aldi', /\baldi\b/i],
   ['IKEA', /\bikea\b/i], ['Deutsche Bahn', /deutsche bahn|\bbahn\.de\b/i], ['Hetzner', /hetzner/i], ['netcup', /netcup/i],
+  // Grover: its consumer-subscription template puts a generic "Deine Rechnung
+  // BEZAHLT" status header up top and only names "Grover Deutschland GmbH" in
+  // the footer imprint — too far down for the letterhead scan (step 1) to see,
+  // and a real invoice's footer-scoped fallback attempt regressed several
+  // OTHER, already-correct brand matches (Microsoft/Apple/Amazon's own EU
+  // legal-entity disclaimers sit in the same footer zone and outranked their
+  // short, established brand name) — a dedicated keyword is the safe fix.
+  ['Grover', /\bgrover\b/i],
+  // Tresorit: same shape as Grover — its own "Tresorit AG" legal-entity line
+  // sits only in the footer imprint, well past the first-15-line letterhead
+  // window and the first-8-line fallback scan; the header instead opens with
+  // the customer's own name/address (a real invoice was misread as the
+  // customer's own city, "Neudrossenfeld", for lack of any earlier candidate).
+  ['Tresorit', /\btresorit\b/i],
 ];
 export function detectBrand(text: string): string { for (const [n, re] of BRANDS) if (re.test(String(text || ''))) return n; return ''; }
 
@@ -222,10 +296,24 @@ export function extractMerchant(text: string, excludeNames: string[] = []): stri
   const lines = String(text || '').split(/\r?\n/).map((s) => s.replace(/\s{2,}/g, ' ').trim()).filter(Boolean);
   const own = excludeNames.map((n) => n.trim().toLowerCase()).filter((n) => n.length >= 3);
   const isOwn = (l: string) => own.some((n) => l.toLowerCase().includes(n));
+  // A merged two-column line ("A Medium Corporation    Kiefer Networks" — the
+  // real seller on the left, the recipient's own name on the right, flattened
+  // onto one row by pdftotext -layout, then collapsed to single spaces here)
+  // previously lost the WHOLE line to isOwn — even though the seller portion
+  // before the own name is perfectly valid. Cut from the own name onward
+  // instead (same shape as the customer/kundennummer/address-tail strips in
+  // cleanMerchant below) and keep re-validating the REMAINDER; a line that's
+  // nothing BUT the own name (no real content before it) still reduces to an
+  // empty/too-short string and is rejected exactly as before.
+  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const ownStripRe = own.length ? new RegExp(`\\s*(?:${own.map(escapeRe).join('|')}).*$`, 'i') : null;
+  const stripOwnTail = (l: string): string => (ownStripRe ? l.replace(ownStripRe, '').trim() : l);
   // 1. A company-legal-form line in the letterhead — almost always the seller.
   for (const l of lines.slice(0, 15)) {
-    if (l.length < 3 || MERCHANT_SKIP.test(l) || isOwn(l) || !hasCompanySuffix(l)) continue;
-    const c = cleanMerchant(l);
+    if (l.length < 3 || MERCHANT_SKIP.test(l)) continue;
+    const candidate = isOwn(l) ? stripOwnTail(l) : l;
+    if (candidate.length < 3 || isOwn(candidate) || !hasCompanySuffix(candidate)) continue;
+    const c = cleanMerchant(candidate);
     if (c.length >= 3 && c.length <= 50) return c;
   }
   // 2. A known brand keyword (Amazon, Adobe, Telekom, Kaufland, …) — beats a random
@@ -247,9 +335,21 @@ export function extractMerchant(text: string, excludeNames: string[] = []): stri
     // A label ending in a bare colon with nothing after it ("PO Number:") is an
     // empty form field, not a company name — real letterheads never end in ":".
     if (l.trimEnd().endsWith(':')) continue;
-    if (MERCHANT_SKIP.test(l) || isOwn(l) || !/[a-zäöüß]/i.test(l)) continue;
-    const c = cleanMerchant(l);
-    if (c.length >= 3 && c.length <= 50) return c;
+    if (MERCHANT_SKIP.test(l) || !/[a-zäöüß]/i.test(l)) continue;
+    const candidate = isOwn(l) ? stripOwnTail(l) : l;
+    if (candidate.length < 3 || isOwn(candidate)) continue;
+    const c = cleanMerchant(candidate);
+    if (c.length < 3 || c.length > 50) continue;
+    // cleanMerchant's address-tail stripper cuts a candidate off at its first
+    // bare digit — meant to remove a trailing housenumber ("Musterstr. 5" ->
+    // "Musterstr."), but on a merged two-column line where the OWN address sits
+    // beside an unrelated label ("Adalbert-Stifter-Str. 6  Account Number:
+    // A01694959" — a real Tresorit invoice's customer address block, glued to
+    // the account-number field by pdftotext), what survives is a BARE street
+    // name with nothing else — never a real company name on its own. Rejecting
+    // it here lets the loop fall through to the next candidate line instead.
+    if (/\b(stra(?:ß|ss)e|str\.|weg|ring|platz|allee|gasse)\.?$/i.test(c)) continue;
+    return c;
   }
   return '';
 }
@@ -439,11 +539,48 @@ export function buildReceiptName(date: string, merchant: string, number: string)
  * company profile) — keeps a merged multi-column letterhead from misreading the
  * document's OWNER as its own merchant.
  */
+// A self-issued Eigenbeleg's fixed "Beleggrund" reason checklist prints EVERY
+// possible option (Privatentnahme/Privateinlage, Trinkgeld, Betriebsausgabe,
+// Sachgeschenke, Sonstiges) regardless of which one is actually ticked — the
+// checkbox glyph itself collapses to an identical bullet for both a checked
+// and an unchecked box once run through OCR/text-extraction, so which reason
+// was really selected can't be recovered from the text at all. Running the
+// generic category-keyword scan against that boilerplate is unreliable by
+// construction: "Trinkgeld" (a fixed checklist option, present on literally
+// every Eigenbeleg) always matches the Geschäftsessen rule, mis-categorising
+// a private withdrawal/deposit as a business meal. Detected via the two fixed
+// template headings ("Beleggrund" + "Belegdaten") that appear together only
+// on this app-generated document type — category is left unset rather than
+// guessed. Matched against a WHITESPACE-STRIPPED copy of the text, not the
+// raw text: the PDF's own justification artifact splits this heading at an
+// unpredictable point every time ("Beleg grund", "Beleggrund", even
+// "Bele ggru nd" on one real document — never at a fixed, matchable
+// boundary), so a soft `beleg\s*grund` pattern still missed some real
+// instances; stripping ALL whitespace first is immune to wherever the split
+// happens to land.
+const strip = (s: string) => s.replace(/\s+/g, '');
+
 export function analyzeReceiptText(text: string, excludeNames: string[] = []): ReceiptAnalysis {
-  const low = String(text || '').toLowerCase();
+  const raw = String(text || '');
+  const low = raw.toLowerCase();
+  const stripped = strip(low);
+  const isEigenbeleg = stripped.includes('beleggrund') && stripped.includes('belegdaten');
   let category = '';
-  for (const [cat, re] of CATEGORY_RULES) { if (re.test(low)) { category = cat; break; } }
-  const merchant = extractMerchant(text, excludeNames);
+  if (!isEigenbeleg) {
+    for (const [cat, re] of CATEGORY_RULES) { if (re.test(low)) { category = cat; break; } }
+  }
+  // The document's own "Eigenbeleg" title is subject to the exact same
+  // unpredictable justification splitting as "Beleggrund" above — a real
+  // instance rendered it as "Eigen beleg" (a plain two-word split, not the
+  // single-letter-per-token pattern `despace()` collapses), and the generic
+  // trailing-document-word stripper in cleanMerchant (meant to cut a real
+  // company name's own "... Invoice"/"... Rechnung" suffix) then mistook the
+  // second half "beleg" for that generic suffix and cut it off, leaving just
+  // "Eigen". Rather than chase every possible split point that PDF
+  // generation happens to produce, an already-confirmed Eigenbeleg gets its
+  // canonical name set directly — extractMerchant is inherently unreliable
+  // for this document type, whose only "letterhead" IS its own unstable title.
+  const merchant = isEigenbeleg ? 'Eigenbeleg' : extractMerchant(text, excludeNames);
   const total = extractTotal(text);
   const date = extractDate(text);
   const number = extractNumber(text);

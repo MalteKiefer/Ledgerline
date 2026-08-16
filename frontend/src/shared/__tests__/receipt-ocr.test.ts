@@ -56,6 +56,56 @@ describe('extractTotal', () => {
       + 'Summe                          16,18 €               3,07 €             19,25 €';
     expect(extractTotal(text)).toBe(19.25);
   });
+  // Regression: a real self-issued Eigenbeleg PDF prints its amount as
+  // "150 E u r o" — the currency word letter-spaced by the PDF's own text-layer
+  // justification (same artifact class as "W a l d k i r c h" seen on an
+  // address line elsewhere). Neither the € symbol nor a compact "eur" word
+  // boundary can match that at all, so nothing on the line was ever recognised
+  // as an amount — and with no other candidate anywhere in the document, a
+  // "26.08.2024" date fragment (misread as a decimal 26.08) won by default.
+  it('recognises a letter-spaced spelled-out currency word ("150 E u r o")', () => {
+    const text = 'Betrag                                                 150 E u r o\n'
+      + 'Neudrossenfeld, 26.08.2024';
+    expect(extractTotal(text)).toBe(150);
+  });
+  // Regression: a real Grover subscription invoice prints its "hero" total on
+  // its own line, with the caption label ("ZU ZAHLEN") on the line right after
+  // instead of alongside it — the total was never recognised as "labelled" and
+  // the pre-discount line-item price (49,90 €) won as the fallback max instead
+  // of the real post-discount total (24,80 €).
+  it('treats a bare total figure as labelled when the caption sits on the very next line', () => {
+    const text = 'Garmin Fenix 7X Pro SOLAR                              1               49,90 €\n'
+      + 'NACHLASS (GUTSCHEIN)                                                   -30,00 €\n'
+      + 'LIEFERKOSTEN                                                             4,90 €\n'
+      + '                                                                        24,80 €\n'
+      + 'ZU ZAHLEN\n'
+      + '(inkl. 19%, 3,96 € MwSt.)';
+    expect(extractTotal(text)).toBe(24.8);
+  });
+  // Regression: that same next-line-label rule must NOT fire on an unrelated
+  // date-range line ("... 26.08.2024 - 25.09.2024", itself misread as two
+  // decimal values) just because a "BEZAHLT" status badge happens to appear
+  // several blank lines further down — the value line carries real text of
+  // its own (a company name, a label word), so it isn't a bare "hero" total
+  // figure and must be rejected before the label search even runs.
+  it('does not promote an unrelated date-range line just because a distant coincidental label follows', () => {
+    const text = 'Germany                                                          Leistungszeitraum 26.08.2024 - 25.09.2024\n'
+      + '\n\n\n\n'
+      + 'Deine Rechnung                        BEZAHLT\n'
+      + '\n'
+      + 'Garmin Fenix 7X Pro SOLAR                              1               49,90 €';
+    expect(extractTotal(text)).toBe(49.9);
+  });
+  // Regression: a real self-issued Eigenbeleg's "Betrag" is a bare whole-euro
+  // figure with NO thousands separator at all ("3741 Euro") — the `\d{1,3}`
+  // cap on the grouped-integer alternative rejects a too-short 3-digit prefix
+  // capture ("374", still followed by another digit), and the global regex
+  // scan then silently retries starting one character later, where the
+  // remaining 3 digits ("741") complete a fully valid — but truncated and
+  // WRONG — match on their own.
+  it('reads a bare 4+ digit amount without truncating it to its last 3 digits', () => {
+    expect(extractTotal('Betrag                                     -\n                                                      3741   Euro')).toBe(3741);
+  });
 });
 
 describe('extractDate', () => {
@@ -77,6 +127,27 @@ describe('extractDate', () => {
   // slashes rather than the usual hyphenated ISO form.
   it('parses a labelled year-first date with slash separators', () => {
     expect(extractDate('Invoice No.: EU5675973\nInvoice Date:     2026/06/23')).toBe('2026-06-23');
+  });
+  // A real Tresorit invoice prints "Invoice Date:  24/Sep/2024" — day, an
+  // abbreviated month NAME, and year, all slash-separated (not the usual
+  // dot/space/dash separators the day-month-name pattern already handled).
+  it('parses a day/month-name/year date with slash separators', () => {
+    expect(extractDate('Invoice Date:             24/Sep/2024')).toBe('2024-09-24');
+  });
+  // Regression: the English full-month-name list explicitly spelled out
+  // january/february/march/june/july/october/december but never "may" — the
+  // other months are either spelled identically in German (april/august/
+  // september/november, already covered there) or have an explicit English
+  // entry, but German "mai" and English "may" differ by one letter, so this
+  // was a genuine, silent gap. Real Apple/OpenAI/Ageras/xAI invoices all
+  // print "30. May 2025" / "Date of issue  May 9, 2025" and lost their date
+  // entirely (the match succeeded, but MONTHS['may'] was undefined, so the
+  // whole day-month-name branch silently declined to return).
+  it('parses the English month "May" (day-first)', () => {
+    expect(extractDate('30. May 2025')).toBe('2025-05-30');
+  });
+  it('parses the English month "May" (month-first, American style)', () => {
+    expect(extractDate('Date of issue  May 9, 2025')).toBe('2025-05-09');
   });
 });
 
@@ -149,6 +220,71 @@ describe('extractMerchant', () => {
   it('does not mistake an empty "PO Number:" field for the merchant', () => {
     const text = 'Some Heading\nPO Number:\nMore text here';
     expect(extractMerchant(text)).not.toBe('PO Number:');
+  });
+  // Regression: a real ente.io invoice left "Ausstellungsdatum" ("date of
+  // issue" — a German compound not covered by the generic "date"/"rechnung"
+  // skip prefixes) as an unrejected candidate; cleanMerchant's address-tail
+  // stripper (meant to cut a trailing housenumber) then ate everything from
+  // the first digit onward, leaving the bare label word itself as the
+  // returned "merchant". The real name sits on a later two-column line merged
+  // with the header word "Rechnungsempfänger" ("invoice recipient").
+  it('skips a bare "Ausstellungsdatum" date-label line and finds the real name past it', () => {
+    const text = 'Rechnung ente.io\nRechnungsnummer 2CD81DDD-0003\nAusstellungsdatum 1. September 2024\n'
+      + 'Fällig am 1. September 2024\nente.io Rechnungsempfänger\nbilling@ente.io Malte Kiefer';
+    expect(extractMerchant(text, ['Malte Kiefer'])).toBe('ente.io');
+  });
+  // Regression: a real Tresorit invoice's customer address line ("Adalbert-
+  // Stifter-Str. 6") is merged on one pdftotext-flattened row with an
+  // unrelated "Account Number:" field — cleanMerchant's digit-triggered
+  // address-tail stripper leaves just the bare street name once the
+  // housenumber/account-number tail is cut, and a bare street fragment must
+  // never be accepted as a company name on its own.
+  it('rejects a bare street-name fragment left over after address-tail stripping', () => {
+    const text = 'INVOICE\nMALTE KIEFER\nAdalbert-Stifter-Str. 6                    Account Number:      A01694959\n'
+      + 'Neudrossenfeld 95512                       Invoice Date:        24/Sep/2024';
+    expect(extractMerchant(text, ['Malte Kiefer'])).not.toMatch(/str\.?$/i);
+  });
+  // Grover Deutschland GmbH and Tresorit AG both only name themselves in a
+  // footer/imprint block, well past both the header letterhead window and the
+  // first-meaningful-line fallback scan — real Grover/Tresorit invoices open
+  // instead with a generic status header ("Deine Rechnung  BEZAHLT") or the
+  // customer's own address, so a dedicated brand keyword is the safe fix
+  // (a broader "scan the rest of the document" attempt regressed several
+  // already-correct Microsoft/Apple/Amazon brand matches, whose OWN EU
+  // legal-entity footer disclaimers sit in that same positional zone).
+  it('recognises Grover via its brand keyword when no early letterhead exists', () => {
+    const filler = Array.from({ length: 15 }, (_, i) => `Zeile ${i}`).join('\n');
+    const text = `Deine Rechnung                        BEZAHLT\nHallo Malte,\n${filler}\nGrover Deutschland GmbH DE355009161`;
+    expect(extractMerchant(text, ['Malte Kiefer'])).toBe('Grover');
+  });
+  it('recognises Tresorit via its brand keyword when no early letterhead exists', () => {
+    const filler = Array.from({ length: 15 }, (_, i) => `Zeile ${i}`).join('\n');
+    const text = `INVOICE\nMALTE KIEFER\n${filler}\nTresorit AG   Franklinstrasse 27, 8050 Zürich / Switzerland`;
+    expect(extractMerchant(text, ['Malte Kiefer'])).toBe('Tresorit');
+  });
+  // Regression: a real IntellyTec letterhead uses " . " (a bare period, with
+  // whitespace on BOTH sides) as a field separator, same role as the already-
+  // handled | / • / · characters: "IntellyTec GmbH . Grünenborn 1 . 53797
+  // Lohmar". The split must require whitespace on both sides — a genuine
+  // abbreviation period ("Str.", "Msg.") only ever has a TRAILING space, never
+  // a leading one, so it must not be treated as a separator.
+  it('splits a letterhead on a bare "." separator with whitespace on both sides', () => {
+    expect(extractMerchant('IntellyTec GmbH . Grünenborn 1 . 53797 Lohmar')).toBe('IntellyTec GmbH');
+  });
+  // Regression: a real Medium.com receipt merges the seller and the viewer's
+  // own name onto ONE pdftotext-flattened two-column row ("A Medium
+  // Corporation    Kiefer Networks") — the whole line was previously thrown
+  // away entirely because it CONTAINED the own name anywhere, even though the
+  // real seller name sits intact before it. Only the own-name tail (and
+  // whatever follows it) should be cut, the same way a trailing "customer"/
+  // address label is already cut — not the whole line. Also covers the
+  // COMPANY_SUFFIX gap that let "Corp" (abbreviated) match but not the full
+  // word "Corporation".
+  it('keeps the seller name when the own name is merged onto the same two-column line', () => {
+    const text = 'From                                            To\n'
+      + 'A Medium Corporation                            Kiefer Networks\n'
+      + '548 Market St                                   Malte Kiefer';
+    expect(extractMerchant(text, ['Kiefer Networks', 'Malte Kiefer'])).toBe('A Medium Corporation');
   });
 });
 
@@ -278,5 +414,50 @@ describe('analyzeReceiptText', () => {
   it('classifies a tax-advisor invoice as Steuerberatung', () => {
     const r = analyzeReceiptText('Buchen und kontieren der laufenden Geschäftsvorfälle\nNettobetrag 400,00\n+ 19,00 % USt 76,00\nBruttobetrag 476,00');
     expect(r.category).toBe('Steuerberatung');
+  });
+  // Regression: a real self-issued Eigenbeleg's own boilerplate "Beleggrund"
+  // reason checklist always prints EVERY option — including "Trinkgeld" — no
+  // matter which one was actually ticked (the checkbox glyph itself collapses
+  // to an identical bullet for checked/unchecked once run through OCR/text
+  // extraction), so the generic keyword scan always misclassified a private
+  // withdrawal as a business meal ("Geschäftsessen") via that fixed word.
+  it('leaves the category unset on a self-issued Eigenbeleg instead of guessing from its fixed checklist', () => {
+    const text = 'Eigenbeleg\nBeleg grund\n•Privatentnahme                                                 & Privateinlage\n'
+      + '• Trinkgeld\n• Betriebsausgabe (verlorener Beleg)\n• Sachgeschenke (Blumen, Wein)\n• Sonstiges\n'
+      + 'Belegdaten\nBetrag                                                 150 E u r o\n'
+      + 'Buchungstext / Bemerkung:                  Privatentnahme\nNeudrossenfeld, 26.08.2024';
+    const r = analyzeReceiptText(text);
+    expect(r.category).toBe('');
+    expect(r.total).toBe(150);
+  });
+  // Regression: real Eigenbeleg PDFs render "Beleggrund" with an
+  // unpredictable, different letter-spacing split EVERY time — "Bele ggru
+  // nd" on one real document (not even at the natural word boundary, unlike
+  // "Beleg grund"), which the soft `beleg\s*grund` pattern still missed,
+  // leaving the category detector to run its generic keyword scan after all
+  // and mis-tag the receipt as Geschäftsessen via the fixed "Trinkgeld"
+  // checklist option. Stripping ALL whitespace before matching is immune to
+  // wherever the PDF happens to split it.
+  it('still detects an Eigenbeleg whose "Beleggrund" heading is split at an arbitrary point', () => {
+    const text = 'Eigenbeleg\nBele ggru nd\n•Privatentnahme  • Privateinlage\nD Trinkgeld\n'
+      + '• Betriebsausgabe (verlorener Beleg)\n• Sachgeschenke (Blumen, Wein)\n• Sonstiges\n'
+      + 'Belegdaten\nBetrag  -  100 E u r o\nBuchungstext / Bemerkung:  Privateinlage\nNeudrossenfeld, 20.02.2025';
+    const r = analyzeReceiptText(text);
+    expect(r.category).toBe('');
+    expect(r.merchant).toBe('Eigenbeleg');
+  });
+  // Regression: a real Eigenbeleg's OWN title is subject to the same
+  // unpredictable split as "Beleggrund" — one document rendered it as
+  // "Eigen beleg" (a plain two-word split), and cleanMerchant's generic
+  // trailing-document-word stripper (designed to cut a real company name's
+  // own "... Rechnung"/"... Invoice" suffix) then mistook the second half
+  // "beleg" for that generic suffix, returning just "Eigen". A confirmed
+  // Eigenbeleg gets its canonical merchant name set directly instead of
+  // trusting the generic extractor for this document type.
+  it('normalises a split Eigenbeleg title ("Eigen beleg") to the canonical "Eigenbeleg" merchant', () => {
+    const text = 'Eigen beleg\nBeleggrund\n&Privatentnahme  • Privateinlage\n• Trinkgeld\n'
+      + '• Betriebsausgabe (verlorener Beleg)\n• Sachgeschenke (Blumen, Wein)\n• Sonstiges\n'
+      + 'Belegdaten\nBetrag  152,51 Euro\nBuchungstext / Bemerkung:  Privatentnahme\nNeudrossenfeld, 07.04.2025';
+    expect(analyzeReceiptText(text).merchant).toBe('Eigenbeleg');
   });
 });
