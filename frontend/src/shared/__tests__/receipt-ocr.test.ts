@@ -134,6 +134,21 @@ describe('extractDate', () => {
   it('parses a day/month-name/year date with slash separators', () => {
     expect(extractDate('Invoice Date:             24/Sep/2024')).toBe('2024-09-24');
   });
+  // Regression: the English full-month-name list explicitly spelled out
+  // january/february/march/june/july/october/december but never "may" — the
+  // other months are either spelled identically in German (april/august/
+  // september/november, already covered there) or have an explicit English
+  // entry, but German "mai" and English "may" differ by one letter, so this
+  // was a genuine, silent gap. Real Apple/OpenAI/Ageras/xAI invoices all
+  // print "30. May 2025" / "Date of issue  May 9, 2025" and lost their date
+  // entirely (the match succeeded, but MONTHS['may'] was undefined, so the
+  // whole day-month-name branch silently declined to return).
+  it('parses the English month "May" (day-first)', () => {
+    expect(extractDate('30. May 2025')).toBe('2025-05-30');
+  });
+  it('parses the English month "May" (month-first, American style)', () => {
+    expect(extractDate('Date of issue  May 9, 2025')).toBe('2025-05-09');
+  });
 });
 
 describe('extractMerchant', () => {
@@ -246,6 +261,30 @@ describe('extractMerchant', () => {
     const filler = Array.from({ length: 15 }, (_, i) => `Zeile ${i}`).join('\n');
     const text = `INVOICE\nMALTE KIEFER\n${filler}\nTresorit AG   Franklinstrasse 27, 8050 Zürich / Switzerland`;
     expect(extractMerchant(text, ['Malte Kiefer'])).toBe('Tresorit');
+  });
+  // Regression: a real IntellyTec letterhead uses " . " (a bare period, with
+  // whitespace on BOTH sides) as a field separator, same role as the already-
+  // handled | / • / · characters: "IntellyTec GmbH . Grünenborn 1 . 53797
+  // Lohmar". The split must require whitespace on both sides — a genuine
+  // abbreviation period ("Str.", "Msg.") only ever has a TRAILING space, never
+  // a leading one, so it must not be treated as a separator.
+  it('splits a letterhead on a bare "." separator with whitespace on both sides', () => {
+    expect(extractMerchant('IntellyTec GmbH . Grünenborn 1 . 53797 Lohmar')).toBe('IntellyTec GmbH');
+  });
+  // Regression: a real Medium.com receipt merges the seller and the viewer's
+  // own name onto ONE pdftotext-flattened two-column row ("A Medium
+  // Corporation    Kiefer Networks") — the whole line was previously thrown
+  // away entirely because it CONTAINED the own name anywhere, even though the
+  // real seller name sits intact before it. Only the own-name tail (and
+  // whatever follows it) should be cut, the same way a trailing "customer"/
+  // address label is already cut — not the whole line. Also covers the
+  // COMPANY_SUFFIX gap that let "Corp" (abbreviated) match but not the full
+  // word "Corporation".
+  it('keeps the seller name when the own name is merged onto the same two-column line', () => {
+    const text = 'From                                            To\n'
+      + 'A Medium Corporation                            Kiefer Networks\n'
+      + '548 Market St                                   Malte Kiefer';
+    expect(extractMerchant(text, ['Kiefer Networks', 'Malte Kiefer'])).toBe('A Medium Corporation');
   });
 });
 
@@ -390,5 +429,35 @@ describe('analyzeReceiptText', () => {
     const r = analyzeReceiptText(text);
     expect(r.category).toBe('');
     expect(r.total).toBe(150);
+  });
+  // Regression: real Eigenbeleg PDFs render "Beleggrund" with an
+  // unpredictable, different letter-spacing split EVERY time — "Bele ggru
+  // nd" on one real document (not even at the natural word boundary, unlike
+  // "Beleg grund"), which the soft `beleg\s*grund` pattern still missed,
+  // leaving the category detector to run its generic keyword scan after all
+  // and mis-tag the receipt as Geschäftsessen via the fixed "Trinkgeld"
+  // checklist option. Stripping ALL whitespace before matching is immune to
+  // wherever the PDF happens to split it.
+  it('still detects an Eigenbeleg whose "Beleggrund" heading is split at an arbitrary point', () => {
+    const text = 'Eigenbeleg\nBele ggru nd\n•Privatentnahme  • Privateinlage\nD Trinkgeld\n'
+      + '• Betriebsausgabe (verlorener Beleg)\n• Sachgeschenke (Blumen, Wein)\n• Sonstiges\n'
+      + 'Belegdaten\nBetrag  -  100 E u r o\nBuchungstext / Bemerkung:  Privateinlage\nNeudrossenfeld, 20.02.2025';
+    const r = analyzeReceiptText(text);
+    expect(r.category).toBe('');
+    expect(r.merchant).toBe('Eigenbeleg');
+  });
+  // Regression: a real Eigenbeleg's OWN title is subject to the same
+  // unpredictable split as "Beleggrund" — one document rendered it as
+  // "Eigen beleg" (a plain two-word split), and cleanMerchant's generic
+  // trailing-document-word stripper (designed to cut a real company name's
+  // own "... Rechnung"/"... Invoice" suffix) then mistook the second half
+  // "beleg" for that generic suffix, returning just "Eigen". A confirmed
+  // Eigenbeleg gets its canonical merchant name set directly instead of
+  // trusting the generic extractor for this document type.
+  it('normalises a split Eigenbeleg title ("Eigen beleg") to the canonical "Eigenbeleg" merchant', () => {
+    const text = 'Eigen beleg\nBeleggrund\n&Privatentnahme  • Privateinlage\n• Trinkgeld\n'
+      + '• Betriebsausgabe (verlorener Beleg)\n• Sachgeschenke (Blumen, Wein)\n• Sonstiges\n'
+      + 'Belegdaten\nBetrag  152,51 Euro\nBuchungstext / Bemerkung:  Privatentnahme\nNeudrossenfeld, 07.04.2025';
+    expect(analyzeReceiptText(text).merchant).toBe('Eigenbeleg');
   });
 });

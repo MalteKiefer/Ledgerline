@@ -144,7 +144,7 @@ export function extractTotal(text: string): number | null {
 const MONTHS: Record<string, number> = {
   januar: 1, februar: 2, 'märz': 3, maerz: 3, april: 4, mai: 5, juni: 6, juli: 7,
   august: 8, september: 9, oktober: 10, november: 11, dezember: 12,
-  january: 1, february: 2, march: 3, june: 6, july: 7, october: 10, december: 12,
+  january: 1, february: 2, march: 3, may: 5, june: 6, july: 7, october: 10, december: 12,
   jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, okt: 10, nov: 11, dec: 12, dez: 12,
 };
 
@@ -214,19 +214,24 @@ const MERCHANT_SKIP = /^(ihre|ihr\b|your|rechnung|invoice|receipt\b|beleg|quittu
 // sentence was misread as a company suffix, hijacking the merchant match onto
 // that sentence instead of the real "Telekom Deutschland GmbH" letterhead line
 // a few lines away (verified against a real Telekom invoice).
-const COMPANY_SUFFIX = /\b(gmbh|mbh|ug|ag|kg|ohg|gbr|ltd|limited|llc|inc|corp|b\.?v\.?|s\.?[àa]\.?r\.?l|s\.?a\.?|oy|llp|plc)\b|& co/i;
+const COMPANY_SUFFIX = /\b(gmbh|mbh|ug|ag|kg|ohg|gbr|ltd|limited|llc|inc|corp(?:oration)?|b\.?v\.?|s\.?[àa]\.?r\.?l|s\.?a\.?|oy|llp|plc)\b|& co/i;
 const COMPANY_SUFFIX_AB = /\bAB\b/;
 const hasCompanySuffix = (l: string): boolean => COMPANY_SUFFIX.test(l) || COMPANY_SUFFIX_AB.test(l);
 // Collapse letter-spaced runs ("I n t e l l y T e c" → "IntellyTec"): 3+ single-letter
 // tokens in a row (some PDFs render tracked/letter-spaced headings as separate glyphs).
 const despace = (s: string) => String(s).replace(/(?:\b[A-Za-zÄÖÜäöü] ){2,}\b[A-Za-zÄÖÜäöü]\b/g, (m) => m.replace(/ /g, ''));
-// Trim a letterhead line to just the company name: split on | / • / · separators, drop a
-// trailing document word/label, and cut an address tail (", PF 3004", ", Industriestr. 25").
-// "Rechnungsempfänger"/"Empfänger"/"recipient" (a column-header word, "invoice
+// Trim a letterhead line to just the company name: split on | / • / · separators
+// (or a bare "." used the same way, WHITESPACE ON BOTH SIDES ONLY — a real
+// IntellyTec letterhead reads "IntellyTec GmbH . Grünenborn 1 . 53797 Lohmar";
+// requiring space on both sides keeps a genuine abbreviation period like
+// "Str." or "Msg." — which only has a following space, never a leading one —
+// from being misread as a separator), drop a trailing document word/label,
+// and cut an address tail (", PF 3004", ", Industriestr. 25"). "Rechnungs-
+// empfänger"/"Empfänger"/"recipient" (a column-header word, "invoice
 // recipient") is stripped the same way as "customer"/"kundennummer" — a real
 // ente.io invoice merges "ente.io" (the real merchant) with that header word on
 // one pdftotext-flattened two-column line ("ente.io Rechnungsempfänger").
-const cleanMerchant = (l: string) => despace(l).split(/\s*[|•·]\s*/)[0]
+const cleanMerchant = (l: string) => despace(l).split(/\s*[|•·]\s*|\s+\.\s+/)[0]
   .replace(/\s*(bill|ship)\s*to\b.*$/i, '')
   .replace(/\s+(place\s*\/?\s*date|place of invoice|date of invoice|invoice (requested|number|date|no)\b|customer\b|kundennummer\b|rechnungsempf[äa]nger\b|empf[äa]nger\b|recipient\b).*$/i, '')
   .replace(/,?\s*(pf\b|postfach|\d|[^,]*(?:stra(?:ß|ss)e|str\.|weg|ring|platz|allee|gasse)\b).*$/i, '')
@@ -291,10 +296,24 @@ export function extractMerchant(text: string, excludeNames: string[] = []): stri
   const lines = String(text || '').split(/\r?\n/).map((s) => s.replace(/\s{2,}/g, ' ').trim()).filter(Boolean);
   const own = excludeNames.map((n) => n.trim().toLowerCase()).filter((n) => n.length >= 3);
   const isOwn = (l: string) => own.some((n) => l.toLowerCase().includes(n));
+  // A merged two-column line ("A Medium Corporation    Kiefer Networks" — the
+  // real seller on the left, the recipient's own name on the right, flattened
+  // onto one row by pdftotext -layout, then collapsed to single spaces here)
+  // previously lost the WHOLE line to isOwn — even though the seller portion
+  // before the own name is perfectly valid. Cut from the own name onward
+  // instead (same shape as the customer/kundennummer/address-tail strips in
+  // cleanMerchant below) and keep re-validating the REMAINDER; a line that's
+  // nothing BUT the own name (no real content before it) still reduces to an
+  // empty/too-short string and is rejected exactly as before.
+  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const ownStripRe = own.length ? new RegExp(`\\s*(?:${own.map(escapeRe).join('|')}).*$`, 'i') : null;
+  const stripOwnTail = (l: string): string => (ownStripRe ? l.replace(ownStripRe, '').trim() : l);
   // 1. A company-legal-form line in the letterhead — almost always the seller.
   for (const l of lines.slice(0, 15)) {
-    if (l.length < 3 || MERCHANT_SKIP.test(l) || isOwn(l) || !hasCompanySuffix(l)) continue;
-    const c = cleanMerchant(l);
+    if (l.length < 3 || MERCHANT_SKIP.test(l)) continue;
+    const candidate = isOwn(l) ? stripOwnTail(l) : l;
+    if (candidate.length < 3 || isOwn(candidate) || !hasCompanySuffix(candidate)) continue;
+    const c = cleanMerchant(candidate);
     if (c.length >= 3 && c.length <= 50) return c;
   }
   // 2. A known brand keyword (Amazon, Adobe, Telekom, Kaufland, …) — beats a random
@@ -316,8 +335,10 @@ export function extractMerchant(text: string, excludeNames: string[] = []): stri
     // A label ending in a bare colon with nothing after it ("PO Number:") is an
     // empty form field, not a company name — real letterheads never end in ":".
     if (l.trimEnd().endsWith(':')) continue;
-    if (MERCHANT_SKIP.test(l) || isOwn(l) || !/[a-zäöüß]/i.test(l)) continue;
-    const c = cleanMerchant(l);
+    if (MERCHANT_SKIP.test(l) || !/[a-zäöüß]/i.test(l)) continue;
+    const candidate = isOwn(l) ? stripOwnTail(l) : l;
+    if (candidate.length < 3 || isOwn(candidate)) continue;
+    const c = cleanMerchant(candidate);
     if (c.length < 3 || c.length > 50) continue;
     // cleanMerchant's address-tail stripper cuts a candidate off at its first
     // bare digit — meant to remove a trailing housenumber ("Musterstr. 5" ->
@@ -528,20 +549,38 @@ export function buildReceiptName(date: string, merchant: string, number: string)
 // construction: "Trinkgeld" (a fixed checklist option, present on literally
 // every Eigenbeleg) always matches the Geschäftsessen rule, mis-categorising
 // a private withdrawal/deposit as a business meal. Detected via the two fixed
-// template headings ("Beleg grund"/"Beleggrund" + "Belegdaten") that appear
-// together only on this app-generated document type — category is left
-// unset rather than guessed.
-const EIGENBELEG_RE = /beleg\s*grund/i;
-const BELEGDATEN_RE = /belegdaten/i;
+// template headings ("Beleggrund" + "Belegdaten") that appear together only
+// on this app-generated document type — category is left unset rather than
+// guessed. Matched against a WHITESPACE-STRIPPED copy of the text, not the
+// raw text: the PDF's own justification artifact splits this heading at an
+// unpredictable point every time ("Beleg grund", "Beleggrund", even
+// "Bele ggru nd" on one real document — never at a fixed, matchable
+// boundary), so a soft `beleg\s*grund` pattern still missed some real
+// instances; stripping ALL whitespace first is immune to wherever the split
+// happens to land.
+const strip = (s: string) => s.replace(/\s+/g, '');
 
 export function analyzeReceiptText(text: string, excludeNames: string[] = []): ReceiptAnalysis {
   const raw = String(text || '');
   const low = raw.toLowerCase();
+  const stripped = strip(low);
+  const isEigenbeleg = stripped.includes('beleggrund') && stripped.includes('belegdaten');
   let category = '';
-  if (!EIGENBELEG_RE.test(low) || !BELEGDATEN_RE.test(low)) {
+  if (!isEigenbeleg) {
     for (const [cat, re] of CATEGORY_RULES) { if (re.test(low)) { category = cat; break; } }
   }
-  const merchant = extractMerchant(text, excludeNames);
+  // The document's own "Eigenbeleg" title is subject to the exact same
+  // unpredictable justification splitting as "Beleggrund" above — a real
+  // instance rendered it as "Eigen beleg" (a plain two-word split, not the
+  // single-letter-per-token pattern `despace()` collapses), and the generic
+  // trailing-document-word stripper in cleanMerchant (meant to cut a real
+  // company name's own "... Invoice"/"... Rechnung" suffix) then mistook the
+  // second half "beleg" for that generic suffix and cut it off, leaving just
+  // "Eigen". Rather than chase every possible split point that PDF
+  // generation happens to produce, an already-confirmed Eigenbeleg gets its
+  // canonical name set directly — extractMerchant is inherently unreliable
+  // for this document type, whose only "letterhead" IS its own unstable title.
+  const merchant = isEigenbeleg ? 'Eigenbeleg' : extractMerchant(text, excludeNames);
   const total = extractTotal(text);
   const date = extractDate(text);
   const number = extractNumber(text);
