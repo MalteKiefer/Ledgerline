@@ -136,8 +136,12 @@ class WebDavController extends Controller
 
         $laravelResponse = response($server->httpResponse->getBodyAsString(), $server->httpResponse->getStatus());
         foreach ($server->httpResponse->getHeaders() as $name => $values) {
-            foreach ($values as $i => $value) {
-                $laravelResponse->headers->set($name, $value, $i === 0);
+            // Sabre's Message::getHeaders() is declared `array` with no
+            // generic annotation, so PHPStan sees $values as mixed even
+            // though setHeader()/addHeader() only ever store string[]
+            // (verified against sabre/http's own source).
+            foreach ((array) $values as $i => $value) {
+                $laravelResponse->headers->set($name, (string) $value, $i === 0);
             }
         }
 
@@ -180,7 +184,10 @@ class WebDavController extends Controller
 
         $server->httpResponse->setStatus($status);
         $server->httpResponse->setHeaders($headers);
-        $server->httpResponse->setBody($dom->saveXML());
+        // DOMDocument::saveXML() is declared string|false (a genuine
+        // serialization failure); fall back to a minimal stub rather than
+        // ever hand Sabre's Response a non-string body.
+        $server->httpResponse->setBody($dom->saveXML() ?: '<d:error xmlns:d="DAV:"><d:message>Internal server error</d:message></d:error>');
     }
 
     /**
