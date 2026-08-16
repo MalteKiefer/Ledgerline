@@ -2324,7 +2324,7 @@ async function scanReceipt() {
     if (a.date && !rForm.date) rForm.date = a.date;
     if (a.orderRef && !rForm.order_ref) rForm.order_ref = a.orderRef;
     if (a.number && !rForm.doc_number) rForm.doc_number = a.number;
-    if (!rForm.name && (a.date || a.merchant || a.number)) rForm.name = buildReceiptName(a.date, a.merchant, a.number);
+    if (!rForm.name && (a.date || a.merchant || a.number)) rForm.name = buildReceiptName(a.date, a.merchant, a.number, a.eigenbelegType);
     for (const tag of a.tags) if (!rForm.tags.includes(tag)) rForm.tags.push(tag);
     if (a.merchant && rForm.partner_id == null) rForm.partner_id = await autoPartner(a.merchant, a.vatId);
     // Immediate "Autozuweisung": an unambiguous cent-exact match auto-links right
@@ -2366,7 +2366,7 @@ async function rescanReceipt() {
     if (a.orderRef && !rForm.order_ref) rForm.order_ref = a.orderRef;
     if (a.number) rForm.doc_number = a.number;
     for (const tag of a.tags) if (!rForm.tags.includes(tag)) rForm.tags.push(tag);
-    const suggested = buildReceiptName(a.date, a.merchant, a.number);
+    const suggested = buildReceiptName(a.date, a.merchant, a.number, a.eigenbelegType);
     if (suggested) rForm.name = suggested;
     success(t('invoices.ocr_done'));
   } finally { rescanBusy.value = false; }
@@ -2391,7 +2391,7 @@ function runBulkRescan() {
     for (const r of f.standaloneReceipts) {
       if (!r.ocr) continue;
       const a = analyzeReceiptText(r.ocr, ownNames.value);
-      const suggestedName = buildReceiptName(a.date, a.merchant, a.number) || r.name;
+      const suggestedName = buildReceiptName(a.date, a.merchant, a.number, a.eigenbelegType) || r.name;
       const fillsDate = !r.date && !!a.date;
       const fillsTotal = r.amount == null && a.total != null;
       const fillsCategory = !r.category && !!a.category;
@@ -2500,7 +2500,7 @@ async function processInboxFiles(files: File[]) {
         : null;
       if (pick) claimed.add(pick.id);
 
-      const suggestedName = buildReceiptName(a.date, a.merchant, a.number);
+      const suggestedName = buildReceiptName(a.date, a.merchant, a.number, a.eigenbelegType);
       const fd = new FormData();
       fd.append('file', file);
       fd.append('sig', sig);

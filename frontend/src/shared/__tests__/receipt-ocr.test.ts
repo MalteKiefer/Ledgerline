@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   extractTotal, extractDate, extractMerchant, extractNumber,
-  extractVatRate, extractVatId, extractCurrency, extractOrderRef, buildReceiptName, analyzeReceiptText,
+  extractVatRate, extractVatId, extractCurrency, extractOrderRef, extractEigenbelegType, buildReceiptName, analyzeReceiptText,
 } from '../receipt-ocr';
 
 describe('extractTotal', () => {
@@ -429,6 +429,7 @@ describe('analyzeReceiptText', () => {
     const r = analyzeReceiptText(text);
     expect(r.category).toBe('');
     expect(r.total).toBe(150);
+    expect(r.eigenbelegType).toBe('Privatentnahme');
   });
   // Regression: real Eigenbeleg PDFs render "Beleggrund" with an
   // unpredictable, different letter-spacing split EVERY time — "Bele ggru
@@ -445,6 +446,7 @@ describe('analyzeReceiptText', () => {
     const r = analyzeReceiptText(text);
     expect(r.category).toBe('');
     expect(r.merchant).toBe('Eigenbeleg');
+    expect(r.eigenbelegType).toBe('Privateinlage');
   });
   // Regression: a real Eigenbeleg's OWN title is subject to the same
   // unpredictable split as "Beleggrund" — one document rendered it as
@@ -459,5 +461,40 @@ describe('analyzeReceiptText', () => {
       + '• Betriebsausgabe (verlorener Beleg)\n• Sachgeschenke (Blumen, Wein)\n• Sonstiges\n'
       + 'Belegdaten\nBetrag  152,51 Euro\nBuchungstext / Bemerkung:  Privatentnahme\nNeudrossenfeld, 07.04.2025';
     expect(analyzeReceiptText(text).merchant).toBe('Eigenbeleg');
+  });
+  // The fixed Beleggrund checklist can't tell Privatentnahme from Privateinlage
+  // (both checkbox glyphs collapse to an identical bullet after OCR — see the
+  // comment on `isEigenbeleg` above), but the free-text "Buchungstext /
+  // Bemerkung:" line states the chosen reason as a plain word.
+  it('extracts the Eigenbeleg type from the free-text Buchungstext/Bemerkung line', () => {
+    expect(extractEigenbelegType('Buchungstext / Bemerkung:                 Privatentnahme')).toBe('Privatentnahme');
+    expect(extractEigenbelegType('Buchungstext / Bemerkung:  Privateinlage')).toBe('Privateinlage');
+    expect(extractEigenbelegType('kein Eigenbeleg hier')).toBe('');
+  });
+  // Regression: a real Eigenbeleg's Buchungstext line carries trailing free
+  // text after the reason word (e.g. a manual note about a related rebooking)
+  // — the type must still be recognised, not just an exact-match line.
+  it('still recognises the type when the Buchungstext line has trailing free text', () => {
+    expect(extractEigenbelegType('Buchungstext / Bemerkung:                 Privateinlage >- Umbuchung N26')).toBe('Privateinlage');
+  });
+  // Same-day self-receipts share the same date and the bare "Eigenbeleg"
+  // merchant — without a real invoice number, they'd collide in any
+  // filename/list built from (date, merchant, number) alone. The type is the
+  // one thing that actually distinguishes them, so buildReceiptName folds it
+  // into the merchant slot — but `merchant` itself, as returned by
+  // analyzeReceiptText, stays the bare 'Eigenbeleg' (partner-matching must
+  // not fragment by transaction type).
+  it('folds the Eigenbeleg type into buildReceiptName without touching the bare merchant field', () => {
+    const text = 'Eigenbeleg\nBeleggrund\n&Privatentnahme  • Privateinlage\n• Trinkgeld\n'
+      + '• Betriebsausgabe (verlorener Beleg)\n• Sachgeschenke (Blumen, Wein)\n• Sonstiges\n'
+      + 'Belegdaten\nBetrag  700 Euro\nBuchungstext / Bemerkung:  Privatentnahme\nNeudrossenfeld, 16.09.2025';
+    const r = analyzeReceiptText(text);
+    expect(r.merchant).toBe('Eigenbeleg');
+    expect(r.eigenbelegType).toBe('Privatentnahme');
+    expect(buildReceiptName(r.date, r.merchant, r.number, r.eigenbelegType)).toBe('20250916; Eigenbeleg (Privatentnahme)');
+  });
+  it('leaves buildReceiptName unchanged when no eigenbelegType is given', () => {
+    expect(buildReceiptName('2025-09-16', 'Eigenbeleg', '')).toBe('20250916; Eigenbeleg');
+    expect(buildReceiptName('2025-09-16', 'netcup GmbH', 'nc-1234', '')).toBe('20250916; netcup GmbH; nc-1234');
   });
 });

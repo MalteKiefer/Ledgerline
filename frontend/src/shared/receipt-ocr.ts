@@ -17,6 +17,7 @@ export interface ReceiptAnalysis {
   vatId: string;
   currency: string;
   orderRef: string;
+  eigenbelegType: string;
   tags: string[];
 }
 
@@ -520,16 +521,40 @@ export function extractCurrency(text: string): string {
   return '';
 }
 
+// An Eigenbeleg's fixed reason CHECKLIST (Beleggrund) can't tell Privatentnahme
+// from Privateinlage after OCR — see the comment on `isEigenbeleg` below — but
+// the free-text "Buchungstext / Bemerkung:" line states the chosen reason as a
+// plain word, not a checkbox, and is reliable. Same-line only ([^\S\r\n], not
+// \s), matching the discipline the other label→value extractors in this file
+// already follow, so a label on one line never picks up an unrelated value
+// from the next.
+const EIGENBELEG_TYPE_RE = /buchungstext[^\S\r\n]*\/?[^\S\r\n]*bemerkung:?[^\S\r\n]*(privatentnahme|privateinlage)/i;
+
+/** For an Eigenbeleg: 'Privatentnahme' | 'Privateinlage' | '' (not found/not an Eigenbeleg). */
+export function extractEigenbelegType(text: string): string {
+  const m = String(text || '').match(EIGENBELEG_TYPE_RE);
+  if (!m) return '';
+  const v = m[1].toLowerCase();
+  return v[0].toUpperCase() + v.slice(1);
+}
+
 /**
  * A suggested document name: "YYYYMMDD; Issuer; InvoiceNumber" — sorts
  * chronologically, groups by issuer, and the invoice number makes it possible to
  * find a specific document again. A part that wasn't recognised is simply
  * omitted (never a placeholder); `;` and filesystem-hostile characters are
- * stripped from the free-text parts so the format stays parseable.
+ * stripped from the free-text parts so the format stays parseable. An
+ * Eigenbeleg has no real invoice number, so its Privatentnahme/Privateinlage
+ * type — the one thing that actually distinguishes same-day self-receipts —
+ * is folded into the merchant slot as "Eigenbeleg (Privatentnahme)" instead;
+ * `merchant` itself (returned separately by `analyzeReceiptText`) stays the
+ * bare 'Eigenbeleg' so partner-matching isn't fragmented by transaction type.
  */
-export function buildReceiptName(date: string, merchant: string, number: string): string {
+export function buildReceiptName(date: string, merchant: string, number: string, eigenbelegType?: string): string {
   const clean = (s: string) => String(s || '').replace(/[;/\\:*?"<>|]/g, '').replace(/\s{2,}/g, ' ').trim();
-  const parts = [date ? date.replace(/-/g, '') : '', clean(merchant), clean(number)].filter(Boolean);
+  const merchantClean = clean(merchant);
+  const merchantPart = eigenbelegType && merchantClean ? `${merchantClean} (${clean(eigenbelegType)})` : merchantClean;
+  const parts = [date ? date.replace(/-/g, '') : '', merchantPart, clean(number)].filter(Boolean);
   return parts.join('; ');
 }
 
@@ -581,6 +606,7 @@ export function analyzeReceiptText(text: string, excludeNames: string[] = []): R
   // canonical name set directly — extractMerchant is inherently unreliable
   // for this document type, whose only "letterhead" IS its own unstable title.
   const merchant = isEigenbeleg ? 'Eigenbeleg' : extractMerchant(text, excludeNames);
+  const eigenbelegType = isEigenbeleg ? extractEigenbelegType(text) : '';
   const total = extractTotal(text);
   const date = extractDate(text);
   const number = extractNumber(text);
@@ -589,5 +615,5 @@ export function analyzeReceiptText(text: string, excludeNames: string[] = []): R
   const currency = extractCurrency(text);
   const orderRef = extractOrderRef(text);
   const tags = [...new Set([merchant, category].filter(Boolean))];
-  return { merchant, category, total, date, number, vat, vatId, currency, orderRef, tags };
+  return { merchant, category, total, date, number, vat, vatId, currency, orderRef, eigenbelegType, tags };
 }
