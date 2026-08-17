@@ -178,6 +178,77 @@ class MailKeyTest extends TestCase
         $this->assertStringContainsString('SMIME SECRET 7777', (string) $msg->text_body);
     }
 
+    // ---- imported-key metadata (identities/algorithm/validity) ----
+
+    public function test_import_pgp_captures_identity_and_algorithm_metadata(): void
+    {
+        if (! BinaryProcess::available('gpg')) {
+            $this->markTestSkipped('gpg not available');
+        }
+
+        [$armoredSecret] = $this->generatePgp('unused body');
+        $user = User::factory()->create();
+
+        $res = $this->actingAs($user)->postJson(route('mail.keys.store'), [
+            'type' => 'pgp', 'label' => 'Imported', 'armored_private_key' => $armoredSecret,
+        ])->assertCreated();
+
+        // generatePgp() creates "Test User <test@example.com>" via
+        // --quick-generate-key default/default (an ECC/EdDSA key on modern gpg).
+        $identities = $res->json('key.identities');
+        $this->assertIsArray($identities);
+        $this->assertNotEmpty($identities);
+        $this->assertSame('test@example.com', $identities[0]['email']);
+        $this->assertSame('Test User', $identities[0]['name']);
+
+        $this->assertNotEmpty($res->json('key.algorithm'));
+        $this->assertNotEmpty($res->json('key.valid_from'));
+
+        // Persisted, not just present in the create response.
+        $key = MailPgpKey::findOrFail($res->json('key.id'));
+        $this->assertNotEmpty($key->identities_json);
+        $this->assertSame('test@example.com', $key->identities_json[0]['email'] ?? null);
+        $this->assertNotNull($key->algorithm);
+        $this->assertNotNull($key->valid_from);
+    }
+
+    public function test_import_smime_captures_identity_and_cert_metadata(): void
+    {
+        if (! BinaryProcess::available('openssl')) {
+            $this->markTestSkipped('openssl not available');
+        }
+
+        [$p12b64] = $this->generateSmime('unused body');
+        if ($p12b64 === null) {
+            $this->markTestSkipped('openssl S/MIME generation unsupported on this build');
+        }
+
+        $user = User::factory()->create();
+        $res = $this->actingAs($user)->postJson(route('mail.keys.store'), [
+            'type' => 'smime', 'label' => 'Imported SM', 'p12_base64' => $p12b64, 'passphrase' => 'p12pass',
+        ])->assertCreated();
+
+        // generateSmime() creates a self-signed cert with
+        // -subj '/CN=Test/emailAddress=test@example.com'.
+        $identities = $res->json('key.identities');
+        $this->assertIsArray($identities);
+        $this->assertNotEmpty($identities);
+        $this->assertSame('test@example.com', $identities[0]['email']);
+
+        $this->assertSame('RSA', $res->json('key.algorithm'));
+        $this->assertSame(2048, $res->json('key.key_length'));
+        $this->assertNotEmpty($res->json('key.issuer'));
+        $this->assertNotEmpty($res->json('key.serial'));
+        $this->assertNotEmpty($res->json('key.valid_from'));
+        $this->assertNotEmpty($res->json('key.expires_at'));
+        $this->assertNotEmpty($res->json('key.cert_pem'));
+
+        $key = MailPgpKey::findOrFail($res->json('key.id'));
+        $this->assertSame('RSA', $key->algorithm);
+        $this->assertNotNull($key->issuer);
+        $this->assertNotNull($key->serial);
+    }
+
     // ---- import from a file in the Files module ----
 
     public function test_import_pgp_from_files_owner_scoped(): void
@@ -243,11 +314,15 @@ class MailKeyTest extends TestCase
 
         $res->assertJsonMissingPath('key.private_key')->assertJsonMissingPath('key.passphrase');
         $this->assertNotEmpty($res->json('key.key_fingerprint'));
+        $res->assertJsonPath('key.algorithm', 'RSA')->assertJsonPath('key.key_length', 2048);
+        $this->assertSame('gen-rsa@example.com', $res->json('key.identities.0.email'));
+        $this->assertNotEmpty($res->json('key.valid_from'));
 
         $key = MailPgpKey::findOrFail($res->json('key.id'));
         $this->assertStringContainsString('BEGIN PGP PRIVATE KEY BLOCK', (string) $key->private_key);
         $this->assertStringContainsString('BEGIN PGP PUBLIC KEY BLOCK', (string) $key->public_key);
         $this->assertNotSame((string) $key->private_key, $key->getRawOriginal('private_key'));
+        $this->assertSame('RSA', $key->algorithm);
     }
 
     public function test_generate_pgp_ecc_multiple_identities(): void
@@ -266,8 +341,11 @@ class MailKeyTest extends TestCase
         ])->assertCreated();
 
         $this->assertNotEmpty($res->json('key.key_fingerprint'));
+        $res->assertJsonPath('key.algorithm', 'EdDSA')->assertJsonPath('key.curve', 'ed25519');
+        $this->assertCount(2, $res->json('key.identities'));
         $key = MailPgpKey::findOrFail($res->json('key.id'));
         $this->assertStringContainsString('BEGIN PGP PRIVATE KEY BLOCK', (string) $key->private_key);
+        $this->assertSame('ed25519', $key->curve);
     }
 
     // ---- real S/MIME generation (gated on openssl) ----
@@ -285,9 +363,18 @@ class MailKeyTest extends TestCase
         ])->assertCreated();
 
         $res->assertJsonPath('key.has_cert', true)->assertJsonMissingPath('key.private_key');
+        $res->assertJsonPath('key.algorithm', 'RSA')->assertJsonPath('key.key_length', 2048);
+        $this->assertSame('gen-sm@example.com', $res->json('key.identities.0.email'));
+        // Self-signed: issuer == subject, both derived from the same generated cert.
+        $this->assertNotEmpty($res->json('key.issuer'));
+        $this->assertNotEmpty($res->json('key.serial'));
+        $this->assertNotEmpty($res->json('key.valid_from'));
+
         $key = MailPgpKey::findOrFail($res->json('key.id'));
         $this->assertStringContainsString('BEGIN CERTIFICATE', (string) $key->cert_pem);
         $this->assertStringContainsString('PRIVATE KEY', (string) $key->private_key);
+        $this->assertSame('RSA', $key->algorithm);
+        $this->assertNotNull($key->issuer);
     }
 
     public function test_generated_smime_with_passphrase_decrypts_mail(): void

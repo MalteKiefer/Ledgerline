@@ -232,7 +232,7 @@ export const useFilesStore = defineStore('files', () => {
    * ZIP download. Streams a blob via raw fetch (the shared `api` client only
    * decodes JSON), then triggers a browser download through a temporary anchor.
    */
-  async function zip(sel: { ids?: number[]; folder_id?: number | null }) {
+  async function zip(sel: { ids?: number[]; folder_id?: number | null; folder_ids?: number[] }) {
     const token = getToken();
     const res = await fetch(api.url('/api/v1/files/zip'), {
       method: 'POST',
@@ -255,12 +255,18 @@ export const useFilesStore = defineStore('files', () => {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  // Inline (preview: <img>/<iframe>/<video>/"open in new tab") — the server
+  // serves this without a Content-Disposition: attachment, so a type the
+  // browser can render opens in the tab. Use for previewing only.
   const rawUrl = (f: FileEntry) => api.streamUrl(`/api/v1/files/entries/${f.id}/raw`);
+  // Forces a save dialog regardless of MIME type (Content-Disposition:
+  // attachment) — use for every actual "Download" action.
+  const downloadUrl = (f: FileEntry) => api.streamUrl(`/api/v1/files/entries/${f.id}/raw?download=1`);
   const thumbUrl = (f: FileEntry) => api.streamUrl(`/api/v1/files/entries/${f.id}/thumb`);
 
   // Create an archive from a selection (or folder subtree) — saved as a file in
   // the target folder and returned (downloadable via its normal raw URL).
-  interface ArchivePayload { ids?: number[]; folder_id?: number | null; target_folder_id?: number | null; format: string; level?: number; password?: string; name?: string }
+  interface ArchivePayload { ids?: number[]; folder_id?: number | null; folder_ids?: number[]; target_folder_id?: number | null; format: string; level?: number; password?: string; name?: string }
   const createArchive = (payload: ArchivePayload) => api.post<{ file: FileEntry }>('/api/v1/files/archive', payload).then((r) => r.file);
   // Extract an archive into a new folder (worker does the untrusted decode).
   const extractArchive = (fileId: number, opts?: { password?: string; target_folder_id?: number | null; into_new_folder?: boolean }) =>
@@ -295,6 +301,6 @@ export const useFilesStore = defineStore('files', () => {
     stats, zip, activity, fileActivity, fileInfo, getEntry,
     createArchive, extractArchive, isArchive,
     isEncrypted, encryptEntry, decryptEntry, encryptFolder,
-    rawUrl, thumbUrl,
+    rawUrl, downloadUrl, thumbUrl,
   };
 });

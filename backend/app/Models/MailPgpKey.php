@@ -27,7 +27,13 @@ use Illuminate\Support\Carbon;
  * @property string $private_key
  * @property ?string $passphrase
  * @property ?string $cert_pem
- * @property ?array<int, array{name?:?string, email:string}> $identities_json
+ * @property ?array<int, array{name?:?string, email?:?string, comment?:?string}> $identities_json
+ * @property ?string $algorithm
+ * @property ?int $key_length
+ * @property ?string $curve
+ * @property ?string $issuer
+ * @property ?string $serial
+ * @property ?Carbon $valid_from
  * @property ?Carbon $expires_at
  * @property ?Carbon $created_at
  * @property ?Carbon $updated_at
@@ -49,6 +55,7 @@ class MailPgpKey extends Model
             'passphrase' => 'encrypted',
             'identities_json' => 'array',
             'expires_at' => 'datetime',
+            'valid_from' => 'datetime',
         ];
     }
 

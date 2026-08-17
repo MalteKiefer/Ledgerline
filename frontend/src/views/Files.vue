@@ -260,11 +260,18 @@
         <!-- Grid -->
         <div v-else-if="layout==='grid'" class="grid grid-cols-2 gap-3 p-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           <div
-            v-for="row in rows" :key="row._k"
-            class="overflow-hidden rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] transition-colors hover:border-primary-500/40"
+            v-for="(row, ri) in rows" :key="row._k"
+            class="overflow-hidden rounded-lg border bg-[var(--ll-surface)] transition-colors"
+            :class="isRowSelected(row) ? 'border-primary-500' : 'border-[var(--ll-border)] hover:border-primary-500/40'"
             @dblclick="open(row)"
           >
-            <div class="flex h-28 items-center justify-center bg-black/[0.03] dark:bg-white/5">
+            <div class="relative flex h-28 items-center justify-center bg-black/[0.03] dark:bg-white/5">
+              <input
+                v-if="view!=='trash'"
+                type="checkbox" class="absolute left-1.5 top-1.5 z-10 h-4 w-4 rounded accent-primary-500 shadow"
+                :checked="isRowSelected(row)"
+                @click.stop="onRowCheck(ri, row, $event)"
+              >
               <img v-if="row._img" :src="s.thumbUrl(row.raw as FileEntry)" class="h-full w-full object-cover" >
               <Icon v-else :name="row._icon" :size="40" :class="row._folder ? 'text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'" />
             </div>
@@ -276,7 +283,7 @@
                 </DropdownMenuTrigger>
                 <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
                   <template v-if="!row._folder && view!=='trash'">
-                    <DropdownMenuItem as="a" :href="s.rawUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
+                    <DropdownMenuItem as="a" :href="s.downloadUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
                     <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="openExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
                     <DropdownMenuItem v-if="!s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openEncrypt(row)"><Icon name="lock" :size="18" />{{ t('files.encrypt') }}</DropdownMenuItem>
                     <DropdownMenuItem v-if="s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openDecrypt(row)"><Icon name="lock_open" :size="18" />{{ t('files.decrypt') }}</DropdownMenuItem>
@@ -348,12 +355,10 @@
                     </DropdownMenuTrigger>
                     <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
                       <template v-if="!row._folder && view!=='trash'">
-                        <DropdownMenuItem as="a" :href="s.rawUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
+                        <DropdownMenuItem as="a" :href="s.downloadUrl(row.raw as FileEntry)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
                         <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="openExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
                         <DropdownMenuItem v-if="!s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openEncrypt(row)"><Icon name="lock" :size="18" />{{ t('files.encrypt') }}</DropdownMenuItem>
                         <DropdownMenuItem v-if="s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openDecrypt(row)"><Icon name="lock_open" :size="18" />{{ t('files.decrypt') }}</DropdownMenuItem>
-                    <DropdownMenuItem v-if="!s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openEncrypt(row)"><Icon name="lock" :size="18" />{{ t('files.encrypt') }}</DropdownMenuItem>
-                    <DropdownMenuItem v-if="s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openDecrypt(row)"><Icon name="lock_open" :size="18" />{{ t('files.decrypt') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
@@ -937,7 +942,7 @@
         <div v-else class="p-10 text-center text-[var(--ll-muted)]">
           <Icon :name="categoryMsym(preview.name, preview.mime)" :size="56" class="mb-3 block" />
           <div class="text-sm">{{ preview.name }}</div>
-          <Btn variant="soft" icon="download" tag="a" :href="s.rawUrl(preview)" class="mt-4">{{ t('files.download') }}</Btn>
+          <Btn variant="soft" icon="download" tag="a" :href="s.downloadUrl(preview)" class="mt-4">{{ t('files.download') }}</Btn>
         </div>
       </div>
 
@@ -967,7 +972,7 @@
               <Icon name="more_vert" :size="18" />
             </DropdownMenuTrigger>
             <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
-              <DropdownMenuItem as="a" :href="s.rawUrl(preview)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
+              <DropdownMenuItem as="a" :href="s.downloadUrl(preview)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
               <DropdownMenuItem as="a" :href="s.rawUrl(preview)" target="_blank" :class="menuItemCls"><Icon name="open_in_new" :size="18" />{{ t('common.open') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItemCls" @select="previewRename()"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItemCls" @select="openVersions(mapFile(preview))"><Icon name="history" :size="18" />{{ t('files.versions') }}</DropdownMenuItem>
@@ -1786,23 +1791,32 @@ async function placeFile(f: FileEntry, target: number | null, copy: boolean, act
 // ---- ZIP ----
 async function zipFolder() { try { await s.zip({ folder_id: cwd.value }); } catch { error(t('common.error')); } }
 async function zipSelected() {
-  if (!selected.value.length) return;
-  try { await s.zip({ ids: [...selected.value] }); } catch { error(t('common.error')); }
+  if (!selCount.value) return;
+  try {
+    await s.zip({
+      ids: selected.value.length ? [...selected.value] : undefined,
+      folder_ids: selectedFolders.value.length ? [...selectedFolders.value] : undefined,
+    });
+  } catch { error(t('common.error')); }
 }
 
 // ---- Archive (create) / extract ----
 const archiveDlg = ref<{ show: boolean; busy: boolean; format: string; level: number; name: string; password: string }>({ show: false, busy: false, format: 'zip', level: 6, name: '', password: '' });
 function openArchive() {
-  if (!selected.value.length) return;
+  if (!selCount.value) return;
   archiveDlg.value = { show: true, busy: false, format: 'zip', level: 6, name: '', password: '' };
 }
 async function doArchive() {
-  if (!selected.value.length) return;
+  if (!selCount.value) return;
   const d = archiveDlg.value;
   d.busy = true;
   try {
     const hasPw = (d.format === 'zip' || d.format === '7z') && d.password !== '';
-    await s.createArchive({ ids: [...selected.value], target_folder_id: cwd.value, format: d.format, level: d.level, name: d.name || undefined, password: hasPw ? d.password : undefined });
+    await s.createArchive({
+      ids: selected.value.length ? [...selected.value] : undefined,
+      folder_ids: selectedFolders.value.length ? [...selectedFolders.value] : undefined,
+      target_folder_id: cwd.value, format: d.format, level: d.level, name: d.name || undefined, password: hasPw ? d.password : undefined,
+    });
     d.show = false; clearSelection(); await s.load(); success(t('files.archive_created'));
   } catch { error(t('files.archive_failed')); } finally { d.busy = false; }
 }
