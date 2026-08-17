@@ -9,7 +9,7 @@ use App\Models\KeyServer;
 use App\Models\MailPgpKey;
 use App\Rules\SafeUrl;
 use App\Support\Crypto\FileCipher;
-use App\Support\Crypto\Keyserver;
+use App\Support\Crypto\HkpClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -19,12 +19,12 @@ use Illuminate\Support\Facades\Validator;
  * search, import a search result as a saved recipient (App\Models\
  * CryptoRecipient), refresh an already-saved one, publish an own PGP key, and
  * check whether an own key is already published. All outbound requests run
- * through App\Support\Crypto\Keyserver (SSRF-guarded via OutboundUrl); S/MIME
+ * through App\Support\Crypto\HkpClient (SSRF-guarded via OutboundUrl); S/MIME
  * has no keyserver equivalent, so publish/check-presence/search are PGP-only.
  */
 class KeyServerController extends Controller
 {
-    public function __construct(private readonly Keyserver $hkp, private readonly FileCipher $cipher) {}
+    public function __construct(private readonly HkpClient $hkp, private readonly FileCipher $cipher) {}
 
     public function index(Request $request): JsonResponse
     {

@@ -18,7 +18,7 @@ use Throwable;
  * throughout: a keyserver being unreachable, slow, or returning garbage never
  * throws out to the caller, it just yields an empty/false result.
  */
-final class Keyserver
+final class HkpClient
 {
     private const TIMEOUT = 10;
 

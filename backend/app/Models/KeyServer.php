@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * A user's configured HKP public-keyserver (see App\Support\Crypto\Keyserver
+ * A user's configured HKP public-keyserver (see App\Support\Crypto\HkpClient
  * for the client). Non-secret operational config, owner-scoped.
  *
  * @property int $id
