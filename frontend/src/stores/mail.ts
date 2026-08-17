@@ -333,10 +333,15 @@ export const useMailStore = defineStore('mail', () => {
   }
 
   // --- Keys (PGP / S-MIME) --------------------------------------------------
-  const loadKeys = () => api.get<{ keys: MailKey[] }>('/api/v1/mail/keys');
-  const importKey = (body: MailKeyImportBody) => api.post<{ key: MailKey }>('/api/v1/mail/keys', body);
-  const generateKey = (body: MailKeyGenerateBody) => api.post<{ key: MailKey }>('/api/v1/mail/keys/generate', body);
-  const deleteKey = (id: number) => api.delete(`/api/v1/mail/keys/${id}`);
+  // NOTE: these deliberately hit /crypto/keys, not /mail/keys — same controller
+  // (MailKeyController), but the /crypto mount is NOT module:mail-gated (own
+  // encryption keys are also used by Files encryption, independent of Mail).
+  const loadKeys = () => api.get<{ keys: MailKey[] }>('/api/v1/crypto/keys');
+  const importKey = (body: MailKeyImportBody) => api.post<{ key: MailKey }>('/api/v1/crypto/keys', body);
+  const generateKey = (body: MailKeyGenerateBody) => api.post<{ key: MailKey }>('/api/v1/crypto/keys/generate', body);
+  const deleteKey = (id: number) => api.delete(`/api/v1/crypto/keys/${id}`);
+  const exportKey = (id: number, currentPassword: string) =>
+    api.post<{ private_key: string; cert_pem?: string | null }>(`/api/v1/crypto/keys/${id}/export`, { current_password: currentPassword });
 
   // --- Stats + export (binary) ----------------------------------------------
   const loadStats = () => api.get<MailStats>('/api/v1/mail/stats');
@@ -372,7 +377,7 @@ export const useMailStore = defineStore('mail', () => {
     loadLabels, createLabel, updateLabel, deleteLabel,
     loadRules, createRule, updateRule, deleteRule,
     loadSavedSearches, saveSearch, deleteSavedSearch,
-    loadLogs, loadKeys, importKey, generateKey, deleteKey, loadStats, exportMessages, resetFilters,
+    loadLogs, loadKeys, importKey, generateKey, deleteKey, exportKey, loadStats, exportMessages, resetFilters,
   };
 });
 

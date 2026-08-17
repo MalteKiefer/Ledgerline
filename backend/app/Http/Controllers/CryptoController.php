@@ -33,6 +33,10 @@ class CryptoController extends Controller
                 'type' => $k->type,
                 'label' => $k->label,
                 'fingerprint' => $k->key_fingerprint,
+                // Public half only — never private_key/passphrase, which stay
+                // #[Hidden] on the model and are never read here.
+                'public_key' => $k->public_key,
+                'cert_pem' => $k->cert_pem,
                 'has_private' => $k->private_key !== null && $k->private_key !== '',
                 'is_own' => true,
             ])->all();
@@ -43,6 +47,11 @@ class CryptoController extends Controller
                 'type' => $r->type,
                 'label' => $r->label,
                 'fingerprint' => $r->fingerprint,
+                'key_id' => $r->key_id,
+                'public_key' => $r->public_key,
+                'cert_pem' => $r->cert_pem,
+                'key_server_id' => $r->key_server_id,
+                'refreshed_at' => $r->refreshed_at?->toIso8601String(),
             ])->all();
 
         return response()->json(['keys' => $keys, 'recipients' => $recipients]);
@@ -78,7 +87,11 @@ class CryptoController extends Controller
         $r = new CryptoRecipient;
         $r->forceFill($attrs)->save();
 
-        return response()->json(['recipient' => ['id' => $r->id, 'type' => $r->type, 'label' => $r->label, 'fingerprint' => $r->fingerprint]]);
+        return response()->json(['recipient' => [
+            'id' => $r->id, 'type' => $r->type, 'label' => $r->label, 'fingerprint' => $r->fingerprint,
+            'key_id' => $r->key_id, 'public_key' => $r->public_key, 'cert_pem' => $r->cert_pem,
+            'key_server_id' => $r->key_server_id, 'refreshed_at' => $r->refreshed_at?->toIso8601String(),
+        ]]);
     }
 
     public function destroyRecipient(Request $request, CryptoRecipient $recipient): JsonResponse

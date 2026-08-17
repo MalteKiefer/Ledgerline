@@ -27,6 +27,7 @@ use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GeoController;
 use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\InviteLinkController;
+use App\Http\Controllers\KeyServerController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailAttachmentController;
 use App\Http\Controllers\MailBlobController;
@@ -143,9 +144,19 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/crypto/keys', [MailKeyController::class, 'store'])->middleware('throttle:60,1')->name('crypto.keys.store');
     Route::post('/crypto/keys/generate', [MailKeyController::class, 'generate'])->middleware('throttle:30,1')->name('crypto.keys.generate');
     Route::delete('/crypto/keys/{key}', [MailKeyController::class, 'destroy'])->whereNumber('key')->middleware('throttle:60,1')->name('crypto.keys.destroy');
+    Route::post('/crypto/keys/{key}/export', [MailKeyController::class, 'export'])->whereNumber('key')->middleware('throttle:60,1')->name('crypto.keys.export');
     Route::get('/crypto/keyring', [CryptoController::class, 'keyring'])->name('crypto.keyring');
     Route::post('/crypto/recipients', [CryptoController::class, 'storeRecipient'])->middleware('throttle:60,1')->name('crypto.recipients.store');
     Route::delete('/crypto/recipients/{recipient}', [CryptoController::class, 'destroyRecipient'])->whereNumber('recipient')->middleware('throttle:60,1')->name('crypto.recipients.destroy');
+    Route::get('/crypto/key-servers', [KeyServerController::class, 'index'])->name('crypto.key-servers.index');
+    Route::post('/crypto/key-servers', [KeyServerController::class, 'store'])->middleware('throttle:30,1')->name('crypto.key-servers.store');
+    Route::put('/crypto/key-servers/{keyServer}', [KeyServerController::class, 'update'])->whereNumber('keyServer')->middleware('throttle:30,1')->name('crypto.key-servers.update');
+    Route::delete('/crypto/key-servers/{keyServer}', [KeyServerController::class, 'destroy'])->whereNumber('keyServer')->middleware('throttle:30,1')->name('crypto.key-servers.destroy');
+    Route::post('/crypto/key-servers/search', [KeyServerController::class, 'search'])->middleware('throttle:30,1')->name('crypto.key-servers.search');
+    Route::post('/crypto/key-servers/{keyServer}/import', [KeyServerController::class, 'import'])->whereNumber('keyServer')->middleware('throttle:30,1')->name('crypto.key-servers.import');
+    Route::post('/crypto/recipients/{recipient}/refresh', [KeyServerController::class, 'refreshRecipient'])->whereNumber('recipient')->middleware('throttle:30,1')->name('crypto.recipients.refresh');
+    Route::post('/crypto/keys/{key}/publish', [KeyServerController::class, 'publish'])->whereNumber('key')->middleware('throttle:30,1')->name('crypto.keys.publish');
+    Route::post('/crypto/keys/{key}/check-presence', [KeyServerController::class, 'checkPresence'])->whereNumber('key')->middleware('throttle:30,1')->name('crypto.keys.check-presence');
     // WebDAV app-specific password (mount Files as a network drive).
     Route::put('/profile/webdav', [WebDavAccessController::class, 'update'])->middleware('throttle:20,1')->name('profile.webdav.update');
     Route::delete('/profile/webdav', [WebDavAccessController::class, 'destroy'])->middleware('throttle:20,1')->name('profile.webdav.destroy');

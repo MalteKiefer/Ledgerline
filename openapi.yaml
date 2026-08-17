@@ -143,7 +143,9 @@ tags:
       Shared encryption keyring (profile-level, not mail-gated): the user's own
       PGP/S-MIME keys (managed via the same MailKeyController as /mail/keys — the
       /crypto/keys ops are identical) plus saved recipients (other people's public
-      keys/certs). Drives the Files module's encrypt/decrypt.
+      keys/certs) plus configured HKP keyservers, used to search for recipient
+      keys, import/refresh them, and publish/check-presence of the user's own
+      PGP keys. Drives the Files module's encrypt/decrypt.
   - name: Backup
     description: >
       Admin backup management (admin role + device token). Credential hygiene is
@@ -2079,6 +2081,63 @@ components:
           type: [boolean, "null"]
           description: "PGP only. Add a separate signing subkey alongside the encryption subkey."
       required: [type, label, identities]
+
+    CryptoRecipient:
+      type: object
+      description: >
+        Someone else's public key/certificate, saved to encrypt data for them
+        (the Files module "encrypt to" picker). Public material only — never a
+        private key. May have been imported manually or fetched from a
+        keyserver (key_server_id set); refreshed_at tracks the last successful
+        re-fetch from that server.
+      properties:
+        id: { type: integer }
+        type: { type: string, enum: [pgp, smime] }
+        label: { type: string }
+        fingerprint: { type: [string, "null"] }
+        key_id: { type: [string, "null"] }
+        public_key: { type: [string, "null"] }
+        cert_pem: { type: [string, "null"] }
+        key_server_id: { type: [integer, "null"], description: "The keyserver this recipient was imported/refreshed from, if any." }
+        refreshed_at: { type: [string, "null"], format: date-time }
+      required: [id, type, label]
+
+    KeyServer:
+      type: object
+      description: "An HKP keyserver configured by the user, used to search for / publish / refresh PGP public keys. Owner-scoped."
+      properties:
+        id: { type: integer }
+        name: { type: string, maxLength: 100 }
+        url: { type: string, format: uri, maxLength: 500 }
+        enabled: { type: boolean }
+      required: [id, name, url, enabled]
+
+    KeyserverCandidate:
+      type: object
+      description: "One PGP key found by an HKP keyserver search (op=index) — not yet imported."
+      properties:
+        server_id: { type: integer }
+        server_name: { type: string }
+        key_id: { type: string, description: "Long (16-hex) or fingerprint (40-hex) key identifier, used to fetch/import the full key." }
+        fingerprint: { type: [string, "null"] }
+        algorithm: { type: [string, "null"] }
+        bits: { type: [integer, "null"] }
+        created_at: { type: [integer, "null"], description: "Unix timestamp." }
+        expires_at: { type: [integer, "null"], description: "Unix timestamp." }
+        revoked: { type: boolean }
+        uids:
+          type: array
+          items: { $ref: '#/components/schemas/MailKeyIdentity' }
+      required: [server_id, server_name, key_id, revoked, uids]
+
+    KeyserverPresenceResult:
+      type: object
+      description: "Whether one of the user's own PGP keys was found (by exact re-derived fingerprint match, not just a server-reported label) on a configured keyserver."
+      properties:
+        server_id: { type: integer }
+        server_name: { type: string }
+        present: { type: boolean }
+      required: [server_id, server_name, present]
 
     MailLog:
       type: object
@@ -7625,11 +7684,114 @@ paths:
       tags: [Crypto]
       operationId: cryptoKeyring
       summary: Encryption keyring (own keys + recipients)
-      description: "The user's own PGP/S-MIME keys (public info only) plus saved recipients — the 'encrypt to' picker for the Files module. Own-key management is /crypto/keys; recipients are /crypto/recipients."
+      description: "The user's own PGP/S-MIME keys (public info only) plus saved recipients — the 'encrypt to' picker for the Files module. Own-key management is /crypto/keys; recipients are /crypto/recipients; keyservers are /crypto/key-servers."
       security: [ { bearerAuth: [] } ]
       responses:
-        "200": { description: "Keyring.", content: { application/json: { schema: { type: object, properties: { keys: { type: array, items: { type: object, properties: { id: { type: integer }, type: { type: string }, label: { type: string }, fingerprint: { type: [string, "null"] }, has_private: { type: boolean }, is_own: { type: boolean } } } }, recipients: { type: array, items: { type: object, properties: { id: { type: integer }, type: { type: string }, label: { type: string }, fingerprint: { type: [string, "null"] } } } } } } } } }
+        "200": { description: "Keyring.", content: { application/json: { schema: { type: object, properties: { keys: { type: array, items: { type: object, properties: { id: { type: integer }, type: { type: string }, label: { type: string }, fingerprint: { type: [string, "null"] }, public_key: { type: [string, "null"] }, cert_pem: { type: [string, "null"] }, has_private: { type: boolean }, is_own: { type: boolean } } } }, recipients: { type: array, items: { $ref: '#/components/schemas/CryptoRecipient' } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /crypto/keys/{key}/export:
+    post:
+      tags: [Crypto]
+      operationId: cryptoKeysExport
+      summary: Export an own key's private material (password-gated)
+      description: >
+        Returns the private key in the clear — the caller's current login
+        password must be re-confirmed (step-up), and the export is audited
+        (crypto.key.exported). PGP returns the armored private key (still
+        gpg-passphrase-protected if one was set at import/generation time);
+        S/MIME additionally returns the certificate PEM.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: key, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [current_password], properties: { current_password: { type: string } } } } } }
+      responses:
+        "200": { description: "Private key material.", content: { application/json: { schema: { type: object, properties: { private_key: { type: [string, "null"] }, cert_pem: { type: [string, "null"], description: "S/MIME only." } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "Wrong current password." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /crypto/key-servers:
+    get:
+      tags: [Crypto]
+      operationId: cryptoKeyServersIndex
+      summary: List configured keyservers
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200": { description: "Keyservers.", content: { application/json: { schema: { type: object, properties: { servers: { type: array, items: { $ref: '#/components/schemas/KeyServer' } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Crypto]
+      operationId: cryptoKeyServersStore
+      summary: Add a keyserver
+      description: "The URL is validated + SSRF-guarded (App\\Rules\\SafeUrl) before being saved; every subsequent request to it goes through the same outbound guard."
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name, url], properties: { name: { type: string, maxLength: 100 }, url: { type: string, format: uri, maxLength: 500 }, enabled: { type: [boolean, "null"] } } } } } }
+      responses:
+        "201": { description: "Created.", content: { application/json: { schema: { type: object, properties: { server: { $ref: '#/components/schemas/KeyServer' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /crypto/key-servers/{keyServer}:
+    put:
+      tags: [Crypto]
+      operationId: cryptoKeyServersUpdate
+      summary: Update a keyserver
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: keyServer, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: [string, "null"], maxLength: 100 }, url: { type: [string, "null"], format: uri, maxLength: 500 }, enabled: { type: [boolean, "null"] } } } } } }
+      responses:
+        "200": { description: "Updated.", content: { application/json: { schema: { type: object, properties: { server: { $ref: '#/components/schemas/KeyServer' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Crypto]
+      operationId: cryptoKeyServersDestroy
+      summary: Remove a keyserver
+      description: "Any recipients previously imported from this server are kept — only their key_server_id link is cleared (nullOnDelete)."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: keyServer, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "Removed." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /crypto/key-servers/search:
+    post:
+      tags: [Crypto]
+      operationId: cryptoKeyServersSearch
+      summary: Search for public PGP keys on one or all enabled keyservers
+      description: >
+        HKP `op=index` search (name/email/key ID) against server_id, or every
+        enabled keyserver when server_id is omitted (results merged, capped).
+        PGP only — S/MIME has no keyserver protocol. Outbound requests are
+        SSRF-guarded (App\Support\OutboundUrl).
+      security: [ { bearerAuth: [] } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [query], properties: { query: { type: string, minLength: 1, maxLength: 200 }, server_id: { type: [integer, "null"], description: "Search only this server; omit to search all enabled servers." } } } } } }
+      responses:
+        "200": { description: "Matching keys.", content: { application/json: { schema: { type: object, properties: { results: { type: array, items: { $ref: '#/components/schemas/KeyserverCandidate' } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "No enabled keyservers, or an invalid server_id." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /crypto/key-servers/{keyServer}/import:
+    post:
+      tags: [Crypto]
+      operationId: cryptoKeyServersImport
+      summary: Fetch a key from a keyserver and save it as a recipient
+      description: >
+        Fetches the full key by key_id (HKP `op=get`), verifies the returned
+        material's own re-derived fingerprint actually matches key_id/the
+        search result before saving — a keyserver's self-reported metadata is
+        never trusted at face value. Saved as a normal CryptoRecipient with
+        key_server_id set, so it can later be refreshed.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: keyServer, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [key_id, label], properties: { key_id: { type: string }, label: { type: string, maxLength: 200 } } } } } }
+      responses:
+        "200": { description: "The saved recipient.", content: { application/json: { schema: { type: object, properties: { recipient: { $ref: '#/components/schemas/CryptoRecipient' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Keyserver not found, or the key could not be fetched." }
+        "422": { description: "The fetched material is not a valid PGP key." }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /crypto/recipients:
     post:
       tags: [Crypto]
@@ -7639,7 +7801,7 @@ paths:
       security: [ { bearerAuth: [] } ]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [type, label, material], properties: { type: { type: string, enum: [pgp, smime] }, label: { type: string, maxLength: 200 }, material: { type: string, maxLength: 100000, description: "Armored PGP public key or PEM certificate." } } } } } }
       responses:
-        "200": { description: "The saved recipient.", content: { application/json: { schema: { type: object, properties: { recipient: { type: object, properties: { id: { type: integer }, type: { type: string }, label: { type: string }, fingerprint: { type: [string, "null"] } } } } } } } }
+        "200": { description: "The saved recipient.", content: { application/json: { schema: { type: object, properties: { recipient: { $ref: '#/components/schemas/CryptoRecipient' } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "422": { description: "Invalid key/certificate." }
         "429": { $ref: "#/components/responses/RateLimited" }
@@ -7654,6 +7816,57 @@ paths:
         "200": { description: "Removed." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /crypto/recipients/{recipient}/refresh:
+    post:
+      tags: [Crypto]
+      operationId: cryptoRecipientRefresh
+      summary: Re-fetch a recipient from the keyserver it was imported from
+      description: >
+        Only recipients with key_server_id set (imported via a keyserver
+        search) can be refreshed. The freshly-fetched key's own re-derived
+        fingerprint must match the fingerprint already stored on the
+        recipient — a mismatch (a compromised/misbehaving server serving
+        different key material under the same id) is rejected, not applied.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: recipient, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "The refreshed recipient.", content: { application/json: { schema: { type: object, properties: { recipient: { $ref: '#/components/schemas/CryptoRecipient' } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Recipient not found, has no origin keyserver, or the key is no longer available on that server." }
+        "422": { description: "fingerprint_mismatch — the re-fetched key does not match the saved fingerprint." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /crypto/keys/{key}/publish:
+    post:
+      tags: [Crypto]
+      operationId: cryptoKeysPublish
+      summary: Publish an own PGP key's public part to a keyserver
+      description: "PGP only (S/MIME has no keyserver protocol → 422 not_pgp). POSTs the armored public key to the server's HKP /pks/add. Best-effort — some servers (e.g. keys.openpgp.org) require out-of-band email verification and may silently ignore a classic /pks/add submission."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: key, in: path, required: true, schema: { type: integer } } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [server_id], properties: { server_id: { type: integer } } } } } }
+      responses:
+        "200": { description: "Upload attempted.", content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "not_pgp, or the key has no public material." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /crypto/keys/{key}/check-presence:
+    post:
+      tags: [Crypto]
+      operationId: cryptoKeysCheckPresence
+      summary: Check whether an own PGP key is already on each configured keyserver
+      description: >
+        Fetches the key by its own fingerprint from every enabled keyserver
+        and re-derives the fetched material's fingerprint locally to confirm
+        an exact match — never trusts a server's self-reported presence.
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: key, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "Per-server presence.", content: { application/json: { schema: { type: object, properties: { results: { type: array, items: { $ref: '#/components/schemas/KeyserverPresenceResult' } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "not_pgp." }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /files/stats:
     get:
       tags: [Files]

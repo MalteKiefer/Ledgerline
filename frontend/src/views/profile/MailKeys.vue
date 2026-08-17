@@ -33,6 +33,60 @@
     </div>
   </Card>
 
+  <!-- Recipients: other people's public keys/certs, used to encrypt TO them -->
+  <Card :title="t('mail.keys.recipients_title')" class="mt-6">
+    <template #actions>
+      <Btn variant="soft" size="sm" icon="travel_explore" @click="openKeyserverSearch">{{ t('mail.keys.recipients_search') }}</Btn>
+      <Btn variant="soft" size="sm" icon="add" @click="openRecipientAdd">{{ t('mail.keys.recipients_add') }}</Btn>
+    </template>
+
+    <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('mail.keys.recipients_subtitle') }}</p>
+
+    <div v-if="recipientsLoading" class="py-6 text-center"><Icon name="progress_activity" :size="28" class="animate-spin text-[var(--ll-muted)]" /></div>
+    <div v-else-if="!crypto.recipients.length" class="py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('mail.keys.recipients_none') }}</div>
+    <div v-else class="divide-y divide-[var(--ll-border)]">
+      <div v-for="r in crypto.recipients" :key="r.id" class="flex items-start gap-3 py-3">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10"><Icon name="person" :size="20" /></span>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <span class="truncate text-sm font-medium">{{ r.label }}</span>
+            <Badge :tone="r.type === 'pgp' ? 'primary' : 'info'">{{ r.type.toUpperCase() }}</Badge>
+            <Badge v-if="r.key_server_id" tone="gray">{{ t('mail.keys.recipient_from_server') }}</Badge>
+          </div>
+          <div v-if="r.fingerprint" class="truncate font-mono text-xs text-[var(--ll-muted)]">{{ r.fingerprint }}</div>
+          <div v-if="r.refreshed_at" class="text-xs text-[var(--ll-muted)]">{{ t('mail.keys.recipient_refreshed_at') }}: {{ new Date(r.refreshed_at).toLocaleString() }}</div>
+        </div>
+        <Btn v-if="r.key_server_id" variant="ghost" size="sm" icon="sync" :loading="refreshingId === r.id" :title="t('mail.keys.recipient_refresh')" @click="doRefreshRecipient(r)" />
+        <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" :title="t('mail.keys.recipient_delete')" @click="removeRecipient(r)" />
+      </div>
+    </div>
+  </Card>
+
+  <!-- Keyservers: HKP servers to search/publish/refresh against -->
+  <Card :title="t('mail.keys.servers_title')" class="mt-6">
+    <template #actions>
+      <Btn variant="soft" size="sm" icon="add" @click="openServerForm(null)">{{ t('mail.keys.servers_add') }}</Btn>
+    </template>
+
+    <p class="mb-4 text-sm text-[var(--ll-muted)]">{{ t('mail.keys.servers_subtitle') }}</p>
+
+    <div v-if="!crypto.keyServers.length" class="py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('mail.keys.servers_none') }}</div>
+    <div v-else class="divide-y divide-[var(--ll-border)]">
+      <div v-for="srv in crypto.keyServers" :key="srv.id" class="flex items-center gap-3 py-3">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10"><Icon name="dns" :size="20" /></span>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <span class="truncate text-sm font-medium">{{ srv.name }}</span>
+            <Badge v-if="!srv.enabled" tone="gray">{{ t('mail.keys.servers_disabled') }}</Badge>
+          </div>
+          <div class="truncate text-xs text-[var(--ll-muted)]">{{ srv.url }}</div>
+        </div>
+        <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="openServerForm(srv)" />
+        <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" :title="t('mail.keys.servers_delete')" @click="removeServer(srv)" />
+      </div>
+    </div>
+  </Card>
+
   <!-- Detail modal: every field the key/certificate itself carries -->
   <Modal v-model="detail.show" :title="t('mail.keys.details')" width="620px">
     <div v-if="detail.key" class="space-y-4">
@@ -106,9 +160,132 @@
         </div>
         <textarea readonly rows="6" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 font-mono text-xs" :value="detail.key.cert_pem"></textarea>
       </div>
+
+      <!-- Keyserver presence (PGP only) -->
+      <div v-if="detail.key.type === 'pgp'">
+        <div class="mb-1.5 flex items-center justify-between">
+          <span class="text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.keys.presence_title') }}</span>
+          <Btn variant="ghost" size="xs" icon="refresh" :loading="presenceBusy" :disabled="!crypto.keyServers.length" @click="doCheckPresence(detail.key)">{{ t('mail.keys.presence_check') }}</Btn>
+        </div>
+        <p v-if="!crypto.keyServers.length" class="text-xs text-[var(--ll-muted)]">{{ t('mail.keys.servers_none') }}</p>
+        <div v-else-if="presence.length" class="space-y-1">
+          <div v-for="p in presence" :key="p.server_id" class="flex items-center gap-2 text-sm">
+            <Icon :name="p.present ? 'check_circle' : 'cancel'" :size="16" :class="p.present ? 'text-green-600' : 'text-[var(--ll-muted)]'" />
+            <span class="flex-1 truncate">{{ p.server_name }}</span>
+            <Btn v-if="!p.present" variant="ghost" size="xs" :loading="publishBusy === p.server_id" @click="doPublish(detail.key, p.server_id)">{{ t('mail.keys.presence_publish') }}</Btn>
+          </div>
+        </div>
+      </div>
     </div>
     <template #footer>
+      <Btn v-if="detail.key" variant="ghost" size="sm" icon="lock_open" @click="openExport(detail.key)">{{ t('mail.keys.export') }}</Btn>
+      <span class="flex-1"></span>
       <Btn variant="ghost" @click="detail.show = false">{{ t('common.close') }}</Btn>
+    </template>
+  </Modal>
+
+  <!-- Add recipient manually: paste an armored PGP public key or an S/MIME cert -->
+  <Modal v-model="radd.show" :title="t('mail.keys.recipients_add')" width="560px">
+    <div class="space-y-3">
+      <TextField v-model="radd.label" :label="t('mail.keys.label')" />
+      <div>
+        <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.keys.title') }}</span>
+        <div class="inline-flex rounded-lg border border-[var(--ll-border)] p-0.5">
+          <button type="button" class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="radd.type === 'pgp' ? 'bg-primary-500 text-white' : 'text-[var(--ll-muted)]'" @click="radd.type = 'pgp'">PGP</button>
+          <button type="button" class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="radd.type === 'smime' ? 'bg-primary-500 text-white' : 'text-[var(--ll-muted)]'" @click="radd.type = 'smime'">S/MIME</button>
+        </div>
+      </div>
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ radd.type === 'pgp' ? t('mail.keys.recipient_material_pgp') : t('mail.keys.recipient_material_smime') }}</span>
+        <textarea
+          v-model="radd.material" rows="8"
+          class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 font-mono text-xs text-[var(--ll-fg)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+          :placeholder="radd.type === 'pgp' ? '-----BEGIN PGP PUBLIC KEY BLOCK-----' : '-----BEGIN CERTIFICATE-----'"
+        ></textarea>
+      </label>
+    </div>
+    <template #footer>
+      <Btn variant="ghost" @click="radd.show = false">{{ t('common.cancel') }}</Btn>
+      <Btn variant="solid" :loading="radd.busy" :disabled="!radd.label.trim() || !radd.material.trim()" @click="doAddRecipient">{{ t('mail.keys.add') }}</Btn>
+    </template>
+  </Modal>
+
+  <!-- Keyserver search + import -->
+  <Modal v-model="ksearch.show" :title="t('mail.keys.recipients_search')" width="640px">
+    <div class="space-y-3">
+      <div class="flex items-center gap-2">
+        <TextField v-model="ksearch.query" :placeholder="t('mail.keys.search_placeholder')" icon="search" class="flex-1" @keyup.enter="doSearchKeyservers" />
+        <Select v-model="ksearch.serverId" :options="serverPickOptions" class="w-44" />
+        <Btn variant="solid" :loading="ksearch.busy" :disabled="!ksearch.query.trim() || !crypto.keyServers.length" @click="doSearchKeyservers">{{ t('common.search') }}</Btn>
+      </div>
+      <p v-if="!crypto.keyServers.length" class="text-sm text-[var(--ll-muted)]">{{ t('mail.keys.servers_none') }}</p>
+      <div v-else-if="ksearch.busy" class="py-6 text-center"><Icon name="progress_activity" :size="28" class="animate-spin text-[var(--ll-muted)]" /></div>
+      <div v-else-if="ksearch.searched && !ksearch.results.length" class="py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('mail.keys.search_none') }}</div>
+      <div v-else class="max-h-[50vh] divide-y divide-[var(--ll-border)] overflow-y-auto">
+        <div v-for="(c, idx) in ksearch.results" :key="`${c.server_id}-${c.key_id}-${idx}`" class="flex items-start gap-3 py-2.5">
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-black/[0.05] text-[var(--ll-muted)] dark:bg-white/10"><Icon name="key" :size="18" /></span>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="truncate text-sm font-medium">{{ c.uids[0] ? formatCandidateUid(c.uids[0]) : c.key_id }}</span>
+              <Badge v-if="c.revoked" tone="error">{{ t('mail.keys.search_revoked') }}</Badge>
+              <Badge tone="gray">{{ c.server_name }}</Badge>
+            </div>
+            <div v-if="c.uids.length > 1" class="truncate text-xs text-[var(--ll-muted)]">{{ c.uids.slice(1).map(formatCandidateUid).join(', ') }}</div>
+            <div class="truncate font-mono text-xs text-[var(--ll-muted)]">{{ c.fingerprint || c.key_id }}<span v-if="c.algorithm"> · {{ c.algorithm }}{{ c.bits ? ' ' + c.bits : '' }}</span></div>
+          </div>
+          <Btn variant="outline" size="sm" :loading="ksearch.importingId === c.key_id" :disabled="c.revoked" @click="doImportFromSearch(c)">{{ t('mail.keys.recipients_add') }}</Btn>
+        </div>
+      </div>
+    </div>
+    <template #footer>
+      <Btn variant="ghost" @click="ksearch.show = false">{{ t('common.close') }}</Btn>
+    </template>
+  </Modal>
+
+  <!-- Keyserver add/edit -->
+  <Modal v-model="sform.show" :title="sform.id ? t('mail.keys.servers_edit') : t('mail.keys.servers_add')" width="520px">
+    <div class="space-y-3">
+      <TextField v-model="sform.name" :label="t('mail.keys.servers_name')" />
+      <TextField v-model="sform.url" :label="t('mail.keys.servers_url')" placeholder="https://keys.openpgp.org" />
+      <label class="flex items-center gap-2 text-sm">
+        <input v-model="sform.enabled" type="checkbox" class="h-4 w-4 accent-primary-500">
+        <span>{{ t('mail.keys.servers_enabled') }}</span>
+      </label>
+    </div>
+    <template #footer>
+      <Btn variant="ghost" @click="sform.show = false">{{ t('common.cancel') }}</Btn>
+      <Btn variant="solid" :loading="sform.busy" :disabled="!sform.name.trim() || !sform.url.trim()" @click="doSaveServer">{{ t('common.save') }}</Btn>
+    </template>
+  </Modal>
+
+  <!-- Export private key (password-gated) -->
+  <Modal v-model="exp.show" :title="t('mail.keys.export')" width="560px">
+    <div class="space-y-3">
+      <div class="flex items-start gap-2 rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+        <Icon name="warning" :size="18" class="mt-0.5 shrink-0" />
+        <span>{{ t('mail.keys.export_warn') }}</span>
+      </div>
+      <TextField v-if="!exp.material" v-model="exp.password" :label="t('mail.keys.export_password')" type="password" autocomplete="current-password" :error="exp.err" @keyup.enter="doExport" />
+      <template v-else>
+        <div>
+          <div class="mb-1.5 flex items-center justify-between">
+            <span class="text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.keys.export_private') }}</span>
+            <Btn variant="ghost" size="xs" icon="content_copy" @click="copyText(exp.material)">{{ t('common.copy') }}</Btn>
+          </div>
+          <textarea readonly rows="8" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 font-mono text-xs" :value="exp.material"></textarea>
+        </div>
+        <div v-if="exp.certMaterial">
+          <div class="mb-1.5 flex items-center justify-between">
+            <span class="text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.keys.certificate') }}</span>
+            <Btn variant="ghost" size="xs" icon="content_copy" @click="copyText(exp.certMaterial)">{{ t('common.copy') }}</Btn>
+          </div>
+          <textarea readonly rows="6" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 font-mono text-xs" :value="exp.certMaterial"></textarea>
+        </div>
+      </template>
+    </div>
+    <template #footer>
+      <Btn variant="ghost" @click="exp.show = false">{{ t('common.close') }}</Btn>
+      <Btn v-if="!exp.material" variant="solid" :loading="exp.busy" :disabled="!exp.password" @click="doExport">{{ t('mail.keys.export') }}</Btn>
     </template>
   </Modal>
 
@@ -252,15 +429,18 @@ import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useMailStore, type MailKey, type MailKeyParsedIdentity, type MailKeyGenerateBody, type MailKeyImportBody, type MailKeyCurve } from '@spa/stores/mail';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
+import { useCryptoStore, type Recipient, type KeyServerEntry, type KeyserverCandidate, type PresenceResult } from '@spa/stores/crypto';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
 import { ApiError } from '@spa/api/client';
 
 const s = useMailStore();
 const files = useFilesStore();
+const crypto = useCryptoStore();
 const { success, error } = useToast();
 const keys = ref<MailKey[]>([]);
 const loading = ref(false);
+const recipientsLoading = ref(false);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const isEmail = (v: string) => EMAIL_RE.test(v.trim());
@@ -412,10 +592,14 @@ async function doGenerate() {
 }
 
 // --- List -----------------------------------------------------------------
-onMounted(load);
+onMounted(() => { load(); loadRecipients(); crypto.loadKeyServers().catch(() => {}); });
 async function load() {
   loading.value = true;
   try { keys.value = (await s.loadKeys()).keys; } catch { error(t('common.error')); } finally { loading.value = false; }
+}
+async function loadRecipients() {
+  recipientsLoading.value = true;
+  try { await crypto.load(); } catch { error(t('common.error')); } finally { recipientsLoading.value = false; }
 }
 
 async function copyText(text: string) {
@@ -432,7 +616,7 @@ async function remove(k: MailKey) {
 
 // --- Detail modal -----------------------------------------------------------
 const detail = reactive<{ show: boolean; key: MailKey | null }>({ show: false, key: null });
-function openDetail(k: MailKey) { detail.key = k; detail.show = true; }
+function openDetail(k: MailKey) { detail.key = k; detail.show = true; presence.value = []; }
 
 /** "Name (Comment) <email>" — whichever parts a parsed identity actually has. */
 function formatIdentity(i: MailKeyParsedIdentity): string {
@@ -441,5 +625,155 @@ function formatIdentity(i: MailKeyParsedIdentity): string {
   if (i.comment) parts.push(`(${i.comment})`);
   if (i.email) parts.push(`<${i.email}>`);
   return parts.length ? parts.join(' ') : t('mail.keys.identities_none');
+}
+/** Same shape, for a keyserver search result's uid — name/email/comment already split by the server. */
+function formatCandidateUid(u: { name: string | null; email: string | null; comment: string | null }): string {
+  const parts: string[] = [];
+  if (u.name) parts.push(u.name);
+  if (u.comment) parts.push(`(${u.comment})`);
+  if (u.email) parts.push(`<${u.email}>`);
+  return parts.length ? parts.join(' ') : '?';
+}
+
+// --- Recipients (other people's public keys/certs) ------------------------
+const radd = reactive<{ show: boolean; busy: boolean; type: 'pgp' | 'smime'; label: string; material: string }>(
+  { show: false, busy: false, type: 'pgp', label: '', material: '' },
+);
+function openRecipientAdd() { Object.assign(radd, { show: true, busy: false, type: 'pgp', label: '', material: '' }); }
+async function doAddRecipient() {
+  if (!radd.label.trim() || !radd.material.trim()) return;
+  radd.busy = true;
+  try {
+    const recipient = await crypto.importRecipient({ type: radd.type, label: radd.label.trim(), material: radd.material.trim() });
+    crypto.recipients.push(recipient);
+    radd.show = false;
+    success(t('mail.keys.recipient_added'));
+  } catch { error(t('mail.keys.recipient_add_failed')); } finally { radd.busy = false; }
+}
+
+async function removeRecipient(r: Recipient) {
+  if (!await confirmAsk(t('mail.keys.recipient_delete_confirm'), { danger: true })) return;
+  try {
+    await crypto.deleteRecipient(r.id);
+    crypto.recipients = crypto.recipients.filter((x) => x.id !== r.id);
+  } catch { error(t('common.error')); }
+}
+
+const refreshingId = ref<number | null>(null);
+async function doRefreshRecipient(r: Recipient) {
+  refreshingId.value = r.id;
+  try {
+    const updated = await crypto.refreshRecipient(r.id);
+    const idx = crypto.recipients.findIndex((x) => x.id === r.id);
+    if (idx !== -1) crypto.recipients[idx] = updated;
+    success(t('mail.keys.recipient_refreshed'));
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) error(t('mail.keys.recipient_refresh_gone'));
+    else if (e instanceof ApiError && e.status === 422) error(t('mail.keys.recipient_refresh_mismatch'));
+    else error(t('common.error'));
+  } finally { refreshingId.value = null; }
+}
+
+// --- Keyservers (HKP) -------------------------------------------------------
+const sform = reactive<{ show: boolean; busy: boolean; id: number | null; name: string; url: string; enabled: boolean }>(
+  { show: false, busy: false, id: null, name: '', url: '', enabled: true },
+);
+function openServerForm(srv: KeyServerEntry | null) {
+  Object.assign(sform, srv
+    ? { show: true, busy: false, id: srv.id, name: srv.name, url: srv.url, enabled: srv.enabled }
+    : { show: true, busy: false, id: null, name: '', url: '', enabled: true });
+}
+async function doSaveServer() {
+  if (!sform.name.trim() || !sform.url.trim()) return;
+  sform.busy = true;
+  try {
+    if (sform.id != null) {
+      const updated = await crypto.updateKeyServer(sform.id, { name: sform.name.trim(), url: sform.url.trim(), enabled: sform.enabled });
+      const idx = crypto.keyServers.findIndex((x) => x.id === sform.id);
+      if (idx !== -1) crypto.keyServers[idx] = updated;
+    } else {
+      crypto.keyServers.push(await crypto.createKeyServer({ name: sform.name.trim(), url: sform.url.trim(), enabled: sform.enabled }));
+    }
+    sform.show = false;
+    success(t('mail.keys.servers_saved'));
+  } catch { error(t('common.error')); } finally { sform.busy = false; }
+}
+async function removeServer(srv: KeyServerEntry) {
+  if (!await confirmAsk(t('mail.keys.servers_delete_confirm'), { danger: true })) return;
+  try {
+    await crypto.deleteKeyServer(srv.id);
+    crypto.keyServers = crypto.keyServers.filter((x) => x.id !== srv.id);
+  } catch { error(t('common.error')); }
+}
+
+// --- Keyserver search + import ---------------------------------------------
+const ksearch = reactive<{
+  show: boolean; busy: boolean; searched: boolean; query: string; serverId: string;
+  results: KeyserverCandidate[]; importingId: string | null;
+}>({ show: false, busy: false, searched: false, query: '', serverId: '', results: [], importingId: null });
+
+const serverPickOptions = computed(() => [
+  { title: t('mail.keys.search_all_servers'), value: '' },
+  ...crypto.keyServers.filter((x) => x.enabled).map((x) => ({ title: x.name, value: String(x.id) })),
+]);
+
+function openKeyserverSearch() {
+  Object.assign(ksearch, { show: true, busy: false, searched: false, query: '', serverId: '', results: [], importingId: null });
+}
+async function doSearchKeyservers() {
+  const q = ksearch.query.trim();
+  if (!q) return;
+  ksearch.busy = true;
+  try {
+    ksearch.results = await crypto.searchKeyservers(q, ksearch.serverId ? Number(ksearch.serverId) : undefined);
+    ksearch.searched = true;
+  } catch { error(t('mail.keys.search_failed')); } finally { ksearch.busy = false; }
+}
+async function doImportFromSearch(c: KeyserverCandidate) {
+  ksearch.importingId = c.key_id;
+  try {
+    const label = c.uids[0] ? formatCandidateUid(c.uids[0]) : c.key_id;
+    const recipient = await crypto.importFromKeyserver(c.server_id, c.key_id, label);
+    crypto.recipients.push(recipient);
+    success(t('mail.keys.recipient_added'));
+  } catch { error(t('mail.keys.recipient_add_failed')); } finally { ksearch.importingId = null; }
+}
+
+// --- Own-key keyserver presence + publish + export --------------------------
+const presence = ref<PresenceResult[]>([]);
+const presenceBusy = ref(false);
+const publishBusy = ref<number | null>(null);
+
+async function doCheckPresence(k: MailKey) {
+  presenceBusy.value = true;
+  try { presence.value = await crypto.checkPresence(k.id); } catch { error(t('common.error')); } finally { presenceBusy.value = false; }
+}
+async function doPublish(k: MailKey, serverId: number) {
+  publishBusy.value = serverId;
+  try {
+    await crypto.publishKey(k.id, serverId);
+    await doCheckPresence(k);
+    success(t('mail.keys.presence_published'));
+  } catch { error(t('mail.keys.presence_publish_failed')); } finally { publishBusy.value = null; }
+}
+
+const exp = reactive<{ show: boolean; busy: boolean; keyId: number | null; password: string; err: string; material: string; certMaterial: string }>(
+  { show: false, busy: false, keyId: null, password: '', err: '', material: '', certMaterial: '' },
+);
+function openExport(k: MailKey) {
+  Object.assign(exp, { show: true, busy: false, keyId: k.id, password: '', err: '', material: '', certMaterial: '' });
+}
+async function doExport() {
+  if (exp.keyId == null || !exp.password) return;
+  exp.busy = true;
+  exp.err = '';
+  try {
+    const r = await s.exportKey(exp.keyId, exp.password);
+    exp.material = r.private_key;
+    exp.certMaterial = r.cert_pem || '';
+  } catch (e) {
+    if (e instanceof ApiError && e.fields?.current_password?.length) exp.err = e.fields.current_password[0];
+    else error(t('common.error'));
+  } finally { exp.busy = false; }
 }
 </script>
