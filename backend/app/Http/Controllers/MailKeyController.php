@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\FileEntry;
 use App\Models\MailPgpKey;
 use App\Support\BlobStore;
@@ -14,8 +15,10 @@ use App\Support\Mail\SmimeKeyGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Owner-scoped CRUD for the user's PGP / S-MIME decryption keys, used only
@@ -278,6 +281,44 @@ class MailKeyController extends Controller
         $key->delete();
 
         return response()->json([], 204);
+    }
+
+    /**
+     * Export an OWN key's private material — the one deliberate, explicit
+     * exception to "the private key is never returned by any action here"
+     * (see the class docblock): a client-side sync (e.g. mirroring the
+     * account's keys into a local GnuPG keyring) needs the actual secret key,
+     * not just its public half. Gated behind a fresh current_password check
+     * (the same step-up TwoFactorController::requireCurrentPassword uses for
+     * disabling 2FA / reading recovery codes — a stolen bearer token alone
+     * must not be enough) and audit-logged, so an export is always
+     * attributable and visible to the account owner afterwards. Never returns
+     * the stored passphrase — the caller already knows it (they set it, or
+     * the key has none); this hands out only what is needed to use the key.
+     */
+    public function export(Request $request, MailPgpKey $key): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        abort_if((int) $key->user_id !== (int) $user->id, 404);
+        $this->requireCurrentPassword($request, (string) $user->password);
+
+        AuditLog::record('crypto.key.exported', $key, ['type' => $key->type]);
+
+        if ($key->type === 'smime') {
+            return response()->json(['private_key' => $key->private_key, 'cert_pem' => $key->cert_pem]);
+        }
+
+        return response()->json(['private_key' => $key->private_key]);
+    }
+
+    private function requireCurrentPassword(Request $request, string $currentHash): void
+    {
+        $pw = $request->string('current_password')->value();
+        if ($pw === '' || ! Hash::check($pw, $currentHash)) {
+            throw ValidationException::withMessages([
+                'current_password' => [__('The provided password does not match your current password.')],
+            ]);
+        }
     }
 
     /**

@@ -202,7 +202,7 @@ final class PgpDecryptor
     }
 
     /** OpenPGP public-key algorithm id (RFC 4880 §9.1) to a display name. */
-    private static function algorithmName(?string $code): ?string
+    public static function algorithmName(?string $code): ?string
     {
         if ($code === null || $code === '') {
             return null;
@@ -225,7 +225,7 @@ final class PgpDecryptor
      *
      * @return array{name:?string, email:?string, comment:?string}
      */
-    private static function parseUserId(string $raw): array
+    public static function parseUserId(string $raw): array
     {
         $raw = trim($raw);
         $email = null;
