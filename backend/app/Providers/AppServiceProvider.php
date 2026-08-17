@@ -6,8 +6,10 @@ namespace App\Providers;
 
 use App\Models\AppSettings;
 use App\Models\FileEntry;
+use App\Models\FileFolder;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
+use App\Observers\FileChangeObserver;
 use App\Observers\FileEntryObserver;
 use App\Support\OutboundUrl;
 use Illuminate\Auth\Events\Login;
@@ -70,6 +72,12 @@ class AppServiceProvider extends ServiceProvider
 
         // Keep a file's searchable text (search_text/indexed_at) in sync with its bytes.
         FileEntry::observe(FileEntryObserver::class);
+
+        // Wake a sync client's SSE stream (FilesChangesController) up on any
+        // FileEntry/FileFolder create/update/delete/restore, from any code
+        // path — the REST API, WebDAV, an archive extraction job, ...
+        FileEntry::observe(FileChangeObserver::class);
+        FileFolder::observe(FileChangeObserver::class);
 
         // Only admins may manage the non-personal, workspace-wide settings.
         Gate::define('manage-global-settings', fn (User $user): bool => $user->managesGlobalSettings());
