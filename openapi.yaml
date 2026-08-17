@@ -6789,6 +6789,39 @@ paths:
         "200": { description: "Folders, files, labels and usage snapshot.", content: { application/json: { schema: { type: object, properties: { folders: { type: array, items: { $ref: "#/components/schemas/FileFolder" } }, files: { type: array, items: { $ref: "#/components/schemas/FileEntry" } }, labels: { type: array, items: { $ref: "#/components/schemas/FileLabel" } }, usage: { $ref: "#/components/schemas/StorageUsage" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /files/changes-stream:
+    get:
+      tags: [Files]
+      operationId: filesChangesStream
+      summary: Server-Sent Events stream — wakes a sync client on a remote Files change
+      description: >
+        A long-lived `text/event-stream` connection: emits `data: {"changedAt": <float>}`
+        within a couple of seconds of any FileEntry/FileFolder create/update/delete/restore
+        (any code path — REST, WebDAV, an archive-extraction job, ...), and an SSE comment
+        line (`: ping`) otherwise, roughly every 2s, purely to keep the connection alive.
+        Closes after ~45s regardless — the client is expected to reconnect (standard SSE
+        behaviour; a browser's own EventSource does this natively).
+
+        Capped at 2 concurrent open streams per user (App\Support\SseSlot) — this app runs
+        under Laravel Octane with a small, fixed worker pool, and each open stream blocks
+        one worker for its whole lifetime; a 3rd concurrent attempt gets an immediate 503
+        rather than a worker being tied up on top of the two already streaming. Throttle
+        30 req/min beyond that (bounds reconnect-storm rate, not the cap itself).
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: >
+            SSE stream (Content-Type text/event-stream). Not a JSON body — each line is
+            either `data: {"changedAt": <float>}\n\n` or `: ping\n\n`.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: This user already has 2 streams open (App\Support\SseSlot's cap) — reconnect later.
+          content: { application/json: { schema: { type: object, properties: { error: { type: string, enum: [too_many_streams] } } } } }
   /files/trash:
     get:
       tags: [Files]

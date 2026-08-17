@@ -43,6 +43,7 @@ use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\ContactShareController;
 use App\Http\Controllers\CryptoController;
 use App\Http\Controllers\DevicePairingController;
+use App\Http\Controllers\FilesChangesController;
 use App\Http\Controllers\FilesController;
 use App\Http\Controllers\FileSearchController;
 use App\Http\Controllers\FinanceController;
@@ -448,6 +449,10 @@ Route::prefix('v1')->group(function (): void {
         // files + version history). Gated by module:files on top of device auth.
         Route::middleware('module:files')->group(function (): void {
             Route::get('/files/data', [FilesController::class, 'index'])->name('api.files.index');
+            // Long-lived SSE stream, wakes a sync client up on a remote change
+            // instead of it only ever finding out on its own poll interval — see
+            // App\Http\Controllers\FilesChangesController's doc comment.
+            Route::get('/files/changes-stream', [FilesChangesController::class, 'stream'])->middleware('throttle:30,1')->name('api.files.changes-stream');
             Route::get('/files/trash', [FilesController::class, 'trashed'])->name('api.files.trash');
             Route::get('/files/activity', [FilesController::class, 'activity'])->middleware('throttle:600,1')->name('api.files.activity');
             Route::get('/files/entries/{file}/activity', [FilesController::class, 'fileActivity'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.activity');
