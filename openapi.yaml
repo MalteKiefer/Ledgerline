@@ -1988,11 +1988,26 @@ components:
         inline: { type: boolean }
       required: [id, size, inline]
 
+    MailKeyIdentity:
+      type: object
+      description: >
+        One user id on a key — for PGP, parsed from the raw OpenPGP uid string
+        ("Name (Comment) <email>", every part optional); for S/MIME, the
+        certificate's subject CN/emailAddress (or its first SAN rfc822Name).
+      properties:
+        name: { type: [string, "null"] }
+        email: { type: [string, "null"] }
+        comment: { type: [string, "null"] }
+
     MailKey:
       type: object
       description: >
         A user's PGP / S-MIME decryption key — PUBLIC material only. The private
-        key + passphrase are stored encrypted and are never serialised.
+        key + passphrase are stored encrypted and are never serialised. Metadata
+        (algorithm/key_length/curve/issuer/serial/valid_from/identities) is
+        parsed once at import/generate time from the key/certificate itself —
+        for a key imported before this metadata existed, these fields are null
+        until the key is re-imported.
       properties:
         id: { type: integer }
         type: { type: string, enum: [pgp, smime] }
@@ -2000,8 +2015,19 @@ components:
         key_fingerprint: { type: [string, "null"] }
         key_id: { type: [string, "null"] }
         public_key: { type: [string, "null"] }
-        identities: { type: [array, "null"], items: { $ref: '#/components/schemas/MailAddress' } }
+        identities: { type: [array, "null"], items: { $ref: '#/components/schemas/MailKeyIdentity' } }
         has_cert: { type: boolean }
+        cert_pem:
+          type: [string, "null"]
+          description: "S/MIME only — the certificate PEM (public half; never the private key)."
+        algorithm:
+          type: [string, "null"]
+          description: "e.g. RSA / ECDSA / EdDSA / ECDH (pgp) / RSA / EC (smime)."
+        key_length: { type: [integer, "null"], description: "Bits, for RSA/DSA keys." }
+        curve: { type: [string, "null"], description: "ECC curve name, for elliptic-curve keys." }
+        issuer: { type: [string, "null"], description: "S/MIME only — the certificate issuer DN (self-signed → same as the subject)." }
+        serial: { type: [string, "null"], description: "S/MIME only — the certificate serial number (hex)." }
+        valid_from: { type: [string, "null"], format: date-time, description: "PGP key creation date, or S/MIME certificate notBefore." }
         expires_at: { type: [string, "null"], format: date-time }
         created_at: { type: [string, "null"], format: date-time }
       required: [id, type, label, has_cert]

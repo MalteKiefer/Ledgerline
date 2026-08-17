@@ -90,10 +90,21 @@ export interface MailRuleMatch { from?: string | null; to?: string | null; subje
 export interface MailRuleAction { add_label?: number | null; mark_read?: boolean | null; trash?: boolean | null; skip?: boolean | null }
 export interface MailRule { id?: number; name: string; enabled: boolean; priority: number; match?: MailRuleMatch; action?: MailRuleAction }
 export interface MailSavedSearch { id: number; name: string; filters: Record<string, unknown> }
+/**
+ * A user id parsed off a key/certificate at import/generate time — every part
+ * is best-effort and may be missing (e.g. a PGP uid with no <email> bracket).
+ * Distinct from MailKeyIdentity below (a generate-REQUEST identity, where
+ * email is mandatory).
+ */
+export interface MailKeyParsedIdentity { name: string | null; email: string | null; comment: string | null }
+
 export interface MailKey {
   id: number; type: 'pgp' | 'smime'; label: string;
   key_fingerprint: string | null; key_id: string | null; public_key: string | null;
-  identities: MailAddress[] | null; has_cert: boolean; expires_at: string | null; created_at: string | null;
+  identities: MailKeyParsedIdentity[] | null; has_cert: boolean; cert_pem: string | null;
+  algorithm: string | null; key_length: number | null; curve: string | null;
+  issuer: string | null; serial: string | null;
+  valid_from: string | null; expires_at: string | null; created_at: string | null;
 }
 
 /** A user id for key generation — first identity is the primary UID. */

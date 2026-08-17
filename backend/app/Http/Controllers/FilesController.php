@@ -28,6 +28,7 @@ use App\Support\StorageUsage;
 use App\Support\UploadLimits;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -378,6 +379,23 @@ class FilesController extends Controller
                 $ids[] = $cid;
                 $frontier[] = $cid;
             }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * descendantFolderIds() over several root folders at once, deduped —
+     * for zipping/bulk-acting a multi-folder selection as one set.
+     *
+     * @param  list<int>  $rootIds
+     * @return list<int>
+     */
+    private function descendantFolderIdsOfMany(array $rootIds): array
+    {
+        $ids = [];
+        foreach ($rootIds as $rootId) {
+            array_push($ids, ...$this->descendantFolderIds($rootId));
         }
 
         return array_values(array_unique($ids));
@@ -1074,9 +1092,10 @@ class FilesController extends Controller
     }
 
     /**
-     * Stream a ZIP of a selection of files and/or a folder subtree. Names are
-     * de-duplicated + path-safe; bytes are read from the files disk. Owner-scoped
-     * through the model global scope.
+     * Stream a ZIP of a selection of files and/or one or more folder subtrees
+     * (every descendant folder's files included) — any combination of the two
+     * in one archive. Names are de-duplicated + path-safe; bytes are read from
+     * the files disk. Owner-scoped through the model global scope.
      */
     public function downloadZip(Request $request): BinaryFileResponse
     {
@@ -1084,16 +1103,35 @@ class FilesController extends Controller
         $request->validate([
             'ids' => ['nullable', 'array', 'max:'.self::ZIP_MAX_FILES],
             'ids.*' => ['integer'],
-            // Owner-scope the folder explicitly (defense-in-depth, matches every
+            // Owner-scope every folder explicitly (defense-in-depth, matches every
             // other folder param) rather than relying only on downstream scopes.
+            // `folder_id` (singular) is the "zip the current folder" toolbar
+            // action; `folder_ids` (plural) is a bulk multi-select of folders —
+            // both may be combined with `ids` and with each other.
             'folder_id' => ['nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'folder_ids' => ['nullable', 'array', 'max:'.self::ZIP_MAX_FILES],
+            'folder_ids.*' => ['integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
         ]);
 
         $ids = array_values(array_filter($request->array('ids'), 'is_numeric'));
-        $query = FileEntry::query();
+        // intval(), not a bare filter: `folder_ids.*` is only validated as
+        // "integer" (Laravel's rule accepts numeric strings too), but
+        // descendantFolderIdsOfMany()/descendantFolderIds() take a native
+        // `int` param under strict_types — an uncast numeric string would
+        // throw a TypeError at the call below instead of a clean 422.
+        $folderRoots = array_values(array_map('intval', array_filter($request->array('folder_ids'), 'is_numeric')));
         if ($request->filled('folder_id')) {
-            $folderIds = $this->descendantFolderIds($request->integer('folder_id'));
-            $query->whereIn('file_folder_id', $folderIds);
+            $folderRoots[] = $request->integer('folder_id');
+        }
+
+        $query = FileEntry::query();
+        if ($folderRoots !== [] && $ids !== []) {
+            $descendants = $this->descendantFolderIdsOfMany($folderRoots);
+            $query->where(function (Builder $q) use ($descendants, $ids): void {
+                $q->whereIn('file_folder_id', $descendants)->orWhereIn('id', $ids);
+            });
+        } elseif ($folderRoots !== []) {
+            $query->whereIn('file_folder_id', $this->descendantFolderIdsOfMany($folderRoots));
         } elseif ($ids !== []) {
             $query->whereIn('id', $ids);
         } else {
@@ -1217,6 +1255,8 @@ class FilesController extends Controller
             'ids' => ['nullable', 'array', 'max:'.self::ZIP_MAX_FILES],
             'ids.*' => ['integer'],
             'folder_id' => ['nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
+            'folder_ids' => ['nullable', 'array', 'max:'.self::ZIP_MAX_FILES],
+            'folder_ids.*' => ['integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
             'target_folder_id' => ['nullable', 'integer', Rule::exists('file_folders', 'id')->where('user_id', $uid)->whereNull('deleted_at')],
             'format' => ['required', Rule::in(Archiver::CREATE_FORMATS)],
             'level' => ['nullable', 'integer', 'between:0,9'],
@@ -1230,9 +1270,24 @@ class FilesController extends Controller
         }
 
         $ids = array_values(array_filter($request->array('ids'), 'is_numeric'));
-        $query = FileEntry::query();
+        // intval(), not a bare filter: `folder_ids.*` is only validated as
+        // "integer" (Laravel's rule accepts numeric strings too), but
+        // descendantFolderIdsOfMany()/descendantFolderIds() take a native
+        // `int` param under strict_types — an uncast numeric string would
+        // throw a TypeError at the call below instead of a clean 422.
+        $folderRoots = array_values(array_map('intval', array_filter($request->array('folder_ids'), 'is_numeric')));
         if ($request->filled('folder_id')) {
-            $query->whereIn('file_folder_id', $this->descendantFolderIds($request->integer('folder_id')));
+            $folderRoots[] = $request->integer('folder_id');
+        }
+
+        $query = FileEntry::query();
+        if ($folderRoots !== [] && $ids !== []) {
+            $descendants = $this->descendantFolderIdsOfMany($folderRoots);
+            $query->where(function (Builder $q) use ($descendants, $ids): void {
+                $q->whereIn('file_folder_id', $descendants)->orWhereIn('id', $ids);
+            });
+        } elseif ($folderRoots !== []) {
+            $query->whereIn('file_folder_id', $this->descendantFolderIdsOfMany($folderRoots));
         } elseif ($ids !== []) {
             $query->whereIn('id', $ids);
         } else {

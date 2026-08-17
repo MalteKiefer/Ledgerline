@@ -108,4 +108,133 @@ final class SmimeDecryptor
 
         return null;
     }
+
+    /**
+     * Parse a certificate PEM's identity + validity + key metadata — everything
+     * the key detail view shows for an S/MIME key. Non-secret (the cert is the
+     * public half); best-effort, null when openssl is unavailable or the cert
+     * is unreadable.
+     *
+     * @return array{
+     *   subject:?string, issuer:?string, serial:?string,
+     *   not_before:?int, not_after:?int, sha256_fingerprint:?string,
+     *   algorithm:?string, key_length:?int, curve:?string,
+     *   name:?string, email:?string,
+     * }|null
+     */
+    public function certInfo(string $certPem): ?array
+    {
+        if (! $this->available() || trim($certPem) === '') {
+            return null;
+        }
+
+        $in = DiskTempFile::create('smime-cert-info');
+        file_put_contents($in->path(), $certPem);
+
+        $out = BinaryProcess::run([
+            'openssl', 'x509', '-in', $in->path(), '-noout',
+            '-subject', '-issuer', '-serial', '-startdate', '-enddate', '-fingerprint', '-sha256', '-text',
+        ], self::TIMEOUT);
+        if (! is_string($out) || trim($out) === '') {
+            return null;
+        }
+
+        $subject = self::grabLine($out, 'subject=');
+        $issuer = self::grabLine($out, 'issuer=');
+        $serial = self::grabLine($out, 'serial=');
+        $notBefore = self::grabLine($out, 'notBefore=');
+        $notAfter = self::grabLine($out, 'notAfter=');
+
+        $sha256 = null;
+        if (preg_match('/SHA256 Fingerprint=([0-9A-Fa-f:]+)/', $out, $m) === 1) {
+            $sha256 = str_replace(':', '', strtoupper($m[1]));
+        }
+
+        $algorithm = null;
+        $keyLength = null;
+        $curve = null;
+        if (preg_match('/Public Key Algorithm:\s*(\S+)/', $out, $m) === 1) {
+            $algorithm = self::certAlgorithmName($m[1]);
+        }
+        if (preg_match('/Public-Key:\s*\((\d+)\s*bit\)/', $out, $m) === 1) {
+            $keyLength = (int) $m[1];
+        }
+        if (preg_match('/NIST CURVE:\s*(\S+)/', $out, $m) === 1) {
+            $curve = $m[1];
+        } elseif (preg_match('/ASN1 OID:\s*(\S+)/', $out, $m) === 1) {
+            $curve = $m[1];
+        }
+
+        return [
+            'subject' => $subject,
+            'issuer' => $issuer,
+            'serial' => $serial,
+            'not_before' => $notBefore !== null ? (strtotime($notBefore) ?: null) : null,
+            'not_after' => $notAfter !== null ? (strtotime($notAfter) ?: null) : null,
+            'sha256_fingerprint' => $sha256,
+            'algorithm' => $algorithm,
+            'key_length' => $keyLength,
+            'curve' => $curve,
+            'name' => self::extractDnAttr($subject, 'CN'),
+            'email' => self::extractDnAttr($subject, 'emailAddress') ?? self::extractSanEmail($out),
+        ];
+    }
+
+    /** First line of openssl's `-noout -subject`-style output starting with $prefix. */
+    private static function grabLine(string $out, string $prefix): ?string
+    {
+        foreach (explode("\n", $out) as $line) {
+            if (str_starts_with($line, $prefix)) {
+                $v = trim(substr($line, strlen($prefix)));
+
+                return $v !== '' ? $v : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Pull one RDN attribute (e.g. "CN"/"emailAddress") out of an OpenSSL
+     * subject/issuer DN string — tolerant of both the older "/CN=x/O=y" and the
+     * newer "CN = x, O = y" formatting OpenSSL versions emit.
+     */
+    private static function extractDnAttr(?string $dn, string $attr): ?string
+    {
+        if ($dn === null) {
+            return null;
+        }
+        if (preg_match('/(?:^|[,\/])\s*'.preg_quote($attr, '/').'\s*=\s*([^,\/]+)/i', $dn, $m) === 1) {
+            $v = trim($m[1]);
+
+            return $v !== '' ? $v : null;
+        }
+
+        return null;
+    }
+
+    /** The first rfc822Name (email) in the cert's Subject Alternative Name extension, if any. */
+    private static function extractSanEmail(string $certText): ?string
+    {
+        if (preg_match('/Subject Alternative Name:\s*\n\s*(.+)/', $certText, $m) === 1
+            && preg_match('/email:([^,\s]+)/i', $m[1], $em) === 1) {
+            return $em[1];
+        }
+
+        return null;
+    }
+
+    /** Certificate public-key OID/algorithm name (as openssl prints it) to a short display name. */
+    private static function certAlgorithmName(string $oidName): string
+    {
+        $lower = strtolower($oidName);
+
+        return match (true) {
+            str_contains($lower, 'rsa') => 'RSA',
+            str_contains($lower, 'ecpublickey') => 'EC',
+            str_contains($lower, 'dsa') => 'DSA',
+            str_contains($lower, 'ed25519'), str_contains($lower, 'ed448') => 'EdDSA',
+            default => $oidName,
+        };
+    }
 }

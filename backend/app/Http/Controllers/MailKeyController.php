@@ -87,6 +87,8 @@ class MailKeyController extends Controller
                 return response()->json(['ok' => false, 'detail' => 'missing_key_material'], 422);
             }
             $info = $pgp->importInfo($armored);
+            $createdAt = is_int($info['created_at'] ?? null) ? $info['created_at'] : null;
+            $expiresAt = is_int($info['expires_at'] ?? null) ? $info['expires_at'] : null;
             $key->forceFill([
                 'type' => 'pgp',
                 'label' => $request->string('label')->value(),
@@ -95,6 +97,12 @@ class MailKeyController extends Controller
                 'key_fingerprint' => $info['fingerprint'] ?? null,
                 'key_id' => $info['key_id'] ?? null,
                 'public_key' => $info['public_key'] ?? null,
+                'algorithm' => $info['algorithm'] ?? null,
+                'key_length' => $info['key_length'] ?? null,
+                'curve' => $info['curve'] ?? null,
+                'identities_json' => $info !== null ? ($info['identities'] ?? []) : null,
+                'valid_from' => $createdAt !== null ? Carbon::createFromTimestamp($createdAt) : null,
+                'expires_at' => $expiresAt !== null ? Carbon::createFromTimestamp($expiresAt) : null,
             ]);
         } else {
             if ($source === 'files') {
@@ -113,6 +121,12 @@ class MailKeyController extends Controller
             if ($pem === null) {
                 return response()->json(['ok' => false, 'detail' => 'p12_decode_failed'], 422);
             }
+            $cert = $smime->certInfo($pem['cert']);
+            $notBefore = is_int($cert['not_before'] ?? null) ? $cert['not_before'] : null;
+            $notAfter = is_int($cert['not_after'] ?? null) ? $cert['not_after'] : null;
+            $identity = $cert !== null && ($cert['email'] ?? null) !== null
+                ? [['name' => $cert['name'] ?? null, 'email' => $cert['email']]]
+                : [];
             $key->forceFill([
                 'type' => 'smime',
                 'label' => $request->string('label')->value(),
@@ -121,6 +135,15 @@ class MailKeyController extends Controller
                 // The PKCS#12 passphrase protected the bundle only; the extracted
                 // PEM key is unencrypted (stored under the app's encrypted cast).
                 'passphrase' => null,
+                'key_fingerprint' => $cert['sha256_fingerprint'] ?? null,
+                'algorithm' => $cert['algorithm'] ?? null,
+                'key_length' => $cert['key_length'] ?? null,
+                'curve' => $cert['curve'] ?? null,
+                'issuer' => $cert['issuer'] ?? null,
+                'serial' => $cert['serial'] ?? null,
+                'identities_json' => $identity,
+                'valid_from' => $notBefore !== null ? Carbon::createFromTimestamp($notBefore) : null,
+                'expires_at' => $notAfter !== null ? Carbon::createFromTimestamp($notAfter) : null,
             ]);
         }
 
@@ -133,7 +156,7 @@ class MailKeyController extends Controller
      * Generate a fresh PGP keypair (gpg) or a self-signed S/MIME cert+key
      * (openssl) server-side and persist it. The private key is never returned.
      */
-    public function generate(Request $request, PgpKeyGenerator $pgpGen, SmimeKeyGenerator $smimeGen): JsonResponse
+    public function generate(Request $request, PgpKeyGenerator $pgpGen, SmimeKeyGenerator $smimeGen, SmimeDecryptor $smime): JsonResponse
     {
         if ($fail = $this->guard($request, [
             'type' => ['required', Rule::in(MailPgpKey::TYPES)],
@@ -171,10 +194,14 @@ class MailKeyController extends Controller
                 return response()->json(['ok' => false, 'detail' => 'toolchain_unavailable'], 501);
             }
 
+            $algorithm = $request->filled('algorithm') ? $request->string('algorithm')->value() : 'ecc';
+            $keyLength = $request->filled('key_length') ? $request->integer('key_length') : 3072;
+            $curve = $request->filled('curve') ? $request->string('curve')->value() : 'ed25519';
+
             $result = $pgpGen->generate([
-                'algorithm' => $request->filled('algorithm') ? $request->string('algorithm')->value() : 'ecc',
-                'key_length' => $request->filled('key_length') ? $request->integer('key_length') : 3072,
-                'curve' => $request->filled('curve') ? $request->string('curve')->value() : 'ed25519',
+                'algorithm' => $algorithm,
+                'key_length' => $keyLength,
+                'curve' => $curve,
                 'identities' => $identities,
                 'expire' => $expireYears !== null ? $expireYears.'y' : '0',
                 'passphrase' => $passphrase,
@@ -193,6 +220,10 @@ class MailKeyController extends Controller
                 'key_fingerprint' => $result['fingerprint'],
                 'key_id' => $result['key_id'],
                 'identities_json' => $identities,
+                'algorithm' => $algorithm === 'rsa' ? 'RSA' : ($curve === 'ed25519' ? 'EdDSA' : 'ECDSA'),
+                'key_length' => $algorithm === 'rsa' ? $keyLength : null,
+                'curve' => $algorithm === 'rsa' ? null : $curve,
+                'valid_from' => Carbon::now(),
                 'expires_at' => $expireYears !== null ? Carbon::now()->addYears($expireYears) : null,
             ]);
         } else {
@@ -202,16 +233,21 @@ class MailKeyController extends Controller
 
             $primary = $identities[0];
             $days = $expireYears !== null ? $expireYears * 365 : 730;
+            $keyLength = $request->filled('key_length') ? $request->integer('key_length') : 3072;
             $result = $smimeGen->generate([
                 'name' => $primary['name'] ?? null,
                 'email' => $primary['email'],
-                'key_length' => $request->filled('key_length') ? $request->integer('key_length') : 3072,
+                'key_length' => $keyLength,
                 'days' => $days,
                 'passphrase' => $passphrase,
             ]);
             if ($result === null) {
                 return response()->json(['ok' => false, 'detail' => 'generation_failed'], 422);
             }
+
+            // Self-signed → the same parser that reads issuer/serial for an
+            // imported cert applies unchanged here (issuer == subject).
+            $cert = $smime->certInfo($result['cert']);
 
             $key->forceFill([
                 'type' => 'smime',
@@ -222,6 +258,11 @@ class MailKeyController extends Controller
                 // with it (so decryption can unlock it); null otherwise.
                 'passphrase' => $result['protected'] ? $passphrase : null,
                 'identities_json' => [['name' => $primary['name'] ?? null, 'email' => $primary['email']]],
+                'algorithm' => 'RSA',
+                'key_length' => $keyLength,
+                'issuer' => $cert['issuer'] ?? null,
+                'serial' => $cert['serial'] ?? null,
+                'valid_from' => Carbon::now(),
                 'expires_at' => Carbon::now()->addDays($days),
             ]);
         }
@@ -304,6 +345,16 @@ class MailKeyController extends Controller
             'public_key' => $key->public_key,
             'identities' => $key->identities_json,
             'has_cert' => $key->cert_pem !== null,
+            // The certificate is the CERT's public half — non-secret, same class
+            // as public_key above (never the private_key/passphrase, which stay
+            // #[Hidden] on the model and are never touched here).
+            'cert_pem' => $key->cert_pem,
+            'algorithm' => $key->algorithm,
+            'key_length' => $key->key_length,
+            'curve' => $key->curve,
+            'issuer' => $key->issuer,
+            'serial' => $key->serial,
+            'valid_from' => $key->valid_from?->toIso8601String(),
             'expires_at' => $key->expires_at?->toIso8601String(),
             'created_at' => $key->created_at?->toIso8601String(),
         ];

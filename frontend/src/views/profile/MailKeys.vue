@@ -11,22 +11,106 @@
     <div v-if="loading" class="py-6 text-center"><Icon name="progress_activity" :size="28" class="animate-spin text-[var(--ll-muted)]" /></div>
     <div v-else-if="!keys.length" class="py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('mail.keys.none') }}</div>
     <div v-else class="divide-y divide-[var(--ll-border)]">
-      <div v-for="k in keys" :key="k.id" class="flex items-start gap-3 py-3">
+      <div
+        v-for="k in keys" :key="k.id"
+        class="flex cursor-pointer items-start gap-3 rounded-lg py-3 transition-colors hover:bg-black/[0.02] dark:hover:bg-white/5"
+        @click="openDetail(k)"
+      >
         <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-500/15 text-primary-600 dark:text-primary-300"><Icon name="key" :size="20" /></span>
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
             <span class="truncate text-sm font-medium">{{ k.label }}</span>
             <Badge :tone="k.type === 'pgp' ? 'primary' : 'info'">{{ k.type.toUpperCase() }}</Badge>
+            <Badge v-if="k.algorithm" tone="gray">{{ k.algorithm }}{{ k.key_length ? ' ' + k.key_length : (k.curve ? ' ' + k.curve : '') }}</Badge>
           </div>
           <div v-if="k.key_fingerprint || k.key_id" class="truncate font-mono text-xs text-[var(--ll-muted)]">{{ t('mail.keys.fingerprint') }}: {{ k.key_fingerprint || k.key_id }}</div>
-          <div v-if="k.identities?.length" class="truncate text-xs text-[var(--ll-muted)]">{{ k.identities.map((i) => i.email).join(', ') }}</div>
+          <div v-if="k.identities?.length" class="truncate text-xs text-[var(--ll-muted)]">{{ k.identities.map(formatIdentity).join(', ') }}</div>
           <div v-if="k.expires_at" class="text-xs text-[var(--ll-muted)]">{{ new Date(k.expires_at).toLocaleDateString() }}</div>
         </div>
-        <Btn v-if="k.public_key" variant="ghost" size="sm" icon="content_copy" @click="copyPublic(k.public_key)" />
-        <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" :title="t('mail.keys.delete')" @click="remove(k)" />
+        <Btn v-if="k.public_key" variant="ghost" size="sm" icon="content_copy" :title="t('mail.keys.copy_public_key')" @click.stop="copyText(k.public_key)" />
+        <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" :title="t('mail.keys.delete')" @click.stop="remove(k)" />
       </div>
     </div>
   </Card>
+
+  <!-- Detail modal: every field the key/certificate itself carries -->
+  <Modal v-model="detail.show" :title="t('mail.keys.details')" width="620px">
+    <div v-if="detail.key" class="space-y-4">
+      <div class="flex items-center gap-2">
+        <span class="text-base font-medium">{{ detail.key.label }}</span>
+        <Badge :tone="detail.key.type === 'pgp' ? 'primary' : 'info'">{{ detail.key.type.toUpperCase() }}</Badge>
+      </div>
+
+      <div>
+        <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.keys.identities') }}</span>
+        <div v-if="detail.key.identities?.length" class="space-y-1">
+          <div v-for="(i, idx) in detail.key.identities" :key="idx" class="text-sm">{{ formatIdentity(i) }}</div>
+        </div>
+        <p v-else class="text-sm text-[var(--ll-muted)]">{{ t('mail.keys.identities_none') }}</p>
+      </div>
+
+      <dl class="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
+        <template v-if="detail.key.key_fingerprint">
+          <dt class="text-[var(--ll-muted)]">{{ t('mail.keys.fingerprint') }}</dt>
+          <dd class="truncate font-mono text-xs" :title="detail.key.key_fingerprint">{{ detail.key.key_fingerprint }}</dd>
+        </template>
+        <template v-if="detail.key.key_id">
+          <dt class="text-[var(--ll-muted)]">{{ t('mail.keys.key_id') }}</dt>
+          <dd class="truncate font-mono text-xs">{{ detail.key.key_id }}</dd>
+        </template>
+        <template v-if="detail.key.algorithm">
+          <dt class="text-[var(--ll-muted)]">{{ t('mail.keys.algorithm') }}</dt>
+          <dd>{{ detail.key.algorithm }}</dd>
+        </template>
+        <template v-if="detail.key.key_length">
+          <dt class="text-[var(--ll-muted)]">{{ t('mail.keys.key_length') }}</dt>
+          <dd>{{ detail.key.key_length }} bit</dd>
+        </template>
+        <template v-if="detail.key.curve">
+          <dt class="text-[var(--ll-muted)]">{{ t('mail.keys.curve') }}</dt>
+          <dd>{{ detail.key.curve }}</dd>
+        </template>
+        <template v-if="detail.key.issuer">
+          <dt class="text-[var(--ll-muted)]">{{ t('mail.keys.issuer') }}</dt>
+          <dd class="truncate" :title="detail.key.issuer">{{ detail.key.issuer }}</dd>
+        </template>
+        <template v-if="detail.key.serial">
+          <dt class="text-[var(--ll-muted)]">{{ t('mail.keys.serial') }}</dt>
+          <dd class="truncate font-mono text-xs">{{ detail.key.serial }}</dd>
+        </template>
+        <template v-if="detail.key.valid_from">
+          <dt class="text-[var(--ll-muted)]">{{ t('mail.keys.valid_from') }}</dt>
+          <dd>{{ new Date(detail.key.valid_from).toLocaleDateString() }}</dd>
+        </template>
+        <template v-if="detail.key.expires_at">
+          <dt class="text-[var(--ll-muted)]">{{ t('mail.keys.expiry') }}</dt>
+          <dd>{{ new Date(detail.key.expires_at).toLocaleDateString() }}</dd>
+        </template>
+        <template v-if="detail.key.created_at">
+          <dt class="text-[var(--ll-muted)]">{{ t('mail.keys.created') }}</dt>
+          <dd>{{ new Date(detail.key.created_at).toLocaleDateString() }}</dd>
+        </template>
+      </dl>
+
+      <div v-if="detail.key.public_key">
+        <div class="mb-1.5 flex items-center justify-between">
+          <span class="text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.keys.public_key') }}</span>
+          <Btn variant="ghost" size="xs" icon="content_copy" @click="copyText(detail.key.public_key)">{{ t('common.copy') }}</Btn>
+        </div>
+        <textarea readonly rows="6" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 font-mono text-xs" :value="detail.key.public_key"></textarea>
+      </div>
+      <div v-if="detail.key.cert_pem">
+        <div class="mb-1.5 flex items-center justify-between">
+          <span class="text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.keys.certificate') }}</span>
+          <Btn variant="ghost" size="xs" icon="content_copy" @click="copyText(detail.key.cert_pem)">{{ t('common.copy') }}</Btn>
+        </div>
+        <textarea readonly rows="6" class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 font-mono text-xs" :value="detail.key.cert_pem"></textarea>
+      </div>
+    </div>
+    <template #footer>
+      <Btn variant="ghost" @click="detail.show = false">{{ t('common.close') }}</Btn>
+    </template>
+  </Modal>
 
   <!-- Import modal -->
   <Modal v-model="dlg.show" :title="dlg.type === 'pgp' ? t('mail.keys.import_pgp') : t('mail.keys.import_smime')" width="560px">
@@ -166,7 +250,7 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { trans as t } from 'laravel-vue-i18n';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
-import { useMailStore, type MailKey, type MailKeyGenerateBody, type MailKeyImportBody, type MailKeyCurve } from '@spa/stores/mail';
+import { useMailStore, type MailKey, type MailKeyParsedIdentity, type MailKeyGenerateBody, type MailKeyImportBody, type MailKeyCurve } from '@spa/stores/mail';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk } from '@spa/composables/useConfirm';
@@ -334,11 +418,28 @@ async function load() {
   try { keys.value = (await s.loadKeys()).keys; } catch { error(t('common.error')); } finally { loading.value = false; }
 }
 
-async function copyPublic(pub: string) {
-  try { await navigator.clipboard.writeText(pub); success(t('common.saved')); } catch { error(t('common.error')); }
+async function copyText(text: string) {
+  try { await navigator.clipboard.writeText(text); success(t('mail.keys.copied')); } catch { error(t('common.error')); }
 }
 async function remove(k: MailKey) {
   if (!await confirmAsk(t('mail.keys.delete_confirm'), { danger: true })) return;
-  try { await s.deleteKey(k.id); keys.value = keys.value.filter((x) => x.id !== k.id); } catch { error(t('common.error')); }
+  try {
+    await s.deleteKey(k.id);
+    keys.value = keys.value.filter((x) => x.id !== k.id);
+    if (detail.key?.id === k.id) detail.show = false;
+  } catch { error(t('common.error')); }
+}
+
+// --- Detail modal -----------------------------------------------------------
+const detail = reactive<{ show: boolean; key: MailKey | null }>({ show: false, key: null });
+function openDetail(k: MailKey) { detail.key = k; detail.show = true; }
+
+/** "Name (Comment) <email>" — whichever parts a parsed identity actually has. */
+function formatIdentity(i: MailKeyParsedIdentity): string {
+  const parts: string[] = [];
+  if (i.name) parts.push(i.name);
+  if (i.comment) parts.push(`(${i.comment})`);
+  if (i.email) parts.push(`<${i.email}>`);
+  return parts.length ? parts.join(' ') : t('mail.keys.identities_none');
 }
 </script>
