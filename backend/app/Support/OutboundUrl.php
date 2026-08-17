@@ -176,6 +176,20 @@ final class OutboundUrl
     }
 
     /**
+     * Resolve $host to its A/AAAA addresses via `getent hosts` under a hard
+     * process timeout — deliberately NOT PHP's own gethostbynamel()/
+     * dns_get_record(), which have no timeout of their own and block the
+     * calling PHP process for as long as the OS resolver takes (which can be
+     * far longer than any curl/HTTP timeout configured downstream, since that
+     * timeout only starts once resolve() has already returned). Under Octane
+     * this method runs inline in a request-serving worker — with only a
+     * handful of workers total, one call stuck resolving a slow/unresponsive
+     * hostname can starve the whole pool for unrelated requests, not just this
+     * one. BinaryProcess enforces a wall-clock kill, bounding the worst case to
+     * a few seconds instead of an open-ended stall; array-argv, so $host is
+     * never shell-interpreted. A timeout or lookup failure both degrade to []
+     * (the existing "unresolvable" handling in safe()/client()/hostAllowed()).
+     *
      * @return list<string>
      */
     private static function resolve(string $host): array
@@ -186,15 +200,16 @@ final class OutboundUrl
             return [$host];
         }
 
-        $ips = gethostbynamel($host);
-        $ips = is_array($ips) ? $ips : [];
+        $out = BinaryProcess::run(['getent', 'hosts', $host], 3);
+        if ($out === null) {
+            return [];
+        }
 
-        $aaaa = @dns_get_record($host, DNS_AAAA);
-        if (is_array($aaaa)) {
-            foreach ($aaaa as $record) {
-                if (isset($record['ipv6']) && is_string($record['ipv6'])) {
-                    $ips[] = $record['ipv6'];
-                }
+        $ips = [];
+        foreach (explode("\n", trim($out)) as $line) {
+            $first = preg_split('/\s+/', trim($line))[0] ?? '';
+            if ($first !== '' && filter_var($first, FILTER_VALIDATE_IP) !== false) {
+                $ips[] = $first;
             }
         }
 
