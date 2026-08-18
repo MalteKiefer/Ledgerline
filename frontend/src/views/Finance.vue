@@ -181,7 +181,14 @@
     <!-- Documents: one review queue for outgoing invoices and incoming receipts. -->
     <Card v-show="tab === 'documents'" :body-class="'p-0'">
       <template #header>
-        <TextField v-model="documentQuery" :placeholder="t('common.search')" icon="search" class="w-full sm:w-72" />
+        <div class="flex flex-wrap items-center gap-2">
+          <TextField v-model="documentQuery" :placeholder="t('common.search')" icon="search" class="w-full sm:w-72" />
+          <Select v-model="documentDirectionFilter" :options="documentDirectionOptions" class="w-36" />
+          <Select v-model="documentMatchFilter" :options="documentMatchOptions" class="w-36" />
+          <TextField v-model="documentFrom" type="date" :placeholder="t('invoices.document_from')" class="w-36" />
+          <TextField v-model="documentTo" type="date" :placeholder="t('invoices.document_to')" class="w-36" />
+          <Btn v-if="documentFiltersActive" variant="ghost" size="sm" icon="filter_alt_off" @click="resetDocumentFilters">{{ t('invoices.document_clear_filters') }}</Btn>
+        </div>
       </template>
       <template #actions>
         <Btn variant="soft" size="sm" icon="upload_file" :loading="inboxBusy" @click="inboxInput?.click()">{{ t('invoices.inbox_upload') }}</Btn>
@@ -192,11 +199,11 @@
         <table class="w-full text-sm">
           <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
             <tr class="border-b border-[var(--ll-border)]">
-              <th class="px-4 py-2.5 font-medium">{{ t('common.date') }}</th>
-              <th class="px-4 py-2.5 font-medium">{{ t('invoices.document_direction') }}</th>
-              <th class="px-4 py-2.5 font-medium">{{ t('invoices.document_partner') }}</th>
-              <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.gross') }}</th>
-              <th class="px-4 py-2.5 font-medium">{{ t('invoices.document_matching') }}</th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="documentSortBy('date')"><SortLabel :label="t('common.date')" active-key="date" :sort="documentSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="documentSortBy('direction')"><SortLabel :label="t('invoices.document_direction')" active-key="direction" :sort="documentSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="documentSortBy('partner')"><SortLabel :label="t('invoices.document_partner')" active-key="partner" :sort="documentSort" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 text-right font-medium" @click="documentSortBy('amount')"><SortLabel :label="t('invoices.gross')" active-key="amount" :sort="documentSort" justify="end" /></th>
+              <th class="cursor-pointer select-none px-4 py-2.5 font-medium" @click="documentSortBy('matched')"><SortLabel :label="t('invoices.document_matching')" active-key="matched" :sort="documentSort" /></th>
             </tr>
           </thead>
           <tbody>
@@ -1793,11 +1800,46 @@ const filteredInvoices = computed(() => {
 
 type FinanceDocument = { key: string; kind: 'invoice' | 'receipt'; direction: 'income' | 'expense'; date: string | null; partner: string; reference: string; amount: number; matched: boolean; item: Invoice | Receipt };
 const documentQuery = ref('');
+const documentDirectionFilter = ref<'all' | FinanceDocument['direction']>('all');
+const documentMatchFilter = ref<'all' | 'matched' | 'unmatched'>('all');
+const documentFrom = ref('');
+const documentTo = ref('');
+const documentSort = reactive<{ key: string; dir: SortDir }>({ key: 'date', dir: 'desc' });
+const documentDirectionOptions = computed(() => [
+  { title: t('invoices.document_all'), value: 'all' },
+  { title: t('invoices.document_income'), value: 'income' },
+  { title: t('invoices.document_expense'), value: 'expense' },
+]);
+const documentMatchOptions = computed(() => [
+  { title: t('invoices.document_matching_all'), value: 'all' },
+  { title: t('invoices.document_matched'), value: 'matched' },
+  { title: t('invoices.document_unmatched'), value: 'unmatched' },
+]);
 const documentDirection = computed<FinanceDocument['direction'] | null>(() => {
   if (requestedSection.value === 'invoices') return 'income';
   if (requestedSection.value === 'receipts') return 'expense';
-  return null;
+  return documentDirectionFilter.value === 'all' ? null : documentDirectionFilter.value;
 });
+const documentFiltersActive = computed(() => documentQuery.value !== '' || documentDirectionFilter.value !== 'all'
+  || documentMatchFilter.value !== 'all' || documentFrom.value !== '' || documentTo.value !== '');
+function resetDocumentFilters() {
+  documentQuery.value = '';
+  documentDirectionFilter.value = 'all';
+  documentMatchFilter.value = 'all';
+  documentFrom.value = '';
+  documentTo.value = '';
+}
+function documentSortBy(key: string) { toggleSort(documentSort, key); }
+function documentSortValue(document: FinanceDocument, key: string): unknown {
+  switch (key) {
+    case 'date': return document.date;
+    case 'direction': return document.direction;
+    case 'partner': return document.partner;
+    case 'amount': return document.amount;
+    case 'matched': return document.matched ? 1 : 0;
+    default: return null;
+  }
+}
 const documentRows = computed<FinanceDocument[]>(() => {
   const rows: FinanceDocument[] = [
     ...f.invoices.map((item): FinanceDocument => ({
@@ -1812,9 +1854,17 @@ const documentRows = computed<FinanceDocument[]>(() => {
     })),
   ];
   const needle = documentQuery.value.trim().toLowerCase();
-  return rows.filter((row) => (!documentDirection.value || row.direction === documentDirection.value)
-      && (!needle || `${row.partner} ${row.reference}`.toLowerCase().includes(needle)))
-    .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+  const dirMul = documentSort.dir === 'asc' ? 1 : -1;
+  return rows.filter((row) => {
+    const receipt = row.kind === 'receipt' ? row.item as Receipt : null;
+    const haystack = `${row.partner} ${row.reference} ${receipt?.category ?? ''} ${receipt?.order_ref ?? ''}`.toLowerCase();
+    const date = row.date?.slice(0, 10) ?? '';
+    return (!documentDirection.value || row.direction === documentDirection.value)
+      && (documentMatchFilter.value === 'all' || (documentMatchFilter.value === 'matched') === row.matched)
+      && (!documentFrom.value || date >= documentFrom.value)
+      && (!documentTo.value || date <= documentTo.value)
+      && (!needle || haystack.includes(needle));
+  }).sort((a, b) => sortCmp(documentSortValue(a, documentSort.key), documentSortValue(b, documentSort.key)) * dirMul);
 });
 function openDocument(doc: FinanceDocument) {
   if (doc.kind === 'invoice') openInvoiceDocument(doc.item as Invoice);

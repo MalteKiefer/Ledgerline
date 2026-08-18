@@ -611,6 +611,11 @@ return [
     'document_expense' => 'Expense',
     'document_matched' => 'Matched',
     'document_unmatched' => 'Open',
+    'document_all' => 'All documents',
+    'document_matching_all' => 'All matching states',
+    'document_from' => 'From',
+    'document_to' => 'To',
+    'document_clear_filters' => 'Clear filters',
 
     // Invoicing lifecycle: email dispatch + overdue + reminders.
     'email_send' => 'Send by email',

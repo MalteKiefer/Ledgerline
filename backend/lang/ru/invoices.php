@@ -611,6 +611,11 @@ return [
     'document_expense' => 'Расход',
     'document_matched' => 'Сверено',
     'document_unmatched' => 'Открыто',
+    'document_all' => 'Все документы',
+    'document_matching_all' => 'Все статусы сверки',
+    'document_from' => 'От',
+    'document_to' => 'До',
+    'document_clear_filters' => 'Сбросить фильтры',
 
     // Жизненный цикл счёта: отправка по эл. почте + просрочка + напоминания.
     'email_send' => 'Отправить по эл. почте',

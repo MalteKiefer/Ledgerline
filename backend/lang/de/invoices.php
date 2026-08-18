@@ -611,6 +611,11 @@ return [
     'document_expense' => 'Ausgabe',
     'document_matched' => 'Abgeglichen',
     'document_unmatched' => 'Offen',
+    'document_all' => 'Alle Dokumente',
+    'document_matching_all' => 'Alle Abgleiche',
+    'document_from' => 'Von',
+    'document_to' => 'Bis',
+    'document_clear_filters' => 'Filter löschen',
 
     // Rechnungs-Lebenszyklus: E-Mail-Versand + überfällig + Erinnerungen.
     'email_send' => 'Per E-Mail senden',
