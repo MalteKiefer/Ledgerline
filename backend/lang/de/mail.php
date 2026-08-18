@@ -232,6 +232,7 @@ return [
         'recipient_refreshed' => 'Empfänger aktualisiert.',
         'recipient_refresh_gone' => 'Der Schlüssel ist auf diesem Server nicht mehr verfügbar.',
         'recipient_refresh_mismatch' => 'Der abgerufene Schlüssel stimmt nicht mit dem gespeicherten Fingerabdruck überein — nicht aktualisiert.',
+        'recipient_refresh_no_servers' => 'Keine aktivierten Keyserver eingerichtet — zuerst einen hinzufügen.',
         'servers_title' => 'Keyserver',
         'servers_subtitle' => 'HKP-Server zum Suchen, Aktualisieren und Veröffentlichen von PGP-Schlüsseln.',
         'servers_none' => 'Noch keine Keyserver eingerichtet.',

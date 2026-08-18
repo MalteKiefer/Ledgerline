@@ -7820,20 +7820,26 @@ paths:
     post:
       tags: [Crypto]
       operationId: cryptoRecipientRefresh
-      summary: Re-fetch a recipient from the keyserver it was imported from
+      summary: Re-fetch a PGP recipient's key by fingerprint
       description: >
-        Only recipients with key_server_id set (imported via a keyserver
-        search) can be refreshed. The freshly-fetched key's own re-derived
-        fingerprint must match the fingerprint already stored on the
-        recipient — a mismatch (a compromised/misbehaving server serving
-        different key material under the same id) is rejected, not applied.
+        PGP recipients with a fingerprint only (S/MIME has no keyserver
+        equivalent → 422 no_origin_server). A recipient with key_server_id
+        set (imported via a keyserver search) is re-fetched from exactly
+        that server; the freshly-fetched key's own re-derived fingerprint
+        must match the one already stored — a mismatch (a compromised/
+        misbehaving server serving different key material under the same
+        id) is rejected, not applied. A recipient with no known origin
+        (key_server_id null — e.g. manually pasted before any keyserver was
+        configured) is instead searched across every enabled keyserver on
+        the account; the first one that verifiably has this exact
+        fingerprint is adopted as its key_server_id going forward.
       security: [ { bearerAuth: [] } ]
       parameters: [ { name: recipient, in: path, required: true, schema: { type: integer } } ]
       responses:
-        "200": { description: "The refreshed recipient.", content: { application/json: { schema: { type: object, properties: { recipient: { $ref: '#/components/schemas/CryptoRecipient' } } } } } }
+        "200": { description: "The refreshed recipient (key_server_id may now be set, if it previously wasn't).", content: { application/json: { schema: { type: object, properties: { recipient: { $ref: '#/components/schemas/CryptoRecipient' } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { description: "Recipient not found, has no origin keyserver, or the key is no longer available on that server." }
-        "422": { description: "fingerprint_mismatch — the re-fetched key does not match the saved fingerprint." }
+        "404": { description: "not_found — the key is not (or no longer) available on the recipient's origin server, or on any enabled server when it had none." }
+        "422": { description: "no_origin_server (not PGP, or no fingerprint to search with), no_servers (no enabled keyservers configured), or fingerprint_mismatch (only on the known-origin path — the server answered with a different key)." }
         "429": { $ref: "#/components/responses/RateLimited" }
   /crypto/keys/{key}/publish:
     post:

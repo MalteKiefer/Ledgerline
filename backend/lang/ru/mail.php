@@ -232,6 +232,7 @@ return [
         'recipient_refreshed' => 'Получатель обновлён.',
         'recipient_refresh_gone' => 'Ключ больше недоступен на этом сервере.',
         'recipient_refresh_mismatch' => 'Полученный ключ не совпадает с сохранённым отпечатком — не обновлено.',
+        'recipient_refresh_no_servers' => 'Нет активных keyserver — сначала добавьте один.',
         'servers_title' => 'Keyservers',
         'servers_subtitle' => 'HKP-серверы для поиска, обновления и публикации PGP-ключей.',
         'servers_none' => 'Keyservers ещё не настроены.',
