@@ -603,6 +603,14 @@ return [
     'no_number' => '(ohne Nummer)',
     'suggestion_label' => 'Vorschlag:',
     'apply_suggestion' => 'Vorschlag übernehmen',
+    'tab_documents' => 'Dokumente',
+    'document_direction' => 'Richtung',
+    'document_partner' => 'Partner',
+    'document_matching' => 'Abgleich',
+    'document_income' => 'Einnahme',
+    'document_expense' => 'Ausgabe',
+    'document_matched' => 'Abgeglichen',
+    'document_unmatched' => 'Offen',
 
     // Rechnungs-Lebenszyklus: E-Mail-Versand + überfällig + Erinnerungen.
     'email_send' => 'Per E-Mail senden',

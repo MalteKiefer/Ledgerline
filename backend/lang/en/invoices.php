@@ -603,6 +603,14 @@ return [
     'no_number' => '(no number)',
     'suggestion_label' => 'Suggestion:',
     'apply_suggestion' => 'Apply suggestion',
+    'tab_documents' => 'Documents',
+    'document_direction' => 'Direction',
+    'document_partner' => 'Partner',
+    'document_matching' => 'Matching',
+    'document_income' => 'Income',
+    'document_expense' => 'Expense',
+    'document_matched' => 'Matched',
+    'document_unmatched' => 'Open',
 
     // Invoicing lifecycle: email dispatch + overdue + reminders.
     'email_send' => 'Send by email',

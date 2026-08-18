@@ -152,6 +152,40 @@
       </div>
     </div>
 
+    <!-- Documents: one review queue for outgoing invoices and incoming receipts. -->
+    <Card v-show="tab === 'documents'" :body-class="'p-0'">
+      <template #header>
+        <TextField v-model="documentQuery" :placeholder="t('common.search')" icon="search" class="w-full sm:w-72" />
+      </template>
+      <template #actions>
+        <Btn variant="ghost" size="sm" icon="join_inner" :loading="invMatchBusy || matchBusy" @click="runAllDocumentMatching">{{ t('invoices.auto_match') }}</Btn>
+        <Btn variant="solid" size="sm" icon="add" @click="newInvoice">{{ t('invoices.new') }}</Btn>
+      </template>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+            <tr class="border-b border-[var(--ll-border)]">
+              <th class="px-4 py-2.5 font-medium">{{ t('common.date') }}</th>
+              <th class="px-4 py-2.5 font-medium">{{ t('invoices.document_direction') }}</th>
+              <th class="px-4 py-2.5 font-medium">{{ t('invoices.document_partner') }}</th>
+              <th class="px-4 py-2.5 text-right font-medium">{{ t('invoices.gross') }}</th>
+              <th class="px-4 py-2.5 font-medium">{{ t('invoices.document_matching') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="doc in documentRows" :key="doc.key" class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5" @click="openDocument(doc)">
+              <td class="px-4 py-2.5 whitespace-nowrap text-[var(--ll-muted)]">{{ fmtDate(doc.date) }}</td>
+              <td class="px-4 py-2.5"><Badge :tone="doc.direction === 'income' ? 'success' : 'warning'">{{ t('invoices.document_' + doc.direction) }}</Badge></td>
+              <td class="px-4 py-2.5"><div class="font-medium">{{ doc.partner }}</div><div class="text-xs text-[var(--ll-muted)]">{{ doc.reference }}</div></td>
+              <td class="px-4 py-2.5 text-right font-mono tabular-nums" :class="doc.direction === 'income' ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ money(doc.amount) }}</td>
+              <td class="px-4 py-2.5"><Badge :tone="doc.matched ? 'success' : 'gray'">{{ t(doc.matched ? 'invoices.document_matched' : 'invoices.document_unmatched') }}</Badge></td>
+            </tr>
+            <tr v-if="!documentRows.length"><td colspan="5" class="px-4 py-8 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
+
     <!-- Invoices -->
     <Card v-show="tab === 'invoices'" :body-class="'p-0'">
       <template #header>
@@ -1431,7 +1465,7 @@ const f = useFinanceStore();
 const { success, error } = useToast();
 const route = useRoute();
 const router = useRouter();
-const VALID = ['dashboard', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners', 'stats'];
+const VALID = ['dashboard', 'documents', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners', 'stats'];
 const tab = computed(() => {
   const s = String(route.params.section || 'dashboard');
   // 'stats' merged into 'dashboard' (one consolidated overview) — kept as an alias
@@ -1442,9 +1476,9 @@ const tab = computed(() => {
 function go(v: unknown) { router.push(`/finance/${String(v)}`); }
 
 // In-page left submenu sections (mirrors the Profile/Settings hub layout).
-const sections = ['dashboard', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners'] as const;
+const sections = ['dashboard', 'documents', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners'] as const;
 const secIcon: Record<string, string> = {
-  dashboard: 'space_dashboard', invoices: 'receipt_long', payments: 'account_balance_wallet',
+  dashboard: 'space_dashboard', documents: 'inbox', invoices: 'receipt_long', payments: 'account_balance_wallet',
   bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups',
 };
 const q = ref('');
@@ -1725,6 +1759,34 @@ const filteredInvoices = computed(() => {
   const dirMul = invSort.dir === 'asc' ? 1 : -1;
   return [...base].sort((a, b) => sortCmp(invSortValue(a, invSort.key), invSortValue(b, invSort.key)) * dirMul);
 });
+
+type FinanceDocument = { key: string; kind: 'invoice' | 'receipt'; direction: 'income' | 'expense'; date: string | null; partner: string; reference: string; amount: number; matched: boolean; item: Invoice | Receipt };
+const documentQuery = ref('');
+const documentRows = computed<FinanceDocument[]>(() => {
+  const rows: FinanceDocument[] = [
+    ...f.invoices.map((item): FinanceDocument => ({
+      key: `invoice-${item.id}`, kind: 'invoice', direction: 'income', date: item.issue_date,
+      partner: custName(item), reference: item.number || '—', amount: Number(item.gross ?? 0), matched: isInvoiceLinked(item.id), item,
+    })),
+    ...f.standaloneReceipts.map((item): FinanceDocument => ({
+      key: `receipt-${item.id}`, kind: 'receipt', direction: 'expense', date: item.date,
+      partner: partnerOptions.value.find((p) => p.id === item.partner_id)?.name ?? item.name,
+      reference: item.doc_number || item.name, amount: Math.abs(Number(item.amount ?? 0)),
+      matched: item.bank_transaction_id != null || (item.linked_transaction_ids?.length ?? 0) > 0, item,
+    })),
+  ];
+  const needle = documentQuery.value.trim().toLowerCase();
+  return rows.filter((row) => !needle || `${row.partner} ${row.reference}`.toLowerCase().includes(needle))
+    .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+});
+function openDocument(doc: FinanceDocument) {
+  if (doc.kind === 'invoice') openInvoiceDocument(doc.item as Invoice);
+  else openReceiptWorkspace(doc.item as Receipt);
+}
+async function runAllDocumentMatching() {
+  await runInvoiceAutoMatch();
+  await runAutoMatch();
+}
 
 const isLocked = computed(() => !!(draft.value?.imported || (draft.value?.number && draft.value?.status !== 'draft')));
 const totals = computed(() => {

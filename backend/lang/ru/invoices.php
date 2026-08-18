@@ -603,6 +603,14 @@ return [
     'no_number' => '(без номера)',
     'suggestion_label' => 'Предложение:',
     'apply_suggestion' => 'Применить предложение',
+    'tab_documents' => 'Документы',
+    'document_direction' => 'Направление',
+    'document_partner' => 'Партнёр',
+    'document_matching' => 'Сверка',
+    'document_income' => 'Доход',
+    'document_expense' => 'Расход',
+    'document_matched' => 'Сверено',
+    'document_unmatched' => 'Открыто',
 
     // Жизненный цикл счёта: отправка по эл. почте + просрочка + напоминания.
     'email_send' => 'Отправить по эл. почте',
