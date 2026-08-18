@@ -168,8 +168,11 @@ class RepairImportedInvoicesFromPdf extends Command
         $vatRate = is_numeric($invoice->vat_rate) ? (float) $invoice->vat_rate : 0.0;
         $rows = $text === null ? [] : $this->parser->lines($text, $vatRate);
         $net = is_numeric($invoice->net) ? (float) $invoice->net : null;
-        $sum = array_sum(array_map(static fn (array $row): float => $row['amount'], $rows));
-        if ($rows === [] || $net === null || abs($sum - $net) > 0.01) {
+        // Historic templates disagree on whether their last table column is net
+        // or gross. Quantity × unit price is the common, tax-independent net
+        // invariant and therefore the only safe cross-template validation.
+        $netSum = array_sum(array_map(static fn (array $row): float => $row['qty'] * $row['unitPrice'], $rows));
+        if ($rows === [] || $net === null || abs($netSum - $net) > 0.01) {
             return null;
         }
 
