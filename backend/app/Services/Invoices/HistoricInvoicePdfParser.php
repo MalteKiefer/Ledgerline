@@ -21,10 +21,22 @@ final class HistoricInvoicePdfParser
     {
         $rows = [];
         $current = null;
+        $inTable = false;
         foreach (preg_split('/\R/u', $text) ?: [] as $raw) {
             $line = trim($raw);
             if ($line === '') {
                 continue;
+            }
+            if ($this->isTableHeader($line)) {
+                $inTable = true;
+
+                continue;
+            }
+            if (! $inTable) {
+                continue;
+            }
+            if ($this->isSummary($line)) {
+                break;
             }
             $modern = $this->modernRow($line, $vatRate);
             $legacy = $modern === null ? $this->legacyRow($line, $vatRate) : null;
@@ -37,7 +49,7 @@ final class HistoricInvoicePdfParser
 
                 continue;
             }
-            if ($current !== null && ! $this->isSummary($line)) {
+            if ($current !== null) {
                 $current['desc'] .= ' '.$line;
             }
         }
@@ -102,5 +114,10 @@ final class HistoricInvoicePdfParser
     private function isSummary(string $line): bool
     {
         return preg_match('/^(netto|nettobetrag|umsatzsteuer|ust\.?|total|gesamt)/iu', $line) === 1;
+    }
+
+    private function isTableHeader(string $line): bool
+    {
+        return preg_match('/beschreibung.*(?:datum|preis).*?(?:menge|steuern|einheit)/iu', $line) === 1;
     }
 }
