@@ -2,21 +2,7 @@
   <div>
     <h1 class="mb-4 text-xl font-bold">{{ t('messages.nav.finance') }}</h1>
     <div class="flex flex-col gap-4 md:flex-row">
-      <!-- In-page left submenu (like Profile / Settings) -->
-      <Card body-class="p-0" class="w-full flex-shrink-0 self-start md:w-64">
-        <button
-          v-for="tt in sections" :key="tt"
-          class="flex w-full items-center gap-3 border-b border-[var(--ll-border)] px-4 py-3 last:border-0 hover:bg-black/[0.04] dark:hover:bg-white/5"
-          :class="tab === tt ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''"
-          @click="go(tt)"
-        >
-          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg" :class="tab === tt ? 'bg-primary-500/15' : 'bg-black/[0.05] dark:bg-white/10'">
-            <Icon :name="secIcon[tt]" :size="20" />
-          </span>
-          <span class="flex-1 text-left text-sm font-medium">{{ t('invoices.tab_' + tt) }}</span>
-          <Icon name="chevron_right" :size="18" class="text-[var(--ll-muted)]" />
-        </button>
-      </Card>
+      <SectionNav :groups="financeNavGroups" :active="isFinanceSectionActive" @select="go($event.id)" />
 
       <div class="min-w-0 flex-1">
     <!-- Dashboard (consolidated: headline KPIs + charts + all statistics, one view) -->
@@ -1482,7 +1468,7 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { fmtDate as libDate } from '@spa/lib/datetime';
 import { useRoute, useRouter } from 'vue-router';
 import { trans as t, getActiveLanguage } from 'laravel-vue-i18n';
-import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel } from '@spa/ui';
+import { Icon, Btn, Card, TextField, Select, Badge, Modal, Chart, SortLabel, SectionNav, type SectionNavItem } from '@spa/ui';
 import type { AlignedData, Options } from 'uplot';
 import { useFinanceStore, type Invoice, type InvoiceLine, type Partner, type PaymentMethod, type Project, type Receipt, type BankTransaction, type FinanceCategory, type DuplicateGroup, type CategorySuggestion, type NumberGapGroup, type ReceiptMatchGroup, type SplitPaymentGroup, type ReceiptDuplicate } from '@spa/stores/finance';
 import { useToast } from '@spa/composables/useToast';
@@ -1524,6 +1510,11 @@ const secIcon: Record<string, string> = {
   dashboard: 'space_dashboard', documents: 'inbox', invoices: 'receipt_long', payments: 'account_balance_wallet',
   bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups',
 };
+const financeNavGroups = computed(() => [{
+  id: 'finance',
+  items: sections.map((id) => ({ id, icon: secIcon[id], label: t('invoices.tab_' + id) })),
+}]);
+function isFinanceSectionActive(item: SectionNavItem): boolean { return tab.value === item.id; }
 const q = ref('');
 
 const kpis = ref<{ year: number; net: number; count: number; growthPct: number | null } | null>(null);
