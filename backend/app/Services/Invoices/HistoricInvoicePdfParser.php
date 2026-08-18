@@ -19,8 +19,11 @@ final class HistoricInvoicePdfParser
      */
     public function lines(string $text, float $vatRate): array
     {
+        /** @var list<array{desc: string, qty: float, unit: string, unitPrice: float, vatRate: float, amount: float}> $rows */
         $rows = [];
+        /** @var array{desc: string, qty: float, unit: string, unitPrice: float, vatRate: float, amount: float}|null $current */
         $current = null;
+        /** @var list<string> $pendingDescription */
         $pendingDescription = [];
         $inTable = false;
         foreach (preg_split('/\R/u', $text) ?: [] as $raw) {
@@ -115,7 +118,11 @@ final class HistoricInvoicePdfParser
         return $this->row($matches[1], $matches[3], $matches[4], $matches[2], (string) $fallbackVatRate, $matches[5], $fallbackVatRate);
     }
 
-    /** Extract rows whose description ends before the quantity/unit/price columns. */
+    /**
+     * Extract rows whose description ends before the quantity/unit/price columns.
+     *
+     * @return array{desc: string, qty: float, unit: string, unitPrice: float, vatRate: float, amount: float}|null
+     */
     private function trailingQuantityRow(string $line, float $fallbackVatRate): ?array
     {
         $pattern = '/^(.*?)\s+([0-9.,]+)\s+([[:alpha:].]+)\s+([0-9.,]+)\s*€?\s+([0-9.,]+)\s*€?$/u';
@@ -145,10 +152,12 @@ final class HistoricInvoicePdfParser
         return $this->row($description, $matches[1], 'h', $matches[2], (string) $fallbackVatRate, $matches[3], $fallbackVatRate);
     }
 
-    /** @param list<string> $pendingDescription @return array{string, string} */
+    /** @param list<string> $pendingDescription @return array{0: string, 1: string} */
     private function splitPendingDescription(array $pendingDescription): array
     {
+        /** @var list<string> $blocks */
         $blocks = [];
+        /** @var list<string> $block */
         $block = [];
         foreach ($pendingDescription as $line) {
             if ($line === '') {
