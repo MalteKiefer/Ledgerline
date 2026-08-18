@@ -174,7 +174,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in filteredInvoices" :key="item.id" class="border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5">
+            <tr v-for="item in filteredInvoices" :key="item.id" class="cursor-pointer border-b border-[var(--ll-border)] last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/5" @click="openInvoiceDocument(item)">
               <td class="px-4 py-2.5 text-[var(--ll-muted)]">{{ fmtDate(item.issue_date) }}</td>
               <td class="px-4 py-2.5 font-mono">{{ item.number || '—' }}</td>
               <td class="px-4 py-2.5">{{ custName(item) }}</td>
@@ -185,13 +185,13 @@
               </td>
               <td class="px-4 py-2.5">
                 <div class="flex items-center justify-end gap-0.5">
-                  <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editInvoice(item)" />
-                  <Btn variant="ghost" size="sm" icon="print" :title="t('invoices.print')" :loading="pdfBusy && printingId === item.id" @click="doPrint(item)" />
-                  <Btn v-if="item.number" variant="ghost" size="sm" icon="picture_as_pdf" :title="t('common.open')" @click="openPreview(f.invoicePdfUrl(item.id), (item.number || 'invoice') + '.pdf', 'application/pdf')" />
-                  <Btn v-if="item.number" variant="ghost" size="sm" icon="mail" :title="t('invoices.email_send')" @click="doEmail(item)" />
-                  <Btn v-if="item.number" variant="ghost" size="sm" icon="gavel" :title="t('invoices.dun_send')" @click="doDun(item)" />
-                  <Btn v-if="item.number && item.type !== 'credit_note'" variant="ghost" size="sm" icon="cancel" :title="t('invoices.storno')" @click="doStorno(item)" />
-                  <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delInvoice(item)" />
+                  <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click.stop="editInvoice(item)" />
+                  <Btn variant="ghost" size="sm" icon="print" :title="t('invoices.print')" :loading="pdfBusy && printingId === item.id" @click.stop="doPrint(item)" />
+                  <Btn v-if="item.pdf_path" variant="ghost" size="sm" icon="picture_as_pdf" :title="t('common.open')" @click.stop="openPreview(f.invoicePdfUrl(item.id), (item.number || 'invoice') + '.pdf', 'application/pdf')" />
+                  <Btn v-if="item.number" variant="ghost" size="sm" icon="mail" :title="t('invoices.email_send')" @click.stop="doEmail(item)" />
+                  <Btn v-if="item.number" variant="ghost" size="sm" icon="gavel" :title="t('invoices.dun_send')" @click.stop="doDun(item)" />
+                  <Btn v-if="item.number && item.type !== 'credit_note'" variant="ghost" size="sm" icon="cancel" :title="t('invoices.storno')" @click.stop="doStorno(item)" />
+                  <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click.stop="delInvoice(item)" />
                 </div>
               </td>
             </tr>
@@ -1775,6 +1775,13 @@ function editInvoice(i: Invoice) {
   loadCustomerFields(i.customer);
   invDialog.value = true;
 }
+function openInvoiceDocument(i: Invoice) {
+  if (i.pdf_path) {
+    openPreview(f.invoicePdfUrl(i.id), (i.number || 'invoice') + '.pdf', 'application/pdf');
+    return;
+  }
+  editInvoice(i);
+}
 async function saveInvoice() {
   if (!draft.value) return;
   saving.value = true;
@@ -2868,7 +2875,7 @@ async function generateAndUpload(snap: PrintInvoice, id: number) {
     await api.upload(`/api/v1/finance/invoices/${id}/pdf`, fd);
     await f.load();
     success(t('common.saved'));
-    window.open(f.invoicePdfUrl(id), '_blank', 'noopener');
+    openPreview(f.invoicePdfUrl(id), `${snap.number || 'invoice'}.pdf`, 'application/pdf');
   } catch { printInv.value = null; error(t('common.error')); }
   finally { pdfBusy.value = false; printingId.value = null; }
 }

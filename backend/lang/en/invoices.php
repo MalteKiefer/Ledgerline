@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'bank_csv_reminder_title' => 'Upload a current bank CSV',
+    'bank_csv_reminder_body' => 'Your last bank-statement import is more than seven days ago. Upload the latest CSV to keep reconciliation current.',
     'title' => 'Invoices',
     'dup_warning_title' => 'Duplicate invoice numbers detected',
     'dup_warning_body' => 'These numbers are used more than once — correct them for a gapless, unique sequence (GoBD):',

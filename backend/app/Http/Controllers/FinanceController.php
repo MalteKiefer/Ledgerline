@@ -561,7 +561,33 @@ class FinanceController extends Controller
     public function storeInvoice(Request $request): JsonResponse
     {
         $request->validate($this->invoiceRules($request, true));
-        $invoice = DB::transaction(fn (): Invoice => Invoice::create($this->invoicePatch($request, true)));
+        $uid = (int) $this->requireUser($request)->id;
+        $settings = UserSetting::for($uid);
+        $fmt = is_string($settings->invoice_number_format) ? $settings->invoice_number_format : null;
+        try {
+            $invoice = DB::transaction(function () use ($request, $fmt): Invoice {
+                $patch = $this->invoicePatch($request, true);
+                $this->reserveImportedInvoiceSequence($patch, $fmt);
+
+                // `number` and `seq` are intentionally guarded against all regular
+                // request patches. A historical import is the one audited exception:
+                // persist its source number only after reserveImportedInvoiceSequence()
+                // has validated the derived slot under the same transaction lock.
+                $importNumber = ($patch['imported'] ?? false) === true && is_string($patch['number'] ?? null)
+                    ? $patch['number'] : null;
+                $importSeq = is_int($patch['seq'] ?? null) ? $patch['seq'] : null;
+                unset($patch['number'], $patch['seq']);
+
+                $invoice = Invoice::create($patch);
+                if ($importNumber !== null) {
+                    $invoice->forceFill(['number' => $importNumber, 'seq' => $importSeq])->save();
+                }
+
+                return $invoice;
+            });
+        } catch (\DomainException) {
+            return response()->json(['error' => 'invoice_number_reserved'], 422);
+        }
 
         return response()->json(['invoice' => $invoice], 201);
     }
@@ -611,7 +637,7 @@ class FinanceController extends Controller
             }
 
             $year = $current->year ?? ($current->issue_date instanceof Carbon ? (int) $current->issue_date->format('Y') : (int) Carbon::now()->format('Y'));
-            $seq = $this->nextSeqForYear($year, $floor);
+            $seq = $this->nextSeqForYear($year, $floor, $fmt);
 
             $current->forceFill([
                 'number' => $this->formatNumber($fmt, $seq, $current->issue_date),
@@ -643,13 +669,21 @@ class FinanceController extends Controller
      * is the authoritative reuse guard. Locks the year's numbered rows to
      * serialise concurrent finalisations.
      */
-    private function nextSeqForYear(int $year, int $floor): int
+    private function nextSeqForYear(int $year, int $floor, ?string $fmt): int
     {
-        $seqs = Invoice::withTrashed()->where('year', $year)->whereNotNull('seq')->lockForUpdate()->pluck('seq');
+        $invoices = Invoice::withTrashed()->where('year', $year)->lockForUpdate()->get(['seq', 'number', 'issue_date']);
         $maxSeq = 0;
-        foreach ($seqs as $s) {
-            if (is_numeric($s)) {
-                $maxSeq = max($maxSeq, (int) $s);
+        foreach ($invoices as $invoice) {
+            if (is_numeric($invoice->seq)) {
+                $maxSeq = max($maxSeq, (int) $invoice->seq);
+
+                continue;
+            }
+            if (is_string($invoice->number)) {
+                $derived = $this->sequenceFromNumber($fmt, $invoice->number, $invoice->issue_date);
+                if ($derived !== null) {
+                    $maxSeq = max($maxSeq, $derived);
+                }
             }
         }
 
@@ -737,7 +771,7 @@ class FinanceController extends Controller
 
         $credit = $this->withNumberRetry(fn (): Invoice => DB::transaction(function () use ($invoice, $lines, $fmt, $floor, $issueDate): Invoice {
             $year = (int) $issueDate->format('Y');
-            $seq = $this->nextSeqForYear($year, $floor);
+            $seq = $this->nextSeqForYear($year, $floor, $fmt);
 
             $credit = Invoice::create([
                 'status' => 'sent',
@@ -959,6 +993,70 @@ class FinanceController extends Controller
     private function forgetCompanyMailer(): void
     {
         config(['mail.mailers.company_smtp' => null, 'mail.from.company_smtp' => null]);
+    }
+
+    /**
+     * Imported, already-issued invoices reserve their recognised sequence slot.
+     *
+     * A historical upload may not be renumbered, but if its visible number fits
+     * the configured scheme it must block that ordinal from future finalisation.
+     * This also refuses a second spelling of the same sequence (for example
+     * 2026-006 vs. 2026-0006) before it becomes a GoBD conflict.
+     *
+     * @param  array<string, mixed>  $patch
+     */
+    private function reserveImportedInvoiceSequence(array &$patch, ?string $fmt): void
+    {
+        if (($patch['imported'] ?? false) !== true || ! is_string($patch['number'] ?? null)
+            || ! is_int($patch['year'] ?? null)) {
+            return;
+        }
+
+        $issueDate = $patch['issue_date'] ?? null;
+        $date = $issueDate instanceof Carbon ? $issueDate : null;
+        $seq = $this->sequenceFromNumber($fmt, $patch['number'], $date);
+        if ($seq === null) {
+            return;
+        }
+
+        $reserved = Invoice::withTrashed()
+            ->where('year', $patch['year'])
+            ->lockForUpdate()
+            ->get(['seq', 'number', 'issue_date']);
+        foreach ($reserved as $invoice) {
+            $existing = is_numeric($invoice->seq) ? (int) $invoice->seq
+                : (is_string($invoice->number) ? $this->sequenceFromNumber($fmt, $invoice->number, $invoice->issue_date) : null);
+            if ($existing === $seq) {
+                throw new \DomainException('The number reserves an already-issued sequence slot.');
+            }
+        }
+
+        $patch['seq'] = $seq;
+    }
+
+    /** Derive a sequence from a number generated by the active format (padding is optional for legacy imports). */
+    private function sequenceFromNumber(?string $fmt, string $number, ?Carbon $issueDate): ?int
+    {
+        $date = $issueDate ?? Carbon::now();
+        $template = ($fmt !== null && $fmt !== '') ? $fmt : 'YYYY-NNNN';
+        $token = '__LEDGERLINE_SEQUENCE__';
+        $template = preg_replace('/N+/', $token, $template, 1);
+        if (! is_string($template) || ! str_contains($template, $token)) {
+            return null;
+        }
+        $template = str_replace(
+            ['YYYY', 'YY', 'MM', 'DD'],
+            [$date->format('Y'), $date->format('y'), $date->format('m'), $date->format('d')],
+            $template,
+        );
+        $pattern = '/^'.str_replace(preg_quote($token, '/'), '(\\d+)', preg_quote($template, '/')).'$/D';
+        if (preg_match($pattern, $number, $matches) !== 1 || ! ctype_digit($matches[1])) {
+            return null;
+        }
+
+        $seq = (int) $matches[1];
+
+        return $seq > 0 ? $seq : null;
     }
 
     /** Render a number template (YYYY/YY/MM/DD + a run of N's → zero-padded seq). */

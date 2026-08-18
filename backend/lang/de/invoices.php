@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'bank_csv_reminder_title' => 'Aktuellen Bank-CSV-Export hochladen',
+    'bank_csv_reminder_body' => 'Der letzte Kontoauszug-Import liegt mehr als sieben Tage zurück. Lade den aktuellen CSV-Export hoch, damit der Abgleich vollständig bleibt.',
     'title' => 'Rechnungen',
     'dup_warning_title' => 'Doppelte Rechnungsnummern erkannt',
     'dup_warning_body' => 'Diese Nummern kommen mehrfach vor — bitte korrigieren für eine lückenlose, eindeutige Folge (GoBD):',
