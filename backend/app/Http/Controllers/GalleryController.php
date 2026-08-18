@@ -239,11 +239,24 @@ class GalleryController extends Controller
             ];
         }
 
-        // Themes (ML/pgvector-gated; degrades to empty).
+        // Themes (ML/pgvector-gated; degrades to empty). Each seed embeds via a
+        // synchronous, inline call to the ML sidecar (this whole endpoint runs
+        // in a request-serving Octane worker, not a queued job) — if the
+        // sidecar is down/degraded, a FAILED embed on one seed is a strong
+        // signal every subsequent one will fail too, so stop immediately
+        // rather than retrying all 8 and holding the worker for up to 8x the
+        // per-call timeout. A successful embed that simply finds few/no
+        // matching photos for that particular theme is a normal per-theme
+        // outcome (most libraries won't match every seed) and must NOT abort
+        // the loop — only an embedText() failure does.
         $themes = [];
         if ($ml->enabled() && Vector::available()) {
             foreach (self::THEME_SEEDS as $seed) {
-                $ids = $this->themePhotoIds($uid, $seed, $ml, 30);
+                $vec = $ml->embedText($seed);
+                if ($vec === null || count($vec) !== 512) {
+                    break;
+                }
+                $ids = $this->photoIdsForVector($uid, $vec, 30);
                 if (count($ids) >= 4) {
                     $photos = $this->rowsForIds($ids);
                     $themes[] = ['key' => $seed, 'cover' => $photos[0]['id'] ?? null, 'count' => count($ids), 'photos' => $photos];
@@ -278,16 +291,17 @@ class GalleryController extends Controller
     }
 
     /**
-     * CLIP nearest-neighbour ids for a theme seed term (owner-scoped).
+     * CLIP nearest-neighbour ids for an already-embedded vector (owner-scoped).
+     * Split out from the embedding call itself so a caller iterating several
+     * vectors (memories()' theme seeds) can tell "the embed call failed" apart
+     * from "this vector legitimately has few/no nearby photos" — only the
+     * former is a signal to stop trying further seeds.
      *
+     * @param  list<float>  $vec
      * @return list<int>
      */
-    private function themePhotoIds(int $uid, string $term, MachineLearning $ml, int $limit): array
+    private function photoIdsForVector(int $uid, array $vec, int $limit): array
     {
-        $vec = $ml->embedText($term);
-        if ($vec === null || count($vec) !== 512) {
-            return [];
-        }
         $lit = MachineLearning::toVectorLiteral($vec);
         $maxCfg = config('ml.search_max_distance', 0.78);
         $max = is_numeric($maxCfg) ? (float) $maxCfg : 0.78;

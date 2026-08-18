@@ -20,7 +20,14 @@ use Throwable;
  */
 final class HkpClient
 {
-    private const TIMEOUT = 10;
+    // Kept tight: search()/isPresent() are called once PER configured keyserver
+    // in a plain sequential loop (KeyServerController::search()/checkPresence())
+    // — a live web request, not a queued job — so N servers means up to N x
+    // TIMEOUT seconds tying up an Octane worker in the worst case. A future
+    // improvement would fan these out concurrently (Http::pool()); until then
+    // KeyServerController additionally caps how many servers a single request
+    // visits.
+    private const TIMEOUT = 6;
 
     // A malicious or misbehaving keyserver could otherwise stream an
     // unbounded response; this is a plain safety cap, not a real-world size
