@@ -41,14 +41,19 @@ class RemindBankCsvImport extends Command
                 ->where('category', 'finance_bank_csv')
                 ->max('created_at');
 
-            if (($latestImport !== null && Carbon::parse($latestImport)->gte($cutoff))
-                || ($latestReminder !== null && Carbon::parse($latestReminder)->gte($cutoff))) {
+            $hasRecentImport = is_string($latestImport) && Carbon::parse($latestImport)->gte($cutoff);
+            $hasRecentReminder = is_string($latestReminder) && Carbon::parse($latestReminder)->gte($cutoff);
+            if ($hasRecentImport || $hasRecentReminder) {
                 continue;
             }
 
             $previousLocale = app()->getLocale();
+            $fallbackLocale = config('app.locale');
+            $locale = is_string($user->locale) && in_array($user->locale, ['de', 'en', 'ru'], true)
+                ? $user->locale
+                : (is_string($fallbackLocale) ? $fallbackLocale : 'en');
             try {
-                app()->setLocale(in_array($user->locale, ['de', 'en', 'ru'], true) ? $user->locale : config('app.locale'));
+                app()->setLocale($locale);
                 AppNotification::record(
                     (int) $user->id,
                     'info',

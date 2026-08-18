@@ -133,7 +133,6 @@ class RepairHistoricInvoiceImports extends Command
         ];
     }
 
-    /** @param array{expectedGross: float, expectedVatRate: float} $correction */
     private function isExpectedBrokenImport(Invoice $invoice, float $expectedGross, float $expectedVatRate): bool
     {
         return $invoice->imported
