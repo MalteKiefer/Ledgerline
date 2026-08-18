@@ -208,7 +208,7 @@ class MailAutoconfig
     private function candidate(string $host, int $port, string $encryption, ?string $username = null): ?array
     {
         $host = mb_strtolower(trim($host));
-        if ($host === '' || $port < 1 || $port > 65535 || ! OutboundUrl::hostAllowed($host)) {
+        if ($host === '' || ! OutboundUrl::mailPortAllowed($port) || ! OutboundUrl::hostAllowed($host)) {
             return null;
         }
 

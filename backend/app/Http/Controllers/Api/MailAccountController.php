@@ -38,10 +38,10 @@ class MailAccountController extends Controller
      */
     public function autoconfig(Request $request, MailAutoconfig $autoconfig): JsonResponse
     {
-        $validated = Validator::make($request->all(), [
+        Validator::make($request->all(), [
             'email' => ['required', 'string', 'email:rfc', 'max:255'],
         ])->validate();
-        $email = (string) $validated['email'];
+        $email = $request->string('email')->toString();
 
         return response()->json(['configuration' => $autoconfig->discover($email)])
             ->header('Cache-Control', 'no-store');
