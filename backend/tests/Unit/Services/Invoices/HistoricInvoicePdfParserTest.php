@@ -53,4 +53,40 @@ TEXT;
         $this->assertSame(360.0, $rows[0]['amount']);
         $this->assertStringContainsString('Einrichtung NAS', $rows[0]['desc']);
     }
+
+    #[Test]
+    public function it_extracts_legacy_rows_when_the_tax_column_is_empty(): void
+    {
+        $text = <<<'TEXT'
+Menge          Beschreibung                                            Preis       Steuern              Kosten
+101 Stunde     Programmierung & Entwicklung                            45,00                           4.545,00
+Netto                                                                                                  4.545,00
+TEXT;
+
+        $rows = (new HistoricInvoicePdfParser)->lines($text, 16);
+
+        $this->assertSame([[
+            'desc' => 'Programmierung & Entwicklung', 'qty' => 101.0, 'unit' => 'Stunde',
+            'unitPrice' => 45.0, 'vatRate' => 16.0, 'amount' => 4545.0,
+        ]], $rows);
+    }
+
+    #[Test]
+    public function it_extracts_numbered_position_rows(): void
+    {
+        $text = <<<'TEXT'
+Pos    Beschreibung                                                        Einzelpreis    Anzahl          Gesamtpreis
+1      .de Domain (15 verschiedene Domains)                                    15,00 €   12 Monate            180,00 €
+2      Hosting                                                                  3,99 €   12 Monate             47,88 €
+Nettobetrag:                  227,88 €
+TEXT;
+
+        $rows = (new HistoricInvoicePdfParser)->lines($text, 19);
+
+        $this->assertCount(2, $rows);
+        $this->assertSame('Monate', $rows[0]['unit']);
+        $this->assertSame(12.0, $rows[0]['qty']);
+        $this->assertSame(15.0, $rows[0]['unitPrice']);
+        $this->assertSame(47.88, $rows[1]['amount']);
+    }
 }

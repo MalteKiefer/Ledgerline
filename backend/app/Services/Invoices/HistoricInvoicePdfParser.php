@@ -39,8 +39,9 @@ final class HistoricInvoicePdfParser
                 break;
             }
             $modern = $this->modernRow($line, $vatRate);
-            $legacy = $modern === null ? $this->legacyRow($line, $vatRate) : null;
-            $row = $modern ?? $legacy;
+            $position = $modern === null ? $this->positionRow($line, $vatRate) : null;
+            $legacy = $modern === null && $position === null ? $this->legacyRow($line, $vatRate) : null;
+            $row = $modern ?? $position ?? $legacy;
             if ($row !== null) {
                 if ($current !== null) {
                     $rows[] = $current;
@@ -74,12 +75,23 @@ final class HistoricInvoicePdfParser
     /** @return array{desc: string, qty: float, unit: string, unitPrice: float, vatRate: float, amount: float}|null */
     private function legacyRow(string $line, float $fallbackVatRate): ?array
     {
-        $pattern = '/^([0-9.,]+)\s+([[:alpha:].]+)\s+(.+?)\s+([0-9.,]+)\s+\d+\s+([0-9.,]+)$/u';
+        $pattern = '/^([0-9.,]+)\s+([[:alpha:].]+)\s+(.+?)\s+([0-9.,]+)(?:\s+\d+)?\s+([0-9.,]+)$/u';
         if (preg_match($pattern, $line, $matches) !== 1) {
             return null;
         }
 
         return $this->row($matches[3], $matches[1], $matches[2], $matches[4], (string) $fallbackVatRate, $matches[5], $fallbackVatRate);
+    }
+
+    /** @return array{desc: string, qty: float, unit: string, unitPrice: float, vatRate: float, amount: float}|null */
+    private function positionRow(string $line, float $fallbackVatRate): ?array
+    {
+        $pattern = '/^\d+\s+(.+?)\s+([0-9.,]+)\s*€\s+([0-9.,]+)\s+([[:alpha:].]+)\s+([0-9.,]+)\s*€$/u';
+        if (preg_match($pattern, $line, $matches) !== 1) {
+            return null;
+        }
+
+        return $this->row($matches[1], $matches[3], $matches[4], $matches[2], (string) $fallbackVatRate, $matches[5], $fallbackVatRate);
     }
 
     /** @return array{desc: string, qty: float, unit: string, unitPrice: float, vatRate: float, amount: float}|null */
@@ -118,6 +130,7 @@ final class HistoricInvoicePdfParser
 
     private function isTableHeader(string $line): bool
     {
-        return preg_match('/beschreibung.*(?:datum|preis).*?(?:menge|steuern|einheit)/iu', $line) === 1;
+        return preg_match('/beschreibung.*(?:datum|preis).*?(?:menge|steuern|einheit)/iu', $line) === 1
+            || preg_match('/^pos\s+beschreibung.*einzelpreis.*(?:anzahl|menge)/iu', $line) === 1;
     }
 }
