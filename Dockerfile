@@ -29,12 +29,9 @@ COPY frontend/package.json frontend/yarn.lock frontend/.npmrc ./frontend/
 RUN cd frontend && yarn install --frozen-lockfile --non-interactive
 COPY frontend ./frontend
 COPY backend/lang ./backend/lang
-# Build the SPA (dist/) and self-host the tesseract.js OCR worker + WASM core +
-# eng/deu language data into dist/tesseract (CSP is worker-src/connect-src 'self',
-# nothing from a CDN at runtime). The language data downloads over the build net.
+# Build the standalone SPA. No frontend asset is fetched from a CDN at runtime.
 RUN cd frontend \
- && VITE_APP_VERSION="${APP_VERSION}" yarn build \
- && node scripts/stage-tesseract.mjs
+ && VITE_APP_VERSION="${APP_VERSION}" yarn build
 
 # --- Runtime: FrankenPHP + Octane serving the Laravel backend + built SPA ----
 FROM ${PHP_BASE} AS runtime
