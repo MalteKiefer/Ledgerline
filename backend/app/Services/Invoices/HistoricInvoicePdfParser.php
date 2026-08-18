@@ -152,7 +152,10 @@ final class HistoricInvoicePdfParser
         return $this->row($description, $matches[1], 'h', $matches[2], (string) $fallbackVatRate, $matches[3], $fallbackVatRate);
     }
 
-    /** @param list<string> $pendingDescription @return array{0: string, 1: string} */
+    /**
+     * @param list<string> $pendingDescription
+     * @return array{0: string, 1: string}
+     */
     private function splitPendingDescription(array $pendingDescription): array
     {
         /** @var list<string> $blocks */
