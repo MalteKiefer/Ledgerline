@@ -132,4 +132,22 @@ TEXT;
         $this->assertSame(0.3, $rows[0]['qty']);
         $this->assertSame(33.0, $rows[1]['amount']);
     }
+
+    #[Test]
+    public function it_preserves_dot_decimal_amounts_in_newer_pdf_layouts(): void
+    {
+        $text = <<<'TEXT'
+BESCHREIBUNG                                              MENGE      EINZELPREIS      BETRAG
+Server hardening
+                                                          2.5        €45.00          €112.50
+Zwischensumme:                                                        €112.50
+TEXT;
+
+        $rows = (new HistoricInvoicePdfParser)->lines($text, 19);
+
+        $this->assertSame([[
+            'desc' => 'Server hardening', 'qty' => 2.5, 'unit' => 'h',
+            'unitPrice' => 45.0, 'vatRate' => 19.0, 'amount' => 112.5,
+        ]], $rows);
+    }
 }

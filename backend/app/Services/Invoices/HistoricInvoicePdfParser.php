@@ -214,7 +214,17 @@ final class HistoricInvoicePdfParser
 
     private function number(string $value): ?float
     {
-        $value = str_replace(['.', ',', '€', ' '], ['', '.', '', ''], trim($value));
+        $value = str_replace(['€', ' '], '', trim($value));
+        $comma = strrpos($value, ',');
+        $dot = strrpos($value, '.');
+        if ($comma !== false && $dot !== false) {
+            // Both separators occur only in grouped amounts. The rightmost one
+            // is the decimal separator (1.071,00 / 1,071.00).
+            $value = $comma > $dot
+                ? str_replace('.', '', $value)
+                : str_replace(',', '', $value);
+        }
+        $value = str_replace(',', '.', $value);
 
         return is_numeric($value) ? (float) $value : null;
     }
