@@ -34,6 +34,12 @@ export interface MailAccount {
   message_count: number;
 }
 
+export interface MailAutoconfigCandidate { host: string; port: number; encryption: 'ssl' | 'tls' | 'starttls' | 'none'; username: string | null }
+export interface MailAutoconfig {
+  email: string; domain: string; domain_resolves: boolean; imap: MailAutoconfigCandidate | null; smtp: MailAutoconfigCandidate | null;
+  sources: string[]; outlook_autodiscover: boolean;
+}
+
 /** Whether an account can send — mirrors the backend MailAccount::hasSmtp(). */
 export function accountCanSend(a: MailAccount): boolean {
   return !!(a.smtp_host && a.smtp_host.trim() && a.from_email && a.from_email.trim());
@@ -202,6 +208,7 @@ export const useMailStore = defineStore('mail', () => {
       : await api.post<{ account: MailAccount }>('/api/v1/mail/accounts', body);
     return r.account;
   }
+  const autoconfig = (email: string) => api.post<{ configuration: MailAutoconfig }>('/api/v1/mail/accounts/autoconfig', { email });
   const deleteAccount = (id: number) => api.delete(`/api/v1/mail/accounts/${id}`);
   const testAccount = (id: number) => api.post<{ ok: boolean; detail: string }>(`/api/v1/mail/accounts/${id}/test`);
   const syncNow = (id: number) => api.post<{ dispatched: boolean }>(`/api/v1/mail/accounts/${id}/sync`);
@@ -370,7 +377,7 @@ export const useMailStore = defineStore('mail', () => {
 
   return {
     accounts, folders, folderTotals, messages, meta, selected, filters, openMessage, labels, savedSearches, rules, logs,
-    loadAccounts, saveAccount, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
+    loadAccounts, saveAccount, autoconfig, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
     setSeen, trash, restore, pushBack, deleteOrigin, setLabels,
     compose, reply, forward,

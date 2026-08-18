@@ -42,7 +42,7 @@ USER root
 # isync/mbsync (IMAP mail import), and curl for the healthcheck. Then the PHP
 # extensions the app needs, plus pcntl + opcache for the Octane worker.
 RUN apk add --no-cache \
-      curl ca-certificates gnupg gzip isync libcap \
+      bind-tools curl ca-certificates gnupg gzip isync libcap \
       libheif libde265 x265-libs aom-libs imagemagick imagemagick-heic \
       ffmpeg \
       exiftool \

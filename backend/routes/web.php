@@ -628,6 +628,7 @@ Route::middleware('auth')->group(function (): void {
     // toggle; the raw .eml is served sandboxed.
     Route::middleware('module:mail')->group(function (): void {
         Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('mail.accounts.index');
+        Route::post('/mail/accounts/autoconfig', [MailAccountController::class, 'autoconfig'])->middleware('throttle:10,1')->name('mail.accounts.autoconfig');
         Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware('throttle:60,1')->name('mail.accounts.store');
         Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->whereNumber('account')->middleware('throttle:60,1')->name('mail.accounts.update');
         Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->whereNumber('account')->middleware('throttle:60,1')->name('mail.accounts.destroy');

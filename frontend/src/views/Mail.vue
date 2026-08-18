@@ -303,6 +303,23 @@
   <!-- Account editor modal -->
   <Modal v-model="editor.show" :title="editor.id ? t('mail.accounts.edit') : t('mail.accounts.add')" width="640px">
     <div class="space-y-3">
+      <div v-if="!editor.id" class="grid grid-cols-2 gap-2 border-b border-[var(--ll-border)] pb-3 text-xs font-semibold">
+        <div class="flex items-center gap-2" :class="editor.step === 1 ? 'text-primary-600' : 'text-[var(--ll-muted)]'"><span class="grid h-5 w-5 place-items-center rounded-full" :class="editor.step === 1 ? 'bg-primary-500 text-white' : 'bg-black/[0.06] dark:bg-white/10'">1</span>{{ t('mail.setup.discover') }}</div>
+        <div class="flex items-center gap-2" :class="editor.step === 2 ? 'text-primary-600' : 'text-[var(--ll-muted)]'"><span class="grid h-5 w-5 place-items-center rounded-full" :class="editor.step === 2 ? 'bg-primary-500 text-white' : 'bg-black/[0.06] dark:bg-white/10'">2</span>{{ t('mail.setup.details') }}</div>
+      </div>
+      <template v-if="!editor.id && editor.step === 1">
+        <div class="rounded-xl bg-primary-500/[0.07] p-4">
+          <div class="mb-1 flex items-center gap-2 text-sm font-semibold"><Icon name="auto_awesome" :size="18" />{{ t('mail.setup.title') }}</div>
+          <p class="text-xs leading-5 text-[var(--ll-muted)]">{{ t('mail.setup.hint') }}</p>
+        </div>
+        <TextField v-model="editor.email" :label="t('mail.setup.email')" type="email" inputmode="email" autocomplete="email" @enter="discoverAccount" />
+        <div v-if="editor.discovery" class="rounded-lg px-3 py-2 text-xs" :class="editor.discovery.domain_resolves ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'">
+          {{ editor.discovery.domain_resolves ? t('mail.setup.dns_ok') : t('mail.setup.dns_missing') }}<span v-if="editor.discovery.outlook_autodiscover"> · {{ t('mail.setup.outlook_found') }}</span>
+        </div>
+        <Btn variant="solid" class="w-full" icon="search" :loading="editor.detecting" @click="discoverAccount">{{ t('mail.setup.detect') }}</Btn>
+        <Btn variant="ghost" class="w-full" @click="editor.step = 2">{{ t('mail.setup.manual') }}</Btn>
+      </template>
+      <template v-else>
       <TextField v-model="editor.form.name" :label="t('mail.form.name')" />
       <div class="grid grid-cols-3 gap-3">
         <div class="col-span-2"><TextField v-model="editor.form.host" :label="t('mail.form.host')" /></div>
@@ -310,7 +327,7 @@
       </div>
       <TextField v-model="editor.form.username" :label="t('mail.form.username')" autocomplete="off" />
       <TextField v-model="editor.form.password" :label="t('mail.form.password')" type="password" autocomplete="new-password" :hint="editor.id ? t('mail.form.password_keep') : undefined" />
-      <Select v-model="editor.form.encryption" :label="t('mail.form.encryption')" :options="encItems" />
+      <Select v-model="editor.form.encryption" :label="t('mail.form.encryption')" :options="encItems" @update:model-value="applyImapPort" />
 
       <!-- SMTP (outgoing) — enables compose / reply / forward -->
       <div class="mt-1 border-t border-[var(--ll-border)] pt-3">
@@ -323,7 +340,7 @@
           <TextField v-model="editor.form.smtp_username" :label="t('mail.send.smtp_username')" autocomplete="off" />
           <TextField v-model="editor.form.smtp_password" :label="t('mail.send.smtp_password')" type="password" autocomplete="new-password" :hint="editor.id && editor.hasSmtpPassword ? t('mail.form.password_keep') : undefined" />
         </div>
-        <div class="mt-3"><Select v-model="editor.form.smtp_encryption" :label="t('mail.send.smtp_encryption')" :options="encItems" /></div>
+        <div class="mt-3"><Select v-model="editor.form.smtp_encryption" :label="t('mail.send.smtp_encryption')" :options="encItems" @update:model-value="applySmtpPort" /></div>
         <div class="mt-3 grid grid-cols-2 gap-3">
           <TextField v-model="editor.form.from_name" :label="t('mail.send.from_name')" />
           <TextField v-model="editor.form.from_email" :label="t('mail.send.from_email')" type="email" inputmode="email" autocomplete="off" />
@@ -349,11 +366,13 @@
       <div v-if="editor.testResult" class="rounded-lg px-3 py-2 text-xs" :class="editor.testResult.ok ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/10 text-red-600 dark:text-red-400'">
         {{ editor.testResult.ok ? t('mail.accounts.test_ok') : t('mail.accounts.test_failed') }}<span v-if="editor.testResult.detail"> — {{ editor.testResult.detail }}</span>
       </div>
+      </template>
     </div>
     <template #footer>
       <Btn v-if="editor.id" variant="outline" :loading="editor.testing" class="mr-auto" @click="runTest">{{ t('mail.accounts.test') }}</Btn>
+      <Btn v-else-if="editor.step === 2" variant="ghost" class="mr-auto" @click="editor.step = 1">{{ t('mail.setup.back') }}</Btn>
       <Btn variant="ghost" @click="editor.show = false">{{ t('mail.form.cancel') }}</Btn>
-      <Btn variant="solid" :loading="editor.saving" @click="saveAccount">{{ t('mail.form.save') }}</Btn>
+      <Btn v-if="editor.id || editor.step === 2" variant="solid" :loading="editor.saving" @click="saveAccount">{{ t('mail.form.save') }}</Btn>
     </template>
   </Modal>
 
@@ -522,7 +541,7 @@ import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetim
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
-import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody } from '@spa/stores/mail';
+import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig } from '@spa/stores/mail';
 import { api, ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
@@ -771,12 +790,13 @@ async function toggleReaderLabel(id: number) {
 
 // --- Accounts ----------------------------------------------------------------
 const folderInput = ref('');
-const editor = reactive<{ show: boolean; id: number | null; saving: boolean; testing: boolean; folders: string[]; hasSmtpPassword: boolean; testResult: { ok: boolean; detail: string } | null; form: AccountBody }>({
-  show: false, id: null, saving: false, testing: false, folders: [], hasSmtpPassword: false, testResult: null,
+const editor = reactive<{ show: boolean; id: number | null; step: 1 | 2; email: string; detecting: boolean; discovery: MailAutoconfig | null; saving: boolean; testing: boolean; folders: string[]; hasSmtpPassword: boolean; testResult: { ok: boolean; detail: string } | null; form: AccountBody }>({
+  show: false, id: null, step: 1, email: '', detecting: false, discovery: null, saving: false, testing: false, folders: [], hasSmtpPassword: false, testResult: null,
   form: { name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', smtp_host: '', smtp_port: null, smtp_username: '', smtp_password: '', smtp_encryption: 'starttls', from_name: '', from_email: '', folders: null, backfill_since: null, delete_after_import: false, skip_spam: true, enabled: true, sync_interval_minutes: null },
 });
 function openAccountEditor(a: MailAccount | null) {
   editor.testResult = null; folderInput.value = '';
+  editor.step = a ? 2 : 1; editor.email = ''; editor.discovery = null;
   editor.hasSmtpPassword = a?.has_smtp_password ?? false;
   if (a) {
     editor.id = a.id; editor.folders = [...(a.folders ?? [])];
@@ -786,6 +806,37 @@ function openAccountEditor(a: MailAccount | null) {
     Object.assign(editor.form, { name: '', host: '', port: 993, username: '', password: '', encryption: 'ssl', smtp_host: '', smtp_port: null, smtp_username: '', smtp_password: '', smtp_encryption: 'starttls', from_name: '', from_email: '', folders: null, backfill_since: null, delete_after_import: false, skip_spam: true, enabled: true, sync_interval_minutes: null });
   }
   editor.show = true;
+}
+function defaultPort(encryption: string, protocol: 'imap' | 'smtp'): number {
+  if (encryption === 'ssl' || encryption === 'tls') return protocol === 'imap' ? 993 : 465;
+  return protocol === 'imap' ? 143 : 587;
+}
+function applyImapPort(encryption: string) { editor.form.port = defaultPort(encryption, 'imap'); }
+function applySmtpPort(encryption: string) { editor.form.smtp_port = defaultPort(encryption, 'smtp'); }
+async function discoverAccount() {
+  const email = editor.email.trim().toLowerCase();
+  if (!email || !email.includes('@')) { error(t('mail.setup.email_required')); return; }
+  editor.detecting = true;
+  try {
+    const { configuration } = await s.autoconfig(email);
+    editor.discovery = configuration;
+    const imap = configuration.imap;
+    const smtp = configuration.smtp;
+    const local = email.slice(0, email.indexOf('@'));
+    Object.assign(editor.form, {
+      name: editor.form.name || email,
+      host: imap?.host ?? editor.form.host,
+      port: imap?.port ?? editor.form.port,
+      username: imap?.username?.replace('%EMAILADDRESS%', email).replace('%EMAILLOCALPART%', local) ?? email,
+      encryption: imap?.encryption ?? editor.form.encryption,
+      smtp_host: smtp?.host ?? editor.form.smtp_host,
+      smtp_port: smtp?.port ?? editor.form.smtp_port,
+      smtp_username: smtp?.username?.replace('%EMAILADDRESS%', email).replace('%EMAILLOCALPART%', local) ?? email,
+      smtp_encryption: smtp?.encryption ?? editor.form.smtp_encryption,
+      from_email: email,
+    });
+    editor.step = 2;
+  } catch { error(t('mail.setup.detect_failed')); } finally { editor.detecting = false; }
 }
 function addFolder() { const v = folderInput.value.trim(); if (v && !editor.folders.includes(v)) editor.folders.push(v); folderInput.value = ''; }
 async function saveAccount() {

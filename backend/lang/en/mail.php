@@ -49,6 +49,22 @@ return [
         'cancel' => 'Cancel',
     ],
 
+    'setup' => [
+        'discover' => 'Discover',
+        'details' => 'Account details',
+        'title' => 'Find mail server settings',
+        'hint' => 'Enter your email address. We check DNS, standard SRV records and secure provider autoconfig endpoints before you enter a password.',
+        'email' => 'Email address',
+        'detect' => 'Find settings',
+        'manual' => 'Configure manually',
+        'dns_ok' => 'The email domain resolves in DNS.',
+        'dns_missing' => 'The email domain could not be resolved. Review the server fields manually.',
+        'outlook_found' => 'Outlook Autodiscover record found.',
+        'email_required' => 'Enter a valid email address first.',
+        'detect_failed' => 'Settings could not be detected. You can still configure the account manually.',
+        'back' => 'Back',
+    ],
+
     'status' => [
         'idle' => 'Idle',
         'syncing' => 'Syncing…',

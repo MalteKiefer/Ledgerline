@@ -535,6 +535,7 @@ Route::prefix('v1')->group(function (): void {
         // seen/trash toggles mutate; raw .eml served sandboxed.
         Route::middleware('module:mail')->group(function (): void {
             Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('api.mail.accounts.index');
+            Route::post('/mail/accounts/autoconfig', [MailAccountController::class, 'autoconfig'])->middleware('throttle:10,1')->name('api.mail.accounts.autoconfig');
             Route::post('/mail/accounts', [MailAccountController::class, 'store'])->middleware('throttle:60,1')->name('api.mail.accounts.store');
             Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.update');
             Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->whereNumber('account')->middleware('throttle:60,1')->name('api.mail.accounts.destroy');

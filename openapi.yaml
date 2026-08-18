@@ -9611,6 +9611,43 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/accounts/autoconfig:
+    post:
+      tags: [Mail]
+      operationId: mailAccountsAutoconfig
+      summary: Discover non-secret IMAP and SMTP settings from an email address
+      description: "Throttle 10/min. Uses bounded DNS SRV and HTTPS autoconfig checks; credentials are neither accepted nor returned. All discovered hosts are SSRF-guarded."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 255 }
+      responses:
+        "200":
+          description: Discovery result; candidates remain user-reviewable before saving.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configuration:
+                    type: object
+                    properties:
+                      email: { type: string, format: email }
+                      domain: { type: string }
+                      domain_resolves: { type: boolean }
+                      imap: { type: [object, "null"], properties: { host: { type: string }, port: { type: integer }, encryption: { type: string, enum: [ssl, tls, starttls, none] }, username: { type: [string, "null"] } } }
+                      smtp: { type: [object, "null"], properties: { host: { type: string }, port: { type: integer }, encryption: { type: string, enum: [ssl, tls, starttls, none] }, username: { type: [string, "null"] } } }
+                      sources: { type: array, items: { type: string, enum: [autoconfig, srv, dns] } }
+                      outlook_autodiscover: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /mail/accounts:
     get:
       tags: [Mail]

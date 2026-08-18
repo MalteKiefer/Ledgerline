@@ -124,6 +124,18 @@ final class OutboundUrl
         return true;
     }
 
+    /**
+     * Resolve a bare host with the same bounded resolver used by every outbound
+     * guard. Discovery UI may report the result, but must never bypass the
+     * guard before opening an HTTP or socket connection.
+     *
+     * @return list<string>
+     */
+    public static function resolveHost(string $host): array
+    {
+        return self::resolve($host);
+    }
+
     /** Standard mail ports (SMTP 25/465/587, IMAP 143/993). */
     private const MAIL_PORTS = [25, 143, 465, 587, 993];
 

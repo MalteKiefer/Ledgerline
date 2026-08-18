@@ -49,6 +49,22 @@ return [
         'cancel' => 'Abbrechen',
     ],
 
+    'setup' => [
+        'discover' => 'Erkennen',
+        'details' => 'Kontodaten',
+        'title' => 'Mailserver-Einstellungen finden',
+        'hint' => 'Gib deine E-Mail-Adresse ein. DNS, übliche SRV-Einträge und sichere Autoconfig-Endpunkte werden geprüft, bevor du ein Passwort eingibst.',
+        'email' => 'E-Mail-Adresse',
+        'detect' => 'Einstellungen finden',
+        'manual' => 'Manuell einrichten',
+        'dns_ok' => 'Die E-Mail-Domain wird per DNS aufgelöst.',
+        'dns_missing' => 'Die E-Mail-Domain konnte nicht aufgelöst werden. Prüfe die Serverfelder manuell.',
+        'outlook_found' => 'Outlook-Autodiscover-Eintrag gefunden.',
+        'email_required' => 'Gib zuerst eine gültige E-Mail-Adresse ein.',
+        'detect_failed' => 'Einstellungen konnten nicht erkannt werden. Du kannst das Konto trotzdem manuell einrichten.',
+        'back' => 'Zurück',
+    ],
+
     'status' => [
         'idle' => 'Bereit',
         'syncing' => 'Synchronisiert…',
