@@ -1,5 +1,5 @@
 <template>
-  <div class="flex min-h-[calc(100vh-120px)] flex-col gap-4 md:flex-row">
+  <div class="flex min-h-[calc(100vh-120px)] flex-col gap-4 md:flex-row" :class="readerOpen ? 'md:gap-0' : ''">
     <!-- Left rail: accounts, folders, trash, labels, saved searches -->
     <Card body-class="p-0" class="w-full shrink-0 self-start md:w-72">
       <div class="flex items-center gap-2 p-3">
@@ -104,7 +104,7 @@
     </Card>
 
     <!-- Center: toolbar + envelope table -->
-    <Card body-class="flex flex-1 flex-col overflow-hidden p-0" class="flex w-full min-w-0 flex-1 flex-col self-stretch">
+    <Card body-class="flex flex-1 flex-col overflow-hidden p-0" class="flex w-full min-w-0 flex-1 flex-col self-stretch" :class="readerOpen ? 'md:rounded-r-none md:border-r-0' : ''">
       <!-- Toolbar -->
       <div class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] p-3">
         <Btn variant="solid" size="sm" icon="edit_square" @click="openCompose">{{ t('mail.send.compose') }}</Btn>
@@ -208,11 +208,17 @@
         </div>
       </div>
     </Card>
-  </div>
 
-  <!-- Reader modal -->
-  <Modal v-model="readerOpen" :title="reader?.subject || t('mail.reader.subject')" width="56rem">
-    <div v-if="reader" class="flex flex-col gap-4">
+    <!-- Reader pane: docked beside the list on desktop, full screen on small displays. -->
+  <aside v-if="readerOpen" class="fixed inset-0 z-[1500] flex min-h-0 flex-col overflow-y-auto bg-[var(--ll-surface)] shadow-2xl md:static md:z-auto md:w-[min(48%,46rem)] md:shrink-0 md:border-l md:border-[var(--ll-border)] md:shadow-none">
+    <div v-if="reader" class="flex min-h-0 flex-1 flex-col gap-4 p-4 md:p-5">
+      <div class="sticky top-0 z-10 -mt-4 -mx-4 flex items-center gap-3 border-b border-[var(--ll-border)] bg-[var(--ll-surface)] px-4 py-3 md:-mt-5 md:-mx-5 md:px-5">
+        <div class="min-w-0 flex-1">
+          <div class="truncate text-base font-semibold">{{ reader.subject || t('mail.reader.subject') }}</div>
+          <div class="truncate text-xs text-[var(--ll-muted)]">{{ reader.from_name || reader.from_email }}</div>
+        </div>
+        <Btn variant="ghost" size="sm" icon="close" :title="t('common.close')" @click="readerOpen = false" />
+      </div>
       <!-- Header -->
       <div class="flex flex-col gap-1.5">
         <div class="flex flex-wrap items-center gap-2">
@@ -298,7 +304,8 @@
         </div>
       </div>
     </div>
-  </Modal>
+    </aside>
+  </div>
 
   <!-- Account editor modal -->
   <Modal v-model="editor.show" :title="editor.id ? t('mail.accounts.edit') : t('mail.accounts.add')" width="640px">
