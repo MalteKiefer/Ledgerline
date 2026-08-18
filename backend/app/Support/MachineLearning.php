@@ -37,7 +37,7 @@ class MachineLearning
         }
         try {
             $entries = json_encode(['clip' => ['visual' => ['modelName' => $this->model()]]], JSON_THROW_ON_ERROR);
-            $res = Http::timeout(120)
+            $res = Http::connectTimeout(3)->timeout(120)
                 ->attach('image', (string) file_get_contents($path), basename($path))
                 ->post($this->base().'/predict', ['entries' => $entries]);
 
@@ -49,6 +49,12 @@ class MachineLearning
 
     /**
      * Embed a search query string into the same CLIP space as the images.
+     * Unlike embed()/detectFaces() (queued-job-only, can afford a generous
+     * ceiling), this is called INLINE from live web requests the caller is
+     * blocking on (GalleryController::search()/memories() — the latter in a
+     * loop of up to 8 calls, one per theme seed) — a slow/degraded sidecar
+     * here ties up an Octane worker for the whole timeout, not just this
+     * request's own response time. Kept tight accordingly.
      *
      * @return list<float>|null
      */
@@ -60,7 +66,7 @@ class MachineLearning
         }
         try {
             $entries = json_encode(['clip' => ['textual' => ['modelName' => $this->model()]]], JSON_THROW_ON_ERROR);
-            $res = Http::timeout(60)->asMultipart()->post($this->base().'/predict', [
+            $res = Http::connectTimeout(2)->timeout(8)->asMultipart()->post($this->base().'/predict', [
                 ['name' => 'entries', 'contents' => $entries],
                 ['name' => 'text', 'contents' => $text],
             ]);
@@ -98,7 +104,7 @@ class MachineLearning
                     'detection' => ['modelName' => $model, 'options' => ['minScore' => $minScore]],
                 ],
             ], JSON_THROW_ON_ERROR);
-            $res = Http::timeout(180)
+            $res = Http::connectTimeout(3)->timeout(180)
                 ->attach('image', (string) file_get_contents($path), basename($path))
                 ->post($this->base().'/predict', ['entries' => $entries]);
             if (! $res->successful()) {

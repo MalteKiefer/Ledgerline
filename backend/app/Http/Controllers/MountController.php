@@ -272,7 +272,10 @@ class MountController extends Controller
 
     private function fs(StorageMount $mount): Filesystem
     {
-        return $this->factory->makeFromParts($mount->type, $mount->config ?? []);
+        // Interactive: every call site (list/download/upload/mkdir/delete) is a
+        // live web request a user is watching, not a queued backup transfer —
+        // see BackupDestinationFactory::makeFromParts()'s $interactive doc.
+        return $this->factory->makeFromParts($mount->type, $mount->config ?? [], interactive: true);
     }
 
     /**
@@ -283,7 +286,7 @@ class MountController extends Controller
      */
     private function probe(string $type, array $config, bool $readOnly): void
     {
-        $fs = $this->factory->makeFromParts($type, $config);
+        $fs = $this->factory->makeFromParts($type, $config, interactive: true);
         if ($readOnly) {
             // Touch the listing so bad credentials / host surface now.
             iterator_to_array($fs->listContents('', false));

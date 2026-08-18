@@ -29,29 +29,44 @@ class BackupDestinationFactory
 
     /**
      * Build a filesystem from a raw driver + config (used to test a destination
-     * before it is saved).
+     * before it is saved, and by MountController to browse an external S3/SFTP
+     * mount live).
      *
      * @param  array<string, mixed>  $c
+     * @param  bool  $interactive  True when the CALLER is a live web request a
+     *                             user is synchronously waiting on (Files
+     *                             "external storage" browsing, a connection
+     *                             test) rather than a queued backup run/restore
+     *                             — uses a short, UI-appropriate connect/total
+     *                             timeout instead of the generous one tuned for
+     *                             a large background backup transfer, so a
+     *                             slow/unreachable host can't tie up an Octane
+     *                             worker for minutes (this factory was
+     *                             originally built backup-only, where waiting
+     *                             is fine; MountController reuses it for a very
+     *                             different, latency-sensitive access pattern).
      */
-    public function makeFromParts(string $driver, array $c): Filesystem
+    public function makeFromParts(string $driver, array $c, bool $interactive = false): Filesystem
     {
         return new Filesystem(match ($driver) {
-            's3', 'b2' => $this->s3($c),
-            'sftp' => $this->sftp($c),
-            'webdav' => $this->webdav($c),
+            's3', 'b2' => $this->s3($c, $interactive),
+            'sftp' => $this->sftp($c, $interactive),
+            'webdav' => $this->webdav($c, $interactive),
             default => throw new RuntimeException("Unknown backup driver: {$driver}"),
         });
     }
 
     /**
      * Verify a destination is reachable and writable by writing then deleting a
-     * tiny probe object. Throws with the underlying reason on failure.
+     * tiny probe object. Throws with the underlying reason on failure. Always
+     * interactive — every caller is a synchronous "test connection" click a
+     * user is watching a spinner for, never a background job.
      *
      * @param  array<string, mixed>  $config
      */
     public function test(string $driver, array $config): void
     {
-        $fs = $this->makeFromParts($driver, $config);
+        $fs = $this->makeFromParts($driver, $config, interactive: true);
         // Create the target folder up front so testing a not-yet-existing path
         // succeeds (and leaves the folder ready for the first backup) instead of
         // failing on the probe write.
@@ -91,7 +106,7 @@ class BackupDestinationFactory
     /**
      * @param  array<string, mixed>  $c
      */
-    private function s3(array $c): AwsS3V3Adapter
+    private function s3(array $c, bool $interactive = false): AwsS3V3Adapter
     {
         $args = [
             'version' => 'latest',
@@ -100,6 +115,14 @@ class BackupDestinationFactory
                 'key' => $c['key'] ?? '',
                 'secret' => $c['secret'] ?? '',
             ],
+            // The AWS SDK sets no request timeout of its own — an unreachable/
+            // hanging endpoint would otherwise block indefinitely. Interactive
+            // (live browsing/connection test) gets a tight, UI-appropriate
+            // bound; a real backup/restore transfer of a large object still
+            // gets generous room to complete.
+            'http' => $interactive
+                ? ['connect_timeout' => 3, 'timeout' => 10]
+                : ['connect_timeout' => 5, 'timeout' => 600],
         ];
         // B2 (and other S3-compatible stores) need a custom endpoint + path-style.
         if (! empty($c['endpoint'])) {
@@ -115,7 +138,7 @@ class BackupDestinationFactory
     /**
      * @param  array<string, mixed>  $c
      */
-    private function sftp(array $c): SftpAdapter
+    private function sftp(array $c, bool $interactive = false): SftpAdapter
     {
         // Root defaults to the login directory (empty), NOT '/': on many SFTP
         // hosts (e.g. Hetzner Storage Box) the absolute server root is not
@@ -144,9 +167,12 @@ class BackupDestinationFactory
                 // A backup archive can be large and staged from remote storage first,
                 // so the transfer runs long. phpseclib's default 10s timeout drops a
                 // slow/large SFTP write mid-stream ("Connection closed prematurely").
-                // Give the session generous time + a couple of extra connect tries.
-                timeout: is_numeric($t = config('backup.sftp_timeout', 300)) ? (int) $t : 300,
-                maxTries: is_numeric($mt = config('backup.sftp_max_tries', 5)) ? (int) $mt : 5,
+                // Give the session generous time + a couple of extra connect tries —
+                // UNLESS this is an interactive (live-browsing/connection-test) call,
+                // where a user is synchronously waiting: a single short attempt keeps
+                // a slow/unreachable host from tying up an Octane worker for minutes.
+                timeout: $interactive ? 8 : (is_numeric($t = config('backup.sftp_timeout', 300)) ? (int) $t : 300),
+                maxTries: $interactive ? 1 : (is_numeric($mt = config('backup.sftp_max_tries', 5)) ? (int) $mt : 5),
                 hostFingerprint: $fingerprint !== '' ? $fingerprint : null,
             ),
             $root,
@@ -156,7 +182,7 @@ class BackupDestinationFactory
     /**
      * @param  array<string, mixed>  $c
      */
-    private function webdav(array $c): WebDAVAdapter
+    private function webdav(array $c, bool $interactive = false): WebDAVAdapter
     {
         $baseUri = is_string($c['base_uri'] ?? null) ? $c['base_uri'] : '';
         $this->assertHostAllowed((string) (parse_url($baseUri, PHP_URL_HOST) ?: ''));
@@ -166,6 +192,10 @@ class BackupDestinationFactory
             'userName' => is_string($c['username'] ?? null) ? $c['username'] : '',
             'password' => is_string($c['password'] ?? null) ? $c['password'] : '',
         ]);
+        // Sabre's client sets no curl timeout of its own (unbounded by default) —
+        // same UI-appropriate-vs-generous split as s3()/sftp() above.
+        $client->addCurlSetting(CURLOPT_CONNECTTIMEOUT, $interactive ? 3 : 10);
+        $client->addCurlSetting(CURLOPT_TIMEOUT, $interactive ? 10 : 600);
 
         return new WebDAVAdapter($client, trim(is_string($c['path'] ?? null) ? $c['path'] : '', '/'));
     }

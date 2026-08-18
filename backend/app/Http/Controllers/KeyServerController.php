@@ -24,6 +24,11 @@ use Illuminate\Support\Facades\Validator;
  */
 class KeyServerController extends Controller
 {
+    // search()/checkPresence() visit every enabled keyserver sequentially and
+    // synchronously (HkpClient::TIMEOUT's doc) — this bounds the worst case
+    // regardless of how many a single account has configured.
+    private const MAX_SERVERS_PER_REQUEST = 5;
+
     public function __construct(private readonly HkpClient $hkp, private readonly FileCipher $cipher) {}
 
     public function index(Request $request): JsonResponse
@@ -103,8 +108,12 @@ class KeyServerController extends Controller
             return $fail;
         }
 
+        // Capped: each server is visited sequentially and synchronously (see
+        // HkpClient::TIMEOUT's doc) — a hard ceiling bounds worst-case blocking
+        // time regardless of how many keyservers the account has configured.
         $servers = KeyServer::query()->ownedBy($uid)->where('enabled', true)
             ->when($request->filled('server_id'), fn ($q) => $q->whereKey($request->integer('server_id')))
+            ->orderBy('id')->limit(self::MAX_SERVERS_PER_REQUEST)
             ->get(['id', 'name', 'url']);
         if ($servers->isEmpty()) {
             return response()->json(['results' => []]);
@@ -224,7 +233,8 @@ class KeyServerController extends Controller
             return response()->json(['error' => 'not_pgp'], 422);
         }
 
-        $servers = KeyServer::query()->ownedBy((int) $key->user_id)->where('enabled', true)->get(['id', 'name', 'url']);
+        $servers = KeyServer::query()->ownedBy((int) $key->user_id)->where('enabled', true)
+            ->orderBy('id')->limit(self::MAX_SERVERS_PER_REQUEST)->get(['id', 'name', 'url']);
         $results = $servers->map(fn (KeyServer $s): array => [
             'server_id' => $s->id,
             'server_name' => $s->name,
