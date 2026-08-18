@@ -164,38 +164,76 @@ class KeyServerController extends Controller
     }
 
     /**
-     * Re-fetch a saved recipient's key from the server it was originally
-     * imported from, by its full fingerprint — updates public_key +
-     * refreshed_at (e.g. to pick up a revocation, a new subkey, or a new uid).
-     * Only meaningful for keyserver-imported recipients; a manually pasted one
-     * (key_server_id null) has no server to refresh from.
+     * Re-fetch a saved recipient's key by its full fingerprint — updates
+     * public_key + refreshed_at (e.g. to pick up a revocation, a new subkey,
+     * or a new uid). Only PGP recipients with a known fingerprint can ever be
+     * refreshed (S/MIME has no keyserver equivalent, same as everywhere else
+     * in this class).
+     *
+     * A keyserver-imported recipient already has a known origin
+     * (key_server_id) — ask exactly that server, and refuse (rather than
+     * silently swap in unrelated key material) if it answers with a
+     * differently-fingerprinted key.
+     *
+     * A manually-pasted recipient (key_server_id null — e.g. one added before
+     * any keyserver was configured, or pasted straight from an email
+     * signature) has no recorded origin: search every enabled server instead
+     * (capped, same worst-case-blocking reasoning as search()/
+     * checkPresence()) and adopt whichever one verifiably has this exact
+     * fingerprint, so it gets a known origin for future one-click refreshes.
      */
     public function refreshRecipient(Request $request, CryptoRecipient $recipient): JsonResponse
     {
-        $this->requireUser($request);
-        if ($recipient->type !== 'pgp' || $recipient->key_server_id === null || $recipient->fingerprint === null) {
+        $uid = (int) $this->requireUser($request)->id;
+        if ($recipient->type !== 'pgp' || $recipient->fingerprint === null) {
             return response()->json(['error' => 'no_origin_server'], 422);
         }
-        $server = KeyServer::query()->ownedBy((int) $recipient->user_id)->find($recipient->key_server_id);
-        if ($server === null) {
-            return response()->json(['error' => 'no_origin_server'], 422);
+        // Captured into a local: PHPStan does not carry the `!== null` guard
+        // above across a loop body's re-reads of the same Eloquent magic
+        // property (each ->fingerprint access is analysed as independently
+        // possibly-null there), but a plain local variable narrows correctly.
+        $storedFingerprint = $recipient->fingerprint;
+
+        if ($recipient->key_server_id !== null) {
+            $server = KeyServer::query()->ownedBy($uid)->find($recipient->key_server_id);
+            if ($server === null) {
+                return response()->json(['error' => 'no_origin_server'], 422);
+            }
+            $armored = $this->hkp->fetch($server->url, $storedFingerprint);
+            if ($armored === null) {
+                return response()->json(['error' => 'not_found'], 404);
+            }
+            $fingerprint = $this->cipher->pgpFingerprint($armored);
+            if ($fingerprint === null || strcasecmp($fingerprint, $storedFingerprint) !== 0) {
+                return response()->json(['error' => 'fingerprint_mismatch'], 422);
+            }
+            $recipient->forceFill(['public_key' => $armored, 'refreshed_at' => now()])->save();
+
+            return response()->json(['recipient' => $this->presentRecipient($recipient)]);
         }
 
-        $armored = $this->hkp->fetch($server->url, $recipient->fingerprint);
-        if ($armored === null) {
-            return response()->json(['error' => 'not_found'], 404);
+        $servers = KeyServer::query()->ownedBy($uid)->where('enabled', true)
+            ->orderBy('id')->limit(self::MAX_SERVERS_PER_REQUEST)->get(['id', 'name', 'url']);
+        if ($servers->isEmpty()) {
+            return response()->json(['error' => 'no_servers'], 422);
         }
-        $fingerprint = $this->cipher->pgpFingerprint($armored);
-        if ($fingerprint === null || strcasecmp($fingerprint, (string) $recipient->fingerprint) !== 0) {
-            // The server returned something, but it isn't (still) the same key
-            // we asked for by fingerprint — refuse rather than silently
-            // swapping the recipient's key material for an unrelated one.
-            return response()->json(['error' => 'fingerprint_mismatch'], 422);
+        foreach ($servers as $server) {
+            $armored = $this->hkp->fetch($server->url, $storedFingerprint);
+            if ($armored === null) {
+                continue;
+            }
+            $fingerprint = $this->cipher->pgpFingerprint($armored);
+            if ($fingerprint === null || strcasecmp($fingerprint, $storedFingerprint) !== 0) {
+                continue; // not the same key on this server — try the next one
+            }
+            $recipient->forceFill([
+                'public_key' => $armored, 'key_server_id' => $server->id, 'refreshed_at' => now(),
+            ])->save();
+
+            return response()->json(['recipient' => $this->presentRecipient($recipient)]);
         }
 
-        $recipient->forceFill(['public_key' => $armored, 'refreshed_at' => now()])->save();
-
-        return response()->json(['recipient' => $this->presentRecipient($recipient)]);
+        return response()->json(['error' => 'not_found'], 404);
     }
 
     /** Publish an own PGP key's public part to a configured server. */

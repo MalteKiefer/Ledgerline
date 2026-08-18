@@ -56,7 +56,7 @@
           <div v-if="r.fingerprint" class="truncate font-mono text-xs text-[var(--ll-muted)]">{{ r.fingerprint }}</div>
           <div v-if="r.refreshed_at" class="text-xs text-[var(--ll-muted)]">{{ t('mail.keys.recipient_refreshed_at') }}: {{ new Date(r.refreshed_at).toLocaleString() }}</div>
         </div>
-        <Btn v-if="r.key_server_id" variant="ghost" size="sm" icon="sync" :loading="refreshingId === r.id" :title="t('mail.keys.recipient_refresh')" @click="doRefreshRecipient(r)" />
+        <Btn v-if="r.type === 'pgp' && r.fingerprint" variant="ghost" size="sm" icon="sync" :loading="refreshingId === r.id" :title="t('mail.keys.recipient_refresh')" @click="doRefreshRecipient(r)" />
         <Btn variant="ghost" size="sm" icon="delete" class="text-red-600" :title="t('mail.keys.recipient_delete')" @click="removeRecipient(r)" />
       </div>
     </div>
@@ -668,8 +668,16 @@ async function doRefreshRecipient(r: Recipient) {
     if (idx !== -1) crypto.recipients[idx] = updated;
     success(t('mail.keys.recipient_refreshed'));
   } catch (e) {
-    if (e instanceof ApiError && e.status === 404) error(t('mail.keys.recipient_refresh_gone'));
-    else if (e instanceof ApiError && e.status === 422) error(t('mail.keys.recipient_refresh_mismatch'));
+    // A manually-pasted recipient (no known origin server) is searched
+    // across every enabled keyserver instead of just one — distinguish the
+    // outcomes by the server's `error` code, not just the HTTP status,
+    // since both the known-origin and search-fallback paths can now 404
+    // ("not found") or 422 ("nothing to search with"/"mismatch").
+    const code = e instanceof ApiError && e.body && typeof e.body === 'object' && 'error' in e.body
+      ? String((e.body as { error: unknown }).error) : null;
+    if (code === 'no_servers') error(t('mail.keys.recipient_refresh_no_servers'));
+    else if (code === 'fingerprint_mismatch') error(t('mail.keys.recipient_refresh_mismatch'));
+    else if (e instanceof ApiError && e.status === 404) error(t('mail.keys.recipient_refresh_gone'));
     else error(t('common.error'));
   } finally { refreshingId.value = null; }
 }

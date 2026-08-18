@@ -232,6 +232,7 @@ return [
         'recipient_refreshed' => 'Recipient refreshed.',
         'recipient_refresh_gone' => 'The key is no longer available on that server.',
         'recipient_refresh_mismatch' => 'The fetched key does not match the saved fingerprint — not updated.',
+        'recipient_refresh_no_servers' => 'No enabled keyservers configured — add one first.',
         'servers_title' => 'Keyservers',
         'servers_subtitle' => 'HKP servers used to search, refresh and publish PGP keys.',
         'servers_none' => 'No keyservers configured yet.',
