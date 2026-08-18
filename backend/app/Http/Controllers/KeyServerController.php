@@ -188,18 +188,23 @@ class KeyServerController extends Controller
         if ($recipient->type !== 'pgp' || $recipient->fingerprint === null) {
             return response()->json(['error' => 'no_origin_server'], 422);
         }
+        // Captured into a local: PHPStan does not carry the `!== null` guard
+        // above across a loop body's re-reads of the same Eloquent magic
+        // property (each ->fingerprint access is analysed as independently
+        // possibly-null there), but a plain local variable narrows correctly.
+        $storedFingerprint = $recipient->fingerprint;
 
         if ($recipient->key_server_id !== null) {
             $server = KeyServer::query()->ownedBy($uid)->find($recipient->key_server_id);
             if ($server === null) {
                 return response()->json(['error' => 'no_origin_server'], 422);
             }
-            $armored = $this->hkp->fetch($server->url, $recipient->fingerprint);
+            $armored = $this->hkp->fetch($server->url, $storedFingerprint);
             if ($armored === null) {
                 return response()->json(['error' => 'not_found'], 404);
             }
             $fingerprint = $this->cipher->pgpFingerprint($armored);
-            if ($fingerprint === null || strcasecmp($fingerprint, (string) $recipient->fingerprint) !== 0) {
+            if ($fingerprint === null || strcasecmp($fingerprint, $storedFingerprint) !== 0) {
                 return response()->json(['error' => 'fingerprint_mismatch'], 422);
             }
             $recipient->forceFill(['public_key' => $armored, 'refreshed_at' => now()])->save();
@@ -213,12 +218,12 @@ class KeyServerController extends Controller
             return response()->json(['error' => 'no_servers'], 422);
         }
         foreach ($servers as $server) {
-            $armored = $this->hkp->fetch($server->url, $recipient->fingerprint);
+            $armored = $this->hkp->fetch($server->url, $storedFingerprint);
             if ($armored === null) {
                 continue;
             }
             $fingerprint = $this->cipher->pgpFingerprint($armored);
-            if ($fingerprint === null || strcasecmp($fingerprint, (string) $recipient->fingerprint) !== 0) {
+            if ($fingerprint === null || strcasecmp($fingerprint, $storedFingerprint) !== 0) {
                 continue; // not the same key on this server — try the next one
             }
             $recipient->forceFill([
