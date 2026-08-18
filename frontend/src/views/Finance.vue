@@ -66,10 +66,36 @@
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card :title="t('invoices.stat_monthly')">
           <div v-if="months.length" class="-ml-1"><Chart :data="monthlyChartData" :options="monthlyChartOptions" bars /></div>
+          <div v-if="months.length" class="mt-3 overflow-x-auto border-t border-[var(--ll-border)] pt-3">
+            <table class="w-full min-w-72 text-sm">
+              <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+                <tr><th class="pb-1.5 font-medium">{{ t('common.date') }}</th><th class="pb-1.5 text-right font-medium">{{ t('invoices.gross') }}</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="month in months" :key="month.month" class="border-t border-[var(--ll-border)]">
+                  <td class="py-1.5">{{ monthLabel(month.month) }}</td>
+                  <td class="py-1.5 text-right font-mono tabular-nums">{{ money(Number(month.net ?? 0)) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div v-else class="py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</div>
         </Card>
         <Card :title="t('invoices.chart_by_category')">
           <div v-if="categoryBreakdown.length" class="-ml-1"><Chart :data="categoryChartData" :options="categoryChartOptions" bars /></div>
+          <div v-if="categoryBreakdown.length" class="mt-3 overflow-x-auto border-t border-[var(--ll-border)] pt-3">
+            <table class="w-full min-w-72 text-sm">
+              <thead class="text-left text-xs uppercase tracking-wide text-[var(--ll-muted)]">
+                <tr><th class="pb-1.5 font-medium">{{ t('invoices.receipt_category') }}</th><th class="pb-1.5 text-right font-medium">{{ t('invoices.gross') }}</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="[category, total] in categoryBreakdown" :key="category" class="border-t border-[var(--ll-border)]">
+                  <td class="py-1.5">{{ category }}</td>
+                  <td class="py-1.5 text-right font-mono tabular-nums">{{ money(total) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div v-else class="py-8 text-center text-sm text-[var(--ll-muted)]">{{ t('common.none') }}</div>
         </Card>
       </div>
@@ -158,6 +184,7 @@
         <TextField v-model="documentQuery" :placeholder="t('common.search')" icon="search" class="w-full sm:w-72" />
       </template>
       <template #actions>
+        <Btn variant="soft" size="sm" icon="upload_file" :loading="inboxBusy" @click="inboxInput?.click()">{{ t('invoices.inbox_upload') }}</Btn>
         <Btn variant="ghost" size="sm" icon="join_inner" :loading="invMatchBusy || matchBusy" @click="runAllDocumentMatching">{{ t('invoices.auto_match') }}</Btn>
         <Btn variant="solid" size="sm" icon="add" @click="newInvoice">{{ t('invoices.new') }}</Btn>
       </template>
@@ -1466,17 +1493,21 @@ const { success, error } = useToast();
 const route = useRoute();
 const router = useRouter();
 const VALID = ['dashboard', 'documents', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners', 'stats'];
+const requestedSection = computed(() => String(route.params.section || 'dashboard'));
 const tab = computed(() => {
-  const s = String(route.params.section || 'dashboard');
+  const s = requestedSection.value;
   // 'stats' merged into 'dashboard' (one consolidated overview) — kept as an alias
   // so a bookmarked/shared `/finance/stats` link still lands somewhere sensible.
   if (s === 'stats') return 'dashboard';
+  // The former separate document lists stay addressable, but deliberately land in
+  // the shared review queue with the applicable direction preselected.
+  if (s === 'invoices' || s === 'receipts') return 'documents';
   return VALID.includes(s) ? s : 'dashboard';
 });
 function go(v: unknown) { router.push(`/finance/${String(v)}`); }
 
 // In-page left submenu sections (mirrors the Profile/Settings hub layout).
-const sections = ['dashboard', 'documents', 'invoices', 'payments', 'bank', 'receipts', 'projects', 'partners'] as const;
+const sections = ['dashboard', 'documents', 'payments', 'bank', 'projects', 'partners'] as const;
 const secIcon: Record<string, string> = {
   dashboard: 'space_dashboard', documents: 'inbox', invoices: 'receipt_long', payments: 'account_balance_wallet',
   bank: 'account_balance', receipts: 'receipt', projects: 'account_tree', partners: 'groups',
@@ -1697,7 +1728,7 @@ const monthlyChartData = computed<AlignedData>(() => [
   months.value.map((m) => Number(m.net ?? 0)),
 ]);
 const monthlyChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
-  padding: [12, 8, 0, 0],
+  padding: [12, 12, 0, 0],
   legend: { show: false },
   cursor: { drag: { x: false, y: false } },
   series: [
@@ -1705,8 +1736,8 @@ const monthlyChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
     { label: t('invoices.stat_monthly'), stroke: CHART_INK, fill: CHART_INK + '33' },
   ],
   axes: [
-    { stroke: '#8888', grid: { show: false }, values: (_u, vals) => vals.map((v) => monthLabel(v)) },
-    { stroke: '#8888', grid: { stroke: 'rgba(128,128,128,.15)' }, size: 56, values: (_u, vals) => vals.map((v) => money(v)) },
+    { stroke: '#625d69', font: '600 12px ui-monospace, SFMono-Regular, Menlo, monospace', grid: { show: false }, values: (_u, vals) => vals.map((v) => monthLabel(v)) },
+    { stroke: '#625d69', font: '600 12px ui-monospace, SFMono-Regular, Menlo, monospace', grid: { stroke: 'rgba(128,128,128,.24)' }, size: 96, values: (_u, vals) => vals.map((v) => money(v)) },
   ],
   scales: { x: { time: false } },
 }));
@@ -1727,7 +1758,7 @@ const categoryChartData = computed<AlignedData>(() => [
   categoryBreakdown.value.map(([, sum]) => sum),
 ]);
 const categoryChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => ({
-  padding: [12, 8, 0, 0],
+  padding: [12, 12, 0, 0],
   legend: { show: false },
   cursor: { drag: { x: false, y: false } },
   series: [
@@ -1735,8 +1766,8 @@ const categoryChartOptions = computed<Omit<Options, 'width' | 'height'>>(() => (
     { label: t('invoices.receipt_category'), stroke: CHART_INK, fill: CHART_INK + '33' },
   ],
   axes: [
-    { stroke: '#8888', grid: { show: false }, values: (_u, vals) => vals.map((v) => categoryBreakdown.value[v]?.[0] ?? '') },
-    { stroke: '#8888', grid: { stroke: 'rgba(128,128,128,.15)' }, size: 56, values: (_u, vals) => vals.map((v) => money(v)) },
+    { stroke: '#625d69', font: '600 12px ui-monospace, SFMono-Regular, Menlo, monospace', grid: { show: false }, values: (_u, vals) => vals.map((v) => categoryBreakdown.value[v]?.[0] ?? '') },
+    { stroke: '#625d69', font: '600 12px ui-monospace, SFMono-Regular, Menlo, monospace', grid: { stroke: 'rgba(128,128,128,.24)' }, size: 96, values: (_u, vals) => vals.map((v) => money(v)) },
   ],
   scales: { x: { time: false } },
 }));
@@ -1762,6 +1793,11 @@ const filteredInvoices = computed(() => {
 
 type FinanceDocument = { key: string; kind: 'invoice' | 'receipt'; direction: 'income' | 'expense'; date: string | null; partner: string; reference: string; amount: number; matched: boolean; item: Invoice | Receipt };
 const documentQuery = ref('');
+const documentDirection = computed<FinanceDocument['direction'] | null>(() => {
+  if (requestedSection.value === 'invoices') return 'income';
+  if (requestedSection.value === 'receipts') return 'expense';
+  return null;
+});
 const documentRows = computed<FinanceDocument[]>(() => {
   const rows: FinanceDocument[] = [
     ...f.invoices.map((item): FinanceDocument => ({
@@ -1776,7 +1812,8 @@ const documentRows = computed<FinanceDocument[]>(() => {
     })),
   ];
   const needle = documentQuery.value.trim().toLowerCase();
-  return rows.filter((row) => !needle || `${row.partner} ${row.reference}`.toLowerCase().includes(needle))
+  return rows.filter((row) => (!documentDirection.value || row.direction === documentDirection.value)
+      && (!needle || `${row.partner} ${row.reference}`.toLowerCase().includes(needle)))
     .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
 });
 function openDocument(doc: FinanceDocument) {
