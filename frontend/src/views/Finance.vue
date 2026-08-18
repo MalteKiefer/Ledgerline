@@ -320,9 +320,9 @@
               <td class="px-4 py-2.5"><div class="max-w-xs truncate text-[var(--ll-muted)]">{{ tx.purpose || '—' }}</div></td>
               <td class="px-4 py-2.5 text-right font-medium" :class="tx.amount < 0 ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400'">{{ money(tx.amount) }}</td>
               <td class="px-4 py-2.5 text-right whitespace-nowrap">
-                <button class="relative mr-1 inline-flex items-center rounded p-1.5 text-[var(--ll-muted)] hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('invoices.tx_receipts')" @click="openTxReceipts(tx)">
+                <button class="relative mr-1 inline-flex items-center rounded p-1.5 hover:bg-black/[0.05] dark:hover:bg-white/10" :class="isTxDocumented(tx) ? 'text-primary-600 dark:text-primary-300' : 'text-[var(--ll-muted)]'" :title="t('invoices.tx_documents')" @click="openTxReceipts(tx)">
                   <Icon name="attach_file" :size="18" />
-                  <span v-if="(tx.receipts?.length ?? 0) + standaloneReceiptsForTx(tx.id).length" class="ml-0.5 text-xs tabular-nums">{{ (tx.receipts?.length ?? 0) + standaloneReceiptsForTx(tx.id).length }}</span>
+                  <span v-if="txDocumentCount(tx)" class="ml-0.5 text-xs tabular-nums">{{ txDocumentCount(tx) }}</span>
                 </button>
                 <Btn variant="ghost" size="sm" icon="edit" :title="t('common.edit')" @click="editTx(tx)" />
                 <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delTx(tx)" />
@@ -698,16 +698,21 @@
       </template>
     </Modal>
 
-    <!-- Bank transaction receipts (reconcile) -->
-    <Modal v-model="txRecDialog" :title="t('invoices.tx_receipts')" width="480px">
+    <!-- Bank transaction documents (receipt and/or incoming invoice) -->
+    <Modal v-model="txRecDialog" :title="t('invoices.tx_documents')" width="480px">
       <div v-if="txRecTx" class="space-y-2">
+        <div v-if="linkedInvoiceForTx(txRecTx)" class="flex items-center gap-2 rounded-lg border border-primary-500/30 bg-primary-500/5 px-3 py-2">
+          <Icon name="receipt_long" :size="18" class="shrink-0 text-primary-600 dark:text-primary-300" />
+          <span class="flex-1 truncate text-sm"><span class="font-medium">{{ linkedInvoiceForTx(txRecTx)?.number }}</span><span class="ml-1 text-[var(--ll-muted)]">{{ money(Number(linkedInvoiceForTx(txRecTx)?.gross ?? 0)) }}</span></span>
+          <Btn variant="ghost" size="sm" icon="open_in_new" :title="t('common.open')" @click="openLinkedInvoice(txRecTx)" />
+        </div>
         <div v-for="r in (txRecTx.receipts ?? [])" :key="r.id" class="flex items-center gap-2 rounded-lg border border-[var(--ll-border)] px-3 py-2">
           <Icon name="receipt" :size="18" class="shrink-0 text-[var(--ll-muted)]" />
           <span class="flex-1 truncate text-sm">{{ r.name }}</span>
           <Btn variant="ghost" size="sm" icon="open_in_new" :title="t('common.open')" @click="openTxReceipt(r)" />
           <Btn variant="ghost" size="sm" icon="delete" class="text-red-600 dark:text-red-400" :title="t('common.delete')" @click="delTxReceipt(r)" />
         </div>
-        <div v-if="!(txRecTx.receipts?.length ?? 0) && !standaloneReceiptsForTx(txRecTx.id).length" class="py-4 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</div>
+        <div v-if="!linkedInvoiceForTx(txRecTx) && !(txRecTx.receipts?.length ?? 0) && !standaloneReceiptsForTx(txRecTx.id).length" class="py-4 text-center text-[var(--ll-muted)]">{{ t('common.none') }}</div>
         <div v-if="standaloneReceiptsForTx(txRecTx.id).length" class="space-y-2 border-t border-[var(--ll-border)] pt-3">
           <span class="block text-xs font-medium text-[var(--ll-muted)]">{{ t('invoices.receipts_title') }}</span>
           <div v-for="r in standaloneReceiptsForTx(txRecTx.id)" :key="'std-' + r.id" class="flex items-center gap-2 rounded-lg border border-[var(--ll-border)] px-3 py-2">
@@ -2025,7 +2030,7 @@ function txSortValue(tx: BankTransaction, key: string): unknown {
 // booking text, end-to-end reference, and the linked invoice number all
 // count as a match, since that's exactly what someone hunting for "did the
 // INWX invoice actually get paid" would search by), plus a direction
-// (income/expense) and a documentation-status (has a receipt attached) filter.
+// (income/expense) and a documentation-status (has a receipt or invoice linked) filter.
 // Substring match against a transaction's signed/absolute amount, accepting
 // either "." or "," as the decimal separator (so a German "9,52" search hits
 // an amount stored as -9.52 just like "9.52" or "-9.52" would).
@@ -2071,7 +2076,10 @@ const bankTransactions = computed(() => {
 function standaloneReceiptsForTx(txId: number): Receipt[] {
   return f.standaloneReceipts.filter((r) => r.bank_transaction_id === txId || (r.linked_transaction_ids ?? []).includes(txId));
 }
-function isTxDocumented(tx: BankTransaction): boolean { return (tx.receipts?.length ?? 0) > 0 || standaloneReceiptsForTx(tx.id).length > 0; }
+function linkedInvoiceForTx(tx: BankTransaction): Invoice | undefined { return tx.invoice_id == null ? undefined : f.invoices.find((invoice) => invoice.id === tx.invoice_id); }
+function txDocumentCount(tx: BankTransaction): number { return (linkedInvoiceForTx(tx) ? 1 : 0) + (tx.receipts?.length ?? 0) + standaloneReceiptsForTx(tx.id).length; }
+function isTxDocumented(tx: BankTransaction): boolean { return txDocumentCount(tx) > 0; }
+function openLinkedInvoice(tx: BankTransaction) { const invoice = linkedInvoiceForTx(tx); if (invoice) openInvoiceDocument(invoice); }
 // Candidate pool for auto-pick/suggestions: expense transactions with no receipt yet.
 const unlinkedTransactions = computed<BankTransaction[]>(() => f.transactions.filter((t) => t.amount < 0 && !isTxDocumented(t)));
 function txSummary(id: number): string {
