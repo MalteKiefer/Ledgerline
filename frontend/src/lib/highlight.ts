@@ -25,9 +25,13 @@ export function languageForFilename(name: string): string | null {
   if (base === 'dockerfile') return 'dockerfile';
   if (base === 'makefile') return 'makefile';
   const dot = base.lastIndexOf('.');
-  const lang = dot >= 0 ? EXT_LANG[base.slice(dot + 1)] : undefined;
+  const extension = dot >= 0 ? base.slice(dot + 1) : '';
+  // Accept every canonical language name and alias from the full highlight.js
+  // build, in addition to conventional filename mappings. Unknown suffixes
+  // fall back to auto-detection across all registered languages.
+  const language = EXT_LANG[extension] ?? extension;
 
-  return lang && hljs.getLanguage(lang) ? lang : null;
+  return language && hljs.getLanguage(language) ? language : null;
 }
 
 /**
