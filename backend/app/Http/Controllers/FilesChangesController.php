@@ -25,13 +25,16 @@ use Symfony\Component\HttpFoundation\Response;
  * reconnect-with-backoff loop by hand).
  *
  * MAX_SECONDS is deliberately short (not the ~5-minute proxy/LB ceiling it
- * could safely be) and concurrent streams are capped per user via
- * App\Support\SseSlot — see that class's doc comment for why: this app runs
- * under Octane with a small, fixed worker pool (4 on the production host),
- * and this stream blocks one worker for its entire lifetime. Both together
+ * could safely be) and concurrent streams are capped BOTH per user and
+ * across all users combined via App\Support\SseSlot — see that class's doc
+ * comment for why the global cap exists on top of the per-user one (this
+ * app runs under Octane with a small, fixed worker pool, and this stream
+ * blocks one worker for its entire lifetime; per-user alone does not bound
+ * total exposure on a multi-user, multi-device system). All three together
  * bound how long, and how many at once, a worker can be tied up here —
- * without them, a handful of concurrent connections could exhaust every
- * worker and make the whole app (every other route) unresponsive.
+ * without them, a handful of concurrent connections (whether from one
+ * runaway client or several different users' sync clients) could exhaust
+ * every worker and make the whole app (every other route) unresponsive.
  */
 class FilesChangesController extends Controller
 {

@@ -102,4 +102,21 @@ EXPOSE 8080
 ENTRYPOINT ["ll-entrypoint"]
 # Web app: Octane on FrankenPHP. --max-requests recycles workers to bound any
 # leak; worker/scheduler services override this command (queue:work/schedule:work).
-CMD ["php", "artisan", "octane:frankenphp", "--host=0.0.0.0", "--port=8080", "--admin-port=2019", "--workers=auto", "--max-requests=500"]
+#
+# --workers is a fixed 16, not "auto" (which resolves to the host's CPU
+# count — 4 on the production box, per APP_CPU_LIMIT below). This app is
+# I/O-bound (DB/disk/external calls, plus the deliberately worker-blocking
+# App\Http\Controllers\FilesChangesController SSE stream) far more than it is
+# CPU-bound, and Docker's `cpus:` limit already throttles TOTAL CPU time
+# across every worker regardless of process count — so tying worker COUNT to
+# core count buys nothing there, it only limits how many requests can be
+# concurrently in flight (mostly waiting, not computing) before they queue.
+# A single background ledgerline-cli sync client chronically holding 1-2 of
+# only 4 such workers via its SSE reconnect loop (see SseSlot's doc comment)
+# was enough to make a handful of concurrent browser requests exhaust the
+# rest and hang the whole app. 16 comfortably fits the 512M-per-worker
+# PHP_MEMORY_LIMIT default under the 8g APP_MEMORY_LIMIT default with real
+# headroom to spare (in-flight workers are rarely all near their memory
+# ceiling at once in practice), and leaves most of the pool free even at
+# SseSlot::CAP_GLOBAL's full reservation.
+CMD ["php", "artisan", "octane:frankenphp", "--host=0.0.0.0", "--port=8080", "--admin-port=2019", "--workers=16", "--max-requests=500"]

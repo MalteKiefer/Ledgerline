@@ -111,9 +111,9 @@ class FilesChangesStreamTest extends TestCase
         $this->assertStringContainsString('no-cache', (string) $response->headers->get('Cache-Control'));
     }
 
-    // -- App\Support\SseSlot: the per-user concurrency cap that bounds how
-    // many Octane workers (a small, fixed pool — see SseSlot's doc comment)
-    // this stream can tie up at once. --
+    // -- App\Support\SseSlot: the per-user AND cross-user-global concurrency
+    // caps that bound how many Octane workers (a small, fixed pool — see
+    // SseSlot's doc comment) this stream can tie up at once. --
 
     public function test_sse_slot_acquire_is_capped_and_release_frees_it_again(): void
     {
@@ -128,15 +128,17 @@ class FilesChangesStreamTest extends TestCase
             $this->assertNotNull($slot, "slot #$i should have been free");
             $held[] = $slot;
         }
-        $this->assertSame(range(0, SseSlot::CAP - 1), $held, 'slots are claimed in order 0..CAP-1');
+        $this->assertSame(range(0, SseSlot::CAP - 1), array_column($held, 'user'), 'per-user slots are claimed in order 0..CAP-1');
 
-        // Every slot is now held — one more claim must be refused, not just
-        // "eventually" reused, since that's exactly what would let a
-        // connection past the cap.
+        // Every per-user slot is now held — one more claim must be refused,
+        // not just "eventually" reused, since that's exactly what would let
+        // a connection past the cap.
         $this->assertNull(SseSlot::acquire($userId, 60));
 
         SseSlot::release($userId, $held[0]);
-        $this->assertSame(0, SseSlot::acquire($userId, 60), 'the freed slot is available again');
+        $reacquired = SseSlot::acquire($userId, 60);
+        $this->assertNotNull($reacquired);
+        $this->assertSame(0, $reacquired['user'], 'the freed per-user slot is available again');
     }
 
     public function test_sse_slot_cap_is_per_user(): void
@@ -148,8 +150,40 @@ class FilesChangesStreamTest extends TestCase
             $this->assertNotNull(SseSlot::acquire($a, 60));
         }
         $this->assertNull(SseSlot::acquire($a, 60), 'user a is now at the cap');
-        // A different user's cap must be entirely unaffected by user a's.
+        // A different user's cap must be entirely unaffected by user a's
+        // (CAP < CAP_GLOBAL, so the global pool still has room here too).
         $this->assertNotNull(SseSlot::acquire($b, 60));
+    }
+
+    public function test_sse_slot_global_cap_bounds_total_exposure_across_different_users(): void
+    {
+        // CAP_GLOBAL different users, each claiming just ONE slot — nowhere
+        // near their own per-user CAP individually — must still exhaust the
+        // global pool: this is the exact production scenario (several
+        // different accounts' sync clients, not one runaway client) the
+        // per-user cap alone cannot bound.
+        for ($i = 0; $i < SseSlot::CAP_GLOBAL; $i++) {
+            $this->assertNotNull(SseSlot::acquire(User::factory()->create()->id, 60), "global slot #$i should have been free");
+        }
+        $oneMore = User::factory()->create()->id;
+        $this->assertNull(SseSlot::acquire($oneMore, 60), 'a brand new user must still be refused once every worker the app lends to SSE is taken');
+    }
+
+    public function test_sse_slot_gives_back_the_global_slot_when_the_users_own_cap_is_already_full(): void
+    {
+        $user = User::factory()->create()->id;
+        for ($i = 0; $i < SseSlot::CAP; $i++) {
+            $this->assertNotNull(SseSlot::acquire($user, 60));
+        }
+        // This user is at their own cap — the attempt must fail WITHOUT
+        // permanently consuming a global slot, otherwise an already-
+        // saturated user hammering reconnect would slowly starve the global
+        // pool for everyone else even though they hold no more slots than
+        // before.
+        $this->assertNull(SseSlot::acquire($user, 60));
+
+        $other = User::factory()->create()->id;
+        $this->assertNotNull(SseSlot::acquire($other, 60), 'the global slot must have been handed back, not leaked, by the failed attempt above');
     }
 
     public function test_stream_returns_503_once_the_per_user_concurrency_cap_is_reached(): void
@@ -159,6 +193,24 @@ class FilesChangesStreamTest extends TestCase
             $this->assertNotNull(SseSlot::acquire($user->id, 60));
         }
 
+        $request = Request::create('/api/v1/files/changes-stream', 'GET');
+        $request->setUserResolver(fn () => $user);
+        $response = (new FilesChangesController(maxSeconds: 0, pollSeconds: 0))->stream($request);
+
+        $this->assertSame(503, $response->getStatusCode());
+        $this->assertSame(['error' => 'too_many_streams'], json_decode((string) $response->getContent(), true));
+    }
+
+    public function test_stream_returns_503_once_the_global_concurrency_cap_is_reached(): void
+    {
+        // CAP_GLOBAL different users each hold one slot — none anywhere near
+        // their own per-user cap — then a brand new user's real controller
+        // call must still be refused.
+        for ($i = 0; $i < SseSlot::CAP_GLOBAL; $i++) {
+            $this->assertNotNull(SseSlot::acquire(User::factory()->create()->id, 60));
+        }
+
+        $user = User::factory()->create();
         $request = Request::create('/api/v1/files/changes-stream', 'GET');
         $request->setUserResolver(fn () => $user);
         $response = (new FilesChangesController(maxSeconds: 0, pollSeconds: 0))->stream($request);
