@@ -44,8 +44,8 @@ class SyncMailAccount implements ShouldQueue
 {
     use Queueable;
 
-    /** mbsync itself is bounded to 300s; leave room for the fan-out on top. */
-    public int $timeout = 600;
+    /** mbsync is bounded to 30 min; leave room for bounded ingest fan-out. */
+    public int $timeout = 2100;
 
     public function __construct(public int $accountId) {}
 
