@@ -144,7 +144,7 @@ final class HistoricInvoicePdfParser
         if ($description === '') {
             return null;
         }
-        $pattern = '/^([0-9.,]+)\s+€?\s*([0-9.,]+)\s*€?\s+€?\s*([0-9.,]+)\s*€?$/u';
+        $pattern = '/^([0-9.,]+)\s+€?\s*([0-9.,]+)\s*€?\s*€?\s*([0-9.,]+)\s*€?$/u';
         if (preg_match($pattern, $line, $matches) !== 1) {
             return null;
         }
