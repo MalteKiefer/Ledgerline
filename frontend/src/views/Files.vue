@@ -938,7 +938,16 @@
         <iframe v-else-if="previewKind(preview) === 'pdf'" :src="s.rawUrl(preview)" class="h-full w-full border-0"></iframe>
         <video v-else-if="previewKind(preview) === 'video'" :src="s.rawUrl(preview)" controls class="max-h-full max-w-full"></video>
         <audio v-else-if="previewKind(preview) === 'audio'" :src="s.rawUrl(preview)" controls></audio>
-        <iframe v-else-if="previewKind(preview) === 'text'" :src="s.rawUrl(preview)" class="h-full w-full border-0 bg-white"></iframe>
+        <div v-else-if="previewKind(preview) === 'text'" class="relative h-full w-full overflow-auto rounded-lg bg-white dark:bg-[#1a1a1a]">
+          <div class="sticky top-0 z-10 flex justify-end border-b border-[var(--ll-border)] bg-white/90 px-2 py-1.5 backdrop-blur dark:bg-[#1a1a1a]/90">
+            <Btn variant="ghost" size="sm" icon="content_copy" :disabled="previewText === null" @click="copyPreviewText">{{ t('common.copy') }}</Btn>
+          </div>
+          <div v-if="previewTextLoading" class="p-10 text-center text-[var(--ll-muted)]">
+            <Icon name="progress_activity" :size="28" class="animate-spin" />
+          </div>
+          <div v-else-if="previewTextError" class="p-10 text-center text-[var(--ll-muted)]">{{ t('common.error') }}</div>
+          <pre v-else class="hljs m-0 overflow-auto p-4 font-mono text-xs leading-5"><code v-html="previewHighlighted"></code></pre>
+        </div>
         <div v-else class="p-10 text-center text-[var(--ll-muted)]">
           <Icon :name="categoryMsym(preview.name, preview.mime)" :size="56" class="mb-3 block" />
           <div class="text-sm">{{ preview.name }}</div>
@@ -1047,13 +1056,19 @@ import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
 import StlViewer from '@spa/components/StlViewer.vue';
 import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity, type FileInfo } from '@spa/stores/files';
 import { useCryptoStore } from '@spa/stores/crypto';
-import { ApiError } from '@spa/api/client';
+import { ApiError, api } from '@spa/api/client';
+import { highlightCode } from '@spa/lib/highlight';
 import { useMountsStore, type Mount, type MountEntry } from '@spa/stores/mounts';
 import { categoryMsym, categoryTint, formatBytes, isImage, FOLDER_TINT } from '@spa/lib/file-categories';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 
 interface Row { _k: string; _folder: boolean; _icon: string; _tint: string; _img: boolean; _labels: FileLabel[]; id: number; name: string; raw: FileEntry | FileFolder }
+
+// Plain text formats plus common source/code files — anything here gets the
+// inline highlighted + copyable text preview rather than falling to the
+// generic "no preview, download it" pane.
+const TEXT_EXT_RE = /\.(txt|md|markdown|csv|tsv|log|json|xml|yml|yaml|toml|ini|conf|env|gitignore|editorconfig|js|mjs|cjs|jsx|ts|tsx|vue|py|rb|php|go|rs|java|kt|swift|cs|c|h|cpp|cc|hpp|hh|css|scss|less|html|htm|svg|sh|bash|zsh|sql|diff|patch|dockerfile|makefile)$/i;
 
 const s = useFilesStore();
 const { success, error } = useToast();
@@ -1073,6 +1088,47 @@ const trashFolders = ref<FileFolder[]>([]);
 const preview = ref<FileEntry | null>(null);
 const previewOpen = ref(false);
 const tagInput = ref('');
+
+// Inline text/code preview: fetched raw so it can be highlighted + copied
+// (an <iframe src> can neither be highlighted nor have its content read for
+// a copy button — see `open()`/`watch(preview, ...)` below).
+const previewText = ref<string | null>(null);
+const previewTextLoading = ref(false);
+const previewTextError = ref(false);
+const previewHighlighted = computed(() => (
+  preview.value && previewText.value !== null ? highlightCode(previewText.value, preview.value.name) : ''
+));
+// Guards against a slower fetch for a previously-opened file resolving
+// AFTER a faster one for a file opened right after it, and overwriting the
+// newer file's already-rendered content with the stale one's.
+let previewTextRequest = 0;
+async function loadPreviewText(f: FileEntry): Promise<void> {
+  const requestId = ++previewTextRequest;
+  previewText.value = null;
+  previewTextError.value = false;
+  previewTextLoading.value = true;
+  try {
+    const text = await api.text(`/api/v1/files/entries/${f.id}/raw`);
+    if (requestId === previewTextRequest) previewText.value = text;
+  } catch {
+    if (requestId === previewTextRequest) previewTextError.value = true;
+  } finally {
+    if (requestId === previewTextRequest) previewTextLoading.value = false;
+  }
+}
+async function copyPreviewText(): Promise<void> {
+  if (previewText.value === null) return;
+  try {
+    await navigator.clipboard.writeText(previewText.value);
+    success(t('common.copied'));
+  } catch {
+    error(t('common.error'));
+  }
+}
+watch(preview, (f) => {
+  if (f && previewKind(f) === 'text') loadPreviewText(f);
+  else { previewText.value = null; previewTextError.value = false; }
+});
 
 // Presentational-only constants for the re-skinned nav + dropdown-menu items.
 const navItems = [
@@ -1432,7 +1488,7 @@ function previewKind(f: FileEntry): 'image' | 'pdf' | 'video' | 'audio' | 'text'
   if (m === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) return 'pdf';
   if (m.startsWith('video/')) return 'video';
   if (m.startsWith('audio/')) return 'audio';
-  if (m.startsWith('text/') || /\.(txt|md|csv|log|json|xml|yml|yaml)$/i.test(f.name)) return 'text';
+  if (m.startsWith('text/') || TEXT_EXT_RE.test(f.name) || /^(dockerfile|makefile)$/i.test(f.name)) return 'text';
   return 'other';
 }
 function pickUpload() { uploadInput.value?.click(); }
