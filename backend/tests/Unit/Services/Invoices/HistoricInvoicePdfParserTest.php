@@ -89,4 +89,47 @@ TEXT;
         $this->assertSame(15.0, $rows[0]['unitPrice']);
         $this->assertSame(47.88, $rows[1]['amount']);
     }
+
+    #[Test]
+    public function it_extracts_wrapped_descriptions_above_quantity_price_amount_rows(): void
+    {
+        $text = <<<'TEXT'
+BESCHREIBUNG                                                         MENGE      EINZELPREIS      BETRAG
+Cyberangriff auf Apps Server unterbinden; Bereinigung des Servers
+                                                                     2,5        45,00 €         112,50 €
+
+nach ausführlicher Analyse
+
+Härtung und Einrichtung Crowdsec des Cloud Servers
+                                                                     1          45,00 €          45,00 €
+Zwischensumme:                                                                  157,50 €
+TEXT;
+
+        $rows = (new HistoricInvoicePdfParser)->lines($text, 19);
+
+        $this->assertCount(2, $rows);
+        $this->assertSame(2.5, $rows[0]['qty']);
+        $this->assertSame(45.0, $rows[0]['unitPrice']);
+        $this->assertSame(112.5, $rows[0]['amount']);
+        $this->assertStringContainsString('nach ausführlicher Analyse', $rows[0]['desc']);
+        $this->assertSame(45.0, $rows[1]['amount']);
+    }
+
+    #[Test]
+    public function it_extracts_rows_with_a_trailing_quantity_unit_price_and_amount(): void
+    {
+        $text = <<<'TEXT'
+Beschreibung                                                   Menge  Einheit  Einzelpreis  Betrag
+31.07.2026; Server Speicherplatzbereinigung; Dienste Neustarten 0,3  Std       55,00 €     16,50 €
+30.07.2026; Marktprüfung für ThinClient                         0,6  Std       55,00 €     33,00 €
+Zu zahlen                                                                  49,50 €
+TEXT;
+
+        $rows = (new HistoricInvoicePdfParser)->lines($text, 19);
+
+        $this->assertCount(2, $rows);
+        $this->assertSame('Std', $rows[0]['unit']);
+        $this->assertSame(0.3, $rows[0]['qty']);
+        $this->assertSame(33.0, $rows[1]['amount']);
+    }
 }
