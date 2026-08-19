@@ -1,8 +1,8 @@
 <template>
-  <div class="flex min-h-[calc(100vh-120px)] flex-col gap-4 md:flex-row" :class="readerOpen ? 'md:gap-0' : ''">
+  <div class="flex min-h-[calc(100vh-120px)] flex-col gap-4 md:h-[calc(100vh-9.5rem)] md:min-h-0 md:flex-row md:gap-0 md:overflow-hidden md:rounded-xl md:border md:border-[var(--ll-border)] md:bg-[var(--ll-surface)]">
     <!-- Left rail: accounts, folders, trash, labels, saved searches -->
-    <Card body-class="p-0" class="w-full shrink-0 self-start md:w-72">
-      <div class="flex items-center gap-2 p-3">
+    <Card body-class="p-0" class="w-full shrink-0 self-start md:h-full md:w-64 md:overflow-y-auto md:!rounded-none md:!border-y-0 md:!border-l-0 md:border-r md:border-r-[var(--ll-border)] md:!shadow-none">
+      <div class="flex items-center gap-2 border-b border-[var(--ll-border)] p-3">
         <Btn variant="solid" icon="add" block @click="openAccountEditor(null)">{{ t('mail.accounts.add') }}</Btn>
       </div>
       <nav class="space-y-0.5 px-2 pb-3">
@@ -104,11 +104,11 @@
     </Card>
 
     <!-- Center: toolbar + envelope table -->
-    <Card body-class="flex flex-1 flex-col overflow-hidden p-0" class="flex w-full min-w-0 flex-1 flex-col self-stretch" :class="readerOpen ? 'md:rounded-r-none md:border-r-0' : ''">
+    <Card body-class="flex flex-1 flex-col overflow-hidden p-0" class="flex w-full min-w-0 flex-1 flex-col self-stretch md:!rounded-none md:!border-0 md:!shadow-none">
       <!-- Toolbar -->
       <div class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] p-3">
         <Btn variant="solid" size="sm" icon="edit_square" @click="openCompose">{{ t('mail.send.compose') }}</Btn>
-        <TextField v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="w-full sm:w-56" @update:model-value="debouncedReload" @enter="reload" />
+        <TextField v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="min-w-48 flex-1" @update:model-value="debouncedReload" @enter="reload" />
         <div class="flex items-center gap-1.5">
           <TextField v-model="dateFrom" type="date" :placeholder="t('mail.list.date_from')" class="w-36" @update:model-value="onDate" />
           <TextField v-model="dateTo" type="date" :placeholder="t('mail.list.date_to')" class="w-36" @update:model-value="onDate" />
@@ -158,13 +158,13 @@
       <div class="flex-1 overflow-y-auto">
         <div v-if="loading" class="py-16 text-center"><Icon name="progress_activity" :size="28" class="animate-spin text-[var(--ll-muted)]" /></div>
         <div v-else-if="!s.messages.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ t('mail.list.empty') }}</div>
-        <table v-else class="w-full text-sm">
+        <table v-else class="w-full table-fixed text-sm">
           <thead class="sticky top-0 z-[1] bg-[var(--ll-surface)]">
             <tr class="border-b border-[var(--ll-border)] text-left text-xs text-[var(--ll-muted)]">
               <th class="w-9 pl-3"><input type="checkbox" class="accent-primary-500" :checked="allSelected" @change="toggleSelectAll"></th>
-              <th class="py-2 pr-3">{{ t('mail.list.col_from') }}</th>
+              <th class="w-[36%] py-2 pr-3">{{ t('mail.list.col_from') }}</th>
               <th class="py-2 pr-3">{{ t('mail.list.col_subject') }}</th>
-              <th class="w-32 py-2 pr-3 text-right">{{ t('mail.list.col_date') }}</th>
+              <th class="w-28 py-2 pr-3 text-right">{{ t('mail.list.col_date') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -175,16 +175,16 @@
               @click="openReader(m)"
             >
               <td class="w-9 pl-3"><input type="checkbox" class="accent-primary-500" :checked="s.selected.includes(m.id)" @click.stop="toggleSelect(m.id)"></td>
-              <td class="py-2.5 pr-3">
+              <td class="py-2.5 pr-3 align-middle">
                 <div class="flex items-center gap-2">
                   <span class="h-2 w-2 shrink-0 rounded-full" :class="m.seen ? 'bg-transparent' : 'bg-primary-500'" />
-                  <span class="min-w-0">
-                    <span class="block truncate">{{ m.from_name || m.from_email || '—' }}</span>
-                    <span v-if="isUnified || !filters.folder" class="block truncate text-xs font-normal text-[var(--ll-muted)]">{{ m.folder }}</span>
+                  <span class="min-w-0 flex-1 truncate">
+                    <span class="truncate">{{ senderLabel(m) }}</span>
+                    <span v-if="isUnified || !filters.folder" class="ml-1.5 rounded bg-black/[0.04] px-1.5 py-0.5 text-[0.6rem] font-medium text-[var(--ll-muted)] dark:bg-white/[0.07]">{{ m.folder }}</span>
                   </span>
                 </div>
               </td>
-              <td class="py-2.5 pr-3">
+              <td class="py-2.5 pr-3 align-middle">
                 <div class="flex items-center gap-1.5">
                   <span class="min-w-0 flex-1 truncate">{{ m.subject || '—' }}</span>
                   <span v-for="l in (m.labels || [])" :key="l.id" class="hidden shrink-0 rounded px-1.5 py-0.5 text-[0.6rem] font-medium sm:inline" :style="{ background: `color-mix(in srgb, ${l.color} 15%, transparent)`, color: l.color }">{{ l.name }}</span>
@@ -193,7 +193,7 @@
                   <Icon v-if="m.has_attachment" name="attach_file" :size="15" class="shrink-0 text-[var(--ll-muted)]" :title="t('mail.list.attachment')" />
                 </div>
               </td>
-              <td class="py-2.5 pr-3 text-right text-xs text-[var(--ll-muted)]">{{ fmtDate(m.date || m.created_at) }}</td>
+              <td class="truncate py-2.5 pr-3 text-right text-xs text-[var(--ll-muted)]">{{ fmtDate(m.date || m.created_at) }}</td>
             </tr>
           </tbody>
         </table>
@@ -210,7 +210,7 @@
     </Card>
 
     <!-- Reader pane: docked beside the list on desktop, full screen on small displays. -->
-  <aside v-if="readerOpen" class="fixed inset-0 z-[1500] flex min-h-0 flex-col overflow-y-auto bg-[var(--ll-surface)] shadow-2xl md:static md:z-auto md:w-[min(48%,46rem)] md:shrink-0 md:border-l md:border-[var(--ll-border)] md:shadow-none">
+  <aside v-if="readerOpen" class="fixed inset-0 z-[1500] flex min-h-0 flex-col overflow-y-auto bg-[var(--ll-surface)] shadow-2xl md:static md:z-auto md:w-auto md:basis-[44%] md:shrink-0 md:border-l md:border-[var(--ll-border)] md:shadow-none">
     <div v-if="reader" class="flex min-h-0 flex-1 flex-col gap-4 p-4 md:p-5">
       <div class="sticky top-0 z-10 -mt-4 -mx-4 flex items-center gap-3 border-b border-[var(--ll-border)] bg-[var(--ll-surface)] px-4 py-3 md:-mt-5 md:-mx-5 md:px-5">
         <div class="min-w-0 flex-1">
@@ -620,6 +620,12 @@ function authTone(v: string): 'success' | 'warning' | 'error' | 'gray' {
 function fmtDate(iso: string | null) { return libDate(iso); }
 function fmtDateTime(iso: string | null) { return libDateTime(iso); }
 function fmtBytes(n: number) { if (!n) return '0 B'; const u = ['B', 'KB', 'MB', 'GB']; const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024))); return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${u[i]}`; }
+function senderLabel(message: MailMessage): string {
+  if (message.from_name?.trim()) return message.from_name.trim();
+  const alias = message.from_email?.match(/^(.+)_([a-z0-9]{6,})@simplelogin\.co$/i);
+  if (alias) return alias[1].replaceAll('_at_', '@').replaceAll('_', '.');
+  return message.from_email || '—';
+}
 
 // ---- Deep links: mirror the selected account/folder/label + open message in
 // the URL query so a reload or shared link lands on the same place. `restoring`
