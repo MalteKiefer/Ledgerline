@@ -71,7 +71,8 @@ final class CardDavReplicaClient
             if ($xp->evaluate('boolean(.//d:resourcetype/c:addressbook)', $response) !== true) {
                 continue;
             }
-            $href = trim((string) $xp->evaluate('string(d:href)', $response));
+            $value = $xp->evaluate('string(d:href)', $response);
+            $href = is_string($value) ? trim($value) : '';
             if ($href !== '') {
                 return $this->resolveUri((string) $source->endpoint, $href);
             }
@@ -186,12 +187,15 @@ final class CardDavReplicaClient
             if (! $response instanceof \DOMNode) {
                 continue;
             }
-            $uri = trim((string) $xp->evaluate('string(d:href)', $response));
-            $vcard = (string) $xp->evaluate('string(.//c:address-data)', $response);
+            $uriValue = $xp->evaluate('string(d:href)', $response);
+            $vcardValue = $xp->evaluate('string(.//c:address-data)', $response);
+            $uri = is_string($uriValue) ? trim($uriValue) : '';
+            $vcard = is_string($vcardValue) ? $vcardValue : '';
             if ($uri === '' || $vcard === '' || strlen($vcard) > self::MAX_XML_BYTES) {
                 continue;
             }
-            $etag = trim((string) $xp->evaluate('string(.//d:getetag)', $response));
+            $etagValue = $xp->evaluate('string(.//d:getetag)', $response);
+            $etag = is_string($etagValue) ? trim($etagValue) : '';
             $out[] = ['uri' => $uri, 'etag' => $etag !== '' ? $etag : null, 'vcard' => $vcard];
         }
 
@@ -203,7 +207,8 @@ final class CardDavReplicaClient
         $doc = $this->xml($xml);
         $xp = new \DOMXPath($doc);
         $xp->registerNamespace('d', 'DAV:');
-        $href = trim((string) $xp->evaluate('string(//*[local-name()='.$this->xpathLiteral($property).']//d:href)'));
+        $value = $xp->evaluate('string(//*[local-name()='.$this->xpathLiteral($property).']//d:href)');
+        $href = is_string($value) ? trim($value) : '';
 
         return $href !== '' ? $href : null;
     }
