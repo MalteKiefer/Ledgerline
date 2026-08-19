@@ -21,10 +21,9 @@ class MailDraftController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $user = $this->requireUser($request);
+        $this->requireUser($request);
         $data = $this->validated($request);
         $draft = new MailDraft($data);
-        $draft->user_id = $user->id;
         $draft->save();
 
         return response()->json(['draft' => $draft], 201);
@@ -49,7 +48,8 @@ class MailDraftController extends Controller
     /** @return array<string, mixed> */
     private function validated(Request $request): array
     {
-        return Validator::make($request->all(), [
+        /** @var array<string, mixed> $validated */
+        $validated = Validator::make($request->all(), [
             'mail_account_id' => ['nullable', 'integer'], 'mode' => ['required', 'in:compose,reply,forward'],
             'source_message_id' => ['nullable', 'uuid'], 'to' => ['nullable', 'array', 'max:50'],
             'to.*' => ['email:rfc'], 'cc' => ['nullable', 'array', 'max:50'], 'cc.*' => ['email:rfc'],
@@ -61,5 +61,7 @@ class MailDraftController extends Controller
             'gallery_photo_ids.*' => ['integer'], 'read_receipt' => ['nullable', 'boolean'],
             'high_priority' => ['nullable', 'boolean'],
         ])->validate();
+
+        return $validated;
     }
 }

@@ -490,6 +490,7 @@ class MailSendController extends Controller
     {
         $out = [];
         $total = 0;
+        $disk = BlobStore::disk();
 
         $files = $request->file('attachments');
         $files = is_array($files) ? $files : ($files instanceof UploadedFile ? [$files] : []);
@@ -515,7 +516,6 @@ class MailSendController extends Controller
                 ->where('user_id', $userId)
                 ->whereIn('id', array_values(array_filter($ids, 'is_string')))
                 ->get();
-            $disk = BlobStore::disk();
             foreach ($rows as $att) {
                 if (count($out) >= self::MAX_ATTACHMENTS) {
                     break;
@@ -545,6 +545,9 @@ class MailSendController extends Controller
                     break;
                 }
                 $bytes = $disk->get($file->storage_path);
+                if (! is_string($bytes) || $bytes === '') {
+                    continue;
+                }
                 $total += strlen($bytes);
                 if ($total > self::MAX_TOTAL_BYTES) {
                     break;
@@ -562,6 +565,9 @@ class MailSendController extends Controller
                     break;
                 }
                 $bytes = $disk->get($photo->storage_path);
+                if (! is_string($bytes) || $bytes === '') {
+                    continue;
+                }
                 $total += strlen($bytes);
                 if ($total > self::MAX_TOTAL_BYTES) {
                     break;
