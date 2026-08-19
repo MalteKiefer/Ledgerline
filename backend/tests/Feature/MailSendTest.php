@@ -292,6 +292,29 @@ class MailSendTest extends TestCase
         $this->assertSame('noreply-list@example.com', $spy->captured->to[0]['email']);
     }
 
+    public function test_reply_sanitizes_html_and_applies_delivery_options_and_attachments(): void
+    {
+        $user = User::factory()->create();
+        $account = $this->account($user);
+        $msg = $this->message($account);
+        $file = new FileEntry;
+        $file->forceFill(['user_id' => $user->id, 'name' => 'reply.pdf', 'mime' => 'application/pdf', 'size' => 5, 'storage_path' => 'files/reply', 'version' => 1])->save();
+        Storage::disk(config('files.disk'))->put('files/reply', 'REPLY');
+        $spy = $this->spySender();
+
+        $this->actingAs($user)->postJson(route('mail.messages.reply', $msg->id), [
+            'text' => 'My reply', 'html' => '<strong>My reply</strong><img src="https://tracker.invalid/a" onerror="alert(1)">',
+            'file_ids' => [$file->id], 'read_receipt' => true, 'high_priority' => true,
+        ])->assertOk();
+
+        $this->assertCount(1, $spy->captured->attachments);
+        $this->assertSame('reply.pdf', $spy->captured->attachments[0]['filename']);
+        $this->assertTrue($spy->captured->readReceipt);
+        $this->assertTrue($spy->captured->highPriority);
+        $this->assertStringNotContainsString('onerror', (string) $spy->captured->html);
+        $this->assertStringNotContainsString('tracker.invalid', (string) $spy->captured->html);
+    }
+
     public function test_reply_when_account_deleted_is_422(): void
     {
         $user = User::factory()->create();
@@ -336,6 +359,23 @@ class MailSendTest extends TestCase
 
         $this->actingAs($user)->postJson(route('mail.messages.forward', $msg->id), ['text' => 'x'])
             ->assertStatus(422);
+    }
+
+    public function test_compose_does_not_attach_another_users_file(): void
+    {
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+        $account = $this->account($user);
+        $foreign = new FileEntry;
+        $foreign->forceFill(['user_id' => $other->id, 'name' => 'private.pdf', 'mime' => 'application/pdf', 'size' => 7, 'storage_path' => 'files/private', 'version' => 1])->save();
+        Storage::disk(config('files.disk'))->put('files/private', 'PRIVATE');
+        $spy = $this->spySender();
+
+        $this->actingAs($user)->postJson(route('mail.messages.compose'), [
+            'account_id' => $account->id, 'to' => ['dest@example.com'], 'text' => 'hello', 'file_ids' => [$foreign->id],
+        ])->assertOk();
+
+        $this->assertSame([], $spy->captured->attachments);
     }
 
     // ---- MailSender unit: real send + Sent-append + teardown ----

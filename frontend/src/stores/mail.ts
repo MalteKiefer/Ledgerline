@@ -186,8 +186,16 @@ export interface MailDraft {
   text_body: string | null; html_body: string | null; mail_signature_id: number | null; sent_folder: string | null;
   file_ids: number[] | null; gallery_photo_ids: number[] | null; read_receipt: boolean; high_priority: boolean; updated_at: string;
 }
-export interface ReplyPayload { text?: string | null; html?: string | null; signature_id?: number | null; all?: boolean; sent_folder?: string | null }
-export interface ForwardPayload { to: string[]; cc?: string[]; text?: string | null; html?: string | null; signature_id?: number | null; sent_folder?: string | null }
+export interface ReplyPayload {
+  text?: string | null; html?: string | null; signature_id?: number | null; all?: boolean; sent_folder?: string | null;
+  attachment_ids?: string[]; file_ids?: number[]; gallery_photo_ids?: number[];
+  read_receipt?: boolean; high_priority?: boolean; files?: File[];
+}
+export interface ForwardPayload {
+  to: string[]; cc?: string[]; text?: string | null; html?: string | null; signature_id?: number | null; sent_folder?: string | null;
+  attachment_ids?: string[]; file_ids?: number[]; gallery_photo_ids?: number[];
+  read_receipt?: boolean; high_priority?: boolean; files?: File[];
+}
 
 function defaultFilters(): MailFilters {
   return { accountId: null, folder: null, q: '', seen: null, spam: null, label: null, dateFrom: null, dateTo: null, trashed: false, threadId: null };
@@ -315,16 +323,56 @@ export const useMailStore = defineStore('mail', () => {
       read_receipt: p.read_receipt ?? false, high_priority: p.high_priority ?? false,
     });
   }
+
+  function appendAttachments(form: FormData, p: { attachment_ids?: string[]; file_ids?: number[]; gallery_photo_ids?: number[]; files?: File[] }) {
+    for (const id of p.attachment_ids ?? []) form.append('attachment_ids[]', id);
+    for (const id of p.file_ids ?? []) form.append('file_ids[]', String(id));
+    for (const id of p.gallery_photo_ids ?? []) form.append('gallery_photo_ids[]', String(id));
+    for (const file of p.files ?? []) form.append('attachments[]', file);
+  }
   const loadDrafts = () => api.get<{ drafts: MailDraft[] }>('/api/v1/mail/drafts').then((r) => r.drafts);
   const createDraft = (body: Omit<MailDraft, 'id' | 'updated_at'>) => api.post<{ draft: MailDraft }>('/api/v1/mail/drafts', body).then((r) => r.draft);
   const updateDraft = (id: string, body: Partial<Omit<MailDraft, 'id' | 'updated_at'>>) => api.put<{ draft: MailDraft }>(`/api/v1/mail/drafts/${id}`, body).then((r) => r.draft);
   const deleteDraft = (id: string) => api.delete(`/api/v1/mail/drafts/${id}`);
-  const reply = (id: string, p: ReplyPayload) => api.post<SendResult>(`/api/v1/mail/messages/${id}/reply`, {
-    text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null, all: p.all ?? false, sent_folder: p.sent_folder ?? null,
-  });
-  const forward = (id: string, p: ForwardPayload) => api.post<SendResult>(`/api/v1/mail/messages/${id}/forward`, {
-    to: p.to, cc: p.cc ?? [], text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null, sent_folder: p.sent_folder ?? null,
-  });
+  async function reply(id: string, p: ReplyPayload): Promise<SendResult> {
+    if (p.files?.length) {
+      const form = new FormData();
+      if (p.text != null) form.append('text', p.text);
+      if (p.html != null) form.append('html', p.html);
+      if (p.signature_id != null) form.append('signature_id', String(p.signature_id));
+      if (p.all) form.append('all', '1');
+      if (p.sent_folder != null) form.append('sent_folder', p.sent_folder);
+      if (p.read_receipt) form.append('read_receipt', '1');
+      if (p.high_priority) form.append('high_priority', '1');
+      appendAttachments(form, p);
+      return api.upload<SendResult>(`/api/v1/mail/messages/${id}/reply`, form);
+    }
+    return api.post<SendResult>(`/api/v1/mail/messages/${id}/reply`, {
+      text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null, all: p.all ?? false, sent_folder: p.sent_folder ?? null,
+      attachment_ids: p.attachment_ids ?? [], file_ids: p.file_ids ?? [], gallery_photo_ids: p.gallery_photo_ids ?? [],
+      read_receipt: p.read_receipt ?? false, high_priority: p.high_priority ?? false,
+    });
+  }
+  async function forward(id: string, p: ForwardPayload): Promise<SendResult> {
+    if (p.files?.length) {
+      const form = new FormData();
+      for (const recipient of p.to) form.append('to[]', recipient);
+      for (const recipient of p.cc ?? []) form.append('cc[]', recipient);
+      if (p.text != null) form.append('text', p.text);
+      if (p.html != null) form.append('html', p.html);
+      if (p.signature_id != null) form.append('signature_id', String(p.signature_id));
+      if (p.sent_folder != null) form.append('sent_folder', p.sent_folder);
+      if (p.read_receipt) form.append('read_receipt', '1');
+      if (p.high_priority) form.append('high_priority', '1');
+      appendAttachments(form, p);
+      return api.upload<SendResult>(`/api/v1/mail/messages/${id}/forward`, form);
+    }
+    return api.post<SendResult>(`/api/v1/mail/messages/${id}/forward`, {
+      to: p.to, cc: p.cc ?? [], text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null, sent_folder: p.sent_folder ?? null,
+      attachment_ids: p.attachment_ids ?? [], file_ids: p.file_ids ?? [], gallery_photo_ids: p.gallery_photo_ids ?? [],
+      read_receipt: p.read_receipt ?? false, high_priority: p.high_priority ?? false,
+    });
+  }
 
   // --- Labels ---------------------------------------------------------------
   async function loadLabels() {

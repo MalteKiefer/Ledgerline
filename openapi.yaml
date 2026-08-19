@@ -10479,6 +10479,12 @@ paths:
                 signature_id: { type: [integer, "null"], minimum: -1, description: "Assigned signature id; omit for account default, -1 for none." }
                 all: { type: [boolean, "null"], description: "Reply-all." }
                 sent_folder: { type: [string, "null"] }
+                attachments: { type: array, maxItems: 20, items: { type: string, format: binary } }
+                attachment_ids: { type: array, maxItems: 20, items: { type: string, format: uuid } }
+                file_ids: { type: array, maxItems: 20, items: { type: integer } }
+                gallery_photo_ids: { type: array, maxItems: 20, items: { type: integer } }
+                read_receipt: { type: [boolean, "null"] }
+                high_priority: { type: [boolean, "null"] }
       responses:
         "200":
           description: Sent.
@@ -10521,6 +10527,12 @@ paths:
                 html: { type: [string, "null"] }
                 signature_id: { type: [integer, "null"], minimum: -1, description: "Assigned signature id; omit for account default, -1 for none." }
                 sent_folder: { type: [string, "null"] }
+                attachments: { type: array, maxItems: 20, items: { type: string, format: binary } }
+                attachment_ids: { type: array, maxItems: 20, items: { type: string, format: uuid } }
+                file_ids: { type: array, maxItems: 20, items: { type: integer } }
+                gallery_photo_ids: { type: array, maxItems: 20, items: { type: integer } }
+                read_receipt: { type: [boolean, "null"] }
+                high_priority: { type: [boolean, "null"] }
       responses:
         "200":
           description: Sent.

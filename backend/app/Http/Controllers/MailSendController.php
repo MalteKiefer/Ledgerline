@@ -63,14 +63,7 @@ class MailSendController extends Controller
             'text' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'html' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'signature_id' => ['nullable', 'integer', 'min:-1'],
-            'attachments' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
-            'attachments.*' => ['file', 'max:25600'],
-            'attachment_ids' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
-            'attachment_ids.*' => ['uuid'],
-            'file_ids' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
-            'file_ids.*' => ['integer'],
-            'gallery_photo_ids' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
-            'gallery_photo_ids.*' => ['integer'],
+            ...$this->attachmentRules(),
             'read_receipt' => ['nullable', 'boolean'],
             'high_priority' => ['nullable', 'boolean'],
             'sent_folder' => ['nullable', 'string', 'max:255'],
@@ -91,7 +84,7 @@ class MailSendController extends Controller
         // A WYSIWYG body is still untrusted browser input (pasted HTML can carry
         // scripts, event attributes and remote fetches), so apply the same safe
         // mail HTML policy before it ever reaches SMTP or the archived Sent copy.
-        $html = (new MailHtmlSanitizer)->sanitize($html, true);
+        $html = (new MailHtmlSanitizer)->sanitize($html);
         if ($text === null && $html === null) {
             return $this->fail('empty_body');
         }
@@ -131,6 +124,9 @@ class MailSendController extends Controller
             'signature_id' => ['nullable', 'integer', 'min:-1'],
             'all' => ['nullable', 'boolean'],
             'sent_folder' => ['nullable', 'string', 'max:255'],
+            'read_receipt' => ['nullable', 'boolean'],
+            'high_priority' => ['nullable', 'boolean'],
+            ...$this->attachmentRules(),
         ])) {
             return $resp;
         }
@@ -147,6 +143,7 @@ class MailSendController extends Controller
 
         $text = $this->body($request, 'text');
         $html = $this->body($request, 'html');
+        $html = (new MailHtmlSanitizer)->sanitize($html);
         if ($text === null && $html === null) {
             return $this->fail('empty_body');
         }
@@ -167,9 +164,12 @@ class MailSendController extends Controller
             fromName: null,
             to: [['name' => null, 'email' => $recipient]],
             cc: $cc,
+            attachments: $this->gatherAttachments($request, (int) $user->id),
             inReplyTo: $message->message_id,
             references: $this->references($message),
             sentFolder: $this->sentFolder($request),
+            readReceipt: $request->boolean('read_receipt'),
+            highPriority: $request->boolean('high_priority'),
         );
 
         return $this->dispatch($sender, $account, $composed);
@@ -190,6 +190,9 @@ class MailSendController extends Controller
             'html' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'signature_id' => ['nullable', 'integer', 'min:-1'],
             'sent_folder' => ['nullable', 'string', 'max:255'],
+            'read_receipt' => ['nullable', 'boolean'],
+            'high_priority' => ['nullable', 'boolean'],
+            ...$this->attachmentRules(),
         ])) {
             return $resp;
         }
@@ -201,6 +204,7 @@ class MailSendController extends Controller
 
         $text = $this->body($request, 'text');
         $html = $this->body($request, 'html');
+        $html = (new MailHtmlSanitizer)->sanitize($html);
         [$text, $html] = $this->withSignature($account, $text, $html, $request->integer('signature_id'));
         $text = $this->prependForwardHeader($text ?? '', $message);
 
@@ -212,8 +216,10 @@ class MailSendController extends Controller
             fromName: null,
             to: $this->addresses($request->input('to')),
             cc: $this->addresses($request->input('cc')),
-            attachments: $this->originalEml($message),
+            attachments: $this->forwardAttachments($message, $request, (int) $user->id),
             sentFolder: $this->sentFolder($request),
+            readReceipt: $request->boolean('read_receipt'),
+            highPriority: $request->boolean('high_priority'),
         );
 
         return $this->dispatch($sender, $account, $composed);
@@ -481,6 +487,35 @@ class MailSendController extends Controller
     }
 
     /**
+     * The immutable original stays first when forwarding; user-selected
+     * attachments use the same count and byte caps as a new message.
+     *
+     * @return list<array{bytes:string, filename:string, mime:string}>
+     */
+    private function forwardAttachments(MailMessage $message, Request $request, int $userId): array
+    {
+        $original = $this->originalEml($message);
+        $remaining = self::MAX_ATTACHMENTS - count($original);
+
+        return [...$original, ...array_slice($this->gatherAttachments($request, $userId), 0, max(0, $remaining))];
+    }
+
+    /** @return array<string, array<int, string>> */
+    private function attachmentRules(): array
+    {
+        return [
+            'attachments' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
+            'attachments.*' => ['file', 'max:25600'],
+            'attachment_ids' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
+            'attachment_ids.*' => ['uuid'],
+            'file_ids' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
+            'file_ids.*' => ['integer'],
+            'gallery_photo_ids' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
+            'gallery_photo_ids.*' => ['integer'],
+        ];
+    }
+
+    /**
      * Uploaded files + references to the caller's own archived attachments →
      * attachment specs, enforcing the count + total-size caps.
      *
@@ -539,7 +574,7 @@ class MailSendController extends Controller
         $fileIds = $request->input('file_ids');
         if (is_array($fileIds) && $fileIds !== []) {
             $ids = array_map('intval', array_filter($fileIds, static fn (mixed $id): bool => is_int($id) || (is_string($id) && ctype_digit($id))));
-            $rows = FileEntry::query()->whereIn('id', $ids)->get();
+            $rows = FileEntry::query()->where('user_id', $userId)->whereIn('id', $ids)->get();
             foreach ($rows as $file) {
                 if (count($out) >= self::MAX_ATTACHMENTS || ! $disk->exists($file->storage_path)) {
                     break;
@@ -559,7 +594,7 @@ class MailSendController extends Controller
         $galleryIds = $request->input('gallery_photo_ids');
         if (is_array($galleryIds) && $galleryIds !== []) {
             $ids = array_map('intval', array_filter($galleryIds, static fn (mixed $id): bool => is_int($id) || (is_string($id) && ctype_digit($id))));
-            $rows = GalleryPhoto::query()->whereIn('id', $ids)->get();
+            $rows = GalleryPhoto::query()->where('user_id', $userId)->whereIn('id', $ids)->get();
             foreach ($rows as $photo) {
                 if (count($out) >= self::MAX_ATTACHMENTS || ! $disk->exists($photo->storage_path)) {
                     break;
