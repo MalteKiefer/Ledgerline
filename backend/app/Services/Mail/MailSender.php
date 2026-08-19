@@ -83,6 +83,8 @@ class MailSender
             references: $message->references,
             attachments: $message->attachments,
             sentFolder: $message->sentFolder,
+            readReceipt: $message->readReceipt,
+            highPriority: $message->highPriority,
         );
 
         $mailerName = 'mail_send_'.$account->id;

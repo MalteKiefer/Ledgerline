@@ -78,6 +78,13 @@ class ComposedMail extends Mailable
             if ($this->composed->html === null || $this->composed->html === '') {
                 $email->html(null);
             }
+            if ($this->composed->readReceipt) {
+                $email->getHeaders()->addTextHeader('Disposition-Notification-To', $this->composed->fromEmail);
+            }
+            if ($this->composed->highPriority) {
+                $email->getHeaders()->addTextHeader('X-Priority', '1 (Highest)');
+                $email->getHeaders()->addTextHeader('Importance', 'high');
+            }
         });
     }
 

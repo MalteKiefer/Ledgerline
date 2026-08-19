@@ -8,6 +8,8 @@ use App\Models\MailAccount;
 use App\Models\MailAttachment;
 use App\Models\MailBlob;
 use App\Models\MailMessage;
+use App\Models\FileEntry;
+use App\Models\GalleryPhoto;
 use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Mail\ComposedMessage;
@@ -213,6 +215,29 @@ class MailSendTest extends TestCase
         $this->assertCount(1, $spy->captured->attachments);
         $this->assertSame('report.pdf', $spy->captured->attachments[0]['filename']);
         $this->assertSame('STORED-BYTES', $spy->captured->attachments[0]['bytes']);
+    }
+
+    public function test_compose_attaches_owned_files_and_gallery_media(): void
+    {
+        $user = User::factory()->create();
+        $account = $this->account($user);
+        $file = new FileEntry;
+        $file->forceFill(['user_id' => $user->id, 'name' => 'brief.pdf', 'mime' => 'application/pdf', 'size' => 4, 'storage_path' => 'files/brief', 'version' => 1])->save();
+        $photo = new GalleryPhoto;
+        $photo->forceFill(['user_id' => $user->id, 'name' => 'photo.jpg', 'mime' => 'image/jpeg', 'media_type' => 'image', 'status' => 'ready', 'size' => 5, 'storage_path' => 'gallery/photo', 'version' => 1])->save();
+        Storage::disk(config('files.disk'))->put('files/brief', 'FILE');
+        Storage::disk(config('files.disk'))->put('gallery/photo', 'PHOTO');
+        $spy = $this->spySender();
+
+        $this->actingAs($user)->postJson(route('mail.messages.compose'), [
+            'account_id' => $account->id, 'to' => ['dest@example.com'], 'text' => 'see attached',
+            'file_ids' => [$file->id], 'gallery_photo_ids' => [$photo->id], 'read_receipt' => true, 'high_priority' => true,
+        ])->assertOk();
+
+        $this->assertCount(2, $spy->captured->attachments);
+        $this->assertSame(['brief.pdf', 'photo.jpg'], array_column($spy->captured->attachments, 'filename'));
+        $this->assertTrue($spy->captured->readReceipt);
+        $this->assertTrue($spy->captured->highPriority);
     }
 
     // ---- reply ----

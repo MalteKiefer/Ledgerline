@@ -37,6 +37,8 @@ final class ComposedMessage
         public array $references = [],
         public array $attachments = [],
         public string $sentFolder = 'Sent',
+        public bool $readReceipt = false,
+        public bool $highPriority = false,
     ) {}
 
     /** True when at least one recipient (to/cc/bcc) is present. */

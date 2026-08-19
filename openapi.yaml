@@ -10296,6 +10296,41 @@ paths:
         "422": { description: "Source account deleted or no Message-Id." }
         "429": { $ref: "#/components/responses/RateLimited" }
         "502": { description: "Origin IMAP delete failed." }
+  /mail/drafts:
+    get:
+      tags: [Mail]
+      operationId: mailDraftIndex
+      summary: List the caller's server-saved compose drafts
+      responses:
+        "200": { description: Drafts., content: { application/json: { schema: { type: object, properties: { drafts: { type: array, items: { type: object } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Mail]
+      operationId: mailDraftStore
+      summary: Create a server-saved compose draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [mode], properties: { mode: { type: string, enum: [compose, reply, forward] }, mail_account_id: { type: [integer, "null"] }, source_message_id: { type: [string, "null"], format: uuid }, to: { type: array, items: { type: string, format: email } }, cc: { type: array, items: { type: string, format: email } }, bcc: { type: array, items: { type: string, format: email } }, subject: { type: [string, "null"] }, text_body: { type: [string, "null"] }, html_body: { type: [string, "null"] }, file_ids: { type: array, items: { type: integer } }, gallery_photo_ids: { type: array, items: { type: integer } }, read_receipt: { type: boolean }, high_priority: { type: boolean } } }
+      responses:
+        "201": { description: Created. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { description: Validation failure. }
+  /mail/drafts/{draft}:
+    put:
+      tags: [Mail]
+      operationId: mailDraftUpdate
+      summary: Update an owner-scoped compose draft
+      parameters: [{ name: draft, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [mode], properties: { mode: { type: string, enum: [compose, reply, forward] } } } } } }
+      responses: { "200": { description: Updated. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" }, "422": { description: Validation failure. } }
+    delete:
+      tags: [Mail]
+      operationId: mailDraftDestroy
+      summary: Delete an owner-scoped compose draft
+      parameters: [{ name: draft, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Deleted. }, "401": { $ref: "#/components/responses/Unauthorized" }, "404": { $ref: "#/components/responses/NotFound" } }
   /mail/messages/compose:
     post:
       tags: [Mail]
@@ -10306,7 +10341,9 @@ paths:
         SMTP credentials (SSRF-guarded) and appends the sent copy to the origin
         Sent folder. Opt-in — an account with no SMTP configured returns
         `no_smtp` (422). Attachments may be uploaded (multipart) and/or referenced
-        by the caller's own archived attachment ids.
+        by the caller's own archived attachment ids, Files ids and Gallery media
+        ids. `read_receipt` adds a standards-based MDN request; `high_priority`
+        adds normal SMTP priority headers.
       requestBody:
         required: true
         content:
@@ -10324,6 +10361,10 @@ paths:
                 html: { type: [string, "null"] }
                 signature_id: { type: [integer, "null"], minimum: -1, description: "Assigned signature id; omit for account default, -1 for none." }
                 attachment_ids: { type: array, items: { type: string, format: uuid } }
+                file_ids: { type: array, items: { type: integer }, description: "Caller-owned Files entries to attach." }
+                gallery_photo_ids: { type: array, items: { type: integer }, description: "Caller-owned Gallery media to attach." }
+                read_receipt: { type: boolean }
+                high_priority: { type: boolean }
                 sent_folder: { type: [string, "null"] }
           multipart/form-data:
             schema:

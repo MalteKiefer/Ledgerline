@@ -61,6 +61,9 @@
             </button>
           </div>
         </div>
+        <button v-if="drafts.length" class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5" @click="openDraft(drafts[0])">
+          <Icon name="drafts" :size="20" class="text-[var(--ll-muted)]" /><span class="flex-1 text-left">{{ t('mail.send.drafts') }}</span><span class="rounded-full bg-black/[0.06] px-1.5 text-[10px] dark:bg-white/10">{{ drafts.length }}</span>
+        </button>
 
         <!-- Trash -->
         <div class="my-1 border-t border-[var(--ll-border)]" />
@@ -210,8 +213,8 @@
     </Card>
 
     <!-- Reader pane: docked beside the list on desktop, full screen on small displays. -->
-  <aside v-if="readerOpen" class="fixed inset-0 z-[1500] flex min-h-0 flex-col overflow-y-auto bg-[var(--ll-surface)] shadow-2xl md:static md:z-auto md:w-auto md:basis-[44%] md:shrink-0 md:border-l md:border-[var(--ll-border)] md:shadow-none">
-    <div v-if="reader" class="flex min-h-0 flex-1 flex-col gap-4 p-4 md:p-5">
+  <aside v-if="readerOpen || compose.show" class="fixed inset-0 z-[1500] flex min-h-0 flex-col overflow-y-auto bg-[var(--ll-surface)] shadow-2xl md:static md:z-auto md:w-auto md:basis-[44%] md:shrink-0 md:border-l md:border-[var(--ll-border)] md:shadow-none">
+    <div v-if="readerOpen && reader" class="flex min-h-0 flex-1 flex-col gap-4 p-4 md:p-5">
       <div class="sticky top-0 z-10 -mt-4 -mx-4 flex items-center gap-3 border-b border-[var(--ll-border)] bg-[var(--ll-surface)] px-4 py-3 md:-mt-5 md:-mx-5 md:px-5">
         <div class="min-w-0 flex-1">
           <div class="truncate text-base font-semibold">{{ reader.subject || t('mail.reader.subject') }}</div>
@@ -315,6 +318,46 @@
         </div>
       </div>
     </div>
+    <section v-else class="flex min-h-0 flex-1 flex-col">
+      <header class="flex items-center gap-2 border-b border-[var(--ll-border)] px-4 py-3 md:px-5">
+        <div class="min-w-0 flex-1"><div class="text-base font-semibold">{{ composeTitle }}</div><div class="text-xs text-[var(--ll-muted)]">{{ composeSaving ? t('mail.send.draft_saving') : t('mail.send.draft_saved') }}</div></div>
+        <Btn variant="ghost" size="sm" icon="delete" :title="t('mail.send.discard_draft')" @click="discardCompose" />
+        <Btn variant="ghost" size="sm" icon="close" :title="t('common.close')" @click="closeCompose" />
+      </header>
+      <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 md:p-5">
+        <div class="grid gap-2 sm:grid-cols-2">
+          <Select v-if="compose.mode === 'compose'" v-model.number="compose.accountId" :label="t('mail.send.from_email')" :options="composeAccountItems" />
+          <Select v-if="compose.accountId" v-model.number="compose.signatureId" :label="t('mail.send.signature')" :options="composeSignatureItems" />
+        </div>
+        <div v-if="compose.mode === 'reply'" class="rounded-lg bg-black/[0.03] px-3 py-2 text-xs dark:bg-white/5"><span class="font-medium">{{ t('mail.send.to') }}:</span> {{ compose.recipientHint || '—' }}<span v-if="compose.replyAll" class="ml-1 text-[var(--ll-muted)]">· {{ t('mail.send.reply_all') }}</span></div>
+        <template v-if="compose.mode !== 'reply'">
+          <div class="relative"><TextField v-model="compose.to" :label="t('mail.send.to')" placeholder="name@example.com, …" autocomplete="off" @update:model-value="lookupRecipients" />
+            <div v-if="recipientSuggestions.length" class="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] shadow-lg">
+              <button v-for="entry in recipientSuggestions" :key="entry.email" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-black/[0.04] dark:hover:bg-white/5" @click="addRecipient(entry.email)"><Icon name="person" :size="16" class="text-[var(--ll-muted)]" /><span class="min-w-0 flex-1 truncate">{{ entry.name || entry.email }}</span><span v-if="entry.name" class="truncate text-xs text-[var(--ll-muted)]">{{ entry.email }}</span></button>
+            </div>
+          </div>
+          <TextField v-model="compose.cc" :label="t('mail.send.cc')" placeholder="name@example.com, …" autocomplete="off" />
+          <TextField v-if="compose.mode === 'compose'" v-model="compose.bcc" :label="t('mail.send.bcc')" placeholder="name@example.com, …" autocomplete="off" />
+        </template>
+        <TextField v-if="compose.mode === 'compose'" v-model="compose.subject" :label="t('mail.send.subject')" />
+        <TextField v-model="compose.sentFolder" :label="t('mail.send.sent_folder')" :placeholder="t('mail.send.sent_folder_hint')" autocomplete="off" />
+        <div class="overflow-hidden rounded-lg border border-[var(--ll-border)]">
+          <div class="flex flex-wrap items-center gap-0.5 border-b border-[var(--ll-border)] bg-black/[0.02] p-1.5 dark:bg-white/[0.03]">
+            <Btn variant="ghost" size="xs" icon="format_bold" title="Fett" @click="formatCompose('bold')" /><Btn variant="ghost" size="xs" icon="format_italic" title="Kursiv" @click="formatCompose('italic')" /><Btn variant="ghost" size="xs" icon="format_underlined" title="Unterstrichen" @click="formatCompose('underline')" /><span class="mx-1 h-5 w-px bg-[var(--ll-border)]" /><Btn variant="ghost" size="xs" icon="format_list_bulleted" title="Liste" @click="formatCompose('insertUnorderedList')" /><Btn variant="ghost" size="xs" icon="format_list_numbered" title="Nummerierte Liste" @click="formatCompose('insertOrderedList')" /><Btn variant="ghost" size="xs" icon="link" title="Link" @click="insertComposeLink" /><Btn variant="ghost" size="xs" icon="format_clear" title="Formatierung entfernen" @click="formatCompose('removeFormat')" />
+          </div>
+          <div ref="composeEditor" contenteditable="true" role="textbox" aria-multiline="true" class="min-h-56 px-3 py-2 text-sm leading-6 outline-none empty:before:text-[var(--ll-muted)] empty:before:content-[attr(data-placeholder)]" :data-placeholder="t('mail.send.body')" @input="onComposeEditorInput"></div>
+        </div>
+        <div class="rounded-lg border border-[var(--ll-border)] p-3">
+          <div class="mb-2 flex items-center justify-between"><span class="text-xs font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.send.attachments') }}</span><div class="flex gap-1"><label class="inline-flex cursor-pointer"><input type="file" multiple class="hidden" @change="onComposeFiles"><Btn variant="ghost" size="xs" icon="upload_file" :title="t('mail.send.from_device')" /></label><Btn variant="ghost" size="xs" icon="folder" :title="t('mail.send.from_files')" @click="openAssetPicker('files')" /><Btn variant="ghost" size="xs" icon="photo_library" :title="t('mail.send.from_gallery')" @click="openAssetPicker('gallery')" /></div></div>
+          <div v-if="!compose.files.length && !compose.fileIds.length && !compose.galleryPhotoIds.length" class="text-xs text-[var(--ll-muted)]">{{ t('mail.send.attachments_hint') }}</div>
+          <div v-for="(f, i) in compose.files" :key="`local-${i}`" class="flex items-center gap-2 py-1 text-sm"><Icon name="attach_file" :size="15" /><span class="min-w-0 flex-1 truncate">{{ f.name }}</span><span class="text-xs text-[var(--ll-muted)]">{{ fmtBytes(f.size) }}</span><Btn variant="ghost" size="xs" icon="close" @click="removeComposeFile(i)" /></div>
+          <div v-for="f in selectedFiles" :key="`file-${f.id}`" class="flex items-center gap-2 py-1 text-sm"><Icon name="description" :size="15" /><span class="min-w-0 flex-1 truncate">{{ f.name }}</span><span class="text-xs text-[var(--ll-muted)]">{{ fmtBytes(f.size) }}</span><Btn variant="ghost" size="xs" icon="close" @click="removeFileAttachment(f.id)" /></div>
+          <div v-for="photo in selectedPhotos" :key="`photo-${photo.id}`" class="flex items-center gap-2 py-1 text-sm"><Icon name="image" :size="15" /><span class="min-w-0 flex-1 truncate">{{ photo.name }}</span><span class="text-xs text-[var(--ll-muted)]">{{ fmtBytes(photo.size) }}</span><Btn variant="ghost" size="xs" icon="close" @click="removeGalleryAttachment(photo.id)" /></div>
+        </div>
+        <details class="rounded-lg border border-[var(--ll-border)]"><summary class="cursor-pointer px-3 py-2 text-sm font-medium">{{ t('mail.send.more_options') }}</summary><div class="grid gap-2 border-t border-[var(--ll-border)] p-3 text-sm"><label class="flex items-center gap-2"><input v-model="compose.readReceipt" type="checkbox" class="accent-primary-500">{{ t('mail.send.read_receipt') }}</label><label class="flex items-center gap-2"><input v-model="compose.highPriority" type="checkbox" class="accent-primary-500">{{ t('mail.send.high_priority') }}</label></div></details>
+      </div>
+      <footer class="flex items-center gap-2 border-t border-[var(--ll-border)] px-4 py-3 md:px-5"><span class="flex-1 text-xs text-[var(--ll-muted)]">{{ compose.draftId ? 'Gespeichert' : 'Neuer Entwurf' }}</span><Btn variant="solid" icon="send" :loading="compose.sending" @click="doSend">{{ t('mail.send.send') }}</Btn></footer>
+    </section>
     </aside>
   </div>
 
@@ -495,61 +538,13 @@
     </div>
   </Modal>
 
-  <Modal v-model="compose.show" :title="composeTitle" width="40rem">
-    <div class="space-y-3">
-      <!-- Account picker (compose only) -->
-      <Select v-if="compose.mode === 'compose'" v-model.number="compose.accountId" :label="t('mail.send.from_email')" :options="composeAccountItems" />
-      <Select v-if="compose.accountId" v-model.number="compose.signatureId" :label="t('mail.send.signature')" :options="composeSignatureItems" />
-
-      <!-- Reply recipient (server-derived, read-only) -->
-      <div v-if="compose.mode === 'reply'" class="rounded-lg bg-black/[0.03] px-3 py-2 text-xs dark:bg-white/5">
-        <span class="font-medium">{{ t('mail.send.to') }}:</span> {{ compose.recipientHint || '—' }}
-        <span v-if="compose.replyAll" class="ml-1 text-[var(--ll-muted)]">· {{ t('mail.send.reply_all') }}</span>
-      </div>
-
-      <!-- Recipients (compose / forward) -->
-      <template v-if="compose.mode !== 'reply'">
-        <TextField v-model="compose.to" :label="t('mail.send.to')" placeholder="name@example.com, …" autocomplete="off" />
-        <TextField v-model="compose.cc" :label="t('mail.send.cc')" placeholder="name@example.com, …" autocomplete="off" />
-        <TextField v-if="compose.mode === 'compose'" v-model="compose.bcc" :label="t('mail.send.bcc')" placeholder="name@example.com, …" autocomplete="off" />
-      </template>
-
-      <!-- Subject (compose only; reply/forward derive Re:/Fwd: server-side) -->
-      <TextField v-if="compose.mode === 'compose'" v-model="compose.subject" :label="t('mail.send.subject')" />
-
-      <!-- Optional Sent-folder override (blank → the account's default "Sent"). -->
-      <TextField v-model="compose.sentFolder" :label="t('mail.send.sent_folder')" :placeholder="t('mail.send.sent_folder_hint')" autocomplete="off" />
-
-      <!-- Body -->
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.send.body') }}</span>
-        <textarea
-          v-model="compose.body" rows="8"
-          class="w-full rounded-lg border border-[var(--ll-border)] bg-transparent px-3 py-2 text-sm text-[var(--ll-fg)] placeholder:text-[var(--ll-muted)] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
-          :placeholder="t('mail.send.body')"
-        ></textarea>
-      </label>
-
-      <!-- Attachments (compose only, multipart upload) -->
-      <div v-if="compose.mode === 'compose'">
-        <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--ll-border)] px-3 py-1.5 text-sm hover:bg-black/[0.03] dark:hover:bg-white/5">
-          <Icon name="attach_file" :size="16" />{{ t('mail.send.attachments') }}
-          <input type="file" multiple class="hidden" @change="onComposeFiles">
-        </label>
-        <div v-if="compose.files.length" class="mt-2 space-y-1">
-          <div v-for="(f, i) in compose.files" :key="i" class="flex items-center gap-2 rounded-lg bg-black/[0.03] px-2.5 py-1.5 text-sm dark:bg-white/5">
-            <Icon name="attach_file" :size="15" class="shrink-0 text-[var(--ll-muted)]" />
-            <span class="min-w-0 flex-1 truncate">{{ f.name }}</span>
-            <span class="shrink-0 text-xs text-[var(--ll-muted)]">{{ fmtBytes(f.size) }}</span>
-            <button type="button" class="grid h-6 w-6 shrink-0 place-items-center rounded-md text-[var(--ll-muted)] hover:bg-black/[0.06] hover:text-red-600 dark:hover:bg-white/10" @click="removeComposeFile(i)"><Icon name="close" :size="14" /></button>
-          </div>
-        </div>
+  <Modal v-model="assetPicker.show" :title="assetPicker.kind === 'files' ? t('mail.send.attach_file') : t('mail.send.attach_media')" width="52rem">
+    <div class="space-y-3"><TextField v-model="assetPicker.q" label="Suchen" icon="search" />
+      <div class="max-h-[55vh] divide-y divide-[var(--ll-border)] overflow-y-auto">
+        <button v-for="item in assetPickerRows" :key="item.id" class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-black/[0.04] dark:hover:bg-white/5" @click="selectAsset(item.id)"><Icon :name="assetPicker.kind === 'files' ? 'description' : 'image'" :size="18" class="text-[var(--ll-muted)]" /><span class="min-w-0 flex-1 truncate text-sm">{{ item.name }}</span><span class="text-xs text-[var(--ll-muted)]">{{ fmtBytes(item.size) }}</span><Icon v-if="isAssetSelected(item.id)" name="check" :size="18" class="text-primary-600" /></button>
       </div>
     </div>
-    <template #footer>
-      <Btn variant="ghost" @click="compose.show = false">{{ t('mail.form.cancel') }}</Btn>
-      <Btn variant="solid" icon="send" :loading="compose.sending" @click="doSend">{{ t('mail.send.send') }}</Btn>
-    </template>
+    <template #footer><Btn variant="ghost" @click="assetPicker.show = false">{{ t('common.close') }}</Btn></template>
   </Modal>
 </template>
 
@@ -560,13 +555,17 @@ import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetim
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
-import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult } from '@spa/stores/mail';
+import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult, type MailDraft } from '@spa/stores/mail';
+import { useFilesStore, type FileEntry } from '@spa/stores/files';
+import { useGalleryStore, type Photo } from '@spa/stores/gallery';
 import { api, ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
 import { renderInvoicePdfBlob } from '@spa/shared/invoice-print';
 
 const s = useMailStore();
+const filesStore = useFilesStore();
+const galleryStore = useGalleryStore();
 const route = useRoute();
 const router = useRouter();
 const { success, error } = useToast();
@@ -585,6 +584,7 @@ const pdfExporting = ref(false);
 const attachmentVirusLoading = ref<string | null>(null);
 const attachmentVirusResults = reactive<Record<string, VirusTotalResult | undefined>>({});
 const signatures = ref<MailSignature[]>([]);
+const drafts = ref<MailDraft[]>([]);
 const dateFrom = ref('');
 const dateTo = ref('');
 
@@ -700,7 +700,7 @@ async function applyRoute() {
 // --- Loading -----------------------------------------------------------------
 let statusTimer: ReturnType<typeof setInterval> | undefined;
 onMounted(async () => {
-  await Promise.all([s.loadAccounts(), s.loadLabels(), s.loadSavedSearches(), api.get<{ signatures: MailSignature[] }>('/api/v1/mail/signatures').then((r) => { signatures.value = r.signatures; })]);
+  await Promise.all([s.loadAccounts(), s.loadLabels(), s.loadSavedSearches(), s.loadDrafts().then((rows) => { drafts.value = rows; }), api.get<{ signatures: MailSignature[] }>('/api/v1/mail/signatures').then((r) => { signatures.value = r.signatures; })]);
   await applyRoute();
   statusTimer = setInterval(async () => {
     if (s.accounts.some((a) => a.status === 'syncing')) { await s.pollStatus(); await s.loadFolders(filters.accountId); }
@@ -1062,8 +1062,15 @@ async function openStats() { statsDlg.show = true; statsDlg.loading = true; try 
 const compose = reactive<{
   show: boolean; mode: 'compose' | 'reply' | 'forward'; sending: boolean;
   sourceId: string | null; replyAll: boolean; accountId: number | null; signatureId: number | null; recipientHint: string;
-  to: string; cc: string; bcc: string; subject: string; body: string; sentFolder: string; files: File[];
-}>({ show: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, signatureId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', sentFolder: '', files: [] });
+  to: string; cc: string; bcc: string; subject: string; body: string; html: string; sentFolder: string; files: File[];
+  fileIds: number[]; galleryPhotoIds: number[]; readReceipt: boolean; highPriority: boolean; draftId: string | null;
+}>({ show: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, signatureId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null });
+const composeEditor = ref<HTMLElement | null>(null);
+const composeSaving = ref(false);
+const recipientSuggestions = ref<{ name: string; email: string }[]>([]);
+let recipientTimer: ReturnType<typeof setTimeout> | null = null;
+let draftTimer: ReturnType<typeof setTimeout> | null = null;
+const assetPicker = reactive<{ show: boolean; kind: 'files' | 'gallery'; q: string }>({ show: false, kind: 'files', q: '' });
 
 const composeTitle = computed(() =>
   compose.mode === 'reply' ? (compose.replyAll ? t('mail.send.reply_all') : t('mail.send.reply'))
@@ -1072,9 +1079,47 @@ const composeAccountItems = computed(() => sendableAccounts.value.map((a) => ({ 
 const composeSignatureItems = computed(() => [{ title: t('common.none'), value: -1 }, ...signatures.value.filter((signature) => signature.account_ids.includes(Number(compose.accountId))).map((signature) => ({ title: signature.name, value: signature.id }))]);
 function defaultSignature(accountId: number | null): number | null { return signatures.value.find((signature) => accountId != null && signature.default_account_ids.includes(accountId))?.id ?? null; }
 watch(() => compose.accountId, (accountId) => { if (compose.show) compose.signatureId = defaultSignature(accountId); });
+watch(() => [compose.to, compose.cc, compose.bcc, compose.subject, compose.sentFolder, compose.signatureId, compose.readReceipt, compose.highPriority, compose.fileIds.join(','), compose.galleryPhotoIds.join(',')], () => scheduleDraft());
 
 function parseEmails(str: string): string[] { return str.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean); }
-function resetComposeFields() { Object.assign(compose, { to: '', cc: '', bcc: '', subject: '', body: '', sentFolder: '', files: [], recipientHint: '', replyAll: false, sourceId: null, signatureId: null }); }
+function resetComposeFields() { Object.assign(compose, { to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null, recipientHint: '', replyAll: false, sourceId: null, signatureId: null }); }
+const selectedFiles = computed(() => (filesStore.files as FileEntry[]).filter((file) => compose.fileIds.includes(file.id)));
+const selectedPhotos = computed(() => (galleryStore.photos as Photo[]).filter((photo) => compose.galleryPhotoIds.includes(photo.id)));
+const assetPickerRows = computed(() => {
+  const q = assetPicker.q.trim().toLowerCase();
+  const rows = assetPicker.kind === 'files' ? filesStore.files : galleryStore.photos;
+  return rows.filter((row) => !q || row.name.toLowerCase().includes(q)).slice(0, 250);
+});
+function isAssetSelected(id: number) { return assetPicker.kind === 'files' ? compose.fileIds.includes(id) : compose.galleryPhotoIds.includes(id); }
+async function openAssetPicker(kind: 'files' | 'gallery') {
+  assetPicker.kind = kind; assetPicker.q = '';
+  try { if (kind === 'files' && !filesStore.files.length) await filesStore.load(); if (kind === 'gallery' && !galleryStore.photos.length) await galleryStore.load(); assetPicker.show = true; } catch { error(t('common.error')); }
+}
+function selectAsset(id: number) { const ids = assetPicker.kind === 'files' ? compose.fileIds : compose.galleryPhotoIds; const index = ids.indexOf(id); if (index >= 0) ids.splice(index, 1); else if (ids.length + compose.files.length < 20) ids.push(id); scheduleDraft(); }
+function removeFileAttachment(id: number) { compose.fileIds = compose.fileIds.filter((value) => value !== id); scheduleDraft(); }
+function removeGalleryAttachment(id: number) { compose.galleryPhotoIds = compose.galleryPhotoIds.filter((value) => value !== id); scheduleDraft(); }
+function onComposeEditorInput() { compose.html = composeEditor.value?.innerHTML ?? ''; compose.body = composeEditor.value?.innerText ?? ''; scheduleDraft(); }
+function formatCompose(command: string) { composeEditor.value?.focus(); document.execCommand(command); onComposeEditorInput(); }
+async function insertComposeLink() { const href = await promptAsk('Link-Adresse'); if (!href) return; composeEditor.value?.focus(); document.execCommand('createLink', false, href); onComposeEditorInput(); }
+function setEditorContent() { nextTick(() => { if (composeEditor.value) composeEditor.value.innerHTML = compose.html; }); }
+function addRecipient(email: string) { const before = compose.to.trim(); compose.to = before === '' ? email : `${before.replace(/\s*[^,;\n]*$/, '').replace(/[\s,;]+$/, '')}${before.includes(',') ? ' ' : ', '}${email}`; recipientSuggestions.value = []; scheduleDraft(); }
+function lookupRecipients() {
+  if (recipientTimer) clearTimeout(recipientTimer);
+  recipientTimer = setTimeout(async () => {
+    const q = compose.to.split(/[,;\n]/).pop()?.trim() ?? '';
+    if (q.length < 2) { recipientSuggestions.value = []; return; }
+    try { const data = await api.get<{ contacts: { fn?: string | null; emails?: string[] | null }[] }>('/api/v1/contacts/data'); recipientSuggestions.value = data.contacts.flatMap((contact) => (contact.emails ?? []).map((email) => ({ name: contact.fn ?? '', email }))).filter((entry) => `${entry.name} ${entry.email}`.toLowerCase().includes(q.toLowerCase())).slice(0, 8); } catch { recipientSuggestions.value = []; }
+  }, 180);
+}
+function draftPayload(): Omit<MailDraft, 'id' | 'updated_at'> { return { mail_account_id: compose.accountId, mode: compose.mode, source_message_id: compose.sourceId, to: parseEmails(compose.to), cc: parseEmails(compose.cc), bcc: parseEmails(compose.bcc), subject: compose.subject || null, text_body: compose.body || null, html_body: compose.html || null, mail_signature_id: compose.signatureId, sent_folder: compose.sentFolder || null, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority }; }
+function scheduleDraft() { if (!compose.show || compose.sending) return; if (draftTimer) clearTimeout(draftTimer); draftTimer = setTimeout(async () => { composeSaving.value = true; try { const row = compose.draftId ? await s.updateDraft(compose.draftId, draftPayload()) : await s.createDraft(draftPayload()); compose.draftId = row.id; const index = drafts.value.findIndex((draft) => draft.id === row.id); if (index >= 0) drafts.value[index] = row; else drafts.value.unshift(row); } catch { /* retry on the next input */ } finally { composeSaving.value = false; } }, 900); }
+async function closeCompose() { scheduleDraft(); compose.show = false; }
+async function discardCompose() { if (compose.draftId) { await s.deleteDraft(compose.draftId); drafts.value = drafts.value.filter((draft) => draft.id !== compose.draftId); } resetComposeFields(); compose.show = false; }
+function openDraft(draft: MailDraft) {
+  resetComposeFields();
+  Object.assign(compose, { show: true, draftId: draft.id, mode: draft.mode, accountId: draft.mail_account_id, sourceId: draft.source_message_id, to: (draft.to ?? []).join(', '), cc: (draft.cc ?? []).join(', '), bcc: (draft.bcc ?? []).join(', '), subject: draft.subject ?? '', body: draft.text_body ?? '', html: draft.html_body ?? '', sentFolder: draft.sent_folder ?? '', signatureId: draft.mail_signature_id, fileIds: draft.file_ids ?? [], galleryPhotoIds: draft.gallery_photo_ids ?? [], readReceipt: draft.read_receipt, highPriority: draft.high_priority });
+  readerOpen.value = false; setEditorContent();
+}
 
 function openCompose() {
   if (!sendableAccounts.value.length) { error(t('mail.send.no_smtp')); return; }
@@ -1083,6 +1128,8 @@ function openCompose() {
   compose.accountId = sendableAccounts.value[0].id;
   compose.signatureId = defaultSignature(compose.accountId);
   compose.show = true;
+  readerOpen.value = false;
+  setEditorContent();
 }
 function openReply(all: boolean) {
   if (!reader.value || !readerCanSend.value) { error(t('mail.send.no_smtp')); return; }
@@ -1094,6 +1141,8 @@ function openReply(all: boolean) {
   compose.signatureId = defaultSignature(compose.accountId);
   compose.recipientHint = reader.value.reply_to || reader.value.from_email || reader.value.from_name || '';
   compose.show = true;
+  readerOpen.value = false;
+  setEditorContent();
 }
 function openForward() {
   if (!reader.value || !readerCanSend.value) { error(t('mail.send.no_smtp')); return; }
@@ -1103,14 +1152,17 @@ function openForward() {
   compose.accountId = reader.value.account_id;
   compose.signatureId = defaultSignature(compose.accountId);
   compose.show = true;
+  readerOpen.value = false;
+  setEditorContent();
 }
 
 function onComposeFiles(e: Event) {
   const input = e.target as HTMLInputElement;
-  if (input.files) compose.files.push(...Array.from(input.files));
+  if (input.files) compose.files.push(...Array.from(input.files).slice(0, Math.max(0, 20 - compose.files.length - compose.fileIds.length - compose.galleryPhotoIds.length)));
   input.value = '';
+  scheduleDraft();
 }
-function removeComposeFile(i: number) { compose.files.splice(i, 1); }
+function removeComposeFile(i: number) { compose.files.splice(i, 1); scheduleDraft(); }
 
 // Surface the backend's machine error code (ApiError body { ok:false, error }) as a toast.
 function sendErr(e: unknown): string {
@@ -1131,9 +1183,9 @@ async function doSend() {
       const cc = parseEmails(compose.cc);
       const bcc = parseEmails(compose.bcc);
       if (!to.length && !cc.length && !bcc.length) { error(t('mail.send.no_recipient')); return; }
-      if (!compose.body.trim() && !compose.files.length) { error(t('mail.send.empty_body')); return; }
+      if (!compose.body.trim() && !compose.files.length && !compose.fileIds.length && !compose.galleryPhotoIds.length) { error(t('mail.send.empty_body')); return; }
       const sent = compose.sentFolder.trim() || null;
-      await s.compose({ account_id: Number(compose.accountId), to, cc, bcc, subject: compose.subject || null, text: compose.body || null, signature_id: compose.signatureId, sent_folder: sent, files: compose.files });
+      await s.compose({ account_id: Number(compose.accountId), to, cc, bcc, subject: compose.subject || null, text: compose.body || null, html: compose.html || null, signature_id: compose.signatureId, sent_folder: sent, files: compose.files, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority });
     } else if (compose.mode === 'reply') {
       if (!compose.body.trim()) { error(t('mail.send.empty_body')); return; }
       await s.reply(String(compose.sourceId), { text: compose.body, signature_id: compose.signatureId, all: compose.replyAll, sent_folder: compose.sentFolder.trim() || null });
@@ -1143,7 +1195,7 @@ async function doSend() {
       // Forward needs no body — the server attaches the original .eml + a header.
       await s.forward(String(compose.sourceId), { to, cc: parseEmails(compose.cc), text: compose.body || null, signature_id: compose.signatureId, sent_folder: compose.sentFolder.trim() || null });
     }
-    compose.show = false;
+    if (compose.draftId) await s.deleteDraft(compose.draftId); drafts.value = drafts.value.filter((draft) => draft.id !== compose.draftId); compose.show = false;
     success(t('mail.send.sent'));
   } catch (e) { error(sendErr(e)); } finally { compose.sending = false; }
 }

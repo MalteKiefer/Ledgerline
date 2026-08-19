@@ -176,7 +176,15 @@ export interface ComposePayload {
   to: string[]; cc?: string[]; bcc?: string[];
   subject?: string | null; text?: string | null; html?: string | null;
   attachment_ids?: string[]; signature_id?: number | null; sent_folder?: string | null;
+  file_ids?: number[]; gallery_photo_ids?: number[];
+  read_receipt?: boolean; high_priority?: boolean;
   files?: File[];
+}
+export interface MailDraft {
+  id: string; mail_account_id: number | null; mode: 'compose' | 'reply' | 'forward'; source_message_id: string | null;
+  to: string[] | null; cc: string[] | null; bcc: string[] | null; subject: string | null;
+  text_body: string | null; html_body: string | null; mail_signature_id: number | null; sent_folder: string | null;
+  file_ids: number[] | null; gallery_photo_ids: number[] | null; read_receipt: boolean; high_priority: boolean; updated_at: string;
 }
 export interface ReplyPayload { text?: string | null; html?: string | null; signature_id?: number | null; all?: boolean; sent_folder?: string | null }
 export interface ForwardPayload { to: string[]; cc?: string[]; text?: string | null; html?: string | null; signature_id?: number | null; sent_folder?: string | null }
@@ -291,6 +299,10 @@ export const useMailStore = defineStore('mail', () => {
       if (p.html != null) form.append('html', p.html);
       if (p.signature_id != null) form.append('signature_id', String(p.signature_id));
       for (const id of p.attachment_ids ?? []) form.append('attachment_ids[]', id);
+      for (const id of p.file_ids ?? []) form.append('file_ids[]', String(id));
+      for (const id of p.gallery_photo_ids ?? []) form.append('gallery_photo_ids[]', String(id));
+      if (p.read_receipt) form.append('read_receipt', '1');
+      if (p.high_priority) form.append('high_priority', '1');
       for (const f of p.files) form.append('attachments[]', f);
       if (p.sent_folder != null) form.append('sent_folder', p.sent_folder);
       return api.upload<SendResult>('/api/v1/mail/messages/compose', form);
@@ -299,8 +311,14 @@ export const useMailStore = defineStore('mail', () => {
       account_id: p.account_id, to: p.to, cc: p.cc ?? [], bcc: p.bcc ?? [],
       subject: p.subject ?? null, text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null,
       attachment_ids: p.attachment_ids ?? [], sent_folder: p.sent_folder ?? null,
+      file_ids: p.file_ids ?? [], gallery_photo_ids: p.gallery_photo_ids ?? [],
+      read_receipt: p.read_receipt ?? false, high_priority: p.high_priority ?? false,
     });
   }
+  const loadDrafts = () => api.get<{ drafts: MailDraft[] }>('/api/v1/mail/drafts').then((r) => r.drafts);
+  const createDraft = (body: Omit<MailDraft, 'id' | 'updated_at'>) => api.post<{ draft: MailDraft }>('/api/v1/mail/drafts', body).then((r) => r.draft);
+  const updateDraft = (id: string, body: Partial<Omit<MailDraft, 'id' | 'updated_at'>>) => api.put<{ draft: MailDraft }>(`/api/v1/mail/drafts/${id}`, body).then((r) => r.draft);
+  const deleteDraft = (id: string) => api.delete(`/api/v1/mail/drafts/${id}`);
   const reply = (id: string, p: ReplyPayload) => api.post<SendResult>(`/api/v1/mail/messages/${id}/reply`, {
     text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null, all: p.all ?? false, sent_folder: p.sent_folder ?? null,
   });
@@ -385,7 +403,7 @@ export const useMailStore = defineStore('mail', () => {
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
     virusTotalAttachment,
     setSeen, trash, restore, pushBack, deleteOrigin, setLabels,
-    compose, reply, forward,
+    compose, reply, forward, loadDrafts, createDraft, updateDraft, deleteDraft,
     loadLabels, createLabel, updateLabel, deleteLabel,
     loadRules, createRule, updateRule, deleteRule,
     loadSavedSearches, saveSearch, deleteSavedSearch,

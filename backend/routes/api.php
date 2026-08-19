@@ -60,6 +60,7 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailAttachmentController;
 use App\Http\Controllers\MailBlobController;
 use App\Http\Controllers\MailDeleteOriginController;
+use App\Http\Controllers\MailDraftController;
 use App\Http\Controllers\MailExportController;
 use App\Http\Controllers\MailFolderController;
 use App\Http\Controllers\MailKeyController;
@@ -571,6 +572,10 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/mail/messages/{message}/pushback', MailPushbackController::class)->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.pushback');
             Route::post('/mail/messages/{message}/delete-origin', MailDeleteOriginController::class)->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.delete-origin');
             Route::post('/mail/messages/compose', [MailSendController::class, 'compose'])->middleware('throttle:30,1')->name('api.mail.messages.compose');
+            Route::get('/mail/drafts', [MailDraftController::class, 'index'])->middleware('throttle:120,1')->name('api.mail.drafts.index');
+            Route::post('/mail/drafts', [MailDraftController::class, 'store'])->middleware('throttle:120,1')->name('api.mail.drafts.store');
+            Route::put('/mail/drafts/{draft}', [MailDraftController::class, 'update'])->whereUuid('draft')->middleware('throttle:120,1')->name('api.mail.drafts.update');
+            Route::delete('/mail/drafts/{draft}', [MailDraftController::class, 'destroy'])->whereUuid('draft')->middleware('throttle:120,1')->name('api.mail.drafts.destroy');
             Route::post('/mail/messages/{message}/reply', [MailSendController::class, 'reply'])->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.reply');
             Route::post('/mail/messages/{message}/forward', [MailSendController::class, 'forward'])->whereUuid('message')->middleware('throttle:30,1')->name('api.mail.messages.forward');
             Route::get('/mail/attachments/{attachment}/raw', [MailAttachmentController::class, 'raw'])->whereUuid('attachment')->middleware('throttle:3000,1')->name('api.mail.attachments.raw');
