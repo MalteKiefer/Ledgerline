@@ -525,6 +525,11 @@ return [
     'virustotal_section' => 'VirusTotal',
     'virustotal_title' => 'Репутация файлов VirusTotal',
     'virustotal_api_key' => 'Ключ API',
-    'virustotal_hint' => 'Ключ хранится в зашифрованном виде. При проверке отправляется только SHA-256, но не содержимое файла.',
-    'virustotal_configured' => 'Ключ API настроен. Оставьте поле пустым, чтобы сохранить его.',
+    'virustotal_hint' => 'Ключ хранится в зашифрованном виде и проверяется в VirusTotal перед сохранением. При проверке отправляется только SHA-256, но не содержимое файла.',
+    'virustotal_configured' => 'Настроен проверенный ключ API.',
+    'virustotal_key_required' => 'Введите ключ API VirusTotal.',
+    'virustotal_invalid_api_key' => 'VirusTotal отклонил этот ключ API. Проверьте активный ключ и вставьте его снова.',
+    'virustotal_rate_limited' => 'Достигнут лимит VirusTotal. Повторите сохранение позже.',
+    'virustotal_unavailable' => 'VirusTotal сейчас недоступен. Ключ не сохранён.',
+    'virustotal_saved_verified' => 'Ключ API проверен и сохранён.',
 ];

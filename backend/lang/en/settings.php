@@ -525,6 +525,11 @@ return [
     'virustotal_section' => 'VirusTotal',
     'virustotal_title' => 'VirusTotal file reputation',
     'virustotal_api_key' => 'API key',
-    'virustotal_hint' => 'The key is encrypted. File checks send only a SHA-256 checksum, never file contents.',
-    'virustotal_configured' => 'An API key is configured. Leave the field blank to keep it.',
+    'virustotal_hint' => 'The key is encrypted and verified with VirusTotal before it is saved. File checks send only a SHA-256 checksum, never file contents.',
+    'virustotal_configured' => 'A verified API key is configured.',
+    'virustotal_key_required' => 'Enter a VirusTotal API key.',
+    'virustotal_invalid_api_key' => 'VirusTotal rejected this API key. Verify an active key and paste it again.',
+    'virustotal_rate_limited' => 'VirusTotal rate limit reached. Try saving again later.',
+    'virustotal_unavailable' => 'VirusTotal is currently unavailable. The key was not saved.',
+    'virustotal_saved_verified' => 'API key verified and saved.',
 ];

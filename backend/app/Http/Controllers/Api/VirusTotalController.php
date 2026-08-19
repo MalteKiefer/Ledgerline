@@ -10,6 +10,7 @@ use App\Models\AuditLog;
 use App\Models\FileEntry;
 use App\Models\MailAttachment;
 use App\Support\BlobStore;
+use Illuminate\Http\Client\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Database\Eloquent\Model;
@@ -22,6 +23,8 @@ use Illuminate\Support\Facades\Http;
  */
 class VirusTotalController extends Controller
 {
+    private const PROBE_HASH = '275a021bbfb6489e54d471899f7db9d18e5a807f17f81f4b6b3cfa861fc5b3ec';
+
     public function settings(): JsonResponse
     {
         return response()->json(['configured' => $this->key() !== '']);
@@ -29,16 +32,31 @@ class VirusTotalController extends Controller
 
     public function updateSettings(Request $request): JsonResponse
     {
-        $request->validate(['api_key' => ['nullable', 'string', 'max:128']]);
-        $settings = AppSettings::current();
-        if ($request->has('api_key')) {
-            $apiKey = $request->input('api_key');
-            $key = is_string($apiKey) ? trim($apiKey) : '';
-            $settings->update(['virustotal_api_key' => $key !== '' ? $key : null]);
-            AuditLog::record('settings.updated', null, ['group' => 'virustotal', 'configured' => $key !== '']);
+        $request->validate(['api_key' => ['required', 'string', 'max:128']]);
+        $apiKey = $request->input('api_key');
+        $key = is_string($apiKey) ? trim($apiKey) : '';
+        if ($key === '') {
+            return response()->json(['error' => 'virustotal_key_required'], 422);
         }
 
-        return response()->json(['configured' => trim((string) ($settings->virustotal_api_key ?? '')) !== '']);
+        // Do not acknowledge a secret until the same hash-only endpoint used by
+        // file checks has accepted it. No user file bytes leave this host.
+        $probe = $this->requestHash($key, self::PROBE_HASH);
+        if (in_array($probe->status(), [401, 403], true)) {
+            return response()->json(['error' => 'virustotal_invalid_api_key'], 422);
+        }
+        if ($probe->status() === 429) {
+            return response()->json(['error' => 'virustotal_rate_limited'], 429);
+        }
+        if (! $probe->successful() && $probe->status() !== 404) {
+            return response()->json(['error' => 'virustotal_unavailable'], 502);
+        }
+
+        $settings = AppSettings::current();
+        $settings->update(['virustotal_api_key' => $key]);
+        AuditLog::record('settings.updated', null, ['group' => 'virustotal', 'configured' => true, 'verified' => true]);
+
+        return response()->json(['configured' => true, 'verified' => true]);
     }
 
     public function lookup(Request $request, FileEntry $file): JsonResponse
@@ -79,8 +97,7 @@ class VirusTotalController extends Controller
             return response()->json(['error' => 'virustotal_not_configured'], 422);
         }
 
-        $response = Http::acceptJson()->withToken($key)->timeout(12)
-            ->get('https://www.virustotal.com/api/v3/files/'.$hash);
+        $response = $this->requestHash($key, $hash);
 
         if ($response->status() === 404) {
             AuditLog::record($auditAction, $subject, ['known' => false]);
@@ -119,6 +136,12 @@ class VirusTotalController extends Controller
     private function key(): string
     {
         return trim((string) (AppSettings::current()->virustotal_api_key ?? ''));
+    }
+
+    private function requestHash(string $key, string $hash): Response
+    {
+        return Http::acceptJson()->withHeaders(['x-apikey' => $key])->timeout(12)
+            ->get('https://www.virustotal.com/api/v3/files/'.$hash);
     }
 
     /** @param mixed $value */

@@ -8753,21 +8753,24 @@ paths:
     put:
       tags: [Settings]
       operationId: adminVirusTotalUpdate
-      summary: Set or clear the encrypted VirusTotal API key (admin)
+      summary: Verify and save the encrypted VirusTotal API key (admin)
+      description: "Validates the key against VirusTotal before saving it. The fixed public EICAR hash is queried; no user file bytes are sent. The key is not changed when validation fails."
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [api_key]
               properties:
-                api_key: { type: [string, "null"], maxLength: 128 }
+                api_key: { type: string, minLength: 1, maxLength: 128 }
       responses:
-        "200": { description: "Saved." }
+        "200": { description: "Verified and saved." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { description: "The key is missing or was rejected by VirusTotal." }
         "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { description: "VirusTotal could not be reached; the key was not saved." }
   /admin/dashboard:
     get:
       tags: [Settings]
