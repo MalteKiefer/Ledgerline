@@ -191,7 +191,7 @@ final class OutboundUrl
     }
 
     /**
-     * Resolve $host to its A/AAAA addresses via `getent hosts` under a hard
+     * Resolve $host to its A/AAAA addresses via `getent ahosts` under a hard
      * process timeout — deliberately NOT PHP's own gethostbynamel()/
      * dns_get_record(), which have no timeout of their own and block the
      * calling PHP process for as long as the OS resolver takes (which can be
@@ -215,7 +215,10 @@ final class OutboundUrl
             return [$host];
         }
 
-        $out = BinaryProcess::run(['getent', 'hosts', $host], 3);
+        // `getent hosts` may return only the preferred family (often AAAA),
+        // even when a usable A record exists. `ahosts` exposes both families,
+        // which lets client() keep its pinned, verified IPv4 fallback.
+        $out = BinaryProcess::run(['getent', 'ahosts', $host], 3);
         if ($out === null) {
             return [];
         }
