@@ -142,7 +142,7 @@ class MailAttachmentTest extends TestCase
             ->get(route('mail.attachments.raw', $att->id))->assertNotFound();
     }
 
-    public function test_body_endpoint_never_loads_remote_images_and_inlines_cid(): void
+    public function test_body_endpoint_blocks_remote_images_by_default_and_allows_one_explicit_view(): void
     {
         $account = $this->account();
         $msg = $this->ingest($account);
@@ -161,12 +161,12 @@ class MailAttachmentTest extends TestCase
         $this->assertStringNotContainsString('@font-face', $body);
         $this->assertStringContainsString('font-weight:bold', str_replace(' ', '', $body));
 
-        // Legacy reader toggle cannot weaken the remote-content boundary.
+        // The reader can load remote images for this one explicit view only.
         $res = $this->actingAs($owner)->get(route('mail.messages.body', [$msg->id, 'remote' => 1]))->assertOk();
-        $this->assertStringNotContainsString('https:', (string) $res->headers->get('Content-Security-Policy'));
-        $this->assertStringNotContainsString('tracker.example', (string) $res->getContent());
+        $this->assertStringContainsString('https:', (string) $res->headers->get('Content-Security-Policy'));
+        $this->assertStringContainsString('tracker.example/px.gif', (string) $res->getContent());
 
-        // A stale preference cannot enable tracking either.
+        // A stale preference alone cannot enable tracking on a later request.
         UserSetting::for($owner->id)->forceFill(['mail_load_remote' => true])->save();
         $res = $this->actingAs($owner)->get(route('mail.messages.body', $msg->id))->assertOk();
         $this->assertStringNotContainsString('https:', (string) $res->headers->get('Content-Security-Policy'));

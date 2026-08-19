@@ -761,7 +761,7 @@ components:
         time_format: { type: string, enum: [24h, 12h] }
         timezone: { type: [string, "null"], description: "Hard IANA timezone override (e.g. Europe/Berlin); null follows the browser/system zone." }
         date_format: { type: string, enum: [system, dmy, dmy_dot, mdy, ymd], description: "Date-format preset; 'system' uses the locale's regional format." }
-        mail_load_remote: { type: boolean, deprecated: true, description: "Deprecated and ignored: remote mail content is always blocked." }
+        mail_load_remote: { type: boolean, deprecated: true, description: "Deprecated and ignored: remote mail content is controlled per message." }
         mail_signature: { type: [string, "null"], description: "Signature appended to outgoing mail; blank clears it to null." }
         notifications:
           type: object
@@ -4599,7 +4599,7 @@ paths:
                 mail_load_remote:
                   type: boolean
                   deprecated: true
-                  description: "Deprecated and ignored: remote mail content is always blocked."
+                  description: "Deprecated and ignored: remote mail content is controlled per message."
                 mail_signature:
                   type: [string, "null"]
                   maxLength: 5000
@@ -6950,6 +6950,20 @@ paths:
         "200": { description: The file., content: { application/json: { schema: { type: object, properties: { file: { $ref: "#/components/schemas/FileEntry" } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /files/entries/{file}/virustotal:
+    post:
+      tags: [Files]
+      operationId: filesVirusTotalLookup
+      summary: Look up a file's SHA-256 at VirusTotal
+      description: "Throttle 30/min. Owner-scoped. Sends only the existing SHA-256 to VirusTotal; never uploads file bytes. Returns 422 when the workspace key or file hash is unavailable."
+      security: [ { bearerAuth: [] } ]
+      parameters: [ { name: file, in: path, required: true, schema: { type: integer } } ]
+      responses:
+        "200": { description: "Hash reputation result or an unknown hash." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /files/entries/{file}/info:
     get:
       tags: [Files]
@@ -8718,6 +8732,34 @@ paths:
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /admin/virustotal:
+    get:
+      tags: [Settings]
+      operationId: adminVirusTotalShow
+      summary: VirusTotal integration status (admin)
+      description: "Returns only whether an encrypted API key is configured; the key is never returned."
+      responses:
+        "200": { description: "Configuration status." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Settings]
+      operationId: adminVirusTotalUpdate
+      summary: Set or clear the encrypted VirusTotal API key (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                api_key: { type: [string, "null"], maxLength: 128 }
+      responses:
+        "200": { description: "Saved." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
   /admin/dashboard:
     get:
       tags: [Settings]
@@ -9968,11 +10010,13 @@ paths:
         Throttle 3000/min. Returns the message's HTML body as a standalone
         document (text/html) for embedding in a sandboxed reader iframe. Served
         with `default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src
-        data:`. Safe embedded styling is preserved, while remote images, scripts,
-        fonts, CSS imports and all other remote resources are always blocked. cid:
-        inline images are rewritten to data: URIs.
+        data:` by default. Safe embedded styling is preserved; scripts, fonts and
+        CSS imports are always blocked. `?remote=1` explicitly permits remote
+        images for this one message view. cid: inline images are rewritten to data:
+        URIs.
       parameters:
         - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: remote, in: query, required: false, schema: { type: boolean }, description: "Explicitly load remote images for this one message view." }
       responses:
         "200":
           description: HTML body document.

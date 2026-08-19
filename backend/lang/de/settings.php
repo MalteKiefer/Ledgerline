@@ -522,4 +522,9 @@ return [
     'grp_security' => 'Sicherheit',
     'grp_modules' => 'Module & Inhalte',
     'grp_system' => 'System & Wartung',
+    'virustotal_section' => 'VirusTotal',
+    'virustotal_title' => 'VirusTotal-Dateireputation',
+    'virustotal_api_key' => 'API-Schlüssel',
+    'virustotal_hint' => 'Der Schlüssel wird verschlüsselt gespeichert. Datei-Prüfungen senden nur eine SHA-256-Prüfsumme, nie Dateiinhalte.',
+    'virustotal_configured' => 'Ein API-Schlüssel ist hinterlegt. Feld leer lassen zum Beibehalten.',
 ];

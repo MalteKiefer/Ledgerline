@@ -164,20 +164,22 @@ class MailMessageController extends Controller
     /**
      * The message's HTML body as a standalone, sandboxed document for a reader
      * iframe. Re-derived from the immutable raw .eml so inline cid: images can
-     * be embedded as data: URIs. Strict CSP: no scripts, no same-origin, no
-     * remote resource origins. cid: inline images are rewritten to data: URIs
-     * from the stored attachment bytes.
+     * be embedded as data: URIs. Strict CSP: no scripts and no same-origin.
+     * Remote resources stay blocked by default and are permitted only for an
+     * explicit, one-message `?remote=1` reader action. cid: inline images are
+     * rewritten to data: URIs from the stored attachment bytes.
      */
     public function body(Request $request, MailMessage $message): Response
     {
         $this->authorizeOwner($request, $message);
 
-        // Mail bodies never load remote content. This deliberately ignores the
-        // legacy ?remote query argument and the retired preference so a tracking
-        // pixel cannot be enabled by a stale client or bookmarked URL.
-        $html = $this->renderBody($message);
+        // Remote content is privacy-sensitive, so it is opt-in for this one
+        // reader request only. There is deliberately no persistent auto-load
+        // preference: every newly opened message begins with tracking blocked.
+        $allowRemote = $request->boolean('remote');
+        $html = $this->renderBody($message, $allowRemote);
 
-        $csp = "default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src data:";
+        $csp = "default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src data:".($allowRemote ? ' https: http:' : '');
         $doc = '<!doctype html><html><head><meta charset="utf-8">'
             .'<meta name="referrer" content="no-referrer">'
             .'<meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -197,7 +199,7 @@ class MailMessageController extends Controller
      * escaped plaintext body (then the stored sanitized HTML) when the raw blob
      * is unavailable or has no HTML part.
      */
-    private function renderBody(MailMessage $message): string
+    private function renderBody(MailMessage $message, bool $allowRemote): string
     {
         $disk = BlobStore::disk();
         $key = 'mail/'.$message->id;
@@ -205,7 +207,7 @@ class MailMessageController extends Controller
             $raw = $disk->get($key);
             if (is_string($raw) && $raw !== '') {
                 $parsed = (new MimeParser)->parse($raw);
-                $html = (new MailHtmlSanitizer)->sanitize($parsed->htmlBody, false, $this->cidMap($message));
+                $html = (new MailHtmlSanitizer)->sanitize($parsed->htmlBody, $allowRemote, $this->cidMap($message));
                 if ($html !== null) {
                     return $html;
                 }

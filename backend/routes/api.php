@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\SpaAuthController;
 use App\Http\Controllers\Api\SystemController as ApiSystemController;
 use App\Http\Controllers\Api\TwoFactorController as ApiTwoFactorController;
 use App\Http\Controllers\Api\UsersController as ApiUsersController;
+use App\Http\Controllers\Api\VirusTotalController as ApiVirusTotalController;
 use App\Http\Controllers\Api\WebDavAccessController as ApiWebDavAccessController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\CalendarBookController;
@@ -458,6 +459,7 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/files/activity', [FilesController::class, 'activity'])->middleware('throttle:600,1')->name('api.files.activity');
             Route::get('/files/entries/{file}/activity', [FilesController::class, 'fileActivity'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.activity');
             Route::get('/files/entries/{file}/info', [FilesController::class, 'info'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.info');
+            Route::post('/files/entries/{file}/virustotal', [ApiVirusTotalController::class, 'lookup'])->whereNumber('file')->middleware('throttle:30,1')->name('api.files.entries.virustotal');
             Route::get('/files/entries/{file}/show', [FilesController::class, 'showEntry'])->whereNumber('file')->middleware('throttle:600,1')->name('api.files.entries.show');
             Route::get('/files/search', [FileSearchController::class, 'search'])->middleware('throttle:120,1')->name('api.files.search');
             Route::get('/files/labels', [FilesController::class, 'labels'])->name('api.files.labels');
@@ -718,6 +720,11 @@ Route::prefix('v1')->group(function (): void {
             // Workspace Files limits (max upload MB + orphan-blob grace hours).
             Route::get('/files-limits', [ApiFilesLimitsController::class, 'show'])->name('files-limits.show');
             Route::put('/files-limits', [ApiFilesLimitsController::class, 'update'])->middleware('throttle:60,1')->name('files-limits.update');
+
+            // VirusTotal key management. The key is encrypted and never returned;
+            // Files are looked up by SHA-256 only, never uploaded.
+            Route::get('/virustotal', [ApiVirusTotalController::class, 'settings'])->name('virustotal.show');
+            Route::put('/virustotal', [ApiVirusTotalController::class, 'updateSettings'])->middleware('throttle:20,1')->name('virustotal.update');
 
             // Session/auth lifetimes, retention windows, Files quota.
             Route::get('/limits', [ApiLimitsController::class, 'show'])->name('limits.show');

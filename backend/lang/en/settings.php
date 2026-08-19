@@ -522,4 +522,9 @@ return [
     'grp_security' => 'Security',
     'grp_modules' => 'Modules & content',
     'grp_system' => 'System & maintenance',
+    'virustotal_section' => 'VirusTotal',
+    'virustotal_title' => 'VirusTotal file reputation',
+    'virustotal_api_key' => 'API key',
+    'virustotal_hint' => 'The key is encrypted. File checks send only a SHA-256 checksum, never file contents.',
+    'virustotal_configured' => 'An API key is configured. Leave the field blank to keep it.',
 ];

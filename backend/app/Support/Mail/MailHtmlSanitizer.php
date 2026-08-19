@@ -14,7 +14,8 @@ use Throwable;
  * Server-side sanitiser for archived-mail HTML bodies. Runs at ingest and
  * stores the result in mail_messages.html_sanitized so the reader never touches
  * the raw HTML directly. It preserves safe email styling in a sandboxed iframe
- * while keeping all remote content permanently disabled:
+ * while keeping remote content blocked unless the caller explicitly permits it
+ * for one sandboxed reader request:
  *
  *   - Dangerous elements are removed WITH their subtree: script, iframe,
  *     object, embed, applet, frame(set), meta, base, link, form and all form
@@ -24,7 +25,8 @@ use Throwable;
  *     <img>) are dropped — no script execution, no data-URI HTML smuggling.
  *   - REMOTE resource loads are neutralised: an http(s)/protocol-relative src on
  *     img/audio/video/source/track/input/poster is removed (tracking-pixel +
- *     leak protection). cid: refs are left for the body endpoint to resolve.
+ *     leak protection; the body endpoint can permit it for one explicit reader
+ *     request). cid: refs are left for the body endpoint to resolve.
  *   - Safe inline CSS and style blocks are retained after stripping external
  *     imports, font faces, url() fetches, and legacy executable CSS features.
  *   - Anchors are rewritten target=_blank rel="noopener noreferrer nofollow".
@@ -45,8 +47,8 @@ final class MailHtmlSanitizer
     private const URL_ATTRS = ['href', 'src', 'poster', 'background', 'srcset', 'action', 'formaction'];
 
     /**
-     * @param  bool  $allowRemote  Retained for call compatibility. Remote content
-     *                             is always stripped, regardless of this value.
+     * @param  bool  $allowRemote  Keep http(s)/protocol-relative resource src
+     *                             for an explicit, sandboxed reader action only.
      * @param  array<string, string>  $cidMap  normalized Content-Id → data: URI;
      *                                         a `cid:<id>` img src is rewritten to its data:
      *                                         URI (or dropped when unresolved).
@@ -58,9 +60,6 @@ final class MailHtmlSanitizer
         }
 
         try {
-            // The parameter remains in the public signature for old callers, but
-            // remote resource loading is an invariant of the mail reader.
-            $allowRemote = false;
             $dom = new DOMDocument;
             $prev = libxml_use_internal_errors(true);
             // Force UTF-8 interpretation; LIBXML_NONET blocks any external entity fetch.

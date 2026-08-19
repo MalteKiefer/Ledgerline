@@ -46,6 +46,7 @@ const groups = [
     { to: 'settings.company', icon: 'business', label: 'settings.company_section' },
     { to: 'settings.gallery', icon: 'photo_library', label: 'gallery.gs_section' },
     { to: 'settings.files-limits', icon: 'folder', label: 'settings.files_limits_heading' },
+    { to: 'settings.virustotal', icon: 'security', label: 'settings.virustotal_section' },
     { to: 'settings.paperless', icon: 'description', label: 'settings.paperless_section' },
     { to: 'settings.notifications-config', icon: 'notifications', label: 'settings.notifications_section' },
   ] },

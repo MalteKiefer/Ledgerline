@@ -55,6 +55,7 @@ const routes: RouteRecordRaw[] = [
           { path: 'notifications-config', name: 'settings.notifications-config', component: () => import('@spa/views/settings/NotificationsConfig.vue') },
           { path: 'security', name: 'settings.security', component: () => import('@spa/views/settings/Security.vue') },
           { path: 'files-limits', name: 'settings.files-limits', component: () => import('@spa/views/settings/FilesLimits.vue') },
+          { path: 'virustotal', name: 'settings.virustotal', component: () => import('@spa/views/settings/VirusTotal.vue') },
           { path: 'limits', name: 'settings.limits', component: () => import('@spa/views/settings/Limits.vue') },
           { path: 'gallery', name: 'settings.gallery', component: () => import('@spa/views/settings/Gallery.vue') },
           { path: 'containers', name: 'settings.containers', component: () => import('@spa/views/settings/Containers.vue') },

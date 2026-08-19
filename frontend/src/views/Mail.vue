@@ -257,6 +257,8 @@
             <DropdownMenuItem :class="menuItem" :disabled="printing" @select="printMessage"><Icon name="print" :size="18" />{{ t('mail.reader.print') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" :disabled="pdfExporting" @select="exportPdf"><Icon name="picture_as_pdf" :size="18" />{{ t('mail.reader.export_pdf') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" @select="downloadEml"><Icon name="download" :size="18" />{{ t('mail.reader.download_eml') }}</DropdownMenuItem>
+            <DropdownMenuItem :class="menuItem" @select="readerSetSeen(!reader.seen)"><Icon :name="reader.seen ? 'mark_email_unread' : 'mark_email_read'" :size="18" />{{ reader.seen ? t('mail.actions.mark_unread') : t('mail.actions.mark_read') }}</DropdownMenuItem>
+            <DropdownMenuItem v-if="hasHtml" :class="menuItem" @select="toggleRemote"><Icon :name="remoteOn ? 'visibility_off' : 'visibility'" :size="18" />{{ remoteOn ? t('mail.reader.block_remote') : t('mail.reader.load_remote') }}</DropdownMenuItem>
             <DropdownMenuItem :class="menuItem" @select="showHeaders = !showHeaders"><Icon :name="showHeaders ? 'expand_less' : 'expand_more'" :size="18" />{{ t('mail.reader.original_headers') }}</DropdownMenuItem>
             <template v-if="s.labels.length">
               <div class="my-1 border-t border-[var(--ll-border)]" />
@@ -269,7 +271,7 @@
             </DropdownMenuItem>
           </DropdownMenuContent></DropdownMenuPortal>
         </DropdownMenuRoot>
-        <span class="ml-auto inline-flex items-center gap-1.5 pr-1 text-xs text-[var(--ll-muted)]"><Icon name="shield" :size="15" />{{ t('mail.reader.remote_blocked') }}</span>
+        <span class="ml-auto inline-flex items-center gap-1.5 pr-1 text-xs text-[var(--ll-muted)]"><Icon :name="remoteOn ? 'visibility' : 'shield'" :size="15" />{{ remoteOn ? t('mail.reader.remote_loaded') : t('mail.reader.remote_blocked') }}</span>
       </div>
 
       <pre v-if="showHeaders" class="max-h-52 overflow-auto rounded-lg bg-black/[0.03] p-3 text-xs dark:bg-white/5">{{ reader.headers_raw || '—' }}</pre>
@@ -278,7 +280,7 @@
       <iframe
         v-if="hasHtml"
         :key="reader.id"
-        :src="s.bodyUrl(reader.id)"
+        :src="s.bodyUrl(reader.id, remoteOn)"
         sandbox=""
         class="h-[48vh] w-full rounded-lg border border-[var(--ll-border)] bg-white"
       ></iframe>
@@ -571,6 +573,7 @@ const loading = ref(false);
 const reader = ref<MailMessage | null>(null);
 const readerOpen = ref(false);
 const showHeaders = ref(false);
+const remoteOn = ref(false);
 const printing = ref(false);
 const pdfExporting = ref(false);
 const dateFrom = ref('');
@@ -716,13 +719,14 @@ function toggleSelectAll() { s.selected = allSelected.value ? [] : s.messages.ma
 
 // --- Reader ------------------------------------------------------------------
 async function openReader(m: MailMessage) {
-  showHeaders.value = false;
+  showHeaders.value = false; remoteOn.value = false;
   readerOpen.value = true;
   try {
     reader.value = await s.show(m.id);
     if (!m.seen) { await s.setSeen([m.id], true); m.seen = true; if (reader.value) reader.value.seen = true; refreshCounts(); }
   } catch { error(t('mail.toast.load_failed')); }
 }
+function toggleRemote() { remoteOn.value = !remoteOn.value; }
 
 async function readerDocument(): Promise<string | null> {
   if (!reader.value) return null;
@@ -780,6 +784,12 @@ async function refreshCounts() { try { await s.loadFolders(filters.accountId); }
 
 async function readerTrash(m: MailMessage) { try { await s.trash([m.id]); readerOpen.value = false; await reload(); refreshCounts(); } catch { error(t('common.error')); } }
 async function readerRestore(m: MailMessage) { try { await s.restore([m.id]); readerOpen.value = false; await reload(); } catch { error(t('common.error')); } }
+async function readerSetSeen(seen: boolean) {
+  const message = reader.value;
+  if (!message) return;
+  try { await s.setSeen([message.id], seen); message.seen = seen; const row = s.messages.find((m) => m.id === message.id); if (row) row.seen = seen; refreshCounts(); }
+  catch { error(t('common.error')); }
+}
 
 async function doPushBack(m: MailMessage) {
   if (!await confirmAsk(t('mail.actions.confirm_push_back'))) return;

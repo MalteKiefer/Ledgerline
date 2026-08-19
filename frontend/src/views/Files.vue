@@ -439,6 +439,22 @@
             </template>
           </dl>
 
+          <div v-if="infoDetail.sha256" class="rounded-lg border border-[var(--ll-border)] p-3">
+            <div class="flex items-center gap-2">
+              <Icon name="security" :size="18" class="text-[var(--ll-muted)]" />
+              <span class="flex-1 text-sm font-medium">{{ t('files.virustotal_title') }}</span>
+              <Btn variant="ghost" size="sm" icon="search" :loading="virusTotalLoading" @click="scanVirusTotal">{{ t('files.virustotal_check') }}</Btn>
+            </div>
+            <p class="mt-1 text-xs text-[var(--ll-muted)]">{{ t('files.virustotal_hint') }}</p>
+            <div v-if="virusTotalResult" class="mt-2 text-sm">
+              <template v-if="virusTotalResult.known && virusTotalResult.stats">
+                <Badge :tone="virusTotalResult.stats.malicious || virusTotalResult.stats.suspicious ? 'error' : 'success'">{{ t('files.virustotal_detections', { n: String(virusTotalResult.stats.malicious + virusTotalResult.stats.suspicious) }) }}</Badge>
+                <span class="ml-2 text-xs text-[var(--ll-muted)]">{{ t('files.virustotal_undetected', { n: String(virusTotalResult.stats.undetected) }) }}</span>
+              </template>
+              <span v-else class="text-[var(--ll-muted)]">{{ t('files.virustotal_unknown') }}</span>
+            </div>
+          </div>
+
           <!-- Type-specific metadata (Stufe 1). -->
           <div v-if="infoDetail.metadata && Object.keys(infoDetail.metadata.fields).length">
             <div class="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--ll-muted)]">{{ metaKindLabel(infoDetail.metadata.kind) }}</div>
@@ -1054,7 +1070,7 @@ import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Badge, Modal, Select } from '@spa/ui';
 import StlViewer from '@spa/components/StlViewer.vue';
-import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity, type FileInfo } from '@spa/stores/files';
+import { useFilesStore, type FileEntry, type FileFolder, type FileLabel, type FileVersion, type FileShare, type FileStats, type FolderShare, type FolderShareMember, type UploadLink, type FileActivity, type FileInfo, type VirusTotalResult } from '@spa/stores/files';
 import { useCryptoStore } from '@spa/stores/crypto';
 import { ApiError, api } from '@spa/api/client';
 import { highlightCode } from '@spa/lib/highlight';
@@ -1143,6 +1159,8 @@ const menuItemDangerCls = 'flex cursor-pointer items-center gap-2.5 rounded-md p
 const info = ref<{ show: boolean; busy: boolean; file: FileEntry | null; name: string; tags: string; note: string; labelIds: number[] }>({ show: false, busy: false, file: null, name: '', tags: '', note: '', labelIds: [] });
 const infoDetail = ref<FileInfo | null>(null);
 const infoLoading = ref(false);
+const virusTotalLoading = ref(false);
+const virusTotalResult = ref<VirusTotalResult | null>(null);
 const versionsDlg = ref<{ show: boolean; loading: boolean; file: FileEntry | null; list: FileVersion[] }>({ show: false, loading: false, file: null, list: [] });
 const shareDlg = ref<{
   show: boolean; busy: boolean; kind: 'file' | 'folder'; targetId: number; tab: 'link' | 'users';
@@ -1974,8 +1992,17 @@ async function openInfo(row: Row) {
   const f = row.raw as FileEntry;
   info.value = { show: true, busy: false, file: f, name: f.name, tags: (f.tags ?? []).join(', '), note: f.note ?? '', labelIds: (f.labels ?? []).map((l) => l.id) };
   infoDetail.value = null;
+  virusTotalResult.value = null;
   infoLoading.value = true;
   try { infoDetail.value = await s.fileInfo(f.id); } catch { /* best-effort */ } finally { infoLoading.value = false; }
+}
+async function scanVirusTotal() {
+  const file = info.value.file;
+  if (!file) return;
+  virusTotalLoading.value = true;
+  try { virusTotalResult.value = await s.virusTotal(file.id); }
+  catch (e) { error(t(e instanceof ApiError && (e.body as { error?: string } | null)?.error === 'virustotal_not_configured' ? 'files.virustotal_not_configured' : 'common.error')); }
+  finally { virusTotalLoading.value = false; }
 }
 // Localised label for a metadata group / activity action, falling back to the raw
 // key value when no translation exists (t returns the key itself on a miss).

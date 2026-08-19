@@ -522,4 +522,9 @@ return [
     'grp_security' => 'Безопасность',
     'grp_modules' => 'Модули и контент',
     'grp_system' => 'Система и обслуживание',
+    'virustotal_section' => 'VirusTotal',
+    'virustotal_title' => 'Репутация файлов VirusTotal',
+    'virustotal_api_key' => 'Ключ API',
+    'virustotal_hint' => 'Ключ хранится в зашифрованном виде. При проверке отправляется только SHA-256, но не содержимое файла.',
+    'virustotal_configured' => 'Ключ API настроен. Оставьте поле пустым, чтобы сохранить его.',
 ];

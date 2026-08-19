@@ -412,4 +412,11 @@ return [
     'recipient_added' => 'Получатель добавлен.',
     'recipient_failed' => 'Не удалось добавить получателя (неверный ключ/сертификат).',
     'ul_optional' => 'необязательно',
+    'virustotal_title' => 'Репутация VirusTotal',
+    'virustotal_check' => 'Проверить',
+    'virustotal_hint' => 'В VirusTotal отправляется только контрольная сумма SHA-256. Файл никогда не загружается.',
+    'virustotal_detections' => 'Обнаружений: :n',
+    'virustotal_undetected' => ':n движков ничего не нашли',
+    'virustotal_unknown' => 'Эта контрольная сумма неизвестна VirusTotal.',
+    'virustotal_not_configured' => 'VirusTotal ещё не настроен администратором.',
 ];
