@@ -60,7 +60,7 @@ class MailSendController extends Controller
             'subject' => ['nullable', 'string', 'max:'.self::MAX_SUBJECT],
             'text' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'html' => ['nullable', 'string', 'max:'.self::MAX_BODY],
-            'signature_id' => ['nullable', 'integer'],
+            'signature_id' => ['nullable', 'integer', 'min:-1'],
             'attachments' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
             'attachments.*' => ['file', 'max:25600'],
             'attachment_ids' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
@@ -114,7 +114,7 @@ class MailSendController extends Controller
         if ($resp = $this->guard($request, [
             'text' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'html' => ['nullable', 'string', 'max:'.self::MAX_BODY],
-            'signature_id' => ['nullable', 'integer'],
+            'signature_id' => ['nullable', 'integer', 'min:-1'],
             'all' => ['nullable', 'boolean'],
             'sent_folder' => ['nullable', 'string', 'max:255'],
         ])) {
@@ -174,7 +174,7 @@ class MailSendController extends Controller
             'cc.*' => ['email:rfc'],
             'text' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'html' => ['nullable', 'string', 'max:'.self::MAX_BODY],
-            'signature_id' => ['nullable', 'integer'],
+            'signature_id' => ['nullable', 'integer', 'min:-1'],
             'sent_folder' => ['nullable', 'string', 'max:255'],
         ])) {
             return $resp;
@@ -357,6 +357,10 @@ class MailSendController extends Controller
      */
     private function withSignature(MailAccount $account, ?string $text, ?string $html, int $signatureId = 0): array
     {
+        if ($signatureId < 0) {
+            return [$text, $html];
+        }
+
         $signature = MailSignature::query()
             ->ownedBy((int) $account->user_id)
             ->when($signatureId > 0, fn ($query) => $query->whereKey($signatureId))
