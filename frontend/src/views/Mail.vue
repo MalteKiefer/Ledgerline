@@ -329,30 +329,29 @@
               <div class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.send.draft_section') }}</div>
               <DropdownMenuItem :class="menuItem" :disabled="composeSaving" @select="saveDraftNow"><Icon name="save" :size="18" />{{ t('mail.send.save_now') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItemDanger" @select="discardCompose"><Icon name="delete" :size="18" />{{ t('mail.send.discard_draft') }}</DropdownMenuItem>
-              <div class="my-1 border-t border-[var(--ll-border)]" />
-              <div class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.send.layout_section') }}</div>
-              <DropdownMenuItem v-if="compose.mode !== 'reply'" :class="menuItem" @select="composeShowCc = !composeShowCc"><Icon name="group" :size="18" />{{ composeShowCc ? t('mail.send.hide_cc') : t('mail.send.show_cc') }}</DropdownMenuItem>
-              <DropdownMenuItem v-if="compose.mode === 'compose'" :class="menuItem" @select="composeShowBcc = !composeShowBcc"><Icon name="visibility_off" :size="18" />{{ composeShowBcc ? t('mail.send.hide_bcc') : t('mail.send.show_bcc') }}</DropdownMenuItem>
-              <DropdownMenuItem :class="menuItem" @select="composeShowDelivery = !composeShowDelivery"><Icon name="settings" :size="18" />{{ composeShowDelivery ? t('mail.send.hide_delivery') : t('mail.send.delivery_options') }}</DropdownMenuItem>
             </DropdownMenuContent></DropdownMenuPortal>
           </DropdownMenuRoot>
           <Btn variant="ghost" size="sm" icon="close" :title="t('common.close')" @click="closeCompose" />
         </div>
         <div class="flex flex-wrap items-center gap-1 border-t border-[var(--ll-border)] px-4 py-2 md:px-5" role="toolbar" :aria-label="t('mail.send.compose_toolbar')">
-          <template v-if="compose.mode !== 'reply'">
-            <Btn variant="ghost" size="xs" icon="group" :class="composeShowCc ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300' : ''" :title="t('mail.send.show_cc')" @click="composeShowCc = !composeShowCc">Cc</Btn>
-            <Btn v-if="compose.mode === 'compose'" variant="ghost" size="xs" icon="visibility_off" :class="composeShowBcc ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300' : ''" :title="t('mail.send.show_bcc')" @click="composeShowBcc = !composeShowBcc">Bcc</Btn>
-          </template>
-          <span v-if="compose.mode !== 'reply'" class="mx-0.5 h-4 w-px bg-[var(--ll-border)]" />
           <label class="inline-flex cursor-pointer"><input type="file" multiple class="hidden" @change="onComposeFiles"><Btn variant="ghost" size="xs" icon="upload_file" :title="t('mail.send.from_device')" /></label>
           <Btn variant="ghost" size="xs" icon="folder" :title="t('mail.send.from_files')" @click="openAssetPicker('files')" />
           <Btn variant="ghost" size="xs" icon="photo_library" :title="t('mail.send.from_gallery')" @click="openAssetPicker('gallery')" />
           <span v-if="composeAttachmentCount" class="mr-1 text-xs font-medium text-[var(--ll-muted)]">{{ composeAttachmentCount }}</span>
-          <span class="mx-0.5 h-4 w-px bg-[var(--ll-border)]" />
-          <Btn variant="ghost" size="xs" icon="mark_email_unread" :class="compose.readReceipt ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300' : ''" :title="t('mail.send.read_receipt')" @click="compose.readReceipt = !compose.readReceipt" />
-          <Btn variant="ghost" size="xs" icon="priority_high" :class="compose.highPriority ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300' : ''" :title="t('mail.send.high_priority')" @click="compose.highPriority = !compose.highPriority" />
           <Btn variant="ghost" size="xs" icon="lock" :class="composeShowCrypto ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300' : ''" :title="t('mail.send.security_options')" @click="openCryptoOptions" />
-          <Btn variant="ghost" size="xs" icon="settings" :class="composeShowDelivery ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300' : ''" :title="t('mail.send.delivery_options')" @click="composeShowDelivery = !composeShowDelivery" />
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger class="grid h-7 w-7 place-items-center rounded-md hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('mail.send.delivery_options')"><Icon name="tune" :size="18" /></DropdownMenuTrigger>
+            <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="start" class="z-[1600] min-w-64 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+              <div v-if="compose.mode !== 'reply'" class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.send.layout_section') }}</div>
+              <DropdownMenuCheckboxItem v-if="compose.mode !== 'reply'" :checked="composeShowCc" :class="menuItem" @select.prevent="composeShowCc = !composeShowCc"><Icon name="group" :size="18" />Cc</DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem v-if="compose.mode === 'compose'" :checked="composeShowBcc" :class="menuItem" @select.prevent="composeShowBcc = !composeShowBcc"><Icon name="visibility_off" :size="18" />Bcc</DropdownMenuCheckboxItem>
+              <div class="my-1 border-t border-[var(--ll-border)]" />
+              <div class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.send.delivery_options') }}</div>
+              <DropdownMenuCheckboxItem :checked="compose.readReceipt" :class="menuItem" @select.prevent="compose.readReceipt = !compose.readReceipt"><Icon name="mark_email_unread" :size="18" />{{ t('mail.send.read_receipt') }}</DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem :checked="compose.highPriority" :class="menuItem" @select.prevent="compose.highPriority = !compose.highPriority"><Icon name="priority_high" :size="18" />{{ t('mail.send.high_priority') }}</DropdownMenuCheckboxItem>
+              <div class="px-3 pb-2 pt-1" @click.stop><label class="block text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.send.sent_folder') }}<input v-model="compose.sentFolder" class="mt-1 w-full rounded-md border border-[var(--ll-border)] bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary-500" :placeholder="t('mail.send.sent_folder_hint')"></label></div>
+            </DropdownMenuContent></DropdownMenuPortal>
+          </DropdownMenuRoot>
         </div>
       </header>
       <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 md:p-5">
@@ -371,10 +370,6 @@
           <TextField v-if="compose.mode === 'compose' && composeShowBcc" v-model="compose.bcc" :label="t('mail.send.bcc')" placeholder="name@example.com, …" autocomplete="off" />
         </template>
         <TextField v-if="compose.mode === 'compose'" v-model="compose.subject" :label="t('mail.send.subject')" />
-        <div v-if="composeShowDelivery" class="grid gap-3 rounded-lg border border-[var(--ll-border)] bg-black/[0.015] p-3 sm:grid-cols-2 dark:bg-white/[0.02]">
-          <TextField v-model="compose.sentFolder" :label="t('mail.send.sent_folder')" :placeholder="t('mail.send.sent_folder_hint')" autocomplete="off" />
-          <div class="flex flex-wrap content-end gap-2 pb-0.5 text-sm"><label class="flex items-center gap-2"><input v-model="compose.readReceipt" type="checkbox" class="accent-primary-500">{{ t('mail.send.read_receipt') }}</label><label class="flex items-center gap-2"><input v-model="compose.highPriority" type="checkbox" class="accent-primary-500">{{ t('mail.send.high_priority') }}</label></div>
-        </div>
         <div v-if="composeShowCrypto" class="space-y-3 rounded-lg border border-primary-500/25 bg-primary-500/[0.04] p-3 dark:bg-primary-500/10">
           <div class="flex items-center gap-2"><Icon name="lock" :size="18" class="text-primary-600" /><div><div class="text-sm font-semibold">{{ t('mail.send.security_options') }}</div><p class="text-xs text-[var(--ll-muted)]">{{ t('mail.send.security_hint') }}</p></div></div>
           <div class="grid gap-2 sm:grid-cols-3"><Select v-model="compose.cryptoMode" :label="t('mail.send.crypto_mode')" :options="cryptoModeItems" /><Select v-if="compose.cryptoMode !== 'none'" v-model="compose.cryptoType" :label="t('mail.send.crypto_type')" :options="cryptoTypeItems" /><Select v-if="compose.cryptoMode !== 'none'" v-model.number="compose.signingKeyId" :label="t('mail.send.signing_key')" :options="signingKeyItems" /></div>
@@ -591,7 +586,7 @@ import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } 
 import { useRoute, useRouter } from 'vue-router';
 import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
-import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
+import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult, type MailDraft } from '@spa/stores/mail';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
@@ -1109,7 +1104,6 @@ const composeEditor = ref<HTMLElement | null>(null);
 const composeSaving = ref(false);
 const composeShowCc = ref(false);
 const composeShowBcc = ref(false);
-const composeShowDelivery = ref(false);
 const composeShowCrypto = ref(false);
 const recipientSuggestions = ref<{ name: string; email: string }[]>([]);
 let recipientTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1133,7 +1127,7 @@ watch(() => [compose.to, compose.cc, compose.bcc, compose.subject, compose.sentF
 function parseEmails(str: string): string[] { return str.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean); }
 function resetComposeFields() {
   Object.assign(compose, { to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null, recipientHint: '', replyAll: false, sourceId: null, signatureId: null, cryptoMode: 'none', cryptoType: 'pgp', signingKeyId: null, recipientKeyIds: [] });
-  composeShowCc.value = false; composeShowBcc.value = false; composeShowDelivery.value = false; composeShowCrypto.value = false;
+  composeShowCc.value = false; composeShowBcc.value = false; composeShowCrypto.value = false;
 }
 const selectedFiles = computed(() => (filesStore.files as FileEntry[]).filter((file) => compose.fileIds.includes(file.id)));
 const selectedPhotos = computed(() => (galleryStore.photos as Photo[]).filter((photo) => compose.galleryPhotoIds.includes(photo.id)));
@@ -1195,7 +1189,7 @@ async function discardCompose() { if (draftTimer) clearTimeout(draftTimer); if (
 function openDraft(draft: MailDraft) {
   resetComposeFields();
   Object.assign(compose, { show: true, draftId: draft.id, mode: draft.mode, accountId: draft.mail_account_id, sourceId: draft.source_message_id, to: (draft.to ?? []).join(', '), cc: (draft.cc ?? []).join(', '), bcc: (draft.bcc ?? []).join(', '), subject: draft.subject ?? '', body: draft.text_body ?? '', html: draft.html_body ?? '', sentFolder: draft.sent_folder ?? '', signatureId: draft.mail_signature_id, fileIds: draft.file_ids ?? [], galleryPhotoIds: draft.gallery_photo_ids ?? [], readReceipt: draft.read_receipt, highPriority: draft.high_priority, cryptoMode: draft.crypto_mode ?? 'none', cryptoType: draft.crypto_type ?? 'pgp', signingKeyId: draft.signing_key_id ?? null, recipientKeyIds: draft.recipient_key_ids ?? [] });
-  composeShowCc.value = compose.cc !== ''; composeShowBcc.value = compose.bcc !== ''; composeShowDelivery.value = compose.sentFolder !== '' || compose.readReceipt || compose.highPriority;
+  composeShowCc.value = compose.cc !== ''; composeShowBcc.value = compose.bcc !== '';
   readerOpen.value = false; setEditorContent();
 }
 

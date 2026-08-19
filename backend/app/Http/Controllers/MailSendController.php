@@ -235,7 +235,7 @@ class MailSendController extends Controller
 
     // ---- helpers ----
 
-    /** @return array<string, array<int, mixed>> */
+    /** @return array<string, array<int, string>> */
     private function cryptoRules(): array
     {
         return [
@@ -250,14 +250,23 @@ class MailSendController extends Controller
     /** Resolve outbound crypto IDs owner-scoped. Returns a safe rejection on invalid input. */
     private function applyCrypto(Request $request, ComposedMessage $message, int $userId): ?JsonResponse
     {
-        $mode = (string) ($request->input('crypto_mode') ?? 'none');
+        $modeInput = $request->input('crypto_mode');
+        $mode = is_string($modeInput) ? $modeInput : 'none';
         if ($mode === 'none') return null;
         $typeInput = $request->input('crypto_type');
         $type = is_string($typeInput) ? $typeInput : '';
         $key = MailPgpKey::query()->where('user_id', $userId)->whereKey($request->integer('signing_key_id'))->first();
         if ($key === null || $key->type !== $type || ($key->expires_at !== null && $key->expires_at->isPast())) return $this->fail('crypto_key_invalid');
         $rawIds = $request->input('recipient_key_ids', []);
-        $ids = array_values(array_unique(array_map(static fn (mixed $value): int => (int) $value, is_array($rawIds) ? $rawIds : [])));
+        $ids = [];
+        foreach (is_array($rawIds) ? $rawIds : [] as $value) {
+            if (is_int($value)) {
+                $ids[] = $value;
+            } elseif (is_string($value) && ctype_digit($value)) {
+                $ids[] = (int) $value;
+            }
+        }
+        $ids = array_values(array_unique($ids));
         $recipients = $ids === [] ? collect() : CryptoRecipient::query()->where('user_id', $userId)->where('type', $type)->whereIn('id', $ids)->get();
         if (count($ids) !== $recipients->count()) return $this->fail('crypto_recipient_invalid');
         if (in_array($mode, ['encrypt', 'sign_encrypt'], true) && $recipients->isEmpty()) return $this->fail('crypto_recipient_required');
