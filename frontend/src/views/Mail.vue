@@ -378,7 +378,7 @@
           <div class="flex flex-wrap items-center gap-0.5 border-b border-[var(--ll-border)] bg-black/[0.02] p-1.5 dark:bg-white/[0.03]">
             <Btn variant="ghost" size="xs" icon="undo" :title="t('mail.send.undo')" @click="formatCompose('undo')" /><Btn variant="ghost" size="xs" icon="redo" :title="t('mail.send.redo')" @click="formatCompose('redo')" /><span class="mx-1 h-5 w-px bg-[var(--ll-border)]" /><Btn variant="ghost" size="xs" icon="format_bold" :title="t('mail.send.bold')" @click="formatCompose('bold')" /><Btn variant="ghost" size="xs" icon="format_italic" :title="t('mail.send.italic')" @click="formatCompose('italic')" /><Btn variant="ghost" size="xs" icon="format_underlined" :title="t('mail.send.underline')" @click="formatCompose('underline')" /><Btn variant="ghost" size="xs" icon="format_strikethrough" :title="t('mail.send.strike')" @click="formatCompose('strikeThrough')" /><span class="mx-1 h-5 w-px bg-[var(--ll-border)]" /><Btn variant="ghost" size="xs" icon="format_h2" :title="t('mail.send.heading')" @click="formatCompose('formatBlock', 'h2')" /><Btn variant="ghost" size="xs" icon="format_quote" :title="t('mail.send.quote')" @click="formatCompose('formatBlock', 'blockquote')" /><Btn variant="ghost" size="xs" icon="format_list_bulleted" :title="t('mail.send.bullet_list')" @click="formatCompose('insertUnorderedList')" /><Btn variant="ghost" size="xs" icon="format_list_numbered" :title="t('mail.send.numbered_list')" @click="formatCompose('insertOrderedList')" /><span class="mx-1 h-5 w-px bg-[var(--ll-border)]" /><Btn variant="ghost" size="xs" icon="link" :title="t('mail.send.link')" @click="insertComposeLink" /><Btn variant="ghost" size="xs" icon="format_clear" :title="t('mail.send.clear_formatting')" @click="formatCompose('removeFormat')" />
           </div>
-          <div ref="composeEditor" contenteditable="true" role="textbox" aria-multiline="true" class="min-h-56 px-3 py-2 text-sm leading-6 outline-none empty:before:text-[var(--ll-muted)] empty:before:content-[attr(data-placeholder)]" :data-placeholder="t('mail.send.body')" @input="onComposeEditorInput" @keydown="onComposeEditorKeydown"></div>
+          <div ref="composeEditor" contenteditable="true" role="textbox" aria-multiline="true" class="min-h-56 px-3 py-2 text-sm leading-6 outline-none empty:before:text-[var(--ll-muted)] empty:before:content-[attr(data-placeholder)]" :data-placeholder="t('mail.send.body')" @input="onComposeEditorInput" @keydown="onComposeEditorKeydown" @paste="onComposePaste" @dragover.prevent @drop.prevent="onComposeDrop"></div>
         </div>
         <div class="rounded-lg border border-[var(--ll-border)] p-3">
           <div class="mb-2 flex items-center justify-between"><span class="text-xs font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.send.attachments') }}</span><span class="text-xs text-[var(--ll-muted)]">{{ t('mail.send.attachments_hint') }}</span></div>
@@ -1144,7 +1144,13 @@ function onComposeEditorKeydown(event: KeyboardEvent) {
   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void doSend(); }
 }
 function setEditorContent() { nextTick(() => { if (composeEditor.value) composeEditor.value.innerHTML = compose.html; }); }
-function addRecipient(email: string) { const before = compose.to.trim(); compose.to = before === '' ? email : `${before.replace(/\s*[^,;\n]*$/, '').replace(/[\s,;]+$/, '')}${before.includes(',') ? ' ' : ', '}${email}`; recipientSuggestions.value = []; scheduleDraft(); }
+function addRecipient(email: string) {
+  const current = compose.to;
+  const prefix = current.replace(/\s*[^,;\n]*$/, '').replace(/[\s,;]+$/, '').trim();
+  compose.to = prefix === '' ? email : `${prefix}, ${email}`;
+  recipientSuggestions.value = [];
+  scheduleDraft();
+}
 function lookupRecipients() {
   if (recipientTimer) clearTimeout(recipientTimer);
   recipientTimer = setTimeout(async () => {
@@ -1216,9 +1222,33 @@ function openForward() {
 
 function onComposeFiles(e: Event) {
   const input = e.target as HTMLInputElement;
-  if (input.files) compose.files.push(...Array.from(input.files).slice(0, Math.max(0, 20 - compose.files.length - compose.fileIds.length - compose.galleryPhotoIds.length)));
+  if (input.files) addComposeFiles(Array.from(input.files));
   input.value = '';
+}
+function addComposeFiles(files: File[], inlineImages = false) {
+  const accepted = files.slice(0, Math.max(0, 20 - compose.files.length - compose.fileIds.length - compose.galleryPhotoIds.length));
+  compose.files.push(...accepted);
+  if (inlineImages) accepted.filter((file) => file.type.startsWith('image/') && file.size <= 700_000).forEach((file) => { void insertInlineImage(file); });
   scheduleDraft();
+}
+function onComposeDrop(event: DragEvent) { addComposeFiles(Array.from(event.dataTransfer?.files ?? []), true); }
+function onComposePaste(event: ClipboardEvent) {
+  const images = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith('image/'));
+  if (!images.length) return;
+  event.preventDefault();
+  addComposeFiles(images, true);
+}
+async function insertInlineImage(file: File) {
+  const dataUrl = await new Promise<string | null>((resolve) => {
+    const reader = new FileReader;
+    reader.onerror = () => resolve(null);
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+    reader.readAsDataURL(file);
+  });
+  if (!dataUrl || !composeEditor.value) return;
+  composeEditor.value.focus();
+  document.execCommand('insertImage', false, dataUrl);
+  onComposeEditorInput();
 }
 function removeComposeFile(i: number) { compose.files.splice(i, 1); scheduleDraft(); }
 
