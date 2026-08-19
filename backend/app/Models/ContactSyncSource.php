@@ -12,7 +12,30 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** A writable external CardDAV replica; Ledgerline remains canonical. */
+/**
+ * A writable external CardDAV replica; Ledgerline remains canonical.
+ *
+ * @property string $id
+ * @property int $user_id
+ * @property string $address_book_id
+ * @property string $name
+ * @property string $provider
+ * @property string $endpoint
+ * @property string $auth_type
+ * @property string|null $username
+ * @property string|null $password
+ * @property string|null $access_token
+ * @property string|null $refresh_token
+ * @property string|null $oauth_client_id
+ * @property string|null $oauth_client_secret
+ * @property string|null $oauth_state_hash
+ * @property \Illuminate\Support\Carbon|null $access_token_expires_at
+ * @property bool $enabled
+ * @property bool $propagate_deletes
+ * @property string $status
+ * @property string|null $last_error
+ * @property \Illuminate\Support\Carbon|null $last_synced_at
+ */
 #[Fillable([
     'user_id', 'address_book_id', 'name', 'provider', 'endpoint', 'auth_type', 'username',
     'password', 'access_token', 'refresh_token', 'oauth_client_id', 'oauth_client_secret',

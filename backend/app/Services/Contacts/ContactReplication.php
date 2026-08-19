@@ -26,15 +26,21 @@ final class ContactReplication
     /** Queue all replicas of a changed local contact after its transaction commits. */
     public function queue(Contact $contact): void
     {
-        ContactSyncSource::query()->where('address_book_id', $contact->address_book_id)->where('enabled', true)
-            ->pluck('id')->each(fn (string $id) => SyncContactSource::dispatch($id));
+        foreach (ContactSyncSource::query()->where('address_book_id', $contact->address_book_id)->where('enabled', true)->pluck('id') as $id) {
+            if (is_string($id)) {
+                SyncContactSource::dispatch($id);
+            }
+        }
     }
 
     /** Preserve mappings for a deleted local contact, then reconcile remote delete intent. */
     public function queueDeletion(string $contactId): void
     {
-        ContactSyncRemoteCard::query()->where('contact_id', $contactId)->pluck('source_id')->unique()
-            ->each(fn (string $id) => SyncContactSource::dispatch($id));
+        foreach (ContactSyncRemoteCard::query()->where('contact_id', $contactId)->pluck('source_id')->unique() as $id) {
+            if (is_string($id)) {
+                SyncContactSource::dispatch($id);
+            }
+        }
     }
 
     /** Pull remote state, record recoverable versions, then make the peer match Ledgerline. */
@@ -81,7 +87,7 @@ final class ContactReplication
                 $contact = Contact::query()->where('address_book_id', $source->address_book_id)->where('uid', $uid)->first();
             }
         }
-        DB::transaction(function () use ($source, $uri, $remoteEtag, $vcard, $mapping, $contact): void {
+        DB::transaction(function () use ($source, $uri, $remoteEtag, $vcard, $contact): void {
             if ($contact === null) {
                 $book = AddressBook::query()->findOrFail($source->address_book_id);
                 $contact = $this->persister->persistNew($book, Str::uuid().'.vcf', $vcard);
@@ -100,6 +106,7 @@ final class ContactReplication
     }
 
     /** Remote deletion is recorded, never applied locally; Ledgerline restores the replica. */
+    /** @param array<string, true> $seen */
     private function applyRemoteDeletions(ContactSyncSource $source, array $seen): void
     {
         ContactSyncRemoteCard::query()->where('source_id', $source->id)->get()->each(function (ContactSyncRemoteCard $mapping) use ($source, $seen): void {
@@ -142,6 +149,7 @@ final class ContactReplication
         });
     }
 
+    /** @param array<string, scalar> $metadata */
     private function version(ContactSyncSource $source, ?string $contactId, string $action, ?string $uri, ?string $etag, string $vcard, array $metadata = []): void
     {
         ContactVersion::query()->create(['user_id' => $source->user_id, 'contact_id' => $contactId, 'source_id' => $source->id, 'action' => $action, 'remote_uri' => $uri, 'remote_etag' => $etag, 'vcard' => $vcard, 'metadata' => $metadata]);

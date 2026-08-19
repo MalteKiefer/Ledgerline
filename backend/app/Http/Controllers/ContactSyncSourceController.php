@@ -38,6 +38,7 @@ class ContactSyncSourceController extends Controller
             'access_token' => ['nullable', 'string', 'max:8192'], 'oauth_client_id' => ['nullable', 'string', 'max:1024'],
             'oauth_client_secret' => ['nullable', 'string', 'max:2048'], 'propagate_deletes' => ['nullable', 'boolean'],
         ]);
+        /** @var array{name:string,address_book_id:string,provider:'carddav'|'icloud'|'google',endpoint?:string,username?:string,password?:string,access_token?:string,oauth_client_id?:string,oauth_client_secret?:string,propagate_deletes?:bool} $data */
         $user = $this->requireUser($request);
         AddressBook::query()->where('user_id', $user->id)->findOrFail($data['address_book_id']);
         $provider = (string) $data['provider'];
@@ -87,7 +88,7 @@ class ContactSyncSourceController extends Controller
         $contact = $version->contact_id !== null ? Contact::query()->find($version->contact_id) : null;
         if ($contact === null) {
             $bookId = ContactSyncSource::query()->whereKey($version->source_id)->value('address_book_id');
-            $book = $bookId !== null ? AddressBook::query()->find($bookId) : AddressBook::query()->first();
+            $book = is_string($bookId) ? AddressBook::query()->whereKey($bookId)->first() : AddressBook::query()->first();
             abort_if($book === null, 422, 'Create an address book before restoring a contact.');
             $contact = $persister->persistNew($book, Str::uuid().'.vcf', $version->vcard);
         } else {
@@ -130,10 +131,13 @@ class ContactSyncSourceController extends Controller
             'code' => $code, 'client_id' => $source->oauth_client_id, 'client_secret' => $source->oauth_client_secret,
             'redirect_uri' => route('contacts.sources.google.callback'), 'grant_type' => 'authorization_code',
         ]);
-        abort_unless($token->successful() && is_string($token->json('access_token')), 422, 'Google authorization failed.');
+        $accessToken = $token->json('access_token');
+        abort_unless($token->successful() && is_string($accessToken), 422, 'Google authorization failed.');
+        $refreshToken = $token->json('refresh_token');
+        $expiresIn = $token->json('expires_in');
         $source->forceFill([
-            'access_token' => $token->json('access_token'), 'refresh_token' => $token->json('refresh_token') ?: $source->refresh_token,
-            'access_token_expires_at' => now()->addSeconds(max(60, (int) $token->json('expires_in', 3600))), 'oauth_state_hash' => null,
+            'access_token' => $accessToken, 'refresh_token' => is_string($refreshToken) ? $refreshToken : $source->refresh_token,
+            'access_token_expires_at' => now()->addSeconds(is_numeric($expiresIn) ? max(60, (int) $expiresIn) : 3600), 'oauth_state_hash' => null,
         ])->save();
         SyncContactSource::dispatch($source->id);
 

@@ -65,6 +65,9 @@ final class CardDavReplicaClient
         $xp->registerNamespace('d', 'DAV:');
         $xp->registerNamespace('c', 'urn:ietf:params:xml:ns:carddav');
         foreach ($xp->query('//d:response') ?: [] as $response) {
+            if (! $response instanceof \DOMNode) {
+                continue;
+            }
             if ($xp->evaluate('boolean(.//d:resourcetype/c:addressbook)', $response) !== true) {
                 continue;
             }
@@ -102,6 +105,7 @@ final class CardDavReplicaClient
     }
 
     /** Send one authenticated CardDAV request with bounded, SSRF-guarded redirects. */
+    /** @param array<string, string> $headers */
     private function request(ContactSyncSource $source, string $method, string $url, ?string $body = null, array $headers = []): \Illuminate\Http\Client\Response
     {
         for ($attempt = 0; $attempt <= self::MAX_REDIRECTS; $attempt++) {
@@ -156,12 +160,14 @@ final class CardDavReplicaClient
             'client_id' => $source->oauth_client_id, 'client_secret' => $source->oauth_client_secret,
             'refresh_token' => $source->refresh_token, 'grant_type' => 'refresh_token',
         ]);
-        if (! $response->successful() || ! is_string($response->json('access_token'))) {
+        $accessToken = $response->json('access_token');
+        if (! $response->successful() || ! is_string($accessToken)) {
             throw new RuntimeException('Google token refresh failed.');
         }
+        $expiresIn = $response->json('expires_in');
         $source->forceFill([
-            'access_token' => $response->json('access_token'),
-            'access_token_expires_at' => now()->addSeconds(max(60, (int) $response->json('expires_in', 3600))),
+            'access_token' => $accessToken,
+            'access_token_expires_at' => now()->addSeconds(is_numeric($expiresIn) ? max(60, (int) $expiresIn) : 3600),
         ])->save();
     }
 
@@ -177,6 +183,9 @@ final class CardDavReplicaClient
         $xp->registerNamespace('c', 'urn:ietf:params:xml:ns:carddav');
         $out = [];
         foreach ($xp->query('//d:response') ?: [] as $response) {
+            if (! $response instanceof \DOMNode) {
+                continue;
+            }
             $uri = trim((string) $xp->evaluate('string(d:href)', $response));
             $vcard = (string) $xp->evaluate('string(.//c:address-data)', $response);
             if ($uri === '' || $vcard === '' || strlen($vcard) > self::MAX_XML_BYTES) {
