@@ -615,6 +615,14 @@ const logLevelItems = [
 const labelRuleItems = computed(() => [{ title: t('common.none'), value: 0 }, ...s.labels.map((l) => ({ title: l.name, value: l.id }))]);
 
 function foldersForAccount(id: number) { return s.folders.filter((f) => f.account_id === id); }
+function inboxFolder(id: number): string | null {
+  const folders = foldersForAccount(id);
+  const exact = folders.find((f) => /^inbox$/i.test(f.folder));
+  if (exact) return exact.folder;
+
+  const localized = folders.find((f) => /(?:posteingang|inbox)/i.test(f.folder));
+  return localized?.folder ?? null;
+}
 function unreadForAccount(id: number) { return s.folders.filter((f) => f.account_id === id).reduce((n, f) => n + f.unread, 0); }
 function accountName(id: number | null) { return id == null ? '—' : (s.accounts.find((a) => a.id === id)?.name ?? '—'); }
 function folderIcon(f: string) {
@@ -715,7 +723,13 @@ function onDate() { filters.dateFrom = dateFrom.value || null; filters.dateTo = 
 
 // --- Rail navigation ---------------------------------------------------------
 async function pickUnified() { s.resetFilters(); await s.loadFolders(null); reload(); }
-async function pickAccount(a: MailAccount) { s.resetFilters(); filters.accountId = a.id; await s.loadFolders(a.id); reload(); }
+async function pickAccount(a: MailAccount) {
+  s.resetFilters();
+  filters.accountId = a.id;
+  await s.loadFolders(a.id);
+  filters.folder = inboxFolder(a.id);
+  reload();
+}
 function pickFolder(folder: string) { filters.folder = folder; filters.trashed = false; reload(); }
 function pickTrash() { filters.trashed = true; filters.label = null; reload(); }
 function pickLabel(id: number) { s.resetFilters(); filters.label = id; s.loadFolders(null); reload(); }
