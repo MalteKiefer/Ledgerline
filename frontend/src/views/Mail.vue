@@ -216,7 +216,7 @@
     </Card>
 
     <!-- Reader pane: docked beside the list on desktop, full screen on small displays. -->
-  <aside v-if="readerOpen || compose.show" class="fixed inset-0 z-[1500] flex min-h-0 flex-col overflow-y-auto bg-[var(--ll-surface)] shadow-2xl md:static md:z-auto md:w-auto md:basis-[44%] md:shrink-0 md:border-l md:border-[var(--ll-border)] md:shadow-none">
+  <aside v-if="readerOpen" class="fixed inset-0 z-[1500] flex min-h-0 flex-col overflow-y-auto bg-[var(--ll-surface)] shadow-2xl md:static md:z-auto md:w-auto md:basis-[44%] md:shrink-0 md:border-l md:border-[var(--ll-border)] md:shadow-none">
     <div v-if="readerOpen && reader" class="flex min-h-0 flex-1 flex-col gap-4 p-4 md:p-5">
       <div class="sticky top-0 z-10 -mt-4 -mx-4 flex items-center gap-3 border-b border-[var(--ll-border)] bg-[var(--ll-surface)] px-4 py-3 md:-mt-5 md:-mx-5 md:px-5">
         <div class="min-w-0 flex-1">
@@ -321,11 +321,13 @@
         </div>
       </div>
     </div>
-    <section v-else class="flex min-h-0 flex-1 flex-col">
+  </aside>
+  <section v-if="compose.show && !compose.minimized" class="fixed bottom-3 right-4 z-[1500] flex h-[min(48rem,calc(100vh-6rem))] w-[min(44rem,calc(100vw-2rem))] min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--ll-border)] bg-[var(--ll-surface)] shadow-2xl">
       <header class="border-b border-[var(--ll-border)] bg-[var(--ll-surface)]">
         <div class="flex items-center gap-2 px-4 py-3 md:px-5">
           <div class="min-w-0 flex-1"><div class="text-base font-semibold">{{ composeTitle }}</div><div class="flex items-center gap-1 text-xs text-[var(--ll-muted)]"><Icon :name="composeSaving ? 'sync' : 'cloud_done'" :size="14" :class="composeSaving ? 'animate-spin' : ''" />{{ composeSaving ? t('mail.send.draft_saving') : t('mail.send.draft_saved') }}</div></div>
           <Btn variant="solid" size="sm" icon="send" :loading="compose.sending" :title="t('mail.send.send_hint')" @click="doSend">{{ t('mail.send.send') }}</Btn>
+          <Btn variant="ghost" size="sm" icon="minimize" :title="t('mail.send.minimize')" @click="compose.minimized = true" />
           <DropdownMenuRoot>
             <DropdownMenuTrigger class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('mail.send.more_actions')"><Icon name="more_vert" :size="18" /></DropdownMenuTrigger>
             <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-52 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
@@ -389,11 +391,11 @@
       </div>
       <footer class="flex items-center gap-2 border-t border-[var(--ll-border)] px-4 py-3 md:px-5"><span class="flex-1 text-xs text-[var(--ll-muted)]">{{ compose.draftId ? t('mail.send.draft_saved') : t('mail.send.new_draft') }}</span><span class="hidden text-xs text-[var(--ll-muted)] sm:inline">{{ t('mail.send.send_hint') }}</span><Btn variant="solid" icon="send" :loading="compose.sending" @click="doSend">{{ t('mail.send.send') }}</Btn></footer>
     </section>
-    </aside>
   </div>
 
-  <div v-if="drafts.length && !compose.show" class="fixed bottom-3 right-4 z-40 flex max-w-[min(70rem,calc(100vw-2rem))] gap-1 overflow-x-auto rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-xl">
-    <button v-for="draft in drafts" :key="draft.id" class="flex min-w-40 items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-black/[0.04] dark:hover:bg-white/5" @click="openDraft(draft)"><Icon name="drafts" :size="16" class="text-primary-600" /><span class="min-w-0 flex-1 truncate">{{ draft.subject || t('mail.send.new_draft') }}</span></button>
+  <div v-if="drafts.length || compose.show" class="fixed bottom-3 right-4 z-40 flex max-w-[min(70rem,calc(100vw-2rem))] gap-1 overflow-x-auto rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-xl">
+    <button v-if="compose.show" class="flex min-w-44 items-center gap-2 rounded-md bg-primary-500/10 px-3 py-2 text-left text-xs text-primary-700 hover:bg-primary-500/15" @click="compose.minimized = false"><Icon name="edit_square" :size="16" /><span class="min-w-0 flex-1 truncate">{{ compose.subject || t('mail.send.new_draft') }}</span><Icon v-if="compose.minimized" name="expand_less" :size="16" /></button>
+    <button v-for="draft in drafts.filter((draft) => draft.id !== compose.draftId)" :key="draft.id" class="flex min-w-40 items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-black/[0.04] dark:hover:bg-white/5" @click="openDraft(draft)"><Icon name="drafts" :size="16" class="text-primary-600" /><span class="min-w-0 flex-1 truncate">{{ draft.subject || t('mail.send.new_draft') }}</span></button>
   </div>
 
   <!-- Account editor modal -->
@@ -1105,11 +1107,11 @@ async function openStats() { statsDlg.show = true; statsDlg.loading = true; try 
 
 // --- Compose / reply / forward -----------------------------------------------
 const compose = reactive<{
-  show: boolean; mode: 'compose' | 'reply' | 'forward'; sending: boolean;
+  show: boolean; minimized: boolean; mode: 'compose' | 'reply' | 'forward'; sending: boolean;
   sourceId: string | null; replyAll: boolean; accountId: number | null; signatureId: number | null; recipientHint: string;
   to: string; cc: string; bcc: string; subject: string; body: string; html: string; sentFolder: string; files: File[];
   fileIds: number[]; galleryPhotoIds: number[]; readReceipt: boolean; highPriority: boolean; draftId: string | null; cryptoMode: 'none' | 'sign' | 'encrypt' | 'sign_encrypt'; cryptoType: 'pgp' | 'smime'; signingKeyId: number | null; recipientKeyIds: number[];
-}>({ show: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, signatureId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null, cryptoMode: 'none', cryptoType: 'pgp', signingKeyId: null, recipientKeyIds: [] });
+}>({ show: false, minimized: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, signatureId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null, cryptoMode: 'none', cryptoType: 'pgp', signingKeyId: null, recipientKeyIds: [] });
 const composeSaving = ref(false);
 const composeShowCc = ref(false);
 const composeShowBcc = ref(false);
@@ -1136,7 +1138,7 @@ watch(() => [compose.to, compose.cc, compose.bcc, compose.subject, compose.sentF
 
 function parseEmails(str: string): string[] { return str.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean); }
 function resetComposeFields() {
-  Object.assign(compose, { to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null, recipientHint: '', replyAll: false, sourceId: null, signatureId: null, cryptoMode: 'none', cryptoType: 'pgp', signingKeyId: null, recipientKeyIds: [] });
+  Object.assign(compose, { minimized: false, to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null, recipientHint: '', replyAll: false, sourceId: null, signatureId: null, cryptoMode: 'none', cryptoType: 'pgp', signingKeyId: null, recipientKeyIds: [] });
   composeShowCc.value = false; composeShowBcc.value = false; composeShowCrypto.value = false;
 }
 const selectedFiles = computed(() => (filesStore.files as FileEntry[]).filter((file) => compose.fileIds.includes(file.id)));

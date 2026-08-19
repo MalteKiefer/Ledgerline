@@ -143,6 +143,7 @@ return [
     ],
 
     'send' => [
+        'minimize' => 'Minimize draft',
         'compose' => 'Compose',
         'sent_folder' => 'Sent folder',
         'sent_folder_hint' => 'Leave blank for the default',

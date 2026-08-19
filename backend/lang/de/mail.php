@@ -143,6 +143,7 @@ return [
     ],
 
     'send' => [
+        'minimize' => 'Entwurf minimieren',
         'compose' => 'Verfassen',
         'sent_folder' => 'Gesendet-Ordner',
         'sent_folder_hint' => 'Leer = Standard',
