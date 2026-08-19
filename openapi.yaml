@@ -10401,7 +10401,9 @@ paths:
         `no_smtp` (422). Attachments may be uploaded (multipart) and/or referenced
         by the caller's own archived attachment ids, Files ids and Gallery media
         ids. `read_receipt` adds a standards-based MDN request; `high_priority`
-        adds normal SMTP priority headers.
+        adds normal SMTP priority headers. `crypto_*` IDs are resolved owner-scoped
+        on the server; the browser never receives private key material. A crypto
+        failure aborts delivery rather than falling back to plaintext.
       requestBody:
         required: true
         content:
@@ -10423,6 +10425,10 @@ paths:
                 gallery_photo_ids: { type: array, items: { type: integer }, description: "Caller-owned Gallery media to attach." }
                 read_receipt: { type: boolean }
                 high_priority: { type: boolean }
+                crypto_mode: { type: string, enum: [none, sign, encrypt, sign_encrypt] }
+                crypto_type: { type: [string, "null"], enum: [pgp, smime, null] }
+                signing_key_id: { type: [integer, "null"], description: "Caller-owned private key id." }
+                recipient_key_ids: { type: array, items: { type: integer }, description: "Caller-owned public recipient key ids." }
                 sent_folder: { type: [string, "null"] }
           multipart/form-data:
             schema:
@@ -10485,6 +10491,10 @@ paths:
                 gallery_photo_ids: { type: array, maxItems: 20, items: { type: integer } }
                 read_receipt: { type: [boolean, "null"] }
                 high_priority: { type: [boolean, "null"] }
+                crypto_mode: { type: string, enum: [none, sign, encrypt, sign_encrypt] }
+                crypto_type: { type: [string, "null"], enum: [pgp, smime, null] }
+                signing_key_id: { type: [integer, "null"] }
+                recipient_key_ids: { type: array, items: { type: integer } }
       responses:
         "200":
           description: Sent.
@@ -10533,6 +10543,10 @@ paths:
                 gallery_photo_ids: { type: array, maxItems: 20, items: { type: integer } }
                 read_receipt: { type: [boolean, "null"] }
                 high_priority: { type: [boolean, "null"] }
+                crypto_mode: { type: string, enum: [none, sign, encrypt, sign_encrypt] }
+                crypto_type: { type: [string, "null"], enum: [pgp, smime, null] }
+                signing_key_id: { type: [integer, "null"] }
+                recipient_key_ids: { type: array, items: { type: integer } }
       responses:
         "200":
           description: Sent.

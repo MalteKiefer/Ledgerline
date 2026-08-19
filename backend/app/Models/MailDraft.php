@@ -18,6 +18,7 @@ class MailDraft extends Model
         'mail_account_id', 'mode', 'source_message_id', 'to', 'cc', 'bcc', 'subject',
         'text_body', 'html_body', 'mail_signature_id', 'sent_folder', 'file_ids',
         'gallery_photo_ids', 'local_attachments', 'read_receipt', 'high_priority',
+        'crypto_mode', 'crypto_type', 'signing_key_id', 'recipient_key_ids',
     ];
 
     protected function casts(): array
@@ -26,6 +27,7 @@ class MailDraft extends Model
             'to' => 'array', 'cc' => 'array', 'bcc' => 'array', 'file_ids' => 'array',
             'gallery_photo_ids' => 'array', 'local_attachments' => 'array',
             'read_receipt' => 'boolean', 'high_priority' => 'boolean',
+            'recipient_key_ids' => 'array',
         ];
     }
 }

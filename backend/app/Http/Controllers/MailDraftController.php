@@ -60,6 +60,9 @@ class MailDraftController extends Controller
             'file_ids.*' => ['integer'], 'gallery_photo_ids' => ['nullable', 'array', 'max:20'],
             'gallery_photo_ids.*' => ['integer'], 'read_receipt' => ['nullable', 'boolean'],
             'high_priority' => ['nullable', 'boolean'],
+            'crypto_mode' => ['nullable', 'in:none,sign,encrypt,sign_encrypt'],
+            'crypto_type' => ['nullable', 'in:pgp,smime'], 'signing_key_id' => ['nullable', 'integer'],
+            'recipient_key_ids' => ['nullable', 'array', 'max:50'], 'recipient_key_ids.*' => ['integer'],
         ])->validate();
 
         return $validated;

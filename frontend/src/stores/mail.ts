@@ -170,8 +170,9 @@ export interface AccountBody {
 
 /** Result of a compose/reply/forward send. */
 export interface SendResult { ok: boolean; message_id: string | null; appended_to_sent: boolean }
+export interface CryptoPayload { crypto_mode?: 'none' | 'sign' | 'encrypt' | 'sign_encrypt'; crypto_type?: 'pgp' | 'smime' | null; signing_key_id?: number | null; recipient_key_ids?: number[]; }
 
-export interface ComposePayload {
+export interface ComposePayload extends CryptoPayload {
   account_id: number;
   to: string[]; cc?: string[]; bcc?: string[];
   subject?: string | null; text?: string | null; html?: string | null;
@@ -185,13 +186,14 @@ export interface MailDraft {
   to: string[] | null; cc: string[] | null; bcc: string[] | null; subject: string | null;
   text_body: string | null; html_body: string | null; mail_signature_id: number | null; sent_folder: string | null;
   file_ids: number[] | null; gallery_photo_ids: number[] | null; read_receipt: boolean; high_priority: boolean; updated_at: string;
+  crypto_mode?: 'none' | 'sign' | 'encrypt' | 'sign_encrypt'; crypto_type?: 'pgp' | 'smime' | null; signing_key_id?: number | null; recipient_key_ids?: number[] | null;
 }
-export interface ReplyPayload {
+export interface ReplyPayload extends CryptoPayload {
   text?: string | null; html?: string | null; signature_id?: number | null; all?: boolean; sent_folder?: string | null;
   attachment_ids?: string[]; file_ids?: number[]; gallery_photo_ids?: number[];
   read_receipt?: boolean; high_priority?: boolean; files?: File[];
 }
-export interface ForwardPayload {
+export interface ForwardPayload extends CryptoPayload {
   to: string[]; cc?: string[]; text?: string | null; html?: string | null; signature_id?: number | null; sent_folder?: string | null;
   attachment_ids?: string[]; file_ids?: number[]; gallery_photo_ids?: number[];
   read_receipt?: boolean; high_priority?: boolean; files?: File[];
@@ -311,6 +313,7 @@ export const useMailStore = defineStore('mail', () => {
       for (const id of p.gallery_photo_ids ?? []) form.append('gallery_photo_ids[]', String(id));
       if (p.read_receipt) form.append('read_receipt', '1');
       if (p.high_priority) form.append('high_priority', '1');
+      appendCrypto(form, p);
       for (const f of p.files) form.append('attachments[]', f);
       if (p.sent_folder != null) form.append('sent_folder', p.sent_folder);
       return api.upload<SendResult>('/api/v1/mail/messages/compose', form);
@@ -321,6 +324,7 @@ export const useMailStore = defineStore('mail', () => {
       attachment_ids: p.attachment_ids ?? [], sent_folder: p.sent_folder ?? null,
       file_ids: p.file_ids ?? [], gallery_photo_ids: p.gallery_photo_ids ?? [],
       read_receipt: p.read_receipt ?? false, high_priority: p.high_priority ?? false,
+      crypto_mode: p.crypto_mode ?? 'none', crypto_type: p.crypto_type ?? null, signing_key_id: p.signing_key_id ?? null, recipient_key_ids: p.recipient_key_ids ?? [],
     });
   }
 
@@ -330,6 +334,7 @@ export const useMailStore = defineStore('mail', () => {
     for (const id of p.gallery_photo_ids ?? []) form.append('gallery_photo_ids[]', String(id));
     for (const file of p.files ?? []) form.append('attachments[]', file);
   }
+  function appendCrypto(form: FormData, p: CryptoPayload) { if (p.crypto_mode && p.crypto_mode !== 'none') { form.append('crypto_mode', p.crypto_mode); if (p.crypto_type) form.append('crypto_type', p.crypto_type); if (p.signing_key_id != null) form.append('signing_key_id', String(p.signing_key_id)); for (const id of p.recipient_key_ids ?? []) form.append('recipient_key_ids[]', String(id)); } }
   const loadDrafts = () => api.get<{ drafts: MailDraft[] }>('/api/v1/mail/drafts').then((r) => r.drafts);
   const createDraft = (body: Omit<MailDraft, 'id' | 'updated_at'>) => api.post<{ draft: MailDraft }>('/api/v1/mail/drafts', body).then((r) => r.draft);
   const updateDraft = (id: string, body: Partial<Omit<MailDraft, 'id' | 'updated_at'>>) => api.put<{ draft: MailDraft }>(`/api/v1/mail/drafts/${id}`, body).then((r) => r.draft);
@@ -344,6 +349,7 @@ export const useMailStore = defineStore('mail', () => {
       if (p.sent_folder != null) form.append('sent_folder', p.sent_folder);
       if (p.read_receipt) form.append('read_receipt', '1');
       if (p.high_priority) form.append('high_priority', '1');
+      appendCrypto(form, p);
       appendAttachments(form, p);
       return api.upload<SendResult>(`/api/v1/mail/messages/${id}/reply`, form);
     }
@@ -351,6 +357,7 @@ export const useMailStore = defineStore('mail', () => {
       text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null, all: p.all ?? false, sent_folder: p.sent_folder ?? null,
       attachment_ids: p.attachment_ids ?? [], file_ids: p.file_ids ?? [], gallery_photo_ids: p.gallery_photo_ids ?? [],
       read_receipt: p.read_receipt ?? false, high_priority: p.high_priority ?? false,
+      crypto_mode: p.crypto_mode ?? 'none', crypto_type: p.crypto_type ?? null, signing_key_id: p.signing_key_id ?? null, recipient_key_ids: p.recipient_key_ids ?? [],
     });
   }
   async function forward(id: string, p: ForwardPayload): Promise<SendResult> {
@@ -364,6 +371,7 @@ export const useMailStore = defineStore('mail', () => {
       if (p.sent_folder != null) form.append('sent_folder', p.sent_folder);
       if (p.read_receipt) form.append('read_receipt', '1');
       if (p.high_priority) form.append('high_priority', '1');
+      appendCrypto(form, p);
       appendAttachments(form, p);
       return api.upload<SendResult>(`/api/v1/mail/messages/${id}/forward`, form);
     }
@@ -371,6 +379,7 @@ export const useMailStore = defineStore('mail', () => {
       to: p.to, cc: p.cc ?? [], text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null, sent_folder: p.sent_folder ?? null,
       attachment_ids: p.attachment_ids ?? [], file_ids: p.file_ids ?? [], gallery_photo_ids: p.gallery_photo_ids ?? [],
       read_receipt: p.read_receipt ?? false, high_priority: p.high_priority ?? false,
+      crypto_mode: p.crypto_mode ?? 'none', crypto_type: p.crypto_type ?? null, signing_key_id: p.signing_key_id ?? null, recipient_key_ids: p.recipient_key_ids ?? [],
     });
   }
 

@@ -39,6 +39,16 @@ final class ComposedMessage
         public string $sentFolder = 'Sent',
         public bool $readReceipt = false,
         public bool $highPriority = false,
+        /** @var 'none'|'sign'|'encrypt'|'sign_encrypt' */
+        public string $cryptoMode = 'none',
+        /** @var 'pgp'|'smime'|null */
+        public ?string $cryptoType = null,
+        public ?int $signingKeyId = null,
+        /** @var list<int> */
+        public array $recipientKeyIds = [],
+        public ?\App\Models\MailPgpKey $signingKey = null,
+        /** @var list<\App\Models\CryptoRecipient> */
+        public array $recipientKeys = [],
     ) {}
 
     /** True when at least one recipient (to/cc/bcc) is present. */

@@ -351,6 +351,7 @@
           <span class="mx-0.5 h-4 w-px bg-[var(--ll-border)]" />
           <Btn variant="ghost" size="xs" icon="mark_email_unread" :class="compose.readReceipt ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300' : ''" :title="t('mail.send.read_receipt')" @click="compose.readReceipt = !compose.readReceipt" />
           <Btn variant="ghost" size="xs" icon="priority_high" :class="compose.highPriority ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300' : ''" :title="t('mail.send.high_priority')" @click="compose.highPriority = !compose.highPriority" />
+          <Btn variant="ghost" size="xs" icon="lock" :class="composeShowCrypto ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300' : ''" :title="t('mail.send.security_options')" @click="openCryptoOptions" />
           <Btn variant="ghost" size="xs" icon="settings" :class="composeShowDelivery ? 'bg-primary-500/10 text-primary-700 dark:text-primary-300' : ''" :title="t('mail.send.delivery_options')" @click="composeShowDelivery = !composeShowDelivery" />
         </div>
       </header>
@@ -373,6 +374,11 @@
         <div v-if="composeShowDelivery" class="grid gap-3 rounded-lg border border-[var(--ll-border)] bg-black/[0.015] p-3 sm:grid-cols-2 dark:bg-white/[0.02]">
           <TextField v-model="compose.sentFolder" :label="t('mail.send.sent_folder')" :placeholder="t('mail.send.sent_folder_hint')" autocomplete="off" />
           <div class="flex flex-wrap content-end gap-2 pb-0.5 text-sm"><label class="flex items-center gap-2"><input v-model="compose.readReceipt" type="checkbox" class="accent-primary-500">{{ t('mail.send.read_receipt') }}</label><label class="flex items-center gap-2"><input v-model="compose.highPriority" type="checkbox" class="accent-primary-500">{{ t('mail.send.high_priority') }}</label></div>
+        </div>
+        <div v-if="composeShowCrypto" class="space-y-3 rounded-lg border border-primary-500/25 bg-primary-500/[0.04] p-3 dark:bg-primary-500/10">
+          <div class="flex items-center gap-2"><Icon name="lock" :size="18" class="text-primary-600" /><div><div class="text-sm font-semibold">{{ t('mail.send.security_options') }}</div><p class="text-xs text-[var(--ll-muted)]">{{ t('mail.send.security_hint') }}</p></div></div>
+          <div class="grid gap-2 sm:grid-cols-3"><Select v-model="compose.cryptoMode" :label="t('mail.send.crypto_mode')" :options="cryptoModeItems" /><Select v-if="compose.cryptoMode !== 'none'" v-model="compose.cryptoType" :label="t('mail.send.crypto_type')" :options="cryptoTypeItems" /><Select v-if="compose.cryptoMode !== 'none'" v-model.number="compose.signingKeyId" :label="t('mail.send.signing_key')" :options="signingKeyItems" /></div>
+          <div v-if="compose.cryptoMode === 'encrypt' || compose.cryptoMode === 'sign_encrypt'"><div class="mb-1 text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.send.recipient_keys') }}</div><div v-if="!recipientKeyItems.length" class="text-xs text-[var(--ll-muted)]">{{ t('mail.send.no_recipient_keys') }}</div><label v-for="key in recipientKeyItems" :key="key.value" class="mr-4 inline-flex items-center gap-2 text-sm"><input v-model="compose.recipientKeyIds" type="checkbox" :value="Number(key.value)" class="accent-primary-500">{{ key.title }}</label></div>
         </div>
         <div class="overflow-hidden rounded-lg border border-[var(--ll-border)]">
           <div class="flex flex-wrap items-center gap-0.5 border-b border-[var(--ll-border)] bg-black/[0.02] p-1.5 dark:bg-white/[0.03]">
@@ -590,6 +596,7 @@ import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
 import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult, type MailDraft } from '@spa/stores/mail';
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
+import { useCryptoStore } from '@spa/stores/crypto';
 import { api, ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
@@ -598,6 +605,7 @@ import { renderInvoicePdfBlob } from '@spa/shared/invoice-print';
 const s = useMailStore();
 const filesStore = useFilesStore();
 const galleryStore = useGalleryStore();
+const cryptoStore = useCryptoStore();
 const route = useRoute();
 const router = useRouter();
 const { success, error } = useToast();
@@ -1095,13 +1103,14 @@ const compose = reactive<{
   show: boolean; mode: 'compose' | 'reply' | 'forward'; sending: boolean;
   sourceId: string | null; replyAll: boolean; accountId: number | null; signatureId: number | null; recipientHint: string;
   to: string; cc: string; bcc: string; subject: string; body: string; html: string; sentFolder: string; files: File[];
-  fileIds: number[]; galleryPhotoIds: number[]; readReceipt: boolean; highPriority: boolean; draftId: string | null;
-}>({ show: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, signatureId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null });
+  fileIds: number[]; galleryPhotoIds: number[]; readReceipt: boolean; highPriority: boolean; draftId: string | null; cryptoMode: 'none' | 'sign' | 'encrypt' | 'sign_encrypt'; cryptoType: 'pgp' | 'smime'; signingKeyId: number | null; recipientKeyIds: number[];
+}>({ show: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, signatureId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null, cryptoMode: 'none', cryptoType: 'pgp', signingKeyId: null, recipientKeyIds: [] });
 const composeEditor = ref<HTMLElement | null>(null);
 const composeSaving = ref(false);
 const composeShowCc = ref(false);
 const composeShowBcc = ref(false);
 const composeShowDelivery = ref(false);
+const composeShowCrypto = ref(false);
 const recipientSuggestions = ref<{ name: string; email: string }[]>([]);
 let recipientTimer: ReturnType<typeof setTimeout> | null = null;
 let draftTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1112,14 +1121,19 @@ const composeTitle = computed(() =>
     : compose.mode === 'forward' ? t('mail.send.forward') : t('mail.send.compose'));
 const composeAccountItems = computed(() => sendableAccounts.value.map((a) => ({ title: `${a.name} · ${a.from_email}`, value: a.id })));
 const composeSignatureItems = computed(() => [{ title: t('common.none'), value: -1 }, ...signatures.value.filter((signature) => signature.account_ids.includes(Number(compose.accountId))).map((signature) => ({ title: signature.name, value: signature.id }))]);
+const cryptoModeItems = computed(() => [{ title: t('mail.send.crypto_none'), value: 'none' }, { title: t('mail.send.crypto_sign'), value: 'sign' }, { title: t('mail.send.crypto_encrypt'), value: 'encrypt' }, { title: t('mail.send.crypto_sign_encrypt'), value: 'sign_encrypt' }]);
+const cryptoTypeItems = computed(() => [{ title: 'OpenPGP', value: 'pgp' }, { title: 'S/MIME', value: 'smime' }]);
+const signingKeyItems = computed(() => cryptoStore.keys.filter((key) => key.type === compose.cryptoType && key.has_private).map((key) => ({ title: key.label, value: key.id })));
+const recipientKeyItems = computed(() => cryptoStore.recipients.filter((key) => key.type === compose.cryptoType).map((key) => ({ title: key.label, value: key.id })));
+async function openCryptoOptions() { composeShowCrypto.value = !composeShowCrypto.value; if (composeShowCrypto.value) { try { await cryptoStore.load(); } catch { error(t('common.error')); } } }
 function defaultSignature(accountId: number | null): number | null { return signatures.value.find((signature) => accountId != null && signature.default_account_ids.includes(accountId))?.id ?? null; }
 watch(() => compose.accountId, (accountId) => { if (compose.show) compose.signatureId = defaultSignature(accountId); });
 watch(() => [compose.to, compose.cc, compose.bcc, compose.subject, compose.sentFolder, compose.signatureId, compose.readReceipt, compose.highPriority, compose.fileIds.join(','), compose.galleryPhotoIds.join(',')], () => scheduleDraft());
 
 function parseEmails(str: string): string[] { return str.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean); }
 function resetComposeFields() {
-  Object.assign(compose, { to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null, recipientHint: '', replyAll: false, sourceId: null, signatureId: null });
-  composeShowCc.value = false; composeShowBcc.value = false; composeShowDelivery.value = false;
+  Object.assign(compose, { to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null, recipientHint: '', replyAll: false, sourceId: null, signatureId: null, cryptoMode: 'none', cryptoType: 'pgp', signingKeyId: null, recipientKeyIds: [] });
+  composeShowCc.value = false; composeShowBcc.value = false; composeShowDelivery.value = false; composeShowCrypto.value = false;
 }
 const selectedFiles = computed(() => (filesStore.files as FileEntry[]).filter((file) => compose.fileIds.includes(file.id)));
 const selectedPhotos = computed(() => (galleryStore.photos as Photo[]).filter((photo) => compose.galleryPhotoIds.includes(photo.id)));
@@ -1159,7 +1173,7 @@ function lookupRecipients() {
     try { const data = await api.get<{ contacts: { fn?: string | null; emails?: string[] | null }[] }>('/api/v1/contacts/data'); recipientSuggestions.value = data.contacts.flatMap((contact) => (contact.emails ?? []).map((email) => ({ name: contact.fn ?? '', email }))).filter((entry) => `${entry.name} ${entry.email}`.toLowerCase().includes(q.toLowerCase())).slice(0, 8); } catch { recipientSuggestions.value = []; }
   }, 180);
 }
-function draftPayload(): Omit<MailDraft, 'id' | 'updated_at'> { return { mail_account_id: compose.accountId, mode: compose.mode, source_message_id: compose.sourceId, to: parseEmails(compose.to), cc: parseEmails(compose.cc), bcc: parseEmails(compose.bcc), subject: compose.subject || null, text_body: compose.body || null, html_body: compose.html || null, mail_signature_id: compose.signatureId, sent_folder: compose.sentFolder || null, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority }; }
+function draftPayload(): Omit<MailDraft, 'id' | 'updated_at'> { return { mail_account_id: compose.accountId, mode: compose.mode, source_message_id: compose.sourceId, to: parseEmails(compose.to), cc: parseEmails(compose.cc), bcc: parseEmails(compose.bcc), subject: compose.subject || null, text_body: compose.body || null, html_body: compose.html || null, mail_signature_id: compose.signatureId, sent_folder: compose.sentFolder || null, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority, crypto_mode: compose.cryptoMode, crypto_type: compose.cryptoType, signing_key_id: compose.signingKeyId, recipient_key_ids: compose.recipientKeyIds }; }
 async function persistDraft() {
   if (!compose.show || compose.sending) return;
   composeSaving.value = true;
@@ -1180,7 +1194,7 @@ async function closeCompose() { if (draftTimer) clearTimeout(draftTimer); await 
 async function discardCompose() { if (draftTimer) clearTimeout(draftTimer); if (compose.draftId) { await s.deleteDraft(compose.draftId); drafts.value = drafts.value.filter((draft) => draft.id !== compose.draftId); } resetComposeFields(); compose.show = false; }
 function openDraft(draft: MailDraft) {
   resetComposeFields();
-  Object.assign(compose, { show: true, draftId: draft.id, mode: draft.mode, accountId: draft.mail_account_id, sourceId: draft.source_message_id, to: (draft.to ?? []).join(', '), cc: (draft.cc ?? []).join(', '), bcc: (draft.bcc ?? []).join(', '), subject: draft.subject ?? '', body: draft.text_body ?? '', html: draft.html_body ?? '', sentFolder: draft.sent_folder ?? '', signatureId: draft.mail_signature_id, fileIds: draft.file_ids ?? [], galleryPhotoIds: draft.gallery_photo_ids ?? [], readReceipt: draft.read_receipt, highPriority: draft.high_priority });
+  Object.assign(compose, { show: true, draftId: draft.id, mode: draft.mode, accountId: draft.mail_account_id, sourceId: draft.source_message_id, to: (draft.to ?? []).join(', '), cc: (draft.cc ?? []).join(', '), bcc: (draft.bcc ?? []).join(', '), subject: draft.subject ?? '', body: draft.text_body ?? '', html: draft.html_body ?? '', sentFolder: draft.sent_folder ?? '', signatureId: draft.mail_signature_id, fileIds: draft.file_ids ?? [], galleryPhotoIds: draft.gallery_photo_ids ?? [], readReceipt: draft.read_receipt, highPriority: draft.high_priority, cryptoMode: draft.crypto_mode ?? 'none', cryptoType: draft.crypto_type ?? 'pgp', signingKeyId: draft.signing_key_id ?? null, recipientKeyIds: draft.recipient_key_ids ?? [] });
   composeShowCc.value = compose.cc !== ''; composeShowBcc.value = compose.bcc !== ''; composeShowDelivery.value = compose.sentFolder !== '' || compose.readReceipt || compose.highPriority;
   readerOpen.value = false; setEditorContent();
 }
@@ -1274,15 +1288,15 @@ async function doSend() {
       if (!to.length && !cc.length && !bcc.length) { error(t('mail.send.no_recipient')); return; }
       if (!compose.body.trim() && !compose.files.length && !compose.fileIds.length && !compose.galleryPhotoIds.length) { error(t('mail.send.empty_body')); return; }
       const sent = compose.sentFolder.trim() || null;
-      await s.compose({ account_id: Number(compose.accountId), to, cc, bcc, subject: compose.subject || null, text: compose.body || null, html: compose.html || null, signature_id: compose.signatureId, sent_folder: sent, files: compose.files, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority });
+      await s.compose({ account_id: Number(compose.accountId), to, cc, bcc, subject: compose.subject || null, text: compose.body || null, html: compose.html || null, signature_id: compose.signatureId, sent_folder: sent, files: compose.files, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority, crypto_mode: compose.cryptoMode, crypto_type: compose.cryptoType, signing_key_id: compose.signingKeyId, recipient_key_ids: compose.recipientKeyIds });
     } else if (compose.mode === 'reply') {
       if (!compose.body.trim() && !compose.files.length && !compose.fileIds.length && !compose.galleryPhotoIds.length) { error(t('mail.send.empty_body')); return; }
-      await s.reply(String(compose.sourceId), { text: compose.body || null, html: compose.html || null, signature_id: compose.signatureId, all: compose.replyAll, sent_folder: compose.sentFolder.trim() || null, files: compose.files, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority });
+      await s.reply(String(compose.sourceId), { text: compose.body || null, html: compose.html || null, signature_id: compose.signatureId, all: compose.replyAll, sent_folder: compose.sentFolder.trim() || null, files: compose.files, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority, crypto_mode: compose.cryptoMode, crypto_type: compose.cryptoType, signing_key_id: compose.signingKeyId, recipient_key_ids: compose.recipientKeyIds });
     } else {
       const to = parseEmails(compose.to);
       if (!to.length) { error(t('mail.send.no_recipient')); return; }
       // Forward needs no body — the server attaches the original .eml + a header.
-      await s.forward(String(compose.sourceId), { to, cc: parseEmails(compose.cc), text: compose.body || null, html: compose.html || null, signature_id: compose.signatureId, sent_folder: compose.sentFolder.trim() || null, files: compose.files, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority });
+      await s.forward(String(compose.sourceId), { to, cc: parseEmails(compose.cc), text: compose.body || null, html: compose.html || null, signature_id: compose.signatureId, sent_folder: compose.sentFolder.trim() || null, files: compose.files, file_ids: compose.fileIds, gallery_photo_ids: compose.galleryPhotoIds, read_receipt: compose.readReceipt, high_priority: compose.highPriority, crypto_mode: compose.cryptoMode, crypto_type: compose.cryptoType, signing_key_id: compose.signingKeyId, recipient_key_ids: compose.recipientKeyIds });
     }
     if (compose.draftId) await s.deleteDraft(compose.draftId); drafts.value = drafts.value.filter((draft) => draft.id !== compose.draftId); compose.show = false;
     success(t('mail.send.sent'));

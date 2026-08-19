@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Symfony\Component\Mailer\Envelope;
+use Symfony\Component\Mime\Address;
 
 /**
  * Sends a user-composed message over the account's OWN SMTP transport, then
@@ -30,7 +32,7 @@ use RuntimeException;
  */
 class MailSender
 {
-    public function __construct(private ImapAppender $appender) {}
+    public function __construct(private ImapAppender $appender, private SecureMailComposer $secureComposer) {}
 
     /**
      * Send $message via $account's SMTP and append the sent copy to the origin
@@ -93,9 +95,23 @@ class MailSender
         try {
             $this->configureMailer($mailerName, $account, $host, $fromEmail, $fromName, $password);
 
-            $sent = Mail::mailer($mailerName)->send(new ComposedMail($composed));
+            if ($composed->cryptoMode === 'none') {
+                $sent = Mail::mailer($mailerName)->send(new ComposedMail($composed));
+                $raw = $sent instanceof SentMessage ? $sent->getSymfonySentMessage()->getOriginalMessage()->toString() : null;
+            } else {
+                if (! $composed->signingKey instanceof \App\Models\MailPgpKey) {
+                    throw new RuntimeException('mail crypto signing key is missing');
+                }
+                $wire = $this->secureComposer->compose($composed, $composed->signingKey, $composed->recipientKeys);
+                $envelope = new Envelope(
+                    new Address($composed->fromEmail, $composed->fromName ?? ''),
+                    array_map(static fn (array $entry): Address => new Address($entry['email'], $entry['name'] ?? ''), [...$composed->to, ...$composed->cc, ...$composed->bcc]),
+                );
+                $secureSent = Mail::mailer($mailerName)->getSymfonyTransport()->send($wire, $envelope);
+                $raw = $secureSent->getOriginalMessage()->toString();
+            }
 
-            $appended = $this->appendToSent($account, $composed->sentFolder, $sent instanceof SentMessage ? $sent : null);
+            $appended = $this->appendRawToSent($account, $composed->sentFolder, $raw ?? null);
 
             return new SendResult('<'.$messageIdLocal.'>', $appended);
         } finally {
@@ -143,17 +159,13 @@ class MailSender
      * IMAP/connection failure is logged (secret-free) and swallowed — a failed
      * Sent copy must never fail the send.
      */
-    private function appendToSent(MailAccount $account, string $sentFolder, ?SentMessage $sent): bool
+    private function appendRawToSent(MailAccount $account, string $sentFolder, ?string $raw): bool
     {
-        if ($sent === null) {
+        if ($raw === null || $raw === '') {
             return false;
         }
 
         try {
-            $raw = $sent->getSymfonySentMessage()->getOriginalMessage()->toString();
-            if ($raw === '') {
-                return false;
-            }
             $this->appender->append($account, $sentFolder, $raw, (string) $account->password, seen: true);
 
             return true;

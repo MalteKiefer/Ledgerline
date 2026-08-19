@@ -8,6 +8,8 @@ use App\Models\MailAccount;
 use App\Models\MailAttachment;
 use App\Models\MailMessage;
 use App\Models\MailSignature;
+use App\Models\MailPgpKey;
+use App\Models\CryptoRecipient;
 use App\Models\FileEntry;
 use App\Models\GalleryPhoto;
 use App\Services\Mail\ComposedMessage;
@@ -19,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 
 /**
@@ -67,6 +70,7 @@ class MailSendController extends Controller
             'read_receipt' => ['nullable', 'boolean'],
             'high_priority' => ['nullable', 'boolean'],
             'sent_folder' => ['nullable', 'string', 'max:255'],
+            ...$this->cryptoRules(),
         ])) {
             return $resp;
         }
@@ -108,6 +112,7 @@ class MailSendController extends Controller
         if (! $composed->hasRecipient()) {
             return $this->fail('no_recipient');
         }
+        if (($failure = $this->applyCrypto($request, $composed, (int) $user->id)) !== null) return $failure;
 
         return $this->dispatch($sender, $account, $composed);
     }
@@ -127,6 +132,7 @@ class MailSendController extends Controller
             'read_receipt' => ['nullable', 'boolean'],
             'high_priority' => ['nullable', 'boolean'],
             ...$this->attachmentRules(),
+            ...$this->cryptoRules(),
         ])) {
             return $resp;
         }
@@ -171,6 +177,7 @@ class MailSendController extends Controller
             readReceipt: $request->boolean('read_receipt'),
             highPriority: $request->boolean('high_priority'),
         );
+        if (($failure = $this->applyCrypto($request, $composed, (int) $user->id)) !== null) return $failure;
 
         return $this->dispatch($sender, $account, $composed);
     }
@@ -193,6 +200,7 @@ class MailSendController extends Controller
             'read_receipt' => ['nullable', 'boolean'],
             'high_priority' => ['nullable', 'boolean'],
             ...$this->attachmentRules(),
+            ...$this->cryptoRules(),
         ])) {
             return $resp;
         }
@@ -221,11 +229,46 @@ class MailSendController extends Controller
             readReceipt: $request->boolean('read_receipt'),
             highPriority: $request->boolean('high_priority'),
         );
+        if (($failure = $this->applyCrypto($request, $composed, (int) $user->id)) !== null) return $failure;
 
         return $this->dispatch($sender, $account, $composed);
     }
 
     // ---- helpers ----
+
+    /** @return array<string, array<int, mixed>> */
+    private function cryptoRules(): array
+    {
+        return [
+            'crypto_mode' => ['nullable', Rule::in(['none', 'sign', 'encrypt', 'sign_encrypt'])],
+            'crypto_type' => ['nullable', Rule::in(MailPgpKey::TYPES)],
+            'signing_key_id' => ['nullable', 'integer'],
+            'recipient_key_ids' => ['nullable', 'array', 'max:50'],
+            'recipient_key_ids.*' => ['integer'],
+        ];
+    }
+
+    /** Resolve outbound crypto IDs owner-scoped. Returns a safe rejection on invalid input. */
+    private function applyCrypto(Request $request, ComposedMessage $message, int $userId): ?JsonResponse
+    {
+        $mode = (string) ($request->input('crypto_mode') ?? 'none');
+        if ($mode === 'none') return null;
+        $type = (string) $request->input('crypto_type');
+        $key = MailPgpKey::query()->where('user_id', $userId)->whereKey($request->integer('signing_key_id'))->first();
+        if ($key === null || $key->type !== $type || ($key->expires_at !== null && $key->expires_at->isPast())) return $this->fail('crypto_key_invalid');
+        $ids = array_values(array_unique(array_map('intval', (array) $request->input('recipient_key_ids', []))));
+        $recipients = $ids === [] ? collect() : CryptoRecipient::query()->where('user_id', $userId)->where('type', $type)->whereIn('id', $ids)->get();
+        if (count($ids) !== $recipients->count()) return $this->fail('crypto_recipient_invalid');
+        if (in_array($mode, ['encrypt', 'sign_encrypt'], true) && $recipients->isEmpty()) return $this->fail('crypto_recipient_required');
+        $message->cryptoMode = $mode;
+        $message->cryptoType = $type;
+        $message->signingKeyId = $key->id;
+        $message->recipientKeyIds = $ids;
+        $message->signingKey = $key;
+        $message->recipientKeys = $recipients->all();
+
+        return null;
+    }
 
     /** Hand off to MailSender, mapping a config/SSRF failure to a generic 502. */
     private function dispatch(MailSender $sender, MailAccount $account, ComposedMessage $composed): JsonResponse

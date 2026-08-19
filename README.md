@@ -40,7 +40,7 @@ owner-scope on every endpoint, and encrypted-at-rest **operational secrets** onl
 | **Calendar** | Events with recurrence, timezones + reminders, CalDAV sync, ICS import/export, holiday calendars, free/busy + slot finder, iMIP invitations/RSVP. |
 | **Gallery** | Photos + videos, EXIF timeline + map, albums, live/motion photos, server thumbnails, optional CLIP semantic search + face recognition, sharing. |
 | **Notes** | Markdown notes, folders + tags, wikilinks/backlinks, attachments, full-text search. |
-| **Mail archive** | Pull-only IMAP archival to plaintext `.eml`, full-text search, sandboxed HTML reader, attachments, threading/labels/rules, `.eml`/`.mbox`/ZIP export, server-side PGP/S-MIME reading, SMTP send/reply/forward with a rich, autosaved composer, account signatures, delivery controls and attachments from device, Files or Gallery. |
+| **Mail archive** | Pull-only IMAP archival to plaintext `.eml`, full-text search, sandboxed HTML reader, attachments, threading/labels/rules, `.eml`/`.mbox`/ZIP export, server-side PGP/S-MIME reading and signing/encryption, SMTP send/reply/forward with a rich, autosaved composer, account signatures, delivery controls and attachments from device, Files or Gallery. Outbound crypto uses owner-scoped key IDs only, resolves private material exclusively on the server and never falls back to plaintext on errors. |
 
 Plus infrastructure (not a "module"): first-party auth (Laravel Fortify — email +
 password + TOTP 2FA + WebAuthn/passkeys), multi-user admin & groups, an admin security
