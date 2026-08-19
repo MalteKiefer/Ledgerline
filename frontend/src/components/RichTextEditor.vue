@@ -5,8 +5,9 @@
         <option value="p">{{ labels.text }}</option>
         <option value="h3">{{ labels.heading }}</option>
       </select>
-      <select class="h-8 max-w-28 rounded-md bg-transparent px-1 text-xs outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" :title="labels.font" @change="fontName">
-        <option value="Arial">Arial</option><option value="Georgia">Georgia</option><option value="Verdana">Verdana</option><option value="Courier New">Courier</option>
+      <select class="h-8 max-w-36 rounded-md bg-transparent px-1 text-xs outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" :title="labels.font" @change="fontName">
+        <optgroup label="Google Fonts"><option value="Roboto, Arial, sans-serif">Roboto</option><option value="Open Sans, Arial, sans-serif">Open Sans</option><option value="Lato, Arial, sans-serif">Lato</option><option value="Montserrat, Arial, sans-serif">Montserrat</option><option value="Merriweather, Georgia, serif">Merriweather</option><option value="Playfair Display, Georgia, serif">Playfair Display</option><option value="Source Sans 3, Arial, sans-serif">Source Sans 3</option><option value="JetBrains Mono, Consolas, monospace">JetBrains Mono</option></optgroup>
+        <optgroup label="System & Web"><option value="Arial, Helvetica, sans-serif">Arial</option><option value="Helvetica, Arial, sans-serif">Helvetica</option><option value="Segoe UI, Arial, sans-serif">Segoe UI</option><option value="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">System UI</option><option value="Verdana, Geneva, sans-serif">Verdana</option><option value="Tahoma, Arial, sans-serif">Tahoma</option><option value="Georgia, Times New Roman, serif">Georgia</option><option value="Times New Roman, Times, serif">Times New Roman</option><option value="Courier New, Courier, monospace">Courier New</option></optgroup>
       </select>
       <select class="h-8 rounded-md bg-transparent px-1 text-xs outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" :title="labels.size" @change="fontSize"><option value="2">S</option><option value="3" selected>M</option><option value="4">L</option><option value="5">XL</option></select>
       <span class="mx-1 h-5 border-l border-[var(--ll-border)]" />
@@ -37,6 +38,7 @@
 import { onMounted, ref, watch } from 'vue';
 import DOMPurify from 'dompurify';
 import Icon from '@spa/ui/Icon.vue';
+import { promptAsk } from '@spa/composables/useConfirm';
 
 type LabelKey = 'toolbar' | 'format' | 'text' | 'heading' | 'bold' | 'italic' | 'underline' | 'bullets' | 'numbers' | 'color' | 'link' | 'image' | 'clear' | 'font' | 'size' | 'quote' | 'align_left' | 'align_center' | 'align_right';
 const props = defineProps<{ modelValue: string | null; placeholder: string; labels: Record<LabelKey, string> }>();
@@ -57,7 +59,7 @@ const alignmentActions = [
   { command: 'justifyCenter', icon: 'format_align_center', label: 'align_center' as const },
   { command: 'justifyRight', icon: 'format_align_right', label: 'align_right' as const },
 ];
-const sanitizer = { ALLOWED_TAGS: ['a', 'b', 'br', 'div', 'em', 'h3', 'img', 'li', 'ol', 'p', 'span', 'strong', 'u', 'ul'], ALLOWED_ATTR: ['alt', 'href', 'src', 'style', 'target', 'title'] };
+const sanitizer = { ALLOWED_TAGS: ['a', 'b', 'br', 'div', 'em', 'font', 'h3', 'img', 'li', 'ol', 'p', 'span', 'strong', 'u', 'ul'], ALLOWED_ATTR: ['alt', 'face', 'href', 'src', 'style', 'target', 'title'] };
 
 function clean(value: string | null | undefined): string { return DOMPurify.sanitize(value ?? '', sanitizer).trim(); }
 function setContent(value: string | null | undefined) { if (editor.value) editor.value.innerHTML = clean(value); }
@@ -66,12 +68,12 @@ function command(name: string, value?: string) { editor.value?.focus(); document
 function formatBlock(event: Event) { command('formatBlock', (event.target as HTMLSelectElement).value); }
 function fontName(event: Event) { command('fontName', (event.target as HTMLSelectElement).value); }
 function fontSize(event: Event) { command('fontSize', (event.target as HTMLSelectElement).value); }
-function addLink() {
-  const href = window.prompt(props.labels.link);
+async function addLink() {
+  const href = await promptAsk(props.labels.link);
   if (href) command('createLink', href.trim());
 }
-function addImage() {
-  const src = window.prompt(props.labels.image);
+async function addImage() {
+  const src = await promptAsk(props.labels.image);
   if (src) command('insertImage', src.trim());
 }
 

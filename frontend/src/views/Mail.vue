@@ -61,9 +61,12 @@
             </button>
           </div>
         </div>
-        <button v-if="drafts.length" class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5" @click="openDraft(drafts[0])">
+        <button v-if="drafts.length" class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5" @click="showDraftList = !showDraftList">
           <Icon name="drafts" :size="20" class="text-[var(--ll-muted)]" /><span class="flex-1 text-left">{{ t('mail.send.drafts') }}</span><span class="rounded-full bg-black/[0.06] px-1.5 text-[10px] dark:bg-white/10">{{ drafts.length }}</span>
         </button>
+        <div v-if="showDraftList" class="mb-2 ml-3 space-y-0.5 border-l border-[var(--ll-border)] pl-2">
+          <button v-for="draft in drafts" :key="draft.id" class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-black/[0.04] dark:hover:bg-white/5" :class="compose.draftId === draft.id ? 'bg-primary-500/10 text-primary-700' : ''" @click="openDraft(draft)"><Icon name="edit_note" :size="15" /><span class="min-w-0 flex-1 truncate">{{ draft.subject || t('mail.send.new_draft') }}</span><span class="shrink-0 text-[0.65rem] text-[var(--ll-muted)]">{{ fmtDate(draft.updated_at) }}</span></button>
+        </div>
 
         <!-- Trash -->
         <div class="my-1 border-t border-[var(--ll-border)]" />
@@ -389,6 +392,10 @@
     </aside>
   </div>
 
+  <div v-if="drafts.length && !compose.show" class="fixed bottom-3 right-4 z-40 flex max-w-[min(70rem,calc(100vw-2rem))] gap-1 overflow-x-auto rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-xl">
+    <button v-for="draft in drafts" :key="draft.id" class="flex min-w-40 items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-black/[0.04] dark:hover:bg-white/5" @click="openDraft(draft)"><Icon name="drafts" :size="16" class="text-primary-600" /><span class="min-w-0 flex-1 truncate">{{ draft.subject || t('mail.send.new_draft') }}</span></button>
+  </div>
+
   <!-- Account editor modal -->
   <Modal v-model="editor.show" :title="editor.id ? t('mail.accounts.edit') : t('mail.accounts.add')" width="640px">
     <div class="space-y-3">
@@ -619,6 +626,7 @@ const attachmentVirusLoading = ref<string | null>(null);
 const attachmentVirusResults = reactive<Record<string, VirusTotalResult | undefined>>({});
 const signatures = ref<MailSignature[]>([]);
 const drafts = ref<MailDraft[]>([]);
+const showDraftList = ref(false);
 const dateFrom = ref('');
 const dateTo = ref('');
 
