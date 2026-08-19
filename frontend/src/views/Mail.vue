@@ -238,23 +238,30 @@
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-1.5 border-y border-[var(--ll-border)] py-2">
+      <div class="flex flex-wrap items-center gap-1 border-y border-[var(--ll-border)] py-2">
         <template v-if="readerCanSend">
-          <Btn variant="soft" size="sm" icon="reply" @click="openReply(false)">{{ t('mail.send.reply') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="reply_all" @click="openReply(true)">{{ t('mail.send.reply_all') }}</Btn>
-          <Btn variant="ghost" size="sm" icon="forward" @click="openForward">{{ t('mail.send.forward') }}</Btn>
+          <Btn variant="soft" size="sm" icon="reply" :title="t('mail.send.reply')" @click="openReply(false)" />
+          <Btn variant="ghost" size="sm" icon="reply_all" :title="t('mail.send.reply_all')" @click="openReply(true)" />
+          <Btn variant="ghost" size="sm" icon="forward" :title="t('mail.send.forward')" @click="openForward" />
           <span class="mx-0.5 h-4 w-px bg-[var(--ll-border)]" />
         </template>
         <span v-else class="mr-1 inline-flex items-center gap-1 text-xs text-[var(--ll-muted)]"><Icon name="info" :size="14" />{{ t('mail.send.no_smtp') }}</span>
-        <Btn variant="ghost" size="sm" icon="move_to_inbox" @click="doPushBack(reader)">{{ t('mail.actions.push_back') }}</Btn>
-        <Btn variant="ghost" size="sm" icon="delete_sweep" class="text-red-600 dark:text-red-400" @click="doDeleteOrigin(reader)">{{ t('mail.actions.delete_origin') }}</Btn>
-        <Btn variant="ghost" size="sm" icon="download" tag="a" :href="s.rawUrl(reader.id, true)">{{ t('mail.reader.download_eml') }}</Btn>
-        <Btn v-if="!reader.trashed" variant="ghost" size="sm" icon="delete" @click="readerTrash(reader)">{{ t('mail.actions.trash') }}</Btn>
-        <Btn v-else variant="ghost" size="sm" icon="restore" @click="readerRestore(reader)">{{ t('mail.actions.restore') }}</Btn>
-        <Btn v-if="reader.thread_id" variant="ghost" size="sm" icon="forum" @click="viewThread">{{ t('mail.reader.view_thread') }}</Btn>
-        <DropdownMenuRoot v-if="s.labels.length">
-          <DropdownMenuTrigger class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm hover:bg-black/[0.05] dark:hover:bg-white/10"><Icon name="label" :size="16" />{{ t('mail.extras.labels') }}</DropdownMenuTrigger>
+        <Btn v-if="!reader.trashed" variant="ghost" size="sm" icon="delete" :title="t('mail.actions.trash')" @click="readerTrash(reader)" />
+        <Btn v-else variant="ghost" size="sm" icon="restore" :title="t('mail.actions.restore')" @click="readerRestore(reader)" />
+        <DropdownMenuRoot>
+          <DropdownMenuTrigger class="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10" :title="t('mail.reader.more_actions')"><Icon name="more_vert" :size="18" /></DropdownMenuTrigger>
           <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="start" class="z-[1600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+            <DropdownMenuItem :class="menuItem" @select="doPushBack(reader)"><Icon name="move_to_inbox" :size="18" />{{ t('mail.actions.push_back') }}</DropdownMenuItem>
+            <DropdownMenuItem :class="menuItemDanger" @select="doDeleteOrigin(reader)"><Icon name="delete_sweep" :size="18" />{{ t('mail.actions.delete_origin') }}</DropdownMenuItem>
+            <DropdownMenuItem v-if="reader.thread_id" :class="menuItem" @select="viewThread"><Icon name="forum" :size="18" />{{ t('mail.reader.view_thread') }}</DropdownMenuItem>
+            <DropdownMenuItem :class="menuItem" :disabled="printing" @select="printMessage"><Icon name="print" :size="18" />{{ t('mail.reader.print') }}</DropdownMenuItem>
+            <DropdownMenuItem :class="menuItem" :disabled="pdfExporting" @select="exportPdf"><Icon name="picture_as_pdf" :size="18" />{{ t('mail.reader.export_pdf') }}</DropdownMenuItem>
+            <DropdownMenuItem :class="menuItem" @select="downloadEml"><Icon name="download" :size="18" />{{ t('mail.reader.download_eml') }}</DropdownMenuItem>
+            <DropdownMenuItem :class="menuItem" @select="showHeaders = !showHeaders"><Icon :name="showHeaders ? 'expand_less' : 'expand_more'" :size="18" />{{ t('mail.reader.original_headers') }}</DropdownMenuItem>
+            <template v-if="s.labels.length">
+              <div class="my-1 border-t border-[var(--ll-border)]" />
+              <div class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.extras.labels') }}</div>
+            </template>
             <DropdownMenuItem v-for="l in s.labels" :key="l.id" :class="menuItem" @select="toggleReaderLabel(l.id)">
               <span class="h-3 w-3 rounded-full" :style="{ background: l.color }" />
               <span class="flex-1">{{ l.name }}</span>
@@ -262,10 +269,7 @@
             </DropdownMenuItem>
           </DropdownMenuContent></DropdownMenuPortal>
         </DropdownMenuRoot>
-        <div class="ml-auto flex items-center gap-1.5">
-          <Btn variant="ghost" size="sm" :icon="showHeaders ? 'expand_less' : 'expand_more'" @click="showHeaders = !showHeaders">{{ t('mail.reader.original_headers') }}</Btn>
-          <Btn v-if="hasHtml" variant="ghost" size="sm" :icon="remoteOn ? 'visibility' : 'visibility_off'" @click="toggleRemote">{{ t('mail.reader.load_remote') }}</Btn>
-        </div>
+        <span class="ml-auto inline-flex items-center gap-1.5 pr-1 text-xs text-[var(--ll-muted)]"><Icon name="shield" :size="15" />{{ t('mail.reader.remote_blocked') }}</span>
       </div>
 
       <pre v-if="showHeaders" class="max-h-52 overflow-auto rounded-lg bg-black/[0.03] p-3 text-xs dark:bg-white/5">{{ reader.headers_raw || '—' }}</pre>
@@ -273,8 +277,8 @@
       <!-- Body -->
       <iframe
         v-if="hasHtml"
-        :key="frameKey"
-        :src="s.bodyUrl(reader.id, remoteOn)"
+        :key="reader.id"
+        :src="s.bodyUrl(reader.id)"
         sandbox=""
         class="h-[48vh] w-full rounded-lg border border-[var(--ll-border)] bg-white"
       ></iframe>
@@ -542,7 +546,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetime';
 import { trans as t } from 'laravel-vue-i18n';
@@ -552,6 +556,7 @@ import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type 
 import { api, ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
+import { renderInvoicePdfBlob } from '@spa/shared/invoice-print';
 
 const s = useMailStore();
 const route = useRoute();
@@ -566,8 +571,8 @@ const loading = ref(false);
 const reader = ref<MailMessage | null>(null);
 const readerOpen = ref(false);
 const showHeaders = ref(false);
-const remoteOn = ref(false);
-const frameKey = ref(0);
+const printing = ref(false);
+const pdfExporting = ref(false);
 const dateFrom = ref('');
 const dateTo = ref('');
 
@@ -711,14 +716,65 @@ function toggleSelectAll() { s.selected = allSelected.value ? [] : s.messages.ma
 
 // --- Reader ------------------------------------------------------------------
 async function openReader(m: MailMessage) {
-  showHeaders.value = false; remoteOn.value = false; frameKey.value++;
+  showHeaders.value = false;
   readerOpen.value = true;
   try {
     reader.value = await s.show(m.id);
     if (!m.seen) { await s.setSeen([m.id], true); m.seen = true; if (reader.value) reader.value.seen = true; refreshCounts(); }
   } catch { error(t('mail.toast.load_failed')); }
 }
-function toggleRemote() { remoteOn.value = !remoteOn.value; frameKey.value++; }
+
+async function readerDocument(): Promise<string | null> {
+  if (!reader.value) return null;
+  try { return await api.text(`/api/v1/mail/messages/${reader.value.id}/body`); }
+  catch { error(t('common.error')); return null; }
+}
+function fileStem(): string { return `mail-${(reader.value?.date || reader.value?.created_at || new Date().toISOString()).slice(0, 10)}`; }
+function downloadEml() {
+  if (!reader.value) return;
+  const link = document.createElement('a');
+  link.href = s.rawUrl(reader.value.id, true);
+  link.download = `${fileStem()}.eml`;
+  document.body.appendChild(link); link.click(); link.remove();
+}
+async function printMessage() {
+  if (printing.value) return;
+  const popup = window.open('', '_blank', 'width=960,height=720');
+  if (!popup) { error(t('common.error')); return; }
+  printing.value = true;
+  try {
+    const body = await readerDocument();
+    if (!body) { popup.close(); return; }
+    popup.opener = null;
+    popup.document.open();
+    popup.document.write(body.replace('</head>', '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:"></head>'));
+    popup.document.close();
+    popup.addEventListener('load', () => { popup.focus(); popup.print(); }, { once: true });
+  } finally { printing.value = false; }
+}
+async function exportPdf() {
+  if (pdfExporting.value) return;
+  pdfExporting.value = true;
+  try {
+    const body = await readerDocument();
+    if (!body) return;
+    const doc = new DOMParser().parseFromString(body, 'text/html');
+    doc.querySelectorAll('style').forEach((node) => node.remove());
+    const node = document.createElement('div');
+    node.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;padding:32px;background:#fff;color:#111;z-index:-1;';
+    node.innerHTML = doc.body.innerHTML;
+    document.body.appendChild(node);
+    await nextTick();
+    const blob = await renderInvoicePdfBlob(node);
+    node.remove();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = `${fileStem()}.pdf`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch { error(t('common.error')); }
+  finally { pdfExporting.value = false; }
+}
 
 async function refreshCounts() { try { await s.loadFolders(filters.accountId); } catch { /* non-fatal */ } }
 

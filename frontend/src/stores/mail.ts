@@ -259,7 +259,7 @@ export const useMailStore = defineStore('mail', () => {
     return r.message;
   }
 
-  const bodyUrl = (id: string, remote = false) => api.streamUrl(`/api/v1/mail/messages/${id}/body${remote ? '?remote=1' : ''}`);
+  const bodyUrl = (id: string) => api.streamUrl(`/api/v1/mail/messages/${id}/body`);
   const rawUrl = (id: string, download = false) => api.streamUrl(`/api/v1/mail/raw/${id}${download ? '?download=1' : ''}`);
   const attachmentRawUrl = (attId: string) => api.streamUrl(`/api/v1/mail/attachments/${attId}/raw`);
 

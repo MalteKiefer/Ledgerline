@@ -761,7 +761,7 @@ components:
         time_format: { type: string, enum: [24h, 12h] }
         timezone: { type: [string, "null"], description: "Hard IANA timezone override (e.g. Europe/Berlin); null follows the browser/system zone." }
         date_format: { type: string, enum: [system, dmy, dmy_dot, mdy, ymd], description: "Date-format preset; 'system' uses the locale's regional format." }
-        mail_load_remote: { type: boolean, description: "Always load remote images in the mail reader (default false)." }
+        mail_load_remote: { type: boolean, deprecated: true, description: "Deprecated and ignored: remote mail content is always blocked." }
         mail_signature: { type: [string, "null"], description: "Signature appended to outgoing mail; blank clears it to null." }
         notifications:
           type: object
@@ -4598,6 +4598,8 @@ paths:
                   enum: [system, dmy, dmy_dot, mdy, ymd]
                 mail_load_remote:
                   type: boolean
+                  deprecated: true
+                  description: "Deprecated and ignored: remote mail content is always blocked."
                 mail_signature:
                   type: [string, "null"]
                   maxLength: 5000
@@ -9966,11 +9968,11 @@ paths:
         Throttle 3000/min. Returns the message's HTML body as a standalone
         document (text/html) for embedding in a sandboxed reader iframe. Served
         with `default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src
-        data:` (+`https:` only when `?remote=1` AND the user's mail_load_remote
-        pref is on). cid: inline images are rewritten to data: URIs; no scripts.
+        data:`. Safe embedded styling is preserved, while remote images, scripts,
+        fonts, CSS imports and all other remote resources are always blocked. cid:
+        inline images are rewritten to data: URIs.
       parameters:
         - { name: message, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: remote, in: query, required: false, schema: { type: boolean }, description: "Load remote images once (only if mail_load_remote is on)." }
       responses:
         "200":
           description: HTML body document.

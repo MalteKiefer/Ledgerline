@@ -65,7 +65,7 @@ class MailAttachmentTest extends TestCase
             '--'.$boundary,
             'Content-Type: text/html; charset=utf-8',
             '',
-            '<html><body><p>Hi</p>'
+            '<html><head><style>@font-face{font-family:Tracker;src:url(https://fonts.example/font.woff2)} p{color:#123456;background:url(https://tracker.example/bg.png)}</style></head><body><p style="font-weight:bold;background-image:url(https://tracker.example/pixel.png)">Hi</p>'
                 .'<img src="cid:logo@example.com">'
                 .'<img src="http://tracker.example/px.gif">'
                 .'</body></html>',
@@ -142,13 +142,13 @@ class MailAttachmentTest extends TestCase
             ->get(route('mail.attachments.raw', $att->id))->assertNotFound();
     }
 
-    public function test_body_endpoint_gates_remote_images_and_inlines_cid(): void
+    public function test_body_endpoint_never_loads_remote_images_and_inlines_cid(): void
     {
         $account = $this->account();
         $msg = $this->ingest($account);
         $owner = User::findOrFail($account->user_id);
 
-        // Default (remote off): remote img stripped, cid rewritten to data:.
+        // Remote img is stripped and cid is rewritten to data:.
         $res = $this->actingAs($owner)->get(route('mail.messages.body', $msg->id))->assertOk();
         $csp = $res->headers->get('Content-Security-Policy');
         $this->assertStringContainsString('img-src data:', (string) $csp);
@@ -157,17 +157,19 @@ class MailAttachmentTest extends TestCase
         $this->assertIsString($body);
         $this->assertStringContainsString('data:image/png;base64,', $body);
         $this->assertStringNotContainsString('tracker.example', $body);
+        $this->assertStringNotContainsString('fonts.example', $body);
+        $this->assertStringNotContainsString('@font-face', $body);
+        $this->assertStringContainsString('font-weight:bold', str_replace(' ', '', $body));
 
-        // Explicit reader toggle remote=1 → remote kept + https: in CSP, even
-        // without the (not-yet-settable) mail_load_remote pref.
+        // Legacy reader toggle cannot weaken the remote-content boundary.
         $res = $this->actingAs($owner)->get(route('mail.messages.body', [$msg->id, 'remote' => 1]))->assertOk();
-        $this->assertStringContainsString('https:', (string) $res->headers->get('Content-Security-Policy'));
-        $this->assertStringContainsString('tracker.example', (string) $res->getContent());
+        $this->assertStringNotContainsString('https:', (string) $res->headers->get('Content-Security-Policy'));
+        $this->assertStringNotContainsString('tracker.example', (string) $res->getContent());
 
-        // Pref ON acts as an "always load" default even without the query param.
+        // A stale preference cannot enable tracking either.
         UserSetting::for($owner->id)->forceFill(['mail_load_remote' => true])->save();
         $res = $this->actingAs($owner)->get(route('mail.messages.body', $msg->id))->assertOk();
-        $this->assertStringContainsString('https:', (string) $res->headers->get('Content-Security-Policy'));
+        $this->assertStringNotContainsString('https:', (string) $res->headers->get('Content-Security-Policy'));
     }
 
     public function test_show_lists_attachments(): void

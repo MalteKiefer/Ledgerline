@@ -8,7 +8,6 @@ use App\Models\MailAttachment;
 use App\Models\MailBlob;
 use App\Models\MailLabel;
 use App\Models\MailMessage;
-use App\Models\UserSetting;
 use App\Services\Mail\MailDecryptor;
 use App\Support\BlobStore;
 use App\Support\Mail\MailHtmlSanitizer;
@@ -164,27 +163,21 @@ class MailMessageController extends Controller
 
     /**
      * The message's HTML body as a standalone, sandboxed document for a reader
-     * iframe. Re-derived from the immutable raw .eml (so remote images can be
-     * gated per request and cid: images inlined). Strict CSP: no scripts, no
-     * same-origin, images only from data: (+ https: when the caller opts into
-     * remote content AND the user's mail_load_remote pref is on). cid: inline
-     * images are rewritten to data: URIs from the stored attachment bytes.
+     * iframe. Re-derived from the immutable raw .eml so inline cid: images can
+     * be embedded as data: URIs. Strict CSP: no scripts, no same-origin, no
+     * remote resource origins. cid: inline images are rewritten to data: URIs
+     * from the stored attachment bytes.
      */
     public function body(Request $request, MailMessage $message): Response
     {
         $this->authorizeOwner($request, $message);
 
-        // Explicit per-message "load remote images" (?remote=1) is consent enough
-        // — that is the reader's toggle. The mail_load_remote pref, when set, is an
-        // opt-in "always load" default. Either one grants remote content; neither
-        // set keeps images blocked (privacy-safe default). Requiring BOTH made the
-        // toggle a no-op, since the pref has no write path yet.
-        $prefs = UserSetting::for((int) $message->user_id);
-        $allowRemote = $request->boolean('remote') || (bool) $prefs->mail_load_remote;
+        // Mail bodies never load remote content. This deliberately ignores the
+        // legacy ?remote query argument and the retired preference so a tracking
+        // pixel cannot be enabled by a stale client or bookmarked URL.
+        $html = $this->renderBody($message);
 
-        $html = $this->renderBody($message, $allowRemote);
-
-        $csp = "default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src data:".($allowRemote ? ' https:' : '');
+        $csp = "default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src data:";
         $doc = '<!doctype html><html><head><meta charset="utf-8">'
             .'<meta name="referrer" content="no-referrer">'
             .'<meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -204,7 +197,7 @@ class MailMessageController extends Controller
      * escaped plaintext body (then the stored sanitized HTML) when the raw blob
      * is unavailable or has no HTML part.
      */
-    private function renderBody(MailMessage $message, bool $allowRemote): string
+    private function renderBody(MailMessage $message): string
     {
         $disk = BlobStore::disk();
         $key = 'mail/'.$message->id;
@@ -212,7 +205,7 @@ class MailMessageController extends Controller
             $raw = $disk->get($key);
             if (is_string($raw) && $raw !== '') {
                 $parsed = (new MimeParser)->parse($raw);
-                $html = (new MailHtmlSanitizer)->sanitize($parsed->htmlBody, $allowRemote, $this->cidMap($message));
+                $html = (new MailHtmlSanitizer)->sanitize($parsed->htmlBody, false, $this->cidMap($message));
                 if ($html !== null) {
                     return $html;
                 }

@@ -13,10 +13,10 @@ use Throwable;
 /**
  * Server-side sanitiser for archived-mail HTML bodies. Runs at ingest and
  * stores the result in mail_messages.html_sanitized so the reader never touches
- * the raw HTML directly. Conservative by design (Phase 1 renders this inline;
- * the richer sandboxed-iframe + remote-content gating is Phase 2):
+ * the raw HTML directly. It preserves safe email styling in a sandboxed iframe
+ * while keeping all remote content permanently disabled:
  *
- *   - Dangerous elements are removed WITH their subtree: script, style, iframe,
+ *   - Dangerous elements are removed WITH their subtree: script, iframe,
  *     object, embed, applet, frame(set), meta, base, link, form and all form
  *     controls, svg, math, template, noscript, title, head.
  *   - Every `on*` event-handler attribute is stripped.
@@ -24,10 +24,9 @@ use Throwable;
  *     <img>) are dropped — no script execution, no data-URI HTML smuggling.
  *   - REMOTE resource loads are neutralised: an http(s)/protocol-relative src on
  *     img/audio/video/source/track/input/poster is removed (tracking-pixel +
- *     leak protection; remote loading is re-enabled behind an explicit opt-in in
- *     Phase 2's body iframe). cid: refs are left for Phase 2 to resolve.
- *   - `style` attributes and the `<style>` element are stripped (CSS url()
- *     remote-fetch / exfil vector).
+ *     leak protection). cid: refs are left for the body endpoint to resolve.
+ *   - Safe inline CSS and style blocks are retained after stripping external
+ *     imports, font faces, url() fetches, and legacy executable CSS features.
  *   - Anchors are rewritten target=_blank rel="noopener noreferrer nofollow".
  *
  * Pure DOMDocument (ext-dom, always present) — no new dependency. Any parse
@@ -37,7 +36,7 @@ final class MailHtmlSanitizer
 {
     /** Elements dropped together with their entire subtree. */
     private const STRIP_SUBTREE = [
-        'script', 'style', 'iframe', 'object', 'embed', 'applet', 'frame', 'frameset',
+        'script', 'iframe', 'object', 'embed', 'applet', 'frame', 'frameset',
         'meta', 'base', 'link', 'form', 'input', 'button', 'select', 'option', 'textarea',
         'svg', 'math', 'template', 'noscript', 'title', 'head',
     ];
@@ -46,12 +45,8 @@ final class MailHtmlSanitizer
     private const URL_ATTRS = ['href', 'src', 'poster', 'background', 'srcset', 'action', 'formaction'];
 
     /**
-     * @param  bool  $allowRemote  keep http(s)/protocol-relative resource src
-     *                             (remote images) — gated by the caller. At ingest
-     *                             this is false (remote src is dropped, so the
-     *                             stored html_sanitized never auto-fetches); the
-     *                             body endpoint passes true only when the user
-     *                             opted into remote content.
+     * @param  bool  $allowRemote  Retained for call compatibility. Remote content
+     *                             is always stripped, regardless of this value.
      * @param  array<string, string>  $cidMap  normalized Content-Id → data: URI;
      *                                         a `cid:<id>` img src is rewritten to its data:
      *                                         URI (or dropped when unresolved).
@@ -63,6 +58,9 @@ final class MailHtmlSanitizer
         }
 
         try {
+            // The parameter remains in the public signature for old callers, but
+            // remote resource loading is an invariant of the mail reader.
+            $allowRemote = false;
             $dom = new DOMDocument;
             $prev = libxml_use_internal_errors(true);
             // Force UTF-8 interpretation; LIBXML_NONET blocks any external entity fetch.
@@ -77,9 +75,20 @@ final class MailHtmlSanitizer
                 return null;
             }
 
+            // Email templates commonly keep presentation CSS in <head>, while
+            // the stored fragment intentionally contains body children only.
+            // Move styles into that fragment before dropping <head> itself.
+            $body = $dom->getElementsByTagName('body')->item(0);
+            if ($body instanceof DOMElement) {
+                foreach (iterator_to_array($dom->getElementsByTagName('style')) as $style) {
+                    if ($style instanceof DOMElement && strtolower($style->parentNode?->nodeName ?? '') === 'head') {
+                        $body->insertBefore($style, $body->firstChild);
+                    }
+                }
+            }
+
             $this->walk($dom->documentElement, $allowRemote, $cidMap);
 
-            $body = $dom->getElementsByTagName('body')->item(0);
             $out = '';
             if ($body !== null) {
                 foreach (iterator_to_array($body->childNodes) as $child) {
@@ -119,6 +128,10 @@ final class MailHtmlSanitizer
             $this->walk($child, $allowRemote, $cidMap);
         }
 
+        if (strtolower($node->nodeName) === 'style') {
+            $node->textContent = $this->sanitizeCss($node->textContent ?? '');
+        }
+
         $this->scrubAttributes($node, $allowRemote, $cidMap);
     }
 
@@ -141,9 +154,20 @@ final class MailHtmlSanitizer
             $lower = strtolower($name);
             $value = $el->getAttribute($name);
 
-            // Event handlers + inline CSS.
-            if (str_starts_with($lower, 'on') || $lower === 'style') {
+            // Event handlers are executable content.
+            if (str_starts_with($lower, 'on')) {
                 $el->removeAttribute($name);
+
+                continue;
+            }
+
+            if ($lower === 'style') {
+                $safeCss = $this->sanitizeCss($value);
+                if ($safeCss === '') {
+                    $el->removeAttribute($name);
+                } else {
+                    $el->setAttribute($name, $safeCss);
+                }
 
                 continue;
             }
@@ -228,5 +252,16 @@ final class MailHtmlSanitizer
         }
 
         return null;
+    }
+
+    /** Remove CSS features that can fetch a remote resource or execute legacy code. */
+    private function sanitizeCss(string $css): string
+    {
+        $css = preg_replace('#@(?:import|namespace)\s+[^;{}]+;#i', '', $css) ?? '';
+        $css = preg_replace('#@font-face\s*\{[^{}]*\}#is', '', $css) ?? '';
+        $css = preg_replace('#url\s*\(\s*[^)]*\)#i', 'none', $css) ?? '';
+        $css = preg_replace('#(?:expression\s*\(|-moz-binding\s*:|behavior\s*:)#i', '', $css) ?? '';
+
+        return trim(str_replace(['<', '>'], '', $css));
     }
 }
