@@ -61,12 +61,9 @@
             </button>
           </div>
         </div>
-        <button v-if="drafts.length" class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5" @click="showDraftList = !showDraftList">
-          <Icon name="drafts" :size="20" class="text-[var(--ll-muted)]" /><span class="flex-1 text-left">{{ t('mail.send.drafts') }}</span><span class="rounded-full bg-black/[0.06] px-1.5 text-[10px] dark:bg-white/10">{{ drafts.length }}</span>
+        <button class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/5" :class="draftListActive ? 'bg-primary-500/10 text-primary-600 dark:text-primary-300' : ''" @click="pickDrafts">
+          <Icon name="drafts" :size="20" :class="draftListActive ? '' : 'text-[var(--ll-muted)]'" /><span class="flex-1 text-left">{{ t('mail.send.drafts') }}</span><span v-if="drafts.length" class="rounded-full bg-black/[0.06] px-1.5 text-[10px] dark:bg-white/10">{{ drafts.length }}</span>
         </button>
-        <div v-if="showDraftList" class="mb-2 ml-3 space-y-0.5 border-l border-[var(--ll-border)] pl-2">
-          <button v-for="draft in drafts" :key="draft.id" class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-black/[0.04] dark:hover:bg-white/5" :class="compose.draftId === draft.id ? 'bg-primary-500/10 text-primary-700' : ''" @click="openDraft(draft)"><Icon name="edit_note" :size="15" /><span class="min-w-0 flex-1 truncate">{{ draft.subject || t('mail.send.new_draft') }}</span><span class="shrink-0 text-[0.65rem] text-[var(--ll-muted)]">{{ fmtDate(draft.updated_at) }}</span></button>
-        </div>
 
         <!-- Trash -->
         <div class="my-1 border-t border-[var(--ll-border)]" />
@@ -114,6 +111,7 @@
       <!-- Toolbar -->
       <div class="flex flex-wrap items-center gap-2 border-b border-[var(--ll-border)] p-3">
         <Btn variant="solid" size="sm" icon="edit_square" @click="openCompose">{{ t('mail.send.compose') }}</Btn>
+        <span v-if="draftListActive" class="text-sm font-semibold">{{ t('mail.send.drafts') }}</span>
         <TextField v-model="filters.q" :placeholder="t('mail.list.search_placeholder')" icon="search" class="min-w-48 flex-1" @update:model-value="debouncedReload" @enter="reload" />
         <div class="flex items-center gap-1.5">
           <TextField v-model="dateFrom" type="date" :placeholder="t('mail.list.date_from')" class="w-36" @update:model-value="onDate" />
@@ -156,13 +154,15 @@
       </div>
 
       <!-- Table -->
-      <div v-if="threadView" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-3 py-2 text-xs">
+      <div v-if="threadView && !draftListActive" class="flex items-center gap-2 border-b border-[var(--ll-border)] bg-primary-500/5 px-3 py-2 text-xs">
         <Icon name="forum" :size="15" class="text-primary-600 dark:text-primary-300" />
         <span class="flex-1">{{ t('mail.reader.thread_view') }}</span>
         <Btn variant="ghost" size="xs" icon="close" @click="clearThread">{{ t('common.clear') }}</Btn>
       </div>
       <div class="flex-1 overflow-y-auto">
         <div v-if="loading" class="py-16 text-center"><Icon name="progress_activity" :size="28" class="animate-spin text-[var(--ll-muted)]" /></div>
+        <div v-else-if="draftListActive && !drafts.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ t('mail.list.empty') }}</div>
+        <table v-else-if="draftListActive" class="w-full table-fixed text-sm"><thead class="sticky top-0 z-[1] bg-[var(--ll-surface)]"><tr class="border-b border-[var(--ll-border)] text-left text-xs text-[var(--ll-muted)]"><th class="w-[32%] py-2 pl-3 pr-3">{{ t('mail.send.from_email') }}</th><th class="py-2 pr-3">{{ t('mail.list.col_subject') }}</th><th class="w-28 py-2 pr-3 text-right">{{ t('mail.list.col_date') }}</th></tr></thead><tbody><tr v-for="draft in drafts" :key="draft.id" class="cursor-pointer border-b border-[var(--ll-border)] hover:bg-black/[0.02] dark:hover:bg-white/5" @click="openDraft(draft)"><td class="py-2.5 pl-3 pr-3"><div class="flex min-w-0 items-center gap-2"><Icon name="drafts" :size="17" class="text-primary-600" /><span class="truncate">{{ accountName(draft.mail_account_id) }}</span></div></td><td class="py-2.5 pr-3"><div class="truncate font-medium">{{ draft.subject || t('mail.send.new_draft') }}</div><div class="truncate text-xs text-[var(--ll-muted)]">{{ (draft.to ?? []).join(', ') || t('mail.send.to') }}</div></td><td class="py-2.5 pr-3 text-right text-xs text-[var(--ll-muted)]">{{ fmtDate(draft.updated_at) }}</td></tr></tbody></table>
         <div v-else-if="!s.messages.length" class="py-16 text-center text-sm text-[var(--ll-muted)]">{{ t('mail.list.empty') }}</div>
         <table v-else class="w-full table-fixed text-sm">
           <thead class="sticky top-0 z-[1] bg-[var(--ll-surface)]">
@@ -206,7 +206,7 @@
       </div>
 
       <!-- Pagination -->
-      <div v-if="s.meta.last_page > 1" class="flex items-center justify-between border-t border-[var(--ll-border)] px-3 py-2 text-sm">
+      <div v-if="!draftListActive && s.meta.last_page > 1" class="flex items-center justify-between border-t border-[var(--ll-border)] px-3 py-2 text-sm">
         <span class="text-xs text-[var(--ll-muted)]">{{ s.meta.current_page }} / {{ s.meta.last_page }} · {{ s.meta.total }}</span>
         <div class="flex items-center gap-1">
           <Btn variant="ghost" size="sm" icon="chevron_left" :disabled="s.meta.current_page <= 1" @click="goto(s.meta.current_page - 1)" />
@@ -626,11 +626,11 @@ const attachmentVirusLoading = ref<string | null>(null);
 const attachmentVirusResults = reactive<Record<string, VirusTotalResult | undefined>>({});
 const signatures = ref<MailSignature[]>([]);
 const drafts = ref<MailDraft[]>([]);
-const showDraftList = ref(false);
+const draftListActive = ref(false);
 const dateFrom = ref('');
 const dateTo = ref('');
 
-const isUnified = computed(() => filters.accountId === null && filters.label === null && !filters.trashed);
+const isUnified = computed(() => !draftListActive.value && filters.accountId === null && filters.label === null && !filters.trashed);
 const hasHtml = computed(() => reader.value?.html != null);
 const allSelected = computed(() => s.messages.length > 0 && s.messages.every((m) => s.selected.includes(m.id)));
 
@@ -751,6 +751,7 @@ onMounted(async () => {
 onBeforeUnmount(() => { if (statusTimer) clearInterval(statusTimer); });
 
 async function reload() {
+  if (draftListActive.value) return;
   loading.value = true;
   s.selected = [];
   try { await s.loadMessages(1); } catch { error(t('mail.toast.load_failed')); } finally { loading.value = false; }
@@ -764,17 +765,19 @@ function debouncedReload() { clearTimeout(debTimer); debTimer = setTimeout(reloa
 function onDate() { filters.dateFrom = dateFrom.value || null; filters.dateTo = dateTo.value || null; reload(); }
 
 // --- Rail navigation ---------------------------------------------------------
-async function pickUnified() { s.resetFilters(); await s.loadFolders(null); reload(); }
+async function pickUnified() { draftListActive.value = false; s.resetFilters(); await s.loadFolders(null); reload(); }
 async function pickAccount(a: MailAccount) {
+  draftListActive.value = false;
   s.resetFilters();
   filters.accountId = a.id;
   await s.loadFolders(a.id);
   filters.folder = inboxFolder(a.id);
   reload();
 }
-function pickFolder(folder: string) { filters.folder = folder; filters.trashed = false; reload(); }
-function pickTrash() { filters.trashed = true; filters.label = null; reload(); }
-function pickLabel(id: number) { s.resetFilters(); filters.label = id; s.loadFolders(null); reload(); }
+function pickFolder(folder: string) { draftListActive.value = false; filters.folder = folder; filters.trashed = false; reload(); }
+function pickTrash() { draftListActive.value = false; filters.trashed = true; filters.label = null; reload(); }
+function pickLabel(id: number) { draftListActive.value = false; s.resetFilters(); filters.label = id; s.loadFolders(null); reload(); }
+async function pickDrafts() { draftListActive.value = true; readerOpen.value = false; s.selected = []; drafts.value = await s.loadDrafts(); }
 function toggleUnread() { filters.seen = filters.seen === false ? null : false; reload(); }
 function toggleSpam() { filters.spam = filters.spam === true ? null : true; reload(); }
 
