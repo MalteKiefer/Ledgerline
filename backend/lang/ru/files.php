@@ -419,4 +419,6 @@ return [
     'virustotal_undetected' => ':n движков ничего не нашли',
     'virustotal_unknown' => 'Эта контрольная сумма неизвестна VirusTotal.',
     'virustotal_not_configured' => 'VirusTotal ещё не настроен администратором.',
+    'virustotal_invalid_api_key' => 'Сохранённый API-ключ VirusTotal отклонён. Обновите его в настройках.',
+    'virustotal_rate_limited' => 'Достигнут лимит VirusTotal. Повторите попытку позже.',
 ];

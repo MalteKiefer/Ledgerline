@@ -287,6 +287,7 @@
                     <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="openExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
                     <DropdownMenuItem v-if="!s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openEncrypt(row)"><Icon name="lock" :size="18" />{{ t('files.encrypt') }}</DropdownMenuItem>
                     <DropdownMenuItem v-if="s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openDecrypt(row)"><Icon name="lock_open" :size="18" />{{ t('files.decrypt') }}</DropdownMenuItem>
+                    <DropdownMenuItem :class="menuItemCls" :disabled="fileVirusLoading === (row.raw as FileEntry).id" @select="scanFileVirusTotal(row.raw as FileEntry)"><Icon name="security" :size="18" />{{ t('files.virustotal_check') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
@@ -359,6 +360,7 @@
                         <DropdownMenuItem v-if="s.isArchive(String(row.name))" :class="menuItemCls" @select="openExtract(row)"><Icon name="unarchive" :size="18" />{{ t('files.archive_extract') }}</DropdownMenuItem>
                         <DropdownMenuItem v-if="!s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openEncrypt(row)"><Icon name="lock" :size="18" />{{ t('files.encrypt') }}</DropdownMenuItem>
                         <DropdownMenuItem v-if="s.isEncrypted(String(row.name))" :class="menuItemCls" @select="openDecrypt(row)"><Icon name="lock_open" :size="18" />{{ t('files.decrypt') }}</DropdownMenuItem>
+                        <DropdownMenuItem :class="menuItemCls" :disabled="fileVirusLoading === (row.raw as FileEntry).id" @select="scanFileVirusTotal(row.raw as FileEntry)"><Icon name="security" :size="18" />{{ t('files.virustotal_check') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="fav(row.raw as FileEntry)"><Icon name="star" :size="18" />{{ t('files.favorite') }}</DropdownMenuItem>
                         <DropdownMenuItem :class="menuItemCls" @select="doRename(row)"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
                     <DropdownMenuItem :class="menuItemCls" @select="openMove(row)"><Icon name="drive_file_move" :size="18" />{{ t('files.move') }}</DropdownMenuItem>
@@ -999,6 +1001,7 @@
             <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[2600] min-w-48 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
               <DropdownMenuItem as="a" :href="s.downloadUrl(preview)" :class="menuItemCls"><Icon name="download" :size="18" />{{ t('files.download') }}</DropdownMenuItem>
               <DropdownMenuItem as="a" :href="s.rawUrl(preview)" target="_blank" :class="menuItemCls"><Icon name="open_in_new" :size="18" />{{ t('common.open') }}</DropdownMenuItem>
+              <DropdownMenuItem :class="menuItemCls" :disabled="fileVirusLoading === preview.id" @select="scanFileVirusTotal(preview)"><Icon name="security" :size="18" />{{ t('files.virustotal_check') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItemCls" @select="previewRename()"><Icon name="drive_file_rename_outline" :size="18" />{{ t('files.rename') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItemCls" @select="openVersions(mapFile(preview))"><Icon name="history" :size="18" />{{ t('files.versions') }}</DropdownMenuItem>
               <DropdownMenuItem :class="menuItemCls" @select="openShare(mapFile(preview))"><Icon name="share" :size="18" />{{ t('files.share') }}</DropdownMenuItem>
@@ -1161,6 +1164,7 @@ const infoDetail = ref<FileInfo | null>(null);
 const infoLoading = ref(false);
 const virusTotalLoading = ref(false);
 const virusTotalResult = ref<VirusTotalResult | null>(null);
+const fileVirusLoading = ref<number | null>(null);
 const versionsDlg = ref<{ show: boolean; loading: boolean; file: FileEntry | null; list: FileVersion[] }>({ show: false, loading: false, file: null, list: [] });
 const shareDlg = ref<{
   show: boolean; busy: boolean; kind: 'file' | 'folder'; targetId: number; tab: 'link' | 'users';
@@ -2000,9 +2004,30 @@ async function scanVirusTotal() {
   const file = info.value.file;
   if (!file) return;
   virusTotalLoading.value = true;
-  try { virusTotalResult.value = await s.virusTotal(file.id); }
-  catch (e) { error(t(e instanceof ApiError && (e.body as { error?: string } | null)?.error === 'virustotal_not_configured' ? 'files.virustotal_not_configured' : 'common.error')); }
+  try { virusTotalResult.value = await scanFileVirusTotal(file, false); }
   finally { virusTotalLoading.value = false; }
+}
+function virusTotalErrorKey(e: unknown): string {
+  const code = e instanceof ApiError ? (e.body as { error?: string } | null)?.error : null;
+  return code === 'virustotal_not_configured' ? 'files.virustotal_not_configured'
+    : code === 'virustotal_invalid_api_key' ? 'files.virustotal_invalid_api_key'
+      : code === 'virustotal_rate_limited' ? 'files.virustotal_rate_limited'
+        : 'common.error';
+}
+async function scanFileVirusTotal(file: FileEntry, notify = true): Promise<VirusTotalResult | null> {
+  fileVirusLoading.value = file.id;
+  try {
+    const result = await s.virusTotal(file.id);
+    if (notify) {
+      if (!result.known) success(t('files.virustotal_unknown'));
+      else if ((result.stats?.malicious ?? 0) + (result.stats?.suspicious ?? 0) > 0) error(t('files.virustotal_detections', { n: String((result.stats?.malicious ?? 0) + (result.stats?.suspicious ?? 0)) }));
+      else success(t('files.virustotal_detections', { n: '0' }));
+    }
+    return result;
+  } catch (e) {
+    error(t(virusTotalErrorKey(e)));
+    return null;
+  } finally { fileVirusLoading.value = null; }
 }
 // Localised label for a metadata group / activity action, falling back to the raw
 // key value when no translation exists (t returns the key itself on a miss).

@@ -821,7 +821,10 @@ async function scanAttachment(attId: string) {
     else if ((result.stats?.malicious ?? 0) + (result.stats?.suspicious ?? 0) > 0) error(t('mail.reader.virustotal_detected'));
     else success(t('mail.reader.virustotal_clean'));
   } catch (e) {
-    error(t(e instanceof ApiError && (e.body as { error?: string } | null)?.error === 'virustotal_not_configured' ? 'files.virustotal_not_configured' : 'common.error'));
+    const code = e instanceof ApiError ? (e.body as { error?: string } | null)?.error : null;
+    error(t(code === 'virustotal_not_configured' ? 'files.virustotal_not_configured'
+      : code === 'virustotal_invalid_api_key' ? 'files.virustotal_invalid_api_key'
+        : code === 'virustotal_rate_limited' ? 'files.virustotal_rate_limited' : 'common.error'));
   } finally { attachmentVirusLoading.value = null; }
 }
 

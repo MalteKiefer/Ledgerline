@@ -87,6 +87,12 @@ class VirusTotalController extends Controller
 
             return response()->json(['known' => false, 'sha256' => $hash]);
         }
+        if (in_array($response->status(), [401, 403], true)) {
+            return response()->json(['error' => 'virustotal_invalid_api_key'], 422);
+        }
+        if ($response->status() === 429) {
+            return response()->json(['error' => 'virustotal_rate_limited'], 429);
+        }
         if (! $response->successful()) {
             return response()->json(['error' => 'virustotal_unavailable'], 502);
         }

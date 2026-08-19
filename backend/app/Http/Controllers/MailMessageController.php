@@ -218,7 +218,13 @@ class MailMessageController extends Controller
         }
 
         if ($message->html_sanitized !== null) {
-            return $message->html_sanitized;
+            // Historic imports can predate the current sanitizer. Re-sanitize the
+            // fallback on every render so an unavailable raw .eml never revives
+            // executable or remote markup from an old stored representation.
+            $html = (new MailHtmlSanitizer)->sanitize($message->html_sanitized, $allowRemote, $this->cidMap($message));
+            if ($html !== null) {
+                return $html;
+            }
         }
         if ($message->text_body !== null) {
             return '<pre style="white-space:pre-wrap;word-break:break-word">'.e($message->text_body).'</pre>';

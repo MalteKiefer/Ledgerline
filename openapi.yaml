@@ -10110,7 +10110,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "422": { description: "VirusTotal is not configured." }
+        "422": { description: "VirusTotal is not configured, the stored API key was rejected, or the attachment is unavailable." }
         "429": { $ref: "#/components/responses/RateLimited" }
   /mail/signatures:
     get:

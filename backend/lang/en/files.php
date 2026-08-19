@@ -419,4 +419,6 @@ return [
     'virustotal_undetected' => ':n engines found nothing',
     'virustotal_unknown' => 'This checksum is not known to VirusTotal.',
     'virustotal_not_configured' => 'VirusTotal has not been configured by an administrator.',
+    'virustotal_invalid_api_key' => 'The configured VirusTotal API key was rejected. Update it in Settings.',
+    'virustotal_rate_limited' => 'VirusTotal rate limit reached. Try again shortly.',
 ];
