@@ -107,7 +107,10 @@ class MailSender
                     new Address($composed->fromEmail, $composed->fromName ?? ''),
                     array_map(static fn (array $entry): Address => new Address($entry['email'], $entry['name'] ?? ''), [...$composed->to, ...$composed->cc, ...$composed->bcc]),
                 );
-                $secureSent = Mail::mailer($mailerName)->getSymfonyTransport()->send($wire, $envelope);
+                $transport = Mail::mailer($mailerName)->getSymfonyTransport();
+                if ($transport === null) throw new RuntimeException('mail crypto SMTP transport is unavailable');
+                $secureSent = $transport->send($wire, $envelope);
+                if ($secureSent === null) throw new RuntimeException('mail crypto SMTP send failed');
                 $raw = $secureSent->getOriginalMessage()->toString();
             }
 

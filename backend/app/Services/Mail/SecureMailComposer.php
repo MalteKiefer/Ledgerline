@@ -87,10 +87,11 @@ final class SecureMailComposer
 
     private function signPgp(Message $message, MailPgpKey $key): Message
     {
-        $signature = $this->cipher->signPgpMime($message->getBody()->toString(), (string) $key->private_key, $key->passphrase);
+        $body = $this->body($message);
+        $signature = $this->cipher->signPgpMime($body->toString(), (string) $key->private_key, $key->passphrase);
         if ($signature === null) throw new RuntimeException('mail PGP signing failed');
 
-        return new Message($message->getHeaders(), new PgpSignedPart($message->getBody(), $signature));
+        return new Message($message->getHeaders(), new PgpSignedPart($body, $signature));
     }
 
     /** @param list<CryptoRecipient> $recipients */
@@ -98,7 +99,7 @@ final class SecureMailComposer
     {
         $keys = [(string) $ownKey->public_key];
         foreach ($recipients as $recipient) $keys[] = (string) $recipient->public_key;
-        $payload = $this->cipher->encryptPgpMime($message->getBody()->toString(), $keys);
+        $payload = $this->cipher->encryptPgpMime($this->body($message)->toString(), $keys);
         if ($payload === null) throw new RuntimeException('mail PGP encryption failed');
 
         return new Message($message->getHeaders(), new PgpEncryptedPart($payload));
@@ -106,15 +107,13 @@ final class SecureMailComposer
 
     private function signSmime(Message $message, MailPgpKey $key): Message
     {
-        return $this->withSmimeFiles($key, function (string $cert, string $private) use ($message, $key): Message {
-            return (new SMimeSigner($cert, $private, $key->passphrase))->sign($message);
-        });
+        return $this->withSmimeFiles($key, static fn (string $cert, string $private): Message => (new SMimeSigner($cert, $private, $key->passphrase))->sign($message));
     }
 
     /** @param list<CryptoRecipient> $recipients */
     private function encryptSmime(Message $message, MailPgpKey $ownKey, array $recipients): Message
     {
-        return $this->withSmimeFiles($ownKey, function (string $cert) use ($message, $recipients): Message {
+        return $this->withSmimeFiles($ownKey, function (string $cert, string $_private) use ($message, $recipients): Message {
             $dir = dirname($cert); $certificatePaths = [$cert];
             foreach ($recipients as $index => $recipient) {
                 $path = $dir.'/recipient-'.$index.'.pem';
@@ -126,8 +125,8 @@ final class SecureMailComposer
         });
     }
 
-    /** @template T @param callable(string,string):T $callback @return T */
-    private function withSmimeFiles(MailPgpKey $key, callable $callback): mixed
+    /** @param callable(string,string):Message $callback */
+    private function withSmimeFiles(MailPgpKey $key, callable $callback): Message
     {
         if (! $this->cipher->smimeAvailable() || trim((string) $key->cert_pem) === '' || trim((string) $key->private_key) === '') throw new RuntimeException('mail S/MIME is unavailable');
         $dir = sys_get_temp_dir().'/ll-mail-smime-'.bin2hex(random_bytes(12));
@@ -141,5 +140,12 @@ final class SecureMailComposer
             foreach (scandir($dir) ?: [] as $file) if ($file !== '.' && $file !== '..') @unlink($dir.'/'.$file);
             @rmdir($dir);
         }
+    }
+
+    private function body(Message $message): \Symfony\Component\Mime\Part\AbstractPart
+    {
+        $body = $message->getBody();
+        if ($body === null) throw new RuntimeException('mail crypto message body is missing');
+        return $body;
     }
 }

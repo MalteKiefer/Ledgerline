@@ -29,5 +29,6 @@ final class PgpMimePart extends AbstractPart
 
     public function bodyToString(): string { return $this->body; }
 
+    /** @return iterable<string> */
     public function bodyToIterable(): iterable { yield $this->body; }
 }

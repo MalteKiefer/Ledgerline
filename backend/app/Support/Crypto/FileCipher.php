@@ -35,7 +35,7 @@ final class FileCipher
             return null;
         }
 
-        return $this->inHome(function (string $home) use ($mime, $armoredPrivateKey, $passphrase): ?string {
+        $result = $this->inHome(function (string $home) use ($mime, $armoredPrivateKey, $passphrase): ?string {
             $key = $home.'/secret.asc';
             $input = $home.'/message.mime';
             $output = $home.'/signature.asc';
@@ -56,16 +56,18 @@ final class FileCipher
 
             return is_string($signature) && $signature !== '' ? $signature : null;
         });
+        return is_string($result) ? $result : null;
     }
 
     /** Encrypt exact MIME bytes as armored OpenPGP for an RFC 3156 envelope. */
+    /** @param list<string> $recipientPublicKeys */
     public function encryptPgpMime(string $mime, array $recipientPublicKeys): ?string
     {
         if (! $this->pgpAvailable() || $recipientPublicKeys === []) {
             return null;
         }
 
-        return $this->inHome(function (string $home) use ($mime, $recipientPublicKeys): ?string {
+        $result = $this->inHome(function (string $home) use ($mime, $recipientPublicKeys): ?string {
             $input = $home.'/message.mime'; $output = $home.'/message.asc';
             file_put_contents($input, $mime);
             $fingerprints = [];
@@ -90,6 +92,7 @@ final class FileCipher
 
             return is_string($encrypted) && $encrypted !== '' ? $encrypted : null;
         });
+        return is_string($result) ? $result : null;
     }
 
     public function smimeAvailable(): bool

@@ -21,7 +21,6 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
 use RuntimeException;
 
 /**
@@ -240,8 +239,8 @@ class MailSendController extends Controller
     private function cryptoRules(): array
     {
         return [
-            'crypto_mode' => ['nullable', Rule::in(['none', 'sign', 'encrypt', 'sign_encrypt'])],
-            'crypto_type' => ['nullable', Rule::in(MailPgpKey::TYPES)],
+            'crypto_mode' => ['nullable', 'in:none,sign,encrypt,sign_encrypt'],
+            'crypto_type' => ['nullable', 'in:pgp,smime'],
             'signing_key_id' => ['nullable', 'integer'],
             'recipient_key_ids' => ['nullable', 'array', 'max:50'],
             'recipient_key_ids.*' => ['integer'],
@@ -253,19 +252,25 @@ class MailSendController extends Controller
     {
         $mode = (string) ($request->input('crypto_mode') ?? 'none');
         if ($mode === 'none') return null;
-        $type = (string) $request->input('crypto_type');
+        $typeInput = $request->input('crypto_type');
+        $type = is_string($typeInput) ? $typeInput : '';
         $key = MailPgpKey::query()->where('user_id', $userId)->whereKey($request->integer('signing_key_id'))->first();
         if ($key === null || $key->type !== $type || ($key->expires_at !== null && $key->expires_at->isPast())) return $this->fail('crypto_key_invalid');
-        $ids = array_values(array_unique(array_map('intval', (array) $request->input('recipient_key_ids', []))));
+        $rawIds = $request->input('recipient_key_ids', []);
+        $ids = array_values(array_unique(array_map(static fn (mixed $value): int => (int) $value, is_array($rawIds) ? $rawIds : [])));
         $recipients = $ids === [] ? collect() : CryptoRecipient::query()->where('user_id', $userId)->where('type', $type)->whereIn('id', $ids)->get();
         if (count($ids) !== $recipients->count()) return $this->fail('crypto_recipient_invalid');
         if (in_array($mode, ['encrypt', 'sign_encrypt'], true) && $recipients->isEmpty()) return $this->fail('crypto_recipient_required');
+        /** @var 'sign'|'encrypt'|'sign_encrypt' $mode */
         $message->cryptoMode = $mode;
+        /** @var 'pgp'|'smime' $type */
         $message->cryptoType = $type;
         $message->signingKeyId = $key->id;
         $message->recipientKeyIds = $ids;
         $message->signingKey = $key;
-        $message->recipientKeys = $recipients->all();
+        /** @var list<CryptoRecipient> $recipientKeys */
+        $recipientKeys = array_values($recipients->all());
+        $message->recipientKeys = $recipientKeys;
 
         return null;
     }
