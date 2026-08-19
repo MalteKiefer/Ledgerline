@@ -30,6 +30,7 @@ const sections = computed(() => [
   // Encryption keys (own PGP/S-MIME keys, recipients, keyservers) power BOTH
   // mail decryption and Files encryption — surface it whenever either is on.
   ...(auth.can('mail') || auth.can('files') ? [{ to: 'profile.mail-keys', icon: 'key', label: 'mail.keys.title' }] : []),
+  ...(auth.can('mail') ? [{ to: 'profile.mail-signatures', icon: 'draw', label: 'account.mail_signatures_title' }] : []),
   { to: 'profile.data', icon: 'database', label: 'account.hub_data_heading' },
 ]);
 const profileNavGroups = computed(() => [{

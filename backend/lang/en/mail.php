@@ -122,6 +122,12 @@ return [
         'view_thread' => 'View conversation',
         'thread_view' => 'Conversation view',
         'save_to_paperless' => 'Save to Paperless',
+        'save_section' => 'Save & forward',
+        'security_section' => 'Security',
+        'virustotal_check' => 'Check with VirusTotal',
+        'virustotal_unknown' => 'VirusTotal has no record for this attachment.',
+        'virustotal_detected' => 'VirusTotal reported detections for this attachment.',
+        'virustotal_clean' => 'VirusTotal reported no detections.',
     ],
 
     'actions' => [

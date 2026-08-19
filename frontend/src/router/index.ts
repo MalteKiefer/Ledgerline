@@ -30,6 +30,7 @@ const routes: RouteRecordRaw[] = [
           { path: 'devices', name: 'profile.devices', component: () => import('@spa/views/profile/Devices.vue') },
           { path: 'calendar', name: 'profile.calendar', component: () => import('@spa/views/profile/Calendar.vue') },
           { path: 'mail-keys', name: 'profile.mail-keys', component: () => import('@spa/views/profile/MailKeys.vue') },
+          { path: 'mail-signatures', name: 'profile.mail-signatures', component: () => import('@spa/views/profile/MailSignatures.vue') },
           { path: 'data', name: 'profile.data', component: () => import('@spa/views/profile/Data.vue') },
         ],
       },

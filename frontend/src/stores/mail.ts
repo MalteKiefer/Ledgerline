@@ -52,6 +52,8 @@ export interface MailAttachment {
   size: number;
   inline: boolean;
 }
+export interface MailSignature { id: number; name: string; html: string | null; account_ids: number[]; default_account_ids: number[] }
+export interface VirusTotalResult { known: boolean; sha256: string; stats?: { malicious: number; suspicious: number; harmless: number; undetected: number } }
 
 export interface MailLabel { id: number; name: string; color: string; message_count?: number }
 
@@ -173,11 +175,11 @@ export interface ComposePayload {
   account_id: number;
   to: string[]; cc?: string[]; bcc?: string[];
   subject?: string | null; text?: string | null; html?: string | null;
-  attachment_ids?: string[]; sent_folder?: string | null;
+  attachment_ids?: string[]; signature_id?: number | null; sent_folder?: string | null;
   files?: File[];
 }
-export interface ReplyPayload { text?: string | null; html?: string | null; all?: boolean; sent_folder?: string | null }
-export interface ForwardPayload { to: string[]; cc?: string[]; text?: string | null; html?: string | null; sent_folder?: string | null }
+export interface ReplyPayload { text?: string | null; html?: string | null; signature_id?: number | null; all?: boolean; sent_folder?: string | null }
+export interface ForwardPayload { to: string[]; cc?: string[]; text?: string | null; html?: string | null; signature_id?: number | null; sent_folder?: string | null }
 
 function defaultFilters(): MailFilters {
   return { accountId: null, folder: null, q: '', seen: null, spam: null, label: null, dateFrom: null, dateTo: null, trashed: false, threadId: null };
@@ -262,6 +264,7 @@ export const useMailStore = defineStore('mail', () => {
   const bodyUrl = (id: string, remote = false) => api.streamUrl(`/api/v1/mail/messages/${id}/body${remote ? '?remote=1' : ''}`);
   const rawUrl = (id: string, download = false) => api.streamUrl(`/api/v1/mail/raw/${id}${download ? '?download=1' : ''}`);
   const attachmentRawUrl = (attId: string) => api.streamUrl(`/api/v1/mail/attachments/${attId}/raw`);
+  const virusTotalAttachment = (attId: string) => api.post<VirusTotalResult>(`/api/v1/mail/attachments/${attId}/virustotal`);
 
   const saveAttachment = (attId: string, target: 'files' | 'paperless', folderId?: number | null) =>
     api.post<{ ok: boolean; target: string; file_id?: number; task?: string }>(`/api/v1/mail/attachments/${attId}/save`, { target, folder_id: folderId ?? null });
@@ -286,6 +289,7 @@ export const useMailStore = defineStore('mail', () => {
       if (p.subject != null) form.append('subject', p.subject);
       if (p.text != null) form.append('text', p.text);
       if (p.html != null) form.append('html', p.html);
+      if (p.signature_id != null) form.append('signature_id', String(p.signature_id));
       for (const id of p.attachment_ids ?? []) form.append('attachment_ids[]', id);
       for (const f of p.files) form.append('attachments[]', f);
       if (p.sent_folder != null) form.append('sent_folder', p.sent_folder);
@@ -293,15 +297,15 @@ export const useMailStore = defineStore('mail', () => {
     }
     return api.post<SendResult>('/api/v1/mail/messages/compose', {
       account_id: p.account_id, to: p.to, cc: p.cc ?? [], bcc: p.bcc ?? [],
-      subject: p.subject ?? null, text: p.text ?? null, html: p.html ?? null,
+      subject: p.subject ?? null, text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null,
       attachment_ids: p.attachment_ids ?? [], sent_folder: p.sent_folder ?? null,
     });
   }
   const reply = (id: string, p: ReplyPayload) => api.post<SendResult>(`/api/v1/mail/messages/${id}/reply`, {
-    text: p.text ?? null, html: p.html ?? null, all: p.all ?? false, sent_folder: p.sent_folder ?? null,
+    text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null, all: p.all ?? false, sent_folder: p.sent_folder ?? null,
   });
   const forward = (id: string, p: ForwardPayload) => api.post<SendResult>(`/api/v1/mail/messages/${id}/forward`, {
-    to: p.to, cc: p.cc ?? [], text: p.text ?? null, html: p.html ?? null, sent_folder: p.sent_folder ?? null,
+    to: p.to, cc: p.cc ?? [], text: p.text ?? null, html: p.html ?? null, signature_id: p.signature_id ?? null, sent_folder: p.sent_folder ?? null,
   });
 
   // --- Labels ---------------------------------------------------------------
@@ -379,6 +383,7 @@ export const useMailStore = defineStore('mail', () => {
     accounts, folders, folderTotals, messages, meta, selected, filters, openMessage, labels, savedSearches, rules, logs,
     loadAccounts, saveAccount, autoconfig, deleteAccount, testAccount, syncNow, cancelSync, accountStatus, pollStatus,
     loadFolders, loadMessages, show, bodyUrl, rawUrl, attachmentRawUrl, saveAttachment,
+    virusTotalAttachment,
     setSeen, trash, restore, pushBack, deleteOrigin, setLabels,
     compose, reply, forward,
     loadLabels, createLabel, updateLabel, deleteLabel,

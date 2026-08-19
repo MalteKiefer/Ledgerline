@@ -7,10 +7,11 @@ namespace App\Http\Controllers;
 use App\Models\MailAccount;
 use App\Models\MailAttachment;
 use App\Models\MailMessage;
-use App\Models\UserSetting;
+use App\Models\MailSignature;
 use App\Services\Mail\ComposedMessage;
 use App\Services\Mail\MailSender;
 use App\Support\BlobStore;
+use App\Support\Mail\MailHtmlSanitizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -59,6 +60,7 @@ class MailSendController extends Controller
             'subject' => ['nullable', 'string', 'max:'.self::MAX_SUBJECT],
             'text' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'html' => ['nullable', 'string', 'max:'.self::MAX_BODY],
+            'signature_id' => ['nullable', 'integer'],
             'attachments' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
             'attachments.*' => ['file', 'max:25600'],
             'attachment_ids' => ['nullable', 'array', 'max:'.self::MAX_ATTACHMENTS],
@@ -81,7 +83,7 @@ class MailSendController extends Controller
         if ($text === null && $html === null) {
             return $this->fail('empty_body');
         }
-        [$text, $html] = $this->withSignature((int) $user->id, $text, $html);
+        [$text, $html] = $this->withSignature($account, $text, $html, $request->integer('signature_id'));
 
         $composed = new ComposedMessage(
             subject: $this->subject($request->string('subject')->value(), ''),
@@ -112,6 +114,7 @@ class MailSendController extends Controller
         if ($resp = $this->guard($request, [
             'text' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'html' => ['nullable', 'string', 'max:'.self::MAX_BODY],
+            'signature_id' => ['nullable', 'integer'],
             'all' => ['nullable', 'boolean'],
             'sent_folder' => ['nullable', 'string', 'max:255'],
         ])) {
@@ -133,7 +136,7 @@ class MailSendController extends Controller
         if ($text === null && $html === null) {
             return $this->fail('empty_body');
         }
-        [$text, $html] = $this->withSignature((int) $user->id, $text, $html);
+        [$text, $html] = $this->withSignature($account, $text, $html, $request->integer('signature_id'));
         $text = $this->appendQuote($text, $message);
         $html = $this->appendQuoteHtml($html, $message);
 
@@ -171,6 +174,7 @@ class MailSendController extends Controller
             'cc.*' => ['email:rfc'],
             'text' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'html' => ['nullable', 'string', 'max:'.self::MAX_BODY],
+            'signature_id' => ['nullable', 'integer'],
             'sent_folder' => ['nullable', 'string', 'max:255'],
         ])) {
             return $resp;
@@ -183,7 +187,7 @@ class MailSendController extends Controller
 
         $text = $this->body($request, 'text');
         $html = $this->body($request, 'html');
-        [$text, $html] = $this->withSignature((int) $user->id, $text, $html);
+        [$text, $html] = $this->withSignature($account, $text, $html, $request->integer('signature_id'));
         $text = $this->prependForwardHeader($text ?? '', $message);
 
         $composed = new ComposedMessage(
@@ -347,22 +351,27 @@ class MailSendController extends Controller
     }
 
     /**
-     * Append the user's plaintext signature to the text/html bodies.
+     * Append the selected account signature to the text/html bodies.
      *
      * @return array{0: ?string, 1: ?string}
      */
-    private function withSignature(int $userId, ?string $text, ?string $html): array
+    private function withSignature(MailAccount $account, ?string $text, ?string $html, int $signatureId = 0): array
     {
-        $sig = UserSetting::for($userId)->mail_signature;
-        if (! is_string($sig) || trim($sig) === '') {
+        $signature = MailSignature::query()
+            ->ownedBy((int) $account->user_id)
+            ->when($signatureId > 0, fn ($query) => $query->whereKey($signatureId))
+            ->whereHas('accounts', fn ($query) => $query->where('mail_accounts.id', $account->id)->when($signatureId === 0, fn ($query) => $query->where('mail_account_signatures.is_default', true)))
+            ->first();
+        $htmlSignature = $signature instanceof MailSignature ? (new MailHtmlSanitizer)->sanitize($signature->html, true) : null;
+        if ($htmlSignature === null) {
             return [$text, $html];
         }
-        $sig = trim($sig);
+        $plainSignature = trim(html_entity_decode(strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>', '</div>', '</li>'], "\n", $htmlSignature))));
         if ($text !== null) {
-            $text .= "\n\n-- \n".$sig;
+            $text .= "\n\n-- \n".$plainSignature;
         }
         if ($html !== null) {
-            $html .= '<br><br>-- <br>'.nl2br(e($sig));
+            $html .= '<br><br>-- <br>'.$htmlSignature;
         }
 
         return [$text, $html];

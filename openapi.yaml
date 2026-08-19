@@ -10089,6 +10089,51 @@ paths:
         "413": { description: "Files quota exceeded." }
         "422": { $ref: "#/components/responses/ValidationError" }
         "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/attachments/{attachment}/virustotal:
+    post:
+      tags: [Mail]
+      operationId: mailAttachmentVirusTotal
+      summary: Look up an attachment by SHA-256 at VirusTotal
+      description: "Throttle 30/min. Owner-scoped. Only the locally computed SHA-256 is sent to VirusTotal; attachment bytes are never uploaded."
+      parameters:
+        - { name: attachment, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: VirusTotal hash lookup result. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "VirusTotal is not configured." }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /mail/signatures:
+    get:
+      tags: [Mail]
+      operationId: mailSignaturesIndex
+      summary: List account-assigned rich mail signatures
+      responses:
+        "200": { description: Signatures. }
+    post:
+      tags: [Mail]
+      operationId: mailSignaturesStore
+      summary: Create a rich signature and assign it to mail accounts
+      responses:
+        "201": { description: Created. }
+  /mail/signatures/{signature}:
+    put:
+      tags: [Mail]
+      operationId: mailSignaturesUpdate
+      summary: Update a signature, its account assignments and defaults
+      parameters:
+        - { name: signature, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Updated. }
+    delete:
+      tags: [Mail]
+      operationId: mailSignaturesDelete
+      summary: Delete a signature
+      parameters:
+        - { name: signature, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Deleted. }
   /mail/messages/seen:
     post:
       tags: [Mail]

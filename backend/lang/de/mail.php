@@ -122,6 +122,12 @@ return [
         'view_thread' => 'Konversation anzeigen',
         'thread_view' => 'Konversationsansicht',
         'save_to_paperless' => 'An Paperless senden',
+        'save_section' => 'Speichern & weiterleiten',
+        'security_section' => 'Sicherheit',
+        'virustotal_check' => 'Mit VirusTotal prüfen',
+        'virustotal_unknown' => 'VirusTotal kennt diesen Anhang noch nicht.',
+        'virustotal_detected' => 'VirusTotal meldet Funde für diesen Anhang.',
+        'virustotal_clean' => 'VirusTotal meldet keine Funde.',
     ],
 
     'actions' => [

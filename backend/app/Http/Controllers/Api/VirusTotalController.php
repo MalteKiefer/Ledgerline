@@ -8,8 +8,11 @@ use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
 use App\Models\AuditLog;
 use App\Models\FileEntry;
+use App\Models\MailAttachment;
+use App\Support\BlobStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -42,21 +45,47 @@ class VirusTotalController extends Controller
     {
         $user = $this->requireUser($request);
         abort_if((int) $file->user_id !== (int) $user->id, 404);
-        $key = $this->key();
-        if ($key === '') {
-            return response()->json(['error' => 'virustotal_not_configured'], 422);
-        }
         if (! is_string($file->sha256) || preg_match('/\A[a-f0-9]{64}\z/i', $file->sha256) !== 1) {
             return response()->json(['error' => 'virustotal_hash_unavailable'], 422);
         }
 
+        return $this->lookupHash($file, $file->sha256, 'files.virustotal_lookup');
+    }
+
+    /** Check an archived Mail attachment by hash only — attachment bytes never leave this host. */
+    public function lookupAttachment(Request $request, MailAttachment $attachment): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        abort_if((int) $attachment->user_id !== (int) $user->id, 404);
+
+        $stream = BlobStore::disk()->readStream('mail/att/'.$attachment->blob);
+        abort_unless(is_resource($stream), 404);
+
+        try {
+            $context = hash_init('sha256');
+            hash_update_stream($context, $stream);
+            $hash = hash_final($context);
+        } finally {
+            fclose($stream);
+        }
+
+        return $this->lookupHash($attachment, $hash, 'mail.attachment_virustotal_lookup');
+    }
+
+    private function lookupHash(Model $subject, string $hash, string $auditAction): JsonResponse
+    {
+        $key = $this->key();
+        if ($key === '') {
+            return response()->json(['error' => 'virustotal_not_configured'], 422);
+        }
+
         $response = Http::acceptJson()->withToken($key)->timeout(12)
-            ->get('https://www.virustotal.com/api/v3/files/'.$file->sha256);
+            ->get('https://www.virustotal.com/api/v3/files/'.$hash);
 
         if ($response->status() === 404) {
-            AuditLog::record('files.virustotal_lookup', $file, ['known' => false]);
+            AuditLog::record($auditAction, $subject, ['known' => false]);
 
-            return response()->json(['known' => false, 'sha256' => $file->sha256]);
+            return response()->json(['known' => false, 'sha256' => $hash]);
         }
         if (! $response->successful()) {
             return response()->json(['error' => 'virustotal_unavailable'], 502);
@@ -65,11 +94,11 @@ class VirusTotalController extends Controller
         $attributes = $response->json('data.attributes');
         $stats = is_array($attributes) && is_array($attributes['last_analysis_stats'] ?? null)
             ? $attributes['last_analysis_stats'] : [];
-        AuditLog::record('files.virustotal_lookup', $file, ['known' => true]);
+        AuditLog::record($auditAction, $subject, ['known' => true]);
 
         return response()->json([
             'known' => true,
-            'sha256' => $file->sha256,
+            'sha256' => $hash,
             'stats' => [
                 'malicious' => $this->integer($stats['malicious'] ?? null),
                 'suspicious' => $this->integer($stats['suspicious'] ?? null),

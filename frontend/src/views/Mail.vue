@@ -302,10 +302,15 @@
             <DropdownMenuRoot>
               <DropdownMenuTrigger class="grid h-7 w-7 place-items-center rounded-md hover:bg-black/[0.05] dark:hover:bg-white/10"><Icon name="more_vert" :size="16" /></DropdownMenuTrigger>
               <DropdownMenuPortal><DropdownMenuContent :side-offset="6" align="end" class="z-[1600] min-w-44 rounded-lg border border-[var(--ll-border)] bg-[var(--ll-surface)] p-1 shadow-lg">
+                <div class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.reader.save_section') }}</div>
                 <DropdownMenuItem :class="menuItem" @select="openAttSaveToFiles(att.id)"><Icon name="folder" :size="18" />{{ t('mail.reader.save_to_files') }}</DropdownMenuItem>
                 <DropdownMenuItem :class="menuItem" @select="saveAtt(att.id, 'paperless')"><Icon name="description" :size="18" />{{ t('mail.reader.save_to_paperless') }}</DropdownMenuItem>
+                <div class="my-1 border-t border-[var(--ll-border)]" />
+                <div class="px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.reader.security_section') }}</div>
+                <DropdownMenuItem :class="menuItem" :disabled="attachmentVirusLoading === att.id" @select="scanAttachment(att.id)"><Icon name="security" :size="18" />{{ t('mail.reader.virustotal_check') }}</DropdownMenuItem>
               </DropdownMenuContent></DropdownMenuPortal>
             </DropdownMenuRoot>
+            <Badge v-if="attachmentVirusResults[att.id]?.stats" :tone="(attachmentVirusResults[att.id]?.stats?.malicious ?? 0) || (attachmentVirusResults[att.id]?.stats?.suspicious ?? 0) ? 'error' : 'success'">{{ (attachmentVirusResults[att.id]?.stats?.malicious ?? 0) + (attachmentVirusResults[att.id]?.stats?.suspicious ?? 0) }}</Badge>
           </div>
         </div>
       </div>
@@ -494,6 +499,7 @@
     <div class="space-y-3">
       <!-- Account picker (compose only) -->
       <Select v-if="compose.mode === 'compose'" v-model.number="compose.accountId" :label="t('mail.send.from_email')" :options="composeAccountItems" />
+      <Select v-if="compose.accountId" v-model.number="compose.signatureId" :label="t('mail.send.signature')" :options="composeSignatureItems" />
 
       <!-- Reply recipient (server-derived, read-only) -->
       <div v-if="compose.mode === 'reply'" class="rounded-lg bg-black/[0.03] px-3 py-2 text-xs dark:bg-white/5">
@@ -554,7 +560,7 @@ import { fmtDate as libDate, fmtDateTime as libDateTime } from '@spa/lib/datetim
 import { trans as t } from 'laravel-vue-i18n';
 import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui';
 import { Icon, Btn, Card, TextField, Select, Badge, Modal } from '@spa/ui';
-import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig } from '@spa/stores/mail';
+import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type MailLabel, type MailSavedSearch, type MailRule, type MailStats, type MailAddress, type AccountBody, type MailAutoconfig, type MailSignature, type VirusTotalResult } from '@spa/stores/mail';
 import { api, ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
@@ -576,6 +582,9 @@ const showHeaders = ref(false);
 const remoteOn = ref(false);
 const printing = ref(false);
 const pdfExporting = ref(false);
+const attachmentVirusLoading = ref<string | null>(null);
+const attachmentVirusResults = reactive<Record<string, VirusTotalResult | undefined>>({});
+const signatures = ref<MailSignature[]>([]);
 const dateFrom = ref('');
 const dateTo = ref('');
 
@@ -683,7 +692,7 @@ async function applyRoute() {
 // --- Loading -----------------------------------------------------------------
 let statusTimer: ReturnType<typeof setInterval> | undefined;
 onMounted(async () => {
-  await Promise.all([s.loadAccounts(), s.loadLabels(), s.loadSavedSearches()]);
+  await Promise.all([s.loadAccounts(), s.loadLabels(), s.loadSavedSearches(), api.get<{ signatures: MailSignature[] }>('/api/v1/mail/signatures').then((r) => { signatures.value = r.signatures; })]);
   await applyRoute();
   statusTimer = setInterval(async () => {
     if (s.accounts.some((a) => a.status === 'syncing')) { await s.pollStatus(); await s.loadFolders(filters.accountId); }
@@ -802,6 +811,18 @@ async function doDeleteOrigin(m: MailMessage) {
 async function saveAtt(attId: string, target: 'files' | 'paperless') {
   try { await s.saveAttachment(attId, target); success(target === 'files' ? t('mail.toast.saved_to_files') : t('mail.toast.saved_to_paperless')); }
   catch { error(t('mail.toast.save_attachment_failed')); }
+}
+async function scanAttachment(attId: string) {
+  attachmentVirusLoading.value = attId;
+  try {
+    const result = await s.virusTotalAttachment(attId);
+    attachmentVirusResults[attId] = result;
+    if (!result.known) success(t('mail.reader.virustotal_unknown'));
+    else if ((result.stats?.malicious ?? 0) + (result.stats?.suspicious ?? 0) > 0) error(t('mail.reader.virustotal_detected'));
+    else success(t('mail.reader.virustotal_clean'));
+  } catch (e) {
+    error(t(e instanceof ApiError && (e.body as { error?: string } | null)?.error === 'virustotal_not_configured' ? 'files.virustotal_not_configured' : 'common.error'));
+  } finally { attachmentVirusLoading.value = null; }
 }
 
 // Save-to-Files with a destination folder picker (instead of always root).
@@ -1023,23 +1044,27 @@ async function openStats() { statsDlg.show = true; statsDlg.loading = true; try 
 // --- Compose / reply / forward -----------------------------------------------
 const compose = reactive<{
   show: boolean; mode: 'compose' | 'reply' | 'forward'; sending: boolean;
-  sourceId: string | null; replyAll: boolean; accountId: number | null; recipientHint: string;
+  sourceId: string | null; replyAll: boolean; accountId: number | null; signatureId: number | null; recipientHint: string;
   to: string; cc: string; bcc: string; subject: string; body: string; sentFolder: string; files: File[];
-}>({ show: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', sentFolder: '', files: [] });
+}>({ show: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, signatureId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', sentFolder: '', files: [] });
 
 const composeTitle = computed(() =>
   compose.mode === 'reply' ? (compose.replyAll ? t('mail.send.reply_all') : t('mail.send.reply'))
     : compose.mode === 'forward' ? t('mail.send.forward') : t('mail.send.compose'));
 const composeAccountItems = computed(() => sendableAccounts.value.map((a) => ({ title: `${a.name} · ${a.from_email}`, value: a.id })));
+const composeSignatureItems = computed(() => [{ title: t('common.none'), value: 0 }, ...signatures.value.filter((signature) => signature.account_ids.includes(Number(compose.accountId))).map((signature) => ({ title: signature.name, value: signature.id }))]);
+function defaultSignature(accountId: number | null): number | null { return signatures.value.find((signature) => accountId != null && signature.default_account_ids.includes(accountId))?.id ?? null; }
+watch(() => compose.accountId, (accountId) => { if (compose.show) compose.signatureId = defaultSignature(accountId); });
 
 function parseEmails(str: string): string[] { return str.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean); }
-function resetComposeFields() { Object.assign(compose, { to: '', cc: '', bcc: '', subject: '', body: '', sentFolder: '', files: [], recipientHint: '', replyAll: false, sourceId: null }); }
+function resetComposeFields() { Object.assign(compose, { to: '', cc: '', bcc: '', subject: '', body: '', sentFolder: '', files: [], recipientHint: '', replyAll: false, sourceId: null, signatureId: null }); }
 
 function openCompose() {
   if (!sendableAccounts.value.length) { error(t('mail.send.no_smtp')); return; }
   resetComposeFields();
   compose.mode = 'compose';
   compose.accountId = sendableAccounts.value[0].id;
+  compose.signatureId = defaultSignature(compose.accountId);
   compose.show = true;
 }
 function openReply(all: boolean) {
@@ -1049,6 +1074,7 @@ function openReply(all: boolean) {
   compose.sourceId = reader.value.id;
   compose.replyAll = all;
   compose.accountId = reader.value.account_id;
+  compose.signatureId = defaultSignature(compose.accountId);
   compose.recipientHint = reader.value.reply_to || reader.value.from_email || reader.value.from_name || '';
   compose.show = true;
 }
@@ -1058,6 +1084,7 @@ function openForward() {
   compose.mode = 'forward';
   compose.sourceId = reader.value.id;
   compose.accountId = reader.value.account_id;
+  compose.signatureId = defaultSignature(compose.accountId);
   compose.show = true;
 }
 
@@ -1089,15 +1116,15 @@ async function doSend() {
       if (!to.length && !cc.length && !bcc.length) { error(t('mail.send.no_recipient')); return; }
       if (!compose.body.trim() && !compose.files.length) { error(t('mail.send.empty_body')); return; }
       const sent = compose.sentFolder.trim() || null;
-      await s.compose({ account_id: Number(compose.accountId), to, cc, bcc, subject: compose.subject || null, text: compose.body || null, sent_folder: sent, files: compose.files });
+      await s.compose({ account_id: Number(compose.accountId), to, cc, bcc, subject: compose.subject || null, text: compose.body || null, signature_id: compose.signatureId, sent_folder: sent, files: compose.files });
     } else if (compose.mode === 'reply') {
       if (!compose.body.trim()) { error(t('mail.send.empty_body')); return; }
-      await s.reply(String(compose.sourceId), { text: compose.body, all: compose.replyAll, sent_folder: compose.sentFolder.trim() || null });
+      await s.reply(String(compose.sourceId), { text: compose.body, signature_id: compose.signatureId, all: compose.replyAll, sent_folder: compose.sentFolder.trim() || null });
     } else {
       const to = parseEmails(compose.to);
       if (!to.length) { error(t('mail.send.no_recipient')); return; }
       // Forward needs no body — the server attaches the original .eml + a header.
-      await s.forward(String(compose.sourceId), { to, cc: parseEmails(compose.cc), text: compose.body || null, sent_folder: compose.sentFolder.trim() || null });
+      await s.forward(String(compose.sourceId), { to, cc: parseEmails(compose.cc), text: compose.body || null, signature_id: compose.signatureId, sent_folder: compose.sentFolder.trim() || null });
     }
     compose.show = false;
     success(t('mail.send.sent'));

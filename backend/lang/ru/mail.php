@@ -122,6 +122,12 @@ return [
         'view_thread' => 'Показать переписку',
         'thread_view' => 'Просмотр переписки',
         'save_to_paperless' => 'Отправить в Paperless',
+        'save_section' => 'Сохранение и отправка',
+        'security_section' => 'Безопасность',
+        'virustotal_check' => 'Проверить в VirusTotal',
+        'virustotal_unknown' => 'VirusTotal ещё не знает это вложение.',
+        'virustotal_detected' => 'VirusTotal сообщил об обнаружениях для вложения.',
+        'virustotal_clean' => 'VirusTotal не сообщил об обнаружениях.',
     ],
 
     'actions' => [
