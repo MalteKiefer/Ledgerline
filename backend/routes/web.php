@@ -11,6 +11,7 @@ use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\CalendarShareController;
 use App\Http\Controllers\CalendarTodoController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\ContactSyncSourceController;
 use App\Http\Controllers\ContactDuplicateController;
 use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\ContactShareController;
@@ -441,6 +442,8 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
         Route::post('/contacts/import', [ContactController::class, 'import'])->middleware('throttle:60,1')->name('contacts.import');
         Route::post('/contacts/settings', [ContactController::class, 'settings'])->middleware('throttle:600,1')->name('contacts.settings');
+        Route::get('/contacts/sources/{source}/authorize', [ContactSyncSourceController::class, 'authorizeGoogle'])->name('contacts.sources.authorize');
+        Route::get('/contacts/sources/google/callback', [ContactSyncSourceController::class, 'googleCallback'])->name('contacts.sources.google.callback');
         Route::delete('/contacts/bulk-destroy', [ContactController::class, 'bulkDestroy'])->middleware('throttle:600,1')->name('contacts.bulk-destroy');
         Route::post('/contacts', [ContactController::class, 'store'])->middleware('throttle:600,1')->name('contacts.store');
 

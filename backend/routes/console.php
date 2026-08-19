@@ -35,6 +35,9 @@ Schedule::command('tasks:remind-alarms')->everyFiveMinutes()->withoutOverlapping
 
 // Notify about contacts whose birthday is today (throttled once per contact/year).
 Schedule::command('contacts:birthday-remind')->dailyAt('07:00')->withoutOverlapping();
+// Ledgerline is the contact source of truth; replicas pull, version and then
+// converge to the canonical local cards every five minutes.
+Schedule::command('contacts:sync-sources')->everyFiveMinutes()->withoutOverlapping();
 
 // Drop expired/consumed QR device-pairing rows (short-lived, single-use).
 Schedule::command('device-pairings:prune')->hourly()->withoutOverlapping();

@@ -2309,6 +2309,64 @@ paths:
                   settings: { type: object, properties: { sort: { type: string, enum: [first_name, last_name] }, display_format: { type: string, enum: [first_last, last_first] } } }
         "401": { $ref: '#/components/responses/Unauthorized' }
         "403": { $ref: '#/components/responses/Forbidden' }
+  /contacts/sources:
+    get:
+      tags: [Contacts]
+      operationId: contactSyncSourcesIndex
+      summary: List external CardDAV replicas and recent immutable recovery versions
+      responses:
+        "200": { description: Replica configuration without credentials., content: { application/json: { schema: { type: object, properties: { sources: { type: array, items: { type: object } }, versions: { type: array, items: { type: object } } } } } }
+    post:
+      tags: [Contacts]
+      operationId: contactSyncSourcesStore
+      summary: Add a Ledgerline-first external CardDAV replica
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, address_book_id, provider]
+              properties:
+                name: { type: string }
+                address_book_id: { type: string, format: uuid }
+                provider: { type: string, enum: [carddav, icloud, google] }
+                endpoint: { type: string, format: uri, description: "Required for CardDAV/iCloud; Google uses discovery by default." }
+                username: { type: string }
+                password: { type: string, writeOnly: true }
+                oauth_client_id: { type: string, writeOnly: true }
+                oauth_client_secret: { type: string, writeOnly: true }
+                propagate_deletes: { type: boolean, default: true }
+      responses:
+        "201": { description: Replica saved; Google response contains an authorization URL., content: { application/json: { schema: { type: object } } } }
+        "422": { $ref: '#/components/responses/ValidationError' }
+  /contacts/sources/{source}/sync:
+    post:
+      tags: [Contacts]
+      operationId: contactSyncSourcesSync
+      summary: Queue an immediate CardDAV reconciliation
+      parameters: [{ name: source, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Queued. }
+        "403": { $ref: '#/components/responses/Forbidden' }
+  /contacts/sources/{source}:
+    delete:
+      tags: [Contacts]
+      operationId: contactSyncSourcesDestroy
+      summary: Remove replica credentials without deleting local contacts or versions
+      parameters: [{ name: source, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Removed. }
+        "403": { $ref: '#/components/responses/Forbidden' }
+  /contacts/versions/{version}/restore:
+    post:
+      tags: [Contacts]
+      operationId: contactVersionsRestore
+      summary: Restore an immutable contact vCard version locally and queue its replicas
+      parameters: [{ name: version, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200": { description: Restored., content: { application/json: { schema: { type: object, properties: { contact_id: { type: string, format: uuid } } } } } }
+        "403": { $ref: '#/components/responses/Forbidden' }
   /contacts:
     post:
       tags: [Contacts]

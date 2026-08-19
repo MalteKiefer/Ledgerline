@@ -42,6 +42,7 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactDuplicateController;
 use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\ContactShareController;
+use App\Http\Controllers\ContactSyncSourceController;
 use App\Http\Controllers\CryptoController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FilesChangesController;
@@ -269,6 +270,11 @@ Route::prefix('v1')->group(function (): void {
         // view) are intentionally not exposed. Owner-scope is controller-side.
         Route::middleware('module:contacts')->group(function (): void {
             Route::get('/contacts/data', [ContactController::class, 'data'])->name('api.contacts.data');
+            Route::get('/contacts/sources', [ContactSyncSourceController::class, 'index'])->name('api.contacts.sources.index');
+            Route::post('/contacts/sources', [ContactSyncSourceController::class, 'store'])->middleware('throttle:30,1')->name('api.contacts.sources.store');
+            Route::post('/contacts/sources/{source}/sync', [ContactSyncSourceController::class, 'sync'])->middleware('throttle:30,1')->name('api.contacts.sources.sync');
+            Route::delete('/contacts/sources/{source}', [ContactSyncSourceController::class, 'destroy'])->middleware('throttle:30,1')->name('api.contacts.sources.destroy');
+            Route::post('/contacts/versions/{version}/restore', [ContactSyncSourceController::class, 'restoreVersion'])->whereNumber('version')->middleware('throttle:30,1')->name('api.contacts.versions.restore');
             Route::get('/contacts/shares', [ContactShareController::class, 'index'])->name('api.contacts.shares');
             Route::post('/contacts/shares', [ContactShareController::class, 'store'])->middleware('throttle:60,1')->name('api.contacts.shares.store');
             Route::delete('/contacts/shares/{share}', [ContactShareController::class, 'destroy'])->whereNumber('share')->middleware('throttle:60,1')->name('api.contacts.shares.destroy');

@@ -8,6 +8,7 @@ use App\Enums\DavChangeOperation;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\ContactGroup;
+use App\Models\ContactVersion;
 use Illuminate\Support\Str;
 
 /**
@@ -21,6 +22,7 @@ class ContactWriter
         private readonly VCardService $vcards,
         private readonly DavChangeLog $changes,
         private readonly ContactPersister $persister,
+        private readonly ContactReplication $replication,
     ) {}
 
     /**
@@ -34,6 +36,8 @@ class ContactWriter
 
         $contact = $this->persister->persistNew($book, Str::uuid().'.vcf', $vcard);
         $contact->groups()->sync($this->ownedGroupIds($book->user_id, $groupIds));
+        $this->version($book->user_id, $contact, 'created');
+        $this->replication->queue($contact);
 
         return $contact;
     }
@@ -59,8 +63,10 @@ class ContactWriter
         $merged['categories'] = $this->groupNames($book->user_id, $groupIds);
         $vcard = $this->vcards->build($merged, is_string($uid) ? $uid : null);
 
+        $this->version($book->user_id, $contact, 'updated');
         $this->persister->persistUpdate($contact, $vcard);
         $contact->groups()->sync($this->ownedGroupIds($book->user_id, $groupIds));
+        $this->replication->queue($contact);
 
         return $contact;
     }
@@ -74,8 +80,11 @@ class ContactWriter
             return;
         }
         $uri = $contact->uri;
+        $this->version($book->user_id, $contact, 'deleted');
+        $id = $contact->id;
         $contact->delete();
         $this->changes->record($book, $uri, DavChangeOperation::Deleted);
+        $this->replication->queueDeletion($id);
     }
 
     /**
@@ -97,5 +106,10 @@ class ContactWriter
     private function ownedGroupIds(int $userId, array $groupIds): array
     {
         return array_values(ContactGroup::where('user_id', $userId)->whereIn('id', $groupIds)->pluck('id')->all());
+    }
+
+    private function version(int $userId, Contact $contact, string $action): void
+    {
+        ContactVersion::query()->create(['user_id' => $userId, 'contact_id' => $contact->id, 'action' => $action, 'vcard' => $contact->vcard]);
     }
 }

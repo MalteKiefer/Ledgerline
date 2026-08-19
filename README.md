@@ -36,7 +36,7 @@ owner-scope on every endpoint, and encrypted-at-rest **operational secrets** onl
 |---|---|
 | **Finance** | Invoices (GoBD numbering, ZUGFeRD/Factur-X e-invoice, PDF + email), payment methods, bank-statement import (MT940/CSV) with receipt matching, standalone receipts, projects, business partners, VAT-return / EÜR reports, duplicate detection, category suggestions. |
 | **Files** | Nested folders + files, whole & chunked upload, streamed download, version history, trash, tags/labels/notes/favorites, server thumbnails, full-text + OCR search, ZIP/bulk, sharing (cross-user + public links), external S3/SFTP mounts, WebDAV. |
-| **Contacts** | vCard 4.0 address books, CardDAV sync, VCF import/export, photo crop, duplicate detection + merge, birthday feed, sharing. |
+| **Contacts** | vCard 4.0 address books, Ledgerline-first CardDAV replicas (Google OAuth, iCloud and generic servers) with immutable recovery versions and delete protection, VCF import/export, photo crop, duplicate detection + merge, birthday feed, sharing. |
 | **Calendar** | Events with recurrence, timezones + reminders, CalDAV sync, ICS import/export, holiday calendars, free/busy + slot finder, iMIP invitations/RSVP. |
 | **Gallery** | Photos + videos, EXIF timeline + map, albums, live/motion photos, server thumbnails, optional CLIP semantic search + face recognition, sharing. |
 | **Notes** | Markdown notes, folders + tags, wikilinks/backlinks, attachments, full-text search. |
