@@ -5,6 +5,10 @@
         <option value="p">{{ labels.text }}</option>
         <option value="h3">{{ labels.heading }}</option>
       </select>
+      <select class="h-8 max-w-28 rounded-md bg-transparent px-1 text-xs outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" :title="labels.font" @change="fontName">
+        <option value="Arial">Arial</option><option value="Georgia">Georgia</option><option value="Verdana">Verdana</option><option value="Courier New">Courier</option>
+      </select>
+      <select class="h-8 rounded-md bg-transparent px-1 text-xs outline-none hover:bg-black/[0.05] dark:hover:bg-white/10" :title="labels.size" @change="fontSize"><option value="2">S</option><option value="3" selected>M</option><option value="4">L</option><option value="5">XL</option></select>
       <span class="mx-1 h-5 border-l border-[var(--ll-border)]" />
       <button v-for="action in formatActions" :key="action.command" type="button" class="editor-action" :title="labels[action.label]" :aria-label="labels[action.label]" @click="command(action.command)">
         <Icon :name="action.icon" :size="17" />
@@ -13,6 +17,8 @@
       <button v-for="action in listActions" :key="action.command" type="button" class="editor-action" :title="labels[action.label]" :aria-label="labels[action.label]" @click="command(action.command)">
         <Icon :name="action.icon" :size="17" />
       </button>
+      <button type="button" class="editor-action" :title="labels.quote" :aria-label="labels.quote" @click="command('formatBlock', 'blockquote')"><Icon name="format_quote" :size="17" /></button>
+      <button v-for="action in alignmentActions" :key="action.command" type="button" class="editor-action" :title="labels[action.label]" :aria-label="labels[action.label]" @click="command(action.command)"><Icon :name="action.icon" :size="17" /></button>
       <input v-model="color" type="color" class="mx-1 h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0" :title="labels.color" :aria-label="labels.color" @input="command('foreColor', color)">
       <span class="mx-1 h-5 border-l border-[var(--ll-border)]" />
       <button type="button" class="editor-action" :title="labels.link" :aria-label="labels.link" @click="addLink"><Icon name="link" :size="17" /></button>
@@ -32,7 +38,7 @@ import { onMounted, ref, watch } from 'vue';
 import DOMPurify from 'dompurify';
 import Icon from '@spa/ui/Icon.vue';
 
-type LabelKey = 'toolbar' | 'format' | 'text' | 'heading' | 'bold' | 'italic' | 'underline' | 'bullets' | 'numbers' | 'color' | 'link' | 'image' | 'clear';
+type LabelKey = 'toolbar' | 'format' | 'text' | 'heading' | 'bold' | 'italic' | 'underline' | 'bullets' | 'numbers' | 'color' | 'link' | 'image' | 'clear' | 'font' | 'size' | 'quote' | 'align_left' | 'align_center' | 'align_right';
 const props = defineProps<{ modelValue: string | null; placeholder: string; labels: Record<LabelKey, string> }>();
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 const editor = ref<HTMLDivElement | null>(null);
@@ -46,6 +52,11 @@ const listActions = [
   { command: 'insertUnorderedList', icon: 'format_list_bulleted', label: 'bullets' as const },
   { command: 'insertOrderedList', icon: 'format_list_numbered', label: 'numbers' as const },
 ];
+const alignmentActions = [
+  { command: 'justifyLeft', icon: 'format_align_left', label: 'align_left' as const },
+  { command: 'justifyCenter', icon: 'format_align_center', label: 'align_center' as const },
+  { command: 'justifyRight', icon: 'format_align_right', label: 'align_right' as const },
+];
 const sanitizer = { ALLOWED_TAGS: ['a', 'b', 'br', 'div', 'em', 'h3', 'img', 'li', 'ol', 'p', 'span', 'strong', 'u', 'ul'], ALLOWED_ATTR: ['alt', 'href', 'src', 'style', 'target', 'title'] };
 
 function clean(value: string | null | undefined): string { return DOMPurify.sanitize(value ?? '', sanitizer).trim(); }
@@ -53,6 +64,8 @@ function setContent(value: string | null | undefined) { if (editor.value) editor
 function emitValue() { emit('update:modelValue', clean(editor.value?.innerHTML)); }
 function command(name: string, value?: string) { editor.value?.focus(); document.execCommand(name, false, value); emitValue(); }
 function formatBlock(event: Event) { command('formatBlock', (event.target as HTMLSelectElement).value); }
+function fontName(event: Event) { command('fontName', (event.target as HTMLSelectElement).value); }
+function fontSize(event: Event) { command('fontSize', (event.target as HTMLSelectElement).value); }
 function addLink() {
   const href = window.prompt(props.labels.link);
   if (href) command('createLink', href.trim());
@@ -73,6 +86,7 @@ watch(() => props.modelValue, (value) => { if (document.activeElement !== editor
 .signature-editor :deep(img) { display:inline-block; max-height:5rem; max-width:12rem; vertical-align:middle; }
 .signature-editor :deep(h3) { margin:.25rem 0; font-size:1.125rem; font-weight:650; }
 .signature-editor :deep(p) { margin:.2rem 0; }
+.signature-editor :deep(blockquote) { margin:.5rem 0; border-left:3px solid var(--color-primary-500); padding-left:.75rem; color:var(--ll-muted); }
 .signature-editor :deep(ul), .signature-editor :deep(ol) { margin:.25rem 0; padding-left:1.5rem; }
 .dark .editor-action:hover { background:rgb(255 255 255 / .1); }
 </style>

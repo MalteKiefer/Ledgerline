@@ -375,12 +375,7 @@
           <div class="grid gap-2 sm:grid-cols-3"><Select v-model="compose.cryptoMode" :label="t('mail.send.crypto_mode')" :options="cryptoModeItems" /><Select v-if="compose.cryptoMode !== 'none'" v-model="compose.cryptoType" :label="t('mail.send.crypto_type')" :options="cryptoTypeItems" /><Select v-if="compose.cryptoMode !== 'none'" v-model.number="compose.signingKeyId" :label="t('mail.send.signing_key')" :options="signingKeyItems" /></div>
           <div v-if="compose.cryptoMode === 'encrypt' || compose.cryptoMode === 'sign_encrypt'"><div class="mb-1 text-xs font-medium text-[var(--ll-muted)]">{{ t('mail.send.recipient_keys') }}</div><div v-if="!recipientKeyItems.length" class="text-xs text-[var(--ll-muted)]">{{ t('mail.send.no_recipient_keys') }}</div><label v-for="key in recipientKeyItems" :key="key.value" class="mr-4 inline-flex items-center gap-2 text-sm"><input v-model="compose.recipientKeyIds" type="checkbox" :value="Number(key.value)" class="accent-primary-500">{{ key.title }}</label></div>
         </div>
-        <div class="overflow-hidden rounded-lg border border-[var(--ll-border)]">
-          <div class="flex flex-wrap items-center gap-0.5 border-b border-[var(--ll-border)] bg-black/[0.02] p-1.5 dark:bg-white/[0.03]">
-            <Btn variant="ghost" size="xs" icon="undo" :title="t('mail.send.undo')" @click="formatCompose('undo')" /><Btn variant="ghost" size="xs" icon="redo" :title="t('mail.send.redo')" @click="formatCompose('redo')" /><span class="mx-1 h-5 w-px bg-[var(--ll-border)]" /><Btn variant="ghost" size="xs" icon="format_bold" :title="t('mail.send.bold')" @click="formatCompose('bold')" /><Btn variant="ghost" size="xs" icon="format_italic" :title="t('mail.send.italic')" @click="formatCompose('italic')" /><Btn variant="ghost" size="xs" icon="format_underlined" :title="t('mail.send.underline')" @click="formatCompose('underline')" /><Btn variant="ghost" size="xs" icon="format_strikethrough" :title="t('mail.send.strike')" @click="formatCompose('strikeThrough')" /><span class="mx-1 h-5 w-px bg-[var(--ll-border)]" /><Btn variant="ghost" size="xs" icon="format_h2" :title="t('mail.send.heading')" @click="formatCompose('formatBlock', 'h2')" /><Btn variant="ghost" size="xs" icon="format_quote" :title="t('mail.send.quote')" @click="formatCompose('formatBlock', 'blockquote')" /><Btn variant="ghost" size="xs" icon="format_list_bulleted" :title="t('mail.send.bullet_list')" @click="formatCompose('insertUnorderedList')" /><Btn variant="ghost" size="xs" icon="format_list_numbered" :title="t('mail.send.numbered_list')" @click="formatCompose('insertOrderedList')" /><span class="mx-1 h-5 w-px bg-[var(--ll-border)]" /><Btn variant="ghost" size="xs" icon="link" :title="t('mail.send.link')" @click="insertComposeLink" /><Btn variant="ghost" size="xs" icon="format_clear" :title="t('mail.send.clear_formatting')" @click="formatCompose('removeFormat')" />
-          </div>
-          <div ref="composeEditor" contenteditable="true" role="textbox" aria-multiline="true" class="min-h-56 px-3 py-2 text-sm leading-6 outline-none empty:before:text-[var(--ll-muted)] empty:before:content-[attr(data-placeholder)]" :data-placeholder="t('mail.send.body')" @input="onComposeEditorInput" @keydown="onComposeEditorKeydown" @paste="onComposePaste" @dragover.prevent @drop.prevent="onComposeDrop"></div>
-        </div>
+        <RichTextEditor v-model="compose.html" :placeholder="t('mail.send.body')" :labels="composeEditorLabels" @update:model-value="onComposeRichText" />
         <div class="rounded-lg border border-[var(--ll-border)] p-3">
           <div class="mb-2 flex items-center justify-between"><span class="text-xs font-semibold uppercase tracking-wider text-[var(--ll-muted)]">{{ t('mail.send.attachments') }}</span><span class="text-xs text-[var(--ll-muted)]">{{ t('mail.send.attachments_hint') }}</span></div>
           <div v-if="!compose.files.length && !compose.fileIds.length && !compose.galleryPhotoIds.length" class="text-xs text-[var(--ll-muted)]">{{ t('mail.send.attachments_hint') }}</div>
@@ -573,8 +568,11 @@
 
   <Modal v-model="assetPicker.show" :title="assetPicker.kind === 'files' ? t('mail.send.attach_file') : t('mail.send.attach_media')" width="52rem">
     <div class="space-y-3"><TextField v-model="assetPicker.q" label="Suchen" icon="search" />
-      <div class="max-h-[55vh] divide-y divide-[var(--ll-border)] overflow-y-auto">
-        <button v-for="item in assetPickerRows" :key="item.id" class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-black/[0.04] dark:hover:bg-white/5" @click="selectAsset(item.id)"><Icon :name="assetPicker.kind === 'files' ? 'description' : 'image'" :size="18" class="text-[var(--ll-muted)]" /><span class="min-w-0 flex-1 truncate text-sm">{{ item.name }}</span><span class="text-xs text-[var(--ll-muted)]">{{ fmtBytes(item.size) }}</span><Icon v-if="isAssetSelected(item.id)" name="check" :size="18" class="text-primary-600" /></button>
+      <div class="grid max-h-[55vh] grid-cols-2 gap-2 overflow-y-auto p-1 sm:grid-cols-3 lg:grid-cols-4">
+        <button v-for="item in assetPickerRows" :key="item.id" class="group relative overflow-hidden rounded-lg border text-left transition hover:border-primary-500" :class="isAssetSelected(item.id) ? 'border-primary-500 ring-2 ring-primary-500/20' : 'border-[var(--ll-border)]'" @click="selectAsset(item.id)">
+          <div class="grid aspect-[4/3] place-items-center bg-black/[0.03] dark:bg-white/[0.05]"><img v-if="assetPicker.kind === 'gallery' && (item as Photo).thumb" :src="galleryStore.thumbUrl(item.id)" :alt="item.name" class="h-full w-full object-cover"><img v-else-if="assetPicker.kind === 'files' && (item as FileEntry).mime.startsWith('image/')" :src="filesStore.thumbUrl(item as FileEntry)" :alt="item.name" class="h-full w-full object-cover"><Icon v-else :name="assetPicker.kind === 'gallery' ? 'image' : 'description'" :size="32" class="text-[var(--ll-muted)]" /></div>
+          <div class="p-2"><div class="truncate text-xs font-medium">{{ item.name }}</div><div class="mt-0.5 text-[0.7rem] text-[var(--ll-muted)]">{{ fmtBytes(item.size) }}</div></div><span v-if="isAssetSelected(item.id)" class="absolute right-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full bg-primary-500 text-white"><Icon name="check" :size="14" /></span>
+        </button>
       </div>
     </div>
     <template #footer><Btn variant="ghost" @click="assetPicker.show = false">{{ t('common.close') }}</Btn></template>
@@ -592,6 +590,7 @@ import { useMailStore, accountCanSend, type MailAccount, type MailMessage, type 
 import { useFilesStore, type FileEntry } from '@spa/stores/files';
 import { useGalleryStore, type Photo } from '@spa/stores/gallery';
 import { useCryptoStore } from '@spa/stores/crypto';
+import RichTextEditor from '@spa/components/RichTextEditor.vue';
 import { api, ApiError } from '@spa/api/client';
 import { useToast } from '@spa/composables/useToast';
 import { confirmAsk, promptAsk } from '@spa/composables/useConfirm';
@@ -1100,7 +1099,6 @@ const compose = reactive<{
   to: string; cc: string; bcc: string; subject: string; body: string; html: string; sentFolder: string; files: File[];
   fileIds: number[]; galleryPhotoIds: number[]; readReceipt: boolean; highPriority: boolean; draftId: string | null; cryptoMode: 'none' | 'sign' | 'encrypt' | 'sign_encrypt'; cryptoType: 'pgp' | 'smime'; signingKeyId: number | null; recipientKeyIds: number[];
 }>({ show: false, mode: 'compose', sending: false, sourceId: null, replyAll: false, accountId: null, signatureId: null, recipientHint: '', to: '', cc: '', bcc: '', subject: '', body: '', html: '', sentFolder: '', files: [], fileIds: [], galleryPhotoIds: [], readReceipt: false, highPriority: false, draftId: null, cryptoMode: 'none', cryptoType: 'pgp', signingKeyId: null, recipientKeyIds: [] });
-const composeEditor = ref<HTMLElement | null>(null);
 const composeSaving = ref(false);
 const composeShowCc = ref(false);
 const composeShowBcc = ref(false);
@@ -1115,6 +1113,7 @@ const composeTitle = computed(() =>
     : compose.mode === 'forward' ? t('mail.send.forward') : t('mail.send.compose'));
 const composeAccountItems = computed(() => sendableAccounts.value.map((a) => ({ title: `${a.name} · ${a.from_email}`, value: a.id })));
 const composeSignatureItems = computed(() => [{ title: t('common.none'), value: -1 }, ...signatures.value.filter((signature) => signature.account_ids.includes(Number(compose.accountId))).map((signature) => ({ title: signature.name, value: signature.id }))]);
+const composeEditorLabels = computed(() => ({ toolbar: t('mail.send.compose_toolbar'), format: t('mail.send.format'), text: t('mail.send.text'), heading: t('mail.send.heading'), bold: t('mail.send.bold'), italic: t('mail.send.italic'), underline: t('mail.send.underline'), bullets: t('mail.send.bullet_list'), numbers: t('mail.send.numbered_list'), color: t('mail.send.color'), link: t('mail.send.link'), image: t('mail.send.image'), clear: t('mail.send.clear_formatting'), font: t('mail.send.font'), size: t('mail.send.size'), quote: t('mail.send.quote'), align_left: t('mail.send.align_left'), align_center: t('mail.send.align_center'), align_right: t('mail.send.align_right') }));
 const cryptoModeItems = computed(() => [{ title: t('mail.send.crypto_none'), value: 'none' }, { title: t('mail.send.crypto_sign'), value: 'sign' }, { title: t('mail.send.crypto_encrypt'), value: 'encrypt' }, { title: t('mail.send.crypto_sign_encrypt'), value: 'sign_encrypt' }]);
 const cryptoTypeItems = computed(() => [{ title: 'OpenPGP', value: 'pgp' }, { title: 'S/MIME', value: 'smime' }]);
 const signingKeyItems = computed(() => cryptoStore.keys.filter((key) => key.type === compose.cryptoType && key.has_private).map((key) => ({ title: key.label, value: key.id })));
@@ -1145,13 +1144,8 @@ async function openAssetPicker(kind: 'files' | 'gallery') {
 function selectAsset(id: number) { const ids = assetPicker.kind === 'files' ? compose.fileIds : compose.galleryPhotoIds; const index = ids.indexOf(id); if (index >= 0) ids.splice(index, 1); else if (ids.length + compose.files.length < 20) ids.push(id); scheduleDraft(); }
 function removeFileAttachment(id: number) { compose.fileIds = compose.fileIds.filter((value) => value !== id); scheduleDraft(); }
 function removeGalleryAttachment(id: number) { compose.galleryPhotoIds = compose.galleryPhotoIds.filter((value) => value !== id); scheduleDraft(); }
-function onComposeEditorInput() { compose.html = composeEditor.value?.innerHTML ?? ''; compose.body = composeEditor.value?.innerText ?? ''; scheduleDraft(); }
-function formatCompose(command: string, value?: string) { composeEditor.value?.focus(); document.execCommand(command, false, value); onComposeEditorInput(); }
-async function insertComposeLink() { const href = await promptAsk(t('mail.send.link_address')); if (!href) return; composeEditor.value?.focus(); document.execCommand('createLink', false, href); onComposeEditorInput(); }
-function onComposeEditorKeydown(event: KeyboardEvent) {
-  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void doSend(); }
-}
-function setEditorContent() { nextTick(() => { if (composeEditor.value) composeEditor.value.innerHTML = compose.html; }); }
+function onComposeRichText(html: string) { compose.html = html; compose.body = new DOMParser().parseFromString(html, 'text/html').body.innerText; scheduleDraft(); }
+function setEditorContent() { /* v-model keeps the shared editor synchronized. */ }
 function addRecipient(email: string) {
   const current = compose.to;
   const prefix = current.replace(/\s*[^,;\n]*$/, '').replace(/[\s,;]+$/, '').trim();
@@ -1233,30 +1227,10 @@ function onComposeFiles(e: Event) {
   if (input.files) addComposeFiles(Array.from(input.files));
   input.value = '';
 }
-function addComposeFiles(files: File[], inlineImages = false) {
+function addComposeFiles(files: File[]) {
   const accepted = files.slice(0, Math.max(0, 20 - compose.files.length - compose.fileIds.length - compose.galleryPhotoIds.length));
   compose.files.push(...accepted);
-  if (inlineImages) accepted.filter((file) => file.type.startsWith('image/') && file.size <= 700_000).forEach((file) => { void insertInlineImage(file); });
   scheduleDraft();
-}
-function onComposeDrop(event: DragEvent) { addComposeFiles(Array.from(event.dataTransfer?.files ?? []), true); }
-function onComposePaste(event: ClipboardEvent) {
-  const images = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith('image/'));
-  if (!images.length) return;
-  event.preventDefault();
-  addComposeFiles(images, true);
-}
-async function insertInlineImage(file: File) {
-  const dataUrl = await new Promise<string | null>((resolve) => {
-    const reader = new FileReader;
-    reader.onerror = () => resolve(null);
-    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
-    reader.readAsDataURL(file);
-  });
-  if (!dataUrl || !composeEditor.value) return;
-  composeEditor.value.focus();
-  document.execCommand('insertImage', false, dataUrl);
-  onComposeEditorInput();
 }
 function removeComposeFile(i: number) { compose.files.splice(i, 1); scheduleDraft(); }
 

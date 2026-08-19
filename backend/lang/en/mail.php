@@ -178,6 +178,7 @@ return [
         'layout_section' => 'Fields and delivery',
         'more_actions' => 'More actions',
         'compose_toolbar' => 'Compose toolbar',
+        'format' => 'Paragraph format', 'text' => 'Text', 'color' => 'Text color', 'image' => 'Insert image', 'font' => 'Font', 'size' => 'Font size', 'align_left' => 'Align left', 'align_center' => 'Center', 'align_right' => 'Align right',
         'send_hint' => 'Send with Ctrl/⌘ + Enter',
         'show_cc' => 'Show Cc',
         'hide_cc' => 'Hide Cc',

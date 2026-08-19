@@ -178,6 +178,7 @@ return [
         'layout_section' => 'Felder und Zustellung',
         'more_actions' => 'Weitere Aktionen',
         'compose_toolbar' => 'Werkzeugleiste zum Verfassen',
+        'format' => 'Absatzformat', 'text' => 'Text', 'color' => 'Schriftfarbe', 'image' => 'Bild einfügen', 'font' => 'Schriftart', 'size' => 'Schriftgröße', 'align_left' => 'Linksbündig', 'align_center' => 'Zentriert', 'align_right' => 'Rechtsbündig',
         'send_hint' => 'Senden mit Strg/⌘ + Eingabetaste',
         'show_cc' => 'Cc einblenden',
         'hide_cc' => 'Cc ausblenden',
