@@ -20,7 +20,7 @@ class MailSignatureController extends Controller
     {
         $uid = (int) $this->requireUser($request)->id;
 
-        return response()->json(['signatures' => MailSignature::query()->ownedBy($uid)->with('accounts:id')->orderBy('name')->get()->map(fn (MailSignature $signature): array => $this->present($signature))->all()]);
+        return response()->json(['signatures' => MailSignature::query()->ownedBy($uid)->orderBy('name')->get()->map(fn (MailSignature $signature): array => $this->present($signature))->all()]);
     }
 
     public function store(Request $request): JsonResponse
@@ -32,7 +32,7 @@ class MailSignatureController extends Controller
         $this->assign($signature, $data['account_ids'], $data['default_account_ids'], $uid);
         AuditLog::record('mail.signature_created', $signature);
 
-        return response()->json(['signature' => $this->present($signature->fresh(['accounts:id']) ?? $signature)], 201);
+        return response()->json(['signature' => $this->present($signature->fresh() ?? $signature)], 201);
     }
 
     public function update(Request $request, MailSignature $signature): JsonResponse
@@ -44,7 +44,7 @@ class MailSignatureController extends Controller
         $this->assign($signature, $data['account_ids'], $data['default_account_ids'], $uid);
         AuditLog::record('mail.signature_updated', $signature);
 
-        return response()->json(['signature' => $this->present($signature->fresh(['accounts:id']) ?? $signature)]);
+        return response()->json(['signature' => $this->present($signature->fresh() ?? $signature)]);
     }
 
     public function destroy(Request $request, MailSignature $signature): JsonResponse
@@ -69,19 +69,23 @@ class MailSignatureController extends Controller
             'default_account_ids.*' => ['integer', Rule::exists('mail_accounts', 'id')->where('user_id', $uid)],
         ])->validate();
 
-        $accounts = array_values(array_unique(array_map('intval', (array) $request->input('account_ids', []))));
-        $defaults = array_values(array_unique(array_map('intval', (array) $request->input('default_account_ids', []))));
+        $accounts = $this->ids($request->input('account_ids'));
+        $defaults = $this->ids($request->input('default_account_ids'));
         Validator::make(['defaults' => $defaults], ['defaults.*' => [Rule::in($accounts)]])->validate();
+        $html = $request->input('html');
 
         return [
             'name' => trim($request->string('name')->value()),
-            'html' => (new MailHtmlSanitizer)->sanitize($request->input('html'), true),
+            'html' => (new MailHtmlSanitizer)->sanitize(is_string($html) ? $html : null, true),
             'account_ids' => $accounts,
             'default_account_ids' => $defaults,
         ];
     }
 
-    /** @param list<int> $accounts @param list<int> $defaults */
+    /**
+     * @param list<int> $accounts
+     * @param list<int> $defaults
+     */
     private function assign(MailSignature $signature, array $accounts, array $defaults, int $uid): void
     {
         DB::transaction(function () use ($signature, $accounts, $defaults, $uid): void {
@@ -97,15 +101,45 @@ class MailSignatureController extends Controller
     /** @return array{id:int,name:string,html:?string,account_ids:list<int>,default_account_ids:list<int>} */
     private function present(MailSignature $signature): array
     {
-        $accounts = $signature->accounts;
+        $rows = DB::table('mail_account_signatures')->where('mail_signature_id', $signature->id)->get(['mail_account_id', 'is_default']);
+        $accountIds = [];
+        $defaultAccountIds = [];
+        foreach ($rows as $row) {
+            $id = $row->mail_account_id ?? null;
+            if (! is_int($id) && (! is_string($id) || ! ctype_digit($id))) {
+                continue;
+            }
+            $accountId = (int) $id;
+            $accountIds[] = $accountId;
+            if ((bool) ($row->is_default ?? false)) {
+                $defaultAccountIds[] = $accountId;
+            }
+        }
 
         return [
             'id' => $signature->id,
             'name' => $signature->name,
             'html' => $signature->html,
-            'account_ids' => $accounts->pluck('id')->map(fn (mixed $id): int => (int) $id)->values()->all(),
-            'default_account_ids' => $accounts->filter(fn (MailAccount $account): bool => (bool) $account->pivot?->is_default)->pluck('id')->map(fn (mixed $id): int => (int) $id)->values()->all(),
+            'account_ids' => $accountIds,
+            'default_account_ids' => $defaultAccountIds,
         ];
+    }
+
+    /** @return list<int> */
+    private function ids(mixed $input): array
+    {
+        if (! is_array($input)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($input as $value) {
+            if (is_int($value) || (is_string($value) && ctype_digit($value))) {
+                $ids[] = (int) $value;
+            }
+        }
+
+        return array_values(array_unique($ids));
     }
 
     private function authorizeOwner(MailSignature $signature, int $uid): void
