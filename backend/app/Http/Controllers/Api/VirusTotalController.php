@@ -26,10 +26,11 @@ class VirusTotalController extends Controller
 
     public function updateSettings(Request $request): JsonResponse
     {
-        $data = $request->validate(['api_key' => ['nullable', 'string', 'max:128']]);
+        $request->validate(['api_key' => ['nullable', 'string', 'max:128']]);
         $settings = AppSettings::current();
         if ($request->has('api_key')) {
-            $key = trim((string) ($data['api_key'] ?? ''));
+            $apiKey = $request->input('api_key');
+            $key = is_string($apiKey) ? trim($apiKey) : '';
             $settings->update(['virustotal_api_key' => $key !== '' ? $key : null]);
             AuditLog::record('settings.updated', null, ['group' => 'virustotal', 'configured' => $key !== '']);
         }
@@ -70,19 +71,36 @@ class VirusTotalController extends Controller
             'known' => true,
             'sha256' => $file->sha256,
             'stats' => [
-                'malicious' => (int) ($stats['malicious'] ?? 0),
-                'suspicious' => (int) ($stats['suspicious'] ?? 0),
-                'harmless' => (int) ($stats['harmless'] ?? 0),
-                'undetected' => (int) ($stats['undetected'] ?? 0),
+                'malicious' => $this->integer($stats['malicious'] ?? null),
+                'suspicious' => $this->integer($stats['suspicious'] ?? null),
+                'harmless' => $this->integer($stats['harmless'] ?? null),
+                'undetected' => $this->integer($stats['undetected'] ?? null),
             ],
-            'reputation' => is_array($attributes) ? (int) ($attributes['reputation'] ?? 0) : 0,
-            'last_analysis_date' => is_array($attributes) && is_numeric($attributes['last_analysis_date'] ?? null)
-                ? gmdate(DATE_ATOM, (int) $attributes['last_analysis_date']) : null,
+            'reputation' => is_array($attributes) ? $this->integer($attributes['reputation'] ?? null) : 0,
+            'last_analysis_date' => $this->date($attributes),
         ]);
     }
 
     private function key(): string
     {
         return trim((string) (AppSettings::current()->virustotal_api_key ?? ''));
+    }
+
+    /** @param mixed $value */
+    private function integer(mixed $value): int
+    {
+        return is_int($value) ? $value : (is_numeric($value) ? (int) $value : 0);
+    }
+
+    /** @param mixed $attributes */
+    private function date(mixed $attributes): ?string
+    {
+        if (! is_array($attributes)) {
+            return null;
+        }
+
+        $timestamp = $this->integer($attributes['last_analysis_date'] ?? null);
+
+        return $timestamp > 0 ? gmdate(DATE_ATOM, $timestamp) : null;
     }
 }
