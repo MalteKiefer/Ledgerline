@@ -78,9 +78,12 @@ final class OutboundUrl
                 // private in hardened mode) — never connect.
                 throw new RuntimeException('Refusing to fetch an unsafe URL.');
             }
-            // Pin the verified IP so a DNS-rebind can't swap it at connect time,
-            // and force the resolved address family so curl can't fall back to an
-            // unverified A/AAAA record of the other family.
+            // Prefer IPv4 on dual-stack hosts. Containers are frequently given
+            // an AAAA record by DNS without an IPv6 egress route; pinning that
+            // first address would make an otherwise reachable HTTPS endpoint
+            // fail instead of falling back to its verified A record. IPv6-only
+            // hosts remain fully supported.
+            usort($allowed, static fn (string $a, string $b): int => (int) str_contains($a, ':') <=> (int) str_contains($b, ':'));
             $isV6 = str_contains($allowed[0], ':');
             $addr = $isV6 ? "[{$allowed[0]}]" : $allowed[0];
             $port = (int) (parse_url($url, PHP_URL_PORT) ?: ($scheme === 'https' ? 443 : 80));
