@@ -4,18 +4,9 @@ declare(strict_types=1);
 
 return [
     // CalDAV sync settings page (mirror contacts top-level keys)
-    'heading' => 'Calendar & CalDAV',
-    'subheading' => 'Sync your calendars to phones and desktop clients over CalDAV.',
-    'dav_url' => 'CalDAV URL',
-    'username' => 'Username',
-    'password' => 'App password',
-    'setup_hint' => 'In your calendar app, add a CalDAV account with the URL, username and app password above. Auto-discovery works from the base domain too (.well-known/caldav).',
-    'apple_profile' => 'Download Apple profile (iOS / macOS)',
-    'apple_profile_hint' => 'Installs a CalDAV account on iPhone, iPad or Mac. You will be asked for the app password once during install.',
 
     // SPA app strings
     'ui' => [
-        'title' => 'Calendar',
         'default_calendar' => 'Calendar',
         'new_event' => 'New event',
         'edit_event' => 'Edit event',
@@ -31,7 +22,6 @@ return [
         'location_search' => 'Search for an address',
         'location_searching' => 'Searching…',
         'location_no_results' => 'No matches',
-        'location_on_map' => 'On the map',
         'location_clear' => 'Clear location',
         'timezone' => 'Time zone',
         'starts' => 'Starts',
@@ -73,10 +63,6 @@ return [
         'rsvp_accept' => 'Accept',
         'rsvp_tentative' => 'Maybe',
         'rsvp_decline' => 'Decline',
-        'ps_needs_action' => 'No response',
-        'ps_accepted' => 'Accepted',
-        'ps_declined' => 'Declined',
-        'ps_tentative' => 'Tentative',
         'find_slot' => 'Find a free slot',
         'duration' => 'Duration',
         'within_days' => 'Within days',
@@ -108,8 +94,6 @@ return [
         'week_start_monday' => 'Monday',
         'more' => ':count more',
         'kw' => 'Wk',
-        'new_calendar_type' => 'Calendar type',
-        'type_normal' => 'Normal',
         'type_birthdays' => 'Birthdays',
         'type_holidays' => 'Public holidays',
         'type_school_holidays' => 'School holidays',
@@ -151,8 +135,6 @@ return [
         'status_cancelled' => 'Cancelled',
         'categories' => 'Tags',
         'subtask_of' => 'Subtask of',
-        'reminder' => 'Reminder',
-        'reminder_none' => 'No reminder',
         'complete' => 'Complete',
         'uncomplete' => 'Reopen',
         'repeat' => 'Repeat',

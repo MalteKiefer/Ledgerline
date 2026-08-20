@@ -143,9 +143,12 @@ const avatarUrl = computed(() => (auth.user?.has_avatar ? api.streamUrl(`/api/v1
 const initials = computed(() => (auth.user?.name ?? '?').slice(0, 1).toUpperCase());
 // Standalone build injects the version at build time (VITE_APP_VERSION); the
 // same-origin Blade build falls back to the <meta name="ll-version"> tag.
-const version = (import.meta.env.VITE_APP_VERSION as string | undefined)
+// The standalone build is fed the git tag ("v1.693.0"), the Blade meta tag the
+// bare config value ("1.693.0"); the template renders its own "v", so strip a
+// leading one rather than showing "vv1.693.0".
+const version = ((import.meta.env.VITE_APP_VERSION as string | undefined)
   || document.querySelector('meta[name="ll-version"]')?.getAttribute('content')
-  || '';
+  || '').replace(/^v/i, '');
 
 interface NavChild { to: string; label: string }
 interface NavItem { key?: string; to?: string; label: string; icon?: string; children?: NavChild[] }

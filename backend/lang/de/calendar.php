@@ -4,18 +4,9 @@ declare(strict_types=1);
 
 return [
     // CalDAV-Sync-Einstellungsseite
-    'heading' => 'Kalender & CalDAV',
-    'subheading' => 'Synchronisiere deine Kalender über CalDAV mit Handys und Desktop-Clients.',
-    'dav_url' => 'CalDAV-URL',
-    'username' => 'Benutzername',
-    'password' => 'App-Passwort',
-    'setup_hint' => 'Füge in deiner Kalender-App ein CalDAV-Konto mit der URL, dem Benutzernamen und dem App-Passwort oben hinzu. Die automatische Erkennung funktioniert auch über die Basis-Domain (.well-known/caldav).',
-    'apple_profile' => 'Apple-Profil herunterladen (iOS / macOS)',
-    'apple_profile_hint' => 'Installiert ein CalDAV-Konto auf iPhone, iPad oder Mac. Du wirst einmalig bei der Installation nach dem App-Passwort gefragt.',
 
     // SPA-App-Texte
     'ui' => [
-        'title' => 'Kalender',
         'default_calendar' => 'Kalender',
         'new_event' => 'Neuer Termin',
         'edit_event' => 'Termin bearbeiten',
@@ -31,7 +22,6 @@ return [
         'location_search' => 'Adresse suchen',
         'location_searching' => 'Suche läuft…',
         'location_no_results' => 'Keine Treffer',
-        'location_on_map' => 'Auf der Karte',
         'location_clear' => 'Ort entfernen',
         'timezone' => 'Zeitzone',
         'starts' => 'Beginnt',
@@ -73,10 +63,6 @@ return [
         'rsvp_accept' => 'Zusagen',
         'rsvp_tentative' => 'Vielleicht',
         'rsvp_decline' => 'Absagen',
-        'ps_needs_action' => 'Keine Antwort',
-        'ps_accepted' => 'Zugesagt',
-        'ps_declined' => 'Abgesagt',
-        'ps_tentative' => 'Vorläufig',
         'find_slot' => 'Freie Zeit finden',
         'duration' => 'Dauer',
         'within_days' => 'Innerhalb Tagen',
@@ -108,8 +94,6 @@ return [
         'week_start_monday' => 'Montag',
         'more' => ':count weitere',
         'kw' => 'KW',
-        'new_calendar_type' => 'Kalendertyp',
-        'type_normal' => 'Normal',
         'type_birthdays' => 'Geburtstage',
         'type_holidays' => 'Feiertage',
         'type_school_holidays' => 'Schulferien',
@@ -151,8 +135,6 @@ return [
         'status_cancelled' => 'Abgebrochen',
         'categories' => 'Schlagworte',
         'subtask_of' => 'Unteraufgabe von',
-        'reminder' => 'Erinnerung',
-        'reminder_none' => 'Keine Erinnerung',
         'complete' => 'Erledigen',
         'uncomplete' => 'Wieder öffnen',
         'repeat' => 'Wiederholen',
