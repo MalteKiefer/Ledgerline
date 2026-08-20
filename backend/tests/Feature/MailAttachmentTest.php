@@ -65,7 +65,14 @@ class MailAttachmentTest extends TestCase
             '--'.$boundary,
             'Content-Type: text/html; charset=utf-8',
             '',
-            '<html><head><style>@font-face{font-family:Tracker;src:url(https://fonts.example/font.woff2)} p{color:#123456;background:url(https://tracker.example/bg.png)}</style></head><body><p style="font-weight:bold;background-image:url(https://tracker.example/pixel.png)">Hi</p>'
+            '<html><head><style>@font-face{font-family:Tracker;src:url(https://fonts.example/font.woff2)} p{color:#123456;background:url(https://tracker.example/bg.png)}'
+                // Escaped and comment-split spellings of url(), plus an @import
+                // with no terminating semicolon: all read as a fetch in a
+                // browser, none of them match a naive keyword filter.
+                .'@import "https://esc.example/late.css"'
+                .'div{background:'.chr(92).'75 rl(https://esc.example/escaped.png)}'
+                .'span{background:url/*x*/(https://esc.example/comment.png)}'
+                .'</style></head><body><p style="font-weight:bold;background-image:url(https://tracker.example/pixel.png)">Hi</p>'
                 .'<img src="cid:logo@example.com">'
                 .'<img src="http://tracker.example/px.gif">'
                 .'</body></html>',
@@ -169,6 +176,10 @@ class MailAttachmentTest extends TestCase
         $this->assertStringNotContainsString('tracker.example', $body);
         $this->assertStringNotContainsString('fonts.example', $body);
         $this->assertStringNotContainsString('@font-face', $body);
+        // Escaped, comment-split and semicolon-less spellings must not survive
+        // either — a browser resolves all three back into a resource fetch.
+        $this->assertStringNotContainsString('esc.example', $body);
+        $this->assertStringNotContainsString('@import', $body);
         $this->assertStringContainsString('font-weight:bold', str_replace(' ', '', $body));
 
         // The reader can load remote images for this one explicit view only.

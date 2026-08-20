@@ -253,12 +253,26 @@ final class MailHtmlSanitizer
         return null;
     }
 
-    /** Remove CSS features that can fetch a remote resource or execute legacy code. */
+    /**
+     * Remove CSS features that can fetch a remote resource or execute legacy
+     * code. Keyword matching on CSS only holds once the two constructs that let
+     * an author spell a keyword differently are gone first: CSS escapes (a
+     * backslash-escaped url( still reads as a fetch to a browser) and comments
+     * placed inside a property value. Backslashes are therefore dropped
+     * outright - mail CSS has no legitimate need for an escape, and leaving one
+     * in is what turns every filter below into a bypass. The reader's
+     * default-src 'none' CSP stays the enforcing layer; this keeps the stored
+     * markup from depending on it alone.
+     */
     private function sanitizeCss(string $css): string
     {
-        $css = preg_replace('#@(?:import|namespace)\s+[^;{}]+;#i', '', $css) ?? '';
-        $css = preg_replace('#@font-face\s*\{[^{}]*\}#is', '', $css) ?? '';
-        $css = preg_replace('#url\s*\(\s*[^)]*\)#i', 'none', $css) ?? '';
+        $css = preg_replace('#/\*.*?\*/#s', '', $css) ?? '';
+        $css = str_replace(chr(92), '', $css); // strip escapes so keyword filters cannot be spelled around
+        // Resource-loading at-rules, with or without a terminating semicolon,
+        // and with or without a block body.
+        $css = preg_replace('#@(?:import|namespace|charset)[^;{}]*(?:;|$)#i', '', $css) ?? '';
+        $css = preg_replace('#@font-face\s*\{[^{}]*\}?#is', '', $css) ?? '';
+        $css = preg_replace('#(?:url|image-set|-webkit-image-set|element)\s*\(\s*[^)]*\)?#i', 'none', $css) ?? '';
         $css = preg_replace('#(?:expression\s*\(|-moz-binding\s*:|behavior\s*:)#i', '', $css) ?? '';
 
         return trim(str_replace(['<', '>'], '', $css));

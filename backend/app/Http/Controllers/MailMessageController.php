@@ -179,7 +179,9 @@ class MailMessageController extends Controller
         $allowRemote = $request->boolean('remote');
         $html = $this->renderBody($message, $allowRemote);
 
-        $csp = "default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src data:".($allowRemote ? ' https: http:' : '');
+        // Remote images are permitted over TLS only: a cleartext fetch would
+        // expose which message was opened, and when, to anyone on the path.
+        $csp = "default-src 'none'; sandbox; style-src 'unsafe-inline'; img-src data:".($allowRemote ? ' https:' : '');
         $doc = '<!doctype html><html><head><meta charset="utf-8">'
             .'<meta name="referrer" content="no-referrer">'
             .'<meta name="viewport" content="width=device-width, initial-scale=1">'
