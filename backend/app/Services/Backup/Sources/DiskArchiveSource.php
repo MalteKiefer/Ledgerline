@@ -31,16 +31,8 @@ abstract class DiskArchiveSource implements BackupSource
     /** Base name for the produced archive (e.g. "files", "gallery"). */
     abstract protected function name(): string;
 
-    /** When set (incremental mode), only include objects modified at or after this unix ts. */
-    private ?int $sinceTs = null;
-
     /** tar can run for a while on a large first-full archive (gzip is CPU-bound). */
     private const TAR_TIMEOUT = 7200;
-
-    public function onlySince(int $ts): void
-    {
-        $this->sinceTs = $ts;
-    }
 
     /**
      * The files-disk prefix this source covers (e.g. "files", "gallery"). Public so
@@ -57,15 +49,8 @@ abstract class DiskArchiveSource implements BackupSource
         $disk = BlobStore::disk();
         $gzPath = $workDir.'/'.$this->name().'.tar.gz';
 
-        // Collect the object keys to archive (incremental filters by mtime).
         $keys = [];
         foreach ($disk->allFiles($this->prefix()) as $file) {
-            if ($this->sinceTs !== null) {
-                $mtime = (int) $disk->lastModified($file);
-                if ($mtime > 0 && $mtime < $this->sinceTs) {
-                    continue;
-                }
-            }
             $keys[] = $file;
         }
 

@@ -20,11 +20,6 @@ class ReverseGeocoder
 
     private const SEARCH_HOST = 'https://nominatim.openstreetmap.org/search';
 
-    public function lookup(float $lat, float $lon): ?string
-    {
-        return $this->lookupDetailed($lat, $lon)['display'];
-    }
-
     /**
      * Reverse-geocode to both the full display name and the structured address
      * parts (road, city, state, postcode, country, …).
